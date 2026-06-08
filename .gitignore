@@ -3,6 +3,9 @@
 /crates/slicer-wasm-host/test-guests/target/
 /crates/slicer-wasm-host/test-guests/*/target/
 /modules/core-modules/*/wit-guest/target/
+# Defensive: catches any nested target/ created by a worker that ran cargo with the wrong cwd
+# (added in packet 89 closure after a stray resources/target/ was discovered).
+**/target/
 
 # Compiled WASM module/component artifacts
 *.wasm

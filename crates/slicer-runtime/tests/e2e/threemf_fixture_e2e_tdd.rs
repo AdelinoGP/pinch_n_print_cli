@@ -542,7 +542,9 @@ fn support_blocker_emits_paint_regions_from_disk() {
 
 #[test]
 fn modifier_part_benchy_regression() {
-    let path = fixture("benchy_4color.3mf");
+    // Fixture: cube_cilindrical_modifier.3mf (cube body + cylindrical
+    // modifier_part).
+    let path = fixture("cube_cilindrical_modifier.3mf");
     if skip_if_missing(&path) {
         return;
     }
@@ -551,7 +553,7 @@ fn modifier_part_benchy_regression() {
 
     assert!(
         !mesh_ir.objects.is_empty(),
-        "benchy_4color.3mf must have at least one object"
+        "cube_cilindrical_modifier.3mf must have at least one object"
     );
 
     let modifier_parts: Vec<&ModifierVolume> = mesh_ir
@@ -568,7 +570,7 @@ fn modifier_part_benchy_regression() {
 
     assert!(
         !modifier_parts.is_empty(),
-        "benchy_4color.3mf must have modifier_part volumes"
+        "cube_cilindrical_modifier.3mf must have modifier_part volumes"
     );
 
     let sc = surface_classification_for_mesh(&mesh_ir);
@@ -579,7 +581,7 @@ fn modifier_part_benchy_regression() {
 
     assert!(
         paint_result.is_ok(),
-        "execute_paint_segmentation must succeed for benchy_4color"
+        "execute_paint_segmentation must succeed for cube_cilindrical_modifier"
     );
 }
 
@@ -589,7 +591,9 @@ fn modifier_part_benchy_regression() {
 
 #[test]
 fn model_without_negative_skips_subtract() {
-    let path = fixture("benchy_4color.3mf");
+    // Fixture: cube_4color.3mf (paint-only, no modifier_volumes at all, hence
+    // no negative_part).
+    let path = fixture("cube_4color.3mf");
     if skip_if_missing(&path) {
         return;
     }
@@ -609,10 +613,10 @@ fn model_without_negative_skips_subtract() {
 
     assert!(
         !has_negative,
-        "benchy_4color.3mf must not contain negative_part modifiers"
+        "cube_4color.3mf must not contain negative_part modifiers"
     );
 
-    let obj = mesh_ir.objects.first().expect("benchy must have an object");
+    let obj = mesh_ir.objects.first().expect("cube must have an object");
     let projected = slice_mesh_ex(&obj.mesh, &[5.0]);
     let polygons_before = projected.into_iter().next().unwrap_or_default();
 
@@ -783,10 +787,12 @@ fn missing_fixture_returns_error() {
 #[test]
 fn load_model_populates_object_config_data() {
     // Each fixture's parent object(s) must surface `extruder=Int(1)` in
-    // `ObjectMesh.config.data` after load_model.
+    // `ObjectMesh.config.data` after load_model. cube_cilindrical_modifier.3mf
+    // also carries object-scoped `extruder=1` (verified via `unzip -p ...
+    // Metadata/model_settings.config`).
     let fixtures = [
         "cube_positive_n_negative.3mf",
-        "benchy_4color.3mf",
+        "cube_cilindrical_modifier.3mf",
         "bridge_support_enforcers.3mf",
     ];
     for name in fixtures {
@@ -868,17 +874,33 @@ fn negative_part_stamps_extruder_into_extensions() {
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // AC-Mod-2 (RED): modifier_part_stamps_fuzzy_skin_into_extensions
-// RED until Packet 68 lands `stamp_modifier_config_deltas`. The only
-// non-extruder config_delta key across all three Packet 67 fixtures is
-// benchy_4color's modifier_part fuzzy_skin="external". This is the canonical
-// "non-extruder key propagation" assertion.
+// RED until Packet 68 lands `stamp_modifier_config_deltas`. Asserts the
+// canonical "non-extruder key propagation" invariant: a modifier_part whose
+// config_delta carries `fuzzy_skin=String("external")` must land that key
+// in at least one RegionPlan.config.extensions after region mapping.
+//
+// No on-disk fixture carries this exact key/value pair on a modifier_part:
+// cube_cilindrical_modifier.3mf authors a modifier_part whose metadata
+// preserves only `subtype` and `matrix` (the four wall/infill keys it also
+// authors are not on the loader allowlist). To keep this RED-guard test
+// expressing the SAME invariant â€” not a weaker proxy â€” we now construct a
+// synthetic ObjectMesh with a modifier whose `config_delta.fields` contains
+// exactly `fuzzy_skin=String("external")`, reusing the same synthetic
+// helpers as AC-N1/AC-N2. No on-disk fixture is consulted for this test.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn modifier_part_stamps_fuzzy_skin_into_extensions() {
-    let Some(region_map) = region_map_for_fixture("benchy_4color.3mf") else {
-        return;
-    };
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "subtype".into(),
+        ConfigValue::String("modifier_part".into()),
+    );
+    fields.insert("fuzzy_skin".into(), ConfigValue::String("external".into()));
+    let modifier = synthetic_modifier_volume("mod-fuzzy-skin", 0, fields);
+    let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
+
+    let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
     let stamped = region_map.entries.values().any(|plan| {
         matches!(
@@ -891,8 +913,8 @@ fn modifier_part_stamps_fuzzy_skin_into_extensions() {
         stamped,
         "RED: stamp_modifier_config_deltas (Packet 68) must stamp modifier_part \
          config_delta[\"fuzzy_skin\"]=String(\"external\") into at least one \
-         RegionPlan.config.extensions. Fixture: benchy_4color.3mf has a modifier_part \
-         with fuzzy_skin=external."
+         RegionPlan.config.extensions. Synthetic modifier authors fuzzy_skin=external \
+         (reproduced via the synthetic_modifier_volume helper)."
     );
 }
 
@@ -902,13 +924,27 @@ fn modifier_part_stamps_fuzzy_skin_into_extensions() {
 // AC-Mod-2 but for the extruder key. Confirms modifier_part subtype is in
 // the stamp list (OrcaSlicer parity: PARAMETER_MODIFIER per
 // PrintApply.cpp:590-594).
+//
+// No on-disk fixture carries this exact key/value pair on a modifier_part:
+// cube_cilindrical_modifier.3mf does not author `extruder=0` on the modifier
+// (only `subtype`+`matrix`+four non-allowlisted wall/infill keys). To preserve
+// the invariant exactly â€” not a weaker proxy â€” a synthetic modifier with
+// `extruder=Int(0)` (and `subtype="modifier_part"` so it is recognised as a
+// parameter modifier) is constructed via the same helpers AC-N1/AC-N2 use.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn modifier_part_stamps_extruder_into_extensions() {
-    let Some(region_map) = region_map_for_fixture("benchy_4color.3mf") else {
-        return;
-    };
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "subtype".into(),
+        ConfigValue::String("modifier_part".into()),
+    );
+    fields.insert("extruder".into(), ConfigValue::Int(0));
+    let modifier = synthetic_modifier_volume("mod-extruder-zero", 0, fields);
+    let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
+
+    let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
     let stamped = region_map.entries.values().any(|plan| {
         matches!(
@@ -921,7 +957,8 @@ fn modifier_part_stamps_extruder_into_extensions() {
         stamped,
         "RED: stamp_modifier_config_deltas (Packet 68) must stamp modifier_part \
          config_delta[\"extruder\"]=Int(0) into at least one RegionPlan.config.extensions. \
-         Fixture: benchy_4color.3mf has a modifier_part with extruder=0."
+         Synthetic modifier authors subtype=modifier_part and extruder=0 \
+         (reproduced via the synthetic_modifier_volume helper)."
     );
 }
 
@@ -1251,19 +1288,30 @@ fn config_delta_extruder_stamped_into_extensions() {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // AC-3: config_delta_non_extruder_key_survives
 //
-// AC-3 asks that a non-`extruder` config key (here `fuzzy_skin`) survives the
-// stamp and lands in RegionPlan.config.extensions for the overlapping region.
-// The benchy_4color.3mf fixture's modifier_part carries both
-// `extruder=Int(0)` AND `fuzzy_skin=String("external")`; asserts that at
-// least one RegionPlan carries BOTH keys together, proving the non-extruder
-// key survives end-to-end alongside the extruder key.
+// AC-3 asks that a non-`extruder` config key (here `fuzzy_skin`) survives
+// the stamp and lands in RegionPlan.config.extensions for the overlapping
+// region alongside the `extruder` key. Asserts that at least one RegionPlan
+// carries BOTH `extruder=Int(0)` AND `fuzzy_skin=String("external")`,
+// proving the non-extruder key survives end-to-end alongside the extruder.
+//
+// No on-disk fixture carries this exact key pair on a modifier_part. The
+// invariant is reproduced via the synthetic_modifier_volume helper used by
+// AC-N1/AC-N2; no on-disk fixture is consulted.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]
 fn config_delta_non_extruder_key_survives() {
-    let Some(region_map) = region_map_for_fixture("benchy_4color.3mf") else {
-        return;
-    };
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "subtype".into(),
+        ConfigValue::String("modifier_part".into()),
+    );
+    fields.insert("extruder".into(), ConfigValue::Int(0));
+    fields.insert("fuzzy_skin".into(), ConfigValue::String("external".into()));
+    let modifier = synthetic_modifier_volume("mod-both-keys", 0, fields);
+    let object = synthetic_object_with_modifiers("synthetic-obj", vec![modifier]);
+
+    let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
     let both_present = region_map.entries.values().any(|plan| {
         let has_extruder = matches!(
@@ -1281,8 +1329,8 @@ fn config_delta_non_extruder_key_survives() {
         both_present,
         "AC-3: at least one RegionPlan must carry BOTH config.extensions[\"extruder\"] \
          = Int(0) AND config.extensions[\"fuzzy_skin\"] = String(\"external\"), proving \
-         non-extruder keys survive alongside extruder. Fixture: benchy_4color.3mf has a \
-         modifier_part with extruder=0 AND fuzzy_skin=external."
+         non-extruder keys survive alongside extruder. Synthetic modifier authors both \
+         keys (reproduced via the synthetic_modifier_volume helper)."
     );
 }
 

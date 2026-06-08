@@ -112,11 +112,9 @@ fn z_rotation_transform_rotates_mesh() {
 
 #[test]
 fn y_rotation_45deg_orients_correctly() {
-    // benchy_4color.3mf's component-1 transform is a Y-rotation by -45Â°
-    // (3MF row-vector: `0.7071 0 0.7071 0 1 0 -0.7071 0 0.7071 0 0 0`).
-    // Test with a Y-rotation by +45Â° applied at <build><item> so the
-    // expected mapping is unambiguous and not coupled to component
-    // resolution: in row-vector convention `0.7071 0 -0.7071 0 1 0 0.7071 0 0.7071 0 0 0`
+    // Fixture-independent: uses a synthetic 3MF authored inline.
+    // Canonical Y+45Â° check: in row-vector convention
+    // `0.7071 0 -0.7071 0 1 0 0.7071 0 0.7071 0 0 0`
     // sends (1, 0, 0) â†’ (0.7071, 0, -0.7071) and (0, 0, 1) â†’ (0.7071, 0, 0.7071).
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
@@ -166,11 +164,14 @@ fn y_rotation_45deg_orients_correctly() {
 }
 
 #[test]
-fn benchy_painted_transform_applies_z_translation() {
+fn cube_4color_transform_applies_z_translation() {
+    // Fixture: cube_4color.3mf authors a cube with vertices at z=Â±12.5 (local)
+    // and an assembly transform placing object center at world (125, 105, 12.5);
+    // after build-item composition max_z must be ~25.0.
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("../../resources/benchy_painted.3mf");
+    path.push("../../resources/cube_4color.3mf");
 
-    let mesh_ir: MeshIR = load_model(&path).expect("Failed to load benchy_painted.3mf");
+    let mesh_ir: MeshIR = load_model(&path).expect("Failed to load cube_4color.3mf");
     assert!(!mesh_ir.objects.is_empty(), "No objects loaded");
 
     let mut max_z = f32::MIN;
@@ -181,8 +182,8 @@ fn benchy_painted_transform_applies_z_translation() {
     }
 
     assert!(
-        (max_z - 48.0).abs() < 2.0,
-        "Expected max_z ~48.0, got {}",
+        (max_z - 25.0).abs() < 2.0,
+        "Expected max_z ~25.0 after cube_4color assembly transform (Z=12.5), got {}",
         max_z
     );
 }
@@ -354,8 +355,9 @@ fn component_merge_pads_paint_layer_for_unpainted_sibling() {
     // Object 1: 2 triangles, with paint_color on both.
     // Object 2: 1 triangle, no paint at all.
     // Object 3: <components> wrapping both. Merged paint must have
-    // facet_values length == 3 (with None for object 2's triangle),
-    // not 2. This is the bug surfaced by benchy_4color.3mf.
+    // facet_values length == 3 (with None for object 2's triangle), not 2.
+    // The inline minimal fixture below reproduces the invariant without
+    // an on-disk binary asset.
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
   <resources>

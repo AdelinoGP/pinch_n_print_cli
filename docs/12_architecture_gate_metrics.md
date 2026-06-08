@@ -43,7 +43,7 @@ Canonical hash method (normative):
 
 <!-- VERIFY: at the time of writing, none of these named fixtures are
      materialised under `resources/`. The only Benchy-family fixtures present
-     are `benchy.stl`, `benchy_4color.3mf`, and `benchy_painted.3mf`. The
+     are `benchy.stl`, `cube_4color.3mf`, and `cube_cilindrical_modifier.3mf`. The
      named-fixture set above is the gate-evidence target; the fixtures (with
      deterministic config snapshots) must be added before a gate run can
      produce evidence matching these IDs. -->

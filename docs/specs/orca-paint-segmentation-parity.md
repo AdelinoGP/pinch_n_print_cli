@@ -961,7 +961,7 @@ Phase 6 writes to `triangles_by_color[*][*]` using `(group_idx & 1) * num_layers
 | Full pipeline, simple cube | Phase 1-7 for single-color cube | `benchy.stl` (no paint) |
 | Cube with 4 colors (all faces) | GAP A, B, C — all 7 RED tests pass | `cube_4color.3mf` |
 | Cube with fuzzy skin | GAP A, C for FuzzySkin semantic | `cube_fuzzyPainted.3mf` |
-| Benchy with MMU paint | Real-world model, multi-color | `benchy_4color.3mf` |
+| Benchy with MMU paint | Engineered cube, deterministic per-face Material paint, 37 KB | `cube_4color.3mf` |
 
 ### Regression tests
 
@@ -972,7 +972,7 @@ must pass.
 ### Golden tests (future)
 
 Compare `segmented_regions` output against OrcaSlicer reference for a known model.
-Extract OrcaSlicer output for `benchy_4color.3mf` and store as golden file.
+Extract OrcaSlicer output for `cube_4color.3mf` and store as golden file.
 Byte-for-byte comparison may be impractical due to Voronoi coordinate differences;
 verify topological equivalence instead (same number of regions per layer per extruder,
 same connectivity).

@@ -634,79 +634,15 @@ fn load_3mf_subdivision_dominant_state() {
     );
 }
 
-#[test]
-fn load_3mf_benchy_4color_loads() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let result = load_model(&PathBuf::from(path));
-    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
-    let objects = result.unwrap();
-    // AC-2: Material layer present with at least one ToolIndex
-    let has_material = objects.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().is_some_and(|pd| {
-            pd.layers.iter().any(|l| {
-                matches!(l.semantic, PaintSemantic::Material)
-                    && l.facet_values
-                        .iter()
-                        .any(|v| matches!(v, Some(PaintValue::ToolIndex(_))))
-            })
-        })
-    });
-    assert!(
-        has_material,
-        "expected Material layer with ToolIndex entries"
-    );
-    // AC-3: SupportEnforcer layer present
-    let has_support = objects.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().is_some_and(|pd| {
-            pd.layers.iter().any(|l| {
-                matches!(l.semantic, PaintSemantic::SupportEnforcer)
-                    && l.facet_values
-                        .iter()
-                        .any(|v| matches!(v, Some(PaintValue::Flag(true))))
-            })
-        })
-    });
-    assert!(
-        has_support,
-        "expected SupportEnforcer layer with Flag(true) entries"
-    );
-}
-
-#[test]
-fn load_3mf_benchy_4color_strokes_populated() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let mesh_ir = load_model(&PathBuf::from(path)).expect("should load without error");
-    let has_strokes = mesh_ir.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().is_some_and(|pd| {
-            pd.layers
-                .iter()
-                .any(|l| matches!(l.semantic, PaintSemantic::Material) && !l.strokes.is_empty())
-        })
-    });
-    assert!(has_strokes, "expected non-empty strokes in Material layer");
-    // AC-8: all stroke triangles are non-degenerate
-    for obj in &mesh_ir.objects {
-        if let Some(pd) = &obj.paint_data {
-            for layer in &pd.layers {
-                for stroke in &layer.strokes {
-                    for tri in &stroke.triangles {
-                        let [a, b, c] = tri;
-                        assert!(
-                            a != b && b != c && a != c,
-                            "degenerate stroke triangle found: a={a:?} b={b:?} c={c:?}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
+// NOTE (packet 89, Step 6): two retired-benchy load tests that previously sat
+// here (Material+SupportEnforcer presence; strokes populated) were deleted
+// because they are fully duplicated by the `cube_4color_*` block below —
+// Material/ToolIndex/strokes coverage now comes from
+// `load_3mf_cube_4color_loads`, `load_3mf_cube_4color_strokes_populated`, and
+// `load_3mf_cube_4color_material_spans_4_tool_indices`. The retired fixture
+// additionally carried `paint_supports` painting, which `cube_4color.3mf`
+// intentionally does not — that signal moves to the executor-side support
+// suites and is not a model_loader concern.
 
 #[test]
 fn load_3mf_wholefacet_has_no_strokes() {
@@ -726,108 +662,16 @@ fn load_3mf_wholefacet_has_no_strokes() {
     }
 }
 
-#[test]
-fn load_3mf_4color_has_mmu_and_support_layers() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let mesh = load_model(&PathBuf::from(path)).unwrap();
-    let pd = mesh.objects[0]
-        .paint_data
-        .as_ref()
-        .expect("paint_data must be Some");
-    assert!(
-        pd.layers
-            .iter()
-            .any(|l| l.semantic == PaintSemantic::Material),
-        "expected Material layer"
-    );
-    assert!(
-        pd.layers.iter().any(|l| matches!(
-            l.semantic,
-            PaintSemantic::SupportEnforcer | PaintSemantic::SupportBlocker
-        )),
-        "expected support layer"
-    );
-}
-
-#[test]
-fn load_3mf_4color_material_spans_four_tool_indices() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let mesh = load_model(&PathBuf::from(path)).unwrap();
-    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
-    let mat = pd
-        .layers
-        .iter()
-        .find(|l| l.semantic == PaintSemantic::Material)
-        .expect("no Material layer");
-    let indices: std::collections::HashSet<u32> = mat
-        .facet_values
-        .iter()
-        .filter_map(|v| {
-            if let Some(PaintValue::ToolIndex(n)) = v {
-                Some(*n)
-            } else {
-                None
-            }
-        })
-        .collect();
-    assert!(
-        indices.len() >= 4,
-        "expected â‰¥4 distinct ToolIndex values, got {}: {:?}",
-        indices.len(),
-        indices
-    );
-    assert!(
-        indices.contains(&0),
-        "expected ToolIndex(0) present (0-based values), got {:?}",
-        indices
-    );
-}
-
-#[test]
-fn load_3mf_4color_support_enforcer_has_facets() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let mesh = load_model(&PathBuf::from(path)).unwrap();
-    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
-    let sup = pd
-        .layers
-        .iter()
-        .find(|l| {
-            matches!(
-                l.semantic,
-                PaintSemantic::SupportEnforcer | PaintSemantic::SupportBlocker
-            )
-        })
-        .expect("no support layer");
-    let has_any = sup
-        .facet_values
-        .iter()
-        .any(|v| matches!(v, Some(PaintValue::Flag(true))));
-    assert!(has_any, "support layer has no painted facets");
-}
-
-#[test]
-fn load_3mf_4color_layer_count_at_least_two() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../resources/benchy_4color.3mf"
-    );
-    let mesh = load_model(&PathBuf::from(path)).unwrap();
-    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
-    assert!(
-        pd.layers.len() >= 2,
-        "expected â‰¥2 layers, got {}",
-        pd.layers.len()
-    );
-}
+// NOTE (packet 89, Step 6): the four `load_3mf_4color_*` tests that previously
+// sat here (mmu_and_support_layers, material_spans_four_tool_indices,
+// support_enforcer_has_facets, layer_count_at_least_two) were deleted as
+// duplicates of the cube_4color block below. The Material-layer/ToolIndex
+// coverage is preserved by `load_3mf_cube_4color_material_spans_4_tool_indices`
+// (which asserts EXACTLY 4 distinct indices — a strengthening over the prior
+// `>= 4` retired-fixture bound). The support-layer assertions tested a fixture
+// property (`paint_supports` in the retired multi-color 3MF) that
+// `cube_4color.3mf` intentionally does not carry; that signal is covered by
+// the executor-side support suites and is not a model_loader concern.
 
 // ---------------------------------------------------------------------------
 // cube_4color.3mf loader tests
@@ -967,6 +811,32 @@ fn load_3mf_cube_4color_facet_coverage() {
         "at least 1 facet must be unpainted (bottom face has unpainted triangle), got {unpainted}"
     );
     assert_eq!(painted + unpainted, 12, "all facets accounted for");
+}
+
+/// Documented coverage gap from packet 89 (Benchy 3MF Retirement).
+///
+/// Two deleted benchy-fixture tests covered properties that NO cube fixture currently
+/// carries:
+///
+/// 1. SupportEnforcer / SupportBlocker layer PARSING against a real OrcaSlicer-exported
+///    3MF (was: `load_3mf_4color_support_enforcer_has_facets`,
+///    `load_3mf_4color_has_mmu_and_support_layers` SupportEnforcer arm, plus
+///    the SupportEnforcer arm of the deleted real-3MF multi-color loader test).
+///    The parser logic itself remains covered by `load_3mf_extracts_support_facets`
+///    against a SYNTHETIC fixture; what is lost is the "does it also work on a real
+///    OrcaSlicer-exported file" regression check.
+/// 2. Multi-layer paint_data (>= 2 layers) assertion (was: `load_3mf_4color_layer_count_at_least_two`).
+///    cube_4color.3mf carries only a Material layer by design; cube_cilindrical_modifier.3mf
+///    has no paint at all. Neither can carry a multi-layer assertion.
+///
+/// Restoration path: author `resources/cube_with_paint_supports.3mf` (a small cube +
+/// paint_supports attribute on 1+ faces) and replace this stub with concrete assertions.
+/// Tracked under packet 89 §Closure Log AC-N1.
+#[test]
+#[ignore = "Awaiting cube fixture with paint_supports + multi-layer paint_data; see packet 89 §Closure Log AC-N1"]
+fn support_enforcer_and_multi_layer_paint_from_real_3mf_fixture_documented_gap() {
+    // Intentionally empty. This stub exists to make the deleted coverage visible in
+    // `cargo test --list` output and prevent the gap from disappearing into git history.
 }
 
 // ---------------------------------------------------------------------------

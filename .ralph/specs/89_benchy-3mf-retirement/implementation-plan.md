@@ -14,7 +14,7 @@
 
 - Task IDs:
   - `TASK-239`
-- Objective: produce an authoritative file:line list of every reference to `benchy_4color.3mf` or `benchy_painted.3mf` in the workspace, and confirm whether `resources/cube_with_modifier_part.3mf` and `resources/cube_rotated_component.3mf` already exist.
+- Objective: produce an authoritative file:line list of every reference to `benchy_4color.3mf` or `benchy_painted.3mf` in the workspace, and confirm whether `resources/cube_cilindrical_modifier.3mf` and `resources/cube_rotated_component.3mf` already exist.
 - Precondition: working tree clean.
 - Postcondition: an in-implementer-notes inventory of all reference sites (file:line + 1-line context) plus binary YES/NO answers for the two possible-derivative fixtures.
 - Files allowed to read:
@@ -25,7 +25,7 @@
   - Any `.rs` source under `crates/`. Resist the temptation to open files.
 - Expected sub-agent dispatches:
   - "Run `rg -nE 'benchy_(4color|painted)\.3mf' crates/ modules/ docs/ .ralph/`; return LOCATIONS (≤ 60 entries) PLUS a per-file count table (`file → ref_count`). If total > 60, the LOCATIONS list MAY truncate but the per-file count table MUST be complete so no migration target is silently dropped" — purpose: full residual inventory. (Total expected ≈ 43+ references across the design.md-listed files; cap was 30 in a prior revision and risked truncation.)
-  - "Run `test -f resources/cube_with_modifier_part.3mf && echo present || echo absent`; same for `resources/cube_rotated_component.3mf`; return FACT" — purpose: derivative-fixture status check.
+  - "Run `test -f resources/cube_cilindrical_modifier.3mf && echo present || echo absent`; same for `resources/cube_rotated_component.3mf`; return FACT" — purpose: derivative-fixture status check.
 - Context cost: `S` (pure dispatch).
 - Authoritative docs:
   - `docs/specs/paint-pipeline-orca-parity-roadmap.md` — read §"P0a — Benchy 3MF retirement" (lines 200-260 approx) — purpose: reconcile reported reference count with the roadmap table.
@@ -63,15 +63,15 @@
 
 - Task IDs:
   - `TASK-239`
-- Objective: rewrite the 7 modifier-part tests (6 STRUCTURAL + 1 SHAPE-DEPENDENT) to consume `cube_4color.3mf` (or `cube_with_modifier_part.3mf` per Step 1's FACT), strengthen the SHAPE-DEPENDENT assertion to a per-face check using Step 2's mapping, and rename the file.
-- Precondition: Steps 1 and 2 complete. If Step 1's FACT reported `cube_with_modifier_part.3mf` as `absent`, this step also includes authoring that fixture (≤ 100 KB) before edit.
+- Objective: rewrite the 7 modifier-part tests (6 STRUCTURAL + 1 SHAPE-DEPENDENT) to consume `cube_4color.3mf` (or `cube_cilindrical_modifier.3mf` per Step 1's FACT), strengthen the SHAPE-DEPENDENT assertion to a per-face check using Step 2's mapping, and rename the file.
+- Precondition: Steps 1 and 2 complete. If Step 1's FACT reported `cube_cilindrical_modifier.3mf` as `absent`, this step also includes authoring that fixture (≤ 100 KB) before edit.
 - Postcondition: file renamed; all 7 tests pass against the cube fixture; the SHAPE-DEPENDENT test asserts an exact `PaintSemantic` value on a known cube face.
 - Files allowed to read:
   - `crates/slicer-runtime/tests/e2e/benchy_4color_modifier_part_e2e_tdd.rs` — read in full (≤ 300 lines expected).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-runtime/tests/e2e/benchy_4color_modifier_part_e2e_tdd.rs` (renamed during edit).
   - `crates/slicer-runtime/tests/e2e.rs` — update `mod` declaration.
-  - Optionally `resources/cube_with_modifier_part.3mf` (only if authoring is required).
+  - Optionally `resources/cube_cilindrical_modifier.3mf` (only if authoring is required).
 - Files explicitly out-of-bounds for this step:
   - Any other test file (those are Steps 4–6).
 - Expected sub-agent dispatches:

@@ -21,10 +21,10 @@ This packet does not change any production code in `crates/slicer-core`, `crates
 ## In Scope
 
 - Audit each test in `crates/slicer-runtime/tests/e2e/benchy_4color_modifier_part_e2e_tdd.rs`, `…/e2e/benchy_painted_e2e_tdd.rs`, `…/e2e/benchy_painted_overrides_e2e_tdd.rs`, `…/e2e/threemf_fixture_e2e_tdd.rs` (lines 540-924), `crates/slicer-runtime/tests/integration/threemf_paint_drop_on_modifier_tdd.rs`, `…/integration/threemf_transform_tdd.rs`, `crates/slicer-model-io/tests/model_loader_tdd.rs`, `…/threemf_sidecar_classification_tdd.rs` per the test classification in the roadmap (STRUCTURAL / CLI-SHAPE / SHAPE-DEPENDENT).
-- Rewrite each test body to consume the appropriate cube fixture (`cube_4color.3mf` for multi-color tests; `cube_fuzzyPainted.3mf` for fuzzy-skin paint tests; `cube_with_modifier_part.3mf` and `cube_rotated_component.3mf` if authored).
+- Rewrite each test body to consume the appropriate cube fixture (`cube_4color.3mf` for multi-color tests; `cube_fuzzyPainted.3mf` for fuzzy-skin paint tests; `cube_cilindrical_modifier.3mf` and `cube_rotated_component.3mf` if authored).
 - Rename each migrated file from `benchy_*` to `cube_*` (the `cube_*` prefix matches the existing RED tests' naming convention).
 - Strengthen SHAPE-DEPENDENT assertions to per-face cube assertions wherever the cube fixture's known per-face paint allows.
-- Author `resources/cube_with_modifier_part.3mf` (small derivative of `cube_4color.3mf` adding one modifier-part component) only if no existing cube fixture can substitute.
+- Author `resources/cube_cilindrical_modifier.3mf` (small derivative of `cube_4color.3mf` adding one modifier-part component) only if no existing cube fixture can substitute.
 - Author `resources/cube_rotated_component.3mf` (small derivative adding one 45° rotated component) only if no existing cube fixture can substitute.
 - Update the doc-comment block at `crates/slicer-runtime/tests/common/model_cache.rs:5-8` to reference the cube fixtures (the cache code itself is unchanged).
 - Delete `resources/benchy_4color.3mf`, `resources/benchy_painted.3mf`, `resources/benchy_painted.README.md`.

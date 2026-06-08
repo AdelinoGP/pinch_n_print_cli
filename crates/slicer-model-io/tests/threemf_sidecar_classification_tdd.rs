@@ -24,12 +24,12 @@ fn make_zip_without_sidecar() -> zip::ZipArchive<Cursor<Vec<u8>>> {
 }
 
 #[test]
-fn parses_benchy_4color_sidecar() {
+fn parses_cube_cilindrical_modifier_sidecar() {
     use slicer_model_io::sidecar::{parse_3mf_sidecar, PartSubtype};
-    let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/benchy_4color.3mf");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/cube_cilindrical_modifier.3mf");
     let file = std::fs::File::open(&path)
-        .unwrap_or_else(|_| panic!("benchy_4color.3mf not found at {:?}", path));
+        .unwrap_or_else(|_| panic!("cube_cilindrical_modifier.3mf not found at {:?}", path));
     let mut archive = zip::ZipArchive::new(file).unwrap();
     let result = parse_3mf_sidecar(&mut archive);
 
@@ -37,19 +37,53 @@ fn parses_benchy_4color_sidecar() {
         !result.is_empty(),
         "expected at least one object in sidecar"
     );
-    // The sidecar has object id=3; part id=2 is modifier_part with fuzzy_skin=external
+    // The sidecar has object id=3; part id=1 is normal_part (the Cube body) and
+    // part id=2 is modifier_part (a Generic-Cylinder) with per-part overrides
+    // (inner_wall_line_width, outer_wall_line_width, sparse_infill_density,
+    // sparse_infill_line_width). Packet 89 substitution: the retired benchy
+    // fixture carried `fuzzy_skin=external` on its modifier part; the new
+    // cube_cilindrical_modifier fixture's modifier instead carries
+    // `inner_wall_line_width=0.6` (and three other overrides). The assertion
+    // is strengthened to require BOTH (a) the ModifierPart subtype routing AND
+    // (b) the presence of a per-part override metadata entry, matching the
+    // structural class of metadata-carrying modifier parts the original test
+    // covered.
     let obj = result.get(&3).expect("object id 3 missing from sidecar");
     assert!(!obj.parts.is_empty(), "expected at least one part");
+
+    let part1 = obj.parts.get(&1).expect("part id 1 missing");
+    assert_eq!(
+        part1.subtype,
+        PartSubtype::NormalPart,
+        "part 1 should be NormalPart (the Cube body)"
+    );
+
     let part2 = obj.parts.get(&2).expect("part id 2 missing");
     assert_eq!(
         part2.subtype,
         PartSubtype::ModifierPart,
-        "part 2 should be ModifierPart"
+        "part 2 should be ModifierPart (the Generic-Cylinder modifier)"
     );
     assert_eq!(
-        part2.metadata.get("fuzzy_skin").map(String::as_str),
-        Some("external"),
-        "fuzzy_skin should be 'external'"
+        part2.metadata.get("name").map(String::as_str),
+        Some("Generic-Cylinder"),
+        "modifier part 2 should be the Generic-Cylinder"
+    );
+    assert_eq!(
+        part2
+            .metadata
+            .get("inner_wall_line_width")
+            .map(String::as_str),
+        Some("0.6"),
+        "modifier part 2 should carry the inner_wall_line_width override"
+    );
+    assert_eq!(
+        part2
+            .metadata
+            .get("sparse_infill_density")
+            .map(String::as_str),
+        Some("60%"),
+        "modifier part 2 should carry the sparse_infill_density override"
     );
 }
 
@@ -135,29 +169,29 @@ fn empty_object_in_sidecar_returns_empty_parts() {
 #[test]
 fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
     // Two-part assertion:
-    // 1. parse_3mf_sidecar returns non-empty data for benchy_4color.3mf â€” proves the
-    //    parser ran and produced output for this fixture (the log::trace! in the
-    //    implementation records "parse_3mf_sidecar: N object(s), M part(s)").
-    // 2. load_model succeeds â€” proves the integration plumbing is wired end-to-end.
+    // 1. parse_3mf_sidecar returns non-empty data for cube_cilindrical_modifier.3mf —
+    //    proves the parser ran and produced output for this fixture (the log::trace!
+    //    in the implementation records "parse_3mf_sidecar: N object(s), M part(s)").
+    // 2. load_model succeeds — proves the integration plumbing is wired end-to-end.
     // The Rust borrow checker structurally guarantees parse_3mf_sidecar is called
     // before the ZipArchive is dropped in load_3mf (mutable borrow cannot outlive
     // the archive binding).
     use slicer_model_io::loader::load_model;
     use slicer_model_io::sidecar::parse_3mf_sidecar;
-    let path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/benchy_4color.3mf");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/cube_cilindrical_modifier.3mf");
     if !path.exists() {
-        eprintln!("Skipping: benchy_4color.3mf not found");
+        eprintln!("Skipping: cube_cilindrical_modifier.3mf not found");
         return;
     }
 
     // Part 1: direct parser call confirms it produces non-empty output.
-    let file = std::fs::File::open(&path).expect("benchy_4color.3mf open failed");
+    let file = std::fs::File::open(&path).expect("cube_cilindrical_modifier.3mf open failed");
     let mut archive = zip::ZipArchive::new(file).expect("ZipArchive::new failed");
     let sidecar = parse_3mf_sidecar(&mut archive);
     assert!(
         !sidecar.is_empty(),
-        "parse_3mf_sidecar should return non-empty map for benchy_4color.3mf"
+        "parse_3mf_sidecar should return non-empty map for cube_cilindrical_modifier.3mf"
     );
     drop(archive);
 
@@ -165,7 +199,7 @@ fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
     let result = load_model(&path);
     assert!(
         result.is_ok(),
-        "load_model on benchy_4color.3mf should succeed: {:?}",
+        "load_model on cube_cilindrical_modifier.3mf should succeed: {:?}",
         result
     );
 }
@@ -183,7 +217,7 @@ fn sidecar_parser_extracts_object_metadata() {
     let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixtures = [
         ("cube_positive_n_negative.3mf", 4u32),
-        ("benchy_4color.3mf", 3u32),
+        ("cube_cilindrical_modifier.3mf", 3u32),
     ];
 
     for (name, expected_obj_id) in fixtures {

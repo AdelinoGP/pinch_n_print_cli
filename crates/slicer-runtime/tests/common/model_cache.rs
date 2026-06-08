@@ -2,10 +2,10 @@
 //! path. First caller through pays the parse cost; later callers receive a
 //! clone of the cached `Arc<MeshIR>`.
 //!
-//! 3MF fixtures in the e2e bucket (`benchy_4color.3mf` at 2.6 MB,
-//! `benchy_painted.3mf` at 2.5 MB) are otherwise parsed once per test that
-//! touches them. Sharing the parsed `MeshIR` across tests in the same process
-//! removes that redundant work.
+//! 3MF fixtures in the e2e bucket (`cube_4color.3mf` at 37 KB, 4-tool Material
+//! paint per face; `cube_fuzzyPainted.3mf` at 27 KB, FuzzySkin paint per face)
+//! are otherwise parsed once per test that touches them. Sharing the parsed
+//! `MeshIR` across tests in the same process removes that redundant work.
 //!
 //! Failure-asserting tests (e.g. `missing_fixture_returns_error`) MUST NOT
 //! route through this cache — they exercise the loader's error path and need

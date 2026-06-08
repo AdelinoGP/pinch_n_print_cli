@@ -22,7 +22,7 @@
   - **Test-module registry**: `crates/slicer-runtime/tests/e2e.rs` (or whichever file declares `mod benchy_4color_modifier_part_e2e_tdd;` / similar) — rename the `mod` declarations.
   - **Doc-comment update**: `crates/slicer-runtime/tests/common/model_cache.rs` lines 5-8 (the motivating-example block).
   - **Deleted files**: `resources/benchy_4color.3mf`, `resources/benchy_painted.3mf`, `resources/benchy_painted.README.md`.
-  - **Possibly-authored fixtures** (only if existing cube assets cannot substitute): `resources/cube_with_modifier_part.3mf`, `resources/cube_rotated_component.3mf`.
+  - **Possibly-authored fixtures** (only if existing cube assets cannot substitute): `resources/cube_cilindrical_modifier.3mf`, `resources/cube_rotated_component.3mf`.
 - Rejected alternatives that were considered and why they were not chosen:
   - **Keep one benchy fixture as a "manual regression" with `#[ignore]`**: adds residual surface area for future drift; the wedge STL (P0b) plus the cube 3MFs together cover every assertion class the benchy files were carrying. Rejected.
   - **Author a single new 3MF that combines modifier-part + rotated component + multi-color paint**: violates the "minimum-feature fixture per test" principle. Each derived cube fixture exercises exactly one feature, mirroring the regression_wedge.stl design choice in P0b. Rejected.
@@ -43,7 +43,7 @@ The 8 renamed/edited test files plus the cache doc-comment block. Listed below g
 - `crates/slicer-runtime/tests/common/model_cache.rs` lines 1-13; role: doc-comment with motivating example; expected change: replace benchy basenames with cube basenames + correct sizes.
 - `crates/slicer-runtime/tests/e2e.rs` (mod-declaration file; small); role: harness mod declarations; expected change: rename `mod benchy_*` to `mod cube_*`.
 - `resources/benchy_4color.3mf`, `resources/benchy_painted.3mf`, `resources/benchy_painted.README.md` — DELETE.
-- `resources/cube_with_modifier_part.3mf`, `resources/cube_rotated_component.3mf` — CREATE only if necessary.
+- `resources/cube_cilindrical_modifier.3mf`, `resources/cube_rotated_component.3mf` — CREATE only if necessary.
 
 Total: ≤ 12 primary edit targets (9 renames/edits + 3 deletes + 0–2 fixture creations). Above the "≤ 3" target because this is a sweeping fixture migration; each file is small in delta (one to a few `replace_all` sed-style operations); the per-step plan in `implementation-plan.md` breaks the work into atomic units no single step touches more than 3 files.
 
@@ -105,7 +105,7 @@ Total: ≤ 12 primary edit targets (9 renames/edits + 3 deletes + 0–2 fixture 
 ## Risks and Tradeoffs
 
 - **Risk: a SHAPE-DEPENDENT assertion does not migrate cleanly** because the cube's paint distribution differs from benchy's. Mitigation: per-test classification in Step 1 catches this; if a true mismatch is found, the assertion is rewritten to target a different geometric feature the cube *does* have, with a comment explaining the substitution. Last-resort fallback: a single `#[ignore = "no cube-fixture equivalent — see comment"]` holdout that documents the gap explicitly, never silent weakening.
-- **Risk: a newly-authored fixture takes time to produce reliably.** Mitigation: prefer adjusting assertions against `cube_4color.3mf` over authoring `cube_with_modifier_part.3mf` / `cube_rotated_component.3mf`. Only author when a test's STRUCTURAL property genuinely cannot be expressed against the existing cube.
+- **Risk: a newly-authored fixture takes time to produce reliably.** Mitigation: prefer adjusting assertions against `cube_4color.3mf` over authoring `cube_cilindrical_modifier.3mf` / `cube_rotated_component.3mf`. Only author when a test's STRUCTURAL property genuinely cannot be expressed against the existing cube.
 - **Tradeoff: storage reclaim vs. test-coverage breadth.** The migration trades a benchy-shaped real-world regression surface for engineered-cube assertions that are stronger per-test but cover a smaller geometry envelope. P0b's regression_wedge.stl is the companion mitigation — together the two packets cover the assertion classes benchy was carrying.
 
 ## Context Cost Estimate
@@ -116,4 +116,4 @@ Total: ≤ 12 primary edit targets (9 renames/edits + 3 deletes + 0–2 fixture 
 
 ## Open Questions
 
-- `[RESOLVED]` (Step 1 dispatch, this run) — Both `resources/cube_with_modifier_part.3mf` and `resources/cube_rotated_component.3mf` are `absent` at packet start. Steps 3 and 5 each evaluate first whether the existing `cube_4color.3mf` can satisfy the test's STRUCTURAL/SHAPE property; the new fixtures are authored only on substitution failure.
+- `[RESOLVED]` (Step 1 dispatch, this run) — Both `resources/cube_cilindrical_modifier.3mf` and `resources/cube_rotated_component.3mf` are `absent` at packet start. Steps 3 and 5 each evaluate first whether the existing `cube_4color.3mf` can satisfy the test's STRUCTURAL/SHAPE property; the new fixtures are authored only on substitution failure.
