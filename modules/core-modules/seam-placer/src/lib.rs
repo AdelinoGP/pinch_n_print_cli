@@ -195,51 +195,49 @@ impl LayerModule for SeamPlacer {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        // Contract: every region's wall loops MUST reach the output. Seam
+        // rotation is a best-effort optimisation that no-ops when (a) the
+        // region has no seam information at all, or (b) the source seam's
+        // coordinates don't match any wall-loop vertex within tolerance
+        // (`seam-planner-default` currently emits mesh-corner coords while
+        // walls live on the inset boundary — a known pre-existing gap).
+        //
+        // Dropping a region's walls here would propagate through
+        // `convert_perimeter_output` (no bucket → no PerimeterRegion entry)
+        // and corrupt the `(object_id, region_id)` pairing in
+        // `layer_executor::commit_layer_outputs` for multi-region prints.
         for region in regions {
             let wall_loops = region.wall_loops();
             if wall_loops.is_empty() {
                 continue;
             }
 
-            let seam_position = if let Some(candidate) =
-                select_seam_candidate(self.mode, layer_index, region.seam_candidates())
-            {
-                // wall_index is set to 0 here as a placeholder; the actual wall index
-                // is determined below by `find_seam_location` which searches all walls
-                // to locate the point and returns the correct (wall_index, start_idx) pair.
-                slicer_ir::SeamPosition {
-                    point: candidate.position,
-                    wall_index: 0,
-                }
-            } else if let Some(seam) = region.resolved_seam() {
-                seam.clone()
-            } else {
-                continue;
-            };
+            // Compute the optional seam target. `None` → emit walls pristine
+            // (no rotation, no `set_resolved_seam` call).
+            let seam_target: Option<(slicer_ir::Point3WithWidth, usize, usize)> = (|| {
+                let point = if let Some(candidate) =
+                    select_seam_candidate(self.mode, layer_index, region.seam_candidates())
+                {
+                    candidate.position
+                } else {
+                    region.resolved_seam().as_ref()?.point
+                };
+                let (wall_idx, start_idx) = find_seam_location(wall_loops, &point)?;
+                Some((point, wall_idx, start_idx))
+            })();
 
-            let Some((target_wall_index, start_idx)) =
-                find_seam_location(wall_loops, &seam_position.point)
-            else {
-                // Seam source (e.g. seam-planner-default's mesh-corner output)
-                // and wall-loop coordinates don't match within tolerance — common
-                // when seams are placed in slice-polygon coords but walls live on
-                // the inset boundary. Skip rotation for this region rather than
-                // failing the layer; walls retain their natural start vertex.
-                // Pre-existing seam-planner/seam-placer coordinate-space gap;
-                // tracked separately from the host origin-tagging fix that
-                // started routing seam_plan_ir resolutions to PerimeterIR.
-                continue;
-            };
-
-            output
-                .set_resolved_seam(seam_position.point, target_wall_index as u32)
-                .map_err(|e| ModuleError::fatal(3, e))?;
+            if let Some((point, wall_idx, _)) = &seam_target {
+                output
+                    .set_resolved_seam(*point, *wall_idx as u32)
+                    .map_err(|e| ModuleError::fatal(3, e))?;
+            }
 
             for (wall_index, loop_) in wall_loops.iter().enumerate() {
-                let emitted_loop = if wall_index == target_wall_index {
-                    rotate_wall_loop(loop_, start_idx)
-                } else {
-                    loop_.clone()
+                let emitted_loop = match seam_target {
+                    Some((_, target_wall_index, start_idx)) if wall_index == target_wall_index => {
+                        rotate_wall_loop(loop_, start_idx)
+                    }
+                    _ => loop_.clone(),
                 };
 
                 let emitted_point = emitted_loop.path.points.first().copied().ok_or_else(|| {

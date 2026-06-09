@@ -8,6 +8,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod adapt_slice_regions_completeness_tdd;
 mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
 mod gcode_header_thumbnail_config_blocks_tdd;
@@ -21,6 +22,7 @@ mod machine_start_end_gcode_emission_tdd;
 mod macro_mesh_segmentation_geometry_tdd;
 mod multi_infill_holder_dispatch_tdd;
 mod paint_annotation_integration_tdd;
+mod perimeter_postprocess_preserve_tdd;
 mod pipeline_tdd;
 mod prepass_paint_semantic_override_ordering_tdd;
 mod progress_events_tdd;

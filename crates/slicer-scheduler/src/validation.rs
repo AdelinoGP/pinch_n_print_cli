@@ -514,6 +514,18 @@ fn validate_claim_conflicts(
             continue;
         }
 
+        // Fill-role claims are per-region-configurable and intentionally
+        // allow multiple global holders: at dispatch time the per-region
+        // `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` picks the
+        // active module. The global conflict pass therefore exempts them
+        // (docs/04 §"Validation Passes" — "A single module may hold multiple
+        // fill-role claims … per-region overrides may transfer a fill-role
+        // claim to a different module"). The per-region pass still flags
+        // genuine collisions at the (layer, object, region) level.
+        if global_only && FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            continue;
+        }
+
         let scope = if global_only {
             ConflictScope::Global
         } else {

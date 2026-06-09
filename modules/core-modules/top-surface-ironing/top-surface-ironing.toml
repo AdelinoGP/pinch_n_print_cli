@@ -11,14 +11,12 @@ wit-world    = "slicer:world-layer@1.0.0"
 id = "Layer::Infill"
 
 [ir-access]
-# Declared read on InfillIR is for DAG-ordering purposes only — it establishes
-# a read-after-write edge so the validator orders ironing AFTER infill modules
-# (gyroid, rectilinear, lightning) at Layer::Infill, eliminating the previously
-# advisory `WriteConflict { orderable: false }` warning on shared InfillIR
-# writes. The runtime impl never actually reads InfillIR (it reads
-# `SliceIR.top_solid_fill` for the ironing polygon). See DEV-065 (2026-06-09)
-# and docs/04_host_scheduler.md §"Ordering via declared reads".
-reads  = ["SliceIR", "InfillIR"]
+# Ironing reads `SliceIR.top_solid_fill` for the ironing polygon; it does not
+# read InfillIR. Ordering-after-infill is established via `[compatibility].requires`
+# below (ExplicitRequires DAG edges) — see DEV-065 (2026-06-09) for the
+# rationale (the prior fake `InfillIR` read violated docs/01 §"Module Access
+# Contract" since InfillIR is produced within this same stage).
+reads  = ["SliceIR"]
 writes = ["InfillIR"]
 
 [claims]
@@ -27,7 +25,15 @@ requires = []
 
 [compatibility]
 incompatible-with = []
-requires          = []
+# Run after every fill-emitting infill module at Layer::Infill. Each entry
+# becomes an `EdgeReason::ExplicitRequires` edge in the per-stage DAG
+# (`crates/slicer-scheduler/src/dag.rs`); missing modules are silently
+# ignored, so listing all three is safe even if one is not loaded.
+requires          = [
+    "com.core.gyroid-infill",
+    "com.core.lightning-infill",
+    "com.core.rectilinear-infill",
+]
 min-host-version  = "0.1.0"
 min-ir-schema     = "3.0.0"
 max-ir-schema     = "5.0.0"

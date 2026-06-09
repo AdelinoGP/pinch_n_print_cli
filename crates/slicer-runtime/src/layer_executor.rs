@@ -1148,23 +1148,31 @@ fn commit_layer_outputs(
                     // the heuristic "incoming empty → preserve original" — the
                     // legitimate "clear infill_areas" use case has no current
                     // call site.
-                    for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
+                    //
+                    // Pairing is by `(object_id, region_id)`, NOT by positional
+                    // index: a post-process module that drops a region (e.g.
+                    // seam-placer on a coordinate-space mismatch) produces an
+                    // `ir_owned.regions` shorter than `orig_perim.regions`, and
+                    // positional pairing would mis-route preserved fields to
+                    // the wrong region. Mirrors the seam-injection lookup at
+                    // the top of this arm.
+                    for region in ir_owned.regions.iter_mut() {
+                        let orig_region = orig_perim.regions.iter().find(|r| {
+                            r.object_id == region.object_id && r.region_id == region.region_id
+                        });
+                        let Some(orig_region) = orig_region else {
+                            continue;
+                        };
                         if region.resolved_seam.is_none() {
-                            if let Some(orig_region) = orig_perim.regions.get(idx) {
-                                if let Some(rs) = &orig_region.resolved_seam {
-                                    region.resolved_seam = Some(rs.clone());
-                                }
+                            if let Some(rs) = &orig_region.resolved_seam {
+                                region.resolved_seam = Some(rs.clone());
                             }
                         }
                         if region.infill_areas.is_empty() {
-                            if let Some(orig_region) = orig_perim.regions.get(idx) {
-                                region.infill_areas = orig_region.infill_areas.clone();
-                            }
+                            region.infill_areas = orig_region.infill_areas.clone();
                         }
                         if region.seam_candidates.is_empty() {
-                            if let Some(orig_region) = orig_perim.regions.get(idx) {
-                                region.seam_candidates = orig_region.seam_candidates.clone();
-                            }
+                            region.seam_candidates = orig_region.seam_candidates.clone();
                         }
                     }
                     arena

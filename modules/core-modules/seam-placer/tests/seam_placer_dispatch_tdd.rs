@@ -223,28 +223,49 @@ fn seam_contract_is_deterministic_across_repeated_dispatch() {
 }
 
 #[test]
-fn seam_candidate_missing_from_target_wall_rejects_dispatch() {
+fn seam_candidate_missing_from_any_wall_is_non_fatal_and_preserves_walls() {
+    // Contract post-HIGH-2 / DEV-065: when the resolved seam's coordinates
+    // don't match any wall-loop vertex within tolerance (`seam-planner-default`
+    // emits mesh-corner coords while walls live on the inset boundary — a
+    // pre-existing coord-space gap), the module MUST NOT fail the layer and
+    // MUST still emit every wall loop in pristine, un-rotated form so the
+    // region appears in `convert_perimeter_output`'s buckets. Dropping the
+    // region's walls here corrupts the `(object_id, region_id)` pairing in
+    // `layer_executor::commit_layer_outputs` for multi-region prints.
     let config = empty_seam_config();
     let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
     let regions = vec![sdk_region(
         "obj-a",
         0,
-        vec![ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)])],
+        vec![ir_wall(0.2, &wall_points)],
         vec![ir_candidate(99.0, 99.0, 0.2, 0.10, SeamReason::Aligned)],
     )];
     let mut output = PerimeterOutputBuilder::new();
 
     let result = module.run_wall_postprocess(0, &regions, &mut output, &config);
-    assert!(
-        result.is_err(),
-        "malformed seam candidate that is absent from all walls must reject dispatch"
-    );
+    result.expect("non-matching seam candidate must not fail the layer");
+
     assert!(
         output.resolved_seam().is_none(),
-        "failed dispatch must not commit a resolved seam"
+        "no candidate matched any wall vertex → no resolved seam was committed"
     );
-    assert!(
-        output.rotated_wall_loops().is_empty(),
-        "failed dispatch must not emit rotated wall loops"
+    let rotated = output.rotated_wall_loops();
+    assert_eq!(
+        rotated.len(),
+        1,
+        "the input wall must still be present in the output"
+    );
+    let (_, _, emitted_loop) = &rotated[0];
+    let emitted_xy: Vec<(f32, f32)> = emitted_loop
+        .path
+        .points
+        .iter()
+        .map(|p| (p.x, p.y))
+        .collect();
+    let expected_xy: Vec<(f32, f32)> = wall_points.to_vec();
+    assert_eq!(
+        emitted_xy, expected_xy,
+        "wall must be emitted pristine (un-rotated) when the seam can't be placed"
     );
 }

@@ -6,6 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod effective_perimeter_origin_integration_tdd;
 mod host_services_tdd;
 mod prepass_output_builder_validation_tdd;
 mod typed_config_boundary_tdd;

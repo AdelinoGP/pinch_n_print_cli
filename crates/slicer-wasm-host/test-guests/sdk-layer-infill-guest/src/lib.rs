@@ -15,7 +15,7 @@ use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
-use witness::SdkInfillWitness;
+use witness::{SdkInfillWitness, SliceRegionFieldsWitness};
 
 pub struct SdkLayerInfillModule;
 
@@ -75,6 +75,58 @@ impl LayerModule for SdkLayerInfillModule {
         output
             .push_sparse_path(path)
             .map_err(|e| ModuleError::fatal(1, e))?;
+
+        // Optional field-witness emission for the
+        // `adapt_slice_regions_completeness_tdd` regression test. Gated by an
+        // explicit int config key so all other tests that drive this guest
+        // see the original single-path output unchanged.
+        if config.get_int("emit_field_witness") == Some(1) {
+            if let Some(r) = regions.first() {
+                let object_id_bytes = r.object_id().as_bytes();
+                let object_id_byte_sum: u32 = object_id_bytes.iter().map(|b| *b as u32).sum();
+                let first_held_claim_byte_sum: u32 = r
+                    .held_claims()
+                    .first()
+                    .map(|s| s.as_bytes().iter().map(|b| *b as u32).sum())
+                    .unwrap_or(0);
+                let region_id_value: u64 = *r.region_id();
+                let fields = SliceRegionFieldsWitness {
+                    object_id_len: object_id_bytes.len() as f32,
+                    region_id: region_id_value as f32,
+                    polygons_len: r.polygons().len() as f32,
+                    infill_areas_len: r.infill_areas().len() as f32,
+                    effective_layer_height: r.effective_layer_height(),
+                    z: r.z(),
+                    has_nonplanar: if r.has_nonplanar() { 1.0 } else { 0.0 },
+                    segment_annotations_len: r.segment_annotations().len() as f32,
+                    top_shell_index: r.top_shell_index().map(|n| n as f32).unwrap_or(-1.0),
+                    bottom_shell_index: r.bottom_shell_index().map(|n| n as f32).unwrap_or(-1.0),
+                    top_solid_fill_len: r.top_solid_fill().len() as f32,
+                    bottom_solid_fill_len: r.bottom_solid_fill().len() as f32,
+                    is_bridge: if r.is_bridge() { 1.0 } else { 0.0 },
+                    bridge_areas_len: r.bridge_areas().len() as f32,
+                    bridge_orientation_deg: r.bridge_orientation_deg(),
+                    sparse_infill_area_len: r.sparse_infill_area().len() as f32,
+                    held_claims_len: r.held_claims().len() as f32,
+                    first_held_claim_byte_sum: first_held_claim_byte_sum as f32,
+                    object_id_byte_sum: object_id_byte_sum as f32,
+                    marker: SliceRegionFieldsWitness::MARKER,
+                };
+                // Header point keeps the path's first-point z equal to the
+                // SliceRegionView's z so the host's Z envelope guard admits
+                // the path through `push_sparse_path`. Without this the
+                // drain-back silently drops the path (it `let _ = ...`s
+                // builder errors).
+                let fpath = ExtrusionPath3D {
+                    points: fields.encode(r.z()),
+                    role: ExtrusionRole::SparseInfill,
+                    speed_factor: 1.0,
+                };
+                output
+                    .push_sparse_path(fpath)
+                    .map_err(|e| ModuleError::fatal(2, e))?;
+            }
+        }
 
         Ok(())
     }

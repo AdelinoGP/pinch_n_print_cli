@@ -214,6 +214,18 @@ fn dedup_same_claim_modules(
     for module in sorted {
         let mut losing_claim: Option<(String, ModuleId)> = None;
         for claim in &module.claims {
+            // Fill-role claims (packet 37) are per-region-configurable via
+            // `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` and resolved
+            // at dispatch time in `slicer-wasm-host/src/dispatch.rs`. They must
+            // NOT be deduplicated at startup: multiple modules legitimately
+            // declare the same fill claim and the per-region resolver picks the
+            // active holder. Without this skip, gyroid wins `claim:sparse-fill`
+            // alphabetically and rectilinear (which holds all four) is dropped
+            // whole, defeating any user config that names rectilinear for
+            // top/bottom/bridge — see DEV-065 and docs/04 §"Validation Passes".
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+                continue;
+            }
             let key = (module.stage.clone(), claim.clone());
             if let Some(winner) = winner_for.get(&key) {
                 losing_claim = Some((claim.clone(), winner.clone()));
@@ -237,6 +249,9 @@ fn dedup_same_claim_modules(
             continue;
         }
         for claim in &module.claims {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+                continue;
+            }
             winner_for.insert((module.stage.clone(), claim.clone()), module.id.clone());
         }
         kept.push(module);
@@ -1038,9 +1053,13 @@ mod dedup_tests {
     }
 
     #[test]
-    fn canonical_benchy_core_modules_collapse_to_one_holder_per_stage() {
-        // Mirrors what live module discovery finds under modules/core-modules/
-        // and documents the canonical winner for each claim after dedup.
+    fn canonical_benchy_core_modules_keep_all_infill_holders_under_fill_claim_dedup() {
+        // Post-DEV-065: the legacy `infill-generator` claim was retired from
+        // every infill manifest in favour of packet-37's four granular
+        // fill-role claims (`claim:{top,bottom,bridge,sparse}-fill`). Those
+        // are per-region-configurable and intentionally exempt from startup
+        // dedup. The remaining non-fill claims (perimeter-generator,
+        // support-generator) keep the first-winner-wins behaviour.
         let mut modules = vec![
             loaded(
                 "com.core.arachne-perimeters",
@@ -1055,17 +1074,22 @@ mod dedup_tests {
             loaded(
                 "com.core.gyroid-infill",
                 "Layer::Infill",
-                &["infill-generator"],
+                &["claim:sparse-fill"],
             ),
             loaded(
                 "com.core.lightning-infill",
                 "Layer::Infill",
-                &["infill-generator"],
+                &["claim:sparse-fill"],
             ),
             loaded(
                 "com.core.rectilinear-infill",
                 "Layer::Infill",
-                &["infill-generator"],
+                &[
+                    "claim:top-fill",
+                    "claim:bottom-fill",
+                    "claim:bridge-fill",
+                    "claim:sparse-fill",
+                ],
             ),
             loaded(
                 "com.core.traditional-support",
@@ -1082,19 +1106,22 @@ mod dedup_tests {
         let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
-        // One holder per stage; alphabetically-first module id wins.
+        // All three infill modules survive — per-region resolution picks the
+        // active holder per (object, region). Perimeters and support collapse
+        // to one holder per stage as before.
         assert_eq!(
             ids,
             [
                 "com.core.arachne-perimeters",
                 "com.core.gyroid-infill",
+                "com.core.lightning-infill",
+                "com.core.rectilinear-infill",
                 "com.core.traditional-support",
             ]
         );
-        // Four modules dropped: one infill runner-up does not emit a
-        // diagnostic for itself (the second lightning-infill is already
-        // losing to gyroid, then rectilinear also loses) — three drops
-        // for infill, one for perimeters, one for support = 4 total.
-        assert_eq!(diagnostics.len(), 4);
+        // Two drops: classic-perimeters (loses to arachne) and tree-support
+        // (loses to traditional). Fill-role drops are NOT emitted.
+        assert_eq!(diagnostics.len(), 2);
+        assert!(diagnostics.iter().all(|d| !d.message.contains("fill")));
     }
 }

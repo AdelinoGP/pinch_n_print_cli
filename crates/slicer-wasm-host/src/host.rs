@@ -5297,3 +5297,51 @@ pub fn merge_slice_postprocess_into(
 
     Ok(existing)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Slice-region fallback: with only `current_slice_region` set (the
+    /// `Layer::Perimeters` shape), the helper must surface that origin so
+    /// origin-tagged pushes reach `convert_perimeter_output` with a non-empty
+    /// `object_id`.
+    #[test]
+    fn effective_perimeter_origin_falls_back_to_slice_when_only_slice_set() {
+        let mut ctx =
+            HostExecutionContextBuilder::new("com.test.effective-perimeter-origin", 0.0, 0.2)
+                .build();
+        ctx.set_current_slice_region(Some(("uuid".to_string(), 7)));
+
+        assert_eq!(
+            ctx.effective_perimeter_origin(),
+            Some(("uuid".to_string(), 7))
+        );
+    }
+
+    /// At `Layer::PerimetersPostProcess` both origins are set; the perimeter
+    /// origin is canonical and must win over the slice-region fallback.
+    #[test]
+    fn effective_perimeter_origin_prefers_perimeter_when_both_set() {
+        let mut ctx =
+            HostExecutionContextBuilder::new("com.test.effective-perimeter-origin", 0.0, 0.2)
+                .build();
+        ctx.set_current_slice_region(Some(("slice-uuid".to_string(), 1)));
+        ctx.set_current_perimeter_region(Some(("perimeter-uuid".to_string(), 2)));
+
+        assert_eq!(
+            ctx.effective_perimeter_origin(),
+            Some(("perimeter-uuid".to_string(), 2))
+        );
+    }
+
+    /// Outside any touch site neither origin is set; the helper must report
+    /// `None` so the untagged path in `convert_perimeter_output` stays reachable.
+    #[test]
+    fn effective_perimeter_origin_is_none_when_neither_set() {
+        let ctx = HostExecutionContextBuilder::new("com.test.effective-perimeter-origin", 0.0, 0.2)
+            .build();
+
+        assert_eq!(ctx.effective_perimeter_origin(), None);
+    }
+}
