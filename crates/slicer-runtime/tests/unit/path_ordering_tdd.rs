@@ -6,7 +6,7 @@
 
 use crate::common::seed::seed_slice_ir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -846,6 +846,7 @@ fn plan_with_stages(per_layer_stages: Vec<CompiledStage>, layer_count: usize) ->
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

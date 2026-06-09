@@ -11,6 +11,7 @@ pub mod entity_id;
 /// Feedrate computation and configuration.
 pub mod feedrate;
 pub mod polygon_predicate;
+pub mod region_split_registry;
 pub mod resolved_config;
 pub mod slice_ir;
 pub mod stage_io;

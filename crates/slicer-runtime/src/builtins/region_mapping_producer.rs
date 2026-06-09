@@ -88,7 +88,6 @@ pub fn commit_region_mapping_builtin(
         return Err(RegionMappingBuiltinError::MissingLayerPlan);
     };
     let mesh_arc = Arc::clone(blackboard.mesh());
-    let paint_regions = blackboard.paint_regions().map(|arc| arc.as_ref());
 
     // Precompute stage invocations from the scheduler plan.
     let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = plan
@@ -114,8 +113,8 @@ pub fn commit_region_mapping_builtin(
     let ir = slicer_core::algos::region_mapping::execute_region_mapping_inner(
         layer_plan.as_ref(),
         &projection,
-        paint_regions,
         paint_semantic_configs,
+        &plan.aggregated_region_split,
         &mesh_arc.objects,
         Some((resolved_configs, default_resolved_config)),
         DEFAULT_REGION_MAP_CAP,

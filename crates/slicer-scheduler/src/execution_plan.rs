@@ -1,6 +1,6 @@
 //! Immutable execution-plan contracts for the host scheduler.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -10,6 +10,7 @@ use slicer_ir::{
 
 use crate::manifest::DiagnosticLevel;
 use crate::manifest::{LoadDiagnostic, LoadedModule};
+use crate::region_split::{aggregate_region_splits, AggregatedRegionSplitEntry};
 
 /// Canonical scheduler stage ordering for the live host path
 /// (docs/04 §Fixed Stage Order). Modules discovered by
@@ -287,6 +288,13 @@ pub struct ExecutionPlan {
     /// Precomputed index for O(1) lookup of active regions per (layer, module).
     /// Key: (global_layer_index, module_id) → Value: slice of ActiveRegion.
     pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
+    /// Cross-manifest aggregate of `[[region_split]]` declarations
+    /// (semantic → priority/value-type/declaring modules).
+    ///
+    /// Empty `BTreeMap` when no loaded module declares region-split semantics
+    /// — this is the production default today, which preserves AC-10
+    /// byte-identical g-code. See packet 93, AC-1.
+    pub aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry>,
 }
 
 impl Default for ExecutionPlan {
@@ -299,6 +307,7 @@ impl Default for ExecutionPlan {
             global_layers: Arc::new(Vec::new()),
             region_plans: Arc::new(HashMap::new()),
             module_region_index: HashMap::new(),
+            aggregated_region_split: BTreeMap::new(),
         }
     }
 }
@@ -335,6 +344,7 @@ impl ExecutionPlan {
             global_layers,
             region_plans,
             module_region_index,
+            aggregated_region_split: BTreeMap::new(),
         }
     }
 }
@@ -662,6 +672,7 @@ impl std::error::Error for ExecutionPlanError {}
 /// - `RegionMapIR` entry count must not exceed `DEFAULT_REGION_MAP_CAP` (docs/04_host_scheduler.md).
 pub fn build_execution_plan(
     request: &ExecutionPlanRequest,
+    diagnostics: &mut Vec<LoadDiagnostic>,
 ) -> Result<ExecutionPlan, ExecutionPlanError> {
     // ── Layer budget check ──────────────────────────────────────────
     for layer in request.global_layers.iter() {
@@ -814,6 +825,17 @@ pub fn build_execution_plan(
         }
     }
 
+    // ── Cross-manifest aggregate of [[region_split]] declarations ─────
+    // Computed once at plan-build time so the host's `PrePass::RegionMapping`
+    // builtin can deterministically reference module declarations without
+    // re-walking the manifest set. AC-1 / packet 93.
+    let modules_for_agg: Vec<LoadedModule> = request
+        .module_bindings
+        .iter()
+        .map(|b| b.module.clone())
+        .collect();
+    let aggregated_region_split = aggregate_region_splits(&modules_for_agg, diagnostics);
+
     Ok(ExecutionPlan {
         prepass_stages,
         per_layer_stages,
@@ -822,6 +844,7 @@ pub fn build_execution_plan(
         global_layers: Arc::clone(&request.global_layers),
         region_plans: Arc::clone(&request.region_plans),
         module_region_index,
+        aggregated_region_split,
     })
 }
 

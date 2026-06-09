@@ -30,9 +30,10 @@ use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, execute_prepass_with_builtins,
     execute_region_mapping, execute_region_mapping_with_cap, Blackboard, CompiledModule,
     CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ConfigSchema, ExecutionModuleBinding,
-    ExecutionPlan, ExecutionPlanRequest, LoadedModuleBuilder, PrepassExecutionError,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
-    RegionMappingBuiltinError, RegionMappingError, SortedStageModules, WasmArtifactMetadata,
+    ExecutionPlan, ExecutionPlanRequest, LoadDiagnostic, LoadedModuleBuilder,
+    PrepassExecutionError, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
+    PrepassStageRunner, RegionMappingBuiltinError, RegionMappingError, SortedStageModules,
+    WasmArtifactMetadata,
 };
 
 // ----------------------------------------------------------------------
@@ -101,7 +102,8 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    let plan = build_execution_plan(&request).expect("plan should build");
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let plan = build_execution_plan(&request, &mut diagnostics).expect("plan should build");
 
     execute_prepass_with_builtins(
         &plan,
@@ -171,7 +173,7 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
     let err = execute_region_mapping_with_cap(
         &layer_plan,
         &projection,
-        None,
+        &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
         &[],
         2,
@@ -227,7 +229,7 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
     let err = execute_region_mapping_with_cap(
         &layer_plan,
         &projection,
-        None,
+        &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
         &[],
         5,
@@ -292,7 +294,7 @@ fn region_mapping_at_cap_is_accepted() {
     execute_region_mapping_with_cap(
         &layer_plan,
         &projection,
-        None,
+        &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
         &[],
         2,
@@ -326,7 +328,7 @@ fn region_mapping_duplicate_region_key_is_structured_fatal() {
     let err = execute_region_mapping(
         &layer_plan,
         &projection,
-        None,
+        &std::collections::BTreeMap::new(),
         &std::collections::BTreeMap::new(),
         &[],
     )
@@ -396,7 +398,7 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
         execute_region_mapping(
             &layer_plan,
             &proj_ep,
-            None,
+            &std::collections::BTreeMap::new(),
             &std::collections::BTreeMap::new(),
             &[],
         )
@@ -427,9 +429,31 @@ fn region_mapping_is_deterministic_for_same_input() {
     };
 
     let empty_map = std::collections::BTreeMap::new();
-    let a = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
-    let b = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
-    let c = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
+    let empty_split = std::collections::BTreeMap::new();
+    let a = execute_region_mapping(
+        &layer_plan,
+        &projection,
+        &empty_map,
+        &empty_split,
+        &[],
+    )
+    .unwrap();
+    let b = execute_region_mapping(
+        &layer_plan,
+        &projection,
+        &empty_map,
+        &empty_split,
+        &[],
+    )
+    .unwrap();
+    let c = execute_region_mapping(
+        &layer_plan,
+        &projection,
+        &empty_map,
+        &empty_split,
+        &[],
+    )
+    .unwrap();
 
     assert_eq!(a, b);
     assert_eq!(b, c);
@@ -461,7 +485,8 @@ fn empty_execution_plan() -> ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    build_execution_plan(&request).expect("empty execution plan should build")
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
 fn single_object_mesh(id: &str) -> MeshIR {

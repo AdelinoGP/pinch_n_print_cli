@@ -20,7 +20,8 @@ use slicer_runtime::pipeline::{
 };
 use slicer_runtime::{
     build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
-    ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, NoopLayerProgressSink,
+    ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, LoadDiagnostic,
+    NoopLayerProgressSink,
 };
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
@@ -185,12 +186,14 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     // 6. Build the execution plan using the binding_source (real defaults for module ConfigViews).
     //    Bindings/sorted_stages are cloned from the cached Arc<LiveModuleLoadOutput>
     //    (LiveModuleBinding is Clone; the inner instance_pool/wasm_component are Arc-backed).
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         loaded.sorted_stages.clone(),
         loaded.bindings.clone(),
         &binding_source,
         Arc::new(Vec::<slicer_ir::GlobalLayer>::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .expect("build_live_execution_plan must succeed");
 

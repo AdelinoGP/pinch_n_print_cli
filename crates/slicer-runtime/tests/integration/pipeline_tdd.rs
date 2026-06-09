@@ -3,7 +3,7 @@
 //! These tests verify the `run_pipeline` orchestration function that ties together
 //! all host scheduler stages (prepass â†’ per-layer â†’ finalization â†’ postpass).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -58,6 +58,7 @@ fn empty_execution_plan() -> ExecutionPlan {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
@@ -297,6 +298,7 @@ fn run_pipeline_propagates_prepass_error() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     struct FailingPrepass;
@@ -354,6 +356,7 @@ fn run_pipeline_propagates_layer_error() {
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     struct FailingLayerRunner;
@@ -512,6 +515,7 @@ fn run_pipeline_calls_stages_in_order() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -559,6 +563,7 @@ fn run_pipeline_propagates_finalization_error() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     struct FailingFinalization;
@@ -654,6 +659,7 @@ fn run_pipeline_with_layers_produces_output() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -732,6 +738,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         global_layers: Arc::new(Vec::new()), // empty â€” must be filled by promotion
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -807,6 +814,7 @@ fn prepass_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -925,6 +933,7 @@ fn layer_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -1023,6 +1032,7 @@ fn access_audits_live_path() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -1184,6 +1194,7 @@ fn access_audits_live_path_read_performing() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {

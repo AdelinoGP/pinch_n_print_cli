@@ -12,7 +12,7 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_execution_plan, commit_region_mapping_builtin, Blackboard, ExecutionPlanRequest,
-    SortedStageModules,
+    LoadDiagnostic, SortedStageModules,
 };
 
 // --- helpers ----------------------------------------------------------------
@@ -97,7 +97,8 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    build_execution_plan(&request).expect("empty execution plan should build")
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
 // --- AC-4 test --------------------------------------------------------------

@@ -10,7 +10,7 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -64,6 +64,7 @@ fn empty_plan() -> ExecutionPlan {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

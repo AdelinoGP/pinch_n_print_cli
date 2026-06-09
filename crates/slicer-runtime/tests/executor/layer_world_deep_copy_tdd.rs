@@ -2,7 +2,7 @@
 
 use crate::common::seed::seed_slice_ir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -267,6 +267,7 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);

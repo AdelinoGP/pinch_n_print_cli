@@ -10,7 +10,7 @@
 
 use crate::common::seed::seed_slice_ir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use rstar::RTree;
@@ -142,6 +142,7 @@ fn plan_empty(layers: Vec<GlobalLayer>) -> ExecutionPlan {
         global_layers: Arc::new(layers),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
@@ -630,6 +631,7 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let (raw_emitter, emitter) = capture_emitter();
@@ -699,6 +701,7 @@ fn empty_plan_with_no_layers_does_not_trigger_prepass_error() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut bb = Blackboard::new(Arc::clone(&mesh), 0);
 

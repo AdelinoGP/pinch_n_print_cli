@@ -1193,7 +1193,24 @@ pub struct RegionPlan {
 }
 
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
-pub const DEFAULT_REGION_MAP_CAP: usize = 1_000;
+///
+/// **P93 raise — `1_000` → `750_000`.**
+///
+/// Pre-P93 the cap was `1_000`, sized for single-entry-per-region scenes
+/// (one variant chain per `(layer, ActiveRegion)`). P93 introduces the
+/// region-split cross-product, so each `(layer, ActiveRegion)` now expands
+/// into one `RegionPlan` per canonical variant chain — cardinality
+/// `∏(1 + K_i)` where `K_i` is the number of opted-in paint values for
+/// semantic `i` on that object.
+///
+/// 750× headroom rationale: a worst-realistic envelope of 16 colors × 1000
+/// layers × 16 regions × ~3 modifier subtypes ≈ 750k pre-modifier entries.
+/// Realistic 4-color × 200-layer × 4-region scenes land near ~3k entries,
+/// comfortably under cap. Overflow surfaces the structured
+/// [`RegionMappingError::CapExceeded`] diagnostic naming the top-contributing
+/// `ObjectId` per AC-N2 (see
+/// `crates/slicer-core/src/algos/region_mapping.rs`).
+pub const DEFAULT_REGION_MAP_CAP: usize = 750_000;
 
 /// Stable index into `RegionMapIR.configs`. Introduced in P1a (packet 91) so
 /// duplicated `ResolvedConfig` payloads across painted-variant `RegionPlan`s

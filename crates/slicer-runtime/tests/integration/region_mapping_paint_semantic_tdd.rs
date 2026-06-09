@@ -17,7 +17,7 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_execution_plan, execute_region_mapping, ExecutionPlan, ExecutionPlanRequest,
-    SortedStageModules,
+    LoadDiagnostic, SortedStageModules,
 };
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,8 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    build_execution_plan(&request).expect("empty execution plan should build")
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
 /// Build a `PaintRegionIR` with a single semantic covering object "obj-a" at
@@ -158,9 +159,6 @@ fn region_overlap_applies_override() {
         object_participation: HashMap::new(),
     });
 
-    let paint_regions =
-        paint_region_ir_single(5, "obj-a", PaintSemantic::Custom("fuzzy_skin".to_string()));
-
     let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     paint_semantic_configs.insert(
         PaintSemantic::Custom("fuzzy_skin".to_string()),
@@ -179,8 +177,8 @@ fn region_overlap_applies_override() {
     let rm = execute_region_mapping(
         &layer_plan,
         &projection,
-        Some(&paint_regions),
         &paint_semantic_configs,
+        &BTreeMap::new(),
         &[],
     )
     .expect("execute_region_mapping must succeed");
@@ -223,10 +221,6 @@ fn no_overlap_keeps_object_config() {
         object_participation: HashMap::new(),
     });
 
-    // Paint region IR covers a *different* layer, so obj-b layer-0 has no overlap.
-    let paint_regions =
-        paint_region_ir_single(99, "obj-b", PaintSemantic::Custom("fuzzy_skin".to_string()));
-
     let paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
 
     let plan = empty_execution_plan();
@@ -238,8 +232,8 @@ fn no_overlap_keeps_object_config() {
     let rm = execute_region_mapping(
         &layer_plan,
         &projection,
-        Some(&paint_regions),
         &paint_semantic_configs,
+        &BTreeMap::new(),
         &[],
     )
     .expect("execute_region_mapping must succeed");
@@ -286,34 +280,6 @@ fn overlap_precedence_is_deterministic() {
     // Both semantics overlap layer 0 / obj-c.
     let sem_aaa = PaintSemantic::Custom("aaa_first".to_string());
     let sem_zzz = PaintSemantic::Custom("zzz_last".to_string());
-
-    let region_aaa = SemanticRegion {
-        object_id: "obj-c".to_string(),
-        polygons: vec![],
-        value: PaintValue::Flag(true),
-        paint_order: 0,
-        aabb: None,
-    };
-    let region_zzz = SemanticRegion {
-        object_id: "obj-c".to_string(),
-        polygons: vec![],
-        value: PaintValue::Flag(true),
-        paint_order: 1,
-        aabb: None,
-    };
-    let mut semantic_regions = HashMap::new();
-    semantic_regions.insert(sem_aaa.clone(), vec![region_aaa]);
-    semantic_regions.insert(sem_zzz.clone(), vec![region_zzz]);
-    let layer_map = LayerPaintMap {
-        global_layer_index: 0,
-        semantic_regions,
-    };
-    let mut per_layer = HashMap::new();
-    per_layer.insert(0u32, layer_map);
-    let paint_regions = PaintRegionIR {
-        schema_version: sv(1, 0, 0),
-        per_layer,
-    };
 
     let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     paint_semantic_configs.insert(
@@ -368,8 +334,8 @@ fn overlap_precedence_is_deterministic() {
     let rm1 = execute_region_mapping(
         &layer_plan,
         &projection,
-        Some(&paint_regions),
         &paint_semantic_configs,
+        &BTreeMap::new(),
         &[],
     )
     .expect("first execute_region_mapping must succeed");
@@ -378,8 +344,8 @@ fn overlap_precedence_is_deterministic() {
     let rm2 = execute_region_mapping(
         &layer_plan,
         &projection,
-        Some(&paint_regions),
         &paint_semantic_configs,
+        &BTreeMap::new(),
         &[],
     )
     .expect("second execute_region_mapping must succeed");

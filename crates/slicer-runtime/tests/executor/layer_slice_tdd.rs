@@ -6,7 +6,7 @@
 //! deterministic across runs, and that invalid setups fail with a
 //! structured diagnostic.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::LayerStageCommitData;
@@ -193,6 +193,7 @@ fn plan_with_one_layer(layer: GlobalLayer) -> ExecutionPlan {
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

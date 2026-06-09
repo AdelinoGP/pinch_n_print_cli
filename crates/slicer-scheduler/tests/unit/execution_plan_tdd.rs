@@ -10,7 +10,7 @@ use slicer_ir::{
 };
 use slicer_scheduler::{
     build_execution_plan, CompiledModuleStatic, ConfigFieldEntry, ExecutionModuleBinding,
-    ExecutionPlanRequest, LoadedModuleBuilder, SortedStageModules,
+    ExecutionPlanRequest, LoadDiagnostic, LoadedModuleBuilder, SortedStageModules,
 };
 
 #[test]
@@ -104,7 +104,7 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
         region_plans: Arc::clone(&region_plans),
     };
 
-    let plan = build_execution_plan(&request)
+    let plan = build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
         .expect("execution plan builder should freeze validated order and bindings");
 
     assert_eq!(plan.prepass_stages.len(), 1);
@@ -283,7 +283,7 @@ fn layer_index_at_budget_boundary_is_rejected() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    let err = build_execution_plan(&request)
+    let err = build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
         .expect_err("layer index at budget boundary should be rejected");
     match err {
         ExecutionPlanError::LayerIndexBudgetExceeded {
@@ -314,7 +314,8 @@ fn layer_index_just_below_budget_is_accepted() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    build_execution_plan(&request).expect("layer index just below budget should be accepted");
+    build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect("layer index just below budget should be accepted");
 }
 
 #[test]
@@ -332,7 +333,8 @@ fn layer_index_zero_is_accepted() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    build_execution_plan(&request).expect("layer index 0 should be accepted");
+    build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect("layer index 0 should be accepted");
 }
 
 #[test]
@@ -382,8 +384,8 @@ fn region_map_exceeding_cap_is_rejected() {
         region_plans: Arc::new(entries),
     };
 
-    let err =
-        build_execution_plan(&request).expect_err("region map exceeding cap should be rejected");
+    let err = build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect_err("region map exceeding cap should be rejected");
     match err {
         ExecutionPlanError::RegionMapCapExceeded { entry_count, cap } => {
             assert!(entry_count > DEFAULT_REGION_MAP_CAP);
@@ -421,7 +423,8 @@ fn region_map_at_cap_is_accepted() {
         region_plans: Arc::new(entries),
     };
 
-    build_execution_plan(&request).expect("region map at exactly the cap should be accepted");
+    build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect("region map at exactly the cap should be accepted");
 }
 
 #[test]
@@ -481,8 +484,8 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
         }
     };
 
-    let plan_a = build_execution_plan(&mk_request()).unwrap();
-    let plan_b = build_execution_plan(&mk_request()).unwrap();
+    let plan_a = build_execution_plan(&mk_request(), &mut Vec::<LoadDiagnostic>::new()).unwrap();
+    let plan_b = build_execution_plan(&mk_request(), &mut Vec::<LoadDiagnostic>::new()).unwrap();
 
     assert_eq!(plan_a.per_layer_stages.len(), plan_b.per_layer_stages.len());
     let infill_a = plan_a
@@ -521,7 +524,9 @@ fn layer_index_u32_max_is_rejected_with_budget_error() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    match build_execution_plan(&request).expect_err("u32::MAX must be rejected") {
+    match build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect_err("u32::MAX must be rejected")
+    {
         ExecutionPlanError::LayerIndexBudgetExceeded {
             layer_index,
             budget,
@@ -553,7 +558,9 @@ fn layer_budget_check_preempts_module_binding_errors() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    match build_execution_plan(&request).expect_err("budget should preempt binding error") {
+    match build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect_err("budget should preempt binding error")
+    {
         ExecutionPlanError::LayerIndexBudgetExceeded { .. } => {}
         other => panic!("expected LayerIndexBudgetExceeded to preempt, got {other:?}"),
     }
@@ -593,7 +600,9 @@ fn layer_budget_reports_first_offending_layer_deterministically() {
     };
 
     for _ in 0..5 {
-        match build_execution_plan(&request).expect_err("must reject") {
+        match build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+            .expect_err("must reject")
+        {
             ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, .. } => {
                 assert_eq!(
                     layer_index, MAX_LAYER_INDEX,
@@ -633,7 +642,9 @@ fn region_map_cap_reports_exact_computed_entry_count() {
         region_plans: Arc::new(entries),
     };
 
-    match build_execution_plan(&request).expect_err("must reject overflow") {
+    match build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect_err("must reject overflow")
+    {
         ExecutionPlanError::RegionMapCapExceeded { entry_count, cap } => {
             assert_eq!(entry_count, overflow);
             assert_eq!(cap, DEFAULT_REGION_MAP_CAP);
@@ -668,7 +679,9 @@ fn duplicate_module_binding_rejected_with_stable_diagnostic() {
     };
 
     for _ in 0..3 {
-        match build_execution_plan(&request).expect_err("duplicate binding must be rejected") {
+        match build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+            .expect_err("duplicate binding must be rejected")
+        {
             ExecutionPlanError::DuplicateModuleBinding { module_id } => {
                 assert_eq!(module_id.as_str(), "com.test.dup");
             }
@@ -777,7 +790,8 @@ fn resolve_active_regions_uses_precomputed_index() {
         region_plans: Arc::clone(&region_plans),
     };
 
-    let plan = build_execution_plan(&request).expect("plan should build");
+    let plan = build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect("plan should build");
     let perimeters_stage = plan
         .per_layer_stages
         .iter()
@@ -844,7 +858,8 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
         region_plans,
     };
 
-    let plan = build_execution_plan(&request).expect("plan should build");
+    let plan = build_execution_plan(&request, &mut Vec::<LoadDiagnostic>::new())
+        .expect("plan should build");
     let perimeters_stage = plan
         .per_layer_stages
         .iter()

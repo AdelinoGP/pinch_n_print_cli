@@ -23,7 +23,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -284,6 +284,7 @@ fn execution_plan_with_support_geometry(module: slicer_runtime::CompiledModule) 
         global_layers: Arc::new(Vec::<GlobalLayer>::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
@@ -650,6 +651,7 @@ fn execution_plan_fixture_native(prepass_stages: Vec<CompiledStage>) -> Executio
         global_layers: Arc::new(Vec::<GlobalLayer>::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

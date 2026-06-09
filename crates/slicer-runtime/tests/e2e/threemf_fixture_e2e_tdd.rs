@@ -27,6 +27,7 @@ use slicer_model_io::load_model;
 use slicer_runtime::negative_part_subtract::apply_negative_part_subtract;
 use slicer_runtime::{
     build_execution_plan, execute_region_mapping_with_cap, ExecutionPlan, ExecutionPlanRequest,
+    LoadDiagnostic,
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -163,7 +164,8 @@ fn empty_execution_plan() -> ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    build_execution_plan(&req).expect("empty execution plan should build")
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    build_execution_plan(&req, &mut diagnostics).expect("empty execution plan should build")
 }
 
 fn plan_stage_invocations(
@@ -192,18 +194,10 @@ fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
         return None;
     }
     let mesh_ir = crate::common::model_cache::cached_load_model(&path);
-    let sc = surface_classification_for_mesh(&mesh_ir);
     let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
     // Clone the objects slice before moving `mesh_ir` into an Arc; we need
     // it as `&[ObjectMesh]` for the Packet-68 modifier-volume stamping.
     let objects = mesh_ir.objects.clone();
-    let paint_result: Arc<PaintRegionIR> = execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        Arc::new(sc),
-        Arc::new(lp.clone()),
-        true,
-    )
-    .expect("execute_paint_segmentation must succeed");
     let plan = empty_execution_plan();
     let si = plan_stage_invocations(&plan);
     let projection = RegionMappingPlanProjection {
@@ -213,8 +207,8 @@ fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
     let result = execute_region_mapping_with_cap(
         &lp,
         &projection,
-        Some(&paint_result),
         &empty_semantic_configs,
+        &BTreeMap::new(),
         &objects,
         1024,
     )
@@ -1197,14 +1191,8 @@ fn synthetic_mesh_ir(objects: Vec<ObjectMesh>) -> MeshIR {
 
 fn region_map_for_synthetic_objects(objects: Vec<ObjectMesh>, object_id: &str) -> RegionMapIR {
     let mesh_ir = synthetic_mesh_ir(objects);
-    let sc = surface_classification_for_mesh(&mesh_ir);
     let lp = synthetic_layer_plan_single_region(object_id);
     let object_meshes = mesh_ir.objects.clone();
-    // Paint pipeline is required by the surface contract but produces an
-    // empty PaintRegionIR for these synthetic objects (no paint_data).
-    let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp.clone()), true)
-            .expect("execute_paint_segmentation must succeed");
     let plan = empty_execution_plan();
     let si = plan_stage_invocations(&plan);
     let projection = RegionMappingPlanProjection {
@@ -1214,8 +1202,8 @@ fn region_map_for_synthetic_objects(objects: Vec<ObjectMesh>, object_id: &str) -
     execute_region_mapping_with_cap(
         &lp,
         &projection,
-        Some(&paint_result),
         &empty_semantic_configs,
+        &BTreeMap::new(),
         &object_meshes,
         1024,
     )

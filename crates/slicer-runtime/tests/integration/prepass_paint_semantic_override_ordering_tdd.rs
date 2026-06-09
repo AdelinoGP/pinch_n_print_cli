@@ -27,7 +27,7 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_execution_plan, execute_prepass_with_builtins_configured, Blackboard, CompiledModuleLive,
-    ConfigBoundsIndex, ExecutionPlanRequest, PrepassRunnerError, PrepassStageInput,
+    ConfigBoundsIndex, ExecutionPlanRequest, LoadDiagnostic, PrepassRunnerError, PrepassStageInput,
     PrepassStageOutput, PrepassStageRunner, SortedStageModules,
 };
 
@@ -187,7 +187,8 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
-    build_execution_plan(&request).expect("empty execution plan should build")
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
 #[test]

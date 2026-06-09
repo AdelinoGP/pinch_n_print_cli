@@ -13,7 +13,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -238,6 +238,7 @@ fn execution_plan_fixture() -> ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

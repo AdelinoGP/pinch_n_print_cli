@@ -10,12 +10,14 @@
 //! invocations. See docs/04_host_scheduler.md §"RegionMapIR Compilation"
 //! and IR 5 in docs/02_ir_schemas.md.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use slicer_ir::{
-    ConfigValue, LayerPlanIR, ModifierVolume, ModuleInvocation, ObjectMesh, PaintRegionIR,
-    PaintSemantic, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, StageId,
+    region_split_registry::enumerate_canonical_chains, ConfigValue, LayerPlanIR, ModifierVolume,
+    ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey,
+    RegionMapIR, RegionPlan, ResolvedConfig, StageId,
 };
+use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
 
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
 pub use slicer_ir::DEFAULT_REGION_MAP_CAP;
@@ -61,6 +63,33 @@ pub enum RegionMappingError {
         /// The offending key.
         key: RegionKey,
     },
+    /// A `PaintValue::Scalar(_)` was encountered for a semantic that was
+    /// declared in `aggregated_region_split` (i.e. opted into the region-split
+    /// cross-product). Scalars cannot drive a discrete variant axis — the
+    /// semantic must emit `Flag`/`ToolIndex`/`Custom` values when participating
+    /// in region split. AC-N3.
+    ScalarInRegionSplitFacetValue {
+        /// Object whose `paint_data` carried the offending scalar.
+        object_id: ObjectId,
+        /// Semantic name (as declared in `[[region_split]]`) carrying the scalar.
+        semantic: String,
+        /// The offending scalar value, stored as `f32::to_bits()` so the
+        /// enclosing enum can derive `Eq`. Reconstruct the float via
+        /// [`RegionMappingError::scalar`] or `f32::from_bits(scalar_bits)`.
+        scalar_bits: u32,
+    },
+}
+
+impl RegionMappingError {
+    /// Reconstructs the offending Scalar paint value when the error is
+    /// `ScalarInRegionSplitFacetValue`. Returns `f32::NAN` for other variants
+    /// (callers should match on the variant first).
+    pub fn scalar(&self) -> f32 {
+        match self {
+            Self::ScalarInRegionSplitFacetValue { scalar_bits, .. } => f32::from_bits(*scalar_bits),
+            _ => f32::NAN,
+        }
+    }
 }
 
 impl std::fmt::Display for RegionMappingError {
@@ -95,6 +124,19 @@ impl std::fmt::Display for RegionMappingError {
                 "layer plan has duplicate active region (layer={}, object='{}', region={})",
                 key.global_layer_index, key.object_id, key.region_id
             ),
+            Self::ScalarInRegionSplitFacetValue {
+                object_id,
+                semantic,
+                scalar_bits,
+            } => {
+                let scalar = f32::from_bits(*scalar_bits);
+                write!(
+                    f,
+                    "PaintValue::Scalar({scalar}) encountered for region-split semantic \
+                     '{semantic}' on object '{object_id}'; region-split semantics must emit \
+                     Flag/ToolIndex/Custom values (scalars cannot drive a discrete variant axis)"
+                )
+            }
         }
     }
 }
@@ -276,46 +318,111 @@ fn paint_semantic_namespace_key(s: &PaintSemantic) -> String {
     }
 }
 
-/// Compute overlapping paint semantics for a region at a given layer.
+/// Canonical comparator for `PaintValue` per P93 requirements.md.
 ///
-/// Returns semantics sorted ascending by `paint_semantic_namespace_key`
-/// (spec: lexicographically-last semantic wins because it overlays last).
-///
-/// When a `SemanticRegion` has an empty `polygons` vec, it is treated as
-/// "whole-layer" coverage and unconditionally overlaps the region.
-fn overlapping_semantics_for_region(
-    global_layer_index: u32,
-    paint_regions: &PaintRegionIR,
-) -> Vec<PaintSemantic> {
-    let layer_map = match paint_regions.per_layer.get(&global_layer_index) {
-        None => return Vec::new(),
-        Some(lm) => lm,
-    };
+/// Ordering: `Flag(false) < Flag(true) < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)`.
+/// `Scalar` is rejected upstream (AC-N3) and never reaches this comparator.
+fn paint_value_canonical_cmp(a: &PaintValue, b: &PaintValue) -> std::cmp::Ordering {
+    fn discriminant_rank(v: &PaintValue) -> u8 {
+        match v {
+            PaintValue::Flag(_) => 0,
+            PaintValue::Scalar(_) => 1,
+            PaintValue::ToolIndex(_) => 2,
+            PaintValue::Custom(_) => 3,
+        }
+    }
+    match (a, b) {
+        (PaintValue::Flag(x), PaintValue::Flag(y)) => x.cmp(y),
+        (PaintValue::ToolIndex(x), PaintValue::ToolIndex(y)) => x.cmp(y),
+        (PaintValue::Custom(x), PaintValue::Custom(y)) => x.cmp(y),
+        (PaintValue::Scalar(x), PaintValue::Scalar(y)) => x.to_bits().cmp(&y.to_bits()),
+        _ => discriminant_rank(a).cmp(&discriminant_rank(b)),
+    }
+}
 
-    let mut overlapping: Vec<PaintSemantic> = layer_map
-        .semantic_regions
-        .keys()
-        .filter(|semantic| {
-            let srs = paint_regions.get(global_layer_index, semantic);
-            srs.iter().any(|sr| {
-                // Empty polygons → unconditional (whole-layer) coverage.
-                if sr.polygons.is_empty() {
-                    return true;
+/// Wrapper around `PaintValue` that implements `Ord` via the canonical
+/// comparator so we can de-dup with `BTreeSet`. The wrapper exists purely
+/// to satisfy the `BTreeSet` `Ord` bound; the underlying `PaintValue`'s
+/// `Hash`/`Eq` semantics (used by `RegionKey`) are unchanged.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OrdPaintValue(PaintValue);
+
+impl PartialOrd for OrdPaintValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for OrdPaintValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        paint_value_canonical_cmp(&self.0, &other.0)
+    }
+}
+
+/// Scan each object's `paint_data` for distinct `PaintValue`s per opted-in
+/// region-split semantic (AC-2 / AC-N3).
+///
+/// Only semantics that appear as keys in `aggregated` are recorded — semantics
+/// outside the region-split registry do not drive variant expansion. Objects
+/// with no paint data, or no paint values matching `aggregated` keys, return an
+/// empty inner map (which the chain enumerator treats as "no axes → empty chain").
+///
+/// Per-value ordering follows the canonical comparator in
+/// `paint_value_canonical_cmp` so the chain enumeration is deterministic.
+///
+/// AC-N3: encountering `PaintValue::Scalar(_)` for an opted-in semantic is a
+/// hard error (`RegionMappingError::ScalarInRegionSplitFacetValue`).
+fn scan_paint_data(
+    objects: &[ObjectMesh],
+    aggregated: &BTreeMap<String, AggregatedRegionSplitEntry>,
+) -> Result<HashMap<ObjectId, HashMap<String, Vec<PaintValue>>>, RegionMappingError> {
+    let mut out: HashMap<ObjectId, HashMap<String, Vec<PaintValue>>> = HashMap::new();
+
+    for obj in objects {
+        let Some(paint_data) = obj.paint_data.as_ref() else {
+            continue;
+        };
+
+        // Per-object accumulator: semantic-name → de-dup'd values
+        // (BTreeSet keyed by the canonical comparator).
+        let mut per_semantic: BTreeMap<String, BTreeSet<OrdPaintValue>> = BTreeMap::new();
+
+        for layer in &paint_data.layers {
+            let semantic_name = paint_semantic_namespace_key(&layer.semantic);
+            // Skip semantics that did not opt into region split.
+            if !aggregated.contains_key(&semantic_name) {
+                continue;
+            }
+            for cell in &layer.facet_values {
+                let Some(value) = cell else {
+                    continue;
+                };
+                if let PaintValue::Scalar(s) = value {
+                    return Err(RegionMappingError::ScalarInRegionSplitFacetValue {
+                        object_id: obj.id.clone(),
+                        semantic: semantic_name,
+                        scalar_bits: s.to_bits(),
+                    });
                 }
-                // Non-empty polygons → actual geometric intersection check.
-                // Since ActiveRegion carries no polygon data at this stage,
-                // any non-empty SemanticRegion polygon set is treated as
-                // overlapping (the region polygon set is logically the full
-                // layer slice for the object, which is not yet materialised
-                // at RegionMapping time).
-                true
-            })
-        })
-        .cloned()
-        .collect();
+                per_semantic
+                    .entry(semantic_name.clone())
+                    .or_default()
+                    .insert(OrdPaintValue(value.clone()));
+            }
+        }
 
-    overlapping.sort_by_key(|s| paint_semantic_namespace_key(s));
-    overlapping
+        if per_semantic.is_empty() {
+            continue;
+        }
+
+        let mut object_map: HashMap<String, Vec<PaintValue>> = HashMap::new();
+        for (sem, set) in per_semantic {
+            let values: Vec<PaintValue> = set.into_iter().map(|w| w.0).collect();
+            object_map.insert(sem, values);
+        }
+        out.insert(obj.id.clone(), object_map);
+    }
+
+    Ok(out)
 }
 
 /// Execute the built-in `PrePass::RegionMapping` stage.
@@ -330,15 +437,15 @@ fn overlapping_semantics_for_region(
 pub fn execute_region_mapping(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
-    paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>,
     objects: &[ObjectMesh],
 ) -> Result<RegionMapIR, RegionMappingError> {
     execute_region_mapping_with_cap(
         layer_plan,
         projection,
-        paint_regions,
         paint_semantic_configs,
+        aggregated_region_split,
         objects,
         DEFAULT_REGION_MAP_CAP,
     )
@@ -359,16 +466,16 @@ pub fn execute_region_mapping(
 pub fn execute_region_mapping_with_cap(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
-    paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>,
     objects: &[ObjectMesh],
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
     execute_region_mapping_inner(
         layer_plan,
         projection,
-        paint_regions,
         paint_semantic_configs,
+        aggregated_region_split,
         objects,
         None,
         cap,
@@ -384,8 +491,12 @@ pub fn execute_region_mapping_with_cap(
 pub fn execute_region_mapping_inner(
     layer_plan: &LayerPlanIR,
     projection: &RegionMappingPlanProjection<'_>,
-    paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    // P93: cross-product expansion of `(layer × ActiveRegion × variant_chain)`.
+    // Keys are region-split semantic names declared by loaded modules; the
+    // chain enumerator uses these as the canonical axis order. Pass an empty
+    // map to preserve the pre-P93 single-variant flow.
+    aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>,
     objects: &[ObjectMesh],
     // Host config authority for `RegionPlan.config` (packet 76, 1a). When
     // `Some((per_object, default))`, each region's base config is taken from
@@ -443,17 +554,18 @@ pub fn execute_region_mapping_inner(
     let stage_invocations: Vec<(StageId, Vec<ModuleInvocation>)> =
         projection.stage_invocations.to_vec();
 
+    // --- P93 cross-product preflight: scan paint data + canonical axis order.
+    // `aggregated_region_split` keys define which semantics drive expansion;
+    // `scan_paint_data` produces the per-object value sets and rejects
+    // `Scalar` values for opted-in semantics (AC-N3).
+    let painting_variants_per_object = scan_paint_data(objects, aggregated_region_split)?;
+    let canonical_order: Vec<String> = aggregated_region_split.keys().cloned().collect();
+    let empty_variants: HashMap<String, Vec<PaintValue>> = HashMap::new();
+
     // --- Build entries ------------------------------------------------
     let mut region_map_out = RegionMapIR::default();
     for layer in &layer_plan.global_layers {
         for region in &layer.active_regions {
-            let key = RegionKey {
-                global_layer_index: layer.index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
-                variant_chain: Vec::new(),
-            };
-
             let mut stage_modules: HashMap<StageId, Vec<ModuleInvocation>> =
                 HashMap::with_capacity(stage_invocations.len());
             for (sid, invs) in &stage_invocations {
@@ -472,12 +584,12 @@ pub fn execute_region_mapping_inner(
                 None => region.resolved_config.clone(),
             };
 
-            // Stamp modifier-volume config_delta keys into a working
-            // config (Packet 68). Ordering: per-object base →
-            // modifier_delta → paint_overrides. We compute the
-            // modifier-stamped base first so paint overlays (which run
-            // last) can still override stamped values, matching
-            // global → per-object → modifier → paint precedence.
+            // Stamp modifier-volume config_delta keys into the base config
+            // (Packet 68). Ordering: per-object base → modifier_delta →
+            // paint_overrides. We compute the modifier-stamped base first so
+            // paint overlays (which run last per chain) can still override
+            // stamped values, matching global → per-object → modifier → paint
+            // precedence.
             let modifier_stamped_base =
                 if let Some(obj) = objects.iter().find(|o| o.id == region.object_id) {
                     if obj.modifier_volumes.is_empty() {
@@ -489,44 +601,97 @@ pub fn execute_region_mapping_inner(
                     base_config
                 };
 
-            // Compute paint-semantic overlay (no-op when paint_regions is None).
-            let (effective_config, paint_overrides) = if let Some(pr) = paint_regions {
-                let semantics = overlapping_semantics_for_region(layer.index, pr);
-                if semantics.is_empty() {
-                    // No overlap → modifier-stamped base passes through.
-                    (modifier_stamped_base, BTreeMap::new())
-                } else {
-                    // Apply each overlapping semantic in lex-ascending order;
-                    // the last semantic in sort order wins. Paint overlays
-                    // are applied on top of the modifier-stamped base.
-                    let mut effective = modifier_stamped_base;
-                    let mut overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-                    for sem in &semantics {
-                        if let Some(sem_cfg) = paint_semantic_configs.get(sem) {
+            // Enumerate canonical chains for this object. Objects absent from
+            // `painting_variants_per_object` (no opted-in paint values) yield
+            // exactly one chain: the empty subset, reproducing the pre-P93
+            // single-variant flow.
+            let variants_for_obj = painting_variants_per_object
+                .get(&region.object_id)
+                .unwrap_or(&empty_variants);
+            let chains = enumerate_canonical_chains(variants_for_obj, &canonical_order);
+
+            // Sorted list of `paint_semantic_configs` keys, used for the
+            // semantic-name → `PaintSemantic` lookup inside the chain fold.
+            // (Reused per region, but rebuilt once outside the hot inner loop
+            // would require restructuring; the map is tiny so cloning is fine.)
+            for chain in chains {
+                let mut effective = modifier_stamped_base.clone();
+                let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
+                for (sem_name, _value) in &chain {
+                    // Match the canonical semantic name against the existing
+                    // `paint_semantic_configs` keys via
+                    // `paint_semantic_namespace_key`, mirroring the idiom in
+                    // `slicer-scheduler::config_resolution::resolve_paint_overrides`.
+                    let matched_key = paint_semantic_configs
+                        .keys()
+                        .find(|sem| &paint_semantic_namespace_key(sem) == sem_name);
+                    if let Some(sem_key) = matched_key {
+                        if let Some(sem_cfg) = paint_semantic_configs.get(sem_key) {
                             effective = overlay_resolved(effective, sem_cfg);
-                            overrides.insert(sem.clone(), sem_cfg.clone());
+                            paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
                         }
                     }
-                    (effective, overrides)
                 }
-            } else {
-                // No paint data → modifier-stamped base passes through.
-                (modifier_stamped_base, BTreeMap::new())
-            };
 
-            let config_id = region_map_out.intern_config(effective_config);
-            let plan_entry = RegionPlan {
-                config: config_id,
-                stage_modules,
-                paint_overrides,
-            };
+                let config_id = region_map_out.intern_config(effective);
+                let plan_entry = RegionPlan {
+                    config: config_id,
+                    stage_modules: stage_modules.clone(),
+                    paint_overrides,
+                };
 
-            if region_map_out
-                .entries
-                .insert(key.clone(), plan_entry)
-                .is_some()
-            {
-                return Err(RegionMappingError::DuplicateRegionKey { key });
+                let key = RegionKey {
+                    global_layer_index: layer.index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: chain,
+                };
+
+                // Per-insert cap guard. Cross-product expansion may push the
+                // entry count past `cap` even when the unexpanded precheck
+                // above passed. Reuse the precheck's top-contributor shape.
+                if region_map_out.entries.len() >= cap {
+                    let mut sorted: Vec<(String, usize)> = region_map_out
+                        .entries
+                        .keys()
+                        .fold(HashMap::<String, usize>::new(), |mut acc, k| {
+                            *acc.entry(k.object_id.clone()).or_insert(0) += 1;
+                            acc
+                        })
+                        .into_iter()
+                        .collect();
+                    sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
+                    let layer_count = region_map_out
+                        .entries
+                        .keys()
+                        .map(|k| k.global_layer_index)
+                        .collect::<std::collections::HashSet<_>>()
+                        .len();
+                    let top_contributors: Vec<TopContributor> = sorted
+                        .into_iter()
+                        .take(5)
+                        .map(|(object_id, region_count)| TopContributor {
+                            object_id,
+                            region_count,
+                            layer_count,
+                        })
+                        .collect();
+                    return Err(RegionMappingError::CapExceeded {
+                        entry_count: region_map_out.entries.len() + 1,
+                        cap,
+                        top_contributors,
+                        remediation: "reduce region granularity, raise cap, or split job"
+                            .to_string(),
+                    });
+                }
+
+                if region_map_out
+                    .entries
+                    .insert(key.clone(), plan_entry)
+                    .is_some()
+                {
+                    return Err(RegionMappingError::DuplicateRegionKey { key });
+                }
             }
         }
     }

@@ -17,7 +17,7 @@ use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
-    ExecutionPlanError, STAGE_ORDER,
+    ExecutionPlanError, LoadDiagnostic, STAGE_ORDER,
 };
 use tempfile::TempDir;
 
@@ -235,12 +235,14 @@ fn live_plan_assigns_declared_read_filtered_config_view_to_every_module() {
     source.insert("pattern".to_string(), ConfigValue::String("gyroid".into()));
     source.insert("secret".to_string(), ConfigValue::String("leak".into()));
 
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         out.sorted_stages,
         out.bindings,
         &source,
         Arc::new(Vec::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .expect("plan must build on the live path");
 
@@ -267,12 +269,14 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
 
     // Simulate a user `--config` JSON with one declared key and one leaked.
     let source = parse_cli_config_source(r#"{"density": 0.9, "extra": "nope"}"#).unwrap();
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         out.sorted_stages,
         out.bindings,
         &source,
         Arc::new(Vec::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .unwrap();
 
@@ -302,12 +306,14 @@ fn live_plan_is_deterministic_across_repeated_loads() {
 
     let run = || {
         let out = load_live_modules_for_plan(&roots, 1).unwrap();
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         build_live_execution_plan(
             out.sorted_stages,
             out.bindings,
             &source,
             Arc::new(Vec::new()),
             Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+            &mut diagnostics,
         )
         .unwrap()
     };
@@ -349,12 +355,14 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
     );
 
     let out = crate::common::wasm_cache::cached_live_modules(&[core_modules], 1);
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         out.sorted_stages.clone(),
         out.bindings.clone(),
         &source,
         Arc::new(Vec::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .expect("build live execution plan");
 
@@ -409,7 +417,8 @@ fn live_plan_build_still_rejects_handrolled_undeclared_view_via_guardrail() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
     };
-    match build_execution_plan(&request).unwrap_err() {
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    match build_execution_plan(&request, &mut diagnostics).unwrap_err() {
         ExecutionPlanError::UndeclaredConfigKey { key, .. } => assert_eq!(key, "leaked"),
         other => panic!("expected UndeclaredConfigKey, got {other:?}"),
     }

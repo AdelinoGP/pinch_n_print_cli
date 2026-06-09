@@ -4,7 +4,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -230,6 +230,7 @@ fn tree_support_plan_succeeds_without_layer_planning_stage() {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let runner = TreeSupportStubRunner;

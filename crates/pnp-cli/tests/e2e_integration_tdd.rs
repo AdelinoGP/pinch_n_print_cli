@@ -3,7 +3,7 @@
 //! Validates the full pipeline: load model → build plan → execute stages → emit gcode.
 //! Uses real model files from `tests/resources/` and the actual DefaultGCodeEmitter/Serializer.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -46,6 +46,7 @@ fn empty_plan() -> ExecutionPlan {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
@@ -289,6 +290,7 @@ fn e2e_with_layers() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {

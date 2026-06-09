@@ -8,7 +8,7 @@
 
 use crate::common::seed::seed_slice_ir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,8 @@ use slicer_runtime::{
     execute_per_layer_with_events, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest,
     IrAccessMask, LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageInput,
-    LayerStageRunner, LoadedModuleBuilder, SortedStageModules, WasmArtifactMetadata,
+    LayerStageRunner, LoadDiagnostic, LoadedModuleBuilder, SortedStageModules,
+    WasmArtifactMetadata,
 };
 
 // ============================================================================
@@ -534,6 +535,7 @@ fn execution_plan_fixture(
         ),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
@@ -1014,6 +1016,7 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let mesh = Arc::new(mesh_fixture());
@@ -1322,6 +1325,7 @@ fn paint_annotation_runs_when_stage_present_with_no_modules() {
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
 
@@ -1457,7 +1461,9 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    let plan = build_execution_plan(&request).expect("plan should build successfully");
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let plan =
+        build_execution_plan(&request, &mut diagnostics).expect("plan should build successfully");
 
     let paint_stage_ids: Vec<&str> = plan
         .per_layer_stages
@@ -1593,6 +1599,7 @@ fn extruder_synthetic_t0_t1_emission() {
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     // Build a RegionMapIR keyed on the same (layer, object, region) tuples and

@@ -2404,6 +2404,7 @@ dependencies = [
  "rayon",
  "rstar",
  "slicer-ir",
+ "slicer-scheduler",
 ]
 
 [[package]]

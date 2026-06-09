@@ -5,7 +5,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,9 +22,9 @@ use slicer_runtime::{
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
     FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitError,
     GCodeEmitter, GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput,
-    LayerStageRunner, LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput,
-    PostpassStageRunner, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
-    PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
+    LayerStageRunner, LoadDiagnostic, LoadedModuleBuilder, PostpassError, PostpassOutput,
+    PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
 };
 use tempfile::TempDir;
 
@@ -317,7 +317,8 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         region_plans: Arc::new(HashMap::new()),
     };
 
-    let plan = build_execution_plan(&request).unwrap();
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let plan = build_execution_plan(&request, &mut diagnostics).unwrap();
 
     assert_eq!(plan.prepass_stages.len(), 1);
     assert_eq!(plan.prepass_stages[0].stage_id, "PrePass::MeshAnalysis");
@@ -424,6 +425,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {

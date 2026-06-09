@@ -20,6 +20,7 @@ mod paint_annotation_integration_tdd;
 mod pipeline_tdd;
 mod prepass_paint_semantic_override_ordering_tdd;
 mod progress_events_tdd;
+mod region_map_cap_overflow_tdd;
 mod region_mapping_paint_semantic_tdd;
 mod region_mapping_tdd;
 mod region_split_dispatch_filter;

@@ -559,9 +559,14 @@ fn empty_modifier_volume_stamps_no_regions() {
     };
     let paint_semantic_configs = BTreeMap::new();
 
-    let region_map =
-        execute_region_mapping(&layer_plan, &projection, None, &paint_semantic_configs, &[])
-            .expect("execute_region_mapping must succeed with empty modifier volumes");
+    let region_map = execute_region_mapping(
+        &layer_plan,
+        &projection,
+        &paint_semantic_configs,
+        &BTreeMap::new(),
+        &[],
+    )
+    .expect("execute_region_mapping must succeed with empty modifier volumes");
 
     // No modifier volumes â†’ no modifier-derived keys in any region.
     let stamped_count = region_map

@@ -56,6 +56,7 @@ pub fn build_live_execution_plan(
     config_source: &HashMap<ConfigKey, ConfigValue>,
     global_layers: Arc<Vec<GlobalLayer>>,
     region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
 ) -> Result<ExecutionPlan, ExecutionPlanError> {
     let module_bindings: Vec<ExecutionModuleBinding> = modules
         .into_iter()
@@ -68,12 +69,15 @@ pub fn build_live_execution_plan(
         })
         .collect();
 
-    build_execution_plan(&ExecutionPlanRequest {
-        sorted_stages,
-        module_bindings,
-        global_layers,
-        region_plans,
-    })
+    build_execution_plan(
+        &ExecutionPlanRequest {
+            sorted_stages,
+            module_bindings,
+            global_layers,
+            region_plans,
+        },
+        diagnostics,
+    )
 }
 
 /// Aggregated output of [`load_live_modules_for_plan`] ready to feed into

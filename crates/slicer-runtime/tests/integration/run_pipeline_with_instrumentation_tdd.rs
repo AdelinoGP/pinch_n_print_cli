@@ -9,7 +9,7 @@
 //! - `layer_executor.rs::execute_single_layer` (layer / stage / module
 //!   brackets inside the rayon parallel iterator)
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -234,6 +234,7 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
             global_layers: Arc::new(Vec::new()),
             region_plans: Arc::new(HashMap::new()),
             module_region_index: HashMap::new(),
+            aggregated_region_split: BTreeMap::new(),
         },
         runners: noop_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
@@ -298,6 +299,7 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let collector = Arc::new(Collector::new("test-model.stl"));
@@ -478,6 +480,7 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let capture = EdgeCapture::new();
@@ -631,6 +634,7 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let mut runners = noop_runners();

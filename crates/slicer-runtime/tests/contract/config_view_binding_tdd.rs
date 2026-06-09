@@ -240,7 +240,7 @@ fn from_declared_is_order_independent_and_deduplicates() {
 use slicer_ir::{RegionKey, RegionPlan};
 use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, ExecutionModuleBinding, ExecutionPlanError,
-    ExecutionPlanRequest, SortedStageModules, WasmArtifactMetadata,
+    ExecutionPlanRequest, LoadDiagnostic, SortedStageModules, WasmArtifactMetadata,
 };
 
 fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> ExecutionPlanRequest {
@@ -274,8 +274,12 @@ fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> Exec
 fn build_execution_plan_accepts_bound_configview_from_bind_module_config_view() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
     let view = bind_module_config_view(&module, &source());
-    let plan = build_execution_plan(&plan_request_for(&module, Arc::clone(&view)))
-        .expect("plan with properly bound ConfigView must succeed");
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let plan = build_execution_plan(
+        &plan_request_for(&module, Arc::clone(&view)),
+        &mut diagnostics,
+    )
+    .expect("plan with properly bound ConfigView must succeed");
 
     // The bound ConfigView flows through the compiled module unchanged and
     // exposes only declared keys on the real plan/build path.
@@ -298,7 +302,8 @@ fn build_execution_plan_rejects_configview_with_undeclared_key() {
     leaky.insert("secret".to_string(), ConfigValue::String("leaked".into()));
     let view = Arc::new(ConfigView::from_map(leaky));
 
-    match build_execution_plan(&plan_request_for(&module, view)).unwrap_err() {
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    match build_execution_plan(&plan_request_for(&module, view), &mut diagnostics).unwrap_err() {
         ExecutionPlanError::UndeclaredConfigKey { module_id, key } => {
             assert_eq!(module_id, "com.example.infill");
             assert_eq!(key, "secret");
@@ -316,7 +321,8 @@ fn build_execution_plan_rejects_empty_schema_with_any_configview_keys() {
     any.insert("sneaky".to_string(), ConfigValue::Int(1));
     let view = Arc::new(ConfigView::from_map(any));
 
-    let err = build_execution_plan(&plan_request_for(&module, view)).unwrap_err();
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+    let err = build_execution_plan(&plan_request_for(&module, view), &mut diagnostics).unwrap_err();
     assert!(
         matches!(
             err,
@@ -333,7 +339,8 @@ fn bind_module_config_view_output_passes_plan_build_guardrail() {
     let module = module_with_config_keys("com.example.infill", &["density", "pattern"]);
     for src in [HashMap::new(), source()] {
         let view = bind_module_config_view(&module, &src);
-        let plan = build_execution_plan(&plan_request_for(&module, view))
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let plan = build_execution_plan(&plan_request_for(&module, view), &mut diagnostics)
             .expect("bind_module_config_view output must pass guardrail");
         assert_eq!(plan.prepass_stages.len(), 1);
     }
@@ -391,6 +398,7 @@ fn live_binding(module: &LoadedModule) -> LiveModuleBinding {
 #[test]
 fn build_live_execution_plan_filters_every_module_config_view_through_bind_helper() {
     let m = module_with_config_keys("com.example.infill", &["density", "pattern"]);
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         vec![SortedStageModules {
             stage_id: m.stage().to_string(),
@@ -400,6 +408,7 @@ fn build_live_execution_plan_filters_every_module_config_view_through_bind_helpe
         &source(),
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .expect("live plan must build");
 
@@ -425,6 +434,7 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
         "slicer:world-prepass@1.0.0",
     );
 
+    let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(
         vec![
             SortedStageModules {
@@ -440,6 +450,7 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
         &source(),
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::<RegionKey, RegionPlan>::new()),
+        &mut diagnostics,
     )
     .unwrap();
 

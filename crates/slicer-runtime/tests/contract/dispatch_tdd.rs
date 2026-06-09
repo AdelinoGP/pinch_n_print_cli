@@ -18,7 +18,7 @@ use crate::common::{
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
@@ -677,6 +677,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -772,6 +773,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -1019,6 +1021,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         ]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let config = PipelineConfig {
@@ -3765,6 +3768,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
@@ -3860,6 +3864,7 @@ fn path_optimization_empty_input_is_no_op() {
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
@@ -3937,6 +3942,7 @@ fn path_optimization_deterministic_across_repeated_runs() {
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let mut results = Vec::new();
@@ -4315,6 +4321,7 @@ fn path_optimization_end_to_end_populates_z_hops() {
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     struct SeedingRunner<'a> {
@@ -4417,6 +4424,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     struct SeedingRunner<'a> {
@@ -4588,6 +4596,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
@@ -5102,6 +5111,7 @@ fn mesh_segmentation_commits_through_execute_prepass() {
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
     execute_prepass(&plan, &mut blackboard, &dispatcher, &wasm_handles).expect("prepass succeeds");

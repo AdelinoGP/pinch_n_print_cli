@@ -15,7 +15,7 @@
 //! docs/02_ir_schemas.md Â§"IR 2 â€" SurfaceClassificationIR",
 //! docs/04_host_scheduler.md Â§"Full Lifecycle" (prepass).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -243,6 +243,7 @@ fn empty_plan() -> ExecutionPlan {
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 

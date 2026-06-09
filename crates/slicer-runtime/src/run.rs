@@ -262,7 +262,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
 
     // Discover and plan every module under --module-dir.
     let search_roots = assemble_search_roots(&opts.module_dirs, opts.no_default_module_paths);
-    let loaded = load_live_modules_for_plan(&search_roots, num_cpus_guess()).map_err(|e| {
+    let mut loaded = load_live_modules_for_plan(&search_roots, num_cpus_guess()).map_err(|e| {
         SliceRunError(format!(
             "failed to load modules from {} root(s) {:?}: {e}",
             search_roots.len(),
@@ -384,6 +384,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         &config_source,
         Arc::new(Vec::new()),
         Arc::new(std::collections::HashMap::new()),
+        &mut loaded.diagnostics,
     )
     .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
 

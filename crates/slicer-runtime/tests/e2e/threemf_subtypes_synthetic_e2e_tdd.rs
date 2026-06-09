@@ -13,10 +13,10 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
-    IndexedTriangleSet, LayerPaintMap, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume,
-    ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-    RegionKey, ResolvedConfig, SemVer, SemanticRegion, SliceIR, SlicedRegion,
-    SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
+    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, RegionKey, ResolvedConfig, SemVer,
+    SemanticRegion, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -225,12 +225,16 @@ fn sum_semantic_region_area_mm2(regions: &[SemanticRegion]) -> f64 {
 
 // Build an empty ExecutionPlan suitable for driving execute_region_mapping in tests.
 fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
-    slicer_runtime::build_execution_plan(&slicer_runtime::ExecutionPlanRequest {
-        sorted_stages: Vec::<slicer_runtime::SortedStageModules>::new(),
-        module_bindings: vec![],
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-    })
+    let mut diagnostics: Vec<slicer_runtime::LoadDiagnostic> = Vec::new();
+    slicer_runtime::build_execution_plan(
+        &slicer_runtime::ExecutionPlanRequest {
+            sorted_stages: Vec::<slicer_runtime::SortedStageModules>::new(),
+            module_bindings: vec![],
+            global_layers: Arc::new(vec![]),
+            region_plans: Arc::new(HashMap::new()),
+        },
+        &mut diagnostics,
+    )
     .expect("empty execution plan must build")
 }
 
@@ -547,30 +551,6 @@ fn support_enforcer_flows_through_paint_overrides() {
         "the override must differ from the ResolvedConfig default for this AC to be meaningful"
     );
 
-    let mut semantic_regions = HashMap::new();
-    semantic_regions.insert(
-        PaintSemantic::SupportEnforcer,
-        vec![SemanticRegion {
-            object_id: String::from("obj-abc"),
-            polygons: vec![],
-            value: PaintValue::Flag(true),
-            paint_order: 0,
-            aabb: None,
-        }],
-    );
-    let mut per_layer = HashMap::new();
-    per_layer.insert(
-        0u32,
-        LayerPaintMap {
-            global_layer_index: 0,
-            semantic_regions,
-        },
-    );
-    let whole_layer_paint = PaintRegionIR {
-        schema_version: schema_ver(),
-        per_layer,
-    };
-
     let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     paint_semantic_configs.insert(
         PaintSemantic::SupportEnforcer,
@@ -603,8 +583,8 @@ fn support_enforcer_flows_through_paint_overrides() {
     let region_map = slicer_runtime::execute_region_mapping(
         &layer_plan,
         &projection,
-        Some(&whole_layer_paint),
         &paint_semantic_configs,
+        &BTreeMap::new(),
         &[],
     )
     .expect("execute_region_mapping must succeed");

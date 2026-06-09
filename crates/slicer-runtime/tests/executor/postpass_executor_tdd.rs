@@ -17,7 +17,7 @@
 //! Reference: docs/04_host_scheduler.md lines 778-810
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -658,6 +658,7 @@ fn execution_plan_fixture(postpass_stages: Vec<CompiledStage>) -> ExecutionPlan 
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
     }
 }
 
