@@ -303,11 +303,30 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
 
         let dag_modules: Vec<crate::manifest::LoadedModule> =
             loaded.bindings.iter().map(|b| b.module.clone()).collect();
+        // Build global-scope ClaimHolder entries from each loaded module's
+        // declared `claims` so the validator can resolve fill-role-claim
+        // owners (claim:sparse-fill, claim:top-fill, claim:bottom-fill,
+        // claim:bridge-fill, claim:ironing, etc.). Pre-fix this was an
+        // empty Vec which produced startup `MissingDependency` warnings
+        // for every fill-role claim — see `docs/specs/infill-fill-partition-plan.md`
+        // Phase A2 and the user-reproducible cube slice in DEV-065 notes.
+        let claim_holders: Vec<crate::validation::ClaimHolder> = dag_modules
+            .iter()
+            .flat_map(|m| {
+                m.claims()
+                    .iter()
+                    .map(|claim| crate::validation::ClaimHolder {
+                        claim: claim.clone(),
+                        module_id: m.id().to_string(),
+                        scope: crate::validation::ConflictScope::Global,
+                    })
+            })
+            .collect();
         let request = crate::validation::DagValidationRequest {
             modules: dag_modules,
             stage_dags,
             host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
-            claim_holders: Vec::new(),
+            claim_holders,
             access_audits: Vec::new(),
         };
         let report = validate_startup_dag(&request);

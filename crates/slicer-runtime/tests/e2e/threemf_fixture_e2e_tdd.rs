@@ -293,6 +293,7 @@ fn negative_part_subtracts_via_full_pipeline() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
     };
 
@@ -635,6 +636,7 @@ fn model_without_negative_skips_subtract() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
     };
 
@@ -1426,6 +1428,7 @@ fn negative_part_extruder_does_not_affect_subtract() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
     };
 

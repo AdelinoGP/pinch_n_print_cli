@@ -1,0 +1,8 @@
+{
+  "sparse_fill_holder": "gyroid-infill",
+  "top_fill_holder": "rectilinear-infill",
+  "bottom_fill_holder": "rectilinear-infill",
+  "bridge_fill_holder": "rectilinear-infill",
+  "infill_density": 0.2,
+  "wall_count": 2
+}

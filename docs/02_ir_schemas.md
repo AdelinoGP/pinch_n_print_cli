@@ -619,7 +619,7 @@ When multiple paint semantics overlap a single region during `RegionMapping`, th
 
 **Stage:** Output of `Layer::Slice`, mutated by `Layer::SlicePostProcess`
 
-**Current schema_version: 1.2.0** (additive-minor bump from 1.0.0 in packet `12-rev1_external-surface-classification-at-slice`; new fields default `false` when classification data is absent or the region falls outside the Z window. Bumped to 1.2.0 by packet 36 — new fields on `SlicedRegion`: `bridge_areas`, `bridge_orientation_deg`.)
+**Current schema_version: 4.1.0** (minor bump from 4.0.0 in `docs/specs/infill-fill-partition-plan.md` — additive `SlicedRegion.sparse_infill_area` field for the host-side fill-polygon partition. `#[serde(default)]` preserves backward compatibility with serialized 4.0.0 fixtures. Earlier versions: 1.2.0 (packet 36, bridge fields), 3.0.0 (slice-prepass migration, shell index + solid_fill), 4.0.0 (packet 91 segment annotations + variant chain).)
 
 ```rust
 pub struct SliceIR {
@@ -666,10 +666,44 @@ pub struct SlicedRegion {
     /// Populated by mesh analysis (packet 36 / 36-rev1).
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (in 100 nm units).  Added in packet 36.
+    /// After `Layer::Perimeters` commit, host-clipped to `perimeter.infill_areas`
+    /// and deduped by precedence `bridge > bottom > top > sparse`.
     pub bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).  Added in packet 36.
     pub bridge_orientation_deg: f32,
+    /// Sparse-only infill polygon after host-side fill partition.  Empty
+    /// before `Layer::Perimeters` commit; afterwards equals
+    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill, top_solid_fill)`.
+    /// Pairwise disjoint with the other three canonical fill polygons after the
+    /// host hook in `crates/slicer-runtime/src/region_partition.rs` runs.
+    /// Added in `docs/specs/infill-fill-partition-plan.md`.
+    pub sparse_infill_area: Vec<ExPolygon>,
 }
+
+/// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
+///
+/// After the host runs `sync_perimeter_infill_areas_into_slice` at
+/// `Layer::Perimeters` commit (see
+/// `crates/slicer-runtime/src/region_partition.rs`):
+///
+/// 1. **`bridge_areas`**, **`bottom_solid_fill`**, **`top_solid_fill`**, and
+///    **`sparse_infill_area`** are pairwise disjoint subsets of the
+///    corresponding `PerimeterIR.regions[i].infill_areas` (the wall-inset
+///    polygon).
+/// 2. Precedence on overlap is strict: `bridge > bottom > top > sparse`
+///    (OrcaSlicer `PrintObject::prepare_infill` parity).
+/// 3. The pre-perimeter values of `top_solid_fill` / `bottom_solid_fill` /
+///    `bridge_areas` (committed by `PrePass::ShellClassification` and
+///    `PrePass::MeshAnalysis`) live unchanged on the **Blackboard**'s
+///    `Arc<Vec<SliceIR>>`; the per-layer arena copy is the one that gets
+///    clipped + deduped. This preserves the read-only Blackboard contract.
+/// 4. A `SliceIR` region with no matching `PerimeterIR.regions` entry is
+///    skipped silently (used by the region_split work in packets 92–95 where
+///    variant regions share wall geometry with their base region).
+///
+/// Each fill claim holder (`claim:sparse-fill`, `claim:top-fill`,
+/// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
+/// emits over exactly one of these polygons with zero polygon math.
 
 /// Polygon with holes. Contour is CCW; holes are CW.
 pub struct ExPolygon {

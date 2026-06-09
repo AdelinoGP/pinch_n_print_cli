@@ -17,6 +17,7 @@ pub mod postpass;
 pub mod prepass;
 pub mod progress_events;
 pub mod progress_instrumentation;
+pub mod region_partition;
 #[cfg(feature = "report")]
 pub mod report;
 pub mod run;

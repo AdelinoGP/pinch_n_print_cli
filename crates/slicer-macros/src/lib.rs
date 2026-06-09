@@ -2140,9 +2140,17 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
                     let bot_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
                         r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let bridge_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.bridge_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.sparse_infill_area().iter().map(__slicer_wit_expolygon_to_ir).collect();
                     sdk_view.set_top_solid_fill(top_fill);
                     sdk_view.set_bottom_solid_fill(bot_fill);
                     sdk_view.set_is_bridge(r.is_bridge());
+                    sdk_view.set_bridge_areas(bridge_areas);
+                    sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
+                    sdk_view.set_sparse_infill_area(sparse_infill_area);
+                    sdk_view.set_held_claims(r.held_claims());
                     out.push(sdk_view);
                 }
                 out

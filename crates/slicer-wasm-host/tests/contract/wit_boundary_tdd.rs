@@ -77,6 +77,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
         })
         .unwrap();
@@ -170,6 +171,7 @@ fn guest_reads_region_z_from_ir_view() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
         })
         .unwrap();
@@ -241,6 +243,7 @@ fn guest_emits_output_via_infill_builder() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
         })
         .unwrap();
@@ -320,6 +323,7 @@ fn guest_logs_via_host_services() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
         })
         .unwrap();
@@ -396,6 +400,7 @@ fn repeated_calls_produce_independent_outputs() {
                 is_bridge: false,
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
             })
             .unwrap();

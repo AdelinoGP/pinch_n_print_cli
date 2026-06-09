@@ -328,6 +328,30 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 let points = &entity.path.points;
                 let role = &entity.path.role;
 
+                // Defensive: wall loops are emitted with an explicit closing
+                // repeat (OrcaSlicer convention, see ExtrusionPath3D::is_closed).
+                // A wall reaching here without closure means a wall mutator
+                // (seam-placer, fuzzy-skin, or future smoothificator) dropped
+                // the closing repeat — the emitted G-code will be visibly
+                // unclosed. Log and continue (no close synthesis: a synthesised
+                // closing edge would skip fuzzy-skin perturbation, creating a
+                // worse, asymmetric defect).
+                // `ExtrusionRole::is_loop()` covers OuterWall, InnerWall,
+                // ThinWall, and Skirt. Adding new closed-loop roles only
+                // requires updating the IR helper; the emitter picks it up.
+                if role.is_loop() && points.len() >= 2 && !entity.path.is_closed() {
+                    log::warn!(
+                        "gcode_emit: loop entity at layer Z={} entity_idx={} \
+                         role={:?} is not closed (first={:?} last={:?}); \
+                         emitted G-code will be missing the closing edge.",
+                        layer.z,
+                        entity_idx,
+                        role,
+                        points.first().map(|p| (p.x, p.y)),
+                        points.last().map(|p| (p.x, p.y)),
+                    );
+                }
+
                 // Emit ;TYPE: comment when role changes from previous entity
                 let role_changed = prev_role
                     .as_ref()

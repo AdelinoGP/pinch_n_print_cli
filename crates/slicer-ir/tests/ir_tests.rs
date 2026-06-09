@@ -460,6 +460,7 @@ mod tests {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         };
 
         test_serde_roundtrip!(region);
@@ -497,6 +498,7 @@ mod tests {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         };
 
         test_serde_roundtrip!(region);
@@ -669,7 +671,7 @@ fn slice_ir_schema_version_is_one_one_zero() {
 ///
 /// Asserts that:
 ///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 1, 0 }
-///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 0, 0 }
+///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 1, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
 #[test]
@@ -685,15 +687,17 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
         "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 1, 0)"
     );
 
-    // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding)
+    // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding);
+    //       minor bump to 4.1.0 by `docs/specs/infill-fill-partition-plan.md`
+    //       added the additive `SlicedRegion.sparse_infill_area` field.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 0,
+            minor: 1,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 0, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 1, 0)"
     );
 
     // (c)

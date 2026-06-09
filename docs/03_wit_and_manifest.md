@@ -793,7 +793,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | Claim ID                  | Purpose                                                                   |
 |---------------------------|---------------------------------------------------------------------------|
 | `perimeter-generator`     | Held by the module producing wall loops on a given region.                |
-| `infill-generator`        | Held by the module producing infill paths on a given region.              |
+| `infill-generator`        | **Deprecated 2026-06-09 (DEV-065).** Held by the module producing infill paths on a given region. Packet 37's four per-role claims (`claim:top-fill` … `claim:sparse-fill`) supersede this blanket gate. In-tree infill modules (rectilinear, gyroid, lightning) no longer declare it. Third-party modules that still declare it continue to load, but cannot coexist with another module holding the same claim (first-winner dedup applies). |
 | `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
 | `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
 | `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |
@@ -808,6 +808,15 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
 
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
+
+### Holder identifier matching
+
+The `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` config keys (and any future per-claim holder fields) accept either the full module ID or its short name. The matcher (see `crates/slicer-scheduler/src/validation.rs::module_id_matches_holder`) compares:
+
+- Exact match (`"com.core.rectilinear-infill" == "com.core.rectilinear-infill"`), OR
+- Short-name match after stripping the canonical built-in namespace `com.core.` from the module ID (`"com.core.rectilinear-infill"` matches `"rectilinear-infill"`).
+
+The `com.core.` prefix is reserved for built-in modules; community modules (e.g. `com.acme.foo`) must be referenced by full ID in config because no other short form is unambiguous.
 
 The configured holder per claim is selected by four `ResolvedConfig` keys —
 `top_fill_holder`, `bottom_fill_holder`, `bridge_fill_holder`,

@@ -36,7 +36,7 @@ wit-parser = "0.247"
 tempfile = "3"
 serde_json = "1.0"
 base64 = "0.22"
-slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
+slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk", features = ["test"] }
 slicer-schema = { path = "../slicer-schema" }
 criterion = { workspace = true }
 toml = "0.8"
@@ -57,10 +57,24 @@ path = "../../modules/core-modules/wipe-tower"
 
 [dev-dependencies.top-surface-ironing]
 path = "../../modules/core-modules/top-surface-ironing"
-# NOTE: no module crate dev-dependencies. SDK-level trait tests belong in
-# the module's own `tests/` directory; host-level tests must exercise
-# either pure host plumbing (blackboard, dispatch routing, claim dedup)
-# or load the module's `.wasm` and dispatch through wasmtime.
+
+# Fill-claim modules — used by `infill_partitioned_input_tdd` to assert that
+# the host-side fill partition (Layer::Perimeters commit hook) presents each
+# module with disjoint canonical polygons per fill role.
+[dev-dependencies.rectilinear-infill]
+path = "../../modules/core-modules/rectilinear-infill"
+
+[dev-dependencies.gyroid-infill]
+path = "../../modules/core-modules/gyroid-infill"
+
+[dev-dependencies.lightning-infill]
+path = "../../modules/core-modules/lightning-infill"
+# NOTE: module crate dev-dependencies cover cross-module integration tests
+# (e.g. fill-claim partition assertions, finalization mutation routing).
+# SDK-level trait tests for a single module's run_* method belong in the
+# module's own `tests/` directory; module-internal host plumbing tests
+# (blackboard, dispatch routing, claim dedup) load the module's `.wasm`
+# and dispatch through wasmtime.
 
 [[bench]]
 name = "pipeline"

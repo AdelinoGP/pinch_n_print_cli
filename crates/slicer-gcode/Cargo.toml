@@ -9,6 +9,7 @@ slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-helpers = { path = "../slicer-helpers" }
 thiserror = "1.0"
+log = "0.4"
 
 [lints]
 workspace = true

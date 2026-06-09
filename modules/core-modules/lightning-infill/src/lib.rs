@@ -96,23 +96,24 @@ impl LayerModule for LightningInfill {
 
         let speed_factor = self.infill_speed / BASE_SPEED;
 
+        // Lightning is sparse-fill only — it declares `claim:sparse-fill`
+        // exclusively (packet 37). Top/bottom/bridge fill claims are held
+        // by sibling modules (rectilinear / gyroid) and their respective
+        // polygons are emitted there. Reads `sparse_infill_area` — the
+        // host-partitioned canonical sparse polygon (Q3 contract); see
+        // `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            let infill_areas = region.infill_areas();
-            if infill_areas.is_empty() {
+            let sparse = region.sparse_infill_area();
+            if sparse.is_empty() {
                 continue;
             }
-
-            // Held-claim filter (packet 37): lightning only declares
-            // `claim:sparse-fill`, so it skips entirely when the host
-            // resolver excluded it from this region. Empty held set = legacy
-            // fail-open default.
             if !region.should_emit(ExtrusionRole::SparseInfill) {
                 continue;
             }
 
             let z = region.z();
 
-            for expoly in infill_areas {
+            for expoly in sparse {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);
                 for path in paths {
                     let _ = output.push_sparse_path(path);

@@ -46,6 +46,29 @@ impl<'a> FillHolders<'a> {
     }
 }
 
+/// Returns true when `holder` (a config value, possibly a short name) refers
+/// to the module identified by `module_id` (always a full ID with namespace).
+///
+/// Accepts both formats so user configs can use either form:
+/// - Full module ID: `top_fill_holder = "com.core.rectilinear-infill"`
+/// - Short name:     `top_fill_holder = "rectilinear-infill"`
+///
+/// Matching rule: exact match, OR strip the canonical built-in namespace
+/// `com.core.` from `module_id` and compare against `holder`. The `com.core.`
+/// prefix is reserved for built-in modules; community modules use their own
+/// namespaces (`com.acme.foo`) and must be referenced by full ID in config
+/// because no other short form is unambiguous. See
+/// `docs/03_wit_and_manifest.md §"Holder identifier matching"`.
+#[must_use]
+pub fn module_id_matches_holder(module_id: &str, holder: &str) -> bool {
+    if module_id == holder {
+        return true;
+    }
+    module_id
+        .strip_prefix("com.core.")
+        .is_some_and(|short| short == holder)
+}
+
 /// Resolve the set of fill-role claims a module effectively holds for the
 /// current call.
 ///
@@ -72,7 +95,11 @@ pub fn resolve_held_claims(
     declared
         .iter()
         .filter(|claim| FILL_CLAIM_IDS.contains(&claim.as_str()))
-        .filter(|claim| holders.holder_for(claim).is_some_and(|h| h == module_id))
+        .filter(|claim| {
+            holders
+                .holder_for(claim)
+                .is_some_and(|h| module_id_matches_holder(module_id, h))
+        })
         .cloned()
         .collect()
 }

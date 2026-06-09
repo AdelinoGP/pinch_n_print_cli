@@ -19,11 +19,16 @@ fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
+    // Post-host-partition fixture: populate `sparse_infill_area` so lightning's
+    // sparse-fill emission has its canonical polygon (see
+    // `crates/slicer-runtime/src/region_partition.rs`).
+    let sq = square_polygon(0.0, 0.0, size_mm);
     SliceRegionViewBuilder::new()
         .object_id("obj1")
         .region_id(1)
         .z(z)
-        .add_polygon(square_polygon(0.0, 0.0, size_mm))
+        .add_polygon(sq.clone())
+        .sparse_infill_area(vec![sq])
         .build()
 }
 

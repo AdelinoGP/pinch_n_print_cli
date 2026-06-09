@@ -13,9 +13,13 @@ fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigV
     ConfigViewBuilder::new().float("infill_density", density).float("infill_angle", angle).float("infill_speed", speed).float("line_width", line_width).build()
 }
 
+// Post-host-partition fixture: `sparse_infill_area` carries the square so
+// SparseInfill emission has its canonical polygon (see
+// `crates/slicer-runtime/src/region_partition.rs`).
 #[rustfmt::skip]
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
-    SliceRegionViewBuilder::new().object_id("obj1").region_id(1).add_polygon(square_polygon(0.0, 0.0, size_mm)).add_infill_area(square_polygon(0.0, 0.0, size_mm)).effective_layer_height(0.2).z(z).has_nonplanar(false).build()
+    let sq = square_polygon(0.0, 0.0, size_mm);
+    SliceRegionViewBuilder::new().object_id("obj1").region_id(1).add_polygon(sq.clone()).add_infill_area(sq.clone()).sparse_infill_area(vec![sq]).effective_layer_height(0.2).z(z).has_nonplanar(false).build()
 }
 
 /// Test 1: 10mm square, density=0.2, line_width=0.4, angle=0.

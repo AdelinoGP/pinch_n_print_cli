@@ -520,6 +520,7 @@ fn slice_ir_with_regions(
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         })
         .collect();
     SliceIR {

@@ -117,44 +117,62 @@ impl LayerModule for GyroidInfill {
 
         let speed_factor = self.infill_speed / BASE_SPEED;
 
+        // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
+        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
+        // `bottom_solid_fill`, `bridge_areas`) with precedence
+        // bridge > bottom > top > sparse. Each role emits over its own
+        // polygon — zero polygon math, zero per-region role-pick.
+        // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            let infill_areas = region.infill_areas();
-            if infill_areas.is_empty() {
-                continue;
-            }
-
             let z = region.z();
 
-            // Determine fill role based on shell classification.
-            // Priority: bridge > bottom > top > sparse (OrcaSlicer parity per
-            // PrintObject.cpp:detect_surfaces_type — see DEVIATION_LOG.md).
-            let role = if region.is_bridge() {
-                ExtrusionRole::BridgeInfill
-            } else if region.bottom_shell_index().is_some() {
-                ExtrusionRole::BottomSolidInfill
-            } else if region.top_shell_index().is_some() {
-                ExtrusionRole::TopSolidInfill
-            } else {
-                ExtrusionRole::SparseInfill
+            let emit_polys = |polys: &[ExPolygon],
+                              role: ExtrusionRole,
+                              push_solid: bool,
+                              output: &mut InfillOutputBuilder| {
+                if polys.is_empty() || !region.should_emit(role.clone()) {
+                    return;
+                }
+                for expoly in polys {
+                    let mut paths = self.fill_expolygon(expoly, z, speed_factor);
+                    for path in &mut paths {
+                        path.role = role.clone();
+                    }
+                    for path in paths {
+                        if push_solid {
+                            let _ = output.push_solid_path(path);
+                        } else {
+                            let _ = output.push_sparse_path(path);
+                        }
+                    }
+                }
             };
 
-            // Held-claim filter (packet 37): skip emission for roles this
-            // module is not the configured holder for. Empty held set = legacy
-            // fail-open default (all four roles allowed).
-            if !region.should_emit(role.clone()) {
-                continue;
-            }
-
-            for expoly in infill_areas {
-                let mut paths = self.fill_expolygon(expoly, z, speed_factor);
-                // Override the role on all generated paths to reflect surface classification.
-                for path in &mut paths {
-                    path.role = role.clone();
-                }
-                for path in paths {
-                    let _ = output.push_sparse_path(path);
-                }
-            }
+            emit_polys(
+                region.sparse_infill_area(),
+                ExtrusionRole::SparseInfill,
+                false,
+                output,
+            );
+            emit_polys(
+                region.top_solid_fill(),
+                ExtrusionRole::TopSolidInfill,
+                true,
+                output,
+            );
+            emit_polys(
+                region.bottom_solid_fill(),
+                ExtrusionRole::BottomSolidInfill,
+                true,
+                output,
+            );
+            emit_polys(
+                region.bridge_areas(),
+                ExtrusionRole::BridgeInfill,
+                true,
+                output,
+            );
         }
 
         Ok(())

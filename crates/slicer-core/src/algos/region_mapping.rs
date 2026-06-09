@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use slicer_ir::{
     region_split_registry::enumerate_canonical_chains, ConfigValue, LayerPlanIR, ModifierVolume,
-    ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey,
-    RegionMapIR, RegionPlan, ResolvedConfig, StageId,
+    ModuleInvocation, ObjectId, ObjectMesh, PaintSemantic, PaintValue, RegionKey, RegionMapIR,
+    RegionPlan, ResolvedConfig, StageId,
 };
 use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
 

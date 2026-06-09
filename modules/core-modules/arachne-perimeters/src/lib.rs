@@ -221,11 +221,19 @@ impl ArachnePerimeters {
                     continue;
                 }
 
+                // Wall loops carry an explicit closing repeat (OrcaSlicer
+                // `ExtrusionPath::is_closed()` convention; ExtrusionEntity.hpp:269).
+                // Append the first point/width as the last entry so seam-placer,
+                // fuzzy-skin, and the G-code emitter all process the closing
+                // edge exactly like every other wall segment. Without this,
+                // a square wall emits 3 of 4 G1 segments.
+                let mut points_with_widths = points_with_widths;
+                slicer_sdk::close_loop(&mut points_with_widths);
                 let widths: Vec<f32> = points_with_widths.iter().map(|p| p.width).collect();
                 let num_points = points_with_widths.len();
 
                 // Propagate segment_annotations into feature flags for outer walls only
-                let (feature_flags, wall_boundary_type) = if is_outer {
+                let (mut feature_flags, wall_boundary_type) = if is_outer {
                     build_outer_wall_flags(num_points, poly_idx, segment_annotations)
                 } else {
                     (
@@ -233,6 +241,8 @@ impl ArachnePerimeters {
                         WallBoundaryType::Interior,
                     )
                 };
+                // Closing-repeat carries the same flag as its identical first vertex.
+                slicer_sdk::mirror_first_to_last(&mut feature_flags);
 
                 let wall = WallLoop {
                     perimeter_index: wall_idx as u32,

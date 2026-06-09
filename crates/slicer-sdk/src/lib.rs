@@ -49,3 +49,37 @@ pub use slicer_macros::{module_test, slicer_module};
 /// macro emits `::slicer_schema::SlicerModuleSchema` values, so any
 /// crate that uses the macro transitively needs this name resolvable.
 pub use slicer_schema;
+
+/// Append a closing repeat to a Vec by cloning the first element to the end.
+///
+/// No-op on empty input. Encodes the OrcaSlicer "closed loop" convention used
+/// by wall/skirt/brim paths: an N-vertex polygon contour is stored as N+1
+/// vertices with `items[N] == items[0]`, so segment iterators (fuzzy-skin,
+/// G-code emit) process the closing edge as a first-class segment.
+///
+/// See `slicer_ir::ExtrusionPath3D::is_closed()` for the contract and
+/// `modules/core-modules/{classic,arachne}-perimeters` for wall construction.
+pub fn close_loop<T: Clone>(items: &mut Vec<T>) {
+    if let Some(first) = items.first().cloned() {
+        items.push(first);
+    }
+}
+
+/// Copy the first element onto the last position in-place.
+///
+/// Used by wall construction to keep parallel arrays (feature_flags,
+/// width_profile.widths) consistent with the closing-repeat invariant on
+/// `WallLoop.path.points`: the closing-repeat vertex must carry the same
+/// per-vertex paint flags and width as the first vertex, since they refer
+/// to the same physical point.
+///
+/// No-op when `items.len() < 2`.
+pub fn mirror_first_to_last<T: Clone>(items: &mut [T]) {
+    if items.len() < 2 {
+        return;
+    }
+    let first = items[0].clone();
+    if let Some(last) = items.last_mut() {
+        *last = first;
+    }
+}

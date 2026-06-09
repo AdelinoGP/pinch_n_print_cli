@@ -2411,6 +2411,7 @@ dependencies = [
 name = "slicer-gcode"
 version = "0.1.0"
 dependencies = [
+ "log",
  "slicer-core",
  "slicer-helpers",
  "slicer-ir",
@@ -2479,10 +2480,13 @@ dependencies = [
  "clap",
  "criterion",
  "directories",
+ "gyroid-infill",
+ "lightning-infill",
  "log",
  "part-cooling",
  "predicates",
  "rayon",
+ "rectilinear-infill",
  "rstar",
  "serde",
  "serde_json",

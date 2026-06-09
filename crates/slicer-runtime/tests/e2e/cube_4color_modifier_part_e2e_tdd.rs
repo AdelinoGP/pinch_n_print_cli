@@ -295,6 +295,7 @@ fn modifier_projections_annotate_contour_points() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
         ..Default::default()
     };
@@ -362,6 +363,7 @@ fn modifier_projections_annotate_contour_points() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
         ..Default::default()
     };
@@ -451,6 +453,7 @@ fn modifier_projection_z_band_restriction() {
                 is_bridge: false,
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
             }],
             ..Default::default()
         }
@@ -770,6 +773,7 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }],
         ..Default::default()
     };

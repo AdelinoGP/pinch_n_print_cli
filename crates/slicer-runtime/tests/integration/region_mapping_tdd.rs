@@ -430,30 +430,12 @@ fn region_mapping_is_deterministic_for_same_input() {
 
     let empty_map = std::collections::BTreeMap::new();
     let empty_split = std::collections::BTreeMap::new();
-    let a = execute_region_mapping(
-        &layer_plan,
-        &projection,
-        &empty_map,
-        &empty_split,
-        &[],
-    )
-    .unwrap();
-    let b = execute_region_mapping(
-        &layer_plan,
-        &projection,
-        &empty_map,
-        &empty_split,
-        &[],
-    )
-    .unwrap();
-    let c = execute_region_mapping(
-        &layer_plan,
-        &projection,
-        &empty_map,
-        &empty_split,
-        &[],
-    )
-    .unwrap();
+    let a =
+        execute_region_mapping(&layer_plan, &projection, &empty_map, &empty_split, &[]).unwrap();
+    let b =
+        execute_region_mapping(&layer_plan, &projection, &empty_map, &empty_split, &[]).unwrap();
+    let c =
+        execute_region_mapping(&layer_plan, &projection, &empty_map, &empty_split, &[]).unwrap();
 
     assert_eq!(a, b);
     assert_eq!(b, c);

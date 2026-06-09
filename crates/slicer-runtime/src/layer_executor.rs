@@ -1086,57 +1086,113 @@ fn commit_layer_outputs(
                 .set_support(ir)
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
-        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
-            if stage_id == "Layer::PerimetersPostProcess" {
-                let mut original = arena.take_perimeter();
-                if let (Some(seam_ir), Some(ref mut orig_perim)) = (seam_plan_ir, &mut original) {
-                    for region in &mut orig_perim.regions {
-                        if region.resolved_seam.is_none() {
-                            if let Some(entry) = seam_ir.entries.iter().find(|e| {
-                                e.region_key.global_layer_index == layer_index
-                                    && e.region_key.object_id == region.object_id
-                                    && e.region_key.region_id == region.region_id
-                            }) {
-                                region.resolved_seam = Some(entry.chosen_candidate.clone());
-                            }
+        "Layer::Perimeters" => {
+            let Some(ir) = commit.perimeter_output else {
+                return Ok(());
+            };
+            let _ = arena.take_perimeter();
+            arena
+                .set_perimeter(ir)
+                .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+            // Host-side fill-polygon partition. Splits `perimeter.infill_areas`
+            // into the four pairwise-disjoint canonical fill polygons
+            // (bridge > bottom > top > sparse) on the per-layer arena's
+            // `SliceIR`. See `docs/specs/infill-fill-partition-plan.md`.
+            // Fires at `Layer::Perimeters` only (Q6); `PerimetersPostProcess`
+            // mutates wall loops but not the inner wall-inset polygon, so a
+            // second firing would be redundant work.
+            crate::region_partition::sync_perimeter_infill_areas_into_slice(arena, layer_index)?;
+        }
+        "Layer::PerimetersPostProcess" => {
+            let mut original = arena.take_perimeter();
+            if let (Some(seam_ir), Some(ref mut orig_perim)) = (seam_plan_ir, &mut original) {
+                for region in &mut orig_perim.regions {
+                    if region.resolved_seam.is_none() {
+                        if let Some(entry) = seam_ir.entries.iter().find(|e| {
+                            e.region_key.global_layer_index == layer_index
+                                && e.region_key.object_id == region.object_id
+                                && e.region_key.region_id == region.region_id
+                        }) {
+                            region.resolved_seam = Some(entry.chosen_candidate.clone());
                         }
                     }
                 }
-                match (commit.perimeter_output, original) {
-                    (Some(mut ir_owned), Some(orig_perim)) => {
-                        for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
-                            if region.resolved_seam.is_none() {
-                                if let Some(orig_region) = orig_perim.regions.get(idx) {
-                                    if let Some(rs) = &orig_region.resolved_seam {
-                                        region.resolved_seam = Some(rs.clone());
-                                    }
+            }
+            // After each Layer::PerimetersPostProcess set_perimeter site,
+            // re-fire the fill-polygon partition. Q6 originally fired only at
+            // Layer::Perimeters because no module mutates infill_areas at
+            // post-process time today — but the review (finding #5/#6)
+            // pointed out two real edge cases the early Q6 missed:
+            //   (a) Layer::Perimeters returned None and PerimetersPostProcess
+            //       stages a perimeter via (Some(ir_owned), None) — partition
+            //       was never called → sparse_infill_area stays empty.
+            //   (b) PerimetersPostProcess legitimately replaces the perimeter
+            //       via (None, Some(orig_perim)) — same gap.
+            // Idempotent re-run is cheap (HashMap-indexed find now O(N+M))
+            // and guarantees post-perimeter modules see the partitioned IR.
+            match (commit.perimeter_output, original) {
+                (Some(mut ir_owned), Some(orig_perim)) => {
+                    // PerimetersPostProcess modules typically only emit wall
+                    // loops (fuzzy-skin) or seam rotations (seam-placer); they
+                    // are not expected to re-populate `infill_areas` or
+                    // `seam_candidates`. When the post-process replaces the
+                    // perimeter wholesale, copy those untouched fields from the
+                    // original perimeter so the host-side region partition that
+                    // re-fires below still sees a non-empty wall_inset. Without
+                    // this, a post-process module that doesn't call
+                    // `set_infill_areas` wipes the wall-inset polygon and the
+                    // partition zeroes every region's sparse/top/bottom fills
+                    // (cube "no sparse infill" symptom). Empty-vs-set is
+                    // distinguished by `set_infill_areas` having been called at
+                    // all; the IR field cannot represent that nuance, so we use
+                    // the heuristic "incoming empty → preserve original" — the
+                    // legitimate "clear infill_areas" use case has no current
+                    // call site.
+                    for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
+                        if region.resolved_seam.is_none() {
+                            if let Some(orig_region) = orig_perim.regions.get(idx) {
+                                if let Some(rs) = &orig_region.resolved_seam {
+                                    region.resolved_seam = Some(rs.clone());
                                 }
                             }
                         }
-                        arena
-                            .set_perimeter(ir_owned)
-                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                        if region.infill_areas.is_empty() {
+                            if let Some(orig_region) = orig_perim.regions.get(idx) {
+                                region.infill_areas = orig_region.infill_areas.clone();
+                            }
+                        }
+                        if region.seam_candidates.is_empty() {
+                            if let Some(orig_region) = orig_perim.regions.get(idx) {
+                                region.seam_candidates = orig_region.seam_candidates.clone();
+                            }
+                        }
                     }
-                    (Some(ir_owned), None) => {
-                        arena
-                            .set_perimeter(ir_owned)
-                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                    }
-                    (None, Some(orig_perim)) => {
-                        arena
-                            .set_perimeter(orig_perim)
-                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                    }
-                    (None, None) => {}
+                    arena
+                        .set_perimeter(ir_owned)
+                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
                 }
-            } else {
-                let Some(ir) = commit.perimeter_output else {
-                    return Ok(());
-                };
-                let _ = arena.take_perimeter();
-                arena
-                    .set_perimeter(ir)
-                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                (Some(ir_owned), None) => {
+                    arena
+                        .set_perimeter(ir_owned)
+                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                }
+                (None, Some(orig_perim)) => {
+                    arena
+                        .set_perimeter(orig_perim)
+                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                }
+                (None, None) => {}
+            }
+            // The match above sets a perimeter in three of four arms; the
+            // fourth (`None, None`) leaves the arena perimeter slot empty.
+            // Replace the previously-tracked `needs_partition` boolean
+            // with a direct check on the arena state — equivalent
+            // semantically and easier to read.
+            if arena.perimeter().is_some() {
+                crate::region_partition::sync_perimeter_infill_areas_into_slice(
+                    arena,
+                    layer_index,
+                )?;
             }
         }
         "Layer::SlicePostProcess" => {

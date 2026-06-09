@@ -93,86 +93,91 @@ impl LayerModule for RectilinearInfill {
 
         let speed_factor = self.infill_speed / BASE_SPEED;
 
+        // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
+        // pre-partitions every region's wall-inset into four pairwise-disjoint
+        // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
+        // `bottom_solid_fill`, `bridge_areas`) with precedence
+        // bridge > bottom > top > sparse. Each role emits over its own
+        // polygon — zero polygon math, zero per-region role-pick.
+        // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
-            let infill_areas = region.infill_areas();
-            if infill_areas.is_empty() {
-                continue;
+            let z = region.z();
+            let std_cos_a = cos_a;
+            let std_sin_a = sin_a;
+
+            // SparseInfill over the host-partitioned sparse-only polygon.
+            let sparse = region.sparse_infill_area();
+            if !sparse.is_empty() && region.should_emit(ExtrusionRole::SparseInfill) {
+                let paths = self.fill_expolygon_multi(
+                    sparse,
+                    line_spacing,
+                    std_cos_a,
+                    std_sin_a,
+                    z,
+                    speed_factor,
+                    ExtrusionRole::SparseInfill,
+                );
+                for path in paths {
+                    let _ = output.push_sparse_path(path);
+                }
             }
 
-            let z = region.z();
-            let bridge_areas = region.bridge_areas();
-            let has_bridge = !bridge_areas.is_empty();
+            // TopSolidInfill over top_solid_fill.
+            let top = region.top_solid_fill();
+            if !top.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
+                let paths = self.fill_expolygon_multi(
+                    top,
+                    line_spacing,
+                    std_cos_a,
+                    std_sin_a,
+                    z,
+                    speed_factor,
+                    ExtrusionRole::TopSolidInfill,
+                );
+                for path in paths {
+                    let _ = output.push_solid_path(path);
+                }
+            }
 
-            // Compute bridge fill angle when bridging is active.
-            // Falls back to the standard alternating angle if bridge_areas is empty.
-            let (bridge_cos_a, bridge_sin_a, _bridge_angle_rad) = if has_bridge {
+            // BottomSolidInfill over bottom_solid_fill.
+            let bottom = region.bottom_solid_fill();
+            if !bottom.is_empty() && region.should_emit(ExtrusionRole::BottomSolidInfill) {
+                let paths = self.fill_expolygon_multi(
+                    bottom,
+                    line_spacing,
+                    std_cos_a,
+                    std_sin_a,
+                    z,
+                    speed_factor,
+                    ExtrusionRole::BottomSolidInfill,
+                );
+                for path in paths {
+                    let _ = output.push_solid_path(path);
+                }
+            }
+
+            // BridgeInfill over bridge_areas at the region's bridge orientation.
+            let bridge = region.bridge_areas();
+            if !bridge.is_empty() && region.should_emit(ExtrusionRole::BridgeInfill) {
                 let deg = region.bridge_orientation_deg() as f64;
                 let rad = deg.to_radians();
-                (rad.cos(), rad.sin(), rad)
-            } else {
-                (cos_a, sin_a, angle_rad)
-            };
-
-            // Standard non-bridge angle (0 or 90 degrees alternation).
-            let (std_cos_a, std_sin_a) = (cos_a, sin_a);
-
-            for expoly in infill_areas {
-                let (bridge_parts, non_bridge_parts) =
-                    partition_expoly_by_bridges(expoly, bridge_areas);
-
-                // Emit bridge fill at bridge_orientation_deg over bridge areas.
-                if !bridge_parts.is_empty() && region.should_emit(ExtrusionRole::BridgeInfill) {
-                    let paths = self.fill_expolygon_multi(
-                        &bridge_parts,
-                        line_spacing,
-                        bridge_cos_a,
-                        bridge_sin_a,
-                        z,
-                        speed_factor,
-                        ExtrusionRole::BridgeInfill,
-                    );
-                    for path in paths {
-                        let _ = output.push_sparse_path(path);
-                    }
-                }
-
-                // Emit standard fill (SparseInfill / TopSolidInfill / BottomSolidInfill)
-                // over non-bridge areas. Bottom wins on overlap to match OrcaSlicer
-                // (PrintObject.cpp:detect_surfaces_type) — see DEVIATION_LOG.md.
-                if !non_bridge_parts.is_empty() {
-                    let role = if region.bottom_shell_index().is_some() {
-                        ExtrusionRole::BottomSolidInfill
-                    } else if region.top_shell_index().is_some() {
-                        ExtrusionRole::TopSolidInfill
-                    } else {
-                        ExtrusionRole::SparseInfill
-                    };
-                    if region.should_emit(role.clone()) {
-                        let paths = self.fill_expolygon_multi(
-                            &non_bridge_parts,
-                            line_spacing,
-                            std_cos_a,
-                            std_sin_a,
-                            z,
-                            speed_factor,
-                            role.clone(),
-                        );
-                        for path in paths {
-                            match role {
-                                ExtrusionRole::TopSolidInfill
-                                | ExtrusionRole::BottomSolidInfill => {
-                                    let _ = output.push_solid_path(path);
-                                }
-                                _ => {
-                                    let _ = output.push_sparse_path(path);
-                                }
-                            }
-                        }
-                    }
+                let (bridge_cos_a, bridge_sin_a) = (rad.cos(), rad.sin());
+                let paths = self.fill_expolygon_multi(
+                    bridge,
+                    line_spacing,
+                    bridge_cos_a,
+                    bridge_sin_a,
+                    z,
+                    speed_factor,
+                    ExtrusionRole::BridgeInfill,
+                );
+                for path in paths {
+                    let _ = output.push_solid_path(path);
                 }
             }
         }
 
+        let _ = angle_rad; // angle_rad retained for fixture readability; no longer used
         Ok(())
     }
 }
@@ -298,23 +303,6 @@ fn collect_edges(points: &[slicer_ir::Point2], edges: &mut Vec<(i64, i64, i64, i
         let j = (i + 1) % n;
         edges.push((points[i].x, points[i].y, points[j].x, points[j].y));
     }
-}
-
-/// Partition an ExPolygon into (bridge_parts, non_bridge_parts) using bridge_areas.
-/// Bridge parts are the intersection of `expoly` with `bridge_areas`.
-/// Non-bridge parts are the set difference of `expoly` minus `bridge_areas`.
-fn partition_expoly_by_bridges(
-    expoly: &ExPolygon,
-    bridge_areas: &[ExPolygon],
-) -> (Vec<ExPolygon>, Vec<ExPolygon>) {
-    if bridge_areas.is_empty() {
-        // Defensive: is_bridge implies non-empty bridge_areas after the new assemble_bridge_areas; this branch is unreachable in practice.
-        return (Vec::new(), vec![expoly.clone()]);
-    }
-    let subject = [expoly.clone()];
-    let bridge_parts = slicer_core::polygon_ops::intersection(&subject, bridge_areas);
-    let non_bridge_parts = slicer_core::polygon_ops::difference(&subject, bridge_areas);
-    (bridge_parts, non_bridge_parts)
 }
 
 /// Rotate a point by angle. cos_a, sin_a are cos/sin of the rotation angle.

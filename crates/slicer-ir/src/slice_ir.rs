@@ -183,9 +183,12 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// field changes: `SlicedRegion.boundary_paint` renamed to `segment_annotations`,
 /// `SlicedRegion.variant_chain` added. Prior bump to 3.0.0 was made by an
 /// earlier packet; this packet's rename layers a new breaking change.
+/// Minor bump to 4.1.0 adds the additive `SlicedRegion.sparse_infill_area`
+/// field (host-side fill partition output); `#[serde(default)]` preserves
+/// backward compatibility with serialized 4.0.0 fixtures.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1336,6 +1339,16 @@ pub struct SlicedRegion {
     /// Best bridge direction across all valid bridge regions (degrees)
     #[serde(default)]
     pub bridge_orientation_deg: f32,
+    /// Sparse-only infill polygon after host-side fill partition.
+    /// Empty until `Layer::Perimeters` commits — the host then computes
+    /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill, top_solid_fill)`
+    /// with precedence `bridge > bottom > top > sparse`. The four canonical
+    /// fill polygons (`bridge_areas`, `bottom_solid_fill`, `top_solid_fill`,
+    /// `sparse_infill_area`) are pairwise disjoint subsets of
+    /// `perimeter.infill_areas` after that hook. See
+    /// `crates/slicer-runtime/src/region_partition.rs`.
+    #[serde(default)]
+    pub sparse_infill_area: Vec<ExPolygon>,
 }
 
 /// Slice IR
@@ -1531,6 +1544,26 @@ impl ExtrusionRole {
             Self::Custom(_) => 9000,
         }
     }
+
+    /// Returns `true` for roles whose extrusion entity is conventionally a
+    /// closed loop — wall loops and perimeter-like outlines.
+    ///
+    /// Used by the G-code emitter's defensive closure check
+    /// (`crates/slicer-gcode/src/emit.rs`) and by future wall-mutator audits.
+    /// Roles in this set should carry an explicit closing repeat
+    /// (`ExtrusionPath3D::is_closed()` returns true) by the time they reach
+    /// emission; an open path with one of these roles is a sign that some
+    /// post-process step dropped the closing repeat.
+    ///
+    /// Returns `true` for: `OuterWall`, `InnerWall`, `ThinWall`, `Skirt`.
+    /// `Custom(_)` is conservatively treated as `false` — a custom-role path
+    /// could be a polyline or a loop; the consumer should classify.
+    pub const fn is_loop(&self) -> bool {
+        matches!(
+            self,
+            Self::OuterWall | Self::InnerWall | Self::ThinWall | Self::Skirt
+        )
+    }
 }
 
 /// 3D extrusion path
@@ -1542,6 +1575,30 @@ pub struct ExtrusionPath3D {
     pub role: ExtrusionRole,
     /// Speed factor multiplier
     pub speed_factor: f32,
+}
+
+impl ExtrusionPath3D {
+    /// Returns `true` when this path represents a closed loop encoded by an
+    /// explicit closing repeat: `points.first().xy == points.last().xy`.
+    ///
+    /// Mirrors OrcaSlicer's `ExtrusionPath::is_closed()`
+    /// (`OrcaSlicerDocumented/src/libslic3r/ExtrusionEntity.hpp:269`). Wall
+    /// loops, skirt/brim loops, and any other closed extrusion entity use
+    /// this convention; open paths (sparse infill, travel) do not.
+    ///
+    /// Only the XY components of the first and last points are compared. Z
+    /// and per-vertex width may differ between the first and last entries
+    /// for entities that vary along the loop (bricklayer Z-shift,
+    /// arachne-perimeters variable width); the XY endpoints must coincide
+    /// so the closing edge has zero planar length.
+    pub fn is_closed(&self) -> bool {
+        match (self.points.first(), self.points.last()) {
+            (Some(first), Some(last)) if self.points.len() >= 2 => {
+                first.x == last.x && first.y == last.y
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Wall loop

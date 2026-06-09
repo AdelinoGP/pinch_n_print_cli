@@ -15,8 +15,12 @@ reads  = ["SliceIR"]
 writes = ["InfillIR"]
 
 [claims]
+# Packet 37's four granular fill-role claims supersede the legacy
+# `infill-generator` blanket claim. Retired 2026-06-09 (see DEV-065) so
+# multiple infill modules can coexist; per-region resolution via
+# `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` selects which
+# module emits each role per region.
 holds = [
-    "infill-generator",
     "claim:top-fill",
     "claim:bottom-fill",
     "claim:bridge-fill",

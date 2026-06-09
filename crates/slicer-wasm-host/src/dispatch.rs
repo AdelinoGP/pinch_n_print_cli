@@ -2031,7 +2031,15 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                                     "claim:sparse-fill" => sparse,
                                     _ => "",
                                 };
+                                // Mirrors slicer_scheduler::validation::module_id_matches_holder
+                                // (inlined to avoid the back-edge dep). Accepts either full
+                                // ID (com.core.rectilinear-infill) or short name (rectilinear-infill)
+                                // for built-in modules. See docs/03_wit_and_manifest.md §"Holder
+                                // identifier matching".
                                 holder == module_id_str
+                                    || module_id_str
+                                        .strip_prefix("com.core.")
+                                        .is_some_and(|short| short == holder)
                             })
                             .cloned()
                             .collect();

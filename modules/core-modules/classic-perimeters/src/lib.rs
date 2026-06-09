@@ -158,7 +158,7 @@ impl LayerModule for ClassicPerimeters {
                     let num_points = points.len();
 
                     // Propagate segment_annotations into feature flags for outer walls only
-                    let (feature_flags, boundary_type) = if is_outer {
+                    let (mut feature_flags, boundary_type) = if is_outer {
                         build_outer_wall_flags(num_points, poly_idx, region.segment_annotations())
                     } else {
                         (
@@ -166,6 +166,13 @@ impl LayerModule for ClassicPerimeters {
                             WallBoundaryType::Interior,
                         )
                     };
+                    // Closing-repeat vertex carries the same flag as its identical
+                    // first vertex (paint propagation, fuzzy-skin gating).
+                    // build_outer_wall_flags indexes the source per-point Vec
+                    // which has only N entries; the (N+1)th slot defaults —
+                    // mirror flags[0] explicitly to preserve paint semantics
+                    // across the closing edge.
+                    slicer_sdk::mirror_first_to_last(&mut feature_flags);
 
                     let wall = WallLoop {
                         perimeter_index: *perimeter_index,
@@ -311,9 +318,14 @@ fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
 
 /// Convert an ExPolygon contour to a Vec<Point3WithWidth> at the given Z and width.
 ///
-/// Converts from scaled i64 coordinates to f32 mm.
+/// Converts from scaled i64 coordinates to f32 mm. The returned Vec has N+1
+/// entries for an N-vertex polygon: the first point is repeated at the end so
+/// the path is a closed loop in OrcaSlicer convention
+/// (`ExtrusionPath::is_closed()` at `ExtrusionEntity.hpp:269`). Downstream
+/// consumers (seam-placer, fuzzy-skin, G-code emitter) rely on this so the
+/// final closing edge is processed exactly like every other wall segment.
 fn expolygon_to_path3d(contour: &slicer_ir::Polygon, z: f32, width: f32) -> Vec<Point3WithWidth> {
-    contour
+    let mut pts: Vec<Point3WithWidth> = contour
         .points
         .iter()
         .map(|p| Point3WithWidth {
@@ -324,7 +336,9 @@ fn expolygon_to_path3d(contour: &slicer_ir::Polygon, z: f32, width: f32) -> Vec<
             flow_factor: 1.0,
             overhang_quartile: None,
         })
-        .collect()
+        .collect();
+    slicer_sdk::close_loop(&mut pts);
+    pts
 }
 
 /// Create default WallFeatureFlags (no paint, no bridge, no thin wall).

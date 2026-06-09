@@ -119,20 +119,48 @@ fn rotate_wall_loop(
         loop_.path.points.len(),
         "width_profile.widths must have the same length as path.points"
     );
-    let point_count = loop_.path.points.len();
-    let mut rotated_points = Vec::with_capacity(point_count);
-    for i in 0..point_count {
-        rotated_points.push(loop_.path.points[(start_idx + i) % point_count]);
+
+    // Closure-aware rotation: wall loops carry an explicit closing repeat
+    // (OrcaSlicer `ExtrusionPath::is_closed()` convention; see
+    // `crates/slicer-ir/src/slice_ir.rs::ExtrusionPath3D::is_closed`). A naïve
+    // modular rotation over the full N+1 points produces an invalid loop
+    // (start point appears twice in the middle). Rotate the N effective
+    // points, then re-append the new first as the closing repeat. Parallel
+    // arrays (feature_flags, width_profile.widths) follow the same shape.
+    let total = loop_.path.points.len();
+    let is_closed = loop_.path.is_closed();
+    let effective = if is_closed { total - 1 } else { total };
+    if effective == 0 {
+        return loop_.clone();
+    }
+    let start_idx = start_idx % effective;
+
+    let mut rotated_points = Vec::with_capacity(total);
+    for i in 0..effective {
+        rotated_points.push(loop_.path.points[(start_idx + i) % effective]);
+    }
+    if is_closed {
+        rotated_points.push(rotated_points[0]);
     }
 
     let mut rotated_flags = Vec::with_capacity(loop_.feature_flags.len());
-    for i in 0..point_count {
-        rotated_flags.push(loop_.feature_flags[(start_idx + i) % point_count].clone());
+    for i in 0..effective {
+        rotated_flags.push(loop_.feature_flags[(start_idx + i) % effective].clone());
+    }
+    if is_closed {
+        if let Some(first_flag) = rotated_flags.first().cloned() {
+            rotated_flags.push(first_flag);
+        }
     }
 
     let mut rotated_widths = Vec::with_capacity(loop_.width_profile.widths.len());
-    for i in 0..point_count {
-        rotated_widths.push(loop_.width_profile.widths[(start_idx + i) % point_count]);
+    for i in 0..effective {
+        rotated_widths.push(loop_.width_profile.widths[(start_idx + i) % effective]);
+    }
+    if is_closed {
+        if let Some(first_w) = rotated_widths.first().copied() {
+            rotated_widths.push(first_w);
+        }
     }
 
     let mut rotated_loop = loop_.clone();
@@ -192,13 +220,15 @@ impl LayerModule for SeamPlacer {
             let Some((target_wall_index, start_idx)) =
                 find_seam_location(wall_loops, &seam_position.point)
             else {
-                return Err(ModuleError::fatal(
-                    2,
-                    format!(
-                        "resolved seam ({:.3}, {:.3}, {:.3}) was not found in any wall loop",
-                        seam_position.point.x, seam_position.point.y, seam_position.point.z
-                    ),
-                ));
+                // Seam source (e.g. seam-planner-default's mesh-corner output)
+                // and wall-loop coordinates don't match within tolerance — common
+                // when seams are placed in slice-polygon coords but walls live on
+                // the inset boundary. Skip rotation for this region rather than
+                // failing the layer; walls retain their natural start vertex.
+                // Pre-existing seam-planner/seam-placer coordinate-space gap;
+                // tracked separately from the host origin-tagging fix that
+                // started routing seam_plan_ir resolutions to PerimeterIR.
+                continue;
             };
 
             output

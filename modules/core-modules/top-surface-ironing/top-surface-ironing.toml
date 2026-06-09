@@ -11,7 +11,14 @@ wit-world    = "slicer:world-layer@1.0.0"
 id = "Layer::Infill"
 
 [ir-access]
-reads  = ["SliceIR"]
+# Declared read on InfillIR is for DAG-ordering purposes only — it establishes
+# a read-after-write edge so the validator orders ironing AFTER infill modules
+# (gyroid, rectilinear, lightning) at Layer::Infill, eliminating the previously
+# advisory `WriteConflict { orderable: false }` warning on shared InfillIR
+# writes. The runtime impl never actually reads InfillIR (it reads
+# `SliceIR.top_solid_fill` for the ironing polygon). See DEV-065 (2026-06-09)
+# and docs/04_host_scheduler.md §"Ordering via declared reads".
+reads  = ["SliceIR", "InfillIR"]
 writes = ["InfillIR"]
 
 [claims]

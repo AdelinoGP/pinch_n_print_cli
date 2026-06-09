@@ -152,6 +152,10 @@ pub struct SliceRegionData {
     pub bridge_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
+    /// Sparse-only infill polygon after host-side fill partition.
+    /// Populated by `sync_perimeter_infill_areas_into_slice` at `Layer::Perimeters`
+    /// commit; empty before that hook runs.
+    pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
 }
@@ -1016,6 +1020,29 @@ impl HostExecutionContext {
     /// Override the current slice region origin (test/dispatch helper).
     pub fn set_current_slice_region(&mut self, origin: Option<SliceRegionOrigin>) {
         self.current_slice_region = origin;
+    }
+
+    /// Effective perimeter-output origin, with slice-region fallback for
+    /// `Layer::Perimeters` guests.
+    ///
+    /// `PerimeterRegionView` does not exist at `Layer::Perimeters` stage —
+    /// guests like `arachne-perimeters` and `classic-perimeters` consume
+    /// `SliceRegionView` and write a fresh `PerimeterIR`. With no perimeter
+    /// touch site, `current_perimeter_region` is `None`, and origin-tagged
+    /// pushes (`push_wall_loop`, `set_infill_areas`, etc.) used to fall
+    /// through to the "untagged" path in `convert_perimeter_output`, which
+    /// emitted a single `PerimeterRegion` with `object_id = ""`. The host
+    /// region-partition then missed the slice-side `(object_id, region_id)`
+    /// HashMap lookup and skipped every region, leaving `sparse_infill_area`
+    /// empty (the cube "no sparse infill" symptom).
+    ///
+    /// At `Layer::PerimetersPostProcess` (e.g. seam-placer) the guest reads
+    /// `PerimeterRegionView`, `current_perimeter_region` is set, and the
+    /// fallback is a no-op.
+    pub(crate) fn effective_perimeter_origin(&self) -> Option<PerimeterRegionOrigin> {
+        self.current_perimeter_region
+            .clone()
+            .or_else(|| self.current_slice_region.clone())
     }
 
     /// Layer proposals collected during a prepass `run-layer-planning` call.
@@ -2257,6 +2284,7 @@ pub fn sliced_region_to_data(
         is_bridge: region.is_bridge,
         bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
         bridge_orientation_deg: region.bridge_orientation_deg,
+        sparse_infill_area: ir_to_wit_expolygons(&region.sparse_infill_area),
         held_claims,
     }
 }
@@ -2338,6 +2366,7 @@ mod region_origin_tests {
                 is_bridge: false,
                 bridge_areas: Vec::new(),
                 bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
             })
             .expect("push slice region");
@@ -2731,6 +2760,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.bridge_orientation_deg)
     }
+    fn sparse_infill_area(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.sparse-infill-area"));
+        Ok(self.table.get(&self_)?.sparse_infill_area.clone())
+    }
     fn held_claims(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<String>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.held_claims.clone())
@@ -2833,7 +2870,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.infill_output.sparse_paths.push(path);
         self.infill_output.sparse_path_origins.push(origin);
         self.record_write("InfillIR");
@@ -2849,7 +2886,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.infill_output.solid_paths.push(path);
         self.infill_output.solid_path_origins.push(origin);
         self.record_write("InfillIR");
@@ -2865,7 +2902,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.infill_output.ironing_paths.push(path);
         self.infill_output.ironing_path_origins.push(origin);
         self.record_write("InfillIR");
@@ -2888,7 +2925,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
                 return Ok(Err(e));
             }
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.perimeter_output.wall_loops.push(wall_loop);
         self.perimeter_output.wall_loop_origins.push(origin);
         self.record_write("PerimeterIR.regions.walls");
@@ -2905,7 +2942,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         areas: Vec<ExPolygon>,
     ) -> wasmtime::Result<Result<(), String>> {
         self.perimeter_output.infill_areas = areas;
-        self.perimeter_output.infill_areas_origin = self.current_perimeter_region.clone();
+        self.perimeter_output.infill_areas_origin = self.effective_perimeter_origin();
         Ok(Ok(()))
     }
     fn push_seam_candidate(
@@ -2917,7 +2954,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         if let Err(e) = self.check_z_envelope(pos.z) {
             return Ok(Err(e));
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.perimeter_output.seam_candidates.push((pos, score));
         self.perimeter_output.seam_candidate_origins.push(origin);
         Ok(Ok(()))
@@ -2932,7 +2969,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
             return Ok(Err(e));
         }
         self.perimeter_output.resolved_seam = Some((pos, wall_index));
-        self.perimeter_output.resolved_seam_origin = self.current_perimeter_region.clone();
+        self.perimeter_output.resolved_seam_origin = self.effective_perimeter_origin();
         self.record_write("PerimeterIR.resolved-seam");
         Ok(Ok(()))
     }
@@ -2955,7 +2992,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
                 rotated_wall_loop.path.points.len()
             )));
         }
-        let origin = self.current_perimeter_region.clone();
+        let origin = self.effective_perimeter_origin();
         self.perimeter_output
             .rotated_wall_loops
             .push(rotated_wall_loop);

@@ -46,6 +46,12 @@ pub struct SliceRegionView {
     bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     bridge_orientation_deg: f32,
+    /// Sparse-only infill polygon after host-side fill partition.
+    /// Empty before `Layer::Perimeters` commits; populated by the host's
+    /// `sync_perimeter_infill_areas_into_slice` hook so each fill claim
+    /// holder emits over a disjoint canonical polygon. See
+    /// `crates/slicer-runtime/src/region_partition.rs`.
+    sparse_infill_area: Vec<ExPolygon>,
     /// Claim IDs held by the module that produced this region.
     /// Modules may only emit fill paths for roles they hold; empty means
     /// the full set (rectilinear default emits all four).
@@ -75,6 +81,7 @@ impl Default for SliceRegionView {
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
         }
     }
@@ -197,6 +204,16 @@ impl SliceRegionView {
         self.bridge_orientation_deg = bridge_orientation_deg;
     }
 
+    /// Override the sparse-only infill polygon (host-only, for testing).
+    ///
+    /// Production code path: host writes this from
+    /// `sync_perimeter_infill_areas_into_slice` at `Layer::Perimeters` commit.
+    /// Tests can populate it directly to exercise infill modules in isolation.
+    #[doc(hidden)]
+    pub fn set_sparse_infill_area(&mut self, sparse_infill_area: Vec<ExPolygon>) {
+        self.sparse_infill_area = sparse_infill_area;
+    }
+
     /// Returns the SurfaceClassificationIR-derived support eligibility flag.
     ///
     /// Used by `Layer::Support` modules as the default-eligibility predicate when
@@ -230,6 +247,17 @@ impl SliceRegionView {
     /// Empty when `top_shell_index()` is `None`. The shape is the
     /// shrinking-shadow projection from the exposed top down through the
     /// shell zone, computed in `PrePass::ShellClassification`.
+    ///
+    /// **Semantic shift after `Layer::Perimeters` commit.** The host's
+    /// `sync_perimeter_infill_areas_into_slice`
+    /// (`crates/slicer-runtime/src/region_partition.rs`) clips this polygon
+    /// to `perimeter.infill_areas` and deduplicates it by precedence
+    /// `bridge > bottom > top > sparse`. So at Layer::Infill / Layer::InfillPostProcess
+    /// stages this getter returns the **post-partition clipped** polygon
+    /// (pairwise-disjoint with `bottom_solid_fill`, `bridge_areas`, and
+    /// `sparse_infill_area`). At earlier stages (PrePass, `Layer::Slice`,
+    /// `Layer::SlicePostProcess`, `Layer::Perimeters` before the commit
+    /// hook) it returns the raw `PrePass::ShellClassification` projection.
     pub fn top_solid_fill(&self) -> &[ExPolygon] {
         &self.top_solid_fill
     }
@@ -237,6 +265,11 @@ impl SliceRegionView {
     /// Returns the polygon-precise bottom solid fill area for this region.
     ///
     /// Empty when `bottom_shell_index()` is `None`.
+    ///
+    /// **Semantic shift after `Layer::Perimeters` commit** — see the matching
+    /// note on [`Self::top_solid_fill`]. Post-partition this polygon is
+    /// clipped to `perimeter.infill_areas` and deduped against
+    /// `bridge_areas`.
     pub fn bottom_solid_fill(&self) -> &[ExPolygon] {
         &self.bottom_solid_fill
     }
@@ -297,6 +330,11 @@ impl SliceRegionView {
     /// Returns the per-layer expanded bridge polygons.
     ///
     /// Empty if this region is not classified as a bridge region.
+    ///
+    /// **Semantic shift after `Layer::Perimeters` commit** — see the note on
+    /// [`Self::top_solid_fill`]. Post-partition this polygon is clipped to
+    /// `perimeter.infill_areas`; it is the highest-precedence fill polygon so
+    /// it is never deduped by another role.
     pub fn bridge_areas(&self) -> &[ExPolygon] {
         &self.bridge_areas
     }
@@ -304,6 +342,20 @@ impl SliceRegionView {
     /// Returns the best bridge direction across all valid bridge regions (degrees).
     pub fn bridge_orientation_deg(&self) -> f32 {
         self.bridge_orientation_deg
+    }
+
+    /// Returns the sparse-only infill polygon for this region.
+    ///
+    /// After `Layer::Perimeters` commit (or `Layer::PerimetersPostProcess`
+    /// commit on the three arms that newly stage a perimeter), this is the
+    /// precedence-dedup remainder: `perimeter.infill_areas −
+    /// union(bridge_areas, bottom_solid_fill, top_solid_fill)`. Fill modules
+    /// holding `claim:sparse-fill` emit `SparseInfill` paths over this
+    /// polygon and no others. Empty at all earlier stages (PrePass,
+    /// `Layer::Slice`, `Layer::SlicePostProcess`) and when the entire
+    /// wall-inset is covered by solid/bridge fill.
+    pub fn sparse_infill_area(&self) -> &[ExPolygon] {
+        &self.sparse_infill_area
     }
 
     /// Override the held-claims set (host-only, for testing).

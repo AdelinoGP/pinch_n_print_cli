@@ -204,6 +204,14 @@ Layer::Perimeters
            points onto WallLoop.feature_flags for each generated wall segment.
            Sets WallLoop.boundary_type to MaterialBoundary where adjacent
            material regions are detected via PaintRegionIR.
+           Commit side-effect: the host computes the four canonical
+           pairwise-disjoint fill polygons (`sparse_infill_area`, clipped
+           `top_solid_fill`, `bottom_solid_fill`, `bridge_areas`) into the
+           per-layer arena's `SliceIR` from `perimeter.infill_areas` via
+           `sync_perimeter_infill_areas_into_slice`. Precedence
+           `bridge > bottom > top > sparse` (OrcaSlicer parity). See
+           `crates/slicer-runtime/src/region_partition.rs` and
+           `docs/specs/infill-fill-partition-plan.md`.
 
 Layer::PerimetersPostProcess
   Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)
@@ -218,9 +226,16 @@ Layer::PerimetersPostProcess
            Unflagged segments on the same loop retain their original XY path.
 
 Layer::Infill
-  Input:  SliceIR (infill areas from PerimeterIR)
+  Input:  SliceIR (each region's four canonical pairwise-disjoint fill polygons,
+                   populated by the host at Layer::Perimeters commit)
   Output: InfillIR
   Purpose: Infill pattern generation (rectilinear, gyroid, TPMS, lightning, etc.).
+           Each fill claim holder reads exactly one of:
+             claim:sparse-fill → SlicedRegion.sparse_infill_area → SparseInfill
+             claim:top-fill    → SlicedRegion.top_solid_fill     → TopSolidInfill
+             claim:bottom-fill → SlicedRegion.bottom_solid_fill  → BottomSolidInfill
+             claim:bridge-fill → SlicedRegion.bridge_areas       → BridgeInfill
+           No per-region role-pick; no polygon math in modules.
 
 Layer::InfillPostProcess
   Input:  InfillIR

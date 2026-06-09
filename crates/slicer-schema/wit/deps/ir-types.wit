@@ -38,6 +38,7 @@ interface ir-handles {
         is-bridge: func() -> bool;
         bridge-areas: func() -> list<ex-polygon>;
         bridge-orientation-deg: func() -> f32;
+        sparse-infill-area: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
     }
 

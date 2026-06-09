@@ -20,12 +20,24 @@ fn make_square_expolygon() -> ExPolygon {
     square_polygon(5.0, 5.0, 10.0)
 }
 
+// Post-host-partition fixture: each role's canonical polygon is populated
+// independently of the others. The host's `sync_perimeter_infill_areas_into_slice`
+// already enforces the bridge > bottom > top > sparse precedence and the
+// pairwise-disjoint invariant, so this fixture mirrors what the modules see
+// AFTER that hook runs. `sparse_infill_area` is only populated when neither
+// top/bottom nor bridge applies — matching the post-partition remainder.
 fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegionView {
     let s = square_polygon(5.0, 5.0, 10.0);
+    let sparse = if !is_top && !is_bottom && !is_bridge {
+        vec![s.clone()]
+    } else {
+        Vec::new()
+    };
     SliceRegionViewBuilder::new()
         .object_id("test_object")
         .region_id(0)
         .add_infill_area(s.clone())
+        .sparse_infill_area(sparse)
         .effective_layer_height(0.2)
         .z(1.0)
         .has_nonplanar(false)
@@ -148,16 +160,38 @@ fn bridge_surface_region_emits_bridge_infill_role() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3b: bottom_wins_over_top_on_overlap (OrcaSlicer parity)
+// Test 3b: bottom_wins_over_top_on_overlap (host-enforced precedence)
+//
+// Original (pre-partition refactor) intent: when both top_shell_index and
+// bottom_shell_index = Some(0), BottomSolidInfill should win on overlap to
+// match OrcaSlicer's `detect_surfaces_type`. That precedence is now enforced
+// HOST-SIDE in `sync_perimeter_infill_areas_into_slice` (see
+// `crates/slicer-runtime/src/region_partition.rs` and
+// `crates/slicer-runtime/tests/integration/region_partition_tdd.rs::ac2_*`),
+// so by the time a fixture reaches the module, `top_solid_fill` has already
+// been subtracted by `bottom_solid_fill`. This test reflects that: when the
+// post-host state has bottom populated and top empty, only BottomSolidInfill
+// is emitted — exactly the parity behaviour, just enforced one stage earlier.
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_wins_over_top_on_overlap() {
-    // Single-layer region: both top_shell_index and bottom_shell_index = Some(0).
-    // Per OrcaSlicer's detect_surfaces_type convention, BottomSolidInfill wins on
-    // overlap (see DEVIATION_LOG.md). The pinch_n_print pre-refactor convention
-    // was top-wins; this test pins the new behavior.
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
-    let region = make_test_region(true, true, false);
+    // Post-host-partition state for a layer-0 region (both shell zones touch
+    // it): bottom polygon is populated, top has been subtracted to empty.
+    let s = square_polygon(5.0, 5.0, 10.0);
+    let region = SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(s.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .top_shell_index(Some(0))
+        .bottom_shell_index(Some(0))
+        // top_solid_fill empty post-precedence-dedup; bottom carries the area.
+        .top_solid_fill(Vec::new())
+        .bottom_solid_fill(vec![s])
+        .build();
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -173,12 +207,12 @@ fn bottom_wins_over_top_on_overlap() {
 
     assert!(
         has_path_with_role(&all_paths, ExtrusionRole::BottomSolidInfill),
-        "expected BottomSolidInfill (bottom wins on overlap), got paths: {:?}",
+        "expected BottomSolidInfill (bottom wins on overlap, host-enforced), got paths: {:?}",
         all_paths
     );
     assert!(
         !has_path_with_role(&all_paths, ExtrusionRole::TopSolidInfill),
-        "expected NO TopSolidInfill when both shell indices = Some(0); got paths: {:?}",
+        "expected NO TopSolidInfill after host precedence dedup; got paths: {:?}",
         all_paths
     );
 }

@@ -147,6 +147,7 @@ pub struct SliceRegionViewBuilder {
     is_bridge: bool,
     bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
+    sparse_infill_area: Vec<ExPolygon>,
 }
 
 impl SliceRegionViewBuilder {
@@ -177,6 +178,7 @@ impl SliceRegionViewBuilder {
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
         }
     }
 
@@ -358,6 +360,14 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the host-partitioned sparse-only infill polygon.
+    /// Mirrors [`SliceRegionView::set_sparse_infill_area`].
+    #[must_use]
+    pub fn sparse_infill_area(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.sparse_infill_area = polygons;
+        self
+    }
+
     /// Build a [`SliceRegionView`].
     ///
     /// If no infill areas were explicitly added, polygons are cloned
@@ -385,6 +395,7 @@ impl SliceRegionViewBuilder {
             tmp.set_is_bridge(self.is_bridge);
             tmp.set_bridge_areas(self.bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
+            tmp.set_sparse_infill_area(self.sparse_infill_area);
             tmp
         }
     }

@@ -254,8 +254,7 @@ fn region_map_cap_exceeded_returns_error() {
     let objects = no_objects();
 
     // Cap of 3 is below the 8 entries we have
-    let result =
-        execute_region_mapping_with_cap(&plan, &projection, &configs, &agg, &objects, 3);
+    let result = execute_region_mapping_with_cap(&plan, &projection, &configs, &agg, &objects, 3);
 
     match result {
         Err(RegionMappingError::CapExceeded {
