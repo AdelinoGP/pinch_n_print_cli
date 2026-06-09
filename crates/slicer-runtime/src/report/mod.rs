@@ -22,7 +22,7 @@ pub mod render;
 pub use allocator::{AccountingAllocator, MemStats};
 pub use collector::Collector;
 pub use model::{
-    Bytes, LayerRecord, MemDelta, ModuleRecord, Nanos, ParallelismRecord, Report, SliceMeta,
-    StageRecord,
+    Bytes, LayerRecord, MemDelta, ModuleRecord, Nanos, ParallelismRecord, Report,
+    ReportDagSnapshot, SliceMeta, StageRecord,
 };
 pub use render::render_html;

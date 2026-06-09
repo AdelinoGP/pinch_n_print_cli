@@ -7,6 +7,8 @@
 
 use std::fmt::Write;
 
+use slicer_scheduler::stage_order::stage_order_index;
+
 use crate::instrumentation::{EdgeReason, SerialEdge, TierKind};
 
 use super::model::{ModuleRecord, ParallelismRecord, Report, StageRecord};
@@ -194,6 +196,7 @@ pub fn render_html(r: &Report) -> String {
     render_phase_summary(&mut out, r);
     render_module_summary(&mut out, r);
     render_per_layer_table(&mut out, r);
+    render_pipeline_dag(&mut out, r);
     render_per_stage_breakdown(&mut out, r);
     if r.verbose {
         render_per_layer_per_module_detail(&mut out, r);
@@ -431,6 +434,153 @@ fn render_per_layer_table(out: &mut String, r: &Report) {
     let _ = write!(out, "</tbody></table>");
 }
 
+/// Map the dag_cli tier string (`"prepass"` / `"per_layer"` / `"postpass"`)
+/// to one of the three CSS classes the report already styles
+/// (`tier-prepass` / `tier-perlayer` / `tier-postpass`). Anything else
+/// (the `"unknown"` value `slicer_scheduler::stage_order::tier_of` returns
+/// for stages outside `STAGE_ORDER`) falls back to the neutral `.note`
+/// class so the cell still picks up a defined style rather than rendering
+/// unstyled.
+fn tier_class_str(tier: &str) -> &'static str {
+    match tier {
+        "prepass" => "tier-prepass",
+        "per_layer" => "tier-perlayer",
+        "postpass" => "tier-postpass",
+        _ => "note",
+    }
+}
+
+fn render_pipeline_dag(out: &mut String, r: &Report) {
+    let _ = write!(out, "<h2>Pipeline (DAG)</h2>");
+    let _ = write!(
+        out,
+        "<div class=\"note\">Static module wiring captured at slice start \
+         — stages listed in canonical pipeline order. Empty stages \
+         indicate no module is currently loaded for that phase.</div>"
+    );
+
+    let Some(snap) = r.dag.as_ref() else {
+        let _ = write!(
+            out,
+            "<div class=\"note\">DAG snapshot unavailable for this run.</div>"
+        );
+        return;
+    };
+
+    // Index cross-stage edges by source stage so per-stage rendering is
+    // O(edges) total rather than O(stages × edges).
+    let mut cross_by_from_stage: std::collections::HashMap<
+        &str,
+        Vec<&slicer_scheduler::dag_cli::GlobalEdgeOut>,
+    > = std::collections::HashMap::new();
+    for edge in &snap.cross_stage_edges {
+        cross_by_from_stage
+            .entry(edge.from_stage.as_str())
+            .or_default()
+            .push(edge);
+    }
+
+    let details_attr = if snap.stages.len() > 3 {
+        "details"
+    } else {
+        "details open"
+    };
+
+    for stage in &snap.stages {
+        let intra_count = stage.serial_edges.len();
+        let cross_outgoing = cross_by_from_stage
+            .get(stage.id.as_str())
+            .map(|v| v.len())
+            .unwrap_or(0);
+        let _ = write!(
+            out,
+            "<{details_attr}><summary><b>{}</b> <span class=\"{}\">[{}]</span> · {} module{} · {} intra-edge{} · {} cross-edge{}</summary>",
+            escape_html(&stage.id),
+            tier_class_str(&stage.tier),
+            escape_html(&stage.tier),
+            stage.modules.len(),
+            if stage.modules.len() == 1 { "" } else { "s" },
+            intra_count,
+            if intra_count == 1 { "" } else { "s" },
+            cross_outgoing,
+            if cross_outgoing == 1 { "" } else { "s" }
+        );
+
+        if stage.modules.is_empty() {
+            let _ = write!(
+                out,
+                "<div class=\"note\">(no modules currently loaded for this stage)</div>"
+            );
+        } else {
+            let _ = write!(out, "<table><thead><tr><th>Module</th><th>Claims</th><th>IR reads</th><th>IR writes</th><th>Requires</th></tr></thead><tbody>");
+            for m in &stage.modules {
+                let _ = write!(
+                    out,
+                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    escape_html(&m.id),
+                    escape_html(&m.claims.join(", ")),
+                    escape_html(&m.ir_reads.join(", ")),
+                    escape_html(&m.ir_writes.join(", ")),
+                    escape_html(&m.requires_modules.join(", "))
+                );
+            }
+            let _ = write!(out, "</tbody></table>");
+        }
+
+        if !stage.serial_edges.is_empty() {
+            let _ = write!(out, "<div class=\"note\">Intra-stage edges</div>");
+            for edge in &stage.serial_edges {
+                let _ = write!(
+                    out,
+                    "<div class=\"edge-row\">{} → {} &nbsp;<i>({})</i></div>",
+                    escape_html(&edge.from),
+                    escape_html(&edge.to),
+                    escape_html(&edge.reason)
+                );
+            }
+        }
+
+        if let Some(outs) = cross_by_from_stage.get(stage.id.as_str()) {
+            if !outs.is_empty() {
+                let _ = write!(
+                    out,
+                    "<div class=\"note\">Cross-stage (this stage as source)</div>"
+                );
+                for edge in outs {
+                    let _ = write!(
+                        out,
+                        "<div class=\"edge-row\">{} → {} <i>@ {}</i> &nbsp;<i>({})</i></div>",
+                        escape_html(&edge.from),
+                        escape_html(&edge.to),
+                        escape_html(&edge.to_stage),
+                        escape_html(&edge.reason)
+                    );
+                }
+            }
+        }
+
+        let _ = write!(out, "</details>");
+    }
+
+    if let Some(claims) = snap.claims.as_ref() {
+        if !claims.claims.is_empty() {
+            let _ = write!(out, "<h3>Workspace claims</h3>");
+            let _ = write!(out, "<table><thead><tr><th>Claim</th><th>Holders</th><th>Requesters</th><th>Interchangeable</th></tr></thead><tbody>");
+            for c in &claims.claims {
+                let _ = write!(
+                    out,
+                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    escape_html(&c.id),
+                    escape_html(&c.holders.join(", ")),
+                    escape_html(&c.requesters.join(", ")),
+                    if c.interchangeable { "yes" } else { "no" }
+                );
+            }
+            let _ = write!(out, "</tbody></table>");
+        }
+    }
+}
+
 fn render_per_stage_breakdown(out: &mut String, r: &Report) {
     // Aggregate StageRecord across layers by stage_id.
     let mut by_stage: std::collections::BTreeMap<String, (TierKind, Vec<&StageRecord>)> =
@@ -462,9 +612,28 @@ fn render_per_stage_breakdown(out: &mut String, r: &Report) {
     if by_stage.is_empty() {
         return;
     }
+
+    // Sort rows by canonical pipeline order rather than lexically.
+    // Stages not in STAGE_ORDER (host built-ins running ad-hoc, dev modules)
+    // sink to the end, grouped by tier, then by stage id for determinism.
+    let order_index = stage_order_index();
+    let mut rows: Vec<(String, TierKind, Vec<&StageRecord>)> = by_stage
+        .into_iter()
+        .map(|(id, (tier, calls))| (id, tier, calls))
+        .collect();
+    rows.sort_by_key(|(id, tier, _)| {
+        let stage_idx = order_index.get(id.as_str()).copied().unwrap_or(usize::MAX);
+        let tier_rank: u8 = match tier {
+            TierKind::PrePass => 0,
+            TierKind::PerLayer => 1,
+            TierKind::PostPass => 2,
+        };
+        (stage_idx, tier_rank, id.clone())
+    });
+
     let _ = write!(out, "<h2>Per-Stage Aggregate</h2>");
     let _ = write!(out, "<table><thead><tr><th>Stage</th><th>Tier</th><th>Calls</th><th>Total (ms)</th><th>Mean (ms)</th><th>Peak host</th></tr></thead><tbody>");
-    for (id, (tier, calls)) in by_stage {
+    for (id, tier, calls) in rows {
         let total_ns: u64 = calls.iter().map(|s| s.duration_ns()).sum();
         let mean_ns = if calls.is_empty() {
             0

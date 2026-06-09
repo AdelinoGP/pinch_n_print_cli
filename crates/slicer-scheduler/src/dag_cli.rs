@@ -293,6 +293,19 @@ pub fn run_dag_depends(
     })
 }
 
+/// All cross-stage edges in the global DAG, in `GlobalEdgeOut` form.
+///
+/// Convenience wrapper around [`build_global_dag`] for callers that want the
+/// flattened, JSON-shaped projection without iterating per-module via
+/// [`run_dag_depends`]. Used by the HTML slicer report to render the
+/// "cross-stage" rows inside each stage's collapsible block.
+pub fn run_dag_global_edges(producers: &[&dyn Producer]) -> Vec<GlobalEdgeOut> {
+    build_global_dag(producers)
+        .iter()
+        .map(edge_to_global_out)
+        .collect()
+}
+
 /// `dag claims` — every claim with its holders and requesters.
 pub fn run_dag_claims(producers: &[&dyn Producer]) -> ClaimsOut {
     let mut holders: BTreeMap<String, Vec<String>> = BTreeMap::new();

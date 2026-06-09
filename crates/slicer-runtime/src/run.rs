@@ -119,6 +119,38 @@ fn num_cpus_guess() -> usize {
         .unwrap_or(1)
 }
 
+/// Build the static-DAG snapshot that the HTML report renders in its
+/// "Pipeline (DAG)" section. One `StageOut` per stage in canonical
+/// `STAGE_ORDER` — empty stages are kept with `modules: []` so the
+/// section mirrors the pipeline shape rather than only the populated
+/// subset.
+#[cfg(feature = "report")]
+fn build_report_dag_snapshot(producers: &[&dyn Producer]) -> crate::report::ReportDagSnapshot {
+    use slicer_scheduler::dag_cli::{
+        run_dag_claims, run_dag_global_edges, run_dag_stage, StageOut,
+    };
+    use slicer_scheduler::execution_plan::STAGE_ORDER;
+    use slicer_scheduler::stage_order::tier_of;
+
+    let stages: Vec<StageOut> = STAGE_ORDER
+        .iter()
+        .map(|stage_id| {
+            run_dag_stage(producers, &(*stage_id).to_string()).unwrap_or_else(|| StageOut {
+                id: (*stage_id).to_string(),
+                tier: tier_of(stage_id).to_string(),
+                modules: Vec::new(),
+                serial_edges: Vec::new(),
+            })
+        })
+        .collect();
+
+    crate::report::ReportDagSnapshot {
+        stages,
+        cross_stage_edges: run_dag_global_edges(producers),
+        claims: Some(run_dag_claims(producers)),
+    }
+}
+
 /// Select the pipeline execution path based on report and progress options.
 ///
 /// This is the 4-way instrumentation fork originally in `main.rs`, now a
@@ -127,6 +159,7 @@ fn run_pipeline_fork(
     opts: &SliceRunOptions,
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
+    #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let emitter_arc: Arc<dyn ProgressEventEmitter> =
         Arc::new(JsonLinesEmitter::new(std::io::stderr()));
@@ -167,6 +200,9 @@ fn run_pipeline_fork(
                 opts.model_label.clone(),
                 opts.report_verbose,
             ));
+            if let Some(snap) = dag_snapshot {
+                report_collector.set_dag_snapshot(snap);
+            }
             let r = if let Some(progress_pi) = maybe_progress_pi {
                 let composite = CompositeInstrumentation::new(
                     progress_pi as &dyn crate::instrumentation::PipelineInstrumentation,
@@ -278,12 +314,24 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         );
     }
 
+    // Static-DAG snapshot for the HTML report's "Pipeline (DAG)" section.
+    // Captured here so it can borrow the same `dag_producers` slice the
+    // validator builds below; the snapshot itself stores owned strings so
+    // it can outlive that borrow.
+    #[cfg(feature = "report")]
+    let mut dag_snapshot: Option<crate::report::ReportDagSnapshot> = None;
+
     // 13-pass startup DAG validation.
     {
         use slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION;
 
         let mut dag_producers: Vec<&dyn Producer> = crate::runtime_builtins();
         dag_producers.extend(loaded.bindings.iter().map(|b| &b.module as &dyn Producer));
+
+        #[cfg(feature = "report")]
+        if opts.report.is_some() {
+            dag_snapshot = Some(build_report_dag_snapshot(&dag_producers));
+        }
 
         let mut stage_dags: Vec<StageDag> = Vec::with_capacity(loaded.sorted_stages.len());
         for stage_entry in &loaded.sorted_stages {
@@ -434,7 +482,13 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     };
 
     // Run the pipeline through the 4-way instrumentation fork.
-    let pipeline_output = run_pipeline_fork(&opts, pipeline_config, &config_source)?;
+    let pipeline_output = run_pipeline_fork(
+        &opts,
+        pipeline_config,
+        &config_source,
+        #[cfg(feature = "report")]
+        dag_snapshot,
+    )?;
 
     let wallclock_ms = t0.elapsed().as_millis() as u64;
 

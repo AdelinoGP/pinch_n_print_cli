@@ -9,6 +9,21 @@
 use pnp_cli::io::{write_with_parents, OutputFormat};
 use pnp_cli::module_new;
 
+// Install the host-allocation accounting wrapper as the process global
+// allocator so `--report` can attribute per-bracket bytes. The wrapper's fast
+// path when accounting is disabled is a single relaxed atomic load per call;
+// `report_alloc::enable()` flips it on for the duration of a `--report` run.
+// Gated by the `report` feature so `--no-default-features` builds don't pull
+// the symbol in.
+//
+// See docs/16_slicer_report.md §"Global allocator contract" for the binary
+// installation contract and the downstream-packager rule for wrapping
+// jemalloc/mimalloc.
+#[cfg(feature = "report")]
+#[global_allocator]
+static ALLOC: slicer_runtime::report::AccountingAllocator<std::alloc::System> =
+    slicer_runtime::report::AccountingAllocator::new(std::alloc::System);
+
 mod helpers_cmd;
 
 use std::path::PathBuf;

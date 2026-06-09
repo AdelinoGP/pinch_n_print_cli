@@ -156,6 +156,28 @@ pub struct SliceMeta {
     pub started_at: String,
 }
 
+/// Static-DAG snapshot captured once at slice start. Surfaced in the report's
+/// "Pipeline (DAG)" section so a reader can see *what wired up to what*
+/// independent of which stages happened to fire.
+///
+/// The shapes here are the same ones `pnp_cli dag <subcommand>` already
+/// returns to its JSON consumers — see `slicer_scheduler::dag_cli`. We hold
+/// them by-value rather than re-defining parallel types so the HTML report
+/// and the CLI never drift in what they show.
+#[derive(Debug, Clone, Default)]
+pub struct ReportDagSnapshot {
+    /// One entry per stage in canonical pipeline order. Empty stages
+    /// (no modules) are kept so the section mirrors `STAGE_ORDER`.
+    pub stages: Vec<slicer_scheduler::dag_cli::StageOut>,
+    /// Cross-stage edges (upstream stage → downstream stage), keyed off the
+    /// upstream module. Pre-computed once so render.rs doesn't have to walk
+    /// the full edge list per stage.
+    pub cross_stage_edges: Vec<slicer_scheduler::dag_cli::GlobalEdgeOut>,
+    /// Workspace-wide claim roll-up (holders, requesters, interchangeable
+    /// flag) — same data as `pnp_cli dag claims`.
+    pub claims: Option<slicer_scheduler::dag_cli::ClaimsOut>,
+}
+
 /// Top-level report. Rendered by `render::render_html`.
 #[derive(Debug, Clone, Default)]
 pub struct Report {
@@ -169,6 +191,9 @@ pub struct Report {
     pub postpass: Vec<StageRecord>,
     /// Parallelism observation.
     pub parallelism: ParallelismRecord,
+    /// Static DAG topology captured at slice start. `None` when capture
+    /// failed (renders an italic placeholder rather than failing the run).
+    pub dag: Option<ReportDagSnapshot>,
     /// When `true`, the render includes a per-layer-per-module detail table
     /// (one row per module call). Off by default to keep the HTML compact —
     /// a 1000-layer slice can easily reach 10⁴ module rows.

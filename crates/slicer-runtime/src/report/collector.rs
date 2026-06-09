@@ -18,8 +18,8 @@ use crate::instrumentation::{Phase, PipelineInstrumentation, SerialEdge, TierKin
 
 use super::allocator;
 use super::model::{
-    LayerRecord, MemDelta, ModuleRecord, ParallelismRecord, PhaseWallTimes, Report, SliceMeta,
-    StageRecord,
+    LayerRecord, MemDelta, ModuleRecord, ParallelismRecord, PhaseWallTimes, Report,
+    ReportDagSnapshot, SliceMeta, StageRecord,
 };
 use super::render::render_html;
 
@@ -76,6 +76,11 @@ pub struct Collector {
     /// `on_module_end`. Uses `fetch_add` so concurrent rayon workers can't
     /// silently undercount the way a load-then-set-max RMW would.
     module_count: AtomicCounter,
+    /// Static DAG topology captured at slice start, before
+    /// `run_pipeline_with_instrumentation` begins. `None` until
+    /// [`Collector::set_dag_snapshot`] is called; rendered as an italic
+    /// placeholder when missing rather than failing the run.
+    dag_snapshot: Mutex<Option<ReportDagSnapshot>>,
 }
 
 /// Idempotent peak: only stores `v` if greater than current. Safe to race.
@@ -145,6 +150,16 @@ impl Collector {
             phase_start_ns: Mutex::new(None),
             layer_count: PeakCounter::new(),
             module_count: AtomicCounter::new(),
+            dag_snapshot: Mutex::new(None),
+        }
+    }
+
+    /// Provide the static DAG snapshot to render in the "Pipeline (DAG)"
+    /// section. Should be called once before `run_pipeline_with_instrumentation`
+    /// begins; the runtime invokes this from `run.rs` after module loading.
+    pub fn set_dag_snapshot(&self, snapshot: ReportDagSnapshot) {
+        if let Ok(mut slot) = self.dag_snapshot.lock() {
+            *slot = Some(snapshot);
         }
     }
 
@@ -234,12 +249,15 @@ impl Collector {
             started_at: self.started_at.clone(),
         };
 
+        let dag = self.dag_snapshot.lock().ok().and_then(|mut s| s.take());
+
         Report {
             slice_meta,
             prepass,
             layers: layers_sorted,
             postpass,
             parallelism,
+            dag,
             verbose: self.verbose,
         }
     }

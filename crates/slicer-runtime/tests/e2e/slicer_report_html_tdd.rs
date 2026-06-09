@@ -10,7 +10,7 @@ use serde_json::Value;
 use slicer_runtime::instrumentation::{
     EdgeReason, Phase, PipelineInstrumentation, SerialEdge, TierKind,
 };
-use slicer_runtime::report::Collector;
+use slicer_runtime::report::{Collector, ReportDagSnapshot};
 
 /// Helper: extract the JSON block between <script type="application/json"
 /// id="slicer-report-data"> and </script>, parse it, and return the Value.
@@ -394,4 +394,159 @@ fn busy_work() {
 
 fn busy_work_long() {
     thread::sleep(std::time::Duration::from_millis(1));
+}
+
+/// Regression: the Per-Stage Aggregate must render rows in canonical
+/// `STAGE_ORDER` (PrePass → Layer → PostPass), not lexically. Pre-fix this
+/// section iterated a `BTreeMap<String, _>` so `Layer::Infill` rendered
+/// before `Layer::Perimeters` — visually wrong because Perimeters runs first.
+#[test]
+fn per_stage_aggregate_renders_in_canonical_pipeline_order() {
+    let c = Collector::new("ordering.stl");
+
+    // Feed stages in REVERSE canonical order to prove the sort is not just
+    // "preserve insertion order".
+    let stages = [
+        ("PostPass::GCodeEmit", Phase::PostPass, TierKind::PostPass),
+        ("Layer::Infill", Phase::PerLayer, TierKind::PerLayer),
+        ("Layer::Perimeters", Phase::PerLayer, TierKind::PerLayer),
+        (
+            "PrePass::MeshAnalysis",
+            Phase::PrePass,
+            TierKind::PrePass,
+        ),
+    ];
+    for (stage_id, phase, _tier) in stages {
+        c.on_phase_start(phase);
+        if matches!(phase, Phase::PerLayer) {
+            c.on_layer_start(0, 0.2);
+            c.on_stage_start(&stage_id.to_string(), Some(0));
+            c.on_stage_end(&stage_id.to_string(), Some(0));
+            c.on_layer_end(0);
+        } else {
+            c.on_stage_start(&stage_id.to_string(), None);
+            c.on_stage_end(&stage_id.to_string(), None);
+        }
+        c.on_phase_end(phase);
+    }
+
+    let html = c.finish_and_render_to_string();
+
+    // Find the Per-Stage Aggregate section.
+    let section_start = html
+        .find("<h2>Per-Stage Aggregate</h2>")
+        .expect("Per-Stage Aggregate section missing");
+    let section = &html[section_start..];
+
+    // Each expected stage id must appear in canonical order. Locate by
+    // byte offset within the section and assert strict increasing order.
+    let canonical = [
+        "PrePass::MeshAnalysis",
+        "Layer::Perimeters",
+        "Layer::Infill",
+        "PostPass::GCodeEmit",
+    ];
+    let positions: Vec<usize> = canonical
+        .iter()
+        .map(|id| {
+            section
+                .find(id)
+                .unwrap_or_else(|| panic!("stage {id} not found in Per-Stage Aggregate"))
+        })
+        .collect();
+    for pair in positions.windows(2) {
+        assert!(
+            pair[0] < pair[1],
+            "Per-Stage Aggregate rows not in canonical order: positions {:?} for {:?}",
+            positions,
+            canonical
+        );
+    }
+}
+
+/// Regression: when a `ReportDagSnapshot` is set on the collector, the
+/// rendered HTML must contain a "Pipeline (DAG)" section, and that section
+/// must appear before the "Per-Stage Aggregate" table.
+#[test]
+fn pipeline_dag_section_is_rendered_before_per_stage_aggregate() {
+    use slicer_scheduler::dag_cli::{ModuleOut, StageEdgeOut, StageOut};
+
+    let c = Collector::new("dag.stl");
+
+    // Minimal synthetic snapshot with one stage and one module.
+    let snap = ReportDagSnapshot {
+        stages: vec![StageOut {
+            id: "Layer::Perimeters".to_string(),
+            tier: "per_layer".to_string(),
+            modules: vec![ModuleOut {
+                id: "com.example.classic-perimeters".to_string(),
+                claims: vec!["perimeter-generator".to_string()],
+                ir_reads: vec!["SliceIR.contours".to_string()],
+                ir_writes: vec!["PerimeterIR.regions.walls".to_string()],
+                requires_modules: vec![],
+                config_keys: vec![],
+            }],
+            serial_edges: vec![StageEdgeOut {
+                from: "com.example.a".to_string(),
+                to: "com.example.b".to_string(),
+                reason: "ir_write_read: PerimeterIR.regions.walls".to_string(),
+            }],
+        }],
+        cross_stage_edges: vec![],
+        claims: None,
+    };
+    c.set_dag_snapshot(snap);
+
+    // Drive at least one stage so the aggregate section is non-empty.
+    c.on_phase_start(Phase::PerLayer);
+    c.on_layer_start(0, 0.2);
+    c.on_stage_start(&"Layer::Perimeters".to_string(), Some(0));
+    c.on_stage_end(&"Layer::Perimeters".to_string(), Some(0));
+    c.on_layer_end(0);
+    c.on_phase_end(Phase::PerLayer);
+
+    let html = c.finish_and_render_to_string();
+
+    let dag_pos = html
+        .find("<h2>Pipeline (DAG)</h2>")
+        .expect("Pipeline (DAG) section missing when snapshot is set");
+    let agg_pos = html
+        .find("<h2>Per-Stage Aggregate</h2>")
+        .expect("Per-Stage Aggregate section missing");
+    assert!(
+        dag_pos < agg_pos,
+        "Pipeline (DAG) must render before Per-Stage Aggregate; got dag={dag_pos} agg={agg_pos}"
+    );
+
+    // Snapshot content must be visible in the rendered section.
+    let dag_section = &html[dag_pos..agg_pos];
+    assert!(
+        dag_section.contains("com.example.classic-perimeters"),
+        "module id from snapshot not rendered in DAG section"
+    );
+    assert!(
+        dag_section.contains("PerimeterIR.regions.walls"),
+        "intra-stage edge reason from snapshot not rendered"
+    );
+    // No claims roll-up was supplied — Workspace claims subheading must be absent.
+    assert!(
+        !dag_section.contains("<h3>Workspace claims</h3>"),
+        "Workspace claims subheading must not render when claims=None"
+    );
+}
+
+/// Regression: when no snapshot is set, the section still renders with an
+/// italic placeholder rather than failing the run or being silently absent.
+#[test]
+fn pipeline_dag_section_renders_placeholder_when_snapshot_absent() {
+    let c = Collector::new("no-dag.stl");
+    let html = c.finish_and_render_to_string();
+    let dag_pos = html
+        .find("<h2>Pipeline (DAG)</h2>")
+        .expect("Pipeline (DAG) heading must always render");
+    let after = &html[dag_pos..];
+    assert!(
+        after.contains("DAG snapshot unavailable"),
+        "placeholder text missing when no snapshot was set"
+    );
 }
