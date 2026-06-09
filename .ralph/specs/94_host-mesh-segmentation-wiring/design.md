@@ -20,25 +20,26 @@
 
 - Selected approach: land each piece in dependency order — Blackboard method (consumed by driver), producer constant (consumed by registry), prepass driver (consumes both), error variant, required_slots entry, integration tests.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - **`crates/slicer-runtime/src/blackboard.rs`** (additive):
+  - **`crates/slicer-runtime/src/blackboard.rs`** (additive). Field shape is verified: `Blackboard::mesh_ir: Arc<MeshIR>` (non-`Option`). The body mirrors `replace_slice_ir:276-290` exactly, except its assertions target the mesh-swap precondition rather than the slice-IR-swap precondition:
     ```rust
-    impl Blackboard {
-        pub fn replace_mesh(&mut self, new_mesh: Arc<MeshIR>) -> Result<(), BlackboardError> {
-            debug_assert!(self.slice_ir.is_none(), "Tier 2 output committed before mesh swap");
-            debug_assert!(self.layer_plan.is_none(), "Tier 2 output committed before mesh swap");
-            debug_assert!(self.region_map.is_none(), "Tier 2 output committed before mesh swap");
-            if self.mesh.is_none() {
-                return Err(BlackboardError::MissingRequiredPrepass {
-                    stage: "host:mesh".to_string(),
-                    reason: "mesh slot was never committed; cannot replace".to_string(),
-                });
-            }
-            self.mesh = Some(new_mesh);
-            Ok(())
-        }
+    /// Replace the mesh IR. Symmetric with `replace_slice_ir`: panics in debug
+    /// builds if any Tier 2 output has landed.
+    pub fn replace_mesh(&mut self, new_mesh: Arc<MeshIR>) -> Result<(), BlackboardError> {
+        debug_assert!(
+            self.slice_ir.is_none(),
+            "replace_mesh called after Tier 2 wrote slice_ir"
+        );
+        debug_assert!(
+            self.layer_outputs
+                .as_ref()
+                .is_some_and(|v| v.iter().all(Option::is_none)),
+            "replace_mesh called after Tier 2 wrote a layer slot"
+        );
+        self.mesh_ir = new_mesh;
+        Ok(())
     }
     ```
-    Doc-comment mirrors `replace_slice_ir`'s.
+    The `Result` return is kept for symmetry; no error path actually fires in this contract (and `BlackboardError` has no `TierViolation` variant — adding one would widen the type and is out of P94 scope). `BlackboardPrepassSlot` has no `MeshIR` variant, so a `MissingRequiredPrepass` guard on the mesh is not expressible and is not needed (the field is non-`Option`).
   - **`crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`** (NEW):
     Mirror `mesh_analysis_producer.rs` exactly except for: `id = "host:mesh_segmentation"`, `stage = "PrePass::MeshSegmentation"`, `ir_writes = &["MeshIR"]`. All other fields identical including the seven `OnceLock::new()` cache slots.
   - **`crates/slicer-runtime/src/builtins/mod.rs`** (one-line addition):
@@ -65,27 +66,33 @@
       (Adjust to whatever the existing `run_builtin_stage` signature actually is; the helper exists per the roadmap reference.)
     - Add `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError }` to the existing error enum. Add `#[from]` if the enum uses `thiserror`'s `#[error]`/`#[from]` pattern.
     - Add `"PrePass::MeshSegmentation" => &[]` to the `required_slots(StageId)` table at lines 680-708.
+  - **`modules/core-modules/mesh-segmentation/mesh-segmentation.toml`** (one-line minimal edit; AC-3.5): disable the manifest's `stage = "PrePass::MeshSegmentation"` claim so the DAG validator sees only the new host built-in as producer for that stage. Mechanism is implementer's choice (comment out the line, rename the manifest to `.disabled`, or use the loader's documented "disabled" pathway). The directory remains in place — P5a (97) still owns its full deletion. This edit triggers a guest rebuild before AC-13's `--check` reports clean (per `CLAUDE.md` §"Guest WASM Staleness").
   - **`crates/slicer-runtime/tests/executor/mesh_segmentation_short_circuit_no_strokes_tdd.rs`** (NEW) — loads `regression_wedge.stl`, runs prepass, asserts no `replace_mesh` invocation.
   - **`crates/slicer-runtime/tests/executor/cube_4color_mesh_segmentation_strokes_consumed_tdd.rs`** (NEW) — loads `cube_4color.3mf`, runs prepass, asserts `strokes.is_empty()` and a deterministic post-normalization facet count.
   - **`crates/slicer-runtime/tests/executor/cube_fuzzyPainted_mesh_segmentation_strokes_consumed_tdd.rs`** (NEW) — same shape for the fuzzy_skin fixture.
   - **`crates/slicer-runtime/tests/executor/mesh_segmentation_determinism_tdd.rs`** (NEW) — runs prepass twice on the same painted mesh, byte-compares the normalized `MeshIR`.
-  - **`crates/slicer-runtime/tests/contract/blackboard_replace_mesh_tdd.rs`** (NEW) — unit tests for `replace_mesh` happy-path + reject-after-Tier-2.
+  - **`crates/slicer-runtime/tests/contract/blackboard_replace_mesh_tdd.rs`** (NEW) — unit tests: happy-path (AC-1) and `#[should_panic(expected = "replace_mesh called after Tier 2")]` for the Tier-2-violation guard (AC-N1).
+  - **`crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs`** (NEW; AC-10) — (a) constructs `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError::<some-real-variant>(...) }` directly; (b) exercises a `fn() -> Result<(), PrepassExecutionError>` that invokes a function returning `MeshSegmentationError` via `?`. The test passes by compiling; runtime assertions are minimal.
 - Rejected alternatives that were considered and why they were not chosen:
   - **Run mesh-segmentation as part of mesh-commit** (in the constructor): violates the "stages are explicit" design; mesh-segmentation would be hidden and its short-circuit observability invisible to the instrumentation harness.
-  - **Use `commit_mesh` instead of `replace_mesh`**: `commit_mesh` is the initial-commit path (creates Tier 1 slot); `replace_mesh` is the post-init swap path. Re-using `commit_mesh` would conflate them. Mirror `replace_slice_ir`/`commit_slice_ir` distinction.
-  - **Make the WASM mesh-segmentation core-module a no-op fallback**: rejected — the WASM path is dead in this packet's wake (no module declares the new stage name). P5a's deletion is cleaner.
+  - **Use `commit_mesh` instead of `replace_mesh`**: `commit_mesh` is the initial-commit path; `replace_mesh` is the post-init swap path. Re-using `commit_mesh` would conflate them. Mirror `replace_slice_ir`/`commit_slice_ir` distinction.
+  - **Add a DAG-validator precedence rule** (host-builtins beat WASM modules on the same stage): out of P94's wiring-only scope; the manifest-disable in AC-3.5 is a one-line surgical edit with the same observable effect and no validator-semantics churn.
   - **Skip the short-circuit guard** and always call `execute_mesh_segmentation`: the kernel is a no-op on unpainted meshes (returns the input mesh unchanged per AC-N2), so technically calling it is harmless. But the `Arc` clone has a cost and the kernel iterates objects looking for strokes anyway — guarding once at the driver is cheaper.
+  - **Defer the WASM-manifest stage-claim to P5a** (i.e., do not include AC-3.5 in P94): rejected. The verified fact that `modules/core-modules/mesh-segmentation/mesh-segmentation.toml` *currently* declares `stage = "PrePass::MeshSegmentation"` means without this packet's edit, AC-4 cannot pass (the DAG validator sees two producers for the same stage). The one-line manifest edit is the minimum needed to unblock the rest of P94.
 
 ## Files in Scope (read + edit)
 
-- `crates/slicer-runtime/src/blackboard.rs` — role: add `replace_mesh`; expected change: ~25 LOC.
+- `crates/slicer-runtime/src/blackboard.rs` — role: add `replace_mesh`; expected change: ~20 LOC.
 - `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` (NEW) — role: producer constant; expected change: ~35 LOC mirroring mesh_analysis_producer.rs.
 - `crates/slicer-runtime/src/builtins/mod.rs` — role: module declaration; expected change: one line.
-- `crates/slicer-runtime/src/prepass.rs` — role: driver insertion + error + table; expected change: ~25 LOC of code + 1 helper fn + 1 error variant + 1 table entry.
+- `crates/slicer-runtime/src/prepass.rs` — role: driver insertion + error variant + table entry + `has_subfacet_strokes` helper; expected change: ~25 LOC.
+- `modules/core-modules/mesh-segmentation/mesh-segmentation.toml` — role: disable the `stage = "PrePass::MeshSegmentation"` claim (AC-3.5); expected change: one line (comment-out or equivalent disable mechanism).
 - `crates/slicer-runtime/tests/executor/*.rs` (4 new files) — role: integration tests; expected change: 4 new files (each ~80 LOC).
 - `crates/slicer-runtime/tests/contract/blackboard_replace_mesh_tdd.rs` (NEW) — role: Blackboard contract test; expected change: 1 new file (~60 LOC).
+- `crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs` (NEW; AC-10) — role: variant construction + `?`-propagation; expected change: 1 new file (~40 LOC).
+- `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` — role: capture `P93_BASELINE_SHA` (Step 0), `P94_PRE_PAINTED_CUBE_SHA` (Step 0), `P94_POST_PAINTED_CUBE_SHA` (Step 7), and one-paragraph normalization rationale; created in Step 0 if absent.
 
-All edits ≤ 3 per step in the implementation plan.
+All edits ≤ 3 files per implementation-plan step.
 
 ## Read-Only Context
 
@@ -101,7 +108,7 @@ All edits ≤ 3 per step in the implementation plan.
 - `target/`, `Cargo.lock`, generated code — never load.
 - Binary 3MF / STL fixtures — never `Read`.
 - `crates/slicer-core/src/algos/mesh_segmentation.rs` lines 50-onwards (the kernel body) — read-only; not edited.
-- `modules/core-modules/mesh-segmentation/**` — P5a's deletion target; not edited here.
+- `modules/core-modules/mesh-segmentation/**` EXCEPT `mesh-segmentation.toml` — P5a's deletion target; only the single manifest's stage-claim line is edited here for AC-3.5.
 - `crates/slicer-wasm-host/**` — not in scope.
 - `crates/slicer-runtime/src/dispatch.rs` — not in scope.
 
@@ -126,15 +133,16 @@ All edits ≤ 3 per step in the implementation plan.
 ## Locked Assumptions and Invariants
 
 - **`PrePass::MeshSegmentation` runs FIRST**: reversing would corrupt mesh-analysis output. Sealed by the empty `required_slots` entry + DAG validator.
-- **Short-circuit on unpainted meshes**: zero overhead vs pre-packet for the unpainted case (AC-11 byte-identical g-code is the gate).
+- **Short-circuit on unpainted meshes**: zero overhead vs pre-packet for the unpainted case (AC-11 baseline-compare against `P93_BASELINE_SHA` is the gate).
 - **Kernel is dead code → kernel is live code**: the post-packet workspace must contain at least one reference to `execute_mesh_segmentation` from `crates/slicer-runtime/src/`. AC-N3 asserts this.
-- **`replace_mesh` is a Tier-1-only operation**: AC-N1 enforces.
+- **`replace_mesh` is a Tier-1-only operation, enforced by `debug_assert!` only.** Release-mode behavior on Tier-2 violation is undefined; this matches `replace_slice_ir`'s established contract. Adding a runtime `BlackboardError::TierViolation` variant is explicitly out of scope.
+- **Host built-in is the sole producer for `PrePass::MeshSegmentation`** after P94. The WASM manifest's stage claim is disabled (AC-3.5). P5a (97) removes the directory entirely; until then, the `modules/core-modules/mesh-segmentation/` source tree exists but produces no stage.
 
 ## Risks and Tradeoffs
 
 - **Risk: a downstream stage's behavior changes because it now sees normalized facet_values instead of un-normalized strokes.** Mitigation: AC-6/AC-7 confirm strokes are consumed correctly; AC-11 confirms unpainted behavior unchanged; AC-12 captures the painted SHA for traceability. The diff is expected and correct.
 - **Risk: `replace_slice_ir`'s tier-guard pattern was a one-off, not a recipe**, and replicating it for `replace_mesh` introduces a subtly wrong guard. Mitigation: the implementer reads `replace_slice_ir` first (Step 1 dispatch) and mirrors its shape exactly.
-- **Risk: a test guest somewhere still declares `PrePass::MeshSegmentation` as a guest-output stage** (P5a's territory). If found before P5a lands, the DAG validator may complain about two producers claiming the stage. Mitigation: a Step 4 dispatch greps the workspace for `PrePass::MeshSegmentation`; if any non-host source declares it, escalate before completion.
+- **Risk: a test guest somewhere ELSE still declares `PrePass::MeshSegmentation` as a guest-output stage.** The known offender — `modules/core-modules/mesh-segmentation/mesh-segmentation.toml` — is handled by AC-3.5. But the workspace may contain additional declarations (e.g., under `crates/slicer-runtime/test-guests/`, fixtures, or harness manifests). Mitigation: in Step 3.5, dispatch `rg -nE '^stage\s*=\s*"PrePass::MeshSegmentation"' modules/ crates/slicer-runtime/test-guests/ | rg -v 'mesh-segmentation\.toml'`. If any non-host source declares it, treat as an activation-blocking finding (open a new packet or widen the AC-3.5 disable mechanism to cover those files).
 - **Tradeoff: `has_subfacet_strokes` is a free helper, not a kernel method.** Adding it to the kernel would couple kernel I/O knowledge to the driver; keeping it driver-side preserves layer separation.
 
 ## Context Cost Estimate
@@ -145,6 +153,6 @@ All edits ≤ 3 per step in the implementation plan.
 
 ## Open Questions
 
-- `[FWD]` — Is there an existing `has_subfacet_strokes` helper somewhere? If so, reuse; if not, add as a private helper in `prepass.rs`. Step 2 dispatch confirms.
-- `[FWD]` — What is the exact name and signature of `run_builtin_stage`? The roadmap uses the name but the actual fn may be `run_host_builtin` or similar. Step 1 SNIPPETS dispatch confirms.
-- `[BLOCK]` — None.
+- `[FWD]` — `has_subfacet_strokes` helper: verified. A **private** function `mesh_has_subfacet_strokes(mesh_ir: &MeshIR) -> bool` exists at `crates/slicer-core/src/algos/mesh_segmentation.rs:57`. Since P94's scope forbids edits to the kernel file, the implementer adds an equivalent driver-local helper `has_subfacet_strokes(mesh: &MeshIR) -> bool` in `prepass.rs` per the body shown in §Code Change Surface. Promoting the kernel's helper to `pub` is rejected here (touches the read-only kernel file); the driver-local duplicate is ~5 lines and stays in `slicer-runtime` per the layer-separation invariant in §Locked Assumptions.
+- `[FWD]` — `run_builtin_stage` signature is verified (it's the existing private helper at `prepass.rs:627-633`: `fn run_builtin_stage(blackboard: &mut Blackboard, instrumentation: &(dyn PipelineInstrumentation + Sync), stage_id: &'static str, module_id: &'static str, should_run: impl FnOnce(&Blackboard) -> bool, execute: impl FnOnce(&mut Blackboard) -> Result<(), PrepassExecutionError>) -> Result<(), PrepassExecutionError>`). The pseudo-code in §Code Change Surface already matches this shape; no rediscovery needed.
+- `[BLOCK]` — None. The stage-ownership conflict that would have been a blocker is owned by AC-3.5.

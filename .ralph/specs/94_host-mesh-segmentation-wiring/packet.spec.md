@@ -10,11 +10,11 @@ context_cost_estimate: M
 
 ## Goal
 
-Wire the already-implemented `execute_mesh_segmentation` kernel at `crates/slicer-core/src/algos/mesh_segmentation.rs:39-109` (which correctly normalizes sub-facet strokes from `paint_data.layers[*].strokes` into whole-triangle `facet_values` splits but is presently dead code — never invoked) into the prepass driver as a new built-in `PrePass::MeshSegmentation` stage that runs FIRST in the prepass sequence (before `host:mesh_analysis`), reading `MeshIR` from the Blackboard and writing back a normalized `MeshIR` via a new `Blackboard::replace_mesh` (sibling of `replace_slice_ir` at `blackboard.rs:276-290`); add the `MESH_SEGMENTATION_PRODUCER: BuiltinProducer` constant in a new sibling file `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` (mirroring the existing `mesh_analysis_producer.rs` shape), with `id: "host:mesh_segmentation"`, `stage: "PrePass::MeshSegmentation"`, `ir_writes: &["MeshIR"]`, `ir_reads: &[]`, and the standard `SemVer { major: 1, minor: 0, patch: 0 }` to `{ major: 4, minor: 0, patch: 0 }` admission; register the producer in `crates/slicer-runtime/src/builtins/mod.rs`; insert the stage invocation at `crates/slicer-runtime/src/prepass.rs:374` with a `has_subfacet_strokes(mesh)` short-circuit guard so unpainted meshes pay zero overhead; add a `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError }` variant; extend the `required_slots(StageId)` table at `prepass.rs:680-708` with `"PrePass::MeshSegmentation" => &[]`; ensure integration tests confirm sub-facet hex strokes parsed from `cube_4color.3mf` are normalized into `facet_values` before any downstream stage observes the mesh, that the existing `cube_fuzzyPainted.3mf` paint patterns survive normalization, and that the kernel is a structural no-op on unpainted meshes (assert `replace_mesh` is NOT called).
+Wire the existing `execute_mesh_segmentation` host kernel into the prepass driver as a new `PrePass::MeshSegmentation` stage that runs before `host:mesh_analysis`, short-circuits on unpainted meshes, and normalizes sub-facet hex strokes into `facet_values` before any downstream stage observes the mesh.
 
 ## Scope Boundaries
 
-This packet does NOT touch the kernel itself — `execute_mesh_segmentation` is correct and unit-tested in `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` and stays. The work is pure wiring: new producer constant, new Blackboard method, new prepass driver insertion, new error variant, new integration test. The existing WASM `mesh-segmentation` core-module path remains in place (its deletion is P5a — 97 files of blast radius); during this packet, both paths coexist temporarily, but only the host path runs on `PrePass::MeshSegmentation` because no WASM module declares it for this stage anymore (host built-in claims the stage). Full in/out-of-scope lists in `requirements.md`.
+This packet does NOT touch the mesh-segmentation kernel itself — `execute_mesh_segmentation` is already correct and unit-tested in `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs`. The work is wiring plus one minimal manifest edit: new producer constant, new Blackboard method, new prepass driver insertion, new error variant, new integration tests, plus the smallest-possible disable of the WASM `mesh-segmentation` manifest's `stage = "PrePass::MeshSegmentation"` line so the host built-in is the sole producer for that stage (AC-3.5). The WASM module's directory remains in place; P5a (97) still owns the full deletion. Full in/out-of-scope lists in `requirements.md`.
 
 ## Prerequisites and Blockers
 
@@ -26,11 +26,11 @@ This packet does NOT touch the kernel itself — `execute_mesh_segmentation` is 
 
 ### AC-1 — `Blackboard::replace_mesh` added; mirrors `replace_slice_ir` shape
 
-**Given** the precedent at `crates/slicer-runtime/src/blackboard.rs:276-290`,
+**Given** the precedent at `crates/slicer-runtime/src/blackboard.rs:276-290` and the verified fact that `Blackboard::mesh_ir` is `Arc<MeshIR>` (not `Option<...>`) so the field is always present after construction,
 **When** `Blackboard::replace_mesh(&mut self, new_mesh: Arc<MeshIR>) -> Result<(), BlackboardError>` is added,
-**Then** the method (a) `debug_assert!`s no Tier 2 layer outputs are committed (no `slice_ir`, no `layer_plan`, no `region_map`, no `paint_regions`); (b) returns `Err(BlackboardError::MissingRequiredPrepass { stage: "host:mesh", reason: "mesh slot was never committed" })` if `self.mesh.is_none()` — this is vacuous in production (`mesh` is always committed at construction) but the guard catches reordering bugs; (c) atomically swaps the mesh `Arc`; (d) returns `Ok(())` on success.
+**Then** the method (a) `debug_assert!`s no Tier 2 output has landed: `self.slice_ir.is_none()` AND the `layer_outputs` slice (if initialized) has every slot still `None` — matching the assertion shape in `replace_slice_ir:276-290`; (b) atomically swaps `self.mesh_ir = new_mesh`; (c) returns `Ok(())`. The `Result` return type is kept for symmetry with `replace_slice_ir`; no error path actually fires in the current contract.
 
-| `rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs && cargo test -p slicer-runtime blackboard_replace_mesh 2>&1 | tee target/test-output.log`
+| `rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs && cargo test -p slicer-runtime --test contract blackboard_replace_mesh 2>&1 | tee target/test-output.log`
 
 ### AC-2 — `MESH_SEGMENTATION_PRODUCER` constant exists with correct shape
 
@@ -40,13 +40,21 @@ This packet does NOT touch the kernel itself — `execute_mesh_segmentation` is 
 
 | `rg -q 'pub static MESH_SEGMENTATION_PRODUCER' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs && rg -q 'stage: "PrePass::MeshSegmentation"' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs && rg -q 'id: "host:mesh_segmentation"' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`
 
-### AC-3 — Producer registered in `crates/slicer-runtime/src/builtins/mod.rs`
+### AC-3 — Producer module registered in `crates/slicer-runtime/src/builtins/mod.rs`
 
-**Given** the new producer,
+**Given** the new producer file,
 **When** `crates/slicer-runtime/src/builtins/mod.rs` is inspected,
-**Then** it contains `pub mod mesh_segmentation_producer;` (and re-exports `MESH_SEGMENTATION_PRODUCER` if the module-level convention exports producer constants); the count of `_PRODUCER as &dyn Producer` style entries (if such a registry exists in `lib.rs` or similar) increments by 1 vs the pre-packet baseline.
+**Then** it contains a top-level `pub mod mesh_segmentation_producer;` line on its own — matching the convention of every other producer module in the same file (`gcode_emit_producer`, `mesh_analysis_producer`, `paint_segmentation_producer`, `prepass_slice_producer`, `region_mapping_producer`, `support_geometry_producer`). No `pub use` re-export is required (only `region_mapping_producer` follows that pattern, by exception).
 
-| `rg -q 'pub mod mesh_segmentation_producer' crates/slicer-runtime/src/builtins/mod.rs`
+| `rg -q '^pub mod mesh_segmentation_producer;' crates/slicer-runtime/src/builtins/mod.rs`
+
+### AC-3.5 — WASM `mesh-segmentation` module no longer claims `PrePass::MeshSegmentation`
+
+**Given** the existing WASM core-module manifest at `modules/core-modules/mesh-segmentation/mesh-segmentation.toml`, whose `[stage]` block declares `id = "PrePass::MeshSegmentation"` (verified field shape: the stage owner is a nested `id` key under the `[stage]` section, NOT a top-level `stage = …` line), and which would create a duplicate-producer DAG conflict with the new host built-in,
+**When** P94 applies the smallest possible edit to the manifest (mechanism is implementer's choice — comment out the `id = "PrePass::MeshSegmentation"` line inside `[stage]`, comment out the entire `[stage]` block, rename the manifest to `.disabled`, or use the loader's documented "disabled" pathway) and the guests are rebuilt via `cargo xtask build-guests`,
+**Then** the manifest no longer registers `PrePass::MeshSegmentation` as a producer stage, so only the host built-in claims it. The directory itself remains in place; P5a (97) still owns the full deletion.
+
+| `! rg -q '^id\s*=\s*"PrePass::MeshSegmentation"' modules/core-modules/mesh-segmentation/mesh-segmentation.toml`
 
 ### AC-4 — Prepass driver runs `host:mesh_segmentation` FIRST, before `host:mesh_analysis`
 
@@ -94,33 +102,23 @@ This packet does NOT touch the kernel itself — `execute_mesh_segmentation` is 
 **When** it is inspected,
 **Then** an entry `"PrePass::MeshSegmentation" => &[]` (no required slots — runs first) exists; the table compiles; existing entries are unchanged.
 
-| `rg -q 'PrePass::MeshSegmentation' crates/slicer-runtime/src/prepass.rs && cargo check -p slicer-runtime 2>&1 | tee target/test-output.log`
+| `rg -q '"PrePass::MeshSegmentation"\s*=>\s*&\[\]' crates/slicer-runtime/src/prepass.rs && cargo check -p slicer-runtime --all-targets 2>&1 | tee target/test-output.log`
 
-### AC-10 — `PrepassExecutionError::MeshSegmentation` variant exists
+### AC-10 — `PrepassExecutionError::MeshSegmentation` variant constructs and `?`-propagates
 
 **Given** the new error variant,
-**When** `crates/slicer-runtime/src/` is inspected,
-**Then** `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError }` exists (the `MeshSegmentationError` type is the kernel's error from `crates/slicer-core/src/algos/mesh_segmentation.rs`); a `#[from]` or equivalent allows seamless `?`-propagation in the driver.
+**When** a small unit test in `crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs` (a) constructs `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError::<any-real-variant>(...) }` directly, and (b) exercises a `fn() -> Result<(), PrepassExecutionError>` that invokes a function returning `MeshSegmentationError` with the `?` operator,
+**Then** the test compiles and runs to completion — proving the variant exists with the correct field shape AND that a `#[from]` (or equivalent `From` impl) is wired so the driver's `?`-propagation typechecks. Grep is the wrong tool here because the variant may use a `#[from]`-decorated `MeshSegmentationError` shorthand that bare regex would miss.
 
-| `rg -q 'MeshSegmentation\s*\{\s*source: MeshSegmentationError' crates/slicer-runtime/src/`
+| `cargo test -p slicer-runtime --test contract prepass_execution_error_mesh_segmentation_variant 2>&1 | tee target/test-output.log`
 
 ### AC-11 — Behavior preservation on unpainted meshes (regression_wedge.stl)
 
-**Given** an unpainted mesh,
+**Given** an unpainted mesh and the post-P93 baseline SHA recorded as `P93_BASELINE_SHA=<hex>` in `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` during Step 0,
 **When** `pnp_cli slice` runs end-to-end,
-**Then** g-code is byte-identical to the post-P93 baseline (the stage short-circuits and `replace_mesh` never fires).
+**Then** the produced g-code SHA equals the recorded baseline (the stage short-circuits and `replace_mesh` never fires). The comparison shell command below exits 0 only on match — matching the P92 / P93 / P95 baseline-compare pattern.
 
-| `cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p94-wedge.gcode && sha256sum /tmp/p94-wedge.gcode`
-
-### AC-12 — Behavior change on painted meshes is bounded to the stroke-normalization output
-
-**Given** a painted mesh,
-**When** `pnp_cli slice` runs end-to-end,
-**Then** the g-code may differ from the post-P93 baseline (because downstream stages now see normalized facet_values instead of un-normalized strokes), BUT every difference is explainable by the normalization. The closure log captures: pre-packet SHA, post-packet SHA, and a one-paragraph rationale linking the diff to stroke normalization. (This is documentation, not a machine gate.)
-
-Manual check via closure-log review. The two SHAs are captured automatically by the test below.
-
-| `cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --module-dir modules/core-modules --output /tmp/p94-cube.gcode && sha256sum /tmp/p94-cube.gcode`
+| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p94-wedge.gcode && test "$(sha256sum /tmp/p94-wedge.gcode | awk '{print $1}')" = "$(grep -oE 'P93_BASELINE_SHA=[a-f0-9]+' .ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md | head -1 | cut -d= -f2)"`
 
 ### AC-13 — Guest WASM `--check` clean
 
@@ -132,13 +130,13 @@ Manual check via closure-log review. The two SHAs are captured automatically by 
 
 ## Negative Test Cases
 
-### AC-N1 — `Blackboard::replace_mesh` rejects calls after Tier 2 outputs land
+### AC-N1 — `Blackboard::replace_mesh` panics via `debug_assert!` after Tier 2 outputs land
 
-**Given** a Blackboard in which `slice_ir` has been committed,
-**When** `replace_mesh` is called,
-**Then** `debug_assert!` fires (in debug builds) and/or the method returns `Err(BlackboardError::TierViolation { stage: "host:mesh_segmentation" })` in release builds.
+**Given** a Blackboard in which `slice_ir` has been committed (or a `layer_outputs` slot has been written),
+**When** `replace_mesh` is called in a debug build (the standard test target),
+**Then** the matching `debug_assert!` fires and the call panics with the message documented in `design.md` §"Code Change Surface". This mirrors `replace_slice_ir`'s contract exactly — release-mode behavior is undefined (the assertion compiles out) and is deliberately not gated, because adding a runtime error variant for a tier violation would require widening `BlackboardError` (which today has no `TierViolation` variant) and that widening is out of P94 scope.
 
-| `cargo test -p slicer-runtime blackboard_replace_mesh_after_tier2_rejected 2>&1 | tee target/test-output.log`
+| `cargo test -p slicer-runtime --test contract blackboard_replace_mesh_after_tier2_panics 2>&1 | tee target/test-output.log`
 
 ### AC-N2 — A direct call to `execute_mesh_segmentation` on a mesh with NO strokes returns a no-op result
 
@@ -160,9 +158,8 @@ Manual check via closure-log review. The two SHAs are captured automatically by 
 
 1. `cargo check --workspace --all-targets`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `cargo test -p slicer-core --test algo_mesh_segmentation_tdd 2>&1 | tee target/test-output.log` (kernel still passes)
-4. `cargo test -p slicer-runtime --test executor mesh_segmentation 2>&1 | tee target/test-output.log` (new integration tests pass)
-5. `cargo xtask build-guests --check`
+3. `cargo test -p slicer-runtime --test executor mesh_segmentation 2>&1 | tee target/test-output.log` (new integration tests pass)
+4. `cargo xtask build-guests --check` (AC-13; will require a rebuild after AC-3.5's manifest edit before `--check` reports clean)
 
 Full per-AC matrix lives in `requirements.md`.
 
@@ -180,6 +177,7 @@ A list of specific doc sections that this packet adds or modifies:
 
 - `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` doc-comment naming the stage and explaining the short-circuit — `rg -q 'host:mesh_segmentation' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`.
 - `crates/slicer-runtime/src/blackboard.rs` doc-comment for `replace_mesh` mirroring `replace_slice_ir`'s — `rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs`.
+- `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` — captures (a) `P93_BASELINE_SHA=<hex>` for AC-11's wedge baseline-compare (written in Step 0); (b) `P94_PRE_PAINTED_CUBE_SHA=<hex>` and `P94_POST_PAINTED_CUBE_SHA=<hex>` for the painted `cube_4color.3mf` slice (written in Step 0 and Step 7 respectively) plus a one-paragraph rationale linking the diff to stroke normalization. The painted-cube diff is expected (downstream stages now see normalized `facet_values` instead of un-normalized strokes); the closure-log entry is the documented audit trail, not a machine gate.
 
 `docs/04_host_scheduler.md` PrePass-table update is deferred to packet 99 (P5c — Doc updates).
 
