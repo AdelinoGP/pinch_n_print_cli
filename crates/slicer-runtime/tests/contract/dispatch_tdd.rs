@@ -2316,6 +2316,56 @@ fn make_slice_ir(
     }
 }
 
+/// Same as `make_slice_ir`, but takes explicit `(object_id, region_id)` pairs
+/// so a slice can be staged whose region keys match a `make_perimeter_ir_with_ids`
+/// counterpart. Required for any test that drives `Layer::Perimeters` /
+/// `Layer::PerimetersPostProcess` commits: the host-side region partition
+/// (`crates/slicer-runtime/src/region_partition.rs`) fires unconditionally on
+/// every `set_perimeter` and fatally errors when no SliceIR is staged — that
+/// invariant models PrePass::Slice running first in production.
+fn make_slice_ir_with_ids(layer_index: u32, z: f32, ids: &[(&str, u64)]) -> SliceIR {
+    let regions = ids
+        .iter()
+        .map(|(obj, rid)| SlicedRegion {
+            object_id: (*obj).to_string(),
+            region_id: *rid,
+            polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2 { x: 0, y: 0 },
+                        Point2 { x: 10_000, y: 0 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
+                        Point2 { x: 0, y: 10_000 },
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            infill_areas: Vec::new(),
+            nonplanar_surface: None,
+            effective_layer_height: 0.2,
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
+            top_shell_index: None,
+            bottom_shell_index: None,
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
+            is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
+        })
+        .collect();
+    SliceIR {
+        global_layer_index: layer_index,
+        z,
+        regions,
+        ..Default::default()
+    }
+}
+
 #[test]
 fn real_slice_region_data_visible_through_production_infill_dispatch() {
     // The test guest's run_infill encodes region data into output:
@@ -2759,6 +2809,7 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(1, 0.2, 2, 1)).unwrap();
     arena.set_perimeter(make_perimeter_ir(1, 2, 3, 1)).unwrap();
 
     crate::common::run_layer_and_commit_with_bundle(
@@ -3074,6 +3125,9 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
     let ids = [("alpha", 11u64), ("beta", 22u64), ("gamma", 33u64)];
     let mut arena = LayerArena::new();
     arena
+        .set_slice(make_slice_ir_with_ids(0, 0.2, &ids))
+        .unwrap();
+    arena
         .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 1))
         .unwrap();
 
@@ -3177,6 +3231,9 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
         );
         let mut arena = LayerArena::new();
         arena
+            .set_slice(make_slice_ir_with_ids(0, 0.2, &ids))
+            .unwrap();
+        arena
             .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 0))
             .unwrap();
         crate::common::run_layer_and_commit_with_bundle(
@@ -3214,13 +3271,10 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
         Arc::clone(&component),
     );
     let mut a1 = LayerArena::new();
-    a1.set_perimeter(make_perimeter_ir_with_ids(
-        0,
-        &[("first", 100), ("second", 200)],
-        1,
-        0,
-    ))
-    .unwrap();
+    let ids1 = [("first", 100u64), ("second", 200u64)];
+    a1.set_slice(make_slice_ir_with_ids(0, 0.2, &ids1)).unwrap();
+    a1.set_perimeter(make_perimeter_ir_with_ids(0, &ids1, 1, 0))
+        .unwrap();
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PerimetersPostProcess",
@@ -3237,7 +3291,9 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
         Arc::clone(&component),
     );
     let mut a2 = LayerArena::new();
-    a2.set_perimeter(make_perimeter_ir_with_ids(0, &[("alt", 999)], 1, 0))
+    let ids2 = [("alt", 999u64)];
+    a2.set_slice(make_slice_ir_with_ids(0, 0.2, &ids2)).unwrap();
+    a2.set_perimeter(make_perimeter_ir_with_ids(0, &ids2, 1, 0))
         .unwrap();
     crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
