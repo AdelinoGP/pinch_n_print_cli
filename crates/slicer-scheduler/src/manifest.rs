@@ -798,7 +798,13 @@ fn discover_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, LoadError> {
         })?;
         let path = entry.path();
         if path.extension().and_then(|value| value.to_str()) == Some("toml") {
-            manifests.push(path);
+            // `Cargo.toml` lives beside a module manifest when the module is
+            // also a Cargo crate (e.g. core-modules subdirs). It is not a
+            // module manifest itself; the same guard exists in the
+            // subdirectory branch below.
+            if path.file_name().and_then(|n| n.to_str()) != Some("Cargo.toml") {
+                manifests.push(path);
+            }
         } else if path.is_dir() {
             // Scan one level of subdirectories for module manifests.
             // This supports the core-module layout where each module is a
