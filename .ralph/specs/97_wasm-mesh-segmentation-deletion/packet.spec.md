@@ -10,15 +10,15 @@ context_cost_estimate: M
 
 ## Goal
 
-Delete the entire infrastructure for a "guest WASM module can override mesh-segmentation" path, which the user clarified is a host responsibility (the kernel + wiring landed in P94's `host:mesh_segmentation` built-in): remove the directory `modules/core-modules/mesh-segmentation/` in full; drop the `mesh-segmentation-output` resource + `run-mesh-segmentation` export from `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit:46-54`; drop the resource implementation + `mesh_segmentation_marks` field + accessor at `crates/slicer-wasm-host/src/host.rs:3588-3622, 767, 1042-1043`; drop the harvest + dispatch arm at `crates/slicer-wasm-host/src/dispatch.rs:1700-1727, 818, 1906-1908`; drop the macro arm at `crates/slicer-macros/src/lib.rs:452, 1439-1480` (triggers guest rebuild); drop `Blackboard::commit_mesh_segmentation` + `mesh_segmentation()` accessor at `crates/slicer-runtime/src/blackboard.rs:159-172` (host built-in uses `replace_mesh` from P94 instead); drop dispatcher-output handling + `BlackboardPrepassSlot::MeshSegmentation` at `crates/slicer-runtime/src/prepass.rs:280, 656, 730`; drop `FacetPaintMark`, `MeshSegmentationIR`, schema constant at `crates/slicer-ir/src/slice_ir.rs:1053-1086, 238-…`; drop `PrepassStageOutput::MeshSegmentation` at `crates/slicer-ir/src/stage_io.rs:30-31, 262-…`; delete the contract roundtrip test `crates/slicer-runtime/tests/contract/macro_mesh_segmentation_output_roundtrip_tdd.rs` and the integration geometry test `crates/slicer-runtime/tests/integration/macro_mesh_segmentation_geometry_tdd.rs`; KEEP the kernel unit test `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` (tests P94's host kernel); REWIRE `crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs` to test the host built-in path (no WASM roundtrip); delete the dispatch contract arms at `crates/slicer-runtime/tests/contract/dispatch_tdd.rs:282, 4771-5074, 6187-…`; drop the scaffolder template at `crates/pnp-cli/src/module_new.rs:388, 521, 569, 571, 681` + the scaffolder test at `crates/pnp-cli/tests/module_new_tdd.rs:136`; drop the stage entry from canonical-stages tables at `crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs:43, 233` and `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs:653`; drop the bench entry at `crates/slicer-runtime/benches/wasm_modules.rs:89`; force a guest rebuild (`cargo xtask build-guests` no flag, then `--check`); confirm via final grep that only intended `MeshSegmentation` references survive (the host `BuiltinProducer` from P94, the `host:mesh_segmentation` stage_id, and the kernel function name in slicer-core).
+Delete the entire infrastructure for a "guest WASM module can override mesh-segmentation" path — already dead in the post-P94r world (the host `PrePass::MeshSegmentation` stage and its kernel were retired in P94r per the TASK-250 architectural finding; the loader's `split_triangle_strokes` is the canonical TriangleSelector normalization site). This packet completes the cleanup: remove the directory `modules/core-modules/mesh-segmentation/` in full; drop the `mesh-segmentation-output` resource + `run-mesh-segmentation` export from `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit:46-54`; drop the resource implementation + `mesh_segmentation_marks` field + accessor at `crates/slicer-wasm-host/src/host.rs:3588-3622, 767, 1042-1043`; drop the harvest + dispatch arm at `crates/slicer-wasm-host/src/dispatch.rs:1700-1727, 818, 1906-1908`; drop the macro arm at `crates/slicer-macros/src/lib.rs:452, 1439-1480` (triggers guest rebuild); drop `Blackboard::commit_mesh_segmentation` + `mesh_segmentation()` accessor at `crates/slicer-runtime/src/blackboard.rs:159-172` (no consumer remains — P94r retired `replace_mesh`; no consumer ever materialized for the guest-output `commit_mesh_segmentation` either); drop dispatcher-output handling + `BlackboardPrepassSlot::MeshSegmentation` at `crates/slicer-runtime/src/prepass.rs:280, 656, 730`; drop `FacetPaintMark`, `MeshSegmentationIR`, schema constant at `crates/slicer-ir/src/slice_ir.rs:1053-1086, 238-…`; drop `PrepassStageOutput::MeshSegmentation` at `crates/slicer-ir/src/stage_io.rs:30-31, 262-…`; delete the contract roundtrip test `crates/slicer-runtime/tests/contract/macro_mesh_segmentation_output_roundtrip_tdd.rs` and the integration geometry test `crates/slicer-runtime/tests/integration/macro_mesh_segmentation_geometry_tdd.rs`; delete the dispatch contract arms at `crates/slicer-runtime/tests/contract/dispatch_tdd.rs:282, 4771-5074, 6187-…`; drop the scaffolder template at `crates/pnp-cli/src/module_new.rs:388, 521, 569, 571, 681` + the scaffolder test at `crates/pnp-cli/tests/module_new_tdd.rs:136`; drop the stage entry from canonical-stages tables at `crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs:43, 233` and `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs:653`; drop the bench entry at `crates/slicer-runtime/benches/wasm_modules.rs:89`; force a guest rebuild (`cargo xtask build-guests` no flag, then `--check`); confirm via final grep that ZERO `MeshSegmentation`-style references survive (the kernel, producer constant, host stage, and unit/executor tests were already deleted in P94r — the only surviving references should be historical narrative under `.ralph/specs/`, `docs/specs/paint-pipeline-orca-parity-roadmap.md` §P2, and `docs/07_implementation_status.md` TASK-244 entry).
 
 ## Scope Boundaries
 
-97-file blast radius. Ships as a single packet for atomicity — landing this in pieces would leave the workspace either with the host built-in claiming a stage the WASM surface still expects to produce (DAG validator confusion) or with the WASM surface declaring a stage that no longer has a slot (compile failure). The kernel itself in `crates/slicer-core/src/algos/mesh_segmentation.rs` is **untouched**; its unit test is **kept** (it tests P94's host built-in path). The executor test is REWIRED to the host path, not deleted. Everything else is deletion. Full file-by-file list in `requirements.md` §In Scope.
+97-file blast radius (slightly reduced from the original framing because P94r already deleted the kernel + host built-in + four executor tests + the kernel unit test). Ships as a single packet for atomicity — landing this in pieces would leave the workspace with dangling WIT resources, host-side handlers referencing nonexistent types, or canonical-stages tables claiming a stage no producer can ever claim. The kernel itself at `crates/slicer-core/src/algos/mesh_segmentation.rs` was deleted in P94r; this packet does NOT need to preserve it. The executor test that the original framing planned to rewire (`mesh_segmentation_executor_tdd.rs`) was likewise deleted in P94r. Everything else under P97 is straight deletion. Full file-by-file list in `requirements.md` §In Scope.
 
 ## Prerequisites and Blockers
 
-- Depends on: P94 (host:mesh_segmentation wiring) must be `implemented`. The host kernel must be the live path before the WASM surface is deleted.
+- Depends on: P94r (host stage retirement under TASK-250 verdict) must be `implemented`. With the host stage gone, the WASM-guest surface becomes pure dead code; P97 cleans it up. (The original P94 wiring dependency is moot — the wiring was retired before P97 runs.)
 - Unblocks: nothing structurally; this is cleanup.
 - Activation blockers: P94 closed.
 
@@ -52,7 +52,7 @@ Delete the entire infrastructure for a "guest WASM module can override mesh-segm
 
 | `! rg -q 'commit_mesh_segmentation|fn mesh_segmentation\(' crates/slicer-runtime/src/blackboard.rs`
 
-### AC-7 — Prepass dispatcher-output handling + `BlackboardPrepassSlot::MeshSegmentation` deleted; the host built-in `host:mesh_segmentation` (from P94) is the ONLY mesh-segmentation surface
+### AC-7 — Prepass dispatcher-output handling + `BlackboardPrepassSlot::MeshSegmentation` deleted; no `MeshSegmentation`-style stage or slot remains in `slicer-runtime` (P94r retired the host stage; P97 retires the guest-output slot)
 
 | `! rg -q 'BlackboardPrepassSlot::MeshSegmentation' crates/slicer-runtime/src/`
 
@@ -80,13 +80,12 @@ Delete the entire infrastructure for a "guest WASM module can override mesh-segm
 
 | `! rg -q 'mesh_segmentation' crates/slicer-runtime/benches/wasm_modules.rs`
 
-### AC-14 — Post-deletion sweep: only host kernel + producer constant + stage_id survive as `MeshSegmentation`-style references
+### AC-14 — Post-deletion sweep: only historical-narrative references to `MeshSegmentation` survive (no live code)
 
 **Given** the cleanup goal,
 **When** `rg -nE 'mesh_segmentation|MeshSegmentation' crates/ modules/` runs,
 **Then** the result is bounded to:
-- `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` (host BuiltinProducer constant — kept).
-- `crates/slicer-runtime/src/prepass.rs` (driver wiring of host:mesh_segmentation — kept).
+- (No live code references survive — the kernel, host BuiltinProducer constant, and driver wiring were already deleted by P94r before P97 runs.)
 - `crates/slicer-runtime/src/blackboard.rs` (the `replace_mesh` method's doc-comment may mention "mesh segmentation"; allowed).
 - `crates/slicer-core/src/algos/mesh_segmentation.rs` (kernel) and its `mod.rs` / `lib.rs` re-export.
 - `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` (kernel test — kept).
@@ -110,7 +109,7 @@ Manual review of the LOCATIONS dispatch confirms each survivor is intended. The 
 
 **Given** the deletion targets only dead code paths,
 **When** `pnp_cli slice` runs,
-**Then** g-code is byte-identical to the post-P96 baseline on both fixtures (the host kernel path was already live; the WASM path was dead).
+**Then** g-code is byte-identical to the post-P96 baseline on both fixtures (the WASM path was dead even before P94r; this packet only deletes already-dead infrastructure).
 
 | `cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p97-wedge.gcode && sha256sum /tmp/p97-wedge.gcode && cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --module-dir modules/core-modules --output /tmp/p97-cube.gcode && sha256sum /tmp/p97-cube.gcode`
 
@@ -118,7 +117,7 @@ Manual review of the LOCATIONS dispatch confirms each survivor is intended. The 
 
 ### AC-N1 — `runtime_builtins()` count unchanged from P94
 
-**Given** P94 added the host built-in `host:mesh_segmentation`,
+**Given** P94r retired the host `PrePass::MeshSegmentation` stage (along with its `MESH_SEGMENTATION_PRODUCER` constant) and no replacement was wired,
 **When** the runtime is inspected,
 **Then** the registered-producers count is unchanged from P94 (this packet does not add or remove host producers; it deletes the WASM-guest surface only).
 

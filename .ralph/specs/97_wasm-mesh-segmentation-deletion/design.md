@@ -3,7 +3,7 @@
 ## Controlling Code Paths
 
 - Primary code paths: every file enumerated in `requirements.md` §In Scope. Specifically: `modules/core-modules/mesh-segmentation/`, `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`, `crates/slicer-wasm-host/src/host.rs` + `dispatch.rs`, `crates/slicer-macros/src/lib.rs`, `crates/slicer-runtime/src/blackboard.rs` + `prepass.rs`, `crates/slicer-ir/src/slice_ir.rs` + `stage_io.rs`, four tests + the scaffolder + two scheduler-test tables + one bench.
-- Neighboring tests or fixtures: the executor test at `crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs` is REWIRED (its assertions stay; the test harness drops WASM roundtrip and tests the host built-in path). The kernel unit test at `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` is UNTOUCHED.
+- Neighboring tests or fixtures: the executor test at `crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs` was already deleted by P94r (the host stage retirement). The kernel unit test at `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` was likewise deleted by P94r along with the kernel itself. P97 has no test-rewire concern; only the WASM-guest scaffolding remains.
 - OrcaSlicer comparison surface: none.
 
 ## Architecture Constraints
@@ -13,7 +13,7 @@
 
 - WIT-first invariant: WIT changes land BEFORE host-side handler deletions. The handler references the WIT type; deleting handlers first leaves the WIT type orphaned (still parseable but unused; harmless) but deleting WIT first leaves handlers referencing a non-existent type (compile failure).
 - Atomicity invariant: the 97-file blast is one packet, not multiple — intermediate states would either (a) leave the WASM surface declaring a stage the host built-in also claims (DAG validator confusion) or (b) leave handlers referencing missing types.
-- Behavior-preservation invariant: the WASM mesh-segmentation surface is dead in the post-P94 world (no module declares it; the host built-in claims the stage). AC-17 byte-identical confirms.
+- Behavior-preservation invariant: the WASM mesh-segmentation surface is dead in the post-P94r world (the host `PrePass::MeshSegmentation` stage was retired by P94r; the WASM guest module's `[stage]` declaration was disabled via `.toml.disabled` rename in the original P94 work and stays that way until P97 deletes the directory). No live producer claims the stage; no live consumer reads the slot. AC-17 byte-identical confirms.
 - Allow-list invariant: AC-14's surviving-reference list is the post-packet expected state. Anything outside the list is a missed deletion.
 
 ## Code Change Surface
@@ -38,7 +38,7 @@ Per `requirements.md`. Aggregate: ≤ 30 files of substantive edit + 1 directory
 - `OrcaSlicerDocumented/**` — delegate (none expected).
 - `target/`, `Cargo.lock`, generated code — never load.
 - The deleted module directory — never read; just delete.
-- Kernel source at `crates/slicer-core/src/algos/mesh_segmentation.rs` — read-only confirmation; not edited.
+- Kernel source at `crates/slicer-core/src/algos/mesh_segmentation.rs` — does NOT exist post-P94r (the kernel was deleted along with the host stage retirement). Confirm via `test ! -f` at Step 1; no read needed.
 
 ## Expected Sub-Agent Dispatches
 
@@ -58,7 +58,7 @@ Per `requirements.md`. Aggregate: ≤ 30 files of substantive edit + 1 directory
 
 ## Locked Assumptions and Invariants
 
-- **No module declares `PrePass::MeshSegmentation` post-P94**: confirmed by grepping all `modules/core-modules/*/<name>.toml` for the stage name.
+- **No module declares `PrePass::MeshSegmentation` post-P94r**: confirmed by grepping all `modules/core-modules/*/<name>.toml` for the stage name. The mesh-segmentation guest module's manifest was disabled (`.toml.disabled`) in the original P94 work; P94r retired the host stage entirely. No declarer survives.
 - **The host built-in is the only mesh-segmentation surface after this packet**: AC-7 + AC-14.
 - **Byte-identical g-code on wedge and cube_4color**: AC-17.
 

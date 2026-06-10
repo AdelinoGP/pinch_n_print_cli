@@ -3,183 +3,165 @@ status: draft
 packet: 94
 task_ids: [TASK-244]
 backlog_source: docs/specs/paint-pipeline-orca-parity-roadmap.md
-context_cost_estimate: M
+context_cost_estimate: S
 ---
 
-# Packet 94 — `host:mesh_segmentation` Kernel Wiring + `Blackboard::replace_mesh`
+# Packet 94 — Retire `host:mesh_segmentation` Host Stage
 
 ## Goal
 
-Wire the existing `execute_mesh_segmentation` host kernel into the prepass driver as a new `PrePass::MeshSegmentation` stage that runs before `host:mesh_analysis`, short-circuits on unpainted meshes, and normalizes sub-facet hex strokes into `facet_values` before any downstream stage observes the mesh.
+Retire the prepass `PrePass::MeshSegmentation` host stage and delete the dead `execute_mesh_segmentation` kernel — the architectural investigation under TASK-250 established that `crates/slicer-model-io/src/loader.rs:1900-1961` already implements OrcaSlicer-parity `TriangleSelector` recursive subdivision (`split_triangle_strokes` + `walk_triangle_selector_strokes`), producing `PaintLayer.strokes` in OrcaSlicer's flat-leaf form at the load boundary; a second normalization stage on the prepass blackboard duplicates the loader's work, has no downstream consumer (P95 reads strokes directly per parity doc Phase 3), and structurally fails on OrcaSlicer-pattern leaves (12+ `TangentToFacetEdge` raise sites because the kernel's clean-bisection template doesn't fit arbitrary-depth subdivisions); so this packet deletes the kernel + the host built-in + the `Blackboard::replace_mesh` method + the prepass driver insertion + the `PrepassExecutionError::MeshSegmentation` variant + the four integration tests, leaving the loader's `split_triangle_strokes` as the canonical TriangleSelector normalization path forward.
 
 ## Scope Boundaries
 
-This packet does NOT touch the mesh-segmentation kernel itself — `execute_mesh_segmentation` is already correct and unit-tested in `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs`. The work is wiring plus one minimal manifest edit: new producer constant, new Blackboard method, new prepass driver insertion, new error variant, new integration tests, plus the smallest-possible disable of the WASM `mesh-segmentation` manifest's `stage = "PrePass::MeshSegmentation"` line so the host built-in is the sole producer for that stage (AC-3.5). The WASM module's directory remains in place; P5a (97) still owns the full deletion. Full in/out-of-scope lists in `requirements.md`.
+This packet is a surgical retirement of the host stage introduced under TASK-244's prior framing. The loader's stroke-producing path stays untouched; P95 (paint-segmentation port) will consume `PaintLayer.strokes` and `PaintLayer.facet_values` directly per the parity doc's `collect_facets()` design. The WASM `mesh-segmentation` core-module stays disabled (its manifest renamed to `.toml.disabled` during the original P94 work; P97 handles the full directory deletion). Full in/out-of-scope lists in `requirements.md`.
 
 ## Prerequisites and Blockers
 
-- Depends on: packet 91 (P1a — schema scaffolding) must be `implemented` so `BuiltinProducer` schema admission shape is stable. P1b and P1c are recommended but not strictly required.
-- Unblocks: P3 (95, paint-segmentation port) consumes normalized `facet_values` from this stage. P5a (97) deletes the WASM module surface this packet displaces.
-- Activation blockers: P91 closed.
+- Depends on: packet 91 (P1a — schema scaffolding) closed. Packets 89, 90, 91, 92, 93 already `implemented`. No upstream blocker.
+- Unblocks: P95 (paint-segmentation port) — the parity doc's Phase 3 `collect_facets()` reads both `facet_values` and `strokes`; the data-model fork is intentional and matches OrcaSlicer's operational shape (hex bitstream + transient per-extruder flat-list realized as IR-resident `PaintLayer.strokes`).
+- Activation blockers: none. The TASK-250 investigation produced the architectural verdict; this packet executes it.
 
 ## Acceptance Criteria
 
-### AC-1 — `Blackboard::replace_mesh` added; mirrors `replace_slice_ir` shape
+### AC-1 — Kernel + producer + Blackboard::replace_mesh deleted
 
-**Given** the precedent at `crates/slicer-runtime/src/blackboard.rs:276-290` and the verified fact that `Blackboard::mesh_ir` is `Arc<MeshIR>` (not `Option<...>`) so the field is always present after construction,
-**When** `Blackboard::replace_mesh(&mut self, new_mesh: Arc<MeshIR>) -> Result<(), BlackboardError>` is added,
-**Then** the method (a) `debug_assert!`s no Tier 2 output has landed: `self.slice_ir.is_none()` AND the `layer_outputs` slice (if initialized) has every slot still `None` — matching the assertion shape in `replace_slice_ir:276-290`; (b) atomically swaps `self.mesh_ir = new_mesh`; (c) returns `Ok(())`. The `Result` return type is kept for symmetry with `replace_slice_ir`; no error path actually fires in the current contract.
+**Given** the retirement,
+**When** the workspace is grepped,
+**Then** the following symbols and files no longer exist:
 
-| `rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs && cargo test -p slicer-runtime --test contract blackboard_replace_mesh 2>&1 | tee target/test-output.log`
+- `crates/slicer-core/src/algos/mesh_segmentation.rs` — DELETED.
+- `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` — DELETED.
+- `crates/slicer-core/src/algos/mod.rs` — no `pub mod mesh_segmentation;` line.
+- `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` — DELETED.
+- `crates/slicer-runtime/src/builtins/mod.rs` — no `pub mod mesh_segmentation_producer;` line.
+- `crates/slicer-runtime/src/blackboard.rs` — no `pub fn replace_mesh(`.
+- `Blackboard::replace_mesh` callers gone (zero hits).
 
-### AC-2 — `MESH_SEGMENTATION_PRODUCER` constant exists with correct shape
+| `test ! -f crates/slicer-core/src/algos/mesh_segmentation.rs && test ! -f crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs && test ! -f crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs && ! rg -q 'pub mod mesh_segmentation;' crates/slicer-core/src/algos/mod.rs && ! rg -q 'pub mod mesh_segmentation_producer;' crates/slicer-runtime/src/builtins/mod.rs && ! rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs`
 
-**Given** the new producer file,
-**When** `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` is inspected,
-**Then** it exports `pub static MESH_SEGMENTATION_PRODUCER: BuiltinProducer = BuiltinProducer { id: "host:mesh_segmentation", stage: "PrePass::MeshSegmentation", ir_writes: &["MeshIR"], ir_reads: &[], claims_holds: &[], claims_requires: &[], requires_modules: &[], min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 }, max_ir_schema: SemVer { major: 4, minor: 0, patch: 0 }, _cache_ir_writes: OnceLock::new(), _cache_ir_reads: OnceLock::new(), _cache_claims_holds: OnceLock::new(), _cache_claims_requires: OnceLock::new(), _cache_requires_modules: OnceLock::new() };`. (Shape mirrors `MESH_ANALYSIS_PRODUCER` at `crates/slicer-runtime/src/builtins/mesh_analysis_producer.rs`.)
+### AC-2 — Prepass driver insertion + `required_slots` entry + error variant deleted
 
-| `rg -q 'pub static MESH_SEGMENTATION_PRODUCER' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs && rg -q 'stage: "PrePass::MeshSegmentation"' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs && rg -q 'id: "host:mesh_segmentation"' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`
+**Given** the prepass driver,
+**When** `crates/slicer-runtime/src/prepass.rs` is grepped,
+**Then** no `PrePass::MeshSegmentation` driver insertion, no `"PrePass::MeshSegmentation"` entry in the `required_slots` table, and no `PrepassExecutionError::MeshSegmentation` variant remain.
 
-### AC-3 — Producer module registered in `crates/slicer-runtime/src/builtins/mod.rs`
+| `! rg -q 'PrePass::MeshSegmentation|MESH_SEGMENTATION_PRODUCER|execute_mesh_segmentation|MeshSegmentationError|host:mesh_segmentation' crates/slicer-runtime/src/`
 
-**Given** the new producer file,
-**When** `crates/slicer-runtime/src/builtins/mod.rs` is inspected,
-**Then** it contains a top-level `pub mod mesh_segmentation_producer;` line on its own — matching the convention of every other producer module in the same file (`gcode_emit_producer`, `mesh_analysis_producer`, `paint_segmentation_producer`, `prepass_slice_producer`, `region_mapping_producer`, `support_geometry_producer`). No `pub use` re-export is required (only `region_mapping_producer` follows that pattern, by exception).
+### AC-3 — Four P94-introduced integration / contract tests deleted
 
-| `rg -q '^pub mod mesh_segmentation_producer;' crates/slicer-runtime/src/builtins/mod.rs`
+**Given** the retirement,
+**When** the workspace is grepped,
+**Then** the four test files introduced by the prior P94 work are gone:
 
-### AC-3.5 — WASM `mesh-segmentation` module no longer claims `PrePass::MeshSegmentation`
+- `crates/slicer-runtime/tests/contract/blackboard_replace_mesh_tdd.rs` — DELETED.
+- `crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs` — DELETED.
+- `crates/slicer-runtime/tests/executor/cube_4color_mesh_segmentation_strokes_consumed_tdd.rs` — DELETED.
+- `crates/slicer-runtime/tests/executor/cube_fuzzy_painted_mesh_segmentation_strokes_consumed_tdd.rs` — DELETED.
+- `crates/slicer-runtime/tests/executor/mesh_segmentation_determinism_tdd.rs` — DELETED.
+- `crates/slicer-runtime/tests/executor/mesh_segmentation_short_circuit_no_strokes_tdd.rs` — DELETED.
+- The matching `mod` declarations in `crates/slicer-runtime/tests/contract/main.rs` and `crates/slicer-runtime/tests/executor/main.rs` are gone.
 
-**Given** the existing WASM core-module manifest at `modules/core-modules/mesh-segmentation/mesh-segmentation.toml`, whose `[stage]` block declares `id = "PrePass::MeshSegmentation"` (verified field shape: the stage owner is a nested `id` key under the `[stage]` section, NOT a top-level `stage = …` line), and which would create a duplicate-producer DAG conflict with the new host built-in,
-**When** P94 applies the smallest possible edit to the manifest (mechanism is implementer's choice — comment out the `id = "PrePass::MeshSegmentation"` line inside `[stage]`, comment out the entire `[stage]` block, rename the manifest to `.disabled`, or use the loader's documented "disabled" pathway) and the guests are rebuilt via `cargo xtask build-guests`,
-**Then** the manifest no longer registers `PrePass::MeshSegmentation` as a producer stage, so only the host built-in claims it. The directory itself remains in place; P5a (97) still owns the full deletion.
+| `for f in crates/slicer-runtime/tests/contract/blackboard_replace_mesh_tdd.rs crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs crates/slicer-runtime/tests/executor/cube_4color_mesh_segmentation_strokes_consumed_tdd.rs crates/slicer-runtime/tests/executor/cube_fuzzy_painted_mesh_segmentation_strokes_consumed_tdd.rs crates/slicer-runtime/tests/executor/mesh_segmentation_determinism_tdd.rs crates/slicer-runtime/tests/executor/mesh_segmentation_short_circuit_no_strokes_tdd.rs; do test ! -f "$f" || { echo "SURVIVED: $f"; exit 1; }; done && ! rg -q 'mesh_segmentation' crates/slicer-runtime/tests/contract/main.rs crates/slicer-runtime/tests/executor/main.rs`
 
-| `! rg -q '^id\s*=\s*"PrePass::MeshSegmentation"' modules/core-modules/mesh-segmentation/mesh-segmentation.toml`
+### AC-4 — Workspace clippy + check clean after the deletions
 
-### AC-4 — Prepass driver runs `host:mesh_segmentation` FIRST, before `host:mesh_analysis`
+**Given** the retirement is purely subtractive,
+**When** clippy + check run,
+**Then** both succeed with zero warnings / zero failures. No downstream code path references the deleted symbols.
 
-**Given** the prepass driver entry at `crates/slicer-runtime/src/prepass.rs:374`,
-**When** the driver runs and `has_subfacet_strokes(bb.mesh())` returns true,
-**Then** `execute_mesh_segmentation(bb.mesh().clone())` is invoked and its result is committed via `bb.replace_mesh(normalized)`; the `host:mesh_analysis` stage that previously ran first now runs AFTER `host:mesh_segmentation` (verified by reading the driver source in order).
+| `cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee target/test-output.log && cargo check --workspace --all-targets 2>&1 | tee -a target/test-output.log`
 
-| `rg -B2 -A20 'PrePass::MeshSegmentation' crates/slicer-runtime/src/prepass.rs | rg -q 'host:mesh_segmentation' && rg -B2 -A20 'PrePass::MeshAnalysis' crates/slicer-runtime/src/prepass.rs | rg -q 'host:mesh_analysis'`
+### AC-5 — `cargo test --workspace` clean
 
-### AC-5 — Short-circuit: `host:mesh_segmentation` does nothing when mesh has no sub-facet strokes
+**Given** the deletions remove tests but no production behavior survives,
+**When** the workspace test suite runs (dispatched per `CLAUDE.md` §Test Discipline because the deletion blast is wide),
+**Then** every bucket reports `test result: ok` and the net test count delta is non-positive (only deletions).
 
-**Given** an unpainted mesh (e.g., `resources/regression_wedge.stl`),
-**When** the prepass driver runs,
-**Then** `has_subfacet_strokes(mesh)` returns false; `execute_mesh_segmentation` is NOT called; `bb.replace_mesh` is NOT called; the mesh `Arc` is unchanged after the stage; a structured progress event records "PrePass::MeshSegmentation skipped (no sub-facet strokes)".
+| `cargo test --workspace 2>&1 | tee target/test-output.log | grep '^test result' | head -50`
 
-| `cargo test -p slicer-runtime --test executor mesh_segmentation_short_circuit_no_strokes 2>&1 | tee target/test-output.log`
+### AC-6 — Byte-identical g-code on `regression_wedge.stl` vs the P93 baseline
 
-### AC-6 — Sub-facet strokes from `cube_4color.3mf` are normalized into `facet_values` after this stage
+**Given** the wedge has no painted strokes (mesh-segmentation was a no-op for it under the previous wiring),
+**When** `pnp_cli slice` runs and Step 0's `P93_BASELINE_SHA` is read from the new `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md`,
+**Then** the wedge SHA equals the recorded baseline. The deletion is purely subtractive; the wedge produces byte-identical g-code.
 
-**Given** the painted cube fixture `resources/cube_4color.3mf` whose paint data carries sub-facet hex strokes,
-**When** prepass runs to completion through `PrePass::MeshSegmentation`,
-**Then** for each painted object, `object.paint_data.layers[*].strokes.is_empty()` evaluates true (strokes consumed); `object.paint_data.layers[*].facet_values.len()` exceeds the original triangle count (splits occurred); the normalized mesh's triangle count is greater than or equal to the original (sub-facet splits add triangles); and the test asserts a deterministic post-normalization triangle count (the cube fixture's known paint pattern produces a fixed count).
+| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output target/p94-wedge.gcode && test "$(sha256sum target/p94-wedge.gcode | awk '{print $1}')" = "$(grep -oE 'P93_BASELINE_SHA=[a-f0-9]+' .ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md | head -1 | cut -d= -f2)"`
 
-| `cargo test -p slicer-runtime --test executor cube_4color_mesh_segmentation_strokes_consumed 2>&1 | tee target/test-output.log`
+### AC-7 — `cube_4color.3mf` slices to completion end-to-end
 
-### AC-7 — `cube_fuzzyPainted.3mf` sub-facet paint also normalizes; fuzzy_skin semantic preserved
+**Given** that the kernel that raised `DegenerateStroke { TangentToFacetEdge }` on this fixture is now deleted,
+**When** `pnp_cli slice` runs against `resources/cube_4color.3mf`,
+**Then** the slice completes with exit 0 and a non-empty g-code output. The cube SHA is captured in closure-log as `P94R_POST_CUBE_SHA=<hex>` — this becomes the baseline for P95's cube-fixture acceptance.
 
-**Given** the painted cube fixture `resources/cube_fuzzyPainted.3mf` whose paint data carries fuzzy_skin sub-facet strokes,
-**When** prepass runs,
-**Then** the strokes are normalized; the fuzzy_skin `PaintSemantic` value is preserved on the normalized `facet_values` (the kernel does not lose semantic identity during stroke-to-facet conversion); a deterministic post-normalization facet count is asserted.
+| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --module-dir modules/core-modules --output target/p94-cube.gcode && test -s target/p94-cube.gcode && sha256sum target/p94-cube.gcode | awk '{print $1}'`
 
-| `cargo test -p slicer-runtime --test executor cube_fuzzyPainted_mesh_segmentation_strokes_consumed 2>&1 | tee target/test-output.log`
+### AC-8 — Guest WASM `--check` clean
 
-### AC-8 — Determinism: same input mesh → byte-identical normalized mesh across runs
-
-**Given** the same painted input mesh,
-**When** the prepass runs twice on different invocations,
-**Then** the produced normalized `MeshIR` (vertices + triangles + facet_values) is byte-equal across the two runs.
-
-| `cargo test -p slicer-runtime --test executor mesh_segmentation_determinism 2>&1 | tee target/test-output.log`
-
-### AC-9 — `required_slots` table extended with the new stage
-
-**Given** the table at `crates/slicer-runtime/src/prepass.rs:680-708`,
-**When** it is inspected,
-**Then** an entry `"PrePass::MeshSegmentation" => &[]` (no required slots — runs first) exists; the table compiles; existing entries are unchanged.
-
-| `rg -q '"PrePass::MeshSegmentation"\s*=>\s*&\[\]' crates/slicer-runtime/src/prepass.rs && cargo check -p slicer-runtime --all-targets 2>&1 | tee target/test-output.log`
-
-### AC-10 — `PrepassExecutionError::MeshSegmentation` variant constructs and `?`-propagates
-
-**Given** the new error variant,
-**When** a small unit test in `crates/slicer-runtime/tests/contract/prepass_execution_error_mesh_segmentation_variant_tdd.rs` (a) constructs `PrepassExecutionError::MeshSegmentation { source: MeshSegmentationError::<any-real-variant>(...) }` directly, and (b) exercises a `fn() -> Result<(), PrepassExecutionError>` that invokes a function returning `MeshSegmentationError` with the `?` operator,
-**Then** the test compiles and runs to completion — proving the variant exists with the correct field shape AND that a `#[from]` (or equivalent `From` impl) is wired so the driver's `?`-propagation typechecks. Grep is the wrong tool here because the variant may use a `#[from]`-decorated `MeshSegmentationError` shorthand that bare regex would miss.
-
-| `cargo test -p slicer-runtime --test contract prepass_execution_error_mesh_segmentation_variant 2>&1 | tee target/test-output.log`
-
-### AC-11 — Behavior preservation on unpainted meshes (regression_wedge.stl)
-
-**Given** an unpainted mesh and the post-P93 baseline SHA recorded as `P93_BASELINE_SHA=<hex>` in `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` during Step 0,
-**When** `pnp_cli slice` runs end-to-end,
-**Then** the produced g-code SHA equals the recorded baseline (the stage short-circuits and `replace_mesh` never fires). The comparison shell command below exits 0 only on match — matching the P92 / P93 / P95 baseline-compare pattern.
-
-| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p94-wedge.gcode && test "$(sha256sum /tmp/p94-wedge.gcode | awk '{print $1}')" = "$(grep -oE 'P93_BASELINE_SHA=[a-f0-9]+' .ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md | head -1 | cut -d= -f2)"`
-
-### AC-13 — Guest WASM `--check` clean
-
-**Given** no WIT change in this packet (the WASM mesh-segmentation surface still exists; P5a deletes it),
+**Given** no WIT change in this packet (P97 still owns the WASM-guest mesh-segmentation deletion),
 **When** `cargo xtask build-guests --check` runs,
 **Then** reports clean.
 
 | `cargo xtask build-guests --check`
 
+### AC-9 — TASK-244 row in `docs/07_implementation_status.md` updated to reflect the retirement
+
+**Given** the prior TASK-244 row described the wiring,
+**When** the row is updated,
+**Then** it documents that TASK-244 was superseded by this packet's retirement decision (TASK-250 architectural finding), and the closure entry is marked closed.
+
+| `rg -q 'TASK-244.*retired|TASK-244.*superseded|TASK-244.*deleted' docs/07_implementation_status.md`
+
 ## Negative Test Cases
 
-### AC-N1 — `Blackboard::replace_mesh` panics via `debug_assert!` after Tier 2 outputs land
+### AC-N1 — Zero references to deleted symbols survive
 
-**Given** a Blackboard in which `slice_ir` has been committed (or a `layer_outputs` slot has been written),
-**When** `replace_mesh` is called in a debug build (the standard test target),
-**Then** the matching `debug_assert!` fires and the call panics with the message documented in `design.md` §"Code Change Surface". This mirrors `replace_slice_ir`'s contract exactly — release-mode behavior is undefined (the assertion compiles out) and is deliberately not gated, because adding a runtime error variant for a tier violation would require widening `BlackboardError` (which today has no `TierViolation` variant) and that widening is out of P94 scope.
+**Given** the deletion sweep,
+**When** the full workspace is grepped,
+**Then** the symbols `execute_mesh_segmentation`, `MESH_SEGMENTATION_PRODUCER`, `MeshSegmentationError`, `host:mesh_segmentation`, `PrePass::MeshSegmentation`, `replace_mesh` produce zero hits outside this packet's own files under `.ralph/specs/94_host-mesh-segmentation-wiring/` and the roadmap's historical narrative.
 
-| `cargo test -p slicer-runtime --test contract blackboard_replace_mesh_after_tier2_panics 2>&1 | tee target/test-output.log`
+| `rg -n --glob '!.ralph/specs/94_host-mesh-segmentation-wiring/**' --glob '!docs/specs/paint-pipeline-orca-parity-roadmap.md' --glob '!docs/07_implementation_status.md' 'execute_mesh_segmentation|MESH_SEGMENTATION_PRODUCER|MeshSegmentationError|host:mesh_segmentation|PrePass::MeshSegmentation|replace_mesh' crates/ modules/ docs/ ; test $? -eq 1`
 
-### AC-N2 — A direct call to `execute_mesh_segmentation` on a mesh with NO strokes returns a no-op result
+### AC-N2 — `modules/core-modules/mesh-segmentation/` remains in place (P97's territory)
 
-**Given** an unpainted mesh,
-**When** `execute_mesh_segmentation` is called directly,
-**Then** the returned mesh is structurally identical to the input (same triangle count, same vertices, no facet_values added).
+**Given** that P97 (WASM mesh-segmentation deletion) owns the full directory removal,
+**When** the modules directory is inspected,
+**Then** `modules/core-modules/mesh-segmentation/` still exists, with the manifest disabled (`.toml.disabled` from the original P94 work stays; P97 deletes the directory). This packet does NOT touch the WASM-guest infrastructure.
 
-| `cargo test -p slicer-core mesh_segmentation_unpainted_noop 2>&1 | tee target/test-output.log`
+| `test -d modules/core-modules/mesh-segmentation && test -f modules/core-modules/mesh-segmentation/mesh-segmentation.toml.disabled && ! test -f modules/core-modules/mesh-segmentation/mesh-segmentation.toml`
 
-### AC-N3 — The dead-code path is gone — `execute_mesh_segmentation` is no longer unreferenced
+### AC-N3 — The loader's `split_triangle_strokes` path is untouched
 
-**Given** the original problem (kernel dead code),
-**When** `crates/slicer-runtime/src/` is grepped,
-**Then** at least one reference to `execute_mesh_segmentation` exists in the prepass driver wiring.
+**Given** that the loader is the canonical TriangleSelector normalization site post-P94,
+**When** `crates/slicer-model-io/src/loader.rs:1900-1961` is grepped,
+**Then** `split_triangle_strokes` and `walk_triangle_selector_strokes` still exist with the same shape; this packet does NOT touch the loader.
 
-| `rg -q 'execute_mesh_segmentation' crates/slicer-runtime/src/prepass.rs`
+| `rg -q 'fn split_triangle_strokes|fn walk_triangle_selector_strokes' crates/slicer-model-io/src/loader.rs`
 
 ## Verification (gate commands only)
 
 1. `cargo check --workspace --all-targets`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `cargo test -p slicer-runtime --test executor mesh_segmentation 2>&1 | tee target/test-output.log` (new integration tests pass)
-4. `cargo xtask build-guests --check` (AC-13; will require a rebuild after AC-3.5's manifest edit before `--check` reports clean)
+3. `cargo test --workspace 2>&1 | tee target/test-output.log` (workspace gate per `CLAUDE.md` §Test Discipline rule 2 — the deletion blast spans multiple crates)
+4. `cargo xtask build-guests --check`
 
 Full per-AC matrix lives in `requirements.md`.
 
 ## Authoritative Docs
 
-- `docs/specs/paint-pipeline-orca-parity-roadmap.md` §"P2 — host:mesh_segmentation kernel wiring" (~80 lines).
-- `docs/04_host_scheduler.md` §"PrePass" stage prerequisites (range-read).
-- `crates/slicer-runtime/src/blackboard.rs` — read `replace_slice_ir` at lines 276-290 as the implementation template for `replace_mesh`.
-- `crates/slicer-runtime/src/builtins/mesh_analysis_producer.rs` — read in full (47 LOC) as the constant-shape template.
-- `crates/slicer-core/src/algos/mesh_segmentation.rs` — range-read lines 39-109 (kernel signature + error type only).
+- `docs/specs/paint-pipeline-orca-parity-roadmap.md` §"P2 — host:mesh_segmentation kernel wiring" (~80 lines) — historical context; the TASK-250 supersession note appended at the end of §P2 documents this packet's retirement decision.
+- `crates/slicer-model-io/src/loader.rs:1900-1961` — read in full only if confirming the loader's TriangleSelector path; otherwise treat as the canonical normalization site post-P94.
+- `docs/specs/orca-paint-segmentation-parity.md` §Phase 3 (lines 140-141) — `collect_facets()` design that consumes `PaintLayer.strokes` directly; this packet locks in that design as P95's input contract.
 
 ## Doc Impact Statement
 
-A list of specific doc sections that this packet adds or modifies:
+A list of specific doc sections that this packet modifies:
 
-- `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` doc-comment naming the stage and explaining the short-circuit — `rg -q 'host:mesh_segmentation' crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`.
-- `crates/slicer-runtime/src/blackboard.rs` doc-comment for `replace_mesh` mirroring `replace_slice_ir`'s — `rg -q 'pub fn replace_mesh' crates/slicer-runtime/src/blackboard.rs`.
-- `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` — captures (a) `P93_BASELINE_SHA=<hex>` for AC-11's wedge baseline-compare (written in Step 0); (b) `P94_PRE_PAINTED_CUBE_SHA=<hex>` and `P94_POST_PAINTED_CUBE_SHA=<hex>` for the painted `cube_4color.3mf` slice (written in Step 0 and Step 7 respectively) plus a one-paragraph rationale linking the diff to stroke normalization. The painted-cube diff is expected (downstream stages now see normalized `facet_values` instead of un-normalized strokes); the closure-log entry is the documented audit trail, not a machine gate.
+- `.ralph/specs/94_host-mesh-segmentation-wiring/closure-log.md` (NEW) — captures (a) `P93_BASELINE_SHA=<hex>` for AC-6's wedge baseline-compare (written in Step 0); (b) `P94R_POST_CUBE_SHA=<hex>` recording the cube_4color SHA that becomes P95's input baseline (written in Step 7); (c) a one-paragraph rationale documenting the TASK-250 investigation and supersession decision.
+- `docs/07_implementation_status.md` — TASK-244 row updated to reflect retirement (AC-9).
+- `docs/specs/paint-pipeline-orca-parity-roadmap.md` §P2 — addendum noting TASK-250 supersession (separate edit; non-blocking, but recommended in the same commit for traceability).
 
-`docs/04_host_scheduler.md` PrePass-table update is deferred to packet 99 (P5c — Doc updates).
+No `docs/04_host_scheduler.md` PrePass-table edit is needed (the table reflects what's actually wired; nothing was wired here to begin with after this retirement).
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -188,7 +170,7 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- None directly — the kernel itself was already ported per `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs`. If a question arises about TriangleSelector subdivision parity (see `docs/specs/orca-paint-segmentation-parity.md` H561-H567 hazard list), delegate a SUMMARY against `OrcaSlicerDocumented/src/libslic3r/TriangleSelector.cpp`.
+- None directly. The TASK-250 investigation established the parity surface via delegated reads against `OrcaSlicerDocumented/src/libslic3r/MultiMaterialSegmentation.cpp:2490`, `Model.cpp:3806`, and `TriangleSelector.cpp:1542-1606`. The findings are encoded in this packet's Goal and §Authoritative Docs.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

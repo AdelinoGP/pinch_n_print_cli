@@ -578,6 +578,16 @@ cargo clippy --workspace --all-targets -- -D warnings
 
 ---
 
+**SUPERSEDED 2026-06-10 — TASK-250 architectural finding.** P2 as scoped above was implemented under TASK-244 (commits `3113083` + `89b3517`), then **retired in packet P94r (`.ralph/specs/94_host-mesh-segmentation-wiring/` rewritten in place)**. The retirement decision was driven by three structural findings from the post-implementation investigation:
+
+1. **The loader already does this work.** `crates/slicer-model-io/src/loader.rs:1900-1961` (`split_triangle_strokes` + `walk_triangle_selector_strokes`) reproduces OrcaSlicer's `TriangleSelector` recursive subdivision exactly. `PaintLayer.strokes` arrives at the prepass blackboard in OrcaSlicer's flat-leaf form. A second normalization stage duplicates the loader's output.
+2. **OrcaSlicer has no `stroke` abstraction.** `FacetsAnnotation::get_facets()` (Model.cpp:3806) reconstructs a transient per-extruder flat list from the hex bitstream on demand. Our `PaintLayer.strokes` is the IR-resident equivalent — keeping it is the parity-honoring choice; flattening it into the mesh IR would diverge from OrcaSlicer's actual operational shape.
+3. **The kernel structurally fails on OrcaSlicer-pattern leaves.** 12+ `TangentToFacetEdge` raise sites at `crates/slicer-core/src/algos/mesh_segmentation.rs` reflect the kernel's clean-bisection template not fitting arbitrary-depth subdivisions. `cube_4color.3mf` triggered this on every paint-segmentation integration test in P94's original framing.
+
+Post-P94r outcome: the host stage is gone; the kernel + producer constant + Blackboard::replace_mesh + the four P94 integration tests are deleted; `cube_4color.3mf` slices end-to-end. P95's `collect_facets()` (parity doc §Phase 3 lines 140-141) reads `PaintLayer.facet_values` + `PaintLayer.strokes` directly — the data-model fork is intentional and locks in OrcaSlicer parity. P97 (WASM mesh-segmentation deletion) loses its "kernel survives" survival claim but is otherwise unchanged.
+
+---
+
 ### P3 — Paint-segmentation port (Phases 1, 2, 3, 4, 6, 7)
 
 **Goal**: replace `execute_paint_segmentation` and `execute_slice_postprocess_paint_annotation`
