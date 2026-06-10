@@ -410,11 +410,7 @@ fn per_stage_aggregate_renders_in_canonical_pipeline_order() {
         ("PostPass::GCodeEmit", Phase::PostPass, TierKind::PostPass),
         ("Layer::Infill", Phase::PerLayer, TierKind::PerLayer),
         ("Layer::Perimeters", Phase::PerLayer, TierKind::PerLayer),
-        (
-            "PrePass::MeshAnalysis",
-            Phase::PrePass,
-            TierKind::PrePass,
-        ),
+        ("PrePass::MeshAnalysis", Phase::PrePass, TierKind::PrePass),
     ];
     for (stage_id, phase, _tier) in stages {
         c.on_phase_start(phase);
