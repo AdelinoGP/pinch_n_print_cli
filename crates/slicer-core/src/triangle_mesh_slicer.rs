@@ -160,7 +160,15 @@ fn triangle_intersections(
         .filter(|relation| **relation == VertexPlaneRelation::Below)
         .count();
 
-    if on_plane == 3 || on_plane == 2 || above_plane == 0 || below_plane == 0 {
+    // OrcaSlicer edge-ownership convention (TriangleMeshSlicer.cpp:272-275):
+    // When two vertices lie on the slice plane, the edge belongs to the slice
+    // only if it is the *upper* edge — i.e. the third vertex is below the
+    // plane. The bottom-most edge of a triangle is "owned" by the triangle
+    // below it, not by the current triangle, so it is excluded.
+    if on_plane == 3
+        || (on_plane == 2 && above_plane == 1)
+        || (on_plane < 2 && (above_plane == 0 || below_plane == 0))
+    {
         return Vec::new();
     }
 

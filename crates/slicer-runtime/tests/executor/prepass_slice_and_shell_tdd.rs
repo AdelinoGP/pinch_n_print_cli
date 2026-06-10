@@ -241,13 +241,13 @@ fn shell_classification_top_and_bottom_layers_for_single_object_cuboid() {
     //   layer 1 (z=0.4): bottom_shell_index=Some(1) (shadow projection from layer 0)
     //   layer 2 (z=0.6): no shell index (interior)
     //   layer 3 (z=0.8): top_shell_index=Some(1)  (shadow from layer 4)
-    //   layer 4 (z=1.0): top_shell_index=Some(0)  (no layer above)
-    // Cuboid is open-top at z=1.0 â†’ slice at z=1.0 yields empty polygons,
-    // making layer index 4 the "absent" top neighbor for shell classification.
-    // From layer 3's perspective the upper layer is empty, so layer 3 becomes
-    // the exposed top (depth 0). Pass 2 then projects back one layer (k=2-1)
-    // to mark layer 2 as depth 1. Bottom side: layer 0 = depth 0, layer 1 =
-    // depth 1.
+    //   layer 4 (z=1.0): top_shell_index=Some(0)  (exposed top — no layer above)
+    //
+    // With the OrcaSlicer edge-ownership convention, slicing at z=1.0 (the
+    // exact top face) produces a non-empty cross-section (the top-face outline
+    // from side-face top-edge ownership). Layer 4 has no upper neighbor, so
+    // top_diff = r_polys → exposed top at depth 0. Pass 2 projects back one
+    // layer (k=2-1) to mark layer 3 as depth 1.
     let mesh = cuboid_mesh("cube", 1.0);
     let plan = make_plan(5, 0.2, "cube");
     let region_map = make_region_map(&plan, 2, 2);
@@ -277,24 +277,25 @@ fn shell_classification_top_and_bottom_layers_for_single_object_cuboid() {
         "layer 1 should be depth-1 below exposed bottom"
     );
 
-    // Top shell zone â€” layer 4's slice at z=1.0 is empty (on the top face),
-    // making layer 3 the effective exposed top (per OrcaSlicer's "empty
-    // upper neighbor = exposed surface" semantics).
+    // Top shell zone — with edge-ownership, layer 4 (z=1.0) produces a
+    // non-empty cross-section (top-face outline). It has no upper neighbor,
+    // so it is the exposed top (depth 0). Layer 3 gets depth 1 via Pass 2
+    // shadow projection.
+    let layer4 = &slices[4].regions[0];
+    assert_eq!(
+        layer4.top_shell_index,
+        Some(0),
+        "layer 4 should be exposed top (no layer above)"
+    );
+    assert!(
+        !layer4.top_solid_fill.is_empty(),
+        "exposed top must have non-empty top_solid_fill"
+    );
     let layer3 = &slices[3].regions[0];
     assert_eq!(
         layer3.top_shell_index,
-        Some(0),
-        "layer 3 should be exposed top when layer 4's slice is empty"
-    );
-    assert!(
-        !layer3.top_solid_fill.is_empty(),
-        "exposed top must have non-empty top_solid_fill"
-    );
-    let layer2 = &slices[2].regions[0];
-    assert_eq!(
-        layer2.top_shell_index,
         Some(1),
-        "layer 2 should be depth-1 below exposed top"
+        "layer 3 should be depth-1 below exposed top"
     );
 }
 

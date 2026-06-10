@@ -268,7 +268,10 @@ fn test_cube_sliced_at_bottom() {
 
 #[test]
 fn test_cube_sliced_at_top() {
-    // Slicing exactly at top face (z=1) should produce empty
+    // Slicing exactly at top face (z=1) produces the top-face outline via the
+    // OrcaSlicer edge-ownership convention: side-face triangles whose top edge
+    // lies on the plane (third vertex below) contribute that edge to the slice.
+    // Horizontal face triangles (all 3 vertices on the plane) are still skipped.
     let vertices = vec![
         Point3 {
             x: 0.0,
@@ -326,7 +329,17 @@ fn test_cube_sliced_at_top() {
     let result = slice_mesh_ex(&mesh, &zs);
 
     assert_eq!(result.len(), 1);
-    assert!(result[0].is_empty());
+    // Top-edge ownership: 4 side-face triangles contribute their top edges,
+    // forming a 1×1mm square at z=1.0.
+    assert_single_contour_matches_points(
+        &result[0],
+        &[
+            Point2::from_mm(0.0, 0.0),
+            Point2::from_mm(1.0, 0.0),
+            Point2::from_mm(1.0, 1.0),
+            Point2::from_mm(0.0, 1.0),
+        ],
+    );
 }
 
 #[test]
@@ -654,4 +667,146 @@ fn slice_closing_radius_zero_is_noop() {
             "polygon {i}: vertex coordinates must be byte-identical when r=0.0"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Boundary-Z regression: staircase tiers aligned with slice planes
+// ---------------------------------------------------------------------------
+
+/// Build a 3-step staircase mesh where tier boundaries land exactly on slice
+/// planes (z=0.4, 0.6, 0.8 with layer_height=0.2).
+///
+/// Step A: z ∈ [0, 0.4],  20×20 mm footprint (half=10)
+/// Step B: z ∈ [0.4, 0.6], 12×12 mm footprint (half=6)
+/// Step C: z ∈ [0.6, 0.8],  6×6  mm footprint (half=3)
+fn staircase_boundary_z_mesh() -> IndexedTriangleSet {
+    fn cuboid(half: f32, z0: f32, z1: f32) -> Vec<(Point3, Point3, Point3)> {
+        let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+        let p = [
+            v(-half, -half, z0),
+            v(half, -half, z0),
+            v(half, half, z0),
+            v(-half, half, z0),
+            v(-half, -half, z1),
+            v(half, -half, z1),
+            v(half, half, z1),
+            v(-half, half, z1),
+        ];
+        vec![
+            // bottom
+            (p[0], p[2], p[1]),
+            (p[0], p[3], p[2]),
+            // top
+            (p[4], p[5], p[6]),
+            (p[4], p[6], p[7]),
+            // +X
+            (p[1], p[2], p[6]),
+            (p[1], p[6], p[5]),
+            // -X
+            (p[0], p[4], p[7]),
+            (p[0], p[7], p[3]),
+            // +Y
+            (p[3], p[7], p[6]),
+            (p[3], p[6], p[2]),
+            // -Y
+            (p[0], p[1], p[5]),
+            (p[0], p[5], p[4]),
+        ]
+    }
+
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    for (a, b, c) in cuboid(10.0, 0.0, 0.4)
+        .into_iter()
+        .chain(cuboid(6.0, 0.4, 0.6))
+        .chain(cuboid(3.0, 0.6, 0.8))
+    {
+        let base = vertices.len() as u32;
+        vertices.push(a);
+        vertices.push(b);
+        vertices.push(c);
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base + 2);
+    }
+
+    IndexedTriangleSet { vertices, indices }
+}
+
+/// Regression: slicing a staircase whose tier boundaries coincide exactly
+/// with slice planes must still produce non-empty cross-sections at the
+/// boundary layers (OrcaSlicer edge-ownership convention).
+///
+/// At z=0.4: step A's top edges are included (20×20mm), step B's bottom
+/// edges are excluded → cross-section = 20×20mm.
+/// At z=0.6: step B's top edges → 12×12mm.
+/// At z=0.8: step C's top edges → 6×6mm.
+#[test]
+fn staircase_boundary_z_produces_nonempty_cross_sections() {
+    let mesh = staircase_boundary_z_mesh();
+    let zs = vec![0.2, 0.4, 0.6, 0.8];
+    let result = slice_mesh_ex(&mesh, &zs);
+
+    assert_eq!(result.len(), 4, "expected 4 layers");
+
+    // Layer 0 (z=0.2): interior of step A → non-empty 20×20mm
+    assert!(
+        !result[0].is_empty(),
+        "z=0.2 must produce non-empty cross-section (step A interior)"
+    );
+
+    // Layer 1 (z=0.4): boundary — step A top edges included → non-empty
+    assert!(
+        !result[1].is_empty(),
+        "z=0.4 must produce non-empty cross-section (step A top edges via edge-ownership)"
+    );
+
+    // Layer 2 (z=0.6): boundary — step B top edges included → non-empty
+    assert!(
+        !result[2].is_empty(),
+        "z=0.6 must produce non-empty cross-section (step B top edges via edge-ownership)"
+    );
+
+    // Layer 3 (z=0.8): boundary — step C top edges included → non-empty
+    assert!(
+        !result[3].is_empty(),
+        "z=0.8 must produce non-empty cross-section (step C top edges via edge-ownership)"
+    );
+
+    // Verify the footprint shrinks at each tier boundary.
+    let area = |layer: &[ExPolygon]| -> f64 {
+        let mut total: i128 = 0;
+        for ep in layer {
+            let pts = &ep.contour.points;
+            let n = pts.len();
+            for i in 0..n {
+                let j = (i + 1) % n;
+                total += (pts[i].x as i128) * (pts[j].y as i128)
+                    - (pts[j].x as i128) * (pts[i].y as i128);
+            }
+        }
+        (total.unsigned_abs() as f64) / 1e8
+    };
+
+    let a0 = area(&result[0]);
+    let a1 = area(&result[1]);
+    let a2 = area(&result[2]);
+    let a3 = area(&result[3]);
+
+    // z=0.2 and z=0.4 both have step A's 20×20mm footprint
+    assert!(
+        (a0 - a1).abs() < 0.01,
+        "z=0.2 area ({a0}) and z=0.4 area ({a1}) should match (both step A footprint)"
+    );
+    // z=0.6 = step B (12×12mm) < step A
+    assert!(
+        a2 < a1,
+        "z=0.6 area ({a2}) should be smaller than z=0.4 area ({a1})"
+    );
+    // z=0.8 = step C (6×6mm) < step B
+    assert!(
+        a3 < a2,
+        "z=0.8 area ({a3}) should be smaller than z=0.6 area ({a2})"
+    );
 }
