@@ -8,6 +8,20 @@
 //!
 //! Tests that require two independent runs (determinism asserts) must
 //! call [`run_pnp_cli_uncached`] instead.
+//!
+//! ## On-disk staging
+//!
+//! Earlier revisions of this cache materialized "filtered" copies of
+//! `modules/core-modules` (e.g. the tree minus `traditional-support`)
+//! into `tempfile::TempDir`s held in `static OnceLock<TempDir>`. Rust
+//! never runs `Drop` on values held by `static` bindings at process
+//! exit, so every test process leaked a full recursive copy of the
+//! core-modules tree — every `.wasm` artifact included — under
+//! `%TEMP%`. The fix in this file: expose the kept module subdirs as a
+//! list of `--module-dir` arguments instead of staging a filtered
+//! tree, and route the `.gcode` outputs through a stable
+//! `target/test-staging/` path that survives across runs (gitignored
+//! via the existing `/target` rule).
 
 #![allow(dead_code)]
 
@@ -19,7 +33,8 @@ use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Discriminator for `--module-dir` scenarios. Each variant maps to a
-/// stable path materialized once per process.
+/// stable list of paths the cache feeds the binary as repeated
+/// `--module-dir` flags.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ModuleDirKind {
     /// `modules/core-modules` — the full production tree.
@@ -41,7 +56,9 @@ pub enum ModuleDirKind {
 /// `gcode` and `stderr` are loaded eagerly into the cached `Arc`, so they
 /// live for the test process lifetime. With ~20 distinct cache keys at a
 /// few MB each, total resident size is small; the output `.gcode` files
-/// behind `OUTPUT_TMP` likewise persist until process exit.
+/// under `target/test-staging/slicer-cache-output/` likewise persist
+/// until process exit (and across runs — `target/` is the canonical
+/// per-repo throwaway location).
 #[derive(Clone, Debug)]
 pub struct RunOutcome {
     pub success: bool,
@@ -76,10 +93,7 @@ type CacheCell = Arc<OnceLock<Arc<Result<RunOutcome, RunError>>>>;
 type CacheMap = HashMap<RunKey, CacheCell>;
 
 static CACHE: OnceLock<Mutex<CacheMap>> = OnceLock::new();
-static EMPTY_MODULE_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
-static FILTERED_TREE_SUPPORT_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
-static FILTERED_PART_COOLING_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
-static OUTPUT_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
+static MODULE_DIR_PATHS: OnceLock<Mutex<HashMap<ModuleDirKind, Vec<PathBuf>>>> = OnceLock::new();
 
 /// Canonicalized repo root (parent of `crates/`).
 pub fn repo_root() -> PathBuf {
@@ -139,89 +153,75 @@ pub fn core_modules_dir() -> PathBuf {
     repo_root().join("modules/core-modules")
 }
 
-fn empty_module_dir_path() -> PathBuf {
-    let td = EMPTY_MODULE_TMP
-        .get_or_init(|| tempfile::tempdir().expect("create empty-module-dir tempdir"));
-    let p = td.path().join("empty-module-dir");
-    if !p.exists() {
-        std::fs::create_dir_all(&p).expect("mkdir empty-module-dir");
-    }
+/// Root of a stable, gitignored area under `target/` where the cache
+/// stages anything that needs an on-disk path (cached `.gcode` outputs
+/// and the empty scratch dir for `ModuleDirKind::Empty`). Replaces the
+/// previous `tempfile::TempDir`-in-`static` pattern that leaked under
+/// `%TEMP%` because Rust does not drop statics at process exit.
+fn test_staging_root() -> PathBuf {
+    let p = repo_root().join("target/test-staging");
+    std::fs::create_dir_all(&p).expect("create target/test-staging");
     p
 }
 
-fn tree_support_filtered_dir_path() -> PathBuf {
-    let td = FILTERED_TREE_SUPPORT_TMP.get_or_init(|| {
-        let tmp = tempfile::tempdir().expect("create filtered-module-dir tempdir");
-        let src = core_modules_dir();
-        let dst = tmp.path().join("tree-support-modules");
-        std::fs::create_dir_all(&dst).expect("mkdir tree-support-modules");
-        for entry in std::fs::read_dir(&src).expect("read core-modules dir") {
-            let entry = entry.expect("read_dir entry");
-            let name = entry.file_name();
-            if name.to_string_lossy() == "traditional-support" {
-                continue;
-            }
-            let target = dst.join(&name);
-            if entry.file_type().expect("file_type").is_dir() {
-                recurse_copy(&entry.path(), &target).expect("recurse_copy dir");
-            } else {
-                std::fs::copy(&entry.path(), &target).expect("copy file");
-            }
-        }
-        tmp
-    });
-    td.path().join("tree-support-modules")
+/// Empty scratch directory for `ModuleDirKind::Empty`. Idempotent: the
+/// path is stable across runs, so a once-created empty dir is reused.
+fn empty_staging_dir() -> PathBuf {
+    let p = test_staging_root().join("slicer-cache-empty");
+    std::fs::create_dir_all(&p).expect("create slicer-cache-empty");
+    p
 }
 
-fn part_cooling_filtered_dir_path() -> PathBuf {
-    let td = FILTERED_PART_COOLING_TMP.get_or_init(|| {
-        let tmp = tempfile::tempdir().expect("create filtered-module-dir tempdir");
-        let src = core_modules_dir();
-        let dst = tmp.path().join("no-part-cooling-modules");
-        std::fs::create_dir_all(&dst).expect("mkdir no-part-cooling-modules");
-        for entry in std::fs::read_dir(&src).expect("read core-modules dir") {
-            let entry = entry.expect("read_dir entry");
-            let name = entry.file_name();
-            if name.to_string_lossy() == "part-cooling" {
-                continue;
-            }
-            let target = dst.join(&name);
-            if entry.file_type().expect("file_type").is_dir() {
-                recurse_copy(&entry.path(), &target).expect("recurse_copy dir");
-            } else {
-                std::fs::copy(&entry.path(), &target).expect("copy file");
-            }
-        }
-        tmp
-    });
-    td.path().join("no-part-cooling-modules")
+/// Where cached `.gcode` outputs live. The per-call `SEQ` counter
+/// inside [`execute_slicer`] makes filenames unique across cache slots
+/// so older entries from a prior process don't collide.
+fn output_staging_dir() -> PathBuf {
+    let p = test_staging_root().join("slicer-cache-output");
+    std::fs::create_dir_all(&p).expect("create slicer-cache-output");
+    p
 }
 
-fn recurse_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if src.is_dir() {
-        std::fs::create_dir_all(dst)?;
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            recurse_copy(&entry.path(), &dst.join(entry.file_name()))?;
+/// Enumerate the per-module subdirs of `modules/core-modules`, omitting
+/// any whose directory name matches `excluded`. The CLI's `--module-dir`
+/// flag is repeatable and each module manifest sits one subdirectory
+/// level deep, so an exclusion is naturally expressed as a list of the
+/// kept subdirs — no recursive copy needed.
+fn core_module_subdirs(excluded: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(core_modules_dir()).expect("read core-modules dir") {
+        let entry = entry.expect("read_dir entry");
+        if !entry.file_type().expect("file_type").is_dir() {
+            continue;
         }
-    } else {
-        std::fs::copy(src, dst)?;
+        if entry.file_name() == excluded {
+            continue;
+        }
+        out.push(entry.path());
     }
-    Ok(())
+    out.sort();
+    out
 }
 
-/// Resolve a [`ModuleDirKind`] to a concrete on-disk path. Exposed so
-/// the determinism tests (which call [`run_pnp_cli_uncached`]
-/// directly) can use the same materialized directories the cache uses,
-/// without having to re-implement the empty / filtered-tree-support
-/// staging logic.
-pub fn module_dir_path(kind: &ModuleDirKind) -> PathBuf {
-    match kind {
-        ModuleDirKind::CoreModules => core_modules_dir(),
-        ModuleDirKind::Empty => empty_module_dir_path(),
-        ModuleDirKind::TreeSupportFiltered => tree_support_filtered_dir_path(),
-        ModuleDirKind::PartCoolingFiltered => part_cooling_filtered_dir_path(),
-    }
+/// Resolve a [`ModuleDirKind`] to the list of `--module-dir` paths the
+/// cache will hand `pnp_cli`. Exposed so the determinism tests (which
+/// call [`run_pnp_cli_uncached`] directly) can use the same
+/// materialized list the cache uses.
+///
+/// Cached per-kind in a process-local map so the read of
+/// `modules/core-modules/` happens once per `ModuleDirKind` per process.
+pub fn module_dir_paths(kind: &ModuleDirKind) -> Vec<PathBuf> {
+    let mut map = MODULE_DIR_PATHS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("module dir paths mutex");
+    map.entry(kind.clone())
+        .or_insert_with(|| match kind {
+            ModuleDirKind::CoreModules => vec![core_modules_dir()],
+            ModuleDirKind::Empty => vec![empty_staging_dir()],
+            ModuleDirKind::TreeSupportFiltered => core_module_subdirs("traditional-support"),
+            ModuleDirKind::PartCoolingFiltered => core_module_subdirs("part-cooling"),
+        })
+        .clone()
 }
 
 fn hash_config_file(path: &Path) -> u64 {
@@ -284,14 +284,14 @@ pub fn cached_run(
 }
 
 fn execute_slicer(model: &Path, module_dir: &ModuleDirKind, config: Option<&Path>) -> RunOutcome {
-    let modules_path = module_dir_path(module_dir);
-    let out_tmp = OUTPUT_TMP.get_or_init(|| tempfile::tempdir().expect("output tempdir"));
+    let modules = module_dir_paths(module_dir);
+    let out_dir = output_staging_dir();
     // Unique filename per call to avoid clobbering between cache slots.
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let out_path = out_tmp.path().join(format!("cached_run_{seq}.gcode"));
+    let out_path = out_dir.join(format!("cached_run_{seq}.gcode"));
 
-    let proc_out = run_pnp_cli_uncached(model, &modules_path, &out_path, config);
+    let proc_out = run_pnp_cli_uncached(model, &modules, &out_path, config);
     let output_written = out_path.exists();
     let gcode = if output_written {
         std::fs::read_to_string(&out_path).unwrap_or_default()
@@ -309,24 +309,22 @@ fn execute_slicer(model: &Path, module_dir: &ModuleDirKind, config: Option<&Path
 
 /// Escape hatch for determinism tests and other intentionally
 /// non-cached callers. Identical wire shape to the per-file
-/// `run_slicer_host` helpers that previously lived in each test file.
+/// `run_slicer_host` helpers that previously lived in each test file,
+/// except `module_dirs` is now a slice so each entry becomes its own
+/// `--module-dir` argument (the CLI accepts the flag repeated).
 pub fn run_pnp_cli_uncached(
     model: &Path,
-    module_dir: &Path,
+    module_dirs: &[PathBuf],
     output: &Path,
     config: Option<&Path>,
 ) -> std::process::Output {
     let bin = pnp_cli_bin();
     let mut cmd = Command::new(bin);
-    cmd.args([
-        "slice",
-        "--model",
-        model.to_str().unwrap(),
-        "--module-dir",
-        module_dir.to_str().unwrap(),
-        "--output",
-        output.to_str().unwrap(),
-    ]);
+    cmd.args(["slice", "--model", model.to_str().unwrap()]);
+    for dir in module_dirs {
+        cmd.arg("--module-dir").arg(dir);
+    }
+    cmd.args(["--output", output.to_str().unwrap()]);
     if let Some(config_path) = config {
         cmd.arg("--config").arg(config_path);
     }

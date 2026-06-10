@@ -47,8 +47,8 @@ fn golden_path() -> PathBuf {
         .join("tests/fixtures/golden/precision_legacy_20mmbox.gcode")
 }
 
-fn core_modules_dir() -> PathBuf {
-    crate::common::slicer_cache::module_dir_path(
+fn core_module_dirs() -> Vec<PathBuf> {
+    crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::CoreModules,
     )
 }
@@ -98,11 +98,11 @@ fn run_with_config(config_json: &str) -> Vec<u8> {
     std::fs::write(&cfg_path, config_json.as_bytes()).expect("write config JSON");
 
     let out_path = tmp.path().join("out.gcode");
-    let module_dir = core_modules_dir();
+    let module_dirs = core_module_dirs();
 
     let proc_out = crate::common::slicer_cache::run_pnp_cli_uncached(
         &stl,
-        &module_dir,
+        &module_dirs,
         &out_path,
         Some(&cfg_path),
     );

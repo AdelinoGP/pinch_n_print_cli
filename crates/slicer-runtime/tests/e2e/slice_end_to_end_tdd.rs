@@ -141,7 +141,7 @@ fn slice_e2e_is_deterministic() {
     assert_path_exists(&model, "model STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = crate::common::slicer_cache::module_dir_path(
+    let modules = crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::CoreModules,
     );
     let out_a = tmp.path().join("a.gcode");
@@ -480,9 +480,10 @@ fn wedge_mvp_layer_count_in_bounds() {
 #[test]
 fn slice_mvp_content_is_deterministic() {
     let model = fixture_stl();
-    let modules = core_modules_dir();
+    let modules_root = core_modules_dir();
     assert_path_exists(&model, "Benchy STL");
-    assert_path_exists(&modules, "core-modules directory");
+    assert_path_exists(&modules_root, "core-modules directory");
+    let modules = vec![modules_root];
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out_a = tmp.path().join("mvp_a.gcode");
@@ -647,7 +648,7 @@ fn slice_support_deterministic() {
     assert_path_exists(&model, "Benchy STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = crate::common::slicer_cache::module_dir_path(
+    let modules = crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
     );
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
@@ -742,11 +743,11 @@ fn tree_support_active_holder() {
     // â”€â”€ Filtered dir: traditional-support is excluded; tree-support
     //    is the only `support-generator` holder, so the dedup never
     //    drops it. â”€â”€
-    let filtered = crate::common::slicer_cache::module_dir_path(
+    let filtered = crate::common::slicer_cache::module_dir_paths(
         &crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
     );
     let loaded =
-        load_live_modules_for_plan(&[filtered], 1).expect("filtered live module load must succeed");
+        load_live_modules_for_plan(&filtered, 1).expect("filtered live module load must succeed");
 
     let bound_ids: Vec<String> = loaded
         .bindings
