@@ -29,6 +29,64 @@ use slicer_runtime::wit_host::{
 use crate::common::wasm_cache;
 use crate::common::{commit_hec_for_test, layer_input};
 
+/// Helper: create a minimal SliceIR with regions matching the given
+/// `(object_id, region_id)` pairs, then stage it into the arena.
+/// Required because `region_partition::sync_perimeter_infill_areas_into_slice`
+/// fires on every PerimetersPostProcess commit and needs a staged SliceIR.
+fn stage_minimal_slice_ir(
+    arena: &mut slicer_runtime::LayerArena,
+    layer_index: u32,
+    z: f32,
+    region_keys: &[(&str, u64)],
+) {
+    use slicer_ir::{ExPolygon, Point2, Polygon, SliceIR, SlicedRegion};
+    use std::collections::HashMap;
+
+    let regions = region_keys
+        .iter()
+        .map(|(oid, rid)| SlicedRegion {
+            object_id: oid.to_string(),
+            region_id: *rid,
+            polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2 { x: 0, y: 0 },
+                        Point2 { x: 10_000, y: 0 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
+                        Point2 { x: 0, y: 10_000 },
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            infill_areas: Vec::new(),
+            nonplanar_surface: None,
+            effective_layer_height: 0.2,
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
+            top_shell_index: None,
+            bottom_shell_index: None,
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
+            is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
+            sparse_infill_area: Vec::new(),
+        })
+        .collect();
+
+    arena
+        .set_slice(SliceIR {
+            global_layer_index: layer_index,
+            z,
+            regions,
+            ..Default::default()
+        })
+        .expect("stage_minimal_slice_ir: set_slice must succeed");
+}
+
 /// Helper: make a 2-point horizontal wall loop at a given Z.
 fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) -> WallLoopView {
     WallLoopView {
@@ -118,6 +176,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .expect("guest push_resolved_seam call must succeed");
 
     let mut arena = slicer_runtime::LayerArena::new();
+    stage_minimal_slice_ir(&mut arena, layer_index, layer_z, &[("", 0)]);
     commit_hec_for_test(
         "Layer::PerimetersPostProcess",
         module_id,
@@ -233,6 +292,12 @@ fn resolved_seam_is_applied_only_to_origin_region() {
     .expect("guest push_resolved_seam call must succeed");
 
     let mut arena = slicer_runtime::LayerArena::new();
+    stage_minimal_slice_ir(
+        &mut arena,
+        layer_index,
+        layer_z,
+        &[("obj-a", 0), ("obj-b", 1)],
+    );
     commit_hec_for_test(
         "Layer::PerimetersPostProcess",
         module_id,
@@ -964,6 +1029,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     // Stage PerimeterIR into arena (without resolved_seam).
     let mut arena = LayerArena::new();
     arena.set_perimeter(perimeter_ir).unwrap();
+    stage_minimal_slice_ir(&mut arena, layer_index, layer_z, &[("obj-a", 0)]);
 
     // Stage SeamPlanIR into blackboard.
     let mut blackboard = Blackboard::new(
