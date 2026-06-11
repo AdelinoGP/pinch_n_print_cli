@@ -111,6 +111,54 @@ favor of the HashMap form. Three reasons:
   dispatch. Tests that DO need real dispatch must use a real pool — not
   silently fall back through the placeholder.
 
+## Amendment (packet TBD): dispatch fixture conventions
+
+A follow-on packet adds two test-scaffolding modules above the
+`TestModuleBundle` helper this ADR introduced. Recording the conventions here
+so a future architecture review does not re-propose alternatives that have
+already been costed.
+
+- `crates/slicer-runtime/tests/common/dispatch_fixture.rs` hosts
+  `DispatchFixture`, a fluent builder above `TestModuleBundle` that **owns the
+  dispatcher, `Blackboard`, and `LayerArena` internally**. Default = real
+  WAT-compiled component + empty `ConfigView`; overrides: `.no_wasm()`,
+  `.with_config(ConfigView)`, `.with_wat(&str)`. Tests obtain a single value
+  and assert against `fx.arena.*` after `fx.run_*(...)`.
+- The four runner traits (ADR-0005) are wrapped by **four per-runner methods**:
+  `run_layer(&GlobalLayer)`, `run_prepass()`,
+  `run_finalization(&[LayerCollectionIR])`, `run_postpass(&GCodeIR)`. **No
+  generic `run::<R: StageRunner>`** and **no type-state
+  `DispatchFixture<LayerStage>`**: both were costed and rejected because the
+  generic parameter would spread to every helper signature in the
+  axis-aligned test files Packet 2 will produce.
+- `crates/slicer-runtime/tests/common/ir_builders.rs` exposes
+  `slice_ir::with_count(n)` and `slice_ir::with_ids(&[(obj_id, region_id), …])`
+  (and the parallel `perimeter_ir::*`) **as two distinct entry points per IR
+  type**. The identity-aware variant exists because region-identity
+  preservation is the load-bearing Claim the dispatcher's bucket-by-origin
+  logic enforces; tests that exercise it must name the IDs explicitly. Wall
+  shape is auto-generated via `.walls(n)` on the perimeter region builder;
+  `.walls_with(vec![wall_loop()…])` is the escape hatch.
+- The parallel `crates/slicer-wasm-host/tests/common/` fixture set (≈120 LOC
+  of mesh/geometry helpers duplicated by design per P83.1 AC-N3) **is left
+  untouched**. `DispatchFixture` cannot move there because it imports
+  `slicer_runtime::{Blackboard, LayerArena, CompiledModule}`; any extraction
+  into a shared `slicer-test-fixtures` crate is a separate packet's decision.
+
+### What future architecture reviews must not re-litigate (amendment)
+
+- **Do not propose a single generic `run::<R: StageRunner>` method on
+  `DispatchFixture`.** Per-runner methods were chosen so the eight
+  axis-aligned test files in Packet 2 read without turbofish and without a
+  per-runner inputs trait.
+- **Do not collapse `with_count` and `with_ids` into one builder.** The two
+  shapes correspond to two different test Claims (cardinality vs identity
+  preservation); merging them would force every test to specify a
+  `None`-or-Vec for region IDs.
+- **Do not widen the `slicer-wasm-host/tests/common/` duplication by adding
+  `DispatchFixture` (or any runtime-typed scaffolding) there.** The dep
+  direction is owned by AC-N3.
+
 ## Cross-references
 
 - ADR-0002 (WIT marshalling type unification) — confirms what stays in
