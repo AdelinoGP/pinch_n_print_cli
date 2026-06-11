@@ -142,12 +142,29 @@ Fatal failure excerpt:
 2. `module_error(status=fatal_error,fatal=true)`
 3. `slice_complete(status=fatal_error,degraded=false,fatal_error_count>0)`
 
+## Schema Version Cadence
+
+The `schema_version` field follows additive minor bumps:
+
+| Version | Change | Owning packet / task |
+|---|---|---|
+| `1.0.0` | Baseline 7-event schema (`phase_start`, `phase_complete`, `layer_start`, `layer_complete`, `module_error`, `validation_error`, `slice_complete`). | Phase 0 (T-005) |
+| `1.1.0` | `slice_complete.output_path: Option<PathBuf>` added (packet 49); `error.reason: Option<String>` kebab-case classification tag added (earlier additive). Both are observable in the example schema above. | `pinch_n_print_studio` packet 49 (Phase 3b preview hand-off) |
+| `1.2.0` | New `slice_stats` event emitted before `slice_complete`, carrying `gcode_prediction_seconds`, `gcode_weight_grams`, `gcode_filament_length_mm`, `layer_count`, `first_layer_height_mm`. | Reserved for `pinch_n_print_studio` T-096 (SliceStats Event Wiring) — coordinated backend PR |
+| `1.3.0` | `--instrument-stderr` stream — adds `stage_start`, `stage_complete`, `module_start`, `module_complete` events on the same stderr JSONL. | (future) |
+
+Each row is additive and backward-compatible: a 1.0.0 consumer ignores
+`output_path`, a 1.1.0 consumer ignores `slice_stats`, etc. Validators
+must accept any same-major version line.
+
 ## Instrumented Stream (`--instrument-stderr`)
 
 Passing `--instrument-stderr` to `pnp_cli slice` bumps the schema version
-to `"1.1.0"` and additionally emits per-stage and per-module brackets on
-the same stderr JSONL stream. New event types (additive, backward-
-compatible with consumers that ignore unknown `event` values):
+to `"1.3.0"` (see Schema Version Cadence above; 1.1.0 and 1.2.0 are
+reserved for additive payload fields) and additionally emits per-stage
+and per-module brackets on the same stderr JSONL stream. New event types
+(additive, backward-compatible with consumers that ignore unknown
+`event` values):
 
 | Event             | Required fields                                                                                 |
 |-------------------|-------------------------------------------------------------------------------------------------|
@@ -163,16 +180,17 @@ and omitted otherwise (prepass / postpass stages).
 (`wasm_peak_bytes / 1024`) sampled by the runtime around the module
 dispatch. Host built-ins report `0`.
 
-Compatibility: events emitted without `--instrument-stderr` still report
-`"schema_version": "1.0.0"`. The flag is fully composable with `--report`
-so an agent can stream live timing to a file while also producing the
-HTML report (see `docs/specs/agent-cli-debugging.md` §4.2).
+Compatibility: events emitted without `--instrument-stderr` report the
+highest baseline schema version (see Schema Version Cadence). The flag
+is fully composable with `--report` so an agent can stream live timing
+to a file while also producing the HTML report (see
+`docs/specs/agent-cli-debugging.md` §4.2).
 
 Example excerpt (one prepass stage + one per-layer module):
 
 ```jsonl
-{"schema_version":"1.1.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
-{"schema_version":"1.1.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok"}
-{"schema_version":"1.1.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
-{"schema_version":"1.1.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
+{"schema_version":"1.3.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
+{"schema_version":"1.3.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok"}
+{"schema_version":"1.3.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
+{"schema_version":"1.3.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
 ```
