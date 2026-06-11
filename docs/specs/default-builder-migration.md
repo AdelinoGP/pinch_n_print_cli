@@ -866,7 +866,7 @@ context. No builder needed.
 `LoadError`, `LoadErrorKind`, `MeshAnalysisError`, `ModelLoadError`,
 `PipelineError`, `PostpassError`, `PrepassExecutionError`,
 `ProgressError`, `SchedulerError`, `WasmLoadError`,
-`WasmCallError`, `InstancePoolError`, `MeshSegmentationError`,
+`WasmCallError`, `InstancePoolError`,
 `PaintSegmentationError`, `RegionMappingError`, `RegionMappingBuiltinError`,
 `SlicePostProcessPaintAnnotationError`, `SupportGeometryBuiltinError`,
 `UnknownSemanticWarning`.

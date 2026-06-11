@@ -290,6 +290,12 @@ fn execute_slicer(model: &Path, module_dir: &ModuleDirKind, config: Option<&Path
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let out_path = out_dir.join(format!("cached_run_{seq}.gcode"));
+    // SEQ is a per-process AtomicU64; the staging dir persists across runs (target/ is shared),
+    // so slot reuse across processes can leave a stale .gcode in this slot from a prior run.
+    // Negative tests (e.g. cli_rejects_top_shell_layers_string) assert `output_written == false`
+    // when config resolution fails — they need an empty slot at start to observe what the CLI
+    // did during *this* invocation.
+    let _ = std::fs::remove_file(&out_path);
 
     let proc_out = run_pnp_cli_uncached(model, &modules, &out_path, config);
     let output_written = out_path.exists();

@@ -25,7 +25,6 @@ mod live_seam_path_tdd;
 mod live_top_bottom_fill_tdd;
 mod live_travel_policy_tdd;
 mod macro_finalization_deep_copy_tdd;
-mod mesh_segmentation_executor_tdd;
 mod paint_segmentation_executor_tdd;
 mod paint_segmentation_host_tdd;
 mod postpass_executor_tdd;

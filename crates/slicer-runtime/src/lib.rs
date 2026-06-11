@@ -190,9 +190,6 @@ pub use slicer_gcode::GCodeSerializer;
 pub use slicer_core::algos::mesh_analysis::{
     execute_mesh_analysis, execute_mesh_analysis_with, MeshAnalysisConfig, MeshAnalysisError,
 };
-pub use slicer_core::algos::mesh_segmentation::{
-    execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
-};
 pub use slicer_core::algos::paint_segmentation::{
     execute_paint_segmentation, PaintSegmentationError,
 };

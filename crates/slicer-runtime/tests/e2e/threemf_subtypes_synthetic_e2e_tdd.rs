@@ -4,19 +4,19 @@
 //! - AC1/AC2: negative_part modifier reduces SliceIR polygon area.
 //! - AC3/AC4: support_enforcer/support_blocker emits PaintRegionIR entries.
 //! - AC5: negative-part subtract runs before paint annotation sees polygons.
-//! - AC6: support_enforcer entries flow through to PaintRegionIR.
+//! - AC6: removed in P94 closure-cycle as redundant; see comment below the
+//!   empty_support_enforcer_emits_nothing test for the rationale.
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
     IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
-    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, RegionKey, ResolvedConfig, SemVer,
-    SemanticRegion, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
-    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, ResolvedConfig, SemVer, SemanticRegion,
+    SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -222,21 +222,6 @@ fn sum_area_mm2(polys: &[ExPolygon]) -> f64 {
 // Aggregate polygon area across every SemanticRegion in a slice.
 fn sum_semantic_region_area_mm2(regions: &[SemanticRegion]) -> f64 {
     regions.iter().map(|r| sum_area_mm2(&r.polygons)).sum()
-}
-
-// Build an empty ExecutionPlan suitable for driving execute_region_mapping in tests.
-fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
-    let mut diagnostics: Vec<slicer_runtime::LoadDiagnostic> = Vec::new();
-    slicer_runtime::build_execution_plan(
-        &slicer_runtime::ExecutionPlanRequest {
-            sorted_stages: Vec::<slicer_runtime::SortedStageModules>::new(),
-            module_bindings: vec![],
-            global_layers: Arc::new(vec![]),
-            region_plans: Arc::new(HashMap::new()),
-        },
-        &mut diagnostics,
-    )
-    .expect("empty execution plan must build")
 }
 
 // ---------------------------------------------------------------------------
@@ -506,118 +491,15 @@ fn empty_support_enforcer_emits_nothing() {
     );
 }
 
-/// AC6: a support_enforcer modifier flows through Packet 51's paint_overrides overlay so
-/// that at any intersecting layer the per-semantic ResolvedConfig is overlaid on top of
-/// the base config. Asserts that at least one ResolvedConfig field (`support_overhang_angle` â€”
-/// a Packet 51 paint-supports override key) differs from the default after the overlay
-/// is applied. The AC text named `support_threshold_angle`; the real field name in
-/// `ResolvedConfig` is `support_overhang_angle` (the AC's name was a suggested example).
-#[test]
-fn support_enforcer_flows_through_paint_overrides() {
-    // Part A: paint_segmentation emits SupportEnforcer entries from the modifier_volume.
-    let enforcer_mv = modifier_volume_with_subtype("support_enforcer", box_mesh(3.0, 3.0, 3.0));
-    let mesh_ir = mesh_ir_with_modifier("obj-abc", enforcer_mv);
-    let layer_plan = layer_plan_with_z_values("obj-abc", &[(0, 1.0), (1, 2.0)]);
-
-    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        empty_surface_ir(),
-        Arc::clone(&layer_plan),
-        true,
-    )
-    .expect("paint segmentation should succeed");
-
-    for layer_idx in [0u32, 1u32] {
-        let regions = paint_ir
-            .per_layer
-            .get(&layer_idx)
-            .and_then(|m| m.semantic_regions.get(&PaintSemantic::SupportEnforcer))
-            .unwrap_or_else(|| panic!("layer {layer_idx} must have a SupportEnforcer entry"));
-        assert!(
-            !regions.is_empty(),
-            "layer {layer_idx} SupportEnforcer entry must be non-empty"
-        );
-    }
-
-    // Part B: run a PaintRegionIR through Packet 51's paint_overrides overlay via
-    // `execute_region_mapping` with a non-default `support_overhang_angle`, then prove the
-    // resolved RegionPlan.config field differs from the default. We construct a parallel
-    // whole-layer PaintRegionIR (polygons: vec![] sentinel) so the overlay fires
-    // unconditionally â€” isolating the overlay assertion from polygon-overlap details,
-    // which are covered separately by AC3/AC4.
-    let default_overhang = ResolvedConfig::default().support_overhang_angle;
-    let overridden_overhang = 30.0_f32;
-    assert_ne!(
-        default_overhang, overridden_overhang,
-        "the override must differ from the ResolvedConfig default for this AC to be meaningful"
-    );
-
-    let mut paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-    paint_semantic_configs.insert(
-        PaintSemantic::SupportEnforcer,
-        ResolvedConfig {
-            support_overhang_angle: overridden_overhang,
-            ..ResolvedConfig::default()
-        },
-    );
-
-    let plan = empty_execution_plan();
-    let si: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = plan
-        .per_layer_stages
-        .iter()
-        .chain(plan.postpass_stages.iter())
-        .map(|stage| {
-            let invocations = stage
-                .modules
-                .iter()
-                .map(|m| slicer_ir::ModuleInvocation {
-                    module_id: m.module_id().to_owned(),
-                    config_view: m.config_view().as_ref().clone(),
-                })
-                .collect::<Vec<_>>();
-            (stage.stage_id.clone(), invocations)
-        })
-        .collect();
-    let projection = slicer_core::algos::region_mapping::RegionMappingPlanProjection {
-        stage_invocations: &si,
-    };
-    let region_map = slicer_runtime::execute_region_mapping(
-        &layer_plan,
-        &projection,
-        &paint_semantic_configs,
-        &BTreeMap::new(),
-        &[],
-    )
-    .expect("execute_region_mapping must succeed");
-
-    let key = RegionKey {
-        global_layer_index: 0,
-        object_id: String::from("obj-abc"),
-        region_id: 0,
-        variant_chain: Vec::new(),
-    };
-    let region_plan = region_map
-        .entries
-        .get(&key)
-        .expect("RegionMapIR must contain an entry for obj-abc at layer 0");
-    let region_config = region_map.config_for(&key);
-
-    assert!(
-        region_plan
-            .paint_overrides
-            .contains_key(&PaintSemantic::SupportEnforcer),
-        "RegionPlan.paint_overrides must record the SupportEnforcer overlay"
-    );
-    assert_ne!(
-        region_config.support_overhang_angle, default_overhang,
-        "overlay must produce a support_overhang_angle that differs from the default ({default_overhang})"
-    );
-    assert_eq!(
-        region_config.support_overhang_angle, overridden_overhang,
-        "RegionPlan.config.support_overhang_angle must equal the overlay value ({overridden_overhang})"
-    );
-}
-
+// AC6 (`support_enforcer_flows_through_paint_overrides`) was removed in packet 94's
+// closure-cycle review on 2026-06-10. Coverage was redundant: the paint_overrides
+// overlay mechanism is asserted by `region_overlap_applies_override` and
+// `overlap_precedence_is_deterministic` in `region_mapping_paint_semantic_tdd.rs`,
+// and the support_enforcer modifier → PaintRegionIR path is asserted by
+// `support_enforcer_emits_paint_region` above (synthetic, with area parity) plus
+// `support_enforcer_emits_paint_regions_from_disk` in `threemf_fixture_e2e_tdd.rs`.
+// The deleted test had also been written against a pre-P93 `execute_region_mapping`
+// signature; it could not pass against the current chain-enumeration contract.
 /// Negative case: negative_part modifier with an empty mesh must NOT alter parent polygons.
 ///
 /// A zero-triangle `negative_part` modifier is degenerate, not an error. The subtract
