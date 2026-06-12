@@ -6,7 +6,7 @@ use slicer_ir::{ExPolygon, IndexedTriangleSet, Point2, Point3, Polygon};
 
 use std::collections::HashMap;
 
-use crate::polygon_ops::{self, OffsetJoinType};
+use crate::polygon_ops::{self, union_ex, OffsetJoinType};
 
 /// Represents a line segment intersection with a slicing plane.
 #[derive(Debug, Clone)]
@@ -456,6 +456,107 @@ fn polygons_to_expolygons(polygons: &[Polygon]) -> Vec<ExPolygon> {
         .collect()
 }
 
+/// Project a mesh face (upward or downward facing) onto the XY plane as a `Polygon`.
+fn project_face_xy(v0: &Point3, v1: &Point3, v2: &Point3) -> Polygon {
+    Polygon {
+        points: vec![
+            Point2::from_mm(v0.x, v0.y),
+            Point2::from_mm(v1.x, v1.y),
+            Point2::from_mm(v2.x, v2.y),
+        ],
+    }
+}
+
+/// Slice a mesh into "slab" projections for top- and bottom-facing surfaces.
+///
+/// For each slab `i` in `0..(zs.len()-1)` (spanning `zs[i]..zs[i+1]`):
+/// - Top-facing faces (normal.z > 0) whose Z range overlaps the slab are projected
+///   into the XY plane and unioned → `top_slabs[i]`.
+/// - Bottom-facing faces (normal.z < 0) are projected similarly → `bottom_slabs[i]`.
+///
+/// `zs` values are in mm (unscaled f32), matching `IndexedTriangleSet` vertex units.
+pub fn slice_mesh_slabs(
+    mesh: &IndexedTriangleSet,
+    zs: &[f32],
+) -> (Vec<Vec<ExPolygon>>, Vec<Vec<ExPolygon>>) {
+    let slab_count = zs.len().saturating_sub(1);
+    if slab_count == 0 {
+        return (Vec::new(), Vec::new());
+    }
+
+    // Accumulators: per-slab lists of raw triangle projections.
+    let mut top_acc: Vec<Vec<Polygon>> = vec![Vec::new(); slab_count];
+    let mut bot_acc: Vec<Vec<Polygon>> = vec![Vec::new(); slab_count];
+
+    for chunk in mesh.indices.chunks(3) {
+        if chunk.len() < 3 {
+            continue;
+        }
+        let (i0, i1, i2) = (chunk[0] as usize, chunk[1] as usize, chunk[2] as usize);
+        if i0 >= mesh.vertices.len() || i1 >= mesh.vertices.len() || i2 >= mesh.vertices.len() {
+            continue;
+        }
+        let v0 = &mesh.vertices[i0];
+        let v1 = &mesh.vertices[i1];
+        let v2 = &mesh.vertices[i2];
+
+        // Cross product Z component: (v1-v0) × (v2-v0), Z part only.
+        let nz = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+        if nz.abs() < 1e-12 {
+            continue; // Vertical / degenerate face.
+        }
+
+        let face_min_z = v0.z.min(v1.z).min(v2.z);
+        let face_max_z = v0.z.max(v1.z).max(v2.z);
+
+        // Find slab range that overlaps [face_min_z, face_max_z].
+        let slab_start = zs
+            .windows(2)
+            .position(|w| w[1] > face_min_z)
+            .unwrap_or(slab_count);
+        let slab_end = zs
+            .windows(2)
+            .rposition(|w| w[0] < face_max_z)
+            .map(|p| p + 1)
+            .unwrap_or(0);
+
+        if slab_start >= slab_count || slab_end == 0 || slab_start >= slab_end {
+            continue;
+        }
+
+        let proj = project_face_xy(v0, v1, v2);
+        let acc = if nz > 0.0 { &mut top_acc } else { &mut bot_acc };
+        for slab_idx in slab_start..slab_end.min(slab_count) {
+            let slab_lo = zs[slab_idx];
+            let slab_hi = zs[slab_idx + 1];
+            if face_max_z > slab_lo && face_min_z < slab_hi {
+                acc[slab_idx].push(proj.clone());
+            }
+        }
+    }
+
+    // Union projections per slab.
+    let union_slab = |acc: Vec<Vec<Polygon>>| -> Vec<Vec<ExPolygon>> {
+        acc.into_iter()
+            .map(|polys| {
+                if polys.is_empty() {
+                    return Vec::new();
+                }
+                let expols: Vec<ExPolygon> = polys
+                    .into_iter()
+                    .map(|p| ExPolygon {
+                        contour: p,
+                        holes: Vec::new(),
+                    })
+                    .collect();
+                union_ex(&expols)
+            })
+            .collect()
+    };
+
+    (union_slab(top_acc), union_slab(bot_acc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -574,5 +675,185 @@ mod tests {
             let is_valid = expected_points.iter().any(|p| p == point);
             assert!(is_valid, "Unexpected point: {:?}", point);
         }
+    }
+
+    // --- slice_mesh_slabs tests ---
+
+    fn unit_cube_mesh() -> IndexedTriangleSet {
+        let vertices = vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        ];
+        #[rustfmt::skip]
+        let indices = vec![
+            // Bottom face (z=0, CW from above → normal.z < 0)
+            0, 1, 2,  0, 2, 3,
+            // Top face (z=1, CCW from above → normal.z > 0): 4=(0,0,1),5=(1,0,1),6=(1,1,1),7=(0,1,1)
+            // 4→5→6: nz = (1,0,0)×(1,1,0) z-part = 1*1 - 0*1 = 1 > 0 ✓
+            4, 5, 6,  4, 6, 7,
+            // Sides (normal.z ≈ 0, skipped by algorithm)
+            0, 1, 5,  0, 5, 4,
+            1, 2, 6,  1, 6, 5,
+            2, 3, 7,  2, 7, 6,
+            3, 0, 4,  3, 4, 7,
+        ];
+        IndexedTriangleSet { vertices, indices }
+    }
+
+    #[test]
+    fn slice_mesh_slabs_empty_mesh_returns_empty() {
+        let mesh = IndexedTriangleSet {
+            vertices: vec![],
+            indices: vec![],
+        };
+        let (top, bot) = slice_mesh_slabs(&mesh, &[0.0, 1.0]);
+        assert!(top.iter().all(|s| s.is_empty()) || top.is_empty());
+        assert!(bot.iter().all(|s| s.is_empty()) || bot.is_empty());
+    }
+
+    #[test]
+    fn slice_mesh_slabs_zero_slab_count() {
+        let mesh = unit_cube_mesh();
+        let (top, bot) = slice_mesh_slabs(&mesh, &[]);
+        assert!(top.is_empty());
+        assert!(bot.is_empty());
+
+        let (top2, bot2) = slice_mesh_slabs(&mesh, &[0.5]);
+        assert!(top2.is_empty());
+        assert!(bot2.is_empty());
+    }
+
+    #[test]
+    fn slice_mesh_slabs_single_slab_cube_top_face() {
+        let mesh = unit_cube_mesh();
+        let (top, _bot) = slice_mesh_slabs(&mesh, &[0.0, 2.0]);
+        assert_eq!(top.len(), 1, "Should have 1 slab");
+        assert!(
+            !top[0].is_empty(),
+            "Top slab should contain at least one ExPolygon for the upward cube face"
+        );
+        // The top face projects to a 1x1 mm square; check bounding box approx.
+        let all_pts: Vec<Point2> = top[0]
+            .iter()
+            .flat_map(|ep| ep.contour.points.iter().copied())
+            .collect();
+        let min_x = all_pts.iter().map(|p| p.x).min().unwrap_or(0);
+        let max_x = all_pts.iter().map(|p| p.x).max().unwrap_or(0);
+        let min_y = all_pts.iter().map(|p| p.y).min().unwrap_or(0);
+        let max_y = all_pts.iter().map(|p| p.y).max().unwrap_or(0);
+        // 1 mm = 10000 units
+        assert_eq!(min_x, 0, "min_x should be 0");
+        assert_eq!(max_x, 10000, "max_x should be 10000 (1 mm)");
+        assert_eq!(min_y, 0, "min_y should be 0");
+        assert_eq!(max_y, 10000, "max_y should be 10000 (1 mm)");
+    }
+
+    #[test]
+    fn slice_mesh_slabs_upward_vs_downward_face_classification() {
+        // One upward triangle (normal.z > 0) and one downward (normal.z < 0), both in slab [0,1].
+        let vertices = vec![
+            // Upward: CCW from above → normal.z > 0
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.5,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.5,
+            },
+            Point3 {
+                x: 0.5,
+                y: 1.0,
+                z: 0.5,
+            },
+            // Downward: CW from above → normal.z < 0
+            Point3 {
+                x: 2.0,
+                y: 0.0,
+                z: 0.5,
+            },
+            Point3 {
+                x: 2.5,
+                y: 1.0,
+                z: 0.5,
+            },
+            Point3 {
+                x: 3.0,
+                y: 0.0,
+                z: 0.5,
+            },
+        ];
+        let indices = vec![
+            0, 1, 2, // upward (CCW)
+            3, 4, 5, // downward (CW)
+        ];
+        let mesh = IndexedTriangleSet { vertices, indices };
+        let (top, bot) = slice_mesh_slabs(&mesh, &[0.0, 1.0]);
+        assert_eq!(top.len(), 1);
+        assert_eq!(bot.len(), 1);
+        assert!(!top[0].is_empty(), "Upward face should appear in top_slabs");
+        assert!(
+            !bot[0].is_empty(),
+            "Downward face should appear in bottom_slabs"
+        );
+        // Upward projection should NOT appear in bottom and vice versa (different X ranges).
+        let top_pts: Vec<Point2> = top[0]
+            .iter()
+            .flat_map(|ep| ep.contour.points.iter().copied())
+            .collect();
+        let bot_pts: Vec<Point2> = bot[0]
+            .iter()
+            .flat_map(|ep| ep.contour.points.iter().copied())
+            .collect();
+        let top_max_x = top_pts.iter().map(|p| p.x).max().unwrap_or(0);
+        let bot_min_x = bot_pts.iter().map(|p| p.x).min().unwrap_or(i64::MAX);
+        assert!(
+            top_max_x <= 10000,
+            "Top projection should stay within x=0..1mm"
+        );
+        assert!(
+            bot_min_x >= 20000,
+            "Bottom projection should start at x=2mm"
+        );
     }
 }

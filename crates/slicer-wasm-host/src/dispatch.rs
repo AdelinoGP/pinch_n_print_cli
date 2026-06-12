@@ -290,7 +290,8 @@ struct CallConfig<'a> {
 struct LayerParams<'a> {
     layer_index: u32,
     layer_z: f32,
-    paint_ir: Option<&'a slicer_ir::PaintRegionIR>,
+    /// Reserved: paint annotations now live in SliceIR segment_annotations (AC-16).
+    paint_ir: Option<&'a ()>,
     seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
     support_plan_ir: Option<&'a slicer_ir::SupportPlanIR>,
     _arena_placeholder: std::marker::PhantomData<&'a ()>,
@@ -348,7 +349,7 @@ impl WasmRuntimeDispatcher {
         effective_config_view: slicer_ir::ConfigView,
         layer_index: u32,
         layer_z: f32,
-        paint_ir: Option<&slicer_ir::PaintRegionIR>,
+        _paint_ir: Option<&()>,
         seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
         support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
         slice_ir: Option<&slicer_ir::SliceIR>,
@@ -442,7 +443,7 @@ impl WasmRuntimeDispatcher {
             LayerParams {
                 layer_index,
                 layer_z,
-                paint_ir,
+                paint_ir: None,
                 seam_plan_ir,
                 support_plan_ir,
                 _arena_placeholder: std::marker::PhantomData,
@@ -1343,29 +1344,25 @@ impl WasmRuntimeDispatcher {
     }
 }
 
-/// Build `PaintRegionLayerData` from an optional `PaintRegionIR`.
-fn build_paint_layer_data(
-    paint_ir: Option<&slicer_ir::PaintRegionIR>,
-    layer_index: u32,
-) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(paint_ir, layer_index, None)
+/// Build `PaintRegionLayerData` from an optional paint source.
+/// Paint annotations now live in SliceIR segment_annotations (AC-16);
+/// this always returns empty-but-valid data.
+fn build_paint_layer_data(_paint_ir: Option<&()>, layer_index: u32) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None)
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
 /// `SupportPlanIR` for this layer.
 fn build_paint_layer_data_with_plan(
-    paint_ir: Option<&slicer_ir::PaintRegionIR>,
+    _paint_ir: Option<&()>,
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
 ) -> PaintRegionLayerData {
-    let mut data = match paint_ir {
-        Some(ir) => host::paint_region_ir_to_layer_data(ir, layer_index),
-        None => PaintRegionLayerData {
-            layer_index,
-            regions_by_semantic: HashMap::new(),
-            custom_regions: HashMap::new(),
-            support_plan_segments: HashMap::new(),
-        },
+    let mut data = PaintRegionLayerData {
+        layer_index,
+        regions_by_semantic: HashMap::new(),
+        custom_regions: HashMap::new(),
+        support_plan_segments: HashMap::new(),
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
@@ -2067,7 +2064,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             effective_config_view,
             layer.index,
             layer.z,
-            input.paint_regions.as_deref(),
+            None,
             input.seam_plan.as_deref(),
             input.support_plan.as_deref(),
             input.slice,

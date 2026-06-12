@@ -13,8 +13,8 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, LayerCollectionIR, LayerPlanIR, MeshIR, ModuleId, PaintRegionIR, PerimeterIR,
-    RegionMapIR, SeamPlanIR, SliceIR, SupportGeometryIR, SupportPlanIR,
+    ConfigView, LayerCollectionIR, LayerPlanIR, MeshIR, ModuleId, PerimeterIR, RegionMapIR,
+    SeamPlanIR, SliceIR, SupportGeometryIR, SupportPlanIR,
 };
 
 use crate::instance::WasmComponent;
@@ -68,8 +68,8 @@ impl<'a> CompiledModuleLive<'a> {
 pub struct LayerStageInput<'a> {
     /// Arc-cloned from `blackboard.mesh()` at the call site.
     pub mesh: Arc<MeshIR>,
-    /// From `blackboard.paint_regions()`.
-    pub paint_regions: Option<Arc<PaintRegionIR>>,
+    /// Reserved: paint annotations are now in SliceIR segment_annotations (AC-16).
+    pub paint_regions: Option<()>,
     /// From `blackboard.seam_plan()`.
     pub seam_plan: Option<Arc<SeamPlanIR>>,
     /// From `blackboard.support_plan()`.

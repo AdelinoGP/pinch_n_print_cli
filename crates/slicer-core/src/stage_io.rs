@@ -4,21 +4,13 @@
 //! (`PrepassStageOutput`) and the auxiliary mesh-analysis payloads
 //! forwarded from guest WASM modules via the WIT `mesh-analysis-output`
 //! resource (`MeshAnalysisAuxiliary` and its supporting records).
-//!
-//! Placed in `slicer-core` (not `slicer-ir`) because `PrepassStageOutput`
-//! carries `PaintRegionRTreeIndex`, a spatial-index type that already lives
-//! here; putting it in `slicer-ir` would introduce an `slicer-ir →
-//! slicer-core` dependency that would contaminate IR with spatial-index
-//! machinery.
 
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, MeshSegmentationIR, PaintRegionIR, RegionMapIR, SeamPlanIR, SupportGeometryIR,
-    SupportPlanIR, SurfaceClassificationIR,
+    LayerPlanIR, MeshSegmentationIR, RegionMapIR, SeamPlanIR, SupportGeometryIR, SupportPlanIR,
+    SurfaceClassificationIR,
 };
-
-use crate::paint_region::PaintRegionRTreeIndex;
 
 /// One committed output produced by a prepass stage invocation.
 #[derive(Debug, Clone)]
@@ -35,8 +27,6 @@ pub enum PrepassStageOutput {
     SeamPlan(Arc<SeamPlanIR>),
     /// Stage produced `SupportPlanIR`.
     SupportPlan(Arc<SupportPlanIR>),
-    /// Stage produced `PaintRegionIR` and companion `PaintRegionRTreeIndex`.
-    PaintRegions(Arc<PaintRegionIR>, Arc<PaintRegionRTreeIndex>),
     /// Stage produced `RegionMapIR`.
     RegionMap(Arc<RegionMapIR>),
     /// Stage produced `SupportGeometryIR`.

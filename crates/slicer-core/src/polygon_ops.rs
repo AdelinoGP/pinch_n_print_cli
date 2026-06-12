@@ -1,7 +1,17 @@
 //! Polygon clipping and offset primitives.
 
 use clipper2_rust::Point64;
+use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{ExPolygon, Point2, Polygon};
+
+/// A 2D line segment with endpoints in scaled integer coordinates (1 unit = 100 nm).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Line {
+    /// Start point.
+    pub start: Point2,
+    /// End point.
+    pub end: Point2,
+}
 
 /// Boolean clip operation type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,15 +245,263 @@ pub fn offset(
         .collect()
 }
 
+/// Union of all subject ExPolygons with each other (no separate clip set).
+///
+/// Wraps the existing [`union`] by using an empty clip set so that only
+/// subject-vs-subject overlaps are merged.
+pub fn union_ex(subject: &[ExPolygon]) -> Vec<ExPolygon> {
+    union(subject, &[])
+}
+
+/// Pairwise intersection of two ExPolygon sets.
+///
+/// Wraps the existing [`intersection`].
+pub fn intersection_ex(a: &[ExPolygon], b: &[ExPolygon]) -> Vec<ExPolygon> {
+    intersection(a, b)
+}
+
+/// Difference of two ExPolygon sets.
+///
+/// Wraps the existing [`difference`].
+pub fn difference_ex(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon> {
+    difference(subject, clip)
+}
+
+/// Morphological opening: erode then dilate by `distance` (mm).
+///
+/// Opening removes thin bridges and small protrusions smaller than `distance`.
+pub fn opening(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
+    let eroded = offset(subject, -distance as f32, OffsetJoinType::Round, 0.05);
+    offset(&eroded, distance as f32, OffsetJoinType::Round, 0.05)
+}
+
+/// Morphological closing: dilate then erode by `distance` (mm).
+///
+/// Closing fills small gaps and holes smaller than `distance`.
+pub fn closing_ex(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
+    let dilated = offset(subject, distance as f32, OffsetJoinType::Round, 0.05);
+    offset(&dilated, -distance as f32, OffsetJoinType::Round, 0.05)
+}
+
+/// Signed area of a polygon ring (contour) using the shoelace formula.
+/// Returns a positive value for CCW winding, negative for CW.
+fn signed_area(poly: &Polygon) -> f64 {
+    let pts = &poly.points;
+    if pts.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0i64;
+    for i in 0..pts.len() {
+        let j = (i + 1) % pts.len();
+        area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    area as f64 * 0.5
+}
+
+/// Filter out polygons whose contour area is below `min_area`, and remove
+/// holes whose area is below `min_hole_area`.  Operates in-place on `polys`.
+///
+/// Areas are in workspace-unit² (1 unit = 100 nm, so 1 unit² = 10⁻⁸ mm²).
+pub fn remove_small_and_small_holes(polys: &mut Vec<ExPolygon>, min_area: f64, min_hole_area: f64) {
+    polys.retain(|exp| signed_area(&exp.contour).abs() >= min_area);
+    for exp in polys.iter_mut() {
+        exp.holes
+            .retain(|hole| signed_area(hole).abs() >= min_hole_area);
+    }
+}
+
+/// Simplify all contours (outer + holes) of each ExPolygon using the
+/// Ramer-Douglas-Peucker algorithm with the given `tolerance` (in workspace
+/// units).
+pub fn expolygons_simplify(polygons: &[ExPolygon], tolerance: f64) -> Vec<ExPolygon> {
+    polygons
+        .iter()
+        .map(|exp| ExPolygon {
+            contour: simplify_polygon(&exp.contour, tolerance),
+            holes: exp
+                .holes
+                .iter()
+                .map(|h| simplify_polygon(h, tolerance))
+                .collect(),
+        })
+        .collect()
+}
+
+/// Ramer-Douglas-Peucker simplification of a polygon ring.
+fn simplify_polygon(poly: &Polygon, tolerance: f64) -> Polygon {
+    let pts = &poly.points;
+    if pts.len() <= 2 {
+        return poly.clone();
+    }
+    let mut keep = vec![false; pts.len()];
+    rdp(pts, 0, pts.len() - 1, tolerance, &mut keep);
+    // Always keep first and last (which are the same for a closed ring,
+    // but we keep all marked points).
+    keep[0] = true;
+    keep[pts.len() - 1] = true;
+    Polygon {
+        points: pts
+            .iter()
+            .zip(keep.iter())
+            .filter_map(|(p, &k)| if k { Some(*p) } else { None })
+            .collect(),
+    }
+}
+
+/// Recursive Ramer-Douglas-Peucker helper.
+fn rdp(points: &[Point2], start: usize, end: usize, epsilon: f64, keep: &mut [bool]) {
+    if end <= start + 1 {
+        return;
+    }
+    let (mut max_dist, mut max_idx) = (0.0f64, start + 1);
+    let sx = points[start].x as f64;
+    let sy = points[start].y as f64;
+    let ex = points[end].x as f64;
+    let ey = points[end].y as f64;
+    let dx = ex - sx;
+    let dy = ey - sy;
+    let line_len_sq = dx * dx + dy * dy;
+
+    for i in (start + 1)..end {
+        let px = points[i].x as f64;
+        let py = points[i].y as f64;
+        let dist = if line_len_sq < 1.0 {
+            ((px - sx) * (px - sx) + (py - sy) * (py - sy)).sqrt()
+        } else {
+            ((dy * px - dx * py + ex * sy - ey * sx).abs()) / line_len_sq.sqrt()
+        };
+        if dist > max_dist {
+            max_dist = dist;
+            max_idx = i;
+        }
+    }
+
+    if max_dist > epsilon {
+        keep[max_idx] = true;
+        rdp(points, start, max_idx, epsilon, keep);
+        rdp(points, max_idx, end, epsilon, keep);
+    }
+}
+
+/// Remove consecutive duplicate (identical) points from `points` in-place.
+pub fn remove_duplicates(points: &mut Vec<Point2>) {
+    points.dedup();
+}
+
+/// Cohen-Sutherland outcodes for line clipping.
+const INSIDE: u8 = 0;
+const LEFT: u8 = 1;
+const RIGHT: u8 = 2;
+const BOTTOM: u8 = 4;
+const TOP: u8 = 8;
+
+fn outcode(p: Point2, bbox: &BoundingBox2) -> u8 {
+    let mut code = INSIDE;
+    if p.x < bbox.min.x {
+        code |= LEFT;
+    } else if p.x > bbox.max.x {
+        code |= RIGHT;
+    }
+    if p.y < bbox.min.y {
+        code |= BOTTOM;
+    } else if p.y > bbox.max.y {
+        code |= TOP;
+    }
+    code
+}
+
+/// Clip a 2D line segment to a bounding box using the Cohen-Sutherland algorithm.
+///
+/// Returns `Some(Line)` with the clipped endpoints, or `None` if the segment
+/// lies entirely outside the bbox.
+pub fn clip_line_with_bbox(line: &Line, bbox: &BoundingBox2) -> Option<Line> {
+    let mut x0 = line.start.x as f64;
+    let mut y0 = line.start.y as f64;
+    let mut x1 = line.end.x as f64;
+    let mut y1 = line.end.y as f64;
+
+    let mut code0 = outcode(line.start, bbox);
+    let mut code1 = outcode(line.end, bbox);
+
+    loop {
+        if code0 == 0 && code1 == 0 {
+            return Some(Line {
+                start: Point2 {
+                    x: x0 as i64,
+                    y: y0 as i64,
+                },
+                end: Point2 {
+                    x: x1 as i64,
+                    y: y1 as i64,
+                },
+            });
+        }
+        if code0 & code1 != 0 {
+            return None;
+        }
+
+        let (x, y, new_code) = if code0 != 0 {
+            clip_endpoint(x0, y0, x1, y1, code0, bbox)
+        } else {
+            clip_endpoint(x1, y1, x0, y0, code1, bbox)
+        };
+
+        if code0 != 0 {
+            x0 = x;
+            y0 = y;
+            code0 = new_code;
+        } else {
+            x1 = x;
+            y1 = y;
+            code1 = new_code;
+        }
+    }
+}
+
+fn clip_endpoint(
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    code: u8,
+    bbox: &BoundingBox2,
+) -> (f64, f64, u8) {
+    let xmin = bbox.min.x as f64;
+    let xmax = bbox.max.x as f64;
+    let ymin = bbox.min.y as f64;
+    let ymax = bbox.max.y as f64;
+
+    let (mut x, mut y) = (0.0, 0.0);
+    if code & TOP != 0 {
+        x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
+        y = ymax;
+    } else if code & BOTTOM != 0 {
+        x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+        y = ymin;
+    } else if code & RIGHT != 0 {
+        y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+        x = xmax;
+    } else if code & LEFT != 0 {
+        y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+        x = xmin;
+    }
+    (
+        x,
+        y,
+        outcode(
+            Point2 {
+                x: x as i64,
+                y: y as i64,
+            },
+            bbox,
+        ),
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{validate_polygon_simplicity, ClipOperation};
+    use super::*;
     use slicer_ir::{ExPolygon, Point2, Polygon};
-
-    #[test]
-    fn clip_operation_variants_are_distinct() {
-        assert_ne!(ClipOperation::Union, ClipOperation::Difference);
-    }
 
     fn make_polygon(pts: &[(i64, i64)]) -> Polygon {
         Polygon {
@@ -251,24 +509,38 @@ mod tests {
         }
     }
 
+    fn make_expoly(contour: &[(i64, i64)], holes: &[&[(i64, i64)]]) -> ExPolygon {
+        ExPolygon {
+            contour: make_polygon(contour),
+            holes: holes.iter().map(|h| make_polygon(h)).collect(),
+        }
+    }
+
+    fn square_10() -> ExPolygon {
+        make_expoly(&[(0, 0), (10, 0), (10, 10), (0, 10)], &[])
+    }
+
+    fn square_10_offset(dx: i64, dy: i64) -> ExPolygon {
+        make_expoly(
+            &[(dx, dy), (10 + dx, dy), (10 + dx, 10 + dy), (dx, 10 + dy)],
+            &[],
+        )
+    }
+
+    #[test]
+    fn clip_operation_variants_are_distinct() {
+        assert_ne!(ClipOperation::Union, ClipOperation::Difference);
+    }
+
     #[test]
     fn validate_polygon_simplicity_accepts_simple_square() {
-        // A 10x10 square (in workspace units: 10 units per side).
-        let square = ExPolygon {
-            contour: make_polygon(&[(0, 0), (10, 0), (10, 10), (0, 10)]),
-            holes: Vec::new(),
-        };
+        let square = square_10();
         assert!(validate_polygon_simplicity(&square).is_ok());
     }
 
     #[test]
     fn validate_polygon_simplicity_rejects_bowtie() {
-        // Bowtie: self-intersecting quad (0,0) → (10,10) → (10,0) → (0,10) → back.
-        // The crossing at the centre causes clipper2's union to split it.
-        let bowtie = ExPolygon {
-            contour: make_polygon(&[(0, 0), (10, 10), (10, 0), (0, 10)]),
-            holes: Vec::new(),
-        };
+        let bowtie = make_expoly(&[(0, 0), (10, 10), (10, 0), (0, 10)], &[]);
         let result = validate_polygon_simplicity(&bowtie);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -276,5 +548,139 @@ mod tests {
             err.contour_indices.contains(&0),
             "outer contour (index 0) must be flagged"
         );
+    }
+
+    #[test]
+    fn union_ex_merges_overlapping_squares() {
+        let a = square_10();
+        let b = square_10_offset(5, 0);
+        let result = union_ex(&[a, b]);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn intersection_ex_returns_overlap() {
+        let a = square_10();
+        let b = square_10_offset(5, 0);
+        let result = intersection_ex(&[a], &[b]);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn difference_ex_removes_overlap() {
+        let a = square_10();
+        let b = square_10_offset(5, 0);
+        let result = difference_ex(&[a], &[b]);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn opening_erodes_then_dilates() {
+        // 20000 units = 2mm per side; erode/dilate by 0.1mm (1000 units)
+        let sq = make_expoly(&[(0, 0), (20000, 0), (20000, 20000), (0, 20000)], &[]);
+        let result = opening(&[sq], 0.1);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn closing_ex_dilates_then_erodes() {
+        let sq = make_expoly(&[(0, 0), (20000, 0), (20000, 20000), (0, 20000)], &[]);
+        let result = closing_ex(&[sq], 0.1);
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn remove_small_removes_tiny_polygon() {
+        let big = square_10();
+        let tiny = make_expoly(&[(0, 0), (1, 0), (1, 1), (0, 1)], &[]);
+        let mut polys = vec![big, tiny];
+        // min_area = 50; tiny has area 1, big has area 100
+        remove_small_and_small_holes(&mut polys, 50.0, 0.0);
+        assert_eq!(polys.len(), 1);
+    }
+
+    #[test]
+    fn remove_small_removes_small_holes() {
+        let outer = make_polygon(&[(0, 0), (100, 0), (100, 100), (0, 100)]);
+        let hole = make_polygon(&[(10, 10), (11, 10), (11, 11), (10, 11)]); // area = 1
+        let mut polys = vec![ExPolygon {
+            contour: outer,
+            holes: vec![hole],
+        }];
+        remove_small_and_small_holes(&mut polys, 0.0, 50.0);
+        assert!(polys[0].holes.is_empty(), "small hole should be removed");
+    }
+
+    #[test]
+    fn expolygons_simplify_preserves_square() {
+        let sq = square_10();
+        let result = expolygons_simplify(&[sq], 0.1);
+        assert_eq!(result.len(), 1);
+        // A square has 4 corners; RDP should keep all of them at tolerance 0.1
+        assert!(result[0].contour.points.len() >= 4);
+    }
+
+    #[test]
+    fn remove_duplicates_collapses_runs() {
+        let mut pts = vec![
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 0, y: 0 },
+            Point2 { x: 1, y: 1 },
+            Point2 { x: 1, y: 1 },
+            Point2 { x: 1, y: 1 },
+            Point2 { x: 2, y: 2 },
+        ];
+        remove_duplicates(&mut pts);
+        assert_eq!(pts.len(), 3);
+        assert_eq!(pts[0], Point2 { x: 0, y: 0 });
+        assert_eq!(pts[1], Point2 { x: 1, y: 1 });
+        assert_eq!(pts[2], Point2 { x: 2, y: 2 });
+    }
+
+    #[test]
+    fn clip_line_with_bbox_fully_inside() {
+        let bbox = BoundingBox2 {
+            min: Point2 { x: 0, y: 0 },
+            max: Point2 { x: 100, y: 100 },
+        };
+        let line = Line {
+            start: Point2 { x: 10, y: 10 },
+            end: Point2 { x: 50, y: 50 },
+        };
+        let result = clip_line_with_bbox(&line, &bbox);
+        assert!(result.is_some());
+        let clipped = result.unwrap();
+        assert_eq!(clipped.start, line.start);
+        assert_eq!(clipped.end, line.end);
+    }
+
+    #[test]
+    fn clip_line_with_bbox_fully_outside() {
+        let bbox = BoundingBox2 {
+            min: Point2 { x: 0, y: 0 },
+            max: Point2 { x: 100, y: 100 },
+        };
+        let line = Line {
+            start: Point2 { x: 200, y: 200 },
+            end: Point2 { x: 300, y: 300 },
+        };
+        assert!(clip_line_with_bbox(&line, &bbox).is_none());
+    }
+
+    #[test]
+    fn clip_line_with_bbox_partial_clip() {
+        let bbox = BoundingBox2 {
+            min: Point2 { x: 0, y: 0 },
+            max: Point2 { x: 100, y: 100 },
+        };
+        let line = Line {
+            start: Point2 { x: -50, y: 50 },
+            end: Point2 { x: 150, y: 50 },
+        };
+        let result = clip_line_with_bbox(&line, &bbox);
+        assert!(result.is_some());
+        let clipped = result.unwrap();
+        assert_eq!(clipped.start.x, 0);
+        assert_eq!(clipped.end.x, 100);
     }
 }

@@ -13,15 +13,13 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion};
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, PaintRegionIR,
-    PaintSemantic, Point2, Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
@@ -124,8 +122,6 @@ impl LayerModule for TreeSupport {
 
         let speed_factor = self.support_speed / BASE_SPEED;
 
-        let paint_ir = paint.paint_regions();
-
         for region in regions {
             let polygons = region.polygons();
             if polygons.is_empty() {
@@ -157,7 +153,8 @@ impl LayerModule for TreeSupport {
                 // support precedence rules):
                 //   blocker → skip; enforcer → generate;
                 //   default → consult SurfaceClassificationIR.needs_support.
-                match support_paint_policy(paint_ir, layer_index, expoly) {
+                let _ = layer_index;
+                match paint.paint_policy_for(expoly) {
                     SupportPaintPolicy::Blocked => continue,
                     SupportPaintPolicy::Enforced => {}
                     SupportPaintPolicy::DefaultEligible => {
@@ -178,54 +175,9 @@ impl LayerModule for TreeSupport {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SupportPaintPolicy {
-    Blocked,
-    Enforced,
-    DefaultEligible,
-}
-
-fn support_paint_policy(
-    paint_ir: &PaintRegionIR,
-    layer_index: u32,
-    expoly: &ExPolygon,
-) -> SupportPaintPolicy {
-    let centroid = expolygon_centroid(expoly);
-
-    let is_blocked = point_in_paint_region(
-        paint_ir,
-        layer_index,
-        &PaintSemantic::SupportBlocker,
-        centroid,
-        BoundaryInclusion::Include,
-        None,
-    )
-    .ok()
-    .flatten()
-    .is_some();
-
-    if is_blocked {
-        return SupportPaintPolicy::Blocked;
-    }
-
-    let is_enforced = point_in_paint_region(
-        paint_ir,
-        layer_index,
-        &PaintSemantic::SupportEnforcer,
-        centroid,
-        BoundaryInclusion::Include,
-        None,
-    )
-    .ok()
-    .flatten()
-    .is_some();
-
-    if is_enforced {
-        SupportPaintPolicy::Enforced
-    } else {
-        SupportPaintPolicy::DefaultEligible
-    }
-}
+// SupportPaintPolicy was moved to `slicer_sdk::traits::SupportPaintPolicy`
+// (packet 95 closure) so that tree-support and traditional-support both consume
+// the same query implementation through `PaintRegionLayerView::paint_policy_for`.
 
 impl TreeSupport {
     /// Generate tree-style branching fill for a single ExPolygon.
@@ -382,20 +334,8 @@ impl TreeSupport {
     }
 }
 
-/// Compute the centroid of an ExPolygon's contour as the average of its vertices.
-fn expolygon_centroid(expoly: &ExPolygon) -> Point2 {
-    let pts = &expoly.contour.points;
-    if pts.is_empty() {
-        return Point2 { x: 0, y: 0 };
-    }
-    let n = pts.len() as i64;
-    let sum_x: i64 = pts.iter().map(|p| p.x).sum();
-    let sum_y: i64 = pts.iter().map(|p| p.y).sum();
-    Point2 {
-        x: sum_x / n,
-        y: sum_y / n,
-    }
-}
+// expolygon_centroid was an artifact of the deleted local support_paint_policy
+// stub.  The v2 query lives in `PaintRegionLayerView::paint_policy_for` (slicer-sdk).
 
 /// Build a nearest-neighbor tree from sample points.
 ///

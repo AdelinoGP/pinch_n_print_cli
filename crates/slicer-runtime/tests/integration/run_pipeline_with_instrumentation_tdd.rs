@@ -659,13 +659,15 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
     );
     assert!(result.is_ok(), "pipeline must succeed: {:?}", result.err());
 
-    // Canonical order of the six host built-ins.
+    // Canonical order of the six host built-ins (packet 95 D1 reordering):
+    // PaintSegmentation now runs POST-Slice + POST-ShellClassification, before
+    // SupportGeometry.  See AC-14 / docs/specs/orca-paint-segmentation-parity.md.
     const BUILTINS: [&str; 6] = [
         "PrePass::MeshAnalysis",
-        "PrePass::PaintSegmentation",
         "PrePass::RegionMapping",
         "PrePass::Slice",
         "PrePass::ShellClassification",
+        "PrePass::PaintSegmentation",
         "PrePass::SupportGeometry",
     ];
 

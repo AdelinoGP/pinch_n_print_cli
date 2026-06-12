@@ -1857,6 +1857,31 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             };
             #adapt_slice
             #adapt_paint
+            // Packet 95 D14 plumbing: build a synthetic `SliceIR` from the
+            // adapted SDK SliceRegionViews and attach it to `sdk_paint` so
+            // `paint.paint_policy_for(expoly)` can query the layer's
+            // SupportEnforcer / SupportBlocker annotations (the production
+            // dispatch contract pinned by
+            // `real_paint_region_data_visible_through_production_support_dispatch`).
+            // Each SliceRegionView already carries its segment_annotations map
+            // (preserved by `__slicer_adapt_slice_regions`), so the synthesis
+            // is a pure repacking — no host round-trip.
+            let __slicer_synth_slice = ::std::sync::Arc::new(::slicer_ir::SliceIR {
+                schema_version: ::slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: layer_index,
+                z: sdk_regions.first().map(|r| r.z()).unwrap_or(0.0),
+                regions: sdk_regions
+                    .iter()
+                    .map(|r| ::slicer_ir::SlicedRegion {
+                        object_id: r.object_id().clone(),
+                        region_id: *r.region_id(),
+                        polygons: r.polygons().to_vec(),
+                        segment_annotations: r.segment_annotations().clone(),
+                        ..::core::default::Default::default()
+                    })
+                    .collect(),
+            });
+            let sdk_paint = sdk_paint.with_slice_ir(__slicer_synth_slice);
             // Build (object_id, region_id) keys from the slice regions so the
             // host-committed SupportPlanIR (exposed through the WIT accessor
             // `paint-region-layer-view::support-plan-segments`) can be projected
@@ -1969,7 +1994,6 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 RegionKey as WitRegionKey,
                 RetractMode as WitRetractMode,
                 SeamPosition as WitSeamPosition,
-                SemanticRegion as WitSemanticRegion,
                 WallFeatureFlag as WitWallFeatureFlag,
                 WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
             };
@@ -2198,79 +2222,19 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             fn __slicer_adapt_paint_layer(
                 paint: &PaintRegionLayerView,
             ) -> ::slicer_sdk::traits::PaintRegionLayerView {
-                use ::std::collections::HashMap;
+                // Packet 95 D14: the SDK PaintRegionLayerView is now a slim
+                // wrapper that the caller-side support_arm enriches by
+                // attaching a synthesized SliceIR (via `with_slice_ir`) and
+                // the support plan (via `with_support_plan`).  The WIT
+                // PaintRegionLayerView resource itself only carries the
+                // layer index + the legacy regions_by_semantic map
+                // (currently empty after D8 — segment_annotations travels on
+                // each SliceRegionView instead).  When future stages adopt
+                // a richer WIT surface (e.g. a host-populated SliceIR
+                // accessor on the WIT resource), this adapter is the seam
+                // that swaps the synthesis for a direct query.
                 let layer_idx = paint.layer_index() as u32;
-                let mut semantic_regions: HashMap<
-                    ::slicer_ir::PaintSemantic,
-                    ::std::vec::Vec<::slicer_ir::SemanticRegion>,
-                > = HashMap::new();
-                // Enumerate every documented built-in semantic; `Custom` is
-                // intentionally skipped here because the WIT contract exposes
-                // custom regions through a separate `get-custom-regions`
-                // method keyed by module id.
-                let semantics = [
-                    WitPaintSemantic::Material,
-                    WitPaintSemantic::FuzzySkin,
-                    WitPaintSemantic::SupportEnforcer,
-                    WitPaintSemantic::SupportBlocker,
-                ];
-                for s in semantics.iter() {
-                    let wit_regions: ::std::vec::Vec<WitSemanticRegion> =
-                        paint.get_regions(s);
-                    if wit_regions.is_empty() { continue; }
-                    let ir_semantic = __slicer_wit_semantic_to_ir(s);
-                    let ir_regions: ::std::vec::Vec<::slicer_ir::SemanticRegion> = wit_regions
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, sr)| ::slicer_ir::SemanticRegion {
-                            object_id: sr.object_id.clone(),
-                            polygons: sr.polygons.iter().map(__slicer_wit_expolygon_to_ir).collect(),
-                            value: __slicer_wit_paintvalue_to_ir(&sr.value),
-                            paint_order: idx as u64,
-                            aabb: None,
-                        })
-                        .collect();
-                    semantic_regions.insert(ir_semantic, ir_regions);
-                }
-                let ir = ::slicer_ir::PaintRegionIR {
-                    schema_version: ::slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
-                    per_layer: {
-                        let mut m: HashMap<u32, ::slicer_ir::LayerPaintMap> = HashMap::new();
-                        m.insert(
-                            layer_idx,
-                            ::slicer_ir::LayerPaintMap {
-                                global_layer_index: layer_idx,
-                                semantic_regions,
-                            },
-                        );
-                        m
-                    },
-                };
-                let mut sdk_view = ::slicer_sdk::traits::PaintRegionLayerView::with_paint_regions(
-                    layer_idx,
-                    ::std::sync::Arc::new(ir),
-                );
-                // Project the WIT support-plan-segments accessor (host-side
-                // SupportPlanIR) into a SupportPlanIR shaped Arc and attach
-                // it to the view so Layer::Support modules that declare
-                // `SupportPlanIR` as a manifest read see the planned branches.
-                //
-                // We don't know the consumer module's (object-id, region-id)
-                // pairs ahead of time, so we provide the view a closure-free
-                // path: rebuild a small SupportPlanIR by calling the WIT
-                // accessor for every slice region the dispatcher already
-                // pushed. The dispatcher provides those region keys via the
-                // `regions` parameter of `run-support` — but the adapter
-                // for paint runs before regions are visible. So we attach
-                // an empty SupportPlanIR with `entries: vec![]`; the
-                // consumer-side `support_plan_segments_for(object_id,
-                // region_id)` accessor invokes the WIT method via a
-                // host-callback path the SDK exposes per call. Since the
-                // SDK currently caches the plan as a static Arc, we
-                // populate the entries list lazily by polling the WIT
-                // resource through the layer-view bridge: see
-                // `__slicer_drain_support_plan_via_view` below.
-                sdk_view
+                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
             }
 
             /// Build a `SupportPlanIR` Arc from the WIT

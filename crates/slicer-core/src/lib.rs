@@ -8,7 +8,6 @@ pub mod aabb_tree;
 /// Pure algorithm modules (available only with the `host-algos` feature).
 #[cfg(feature = "host-algos")]
 pub mod algos;
-pub mod paint_region;
 pub mod polygon_ops;
 pub mod stage_io;
 pub mod triangle_mesh_slicer;
@@ -16,10 +15,6 @@ pub mod triangle_mesh_slicer;
 use slicer_ir::{Point2, Point3, Point3WithWidth};
 
 pub use aabb_tree::{AabbTree, ClosestPointHit, RayHit};
-pub use paint_region::{
-    ex_polygon_contains_point, point_in_paint_region, BoundaryInclusion, PaintRegionQueryError,
-    PaintRegionRTreeEntry, PaintRegionRTreeIndex,
-};
 pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,
 };

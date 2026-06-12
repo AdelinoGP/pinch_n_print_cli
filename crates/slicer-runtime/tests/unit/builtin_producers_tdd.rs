@@ -21,6 +21,7 @@ fn enumerates_exactly_eight_host_builtin_producers() {
         })
         .collect();
 
+    // Note: order of entries below must match runtime_builtins() iteration order.
     let expected: Vec<(&str, &str, Vec<&str>)> = vec![
         ("host:mesh", "PrePass::MeshAnalysis", vec!["MeshIR"]),
         (
@@ -44,15 +45,22 @@ fn enumerates_exactly_eight_host_builtin_producers() {
             "PrePass::SupportGeometry",
             vec!["SupportGeometryIR"],
         ),
-        (
-            "host:paint_segmentation",
-            "PrePass::PaintSegmentation",
-            vec!["PaintRegionIR"],
-        ),
+        // Packet 95 D1 + D8: `PrePass::PaintSegmentation` runs as a host stage
+        // via `run_builtin_stage` in prepass.rs (between ShellClassification
+        // and SupportGeometry) and writes back into SliceIR via
+        // `Blackboard::replace_slice_ir`.  It does NOT register a separate
+        // `Producer` in `runtime_builtins()` because its outputs ride the
+        // existing SliceIR slot — confirmed clean per AC-14 + AC-15.
         ("host:gcode_emit", "PostPass::GCodeEmit", vec!["GCodeIR"]),
     ];
 
-    assert_eq!(triples.len(), 8, "expected 8 host built-in producers");
+    assert_eq!(
+        triples.len(),
+        7,
+        "expected 7 host built-in producers (P94r removed mesh_segmentation; \
+         P95 paint_segmentation runs as a prepass stage that writes back into SliceIR \
+         and intentionally does NOT register a distinct Producer)"
+    );
     for (i, (exp_id, exp_stage, exp_writes)) in expected.iter().enumerate() {
         let (act_id, act_stage, act_writes) = &triples[i];
         assert_eq!(act_id, exp_id, "id mismatch at index {i}");

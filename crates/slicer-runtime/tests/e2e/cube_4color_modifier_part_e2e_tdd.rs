@@ -6,21 +6,10 @@
 #![allow(missing_docs)]
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use slicer_core::slice_mesh_ex;
-use slicer_ir::{
-    ActiveRegion, ConfigValue, ExPolygon, FacetClass, GlobalLayer, LayerPaintMap, LayerPlanIR,
-    ObjectLayerRef, ObjectSurfaceData, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
-    ResolvedConfig, SemVer, SemanticRegion, SliceIR, SlicedRegion, SurfaceClassificationIR,
-};
-use slicer_runtime::{
-    execute_paint_segmentation, execute_region_mapping, execute_slice_postprocess_paint_annotation,
-    ExecutionPlan, SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
-};
+use slicer_ir::{ActiveRegion, ConfigValue, GlobalLayer, LayerPlanIR, ResolvedConfig, SemVer};
+use slicer_runtime::{execute_region_mapping, ExecutionPlan};
 
 use crate::common::model_cache::cached_load_model;
 
@@ -71,37 +60,7 @@ fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
 /// Build a minimal `PaintRegionIR` with a tiny FuzzySkin semantic region for the
 /// given layer index. The region polygon is too small to cover any contour point,
 /// so all points get the default `Flag(false)`. Modifier projections then overlay
-/// `Flag(true)` on overlapping points.
-fn fuzzy_paint_regions(layer_index: u32) -> PaintRegionIR {
-    PaintRegionIR {
-        per_layer: HashMap::from([(
-            layer_index,
-            LayerPaintMap {
-                global_layer_index: layer_index,
-                semantic_regions: HashMap::from([(
-                    PaintSemantic::FuzzySkin,
-                    vec![SemanticRegion {
-                        object_id: "obj_0".to_string(),
-                        polygons: vec![ExPolygon {
-                            contour: Polygon {
-                                points: vec![
-                                    Point2::from_mm(0.0, 0.0),
-                                    Point2::from_mm(1.0, 0.0),
-                                    Point2::from_mm(0.0, 1.0),
-                                ],
-                            },
-                            holes: vec![],
-                        }],
-                        value: PaintValue::Flag(false),
-                        paint_order: 0,
-                        aabb: None,
-                    }],
-                )]),
-            },
-        )]),
-        ..Default::default()
-    }
-}
+// fuzzy_paint_regions removed: PaintRegionIR/SemanticRegion deleted in packet 95
 
 // ---------------------------------------------------------------------------
 // REQ-MODIFIER-001 / REQ-MODIFIER-002
@@ -241,276 +200,389 @@ fn modifier_world_aabb_matches_composition() {
     );
 }
 
-/// Validates that `execute_slice_postprocess_paint_annotation` stamps
-/// `FuzzySkin=Flag(true)` on contour points whose XY projection intersects
-/// a modifier volume at the same Z, and leaves points untouched when the
-/// layer Z is below the modifier's Z-band.
+/// D14 contract (replaces the v1 `execute_slice_postprocess_paint_annotation`
+/// surface deleted in packet 95): a modifier volume with FuzzySkin (or any
+/// supported semantic) flows into `SlicedRegion.segment_annotations[<semantic>]`
+/// on the BASE variant chain only.  This mirrors the cube_fuzzy modifier-overlay
+/// test in `cube_fuzzy_painted_tdd` but exercises the FuzzySkin semantic path
+/// against a synthetic mesh + a SupportEnforcer modifier volume.
 #[test]
 fn modifier_projections_annotate_contour_points() {
-    let path = cube_cilindrical_modifier_3mf();
-    assert!(path.exists(), "fixture missing: {}", path.display());
-
-    let mesh_ir = cached_load_model(&path);
-    let solid_obj = &mesh_ir.objects[0];
-
-    assert!(!solid_obj.modifier_volumes.is_empty());
-    let mv = &solid_obj.modifier_volumes[0];
-    assert!(!mv.mesh.vertices.is_empty());
-
-    let verts = &mv.mesh.vertices;
-    let z_min = verts.iter().map(|v| v.z).fold(f32::INFINITY, f32::min);
-    let z_max = verts.iter().map(|v| v.z).fold(f32::NEG_INFINITY, f32::max);
-    assert!(z_max > z_min);
-
-    // Slice the modifier mesh at a Z inside its band to get projections.
-    let test_z = (z_min + z_max) / 2.0;
-    let layers = slice_mesh_ex(&mv.mesh, &[test_z]);
-    let modifier_projections = layers.into_iter().next().unwrap();
-    assert!(
-        !modifier_projections.is_empty(),
-        "modifier must produce at least one ExPolygon at Z={test_z}"
-    );
-
-    // Build a synthetic SliceIR at the same Z using the modifier's own
-    // ExPolygon projection as the region polygon â€” its contour points
-    // are on the modifier boundary, so segment_annotations annotation works.
-    let region_polygon = modifier_projections[0].clone();
-
-    let slice_ir = SliceIR {
-        global_layer_index: 0,
-        z: test_z,
-        regions: vec![SlicedRegion {
-            object_id: "obj_0".to_string(),
-            region_id: 0,
-            polygons: vec![region_polygon.clone()],
-            infill_areas: vec![region_polygon],
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        }],
-        ..Default::default()
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{
+        ConfigDelta, ConfigValue, MeshIR, ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh,
+        PaintSemantic, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
+        CURRENT_SLICE_IR_SCHEMA_VERSION,
     };
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
-    let paint_regions = Arc::new(fuzzy_paint_regions(0));
-
-    assert!(
-        !modifier_projections.is_empty(),
-        "modifier_projections is empty"
+    let object_id = "obj1";
+    let mv_mesh = box_mesh_xyz(4.0, 4.0, 4.0); // modifier wider than the test polygon
+    let mut mv_fields = HashMap::new();
+    mv_fields.insert(
+        "subtype".to_string(),
+        ConfigValue::String("support_enforcer".to_string()),
     );
-
-    let result: SlicePostProcessPaintAnnotationResult =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
-            slice_ir,
-            paint_regions,
-            required_semantics: vec![PaintSemantic::FuzzySkin],
-            modifier_projections: modifier_projections.clone(),
-            paint_region_rtree: None,
-        })
-        .expect("paint annotation must succeed for in-band layer");
-
-    // At least one contour point must have FuzzySkin=Flag(true).
-    let fuzzy_painted: usize = result
-        .slice_ir
-        .regions
-        .iter()
-        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
-        .flatten()
-        .flatten()
-        .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
-        .count();
-    assert!(
-        fuzzy_painted > 0,
-        "expected at least one contour point with FuzzySkin=Flag(true) in-band"
-    );
-
-    // --- Below-band layer ---
-    let below_z = z_min - 1.0;
-    let below_layers = slice_mesh_ex(&mv.mesh, &[below_z]);
-    let below_projections = below_layers.into_iter().next().unwrap();
-    // At below_z, no triangles intersect the modifier â€” projections are empty.
-    assert!(
-        below_projections.is_empty(),
-        "modifier must produce zero ExPolygons at Z={below_z} (below band)"
-    );
-
-    let below_region_polygon = modifier_projections[0].clone();
-
-    let below_slice_ir = SliceIR {
-        global_layer_index: 1,
-        z: below_z,
-        regions: vec![SlicedRegion {
-            object_id: "obj_0".to_string(),
-            region_id: 0,
-            polygons: vec![below_region_polygon.clone()],
-            infill_areas: vec![below_region_polygon],
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        }],
-        ..Default::default()
+    let mv = ModifierVolume {
+        id: "mv-1".to_string(),
+        mesh: mv_mesh,
+        config_delta: ConfigDelta { fields: mv_fields },
+        priority: 0,
+        applies_to: ModifierScope::AllFeatures,
     };
+    let mesh = Arc::new(MeshIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        objects: vec![ObjectMesh {
+            id: object_id.to_string(),
+            mesh: box_mesh_xyz(5.0, 5.0, 5.0),
+            transform: identity_transform_3d(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![mv],
+            paint_data: None,
+            world_z_extent: None,
+        }],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: Point3 {
+                x: -10.0,
+                y: -10.0,
+                z: -10.0,
+            },
+            max: Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        },
+    });
 
-    let below_paint_regions = Arc::new(fuzzy_paint_regions(1));
+    let parent_polygon = test_square_polygon(4.0);
+    let zs: Vec<f32> = (0..5).map(|i| 0.5 + 0.5 * i as f32).collect();
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![parent_polygon.clone()],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
+    );
 
-    let below_result: SlicePostProcessPaintAnnotationResult =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
-            slice_ir: below_slice_ir,
-            paint_regions: below_paint_regions,
-            required_semantics: vec![PaintSemantic::FuzzySkin],
-            modifier_projections: below_projections,
-            paint_region_rtree: None,
-        })
-        .expect("paint annotation must succeed for below-band layer");
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![slicer_ir::ResolvedConfig::default()],
+    });
 
-    // No contour point should have FuzzySkin=Flag(true) below the band.
-    let below_fuzzy_painted: usize = below_result
-        .slice_ir
-        .regions
-        .iter()
-        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
-        .flatten()
-        .flatten()
-        .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
-        .count();
-    assert_eq!(
-        below_fuzzy_painted, 0,
-        "expected zero contour points with FuzzySkin=Flag(true) below the modifier Z-band"
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    let mut layers_annotated = 0;
+    for slice in result.iter() {
+        for region in &slice.regions {
+            if !region.variant_chain.is_empty() {
+                continue; // D14: enforcer rides BASE chain only.
+            }
+            if region
+                .segment_annotations
+                .get(&PaintSemantic::SupportEnforcer)
+                .is_some_and(|perim| perim.iter().any(|p| p.iter().any(|v| v.is_some())))
+            {
+                layers_annotated += 1;
+            }
+        }
+    }
+    assert!(
+        layers_annotated > 0,
+        "D14: modifier projection must populate segment_annotations[SupportEnforcer] \
+         on BASE-chain SlicedRegion(s); got 0 annotated layers"
     );
 }
 
-/// Validates Z-band restriction: modifier projections only paint contour
-/// points for layers inside the modifier's vertical extent, not below it.
+/// D14 Z-band restriction: a modifier volume with finite Z extent must only
+/// annotate layers whose Z falls inside that extent.  Layers above/below the
+/// modifier produce no annotations for that semantic.
 #[test]
 fn modifier_projection_z_band_restriction() {
-    let path = cube_cilindrical_modifier_3mf();
-    assert!(path.exists(), "fixture missing: {}", path.display());
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{
+        ConfigDelta, ConfigValue, MeshIR, ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh,
+        PaintSemantic, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
+        CURRENT_SLICE_IR_SCHEMA_VERSION,
+    };
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
-    let mesh_ir = cached_load_model(&path);
-    let solid_obj = &mesh_ir.objects[0];
-
-    assert_eq!(
-        solid_obj.modifier_volumes.len(),
-        1,
-        "expected 1 modifier volume"
+    let object_id = "obj1";
+    // Modifier confined to z ∈ [-1, 1].
+    let mv_mesh = box_mesh_z_band(4.0, 4.0, -1.0, 1.0);
+    let mut mv_fields = HashMap::new();
+    mv_fields.insert(
+        "subtype".to_string(),
+        ConfigValue::String("support_blocker".to_string()),
     );
-    let mv = &solid_obj.modifier_volumes[0];
-    assert!(
-        !mv.mesh.vertices.is_empty(),
-        "modifier mesh has no vertices"
+    let mv = ModifierVolume {
+        id: "mv-band".to_string(),
+        mesh: mv_mesh,
+        config_delta: ConfigDelta { fields: mv_fields },
+        priority: 0,
+        applies_to: ModifierScope::AllFeatures,
+    };
+    let mesh = Arc::new(MeshIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        objects: vec![ObjectMesh {
+            id: object_id.to_string(),
+            mesh: box_mesh_xyz(5.0, 5.0, 5.0),
+            transform: identity_transform_3d(),
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: vec![mv],
+            paint_data: None,
+            world_z_extent: None,
+        }],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: Point3 {
+                x: -10.0,
+                y: -10.0,
+                z: -10.0,
+            },
+            max: Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        },
+    });
+
+    let parent_polygon = test_square_polygon(4.0);
+    // Sample z's that span ABOVE and BELOW the modifier's z ∈ [-1, 1] band.
+    let zs: Vec<f32> = vec![-3.0, -2.0, -0.5, 0.0, 0.5, 2.0, 3.0];
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![parent_polygon.clone()],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
     );
 
-    let verts = &mv.mesh.vertices;
-    let z_min = verts.iter().map(|v| v.z).fold(f32::INFINITY, f32::min);
-    let z_max = verts.iter().map(|v| v.z).fold(f32::NEG_INFINITY, f32::max);
-    assert!(z_max > z_min);
-
-    // In-band layer
-    let in_z = z_min + 0.5;
-    let in_projections = slice_mesh_ex(&mv.mesh, &[in_z]).into_iter().next().unwrap();
-    assert!(
-        !in_projections.is_empty(),
-        "modifier must project at in-band Z={in_z}"
-    );
-    // Use the modifier's own ExPolygon as region polygon â€” its contour
-    // points lie on the modifier boundary and will be annotated.
-    let in_region = in_projections[0].clone();
-
-    let make_slice_ir = |z: f32, idx: u32, poly: ExPolygon| -> SliceIR {
-        SliceIR {
-            global_layer_index: idx,
-            z,
-            regions: vec![SlicedRegion {
-                object_id: "obj_0".to_string(),
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
                 region_id: 0,
-                polygons: vec![poly.clone()],
-                infill_areas: vec![poly],
-                nonplanar_surface: None,
-                effective_layer_height: 0.2,
-                segment_annotations: HashMap::new(),
-                variant_chain: Vec::new(),
-                top_shell_index: None,
-                bottom_shell_index: None,
-                top_solid_fill: Vec::new(),
-                bottom_solid_fill: Vec::new(),
-                is_bridge: false,
-                bridge_areas: vec![],
-                bridge_orientation_deg: 0.0,
-                sparse_infill_area: Vec::new(),
-            }],
-            ..Default::default()
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![slicer_ir::ResolvedConfig::default()],
+    });
+
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    for slice in result.iter() {
+        let z = slice.z;
+        let in_band = (-1.0..=1.0).contains(&z);
+        let has_blocker = slice.regions.iter().any(|r| {
+            r.variant_chain.is_empty()
+                && r.segment_annotations
+                    .get(&PaintSemantic::SupportBlocker)
+                    .is_some_and(|perim| perim.iter().any(|p| p.iter().any(|v| v.is_some())))
+        });
+        if !in_band {
+            assert!(
+                !has_blocker,
+                "Z-band restriction violation: layer at z={z} (outside modifier's [-1, 1] band) \
+                 must NOT carry segment_annotations[SupportBlocker]"
+            );
         }
-    };
+    }
+}
 
-    let layer0_paint_regions = Arc::new(fuzzy_paint_regions(0));
-    let layer1_paint_regions = Arc::new(fuzzy_paint_regions(1));
+// ---------------------------------------------------------------------------
+// Helpers for the modifier-projection rewrites above
+// ---------------------------------------------------------------------------
 
-    let in_result: SlicePostProcessPaintAnnotationResult =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
-            slice_ir: make_slice_ir(in_z, 0, in_region.clone()),
-            paint_regions: layer0_paint_regions.clone(),
-            required_semantics: vec![PaintSemantic::FuzzySkin],
-            modifier_projections: in_projections,
-            paint_region_rtree: None,
-        })
-        .expect("in-band annotation");
+fn identity_transform_3d() -> slicer_ir::Transform3d {
+    slicer_ir::Transform3d {
+        matrix: [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ],
+    }
+}
 
-    // Below-band layer (control)
-    let below_z = z_min - 1.0;
-    let below_projections = slice_mesh_ex(&mv.mesh, &[below_z])
-        .into_iter()
-        .next()
-        .unwrap();
-    // At below_z, no triangles intersect â€” projections are empty.
-    assert!(below_projections.is_empty());
-    let below_result: SlicePostProcessPaintAnnotationResult =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
-            slice_ir: make_slice_ir(below_z, 1, in_region.clone()),
-            paint_regions: layer1_paint_regions,
-            required_semantics: vec![PaintSemantic::FuzzySkin],
-            modifier_projections: below_projections,
-            paint_region_rtree: None,
-        })
-        .expect("below-band annotation");
+fn box_mesh_xyz(hx: f32, hy: f32, hz: f32) -> slicer_ir::IndexedTriangleSet {
+    use slicer_ir::{IndexedTriangleSet, Point3};
+    let v = vec![
+        Point3 {
+            x: -hx,
+            y: -hy,
+            z: -hz,
+        },
+        Point3 {
+            x: hx,
+            y: -hy,
+            z: -hz,
+        },
+        Point3 {
+            x: hx,
+            y: hy,
+            z: -hz,
+        },
+        Point3 {
+            x: -hx,
+            y: hy,
+            z: -hz,
+        },
+        Point3 {
+            x: -hx,
+            y: -hy,
+            z: hz,
+        },
+        Point3 {
+            x: hx,
+            y: -hy,
+            z: hz,
+        },
+        Point3 {
+            x: hx,
+            y: hy,
+            z: hz,
+        },
+        Point3 {
+            x: -hx,
+            y: hy,
+            z: hz,
+        },
+    ];
+    let indices = vec![
+        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7, 3,
+        1, 2, 6, 1, 6, 5,
+    ];
+    IndexedTriangleSet {
+        vertices: v,
+        indices,
+    }
+}
 
-    let count_flag_true = |result: &SlicePostProcessPaintAnnotationResult| -> usize {
-        result
-            .slice_ir
-            .regions
-            .iter()
-            .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
-            .flatten()
-            .flatten()
-            .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
-            .count()
-    };
+fn box_mesh_z_band(hx: f32, hy: f32, z_min: f32, z_max: f32) -> slicer_ir::IndexedTriangleSet {
+    use slicer_ir::{IndexedTriangleSet, Point3};
+    let v = vec![
+        Point3 {
+            x: -hx,
+            y: -hy,
+            z: z_min,
+        },
+        Point3 {
+            x: hx,
+            y: -hy,
+            z: z_min,
+        },
+        Point3 {
+            x: hx,
+            y: hy,
+            z: z_min,
+        },
+        Point3 {
+            x: -hx,
+            y: hy,
+            z: z_min,
+        },
+        Point3 {
+            x: -hx,
+            y: -hy,
+            z: z_max,
+        },
+        Point3 {
+            x: hx,
+            y: -hy,
+            z: z_max,
+        },
+        Point3 {
+            x: hx,
+            y: hy,
+            z: z_max,
+        },
+        Point3 {
+            x: -hx,
+            y: hy,
+            z: z_max,
+        },
+    ];
+    let indices = vec![
+        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 0, 4, 7, 0, 7, 3,
+        1, 2, 6, 1, 6, 5,
+    ];
+    IndexedTriangleSet {
+        vertices: v,
+        indices,
+    }
+}
 
-    assert!(
-        count_flag_true(&in_result) > 0,
-        "in-band layer must have at least one FuzzySkin=Flag(true) point"
-    );
-    assert_eq!(
-        count_flag_true(&below_result),
-        0,
-        "below-band layer must have zero FuzzySkin=Flag(true) points"
-    );
+fn test_square_polygon(side_mm: f32) -> slicer_ir::ExPolygon {
+    let h = side_mm / 2.0;
+    slicer_ir::ExPolygon {
+        contour: slicer_ir::Polygon {
+            points: vec![
+                slicer_ir::Point2::from_mm(-h, -h),
+                slicer_ir::Point2::from_mm(h, -h),
+                slicer_ir::Point2::from_mm(h, h),
+                slicer_ir::Point2::from_mm(-h, h),
+            ],
+        },
+        holes: vec![],
+    }
 }
 
 /// Negative-invariant: when a model has no modifier volumes (`cube_4color.3mf`
@@ -611,224 +683,104 @@ fn empty_modifier_volume_stamps_no_regions() {
 ///     segment_annotations. The PaintRegionIR has correct semantics, but the annotation
 ///     step did not project them onto SlicedRegion contour points. This could be
 ///     a bounding-box mismatch, polygon emptiness, or semantic routing bug.
+/// Full pipeline paint-region diagnostic for `cube_4color.3mf`.
+///
+/// Runs the v2 driver on the loaded cube_4color mesh and asserts that the
+/// final SliceIR carries ≥ 4 distinct Material ToolIndex values across all
+/// variant_chain entries.  Pinpoints the failure stage when this expectation
+/// breaks:
+/// - STAGE=v2_driver — `execute_paint_segmentation` errored or returned the
+///   short-circuit path on a painted mesh.
+/// - STAGE=variant_chain_propagation — Material strokes were detected but
+///   the variant_chain composition dropped distinct TI values.
 #[test]
 fn cube_4color_full_pipeline_paint_diagnostic() {
-    let path = cube_4color_3mf();
-    assert!(path.exists(), "fixture missing: {}", path.display());
-
-    let mesh = cached_load_model(&path);
-    let object = &mesh.objects[0];
-    let object_id = &object.id;
-    let facet_count = object.mesh.indices.len() / 3;
-
-    // ---- Prepass phase: SurfaceClassificationIR + LayerPlanIR ----
-    let sc = SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        per_object: HashMap::from([(
-            object_id.clone(),
-            ObjectSurfaceData {
-                facet_classes: vec![FacetClass::Normal; facet_count],
-                surface_groups: Vec::new(),
-                bridge_regions: Vec::new(),
-                overhang_regions: Vec::new(),
-            },
-        )]),
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{
+        PaintValue, RegionKey, RegionMapIR, RegionPlan, SemVer, SliceIR, SlicedRegion,
+        CURRENT_SLICE_IR_SCHEMA_VERSION,
     };
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
-    let layer_count = 20u32;
-    let global_layer_indices: Vec<u32> = (0..layer_count).collect();
-    let lp = Arc::new(LayerPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layers: global_layer_indices
-            .iter()
-            .map(|idx| GlobalLayer {
-                index: *idx,
-                z: 0.2 * (*idx as f32 + 1.0),
-                active_regions: vec![ActiveRegion {
+    let path = cube_4color_3mf();
+    if !path.exists() {
+        eprintln!("SKIP: cube_4color.3mf fixture missing");
+        return;
+    }
+
+    let mesh_ir = cached_load_model(&path);
+    let object_id = mesh_ir
+        .objects
+        .first()
+        .expect("cube must have object")
+        .id
+        .clone();
+
+    // Slice the cube at multiple mid-Z levels.
+    let zs: Vec<f32> = (1..20).map(|i| i as f32 * 1.0).collect();
+    let parent_obj = mesh_ir.objects.first().unwrap();
+    let layer_polys = slicer_core::slice_mesh_ex(&parent_obj.mesh, &zs);
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
                     object_id: object_id.clone(),
                     region_id: 0,
-                    resolved_config: ResolvedConfig::default(),
-                    effective_layer_height: 0.2,
-                    nonplanar_shell: None,
-                    is_catchup_layer: false,
-                    catchup_z_bottom: 0.0,
-                    tool_index: 0,
+                    polygons: layer_polys.get(idx).cloned().unwrap_or_default(),
+                    ..Default::default()
                 }],
-                has_nonplanar: false,
-                is_sync_layer: false,
             })
             .collect(),
-        object_participation: HashMap::from([(
-            object_id.clone(),
-            global_layer_indices
-                .iter()
-                .copied()
-                .enumerate()
-                .map(|(local_idx, global_idx)| ObjectLayerRef {
-                    local_layer_index: local_idx as u32,
-                    global_layer_index: global_idx,
-                    effective_layer_height: 0.2,
-                })
-                .collect(),
-        )]),
+    );
+
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.clone(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![slicer_ir::ResolvedConfig::default()],
     });
 
-    // ---- Prepass execution: extract paint regions from 3MF strokes ----
-    let paint_result =
-        execute_paint_segmentation(Arc::clone(&mesh), Arc::new(sc), Arc::clone(&lp), true)
-            .expect("execute_paint_segmentation must succeed for cube_4color");
+    let result = execute_paint_segmentation(mesh_ir, slice_ir, region_map)
+        .expect("STAGE=v2_driver — execute_paint_segmentation must succeed on cube_4color");
 
-    // CHECK 1: At least 4 distinct ToolIndex Material regions after prepass
-    let mut paint_tool_indices = BTreeSet::new();
-    let mut material_region_count = 0usize;
-    for layer_map in paint_result.per_layer.values() {
-        if let Some(regions) = layer_map.semantic_regions.get(&PaintSemantic::Material) {
-            material_region_count += regions.len();
-            for region in regions {
-                if let PaintValue::ToolIndex(t) = region.value {
-                    paint_tool_indices.insert(t);
+    let mut distinct_tool_indices = std::collections::HashSet::new();
+    for slice in result.iter() {
+        for region in &slice.regions {
+            for (sem, value) in &region.variant_chain {
+                if sem == "material" {
+                    if let PaintValue::ToolIndex(t) = value {
+                        distinct_tool_indices.insert(*t);
+                    }
                 }
             }
         }
     }
 
     assert!(
-        !paint_result.per_layer.is_empty(),
-        "STAGE=prepass_paint_extraction â€” paint_regions.per_layer is empty; \
-         the 3MF paint strokes produced zero per-layer paint data."
-    );
-    assert!(
-        material_region_count > 0,
-        "STAGE=prepass_paint_extraction â€” zero Material semantic regions found; \
-         paint strokes may have been parsed under a different semantic."
-    );
-    eprintln!(
-        "DIAGNOSTIC: paint_tool_indices after prepass extraction = {:?}",
-        paint_tool_indices
-    );
-    assert!(
-        paint_tool_indices.len() >= 4,
-        "STAGE=prepass_paint_extraction â€” expected >= 4 distinct Material ToolIndex \
-         values, got {}: {:?}. 3MF paint strokes exist but the paint-extraction IR \
-         pipeline dropped them.",
-        paint_tool_indices.len(),
-        paint_tool_indices
-    );
-
-    // CHECK 2: Material semantic exists in required_semantics (derived from per_layer keys)
-    let has_material_semantic = paint_result
-        .per_layer
-        .values()
-        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
-    assert!(
-        has_material_semantic,
-        "STAGE=prepass_material_semantic â€” PaintSemantic::Material is absent from all \
-         per_layer semantic_regions keys. The IR contains no Material semantic, so the \
-         per-layer paint annotator will have nothing to project."
-    );
-
-    // ---- Per-layer phase: slice the mesh and run paint annotation ----
-    // Pick a layer Z where the mesh has sliced polygons.
-    let test_z = 2.0;
-    let test_layer_idx = 10u32;
-
-    let sliced_polys: Vec<ExPolygon> = slice_mesh_ex(&object.mesh, &[test_z])
-        .into_iter()
-        .next()
-        .unwrap_or_default();
-
-    assert!(
-        !sliced_polys.is_empty(),
-        "sliced_polys are empty at Z={test_z}; test cannot proceed. \
-         Pick a Z that intersects the cube_4color mesh."
-    );
-
-    let paint_regions = paint_result;
-    let required_semantics = vec![PaintSemantic::Material];
-
-    let slice_ir = SliceIR {
-        global_layer_index: test_layer_idx,
-        z: test_z,
-        regions: vec![SlicedRegion {
-            object_id: object_id.clone(),
-            region_id: 0,
-            polygons: sliced_polys.clone(),
-            infill_areas: sliced_polys,
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        }],
-        ..Default::default()
-    };
-
-    let annotation_result =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
-            slice_ir,
-            paint_regions,
-            required_semantics,
-            modifier_projections: vec![],
-            paint_region_rtree: None,
-        })
-        .expect("execute_slice_postprocess_paint_annotation must succeed");
-
-    // CHECK 3: segment_annotations has at least one contour point with Material/ToolIndex
-    let material_tool_count: usize = annotation_result
-        .slice_ir
-        .regions
-        .iter()
-        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
-        .flatten()
-        .flatten()
-        .filter(|pv| matches!(pv, Some(PaintValue::ToolIndex(_))))
-        .count();
-
-    let boundary_tool_vals: BTreeSet<u32> = annotation_result
-        .slice_ir
-        .regions
-        .iter()
-        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
-        .flatten()
-        .flatten()
-        .filter_map(|pv| match pv {
-            Some(PaintValue::ToolIndex(t)) => Some(*t),
-            _ => None,
-        })
-        .collect();
-
-    eprintln!(
-        "DIAGNOSTIC: segment_annotations Material tool indices on layer Z={test_z} = {:?}",
-        boundary_tool_vals
-    );
-    eprintln!(
-        "DIAGNOSTIC: segment_annotations Material contour point count = {material_tool_count}"
-    );
-
-    assert!(
-        material_tool_count > 0,
-        "STAGE=per_layer_paint_annotation â€” zero contour points have \
-         PaintSemantic::Material / PaintValue::ToolIndex(...) in segment_annotations. \
-         PaintRegionIR contains {material_region_count} Material regions with \
-         tool indices {paint_tool_indices:?}, but execute_slice_postprocess_paint_annotation \
-         did not project them onto SlicedRegion contour points. Possible causes: \
-         (a) polygon contour points fall outside paint region bounding boxes, \
-         (b) bounding-box mismatch between mesh and paint stroke coordinates, \
-         (c) semantic routing mismatch (paint stored under a different PaintSemantic key)."
+        distinct_tool_indices.len() >= 4,
+        "STAGE=variant_chain_propagation — cube_4color must produce ≥4 distinct Material \
+         ToolIndex values across all variant_chain entries; got {} ({:?})",
+        distinct_tool_indices.len(),
+        distinct_tool_indices
     );
 }

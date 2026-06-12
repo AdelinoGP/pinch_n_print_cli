@@ -13,11 +13,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
-    ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer,
-    SurfaceClassificationIR, Transform3d,
+    ObjectMesh, ObjectSurfaceData, Point3, RegionMapIR, SemVer, SurfaceClassificationIR,
+    Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledModuleBuilder,
@@ -85,10 +84,6 @@ fn surface_fixture() -> SurfaceClassificationIR {
 
 fn region_map_fixture() -> RegionMapIR {
     RegionMapIR::default()
-}
-
-fn paint_regions_fixture() -> PaintRegionIR {
-    PaintRegionIR::default()
 }
 
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
@@ -162,11 +157,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
             String::from("MeshIR.objects"),
             String::from("SurfaceClassificationIR.per_object"),
         ],
-        "PrePass::PaintSegmentation" => vec![
-            String::from("MeshIR.objects"),
-            String::from("SurfaceClassificationIR.per_object"),
-            String::from("LayerPlanIR.global_layers"),
-        ],
         "PrePass::RegionMapping" => vec![
             String::from("LayerPlanIR.global_layers"),
             String::from("ResolvedConfig.global"),
@@ -176,7 +166,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
     .ir_writes(match stage {
         "PrePass::MeshAnalysis" => vec![String::from("SurfaceClassificationIR.per_object")],
         "PrePass::LayerPlanning" => vec![String::from("LayerPlanIR.global_layers")],
-        "PrePass::PaintSegmentation" => vec![String::from("PaintRegionIR.per_layer")],
         "PrePass::RegionMapping" => vec![String::from("RegionMapIR.entries")],
         _ => Vec::new(),
     })
@@ -270,15 +259,12 @@ fn translated_object_z_floor_world_z_anchor() {
     // Mesh with a single triangle shifted to world Z = 10mm.
     // In a real scenario this would come from a model placed 10mm above
     // the build plate.  The object_world_z_extent for this mesh is (10, 11).
+    // Note: PrePass::PaintSegmentation is a host built-in (no modules).
     let mesh = Arc::new(world_z_zero_translated_mesh());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = execution_plan_fixture(vec![
         compiled_stage("PrePass::MeshAnalysis", &["com.example.mesh-analysis"]),
         compiled_stage("PrePass::LayerPlanning", &["com.example.layer-planning"]),
-        compiled_stage(
-            "PrePass::PaintSegmentation",
-            &["com.example.paint-segmentation"],
-        ),
         compiled_stage("PrePass::RegionMapping", &["com.example.region-mapping"]),
     ]);
 
@@ -286,7 +272,6 @@ fn translated_object_z_floor_world_z_anchor() {
         &[
             "com.example.mesh-analysis",
             "com.example.layer-planning",
-            "com.example.paint-segmentation",
             "com.example.region-mapping",
         ],
         vec![
@@ -303,15 +288,6 @@ fn translated_object_z_floor_world_z_anchor() {
                 ))),
             ),
             (
-                String::from("com.example.paint-segmentation"),
-                Ok(PrepassStageOutput::PaintRegions(
-                    Arc::new(paint_regions_fixture()),
-                    Arc::new(PaintRegionRTreeIndex {
-                        trees: HashMap::default(),
-                    }),
-                )),
-            ),
-            (
                 String::from("com.example.region-mapping"),
                 Ok(PrepassStageOutput::RegionMap(
                     Arc::new(region_map_fixture()),
@@ -324,21 +300,19 @@ fn translated_object_z_floor_world_z_anchor() {
     let _audits = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
         .expect("prepass executor should run fixed stage order and commit each output once");
 
-    // Verify stage order
+    // Verify stage order (PaintSegmentation is host built-in — not in observed ids)
     assert_eq!(
         runner.observed_module_ids(),
         vec![
             String::from("com.example.mesh-analysis"),
             String::from("com.example.layer-planning"),
-            String::from("com.example.paint-segmentation"),
             String::from("com.example.region-mapping"),
         ]
     );
 
-    // Verify all prepass outputs were committed to the blackboard
+    // Verify prepass outputs committed to the blackboard
     assert!(blackboard.surface_classification().is_some());
     assert!(blackboard.layer_plan().is_some());
-    assert!(blackboard.paint_regions().is_some());
     assert!(blackboard.region_map().is_some());
 
     // CORE ASSERTION: world-space Z anchor is preserved through the pipeline.

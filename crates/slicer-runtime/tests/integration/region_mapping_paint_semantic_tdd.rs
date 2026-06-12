@@ -11,14 +11,16 @@ use std::sync::Arc;
 
 use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPaintMap, LayerPlanIR,
-    MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point3, RegionKey,
-    ResolvedConfig, SemVer, SemanticRegion, Transform3d,
+    ActiveRegion, BoundingBox3, FacetPaintData, GlobalLayer, IndexedTriangleSet, LayerPlanIR,
+    MeshIR, ModuleId, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3,
+    RegionKey, ResolvedConfig, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_execution_plan, execute_region_mapping, ExecutionPlan, ExecutionPlanRequest,
     LoadDiagnostic, SortedStageModules,
 };
+use slicer_scheduler::region_split::AggregatedRegionSplitEntry;
+use slicer_scheduler::RegionSplitValueType;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -108,34 +110,6 @@ fn empty_execution_plan() -> slicer_runtime::ExecutionPlan {
     build_execution_plan(&request, &mut diagnostics).expect("empty execution plan should build")
 }
 
-/// Build a `PaintRegionIR` with a single semantic covering object "obj-a" at
-/// layer `layer_index`.
-fn paint_region_ir_single(
-    layer_index: u32,
-    object_id: &str,
-    semantic: PaintSemantic,
-) -> PaintRegionIR {
-    let region = SemanticRegion {
-        object_id: object_id.to_string(),
-        polygons: vec![],
-        value: PaintValue::Flag(true),
-        paint_order: 0,
-        aabb: None,
-    };
-    let mut semantic_regions = HashMap::new();
-    semantic_regions.insert(semantic, vec![region]);
-    let layer_map = LayerPaintMap {
-        global_layer_index: layer_index,
-        semantic_regions,
-    };
-    let mut per_layer = HashMap::new();
-    per_layer.insert(layer_index, layer_map);
-    PaintRegionIR {
-        schema_version: sv(1, 0, 0),
-        per_layer,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -174,34 +148,73 @@ fn region_overlap_applies_override() {
         stage_invocations: &si,
     };
 
+    // v2 contract (packet 95): execute_region_mapping populates paint_overrides
+    // by enumerating chains from aggregated_region_split × per-object paint_data.
+    // Both inputs MUST be present for a paint semantic to surface in a chain.
+    let mut aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry> = BTreeMap::new();
+    aggregated_region_split.insert(
+        "fuzzy_skin".to_string(),
+        AggregatedRegionSplitEntry {
+            priority: 0,
+            value_type: RegionSplitValueType::Flag,
+            declaring_modules: vec![ModuleId::from("com.test.fuzzy_skin")],
+        },
+    );
+
+    let object = object_with_paint(
+        "obj-a",
+        PaintSemantic::Custom("fuzzy_skin".to_string()),
+        PaintValue::Flag(true),
+    );
+    let objects = vec![object];
+
     let rm = execute_region_mapping(
         &layer_plan,
         &projection,
         &paint_semantic_configs,
-        &BTreeMap::new(),
-        &[],
+        &aggregated_region_split,
+        &objects,
     )
     .expect("execute_region_mapping must succeed");
-    let key = RegionKey {
+
+    // The cross-product enumerates two variant chains: BASE (empty) and the
+    // fuzzy_skin chain.  paint_overrides is populated on the fuzzy_skin chain.
+    let fuzzy_key = RegionKey {
         global_layer_index: 5,
         object_id: "obj-a".to_string(),
         region_id: 0,
-        variant_chain: Vec::new(),
+        variant_chain: vec![("fuzzy_skin".to_string(), PaintValue::Flag(true))],
     };
     let rp = rm
         .entries
-        .get(&key)
-        .expect("entry for obj-a layer 5 must exist");
+        .get(&fuzzy_key)
+        .expect("entry for obj-a layer 5 with fuzzy_skin variant chain must exist");
     assert!(
         rp.paint_overrides
             .contains_key(&PaintSemantic::Custom("fuzzy_skin".to_string())),
         "paint_overrides must contain fuzzy_skin"
     );
     assert_eq!(
-        rm.config_for(&key).wall_count,
+        rm.config_for(&fuzzy_key).wall_count,
         5,
         "effective config.wall_count must be 5 from paint override"
     );
+}
+
+// Helper: build an `ObjectMesh` whose `paint_data` carries one PaintLayer with
+// the given semantic + facet_value.  Used by v2 region-mapping tests to
+// declare which paint semantics are present on which objects.
+fn object_with_paint(object_id: &str, semantic: PaintSemantic, value: PaintValue) -> ObjectMesh {
+    let mesh = minimal_mesh(object_id);
+    let mut obj = mesh.objects.into_iter().next().unwrap();
+    obj.paint_data = Some(FacetPaintData {
+        layers: vec![PaintLayer {
+            semantic,
+            facet_values: vec![Some(value)],
+            strokes: vec![],
+        }],
+    });
+    obj
 }
 
 /// AC-4 (packet 51): When no paint region overlaps a `RegionKey`, the
@@ -303,17 +316,62 @@ fn overlap_precedence_is_deterministic() {
         stage_invocations: &si,
     };
 
+    // Provide aggregated_region_split + per-object paint_data for both semantics.
+    let mut aggregated_region_split: BTreeMap<String, AggregatedRegionSplitEntry> = BTreeMap::new();
+    aggregated_region_split.insert(
+        "aaa_first".to_string(),
+        AggregatedRegionSplitEntry {
+            priority: 0,
+            value_type: RegionSplitValueType::Flag,
+            declaring_modules: vec![ModuleId::from("com.test.aaa_first")],
+        },
+    );
+    aggregated_region_split.insert(
+        "zzz_last".to_string(),
+        AggregatedRegionSplitEntry {
+            priority: 1,
+            value_type: RegionSplitValueType::Flag,
+            declaring_modules: vec![ModuleId::from("com.test.zzz_last")],
+        },
+    );
+
+    // obj-c has BOTH paint semantics so the cross-product yields a chain
+    // containing both entries.
+    let mesh = minimal_mesh("obj-c");
+    let mut obj = mesh.objects.into_iter().next().unwrap();
+    obj.paint_data = Some(FacetPaintData {
+        layers: vec![
+            PaintLayer {
+                semantic: sem_aaa.clone(),
+                facet_values: vec![Some(PaintValue::Flag(true))],
+                strokes: vec![],
+            },
+            PaintLayer {
+                semantic: sem_zzz.clone(),
+                facet_values: vec![Some(PaintValue::Flag(true))],
+                strokes: vec![],
+            },
+        ],
+    });
+    let objects = vec![obj];
+
     let assert_result = |rm: &slicer_ir::RegionMapIR| {
-        let key = RegionKey {
+        // The cross-product chain containing BOTH semantics — that's the entry
+        // where paint_overrides accumulates both AND zzz_last wins on the
+        // effective config (overlay applies in canonical sort order).
+        let both_key = RegionKey {
             global_layer_index: 0,
             object_id: "obj-c".to_string(),
             region_id: 0,
-            variant_chain: Vec::new(),
+            variant_chain: vec![
+                ("aaa_first".to_string(), PaintValue::Flag(true)),
+                ("zzz_last".to_string(), PaintValue::Flag(true)),
+            ],
         };
         let rp = rm
             .entries
-            .get(&key)
-            .expect("entry for obj-c layer 0 must exist");
+            .get(&both_key)
+            .expect("entry for obj-c layer 0 with both-semantic chain must exist");
         assert!(
             rp.paint_overrides
                 .contains_key(&PaintSemantic::Custom("aaa_first".to_string())),
@@ -325,7 +383,7 @@ fn overlap_precedence_is_deterministic() {
             "paint_overrides must contain zzz_last"
         );
         assert_eq!(
-            rm.config_for(&key).wall_count,
+            rm.config_for(&both_key).wall_count,
             9,
             "zzz_last (lexicographically last) must win -> wall_count=9"
         );
@@ -335,8 +393,8 @@ fn overlap_precedence_is_deterministic() {
         &layer_plan,
         &projection,
         &paint_semantic_configs,
-        &BTreeMap::new(),
-        &[],
+        &aggregated_region_split,
+        &objects,
     )
     .expect("first execute_region_mapping must succeed");
     assert_result(&rm1);
@@ -345,8 +403,8 @@ fn overlap_precedence_is_deterministic() {
         &layer_plan,
         &projection,
         &paint_semantic_configs,
-        &BTreeMap::new(),
-        &[],
+        &aggregated_region_split,
+        &objects,
     )
     .expect("second execute_region_mapping must succeed");
     assert_result(&rm2);

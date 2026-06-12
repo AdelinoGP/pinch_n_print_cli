@@ -3,12 +3,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR,
-    LayerPaintMap, LayerPlanIR, MeshIR, ModuleInvocation, ObjectMesh, ObjectSurfaceData,
-    PaintRegionIR, PerimeterIR, Point3, Point3WithWidth, PrintEntity, RegionKey, RegionMapIR,
-    RegionPlan, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, Transform3d, ZHop,
+    LayerPlanIR, MeshIR, ModuleInvocation, ObjectMesh, ObjectSurfaceData, PerimeterIR, Point3,
+    Point3WithWidth, PrintEntity, RegionKey, RegionMapIR, RegionPlan, SliceIR, SupportIR,
+    SurfaceClassificationIR, ToolChange, Transform3d, ZHop,
 };
 use slicer_runtime::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
@@ -26,7 +25,6 @@ fn blackboard_contract_exposes_arc_backed_prepass_reads_and_exactly_once_layer_d
 
     let surface = Arc::new(surface_fixture());
     let layer_plan = Arc::new(layer_plan_fixture());
-    let paint = Arc::new(paint_regions_fixture());
     let region_map = Arc::new(region_map_fixture());
 
     blackboard
@@ -35,14 +33,8 @@ fn blackboard_contract_exposes_arc_backed_prepass_reads_and_exactly_once_layer_d
     blackboard
         .commit_layer_plan(Arc::clone(&layer_plan))
         .expect("layer plan should commit once");
-    blackboard
-        .commit_paint_regions(
-            Arc::clone(&paint),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .expect("paint regions should commit once");
+    // Note: PaintRegionIR blackboard slot removed in packet 95 sub-step 16.
+    // Paint annotations now live in SliceIR segment_annotations (AC-16).
     blackboard
         .commit_region_map(Arc::clone(&region_map))
         .expect("region map should commit once");
@@ -50,7 +42,6 @@ fn blackboard_contract_exposes_arc_backed_prepass_reads_and_exactly_once_layer_d
     expect_arc_ref(blackboard.mesh());
     expect_optional_arc_ref(blackboard.surface_classification());
     expect_optional_arc_ref(blackboard.layer_plan());
-    expect_optional_arc_ref(blackboard.paint_regions());
     expect_optional_arc_ref(blackboard.region_map());
 
     assert!(Arc::ptr_eq(blackboard.mesh(), &mesh));
@@ -65,12 +56,6 @@ fn blackboard_contract_exposes_arc_backed_prepass_reads_and_exactly_once_layer_d
             .layer_plan()
             .expect("layer plan should be visible as shared state"),
         &layer_plan,
-    ));
-    assert!(Arc::ptr_eq(
-        blackboard
-            .paint_regions()
-            .expect("paint regions should be visible as shared state"),
-        &paint,
     ));
     assert!(Arc::ptr_eq(
         blackboard
@@ -265,19 +250,6 @@ fn layer_plan_fixture() -> LayerPlanIR {
                 is_sync_layer: false,
             },
         ],
-        ..Default::default()
-    }
-}
-
-fn paint_regions_fixture() -> PaintRegionIR {
-    PaintRegionIR {
-        per_layer: HashMap::from([(
-            0,
-            LayerPaintMap {
-                global_layer_index: 0,
-                ..Default::default()
-            },
-        )]),
         ..Default::default()
     }
 }

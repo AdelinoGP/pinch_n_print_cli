@@ -232,14 +232,6 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `PaintRegionIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
-pub const CURRENT_PAINT_REGION_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 0,
-    patch: 0,
-};
-
 /// Schema version for `MeshSegmentationIR`. Initial 1.0.0 — no bumps recorded
 /// in `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION: SemVer = SemVer {
@@ -324,6 +316,12 @@ pub enum PaintSemantic {
 }
 
 /// Paint value types
+///
+/// # Total-ordering contract
+/// `Scalar(f32)` uses `f32::total_cmp` for ordering (NaN is ordered after all
+/// finite values). Callers MUST NOT construct `Scalar(f32::NAN)` — the `Eq`
+/// impl treats NaN-bit-equal values as equal (via `to_bits`), but `Ord` will
+/// place them at a defined position rather than panic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaintValue {
     /// Boolean flag
@@ -350,6 +348,39 @@ impl PartialEq for PaintValue {
 }
 
 impl Eq for PaintValue {}
+
+impl PartialOrd for PaintValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PaintValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        // Variant order: Flag(0) < Scalar(1) < ToolIndex(2) < Custom(3)
+        fn discriminant(v: &PaintValue) -> u8 {
+            match v {
+                PaintValue::Flag(_) => 0,
+                PaintValue::Scalar(_) => 1,
+                PaintValue::ToolIndex(_) => 2,
+                PaintValue::Custom(_) => 3,
+            }
+        }
+        let da = discriminant(self);
+        let db = discriminant(other);
+        if da != db {
+            return da.cmp(&db);
+        }
+        match (self, other) {
+            (Self::Flag(a), Self::Flag(b)) => a.cmp(b),
+            (Self::Scalar(a), Self::Scalar(b)) => a.total_cmp(b),
+            (Self::ToolIndex(a), Self::ToolIndex(b)) => a.cmp(b),
+            (Self::Custom(a), Self::Custom(b)) => a.cmp(b),
+            _ => Ordering::Equal, // unreachable: discriminants matched above
+        }
+    }
+}
 
 impl std::hash::Hash for PaintValue {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -1045,64 +1076,6 @@ impl Default for SupportGeometryIR {
             support_top_z_distance_mm: 0.0,
             entries: HashMap::new(),
         }
-    }
-}
-
-// ============================================================================
-// Paint Region IR Types
-// ============================================================================
-
-/// Semantic region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SemanticRegion {
-    /// Object ID this region belongs to
-    pub object_id: ObjectId,
-    /// Polygons defining this region
-    pub polygons: Vec<ExPolygon>,
-    /// Paint value for this region
-    pub value: PaintValue,
-    /// Paint order (higher means painted later)
-    pub paint_order: u64,
-    /// Pre-computed axis-aligned bounding box (reconstructed, not serialized)
-    #[serde(skip_deserializing, default)]
-    pub aabb: Option<BoundingBox2>,
-}
-
-/// Layer paint map
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LayerPaintMap {
-    /// Global layer index
-    pub global_layer_index: u32,
-    /// Paint regions keyed by semantic
-    pub semantic_regions: HashMap<PaintSemantic, Vec<SemanticRegion>>,
-}
-
-/// Paint region IR
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PaintRegionIR {
-    /// Schema version of this IR
-    pub schema_version: SemVer,
-    /// Per-layer paint maps
-    pub per_layer: HashMap<u32, LayerPaintMap>,
-}
-
-impl Default for PaintRegionIR {
-    fn default() -> Self {
-        Self {
-            schema_version: CURRENT_PAINT_REGION_IR_SCHEMA_VERSION,
-            per_layer: HashMap::new(),
-        }
-    }
-}
-
-impl PaintRegionIR {
-    /// Convenience accessor for per-layer stage modules
-    pub fn get(&self, layer_index: u32, semantic: &PaintSemantic) -> &[SemanticRegion] {
-        self.per_layer
-            .get(&layer_index)
-            .and_then(|l| l.semantic_regions.get(semantic))
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
     }
 }
 

@@ -372,32 +372,10 @@ mod tests {
         test_serde_roundtrip!(region);
     }
 
-    #[test]
-    fn test_paint_region_ir() {
-        let paint_ir = PaintRegionIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            per_layer: std::collections::HashMap::new(),
-        };
-
-        test_serde_roundtrip!(paint_ir);
-    }
-
-    #[test]
-    fn test_semantic_region() {
-        let region = SemanticRegion {
-            object_id: "obj-1".to_string(),
-            polygons: vec![],
-            value: PaintValue::Flag(true),
-            paint_order: 1,
-            aabb: None,
-        };
-
-        test_serde_roundtrip!(region);
-    }
+    // test_paint_region_ir + test_semantic_region: deleted in packet 95 sub-step 16
+    // along with the PaintRegionIR / SemanticRegion / LayerPaintMap types they covered.
+    // There is no v2 equivalent — per-variant polygons inline into SliceIR.regions[*]
+    // via D8; per-region segment_annotations carry modifier-volume routing via D14.
 
     #[test]
     fn test_region_map_ir() {
@@ -746,11 +724,7 @@ fn chunk2_ir_schema_versions_are_default_sourced() {
         slicer_ir::CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         "SupportGeometryIR::default().schema_version must equal CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION"
     );
-    assert_eq!(
-        PaintRegionIR::default().schema_version,
-        slicer_ir::CURRENT_PAINT_REGION_IR_SCHEMA_VERSION,
-        "PaintRegionIR::default().schema_version must equal CURRENT_PAINT_REGION_IR_SCHEMA_VERSION"
-    );
+    // PaintRegionIR removed in packet 95 sub-step 16 (v2 integration follow-up)
     assert_eq!(
         MeshSegmentationIR::default().schema_version,
         slicer_ir::CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,

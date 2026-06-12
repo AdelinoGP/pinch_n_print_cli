@@ -25,52 +25,76 @@ use crate::prepass_types::{
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
-    ConfigView, ExtrusionPath3D, LayerAnnotation, LayerAnnotationKind, LayerCollectionIR,
-    PaintRegionIR, PaintSemantic, PrintEntity, RegionKey, SemanticRegion, SupportPlanIR,
+    ConfigView, ExPolygon, ExtrusionPath3D, LayerAnnotation, LayerAnnotationKind,
+    LayerCollectionIR, PaintSemantic, PrintEntity, RegionKey, SliceIR, SupportPlanIR,
 };
 
-/// Paint region layer view for accessing painted regions.
+/// Support-paint policy for a per-region eligibility decision.
 ///
-/// Wraps `PaintRegionIR` data for a specific layer, providing read-only
-/// access to paint region queries. Host constructs this; modules use it
-/// to look up paint semantics for contour points.
+/// Computed from D14 `SlicedRegion.segment_annotations` queries.  Used by both
+/// `tree-support` and `traditional-support` modules to honour SupportEnforcer
+/// (force-on) and SupportBlocker (force-off) paint annotations, with
+/// blocker > enforcer precedence (docs/10 §"Scenario Trace 2").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SupportPaintPolicy {
+    /// At least one SupportBlocker annotation covers this region — skip support
+    /// regardless of overhang-angle or `needs_support`.
+    Blocked,
+    /// At least one SupportEnforcer annotation covers this region (and no
+    /// blocker) — generate support regardless of overhang-angle or
+    /// `needs_support`.
+    Enforced,
+    /// No paint policy override — defer to overhang-angle / `needs_support`.
+    DefaultEligible,
+}
+
+/// Paint region layer view.
+///
+/// In packet 95 the v1 PaintRegionIR/SemanticRegion types were deleted (D8).
+/// Per-layer paint annotations now travel inline on `SliceIR.regions[*].segment_annotations`
+/// (D14).  This view carries a reference to the current layer's `SliceIR` so
+/// support modules can query enforcer/blocker policy via `paint_policy_for`.
 #[derive(Debug, Clone)]
 pub struct PaintRegionLayerView {
     layer_index: u32,
-    paint_regions: Arc<PaintRegionIR>,
     support_plan: Option<Arc<SupportPlanIR>>,
+    slice_ir: Option<Arc<SliceIR>>,
 }
 
 impl PaintRegionLayerView {
-    /// Create a new PaintRegionLayerView with empty paint regions (host-only, for testing).
+    /// Create a new PaintRegionLayerView (host-only, for testing).
     #[doc(hidden)]
     pub fn new(layer_index: u32) -> Self {
         Self {
             layer_index,
-            paint_regions: Arc::new(PaintRegionIR::default()),
             support_plan: None,
+            slice_ir: None,
         }
     }
 
-    /// Create a new PaintRegionLayerView wrapping paint region data (host-only).
+    /// Compatibility constructor — paint_regions argument is ignored; body is no-op (AC-16).
     #[doc(hidden)]
-    pub fn with_paint_regions(layer_index: u32, paint_regions: Arc<PaintRegionIR>) -> Self {
+    #[allow(unused_variables)]
+    pub fn with_paint_regions(layer_index: u32, _paint_regions: std::sync::Arc<()>) -> Self {
         Self {
             layer_index,
-            paint_regions,
             support_plan: None,
+            slice_ir: None,
         }
     }
 
     /// Attach a committed `SupportPlanIR` to this layer view (host-only).
-    ///
-    /// `Layer::Support` modules that declare `SupportPlanIR` as a read
-    /// (e.g. `tree-support`) consult the plan via
-    /// [`Self::support_plan_segments_for`] to emit pre-planned branch
-    /// geometry instead of running a per-layer filler.
     #[doc(hidden)]
     pub fn with_support_plan(mut self, support_plan: Arc<SupportPlanIR>) -> Self {
         self.support_plan = Some(support_plan);
+        self
+    }
+
+    /// Attach a committed `SliceIR` to this layer view (host-only).  Required
+    /// for `paint_policy_for` to surface enforcer/blocker decisions.
+    #[doc(hidden)]
+    pub fn with_slice_ir(mut self, slice_ir: Arc<SliceIR>) -> Self {
+        self.slice_ir = Some(slice_ir);
         self
     }
 
@@ -79,31 +103,37 @@ impl PaintRegionLayerView {
         self.layer_index
     }
 
-    /// Returns the paint regions for this layer and semantic.
-    ///
-    /// Returns an empty slice if no paint regions exist for the given semantic.
-    pub fn get_regions(&self, semantic: &PaintSemantic) -> &[SemanticRegion] {
-        self.paint_regions.get(self.layer_index, semantic)
+    /// Returns the attached `SliceIR`, if any.  Hosts must call
+    /// `with_slice_ir` before dispatching a support layer for paint annotations
+    /// to be visible to module bodies.
+    pub fn slice_ir(&self) -> Option<&Arc<SliceIR>> {
+        self.slice_ir.as_ref()
     }
 
-    /// Returns the underlying paint region IR (for direct query use).
-    pub fn paint_regions(&self) -> &PaintRegionIR {
-        &self.paint_regions
-    }
-
-    /// Returns all semantics that have paint data on this layer.
+    /// Returns all semantics that have paint data on this layer.  Computed
+    /// from `SliceIR.regions[*].segment_annotations` when a SliceIR is
+    /// attached; empty otherwise.
     pub fn semantics_on_layer(&self) -> Vec<PaintSemantic> {
-        self.paint_regions
-            .per_layer
-            .get(&self.layer_index)
-            .map(|lpm| lpm.semantic_regions.keys().cloned().collect())
-            .unwrap_or_default()
+        let Some(slice) = self.slice_ir.as_ref() else {
+            return Vec::new();
+        };
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for region in &slice.regions {
+            for (sem, perimeters) in &region.segment_annotations {
+                if perimeters
+                    .iter()
+                    .any(|edges| edges.iter().any(|v| v.is_some()))
+                    && seen.insert(sem.clone())
+                {
+                    out.push(sem.clone());
+                }
+            }
+        }
+        out
     }
 
-    /// Returns the full committed support plan, if any. Modules that want
-    /// to iterate across all entries for their object should use this and
-    /// filter on `global_layer_index == self.layer_index()` plus their
-    /// object/region ids.
+    /// Returns the full committed support plan, if any.
     pub fn support_plan(&self) -> Option<&Arc<SupportPlanIR>> {
         self.support_plan.as_ref()
     }
@@ -129,6 +159,123 @@ impl PaintRegionLayerView {
             .flat_map(|entry| entry.branch_segments.iter())
             .collect()
     }
+
+    /// Compute the support paint policy for `expoly` at this layer.
+    ///
+    /// D14 contract: walks `SliceIR.regions[*]`; for any region whose polygon
+    /// covers `expoly`'s centroid, checks `segment_annotations[SupportBlocker]`
+    /// and `segment_annotations[SupportEnforcer]` for any `Some(value)` entry.
+    /// Blocker wins over enforcer (docs/10 §"Scenario Trace 2").
+    ///
+    /// Returns `DefaultEligible` when no SliceIR is attached, when no region
+    /// covers `expoly`, or when no enforcer/blocker annotations are present.
+    pub fn paint_policy_for(&self, expoly: &ExPolygon) -> SupportPaintPolicy {
+        let Some(slice) = self.slice_ir.as_ref() else {
+            return SupportPaintPolicy::DefaultEligible;
+        };
+        let probe = expolygon_centroid(expoly);
+        let mut blocked = false;
+        let mut enforced = false;
+        for region in &slice.regions {
+            if !regions_cover_point(&region.polygons, probe) {
+                continue;
+            }
+            if annotations_have_some(
+                region
+                    .segment_annotations
+                    .get(&PaintSemantic::SupportBlocker),
+            ) {
+                blocked = true;
+            }
+            if annotations_have_some(
+                region
+                    .segment_annotations
+                    .get(&PaintSemantic::SupportEnforcer),
+            ) {
+                enforced = true;
+            }
+        }
+        if blocked {
+            SupportPaintPolicy::Blocked
+        } else if enforced {
+            SupportPaintPolicy::Enforced
+        } else {
+            SupportPaintPolicy::DefaultEligible
+        }
+    }
+}
+
+#[inline]
+fn annotations_have_some(entries: Option<&Vec<Vec<Option<slicer_ir::PaintValue>>>>) -> bool {
+    let Some(entries) = entries else { return false };
+    entries
+        .iter()
+        .any(|perim| perim.iter().any(|v| v.is_some()))
+}
+
+/// Average of the outer contour points in integer coordinate space.  Sufficient
+/// as a point-in-polygon probe for the convex / near-convex paint regions
+/// produced by `cells_to_expolygons_by_color`; modifier-volume polygons are also
+/// near-convex by construction (slices of axis-aligned solids).
+fn expolygon_centroid(expoly: &ExPolygon) -> slicer_ir::Point2 {
+    let pts = &expoly.contour.points;
+    if pts.is_empty() {
+        return slicer_ir::Point2 { x: 0, y: 0 };
+    }
+    let mut sx: i64 = 0;
+    let mut sy: i64 = 0;
+    for p in pts {
+        sx += p.x;
+        sy += p.y;
+    }
+    let n = pts.len() as i64;
+    slicer_ir::Point2 {
+        x: sx / n,
+        y: sy / n,
+    }
+}
+
+fn regions_cover_point(polygons: &[ExPolygon], pt: slicer_ir::Point2) -> bool {
+    polygons.iter().any(|p| point_in_expolygon(pt, p))
+}
+
+/// Ray-cast point-in-polygon (with hole subtraction).
+fn point_in_expolygon(pt: slicer_ir::Point2, ep: &ExPolygon) -> bool {
+    if !point_in_polygon(pt, &ep.contour.points) {
+        return false;
+    }
+    for hole in &ep.holes {
+        if point_in_polygon(pt, &hole.points) {
+            return false;
+        }
+    }
+    true
+}
+
+fn point_in_polygon(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> bool {
+    if ring.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = ring.len() - 1;
+    for i in 0..ring.len() {
+        let pi = &ring[i];
+        let pj = &ring[j];
+        // The `(pi.y > pt.y) != (pj.y > pt.y)` precondition guarantees
+        // `pj.y - pi.y != 0`, so the division below is safe.
+        let pi_above = pi.y > pt.y;
+        let pj_above = pj.y > pt.y;
+        if pi_above != pj_above {
+            let cross = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128)
+                / (pj.y as i128 - pi.y as i128)
+                + pi.x as i128;
+            if (pt.x as i128) < cross {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
 }
 
 /// The core trait for per-layer modules.

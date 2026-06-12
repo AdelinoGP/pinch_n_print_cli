@@ -5,13 +5,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPaintMap, LayerPlanIR,
-    MeshIR, ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR,
-    PaintSemantic, PaintValue, Point2, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
-    SemanticRegion, SurfaceClassificationIR, Transform3d,
+    BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPlanIR, MeshIR,
+    ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, Point2, Point3, RegionKey,
+    RegionMapIR, RegionPlan, SemVer, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, BlackboardError, BlackboardPrepassSlot,
@@ -28,10 +26,6 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
     let plan = execution_plan_fixture(vec![
         compiled_stage("PrePass::MeshAnalysis", &["com.example.mesh-analysis"]),
         compiled_stage("PrePass::LayerPlanning", &["com.example.layer-planning"]),
-        compiled_stage(
-            "PrePass::PaintSegmentation",
-            &["com.example.secondary-analysis"],
-        ),
         compiled_stage("PrePass::RegionMapping", &["com.example.region-mapping"]),
     ]);
 
@@ -39,7 +33,6 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         &[
             "com.example.mesh-analysis",
             "com.example.layer-planning",
-            "com.example.secondary-analysis",
             "com.example.region-mapping",
         ],
         vec![
@@ -53,15 +46,6 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
                 String::from("com.example.layer-planning"),
                 Ok(PrepassStageOutput::LayerPlan(
                     Arc::new(layer_plan_fixture()),
-                )),
-            ),
-            (
-                String::from("com.example.secondary-analysis"),
-                Ok(PrepassStageOutput::PaintRegions(
-                    Arc::new(paint_regions_fixture()),
-                    Arc::new(PaintRegionRTreeIndex {
-                        trees: HashMap::default(),
-                    }),
                 )),
             ),
             (
@@ -82,14 +66,12 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         vec![
             String::from("com.example.mesh-analysis"),
             String::from("com.example.layer-planning"),
-            String::from("com.example.secondary-analysis"),
             String::from("com.example.region-mapping"),
         ]
     );
     assert!(Arc::ptr_eq(blackboard.mesh(), &mesh));
     assert!(blackboard.surface_classification().is_some());
     assert!(blackboard.layer_plan().is_some());
-    assert!(blackboard.paint_regions().is_some());
     assert!(blackboard.region_map().is_some());
 }
 
@@ -137,20 +119,19 @@ fn prepass_executor_surfaces_duplicate_commit_as_a_deterministic_blackboard_erro
 fn prepass_executor_rejects_missing_required_prepass_before_running_dependent_stage() {
     let mesh = Arc::new(mesh_fixture());
     let mut blackboard = Blackboard::new(mesh, 0);
+    // PrePass::LayerPlanning requires SurfaceClassification.
+    // Attempt to run it without SurfaceClassification should surface MissingRequiredPrepass.
     let plan = execution_plan_fixture(vec![compiled_stage(
-        "PrePass::PaintSegmentation",
-        &["com.example.secondary-analysis"],
+        "PrePass::LayerPlanning",
+        &["com.example.layer-planning"],
     )]);
 
     let runner = ScriptedRunner::new(
-        &["com.example.secondary-analysis"],
+        &["com.example.layer-planning"],
         vec![(
-            String::from("com.example.secondary-analysis"),
-            Ok(PrepassStageOutput::PaintRegions(
-                Arc::new(paint_regions_fixture()),
-                Arc::new(PaintRegionRTreeIndex {
-                    trees: HashMap::default(),
-                }),
+            String::from("com.example.layer-planning"),
+            Ok(PrepassStageOutput::LayerPlan(
+                Arc::new(layer_plan_fixture()),
             )),
         )],
         0,
@@ -159,7 +140,7 @@ fn prepass_executor_rejects_missing_required_prepass_before_running_dependent_st
     assert_eq!(
         execute_prepass(&plan, &mut blackboard, &runner, &Default::default()),
         Err(PrepassExecutionError::MissingRequiredPrepass {
-            stage_id: String::from("PrePass::PaintSegmentation"),
+            stage_id: String::from("PrePass::LayerPlanning"),
             slot: BlackboardPrepassSlot::SurfaceClassification,
         })
     );
@@ -339,11 +320,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
             String::from("MeshIR.objects"),
             String::from("SurfaceClassificationIR.per_object"),
         ],
-        "PrePass::PaintSegmentation" => vec![
-            String::from("MeshIR.objects"),
-            String::from("SurfaceClassificationIR.per_object"),
-            String::from("LayerPlanIR.global_layers"),
-        ],
         "PrePass::RegionMapping" => vec![
             String::from("LayerPlanIR.global_layers"),
             String::from("ResolvedConfig.global"),
@@ -353,7 +329,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
     let ir_writes = match stage {
         "PrePass::MeshAnalysis" => vec![String::from("SurfaceClassificationIR.per_object")],
         "PrePass::LayerPlanning" => vec![String::from("LayerPlanIR.global_layers")],
-        "PrePass::PaintSegmentation" => vec![String::from("PaintRegionIR.per_layer")],
         "PrePass::RegionMapping" => vec![String::from("RegionMapIR.entries")],
         _ => Vec::new(),
     };
@@ -441,29 +416,6 @@ fn layer_plan_fixture() -> LayerPlanIR {
     }
 }
 
-fn paint_regions_fixture() -> PaintRegionIR {
-    let semantic = PaintSemantic::Material;
-    PaintRegionIR {
-        per_layer: HashMap::from([(
-            0,
-            LayerPaintMap {
-                global_layer_index: 0,
-                semantic_regions: HashMap::from([(
-                    semantic,
-                    vec![SemanticRegion {
-                        object_id: String::from("cube"),
-                        polygons: vec![square_polygon()],
-                        value: PaintValue::ToolIndex(0),
-                        paint_order: 1,
-                        aabb: None,
-                    }],
-                )]),
-            },
-        )]),
-        ..Default::default()
-    }
-}
-
 fn region_map_fixture() -> RegionMapIR {
     RegionMapIR {
         entries: HashMap::from([(
@@ -488,6 +440,7 @@ fn region_map_fixture() -> RegionMapIR {
     }
 }
 
+#[allow(dead_code)]
 fn square_polygon() -> ExPolygon {
     ExPolygon {
         contour: slicer_ir::Polygon {

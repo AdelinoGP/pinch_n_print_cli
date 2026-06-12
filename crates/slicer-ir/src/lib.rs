@@ -65,7 +65,6 @@ pub use slice_ir::{
     LayerAnnotation,
     LayerAnnotationKind,
     LayerCollectionIR,
-    LayerPaintMap,
     // Layer planning types
     LayerPlanIR,
     LoopType,
@@ -91,8 +90,6 @@ pub use slice_ir::{
 
     OverhangRegionId,
     PaintLayer,
-    // Paint region types
-    PaintRegionIR,
     PaintSemantic,
     PaintStroke,
 
@@ -122,7 +119,6 @@ pub use slice_ir::{
 
     SeamReason,
     SemVer,
-    SemanticRegion,
 
     // Slice types
     SliceIR,
@@ -167,7 +163,6 @@ pub use slice_ir::{
     CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION,
     CURRENT_MESH_IR_SCHEMA_VERSION,
     CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
-    CURRENT_PAINT_REGION_IR_SCHEMA_VERSION,
     CURRENT_PERIMETER_IR_SCHEMA_VERSION,
     CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
     CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION,

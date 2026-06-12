@@ -1935,81 +1935,14 @@ fn ir_to_wit_paint_value(v: &slicer_ir::PaintValue) -> PaintValue {
     }
 }
 
-/// Convert slicer-ir SemanticRegion to WIT SemanticRegion.
-fn ir_to_wit_semantic_region(
-    r: &slicer_ir::SemanticRegion,
-) -> layer::slicer::ir_handles::ir_handles::SemanticRegion {
-    layer::slicer::ir_handles::ir_handles::SemanticRegion {
-        object_id: r.object_id.clone(),
-        polygons: ir_to_wit_expolygons(&r.polygons),
-        value: ir_to_wit_paint_value(&r.value),
-    }
-}
-
-/// Convert a PaintSemantic to the string key used by PaintRegionLayerData.
-fn paint_semantic_key(s: &slicer_ir::PaintSemantic) -> &'static str {
-    match s {
-        slicer_ir::PaintSemantic::Material => "material",
-        slicer_ir::PaintSemantic::FuzzySkin => "fuzzy-skin",
-        slicer_ir::PaintSemantic::SupportEnforcer => "support-enforcer",
-        slicer_ir::PaintSemantic::SupportBlocker => "support-blocker",
-        slicer_ir::PaintSemantic::Custom(_) => "custom",
-    }
-}
-
-/// Build a `PaintRegionLayerData` from a `PaintRegionIR` for a specific layer.
-///
-/// Returns empty-but-valid data if no paint regions exist for this layer.
-/// Custom semantics are split into the `custom_regions` map keyed by
-/// the `Custom(id)` string from the IR.
-pub fn paint_region_ir_to_layer_data(
-    ir: &slicer_ir::PaintRegionIR,
-    layer_index: u32,
-) -> PaintRegionLayerData {
-    let empty = PaintRegionLayerData {
+/// Build an empty `PaintRegionLayerData` — paint annotations now live in
+/// SliceIR segment_annotations (AC-16, packet 95 step 12/13).
+/// This function is retained for call-site compatibility; Phase B removes it.
+pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionLayerData {
+    PaintRegionLayerData {
         layer_index,
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
-        support_plan_segments: HashMap::new(),
-    };
-
-    let layer_map = match ir.per_layer.get(&layer_index) {
-        Some(m) => m,
-        None => return empty,
-    };
-
-    let mut regions_by_semantic: HashMap<
-        String,
-        Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>,
-    > = HashMap::new();
-    let mut custom_regions: HashMap<
-        String,
-        Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>,
-    > = HashMap::new();
-
-    for (semantic, regions) in &layer_map.semantic_regions {
-        let wit_regions: Vec<_> = regions.iter().map(ir_to_wit_semantic_region).collect();
-        match semantic {
-            slicer_ir::PaintSemantic::Custom(id) => {
-                custom_regions
-                    .entry(id.clone())
-                    .or_default()
-                    .extend(wit_regions);
-            }
-            _ => {
-                let key = paint_semantic_key(semantic).to_string();
-                regions_by_semantic
-                    .entry(key)
-                    .or_default()
-                    .extend(wit_regions);
-            }
-        }
-    }
-
-    PaintRegionLayerData {
-        layer_index,
-        regions_by_semantic,
-        custom_regions,
         support_plan_segments: HashMap::new(),
     }
 }

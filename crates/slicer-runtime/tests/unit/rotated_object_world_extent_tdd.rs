@@ -14,11 +14,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     BoundingBox3, ConfigView, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh,
-    ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer, SurfaceClassificationIR,
-    Transform3d,
+    ObjectSurfaceData, Point3, RegionMapIR, SemVer, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledModuleBuilder,
@@ -97,10 +95,6 @@ fn region_map_fixture() -> RegionMapIR {
     RegionMapIR::default()
 }
 
-fn paint_regions_fixture() -> PaintRegionIR {
-    PaintRegionIR::default()
-}
-
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
     ExecutionPlan {
         prepass_stages,
@@ -166,11 +160,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
             String::from("MeshIR.objects"),
             String::from("SurfaceClassificationIR.per_object"),
         ],
-        "PrePass::PaintSegmentation" => vec![
-            String::from("MeshIR.objects"),
-            String::from("SurfaceClassificationIR.per_object"),
-            String::from("LayerPlanIR.global_layers"),
-        ],
         "PrePass::RegionMapping" => vec![
             String::from("LayerPlanIR.global_layers"),
             String::from("ResolvedConfig.global"),
@@ -180,7 +169,6 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
     .ir_writes(match stage {
         "PrePass::MeshAnalysis" => vec![String::from("SurfaceClassificationIR.per_object")],
         "PrePass::LayerPlanning" => vec![String::from("LayerPlanIR.global_layers")],
-        "PrePass::PaintSegmentation" => vec![String::from("PaintRegionIR.per_layer")],
         "PrePass::RegionMapping" => vec![String::from("RegionMapIR.entries")],
         _ => Vec::new(),
     })
@@ -273,21 +261,19 @@ fn rotated_object_world_extent_is_degenerate() {
     // object_world_z_extent should return None (z_max == z_min).
     let mesh = Arc::new(vertical_rod_mesh());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    // Note: PrePass::PaintSegmentation is a host built-in (no modules).
+    // It was previously PrePass::PaintSegmentation (module-driven) — removed in packet 95.
     let plan = execution_plan_fixture(vec![
         compiled_stage("PrePass::MeshAnalysis", &["com.example.mesh-analysis"]),
         compiled_stage("PrePass::LayerPlanning", &["com.example.layer-planning"]),
-        compiled_stage(
-            "PrePass::PaintSegmentation",
-            &["com.example.paint-segmentation"],
-        ),
         compiled_stage("PrePass::RegionMapping", &["com.example.region-mapping"]),
     ]);
 
+    // Note: PrePass::PaintSegmentation is host built-in — no entry in scripted runner.
     let runner = ScriptedRunner::new(
         &[
             "com.example.mesh-analysis",
             "com.example.layer-planning",
-            "com.example.paint-segmentation",
             "com.example.region-mapping",
         ],
         vec![
@@ -299,19 +285,10 @@ fn rotated_object_world_extent_is_degenerate() {
             ),
             (
                 String::from("com.example.layer-planning"),
-                // Degenerate Z extent â†’ no layers
+                // Degenerate Z extent — no layers
                 Ok(PrepassStageOutput::LayerPlan(Arc::new(
                     degenerate_layer_plan_fixture(),
                 ))),
-            ),
-            (
-                String::from("com.example.paint-segmentation"),
-                Ok(PrepassStageOutput::PaintRegions(
-                    Arc::new(paint_regions_fixture()),
-                    Arc::new(PaintRegionRTreeIndex {
-                        trees: HashMap::default(),
-                    }),
-                )),
             ),
             (
                 String::from("com.example.region-mapping"),
@@ -326,13 +303,12 @@ fn rotated_object_world_extent_is_degenerate() {
     let _audits = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
         .expect("prepass executor should run fixed stage order even with degenerate mesh");
 
-    // Verify stage order
+    // Verify stage order (PaintSegmentation is host built-in — not in observed module ids)
     assert_eq!(
         runner.observed_module_ids(),
         vec![
             String::from("com.example.mesh-analysis"),
             String::from("com.example.layer-planning"),
-            String::from("com.example.paint-segmentation"),
             String::from("com.example.region-mapping"),
         ]
     );

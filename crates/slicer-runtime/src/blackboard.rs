@@ -5,13 +5,12 @@
 
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
     LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    ObjectMesh, PaintRegionIR, PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR,
-    RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
-    SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
+    RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
+    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
@@ -62,8 +61,6 @@ pub struct Blackboard {
     layer_plan: Option<Arc<LayerPlanIR>>,
     seam_plan: Option<Arc<SeamPlanIR>>,
     support_plan: Option<Arc<SupportPlanIR>>,
-    paint_regions: Option<Arc<PaintRegionIR>>,
-    paint_region_rtree: Option<Arc<PaintRegionRTreeIndex>>,
     region_map: Option<Arc<RegionMapIR>>,
     slice_ir: Option<Arc<Vec<SliceIR>>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
@@ -81,8 +78,6 @@ impl Blackboard {
             layer_plan: None,
             seam_plan: None,
             support_plan: None,
-            paint_regions: None,
-            paint_region_rtree: None,
             region_map: None,
             slice_ir: None,
             support_geometry: None,
@@ -120,9 +115,6 @@ impl Blackboard {
             total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
         }
         if let Some(arc) = self.support_plan.as_ref() {
-            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
-        }
-        if let Some(arc) = self.paint_regions.as_ref() {
             total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
         }
         if let Some(arc) = self.region_map.as_ref() {
@@ -208,38 +200,6 @@ impl Blackboard {
     #[must_use]
     pub fn support_plan(&self) -> Option<&Arc<SupportPlanIR>> {
         self.support_plan.as_ref()
-    }
-
-    /// Commit `PaintRegionIR` and companion `PaintRegionRTreeIndex` exactly once.
-    pub fn commit_paint_regions(
-        &mut self,
-        ir: Arc<PaintRegionIR>,
-        rtree: Arc<PaintRegionRTreeIndex>,
-    ) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.paint_regions,
-            ir,
-            BlackboardPrepassSlot::PaintRegions,
-        )?;
-        if self.paint_region_rtree.is_some() {
-            return Err(BlackboardError::DuplicatePrepassCommit {
-                slot: BlackboardPrepassSlot::PaintRegions,
-            });
-        }
-        self.paint_region_rtree = Some(rtree);
-        Ok(())
-    }
-
-    /// Return the committed paint regions, if available.
-    #[must_use]
-    pub fn paint_regions(&self) -> Option<&Arc<PaintRegionIR>> {
-        self.paint_regions.as_ref()
-    }
-
-    /// Return the committed paint region R-tree index, if available.
-    #[must_use]
-    pub fn paint_region_rtree(&self) -> Option<&Arc<PaintRegionRTreeIndex>> {
-        self.paint_region_rtree.as_ref()
     }
 
     /// Commit `RegionMapIR` exactly once.

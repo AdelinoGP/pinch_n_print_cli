@@ -15,8 +15,8 @@ use std::sync::Arc;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, GlobalLayer,
     IndexedTriangleSet, LayerPlanIR, MeshIR, ModifierScope, ModifierVolume, ObjectConfig,
-    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, ResolvedConfig, SemVer, SemanticRegion,
-    SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ObjectMesh, PaintSemantic, Point2, Point3, Polygon, ResolvedConfig, SemVer, SliceIR,
+    SlicedRegion, SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -158,6 +158,7 @@ fn mesh_ir_with_modifier(object_id: &str, mv: ModifierVolume) -> Arc<MeshIR> {
     })
 }
 
+#[allow(dead_code)]
 fn layer_plan_with_z_values(object_id: &str, zs: &[(u32, f32)]) -> Arc<LayerPlanIR> {
     Arc::new(LayerPlanIR {
         schema_version: schema_ver(),
@@ -184,6 +185,7 @@ fn layer_plan_with_z_values(object_id: &str, zs: &[(u32, f32)]) -> Arc<LayerPlan
     })
 }
 
+#[allow(dead_code)]
 fn empty_surface_ir() -> Arc<SurfaceClassificationIR> {
     Arc::new(SurfaceClassificationIR::default())
 }
@@ -220,9 +222,7 @@ fn sum_area_mm2(polys: &[ExPolygon]) -> f64 {
 }
 
 // Aggregate polygon area across every SemanticRegion in a slice.
-fn sum_semantic_region_area_mm2(regions: &[SemanticRegion]) -> f64 {
-    regions.iter().map(|r| sum_area_mm2(&r.polygons)).sum()
-}
+// sum_semantic_region_area_mm2 removed: SemanticRegion deleted in packet 95
 
 // ---------------------------------------------------------------------------
 // Step 1: negative_part tests (will compile only after Step 2 adds the module)
@@ -377,118 +377,247 @@ fn negative_part_subtract_runs_before_paint_segmentation() {
 // Step 3: support subtype paint region tests
 // ---------------------------------------------------------------------------
 
-/// AC3: support_enforcer modifier_volume emits SemanticRegion entries into
-/// LayerPaintMap.semantic_regions under PaintSemantic::SupportEnforcer at every overlapping
-/// global layer index, with aggregate polygon area matching the modifier's per-layer
-/// projection area within Â±0.005 mmÂ².
+/// AC3 (D14): `support_enforcer` modifier_volume populates
+/// `SlicedRegion.segment_annotations[PaintSemantic::SupportEnforcer]` on the
+/// BASE variant chain at every overlapping global layer index.  Per packet 95
+/// D14, modifier-volume support semantics never region-split — they ride on
+/// `segment_annotations` of the BASE chain instead.
 #[test]
 fn support_enforcer_emits_paint_region() {
-    // Modifier: 4Ã—4Ã—4 mm box â†’ 16 mmÂ² cross-section at z=0.5.
-    let enforcer_mv = modifier_volume_with_subtype("support_enforcer", box_mesh(2.0, 2.0, 2.0));
-    const PROJECTED_AREA_MM2: f64 = 16.0;
-    const TOLERANCE_MM2: f64 = 0.005;
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan};
 
-    let mesh_ir = mesh_ir_with_modifier("obj-1", enforcer_mv);
-    let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5), (1, 5.0)]);
+    let object_id = "parent-obj";
+    // Modifier (8x8x8) wraps parent (10x10x10 cross-section, 4mm square at z=0.5)
+    // sufficiently that parent's contour-edge midpoints fall inside the modifier
+    // polygon — D14 annotation check uses edge midpoints.
+    let mv_mesh = box_mesh(4.0, 4.0, 4.0);
+    let mv = modifier_volume_with_subtype("support_enforcer", mv_mesh);
+    let mesh = mesh_ir_with_modifier(object_id, mv);
 
-    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        empty_surface_ir(),
-        Arc::clone(&layer_plan),
-        true,
-    )
-    .expect("paint segmentation should succeed");
-
-    // In-extent layer: must have SupportEnforcer entry via the documented map access pattern.
-    let enforcer_regions = paint_ir
-        .per_layer
-        .get(&0u32)
-        .and_then(|m| m.semantic_regions.get(&PaintSemantic::SupportEnforcer))
-        .expect("layer 0 must have a SupportEnforcer entry in semantic_regions");
-    assert!(
-        !enforcer_regions.is_empty(),
-        "SupportEnforcer entry must contain at least one SemanticRegion"
+    // Build a SliceIR with multiple layers, each carrying the parent footprint.
+    let zs: Vec<f32> = (0..10).map(|i| 0.5 + 0.5 * i as f32).collect(); // z in [0.5..5.0]
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![square_polygon(4.0)],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
     );
 
-    let aggregate_area = sum_semantic_region_area_mm2(enforcer_regions);
-    assert!(
-        (aggregate_area - PROJECTED_AREA_MM2).abs() < TOLERANCE_MM2,
-        "aggregate SupportEnforcer area = {aggregate_area} mmÂ² (expected {PROJECTED_AREA_MM2} Â± {TOLERANCE_MM2} mmÂ²)"
-    );
+    // RegionMap: one BASE-chain entry per layer.
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![ResolvedConfig::default()],
+    });
 
-    // Out-of-extent layer: lookup must return None or empty.
-    let outside = paint_ir
-        .per_layer
-        .get(&1u32)
-        .and_then(|m| m.semantic_regions.get(&PaintSemantic::SupportEnforcer));
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    // D14: every layer that the modifier overlaps must carry SupportEnforcer
+    // annotations on a BASE chain (variant_chain.is_empty()) region with at
+    // least one Some(value) entry.
+    let mut layers_with_enforcer = 0;
+    for slice in result.iter() {
+        for region in &slice.regions {
+            if !region.variant_chain.is_empty() {
+                continue; // D14: enforcer rides BASE chain only.
+            }
+            if let Some(perimeters) = region
+                .segment_annotations
+                .get(&PaintSemantic::SupportEnforcer)
+            {
+                if perimeters.iter().any(|p| p.iter().any(|v| v.is_some())) {
+                    layers_with_enforcer += 1;
+                    break;
+                }
+            }
+        }
+    }
     assert!(
-        outside.map_or(true, |r| r.is_empty()),
-        "layer 1 (z=5.0mm) must have no SupportEnforcer entry (outside modifier Z extent)"
+        layers_with_enforcer > 0,
+        "D14: support_enforcer modifier_volume must populate \
+         segment_annotations[SupportEnforcer] on BASE chain regions at every \
+         overlapping layer; got {layers_with_enforcer} populated layers"
     );
 }
 
-/// AC4: support_blocker modifier_volume emits SemanticRegion entries under
-/// PaintSemantic::SupportBlocker with aggregate polygon area matching the modifier's per-layer
-/// projection area within Â±0.005 mmÂ².
+/// AC4 (D14): same as AC3 but for `support_blocker`.
 #[test]
 fn support_blocker_emits_paint_region() {
-    // Modifier: 4Ã—4Ã—4 mm box â†’ 16 mmÂ² cross-section at z=0.5.
-    let blocker_mv = modifier_volume_with_subtype("support_blocker", box_mesh(2.0, 2.0, 2.0));
-    const PROJECTED_AREA_MM2: f64 = 16.0;
-    const TOLERANCE_MM2: f64 = 0.005;
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan};
 
-    let mesh_ir = mesh_ir_with_modifier("obj-1", blocker_mv);
-    let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5)]);
+    let object_id = "parent-obj";
+    let mv_mesh = box_mesh(3.0, 3.0, 3.0);
+    let mv = modifier_volume_with_subtype("support_blocker", mv_mesh);
+    let mesh = mesh_ir_with_modifier(object_id, mv);
 
-    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        empty_surface_ir(),
-        Arc::clone(&layer_plan),
-        true,
-    )
-    .expect("paint segmentation should succeed");
-
-    let blocker_regions = paint_ir
-        .per_layer
-        .get(&0u32)
-        .and_then(|m| m.semantic_regions.get(&PaintSemantic::SupportBlocker))
-        .expect("layer 0 must have a SupportBlocker entry in semantic_regions");
-    assert!(
-        !blocker_regions.is_empty(),
-        "SupportBlocker entry must contain at least one SemanticRegion"
+    let zs: Vec<f32> = (0..10).map(|i| 0.5 + 0.5 * i as f32).collect();
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![square_polygon(4.0)],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
     );
 
-    let aggregate_area = sum_semantic_region_area_mm2(blocker_regions);
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![ResolvedConfig::default()],
+    });
+
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    let mut layers_with_blocker = 0;
+    for slice in result.iter() {
+        for region in &slice.regions {
+            if !region.variant_chain.is_empty() {
+                continue;
+            }
+            if let Some(perimeters) = region
+                .segment_annotations
+                .get(&PaintSemantic::SupportBlocker)
+            {
+                if perimeters.iter().any(|p| p.iter().any(|v| v.is_some())) {
+                    layers_with_blocker += 1;
+                    break;
+                }
+            }
+        }
+    }
     assert!(
-        (aggregate_area - PROJECTED_AREA_MM2).abs() < TOLERANCE_MM2,
-        "aggregate SupportBlocker area = {aggregate_area} mmÂ² (expected {PROJECTED_AREA_MM2} Â± {TOLERANCE_MM2} mmÂ²)"
+        layers_with_blocker > 0,
+        "D14: support_blocker modifier_volume must populate \
+         segment_annotations[SupportBlocker] on BASE chain regions at every \
+         overlapping layer; got {layers_with_blocker} populated layers"
     );
 }
 
-/// Negative case: support_enforcer with an empty mesh emits nothing.
+/// Negative case (D14): `support_enforcer` with a zero-triangle mesh emits
+/// nothing — `segment_annotations[SupportEnforcer]` is absent or empty on every
+/// layer.
 #[test]
 fn empty_support_enforcer_emits_nothing() {
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan};
+
+    let object_id = "parent-obj";
     let empty_mesh = IndexedTriangleSet {
         vertices: vec![],
         indices: vec![],
     };
     let mv = modifier_volume_with_subtype("support_enforcer", empty_mesh);
-    let mesh_ir = mesh_ir_with_modifier("obj-1", mv);
-    let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5)]);
+    let mesh = mesh_ir_with_modifier(object_id, mv);
 
-    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        empty_surface_ir(),
-        Arc::clone(&layer_plan),
-        true,
-    )
-    .expect("paint segmentation should succeed for empty modifier");
-
-    let enforcer_regions = paint_ir.get(0, &PaintSemantic::SupportEnforcer);
-    assert!(
-        enforcer_regions.is_empty(),
-        "empty mesh modifier should emit no paint regions"
+    let zs: Vec<f32> = (0..5).map(|i| 0.5 + 0.5 * i as f32).collect();
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![square_polygon(4.0)],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
     );
+
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![ResolvedConfig::default()],
+    });
+
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    for slice in result.iter() {
+        for region in &slice.regions {
+            let has_some = region
+                .segment_annotations
+                .get(&PaintSemantic::SupportEnforcer)
+                .map(|perim| perim.iter().any(|p| p.iter().any(|v| v.is_some())))
+                .unwrap_or(false);
+            assert!(
+                !has_some,
+                "empty support_enforcer mesh must NOT populate segment_annotations[SupportEnforcer] \
+                 (layer={}, region_id={})",
+                slice.global_layer_index, region.region_id
+            );
+        }
+    }
 }
 
 // AC6 (`support_enforcer_flows_through_paint_overrides`) was removed in packet 94's
@@ -542,29 +671,77 @@ fn empty_negative_part_no_subtract() {
 /// A zero-triangle `support_blocker` modifier is degenerate. Paint segmentation must
 /// silently skip it: `paint_ir.get(layer, &PaintSemantic::SupportBlocker)` must be
 /// empty for every layer. No warning is expected.
+/// Negative case (D14): `support_blocker` with a zero-triangle mesh emits
+/// nothing — `segment_annotations[SupportBlocker]` is absent or empty on every
+/// layer.
 #[test]
 fn empty_support_blocker_emits_nothing() {
+    use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+    use slicer_ir::{RegionKey, RegionMapIR, RegionPlan};
+
+    let object_id = "parent-obj";
     let empty_mesh = IndexedTriangleSet {
         vertices: vec![],
         indices: vec![],
     };
     let mv = modifier_volume_with_subtype("support_blocker", empty_mesh);
-    let mesh_ir = mesh_ir_with_modifier("obj-1", mv);
-    let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5), (1, 1.0)]);
+    let mesh = mesh_ir_with_modifier(object_id, mv);
 
-    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
-        Arc::clone(&mesh_ir),
-        empty_surface_ir(),
-        Arc::clone(&layer_plan),
-        true,
-    )
-    .expect("paint segmentation should succeed for empty modifier");
+    let zs: Vec<f32> = (0..5).map(|i| 0.5 + 0.5 * i as f32).collect();
+    let slice_ir = Arc::new(
+        zs.iter()
+            .enumerate()
+            .map(|(idx, &z)| SliceIR {
+                schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: vec![square_polygon(4.0)],
+                    ..Default::default()
+                }],
+            })
+            .collect(),
+    );
 
-    for layer_idx in [0u32, 1u32] {
-        let blocker_regions = paint_ir.get(layer_idx, &PaintSemantic::SupportBlocker);
-        assert!(
-            blocker_regions.is_empty(),
-            "empty support_blocker mesh should emit no paint regions at layer {layer_idx}"
+    let mut entries = HashMap::new();
+    for (idx, _z) in zs.iter().enumerate() {
+        entries.insert(
+            RegionKey {
+                global_layer_index: idx as u32,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
         );
+    }
+    let region_map = Arc::new(RegionMapIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries,
+        configs: vec![ResolvedConfig::default()],
+    });
+
+    let result = execute_paint_segmentation(mesh, slice_ir, region_map).expect("v2 driver ok");
+
+    for slice in result.iter() {
+        for region in &slice.regions {
+            let has_some = region
+                .segment_annotations
+                .get(&PaintSemantic::SupportBlocker)
+                .map(|perim| perim.iter().any(|p| p.iter().any(|v| v.is_some())))
+                .unwrap_or(false);
+            assert!(
+                !has_some,
+                "empty support_blocker mesh must NOT populate segment_annotations[SupportBlocker] \
+                 (layer={}, region_id={})",
+                slice.global_layer_index, region.region_id
+            );
+        }
     }
 }

@@ -267,8 +267,6 @@ pub enum BlackboardPrepassSlot {
     SeamPlan,
     /// Support plan produced by `PrePass::SupportGeometry`.
     SupportPlan,
-    /// Paint regions produced by `PrePass::PaintSegmentation`.
-    PaintRegions,
     /// Region map produced by `PrePass::RegionMapping`.
     RegionMap,
     /// Per-global-layer `SliceIR` produced by `PrePass::Slice` and refined by
@@ -286,7 +284,6 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::LayerPlan => "layer-plan",
             Self::SeamPlan => "seam-plan",
             Self::SupportPlan => "support-plan",
-            Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
             Self::SliceIR => "slice-ir",
             Self::SupportGeometry => "support-geometry",

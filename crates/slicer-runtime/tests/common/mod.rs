@@ -313,7 +313,7 @@ pub fn commit_hec_for_test(
 pub fn layer_input<'a>(blackboard: &Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
     LayerStageInput {
         mesh: blackboard.mesh().clone(),
-        paint_regions: blackboard.paint_regions().cloned(),
+        paint_regions: None,
         seam_plan: blackboard.seam_plan().cloned(),
         support_plan: blackboard.support_plan().cloned(),
         region_map: blackboard.region_map().cloned(),

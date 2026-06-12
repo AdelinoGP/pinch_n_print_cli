@@ -1,24 +1,21 @@
-//! TDD red tests for TASK-096: tree-support enforcer/blocker paint semantics.
+//! TDD tests for TASK-096: tree-support enforcer/blocker paint semantics.
 //!
-//! Tests verify that tree-support reads PaintRegionIR for SupportEnforcer
-//! and SupportBlocker semantics, applying blocker > enforcer precedence before
-//! tree support generation.
+//! After packet 95 closure (D14): paint annotations travel on
+//! `SliceIR.regions[*].segment_annotations`.  Hosts attach the SliceIR to
+//! `PaintRegionLayerView::with_slice_ir`, and modules read enforcer / blocker
+//! policy via `PaintRegionLayerView::paint_policy_for`.
 //!
 //! Authoritative docs:
 //! - docs/01_system_architecture.md §"Layer::Support"
-//! - docs/02_ir_schemas.md lines 412-418
+//! - docs/02_ir_schemas.md (SlicedRegion.segment_annotations)
 //! - docs/10_scenario_traces.md §"Scenario Trace 2" (blocker > enforcer precedence)
-//!
-//! OrcaSlicer ref:
-//! - OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1100-1104 (enforcer/blocker slicing)
-//! - OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1180-1186 (blocker diff)
-//! - OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1201-1206 (enforcer overhang)
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, SemanticRegion,
+    ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -53,82 +50,67 @@ fn square_region(z: f32) -> SliceRegionView {
         .build()
 }
 
-/// Helper: build a PaintRegionIR with a single semantic covering the entire
-/// square region at layer 0.
-fn paint_ir_with_semantic(semantic: PaintSemantic, value: PaintValue) -> Arc<PaintRegionIR> {
-    let region = SemanticRegion {
-        object_id: "obj1".to_string(),
-        polygons: vec![square_expoly()],
-        value,
-        paint_order: 1,
-        aabb: None,
-    };
-
-    let mut semantic_regions = HashMap::new();
-    semantic_regions.insert(semantic, vec![region]);
-
-    let layer_paint = LayerPaintMap {
-        global_layer_index: 0,
-        semantic_regions,
-    };
-
-    let mut per_layer = HashMap::new();
-    per_layer.insert(0_u32, layer_paint);
-
-    Arc::new(PaintRegionIR {
-        per_layer,
-        ..Default::default()
-    })
+/// Build a wider ExPolygon (20 mm square) that strictly contains the standard
+/// 10 mm test square — used as the `SlicedRegion.polygons` covering the test
+/// region so that the centroid containment check passes.
+fn enclosing_square() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-10.0, -10.0),
+                Point2::from_mm(10.0, -10.0),
+                Point2::from_mm(10.0, 10.0),
+                Point2::from_mm(-10.0, 10.0),
+            ],
+        },
+        holes: vec![],
+    }
 }
 
-/// Helper: build a PaintRegionIR with both SupportBlocker and SupportEnforcer
-/// covering the same region at layer 0.
-fn paint_ir_both_blocker_and_enforcer() -> Arc<PaintRegionIR> {
-    let blocker_region = SemanticRegion {
+/// Compose a `SlicedRegion` covering the test square with the requested
+/// segment_annotations populated.  Each annotation entry uses one outer Vec
+/// ("one perimeter") and one inner Vec containing one `Some(Flag(true))` so
+/// `paint_policy_for` will see a non-empty annotation.
+fn region_with_annotations(polygons: Vec<ExPolygon>, semantics: &[PaintSemantic]) -> SlicedRegion {
+    let mut segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
+        HashMap::new();
+    for sem in semantics {
+        segment_annotations.insert(sem.clone(), vec![vec![Some(PaintValue::Flag(true))]]);
+    }
+    SlicedRegion {
         object_id: "obj1".to_string(),
-        polygons: vec![square_expoly()],
-        value: PaintValue::Flag(true),
-        paint_order: 1,
-        aabb: None,
-    };
-    let enforcer_region = SemanticRegion {
-        object_id: "obj1".to_string(),
-        polygons: vec![square_expoly()],
-        value: PaintValue::Flag(true),
-        paint_order: 1,
-        aabb: None,
-    };
-
-    let mut semantic_regions = HashMap::new();
-    semantic_regions.insert(PaintSemantic::SupportBlocker, vec![blocker_region]);
-    semantic_regions.insert(PaintSemantic::SupportEnforcer, vec![enforcer_region]);
-
-    let layer_paint = LayerPaintMap {
-        global_layer_index: 0,
-        semantic_regions,
-    };
-
-    let mut per_layer = HashMap::new();
-    per_layer.insert(0_u32, layer_paint);
-
-    Arc::new(PaintRegionIR {
-        per_layer,
+        region_id: 1u64,
+        polygons,
+        segment_annotations,
         ..Default::default()
-    })
+    }
+}
+
+/// Build a `PaintRegionLayerView` carrying a one-layer SliceIR with the
+/// requested annotation semantics applied to a region whose polygon covers
+/// the standard 10 mm test square.
+fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerView {
+    let slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z,
+        regions: vec![region_with_annotations(vec![enclosing_square()], semantics)],
+    };
+    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
 }
 
 /// Test 1: A fully blocked region generates zero support paths.
 ///
-/// When all support polygons fall within a SupportBlocker paint region,
-/// no support paths should be generated regardless of overhang angle.
+/// D14 contract: SliceIR carries a SupportBlocker annotation covering the
+/// region.  `paint_policy_for` returns `Blocked`; the support module skips.
 #[test]
 fn fully_blocked_region_generates_zero_support() {
     let config = enabled_config();
     let module = TreeSupport::on_print_start(&config).unwrap();
-    let region = square_region(0.3);
+    let mut region = square_region(0.3);
+    region.set_needs_support(true);
 
-    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportBlocker, PaintValue::Flag(true));
-    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportBlocker]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -138,23 +120,20 @@ fn fully_blocked_region_generates_zero_support() {
     assert_eq!(
         output.support_paths().len(),
         0,
-        "fully blocked region must produce zero support paths, but got {}",
-        output.support_paths().len()
+        "SupportBlocker annotation must suppress support generation (D14 + blocker precedence)"
     );
 }
 
-/// Test 2: A fully enforced region generates support paths at 0-degree overhang.
-///
-/// When all support polygons fall within a SupportEnforcer paint region,
-/// support should be generated even with 0-degree overhang (flat surface).
+/// Test 2: A fully enforced region generates support paths even when the
+/// region's `needs_support` flag is false (paint overrides default eligibility).
 #[test]
 fn fully_enforced_region_generates_support_at_zero_overhang() {
     let config = enabled_config();
     let module = TreeSupport::on_print_start(&config).unwrap();
-    let region = square_region(0.3);
+    let mut region = square_region(0.3);
+    region.set_needs_support(false);
 
-    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportEnforcer, PaintValue::Flag(true));
-    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportEnforcer]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -163,24 +142,26 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
 
     assert!(
         !output.support_paths().is_empty(),
-        "enforced region must produce support paths at 0° overhang"
+        "SupportEnforcer annotation must force support generation (D14)"
     );
 }
 
 /// Test 3: A region that is both blocked and enforced generates zero support
-/// (blocker takes precedence over enforcer).
-///
-/// Per docs/02_ir_schemas.md line 412:
-/// "For support logic conflicts at the same point: SupportBlocker takes
-/// precedence over SupportEnforcer."
+/// (blocker takes precedence over enforcer, per docs/10 §"Scenario Trace 2").
 #[test]
 fn blocked_plus_enforced_resolves_to_zero_support() {
     let config = enabled_config();
     let module = TreeSupport::on_print_start(&config).unwrap();
-    let region = square_region(0.3);
+    let mut region = square_region(0.3);
+    region.set_needs_support(true);
 
-    let paint_ir = paint_ir_both_blocker_and_enforcer();
-    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+    let paint = paint_view_with_annotations(
+        0.3,
+        &[
+            PaintSemantic::SupportBlocker,
+            PaintSemantic::SupportEnforcer,
+        ],
+    );
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -190,8 +171,7 @@ fn blocked_plus_enforced_resolves_to_zero_support() {
     assert_eq!(
         output.support_paths().len(),
         0,
-        "blocker must win over enforcer: expected zero paths, got {}",
-        output.support_paths().len()
+        "blocker > enforcer precedence: zero support when both annotations apply"
     );
 }
 
@@ -262,6 +242,7 @@ fn default_eligible_region_generates_support() {
     );
 }
 
+/// Test 7: Enforcer overrides `needs_support=false`.
 #[test]
 fn enforcer_overrides_needs_support_false() {
     let config = enabled_config();
@@ -269,8 +250,7 @@ fn enforcer_overrides_needs_support_false() {
     let mut region = square_region(0.3);
     region.set_needs_support(false);
 
-    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportEnforcer, PaintValue::Flag(true));
-    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportEnforcer]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -279,10 +259,11 @@ fn enforcer_overrides_needs_support_false() {
 
     assert!(
         !output.support_paths().is_empty(),
-        "enforcer must override needs_support=false",
+        "SupportEnforcer must override needs_support=false (D14 precedence)"
     );
 }
 
+/// Test 8: Blocker overrides `needs_support=true`.
 #[test]
 fn blocker_overrides_needs_support_true() {
     let config = enabled_config();
@@ -290,8 +271,7 @@ fn blocker_overrides_needs_support_true() {
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
-    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportBlocker, PaintValue::Flag(true));
-    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+    let paint = paint_view_with_annotations(0.3, &[PaintSemantic::SupportBlocker]);
 
     let mut output = SupportOutputBuilder::new();
     module
@@ -301,6 +281,6 @@ fn blocker_overrides_needs_support_true() {
     assert_eq!(
         output.support_paths().len(),
         0,
-        "blocker must win regardless of needs_support",
+        "SupportBlocker must override needs_support=true (D14 precedence)"
     );
 }

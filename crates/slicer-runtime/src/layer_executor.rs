@@ -11,11 +11,10 @@ use std::sync::Arc;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
-use slicer_core::slice_mesh_ex;
 use slicer_ir::{
-    ConfigValue, ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
-    LayerStageCommitData, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR, PrintEntity,
-    RegionKey, RegionMapIR, SliceIR, StageId, SupportIR, WallFeatureFlags,
+    ConfigValue, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, LayerStageCommitData,
+    ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR, SliceIR, StageId,
+    SupportIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -23,10 +22,7 @@ use slicer_wasm_host::{
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::progress_events::ProgressEvent;
-use crate::slice_postprocess::{
-    execute_slice_postprocess_paint_annotation, paint_annotation_warnings_to_progress_events,
-    SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
-};
+use crate::slice_postprocess::SlicePostProcessPaintAnnotationError;
 use crate::{Blackboard, BlackboardError, ExecutionPlan, LayerArena, ModuleAccessAudit};
 use slicer_core::algos::prepass_slice::LayerSliceError;
 
@@ -188,10 +184,6 @@ pub fn execute_per_layer_with_instrumentation(
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
-    let required_semantics = blackboard
-        .paint_regions()
-        .map(|pr| collect_required_semantics(pr))
-        .unwrap_or_default();
 
     use rayon::iter::ParallelIterator;
     let results: Result<Vec<(LayerCollectionIR, Vec<ModuleAccessAudit>)>, LayerExecutionError> =
@@ -204,7 +196,7 @@ pub fn execute_per_layer_with_instrumentation(
                     runner,
                     sink,
                     instrumentation,
-                    &required_semantics,
+                    &[],
                     layer,
                     wasm_handles,
                 )
@@ -222,32 +214,6 @@ pub fn execute_per_layer_with_instrumentation(
             Ok((layer_irs, all_audits))
         }
         Err(e) => Err(e),
-    }
-}
-
-/// Deterministically collect the union of all paint semantics present in
-/// `paint_regions` across all layers, ordered: Material, FuzzySkin,
-/// SupportEnforcer, SupportBlocker, then `Custom` entries sorted by name.
-fn collect_required_semantics(paint_regions: &PaintRegionIR) -> Vec<PaintSemantic> {
-    let mut out: Vec<PaintSemantic> = Vec::new();
-    for layer_map in paint_regions.per_layer.values() {
-        for sem in layer_map.semantic_regions.keys() {
-            if !out.contains(sem) {
-                out.push(sem.clone());
-            }
-        }
-    }
-    out.sort_by_key(semantic_sort_key);
-    out
-}
-
-fn semantic_sort_key(s: &PaintSemantic) -> (u8, String) {
-    match s {
-        PaintSemantic::Material => (0, String::new()),
-        PaintSemantic::FuzzySkin => (1, String::new()),
-        PaintSemantic::SupportEnforcer => (2, String::new()),
-        PaintSemantic::SupportBlocker => (3, String::new()),
-        PaintSemantic::Custom(n) => (4, n.clone()),
     }
 }
 
@@ -380,7 +346,7 @@ fn execute_single_layer_inner(
             );
             let input = LayerStageInput {
                 mesh: Arc::clone(blackboard.mesh()),
-                paint_regions: blackboard.paint_regions().cloned(),
+                paint_regions: None,
                 seam_plan: blackboard.seam_plan().cloned(),
                 support_plan: blackboard.support_plan().cloned(),
                 region_map: blackboard.region_map().cloned(),
@@ -627,106 +593,18 @@ pub fn ir_path_for_layer_stage(stage_id: &StageId) -> Option<String> {
     }
 }
 
-/// Run the host-built-in paint-annotation step on the layer's staged
-/// `SliceIR`. Returns early with no work if the blackboard has no paint
-/// regions committed or if no required semantics were derived. Warnings are
-/// converted through `paint_annotation_warning_to_progress_event` and pushed
-/// to `sink`. Fatal annotation errors become `LayerExecutionError::PaintAnnotation`.
+/// No-op stub: paint annotation is now handled by `PrePass::PaintSegmentation`
+/// which writes colour data directly into `SliceIR` segment annotations.
+/// The `Layer::PaintRegionAnnotation` stage dispatch and safety-net paths are
+/// retained for plan wiring, but the host built-in body is a no-op (AC-16).
 fn run_paint_annotation(
-    blackboard: &Blackboard,
-    required_semantics: &[PaintSemantic],
-    sink: &(dyn LayerProgressSink + Sync),
-    arena: &mut LayerArena,
-    layer: &GlobalLayer,
-    event_stage: &str,
+    _blackboard: &Blackboard,
+    _required_semantics: &[PaintSemantic],
+    _sink: &(dyn LayerProgressSink + Sync),
+    _arena: &mut LayerArena,
+    _layer: &GlobalLayer,
+    _event_stage: &str,
 ) -> Result<(), LayerExecutionError> {
-    if required_semantics.is_empty() {
-        return Ok(());
-    }
-    let paint_regions = match blackboard.paint_regions() {
-        Some(pr) => std::sync::Arc::clone(pr),
-        None => return Ok(()),
-    };
-    let mut slice_ir = match arena.take_slice() {
-        Some(s) => s,
-        None => return Ok(()),
-    };
-
-    // Apply negative-part subtract before paint annotation sees the polygons (Packet 56c).
-    for obj in blackboard.mesh().objects.iter() {
-        crate::negative_part_subtract::apply_negative_part_subtract(
-            &mut slice_ir,
-            &obj.modifier_volumes,
-        );
-    }
-
-    // Compute per-layer modifier projections for fuzzy-skin annotation (packet 56b).
-    // For each modifier_part volume, slice its world-space mesh at the current
-    // layer Z to get the intersecting ExPolygon set.
-    let modifier_projections: Vec<ExPolygon> = {
-        let mesh = blackboard.mesh();
-        let mut projections = Vec::new();
-        for obj in &mesh.objects {
-            for mv in &obj.modifier_volumes {
-                let is_modifier_part = mv.config_delta.fields.get("subtype").map_or(false, |v| {
-                    v == &slicer_ir::ConfigValue::String("modifier_part".to_string())
-                });
-                if !is_modifier_part || mv.mesh.vertices.is_empty() {
-                    continue;
-                }
-                // slice_mesh_ex returns one Vec<ExPolygon> per Z; we only need layer.z
-                let slices = slice_mesh_ex(&mv.mesh, &[layer.z]);
-                if let Some(layer_slice) = slices.into_iter().next() {
-                    projections.extend(layer_slice);
-                }
-            }
-        }
-        projections
-    };
-
-    let paint_region_rtree = blackboard.paint_region_rtree().cloned();
-    let request = SlicePostProcessPaintAnnotationRequest {
-        slice_ir,
-        paint_regions,
-        required_semantics: required_semantics.to_vec(),
-        modifier_projections,
-        paint_region_rtree,
-    };
-    let result = execute_slice_postprocess_paint_annotation(request).map_err(|source| {
-        LayerExecutionError::PaintAnnotation {
-            layer_index: layer.index,
-            source,
-        }
-    })?;
-
-    // Surface deterministic, non-fatal fallback warnings through the
-    // existing progress-event adapter (docs/09 §ModuleError; docs/11 §73-75).
-    // Per-point warnings are coalesced into one event per
-    // (object, region, semantic, polygon) group so structurally-noisy paint
-    // regions don't drown the log in identical lines.
-    let mut events = paint_annotation_warnings_to_progress_events(
-        &result.warnings,
-        String::new(),
-        String::from("com.host.slice-postprocess-paint-annotator"),
-        0,
-    );
-    for event in &mut events {
-        event.stage = Some(event_stage.to_string());
-    }
-    for event in events {
-        sink.record(event);
-    }
-
-    // Put the (possibly annotated) SliceIR back so downstream per-layer
-    // stages can still read it via `arena.slice()`.
-    arena
-        .set_slice(result.slice_ir)
-        .map_err(|_| LayerExecutionError::FatalLayer {
-            layer_index: layer.index,
-            stage_id: "Layer::SlicePostProcess".to_string(),
-            module_id: "host:paint_annotator".to_string(),
-            message: "slice arena slot unexpectedly occupied after take_slice".to_string(),
-        })?;
     Ok(())
 }
 

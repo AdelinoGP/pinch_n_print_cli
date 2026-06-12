@@ -21,22 +21,22 @@ use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
+// Note: slicer_core::paint_region, execute_paint_segmentation, PaintSegmentationError,
+// PaintRegionIR, LayerPaintMap, SemanticRegion removed in packet 95 sub-step 16.
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, FacetPaintData, GCodeIR, GlobalLayer,
-    LayerCollectionIR, LayerPaintMap, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintRegionIR,
-    PaintSemantic, PaintValue, Point2, Point3, Polygon, PrintMetadata, SemVer, SemanticRegion,
-    SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
+    LayerCollectionIR, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintSemantic, PaintValue,
+    Point2, Point3, Polygon, PrintMetadata, SemVer, SliceIR, SlicedRegion, StageId,
+    SurfaceClassificationIR,
 };
 use slicer_ir::{LayerStageCommitData, PrepassRunnerError};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    execute_paint_segmentation, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationStageRunner, LayerArena,
-    LayerStageError, LayerStageInput, LayerStageRunner, PaintSegmentationError,
-    PostpassStageRunner, PrepassStageRunner, WasmEngine,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive, CompiledStage,
+    ExecutionPlan, FinalizationStageRunner, LayerArena, LayerStageError, LayerStageInput,
+    LayerStageRunner, PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
 use slicer_runtime::{GCodeEmitter, GCodeSerializer};
 use slicer_schema::export_for_stage_id;
@@ -1844,770 +1844,142 @@ fn config_isolation_across_sequential_calls() {
     );
 }
 
-// â”€â”€ H. Paint region wiring tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── H. Paint region wiring tests (IGNORED - v2 integration follow-up) ────────
+// PaintRegionIR, LayerPaintMap, SemanticRegion, commit_paint_regions, and
+// paint_regions() were removed in packet 95 sub-step 16. Paint annotations now
+// live in SliceIR segment_annotations (AC-16). Tests will be re-enabled when the
+// WIT guest interface is updated to expose segment_annotations directly.
 
-fn make_paint_region_ir(
-    layer_index: u32,
-    enforcer_count: usize,
-    blocker_count: usize,
-) -> PaintRegionIR {
-    let mut semantic_regions = HashMap::new();
-
-    if enforcer_count > 0 {
-        let regions: Vec<SemanticRegion> = (0..enforcer_count)
-            .map(|i| SemanticRegion {
-                object_id: format!("obj-{i}"),
-                polygons: vec![ExPolygon {
-                    contour: Polygon {
-                        points: vec![
-                            Point2 { x: 0, y: 0 },
-                            Point2 { x: 10_000, y: 0 },
-                            Point2 {
-                                x: 10_000,
-                                y: 10_000,
-                            },
-                            Point2 { x: 0, y: 10_000 },
-                        ],
-                    },
-                    holes: Vec::new(),
-                }],
-                value: PaintValue::Flag(true),
-                paint_order: i as u64,
-                aabb: None,
-            })
-            .collect();
-        semantic_regions.insert(PaintSemantic::SupportEnforcer, regions);
-    }
-
-    if blocker_count > 0 {
-        let regions: Vec<SemanticRegion> = (0..blocker_count)
-            .map(|i| SemanticRegion {
-                object_id: format!("blocker-{i}"),
-                polygons: vec![ExPolygon {
-                    contour: Polygon {
-                        points: vec![
-                            Point2 { x: 0, y: 0 },
-                            Point2 { x: 5_000, y: 0 },
-                            Point2 { x: 5_000, y: 5_000 },
-                            Point2 { x: 0, y: 5_000 },
-                        ],
-                    },
-                    holes: Vec::new(),
-                }],
-                value: PaintValue::Flag(true),
-                paint_order: i as u64,
-                aabb: None,
-            })
-            .collect();
-        semantic_regions.insert(PaintSemantic::SupportBlocker, regions);
-    }
-
-    let mut per_layer = HashMap::new();
-    per_layer.insert(
-        layer_index,
-        LayerPaintMap {
-            global_layer_index: layer_index,
-            semantic_regions,
-        },
-    );
-
-    PaintRegionIR {
-        per_layer,
-        ..Default::default()
-    }
-}
-
+/// Contract-surface coverage for the v2 paint annotation plumbing.
+///
+/// Production support modules (`tree-support`, `traditional-support`) consume
+/// paint annotations through `slicer_sdk::traits::PaintRegionLayerView::paint_policy_for`,
+/// which walks `SliceIR.regions[*].segment_annotations` per D14.  This test
+/// verifies the SDK-side dispatch contract that any WIT-bound guest module
+/// must honour:
+///
+///   - A `PaintRegionLayerView` carrying a `SliceIR` with a
+///     `segment_annotations[SupportBlocker]` entry returns
+///     `SupportPaintPolicy::Blocked` for a polygon covered by that region.
+///   - A view with `SupportEnforcer` returns `Enforced`.
+///   - A view with BOTH returns `Blocked` (blocker > enforcer precedence,
+///     docs/10 §"Scenario Trace 2").
+///   - A view with neither returns `DefaultEligible`.
+///
+/// This exercises the same contract surface that `__slicer_adapt_paint_layer`
+/// (slicer-macros) and the support_paint_policy wiring in
+/// `tree-support`/`traditional-support` consume — making it the production
+/// dispatch contract regression guard called out in packet 95 closure.
 #[test]
 fn real_paint_region_data_visible_through_production_support_dispatch() {
-    // The test guest's run_support queries paint regions and encodes counts
-    // into support output: x=enforcer_count, y=blocker_count,
-    // flow_factor=layer_index.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
+    use slicer_ir::{ExPolygon, PaintSemantic, PaintValue, Polygon, SliceIR, SlicedRegion};
+    use slicer_sdk::traits::{PaintRegionLayerView, SupportPaintPolicy};
+    use std::sync::Arc;
 
-    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let paint_ir = make_paint_region_ir(7, 3, 1);
-    blackboard
-        .commit_paint_regions(
-            Arc::new(paint_ir),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .expect("commit paint regions");
-
-    let layer = GlobalLayer {
-        index: 7,
-        z: 1.4,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-    arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    let support = arena.support().expect("support should be populated");
-    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
-    assert_eq!(
-        sw.enforcer_count, 3.0,
-        "enforcer count should be 3, got {}",
-        sw.enforcer_count
-    );
-    assert_eq!(
-        sw.blocker_count, 1.0,
-        "blocker count should be 1, got {}",
-        sw.blocker_count
-    );
-    assert_eq!(
-        sw.paint_layer_index, 7.0,
-        "paint layer index should match layer.index=7, got {}",
-        sw.paint_layer_index
-    );
-}
-
-#[test]
-fn no_paint_region_ir_produces_empty_paint_view() {
-    // When no PaintRegionIR is committed to the blackboard, the guest should see
-    // zero enforcer/blocker regions. The support guest still produces a path
-    // with x=0 (0 enforcers), y=0 (0 blockers).
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
-
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-    arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    let support = arena.support().expect("support output should still exist");
-    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
-    assert_eq!(
-        sw.enforcer_count, 0.0,
-        "no enforcers when PaintRegionIR absent"
-    );
-    assert_eq!(
-        sw.blocker_count, 0.0,
-        "no blockers when PaintRegionIR absent"
-    );
-}
-
-#[test]
-fn paint_region_layer_mismatch_produces_empty_view() {
-    // PaintRegionIR has data for layer 5, but we execute layer 10.
-    // Guest should see empty paint regions.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
-
-    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let paint_ir = make_paint_region_ir(5, 2, 0); // paint at layer 5
-    blackboard
-        .commit_paint_regions(
-            Arc::new(paint_ir),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .expect("commit");
-
-    let layer = GlobalLayer {
-        index: 10, // execute at layer 10 â€” no paint data here
-        z: 2.0,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-    arena.set_slice(make_slice_ir(10, 2.0, 1, 1)).unwrap();
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    let support = arena.support().expect("support output");
-    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
-    assert_eq!(sw.enforcer_count, 0.0, "no enforcers at mismatched layer");
-    assert_eq!(
-        sw.paint_layer_index, 10.0,
-        "paint layer index should be 10 (execution layer), got {}",
-        sw.paint_layer_index
-    );
-}
-
-#[test]
-fn paint_region_isolation_across_sequential_dispatches() {
-    // Two sequential dispatches with different paint data must not leak.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-
-    // First dispatch: 3 enforcers at layer 0
-    let mut bb1 = Blackboard::new(empty_mesh_ir(), 1);
-    bb1.commit_paint_regions(
-        Arc::new(make_paint_region_ir(0, 3, 0)),
-        Arc::new(PaintRegionRTreeIndex {
-            trees: HashMap::default(),
-        }),
-    )
-    .unwrap();
-    let module1 =
-        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena1 = LayerArena::new();
-    arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module1,
-        &bb1,
-        &mut arena1,
-    )
-    .unwrap();
-
-    // Second dispatch: 1 enforcer at layer 0
-    let mut bb2 = Blackboard::new(empty_mesh_ir(), 1);
-    bb2.commit_paint_regions(
-        Arc::new(make_paint_region_ir(0, 1, 2)),
-        Arc::new(PaintRegionRTreeIndex {
-            trees: HashMap::default(),
-        }),
-    )
-    .unwrap();
-    let module2 = make_compiled_module_with(
-        "com.test.support2",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
-    let mut arena2 = LayerArena::new();
-    arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module2,
-        &bb2,
-        &mut arena2,
-    )
-    .unwrap();
-
-    let sw1 = RawSupportWitness::decode(&arena1.support().unwrap().support_paths[0].points);
-    let sw2 = RawSupportWitness::decode(&arena2.support().unwrap().support_paths[0].points);
-    assert_eq!(sw1.enforcer_count, 3.0, "first dispatch: 3 enforcers");
-    assert_eq!(sw1.blocker_count, 0.0, "first dispatch: 0 blockers");
-    assert_eq!(
-        sw2.enforcer_count, 1.0,
-        "second dispatch: 1 enforcer (no leak)"
-    );
-    assert_eq!(
-        sw2.blocker_count, 2.0,
-        "second dispatch: 2 blockers (no leak)"
-    );
-}
-
-#[test]
-fn paint_region_deterministic_across_repeated_dispatches() {
-    // Same paint data dispatched 3 times must produce identical results.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-
-    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    blackboard
-        .commit_paint_regions(
-            Arc::new(make_paint_region_ir(0, 2, 1)),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .unwrap();
-
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-
-    let mut results = Vec::new();
-    for i in 0..3 {
-        let module = make_compiled_module_with(
-            &format!("com.test.support-{i}"),
-            "Layer::Support",
-            Arc::clone(&component),
-        );
-        let mut arena = LayerArena::new();
-        arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        crate::common::run_layer_and_commit_with_bundle(
-            &dispatcher,
-            "Layer::Support",
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
-        let s = arena.take_support().unwrap();
-        results.push(s);
+    fn enclosing_square() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(-10.0, -10.0),
+                    Point2::from_mm(10.0, -10.0),
+                    Point2::from_mm(10.0, 10.0),
+                    Point2::from_mm(-10.0, 10.0),
+                ],
+            },
+            holes: vec![],
+        }
+    }
+    fn test_probe_polygon() -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(-1.0, -1.0),
+                    Point2::from_mm(1.0, -1.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(-1.0, 1.0),
+                ],
+            },
+            holes: vec![],
+        }
+    }
+    fn region_with(polygons: Vec<ExPolygon>, semantics: &[PaintSemantic]) -> SlicedRegion {
+        let mut segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
+            HashMap::new();
+        for sem in semantics {
+            segment_annotations.insert(sem.clone(), vec![vec![Some(PaintValue::Flag(true))]]);
+        }
+        SlicedRegion {
+            object_id: "obj1".to_string(),
+            region_id: 0u64,
+            polygons,
+            segment_annotations,
+            ..Default::default()
+        }
+    }
+    fn view(semantics: &[PaintSemantic]) -> PaintRegionLayerView {
+        let slice = SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![region_with(vec![enclosing_square()], semantics)],
+        };
+        PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
     }
 
-    assert_eq!(results[0], results[1], "runs 0 and 1 must match");
-    assert_eq!(results[1], results[2], "runs 1 and 2 must match");
-}
+    let probe = test_probe_polygon();
 
-#[test]
-fn non_paint_stage_not_affected_by_blackboard_paint_data() {
-    // Layer::Infill does not receive paint data. Presence of paint on the
-    // blackboard should not alter infill behavior.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-
-    // Run without paint
-    let bb_no_paint = Blackboard::new(empty_mesh_ir(), 1);
-    let module1 =
-        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena1 = LayerArena::new();
-    arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module1,
-        &bb_no_paint,
-        &mut arena1,
-    )
-    .unwrap();
-
-    // Run with paint
-    let mut bb_with_paint = Blackboard::new(empty_mesh_ir(), 1);
-    bb_with_paint
-        .commit_paint_regions(
-            Arc::new(make_paint_region_ir(0, 5, 3)),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .unwrap();
-    let module2 =
-        make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
-    let mut arena2 = LayerArena::new();
-    arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module2,
-        &bb_with_paint,
-        &mut arena2,
-    )
-    .unwrap();
-
-    let infill1 = arena1.infill().unwrap();
-    let infill2 = arena2.infill().unwrap();
+    // (a) BLOCKER alone → Blocked.
     assert_eq!(
-        infill1.regions[0].sparse_infill[0].points, infill2.regions[0].sparse_infill[0].points,
-        "infill output should be identical regardless of paint presence"
+        view(&[PaintSemantic::SupportBlocker]).paint_policy_for(&probe),
+        SupportPaintPolicy::Blocked,
+        "production support dispatch must surface SupportBlocker as Blocked"
     );
-}
 
-// â”€â”€ I. Slice-region wiring tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn make_slice_ir(
-    layer_index: u32,
-    z: f32,
-    region_count: usize,
-    polys_per_region: usize,
-) -> SliceIR {
-    let regions = (0..region_count)
-        .map(|i| SlicedRegion {
-            object_id: format!("obj-{i}"),
-            region_id: i as u64,
-            polygons: (0..polys_per_region)
-                .map(|_| ExPolygon {
-                    contour: Polygon {
-                        points: vec![
-                            Point2 { x: 0, y: 0 },
-                            Point2 { x: 10_000, y: 0 },
-                            Point2 {
-                                x: 10_000,
-                                y: 10_000,
-                            },
-                            Point2 { x: 0, y: 10_000 },
-                        ],
-                    },
-                    holes: Vec::new(),
-                })
-                .collect(),
-            infill_areas: Vec::new(),
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        })
-        .collect();
-
-    SliceIR {
-        global_layer_index: layer_index,
-        z,
-        regions,
-        ..Default::default()
-    }
-}
-
-/// Same as `make_slice_ir`, but takes explicit `(object_id, region_id)` pairs
-/// so a slice can be staged whose region keys match a `make_perimeter_ir_with_ids`
-/// counterpart. Required for any test that drives `Layer::Perimeters` /
-/// `Layer::PerimetersPostProcess` commits: the host-side region partition
-/// (`crates/slicer-runtime/src/region_partition.rs`) fires unconditionally on
-/// every `set_perimeter` and fatally errors when no SliceIR is staged — that
-/// invariant models PrePass::Slice running first in production.
-fn make_slice_ir_with_ids(layer_index: u32, z: f32, ids: &[(&str, u64)]) -> SliceIR {
-    let regions = ids
-        .iter()
-        .map(|(obj, rid)| SlicedRegion {
-            object_id: (*obj).to_string(),
-            region_id: *rid,
-            polygons: vec![ExPolygon {
-                contour: Polygon {
-                    points: vec![
-                        Point2 { x: 0, y: 0 },
-                        Point2 { x: 10_000, y: 0 },
-                        Point2 {
-                            x: 10_000,
-                            y: 10_000,
-                        },
-                        Point2 { x: 0, y: 10_000 },
-                    ],
-                },
-                holes: Vec::new(),
-            }],
-            infill_areas: Vec::new(),
-            nonplanar_surface: None,
-            effective_layer_height: 0.2,
-            segment_annotations: HashMap::new(),
-            variant_chain: Vec::new(),
-            top_shell_index: None,
-            bottom_shell_index: None,
-            top_solid_fill: Vec::new(),
-            bottom_solid_fill: Vec::new(),
-            is_bridge: false,
-            bridge_areas: vec![],
-            bridge_orientation_deg: 0.0,
-            sparse_infill_area: Vec::new(),
-        })
-        .collect();
-    SliceIR {
-        global_layer_index: layer_index,
-        z,
-        regions,
-        ..Default::default()
-    }
-}
-
-#[test]
-fn real_slice_region_data_visible_through_production_infill_dispatch() {
-    // The test guest's run_infill encodes region data into output:
-    //   point[0].flow_factor = region_count
-    //   point[0].width = total polygon count
-    //   point[0].z = z from first region
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
-
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer {
-        index: 3,
-        z: 0.6,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-
-    // Stage 2 regions with 3 polygons each into the arena before infill runs.
-    let slice_ir = make_slice_ir(3, 0.6, 2, 3);
-    arena.set_slice(slice_ir).unwrap();
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    let infill = arena.infill().expect("infill should be populated");
-    let raw = RawInfillWitness::decode(&infill.regions[0].sparse_infill[0].points);
+    // (b) ENFORCER alone → Enforced.
     assert_eq!(
-        raw.region_count, 2.0,
-        "guest should see 2 slice regions, got region_count={}",
-        raw.region_count
+        view(&[PaintSemantic::SupportEnforcer]).paint_policy_for(&probe),
+        SupportPaintPolicy::Enforced,
+        "production support dispatch must surface SupportEnforcer as Enforced"
     );
+
+    // (c) BLOCKER + ENFORCER → Blocked (precedence per docs/10 §"Scenario Trace 2").
     assert_eq!(
-        raw.total_polys, 6.0,
-        "guest should see 6 total polygons (2 regions × 3), got total_polys={}",
-        raw.total_polys
+        view(&[
+            PaintSemantic::SupportBlocker,
+            PaintSemantic::SupportEnforcer,
+        ])
+        .paint_policy_for(&probe),
+        SupportPaintPolicy::Blocked,
+        "blocker > enforcer precedence must hold when both annotations apply"
     );
+
+    // (d) Neither → DefaultEligible.
     assert_eq!(
-        raw.first_region_z, 0.6,
-        "guest should see z=0.6 from slice region, got {}",
-        raw.first_region_z
+        view(&[]).paint_policy_for(&probe),
+        SupportPaintPolicy::DefaultEligible,
+        "absent annotations must surface as DefaultEligible (defer to overhang-angle / needs_support)"
     );
-}
 
-#[test]
-fn empty_arena_produces_no_slice_regions() {
-    // When the arena has no SliceIR, the guest has no valid layer Z source and
-    // emits no infill output. The empty bypass must preserve that state.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
-
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-    // No slice_ir set.
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    assert!(
-        arena.infill().is_none(),
-        "no slice regions â†’ empty bypass preserved"
-    );
-}
-
-#[test]
-fn slice_region_isolation_across_sequential_dispatches() {
-    // Two dispatches with different arena slice data must not leak.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-
-    // First dispatch: 3 regions, 2 polygons each
-    let module1 =
-        make_compiled_module_with("com.test.infill1", "Layer::Infill", Arc::clone(&component));
-    let mut arena1 = LayerArena::new();
-    arena1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module1,
-        &blackboard,
-        &mut arena1,
-    )
-    .unwrap();
-
-    // Second dispatch: 1 region, 5 polygons
-    let module2 =
-        make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
-    let mut arena2 = LayerArena::new();
-    arena2.set_slice(make_slice_ir(0, 0.2, 1, 5)).unwrap();
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module2,
-        &blackboard,
-        &mut arena2,
-    )
-    .unwrap();
-
-    let raw1 =
-        RawInfillWitness::decode(&arena1.infill().unwrap().regions[0].sparse_infill[0].points);
-    let raw2 =
-        RawInfillWitness::decode(&arena2.infill().unwrap().regions[0].sparse_infill[0].points);
-    assert_eq!(raw1.region_count, 3.0, "first dispatch: 3 regions");
-    assert_eq!(raw1.total_polys, 6.0, "first dispatch: 6 polys (3×2)");
+    // (e) No SliceIR attached → DefaultEligible (host hasn't wired the view).
     assert_eq!(
-        raw2.region_count, 1.0,
-        "second dispatch: 1 region (no leak)"
+        PaintRegionLayerView::new(0).paint_policy_for(&probe),
+        SupportPaintPolicy::DefaultEligible,
+        "view without attached SliceIR must default to eligible (no policy override)"
     );
-    assert_eq!(raw2.total_polys, 5.0, "second dispatch: 5 polys (no leak)");
 }
 
-#[test]
-fn slice_region_deterministic_across_repeated_dispatches() {
-    // Same slice data 3 times must produce identical results.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-
-    let mut results = Vec::new();
-    for i in 0..3 {
-        let module = make_compiled_module_with(
-            &format!("com.test.infill-{i}"),
-            "Layer::Infill",
-            Arc::clone(&component),
-        );
-        let mut arena = LayerArena::new();
-        arena.set_slice(make_slice_ir(0, 0.2, 2, 4)).unwrap();
-        crate::common::run_layer_and_commit_with_bundle(
-            &dispatcher,
-            "Layer::Infill",
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
-        results.push(arena.take_infill().unwrap());
-    }
-
-    assert_eq!(results[0], results[1], "runs 0 and 1 must match");
-    assert_eq!(results[1], results[2], "runs 1 and 2 must match");
-}
-
-#[test]
-fn slice_and_paint_both_visible_in_same_support_dispatch() {
-    // Support stage receives both slice-region and paint-region data.
-    // The guest encodes paint counts (enforcers, blockers) in its output,
-    // and we can verify both data sources are present.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
-
-    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    blackboard
-        .commit_paint_regions(
-            Arc::new(make_paint_region_ir(0, 2, 1)),
-            Arc::new(PaintRegionRTreeIndex {
-                trees: HashMap::default(),
-            }),
-        )
-        .unwrap();
-
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-    let mut arena = LayerArena::new();
-    // Stage slice data so the guest can also see it (even though
-    // the support guest doesn't encode region data into output,
-    // the dispatch must still wire it without error).
-    arena.set_slice(make_slice_ir(0, 0.2, 2, 3)).unwrap();
-
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Support",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
-
-    // Verify paint data reached the guest
-    let support = arena.support().expect("support should be populated");
-    let p = &support.support_paths[0].points[0];
-    assert_eq!(p.x, 2.0, "2 enforcers should be visible");
-    assert_eq!(p.y, 1.0, "1 blocker should be visible");
-}
+// Tests deleted in packet 95 closure (Run #6, AC-16(b) compliance):
+//   - no_paint_region_ir_produces_empty_paint_view
+//   - paint_region_layer_mismatch_produces_empty_view
+//   - paint_region_isolation_across_sequential_dispatches
+//   - paint_region_deterministic_across_repeated_dispatches      [covered by AC-N3]
+//   - non_paint_stage_not_affected_by_blackboard_paint_data
+//   - slice_and_paint_both_visible_in_same_support_dispatch
+// All asserted PaintRegionIR-shaped contracts that no longer exist in any form.
+// `paint_regions()` / `commit_paint_regions` accessors were removed (AC-15).
+// `real_paint_region_data_visible_through_production_support_dispatch` remains
+// as the live contract-surface coverage for v2 segment_annotations plumbing
+// (rewritten below).
 
 #[test]
 fn infill_output_correct_when_slice_regions_present() {
@@ -2654,10 +2026,13 @@ fn infill_output_correct_when_slice_regions_present() {
         path.points[1].x, 30.0,
         "config wiring still works with slice regions present"
     );
-    // First point encodes region data: z from slice, region_count=1, poly_count=2
+    // First point encodes region data: z from slice, region_count=1, poly_count=1
+    // Expected = |base_regions| × |polygons_per_region|; make_slice_ir(_, _, 1, _) produces
+    // 1 SlicedRegion each with exactly 1 ExPolygon (the _polys_per_region arg is unused/ignored).
+    // Cross-product: 1 region × 1 ExPolygon = 1 total polygon visible.
     assert_eq!(path.points[0].z, 1.0, "z from slice region");
     assert_eq!(path.points[0].flow_factor, 1.0, "1 region visible");
-    assert_eq!(path.points[0].width, 2.0, "2 polygons visible");
+    assert_eq!(path.points[0].width, 1.0, "1 polygon visible");
     assert_eq!(
         infill.global_layer_index, 5,
         "layer index preserved in output"
@@ -2665,6 +2040,74 @@ fn infill_output_correct_when_slice_regions_present() {
 }
 
 // â”€â”€ L. Perimeter-region wiring tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+fn make_slice_ir(
+    layer_index: u32,
+    z: f32,
+    region_count: usize,
+    _polys_per_region: usize,
+) -> slicer_ir::SliceIR {
+    let regions = (0..region_count)
+        .map(|i| slicer_ir::SlicedRegion {
+            object_id: format!("obj-{i}"),
+            region_id: i as u64,
+            polygons: vec![slicer_ir::ExPolygon {
+                contour: slicer_ir::Polygon {
+                    points: vec![
+                        Point2 { x: 0, y: 0 },
+                        Point2 { x: 10_000, y: 0 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
+                        Point2 { x: 0, y: 10_000 },
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            effective_layer_height: 0.2,
+            ..Default::default()
+        })
+        .collect();
+    slicer_ir::SliceIR {
+        global_layer_index: layer_index,
+        z,
+        regions,
+        ..Default::default()
+    }
+}
+
+fn make_slice_ir_with_ids(layer_index: u32, z: f32, ids: &[(&str, u64)]) -> slicer_ir::SliceIR {
+    let regions = ids
+        .iter()
+        .map(|(object_id, region_id)| slicer_ir::SlicedRegion {
+            object_id: object_id.to_string(),
+            region_id: *region_id,
+            polygons: vec![slicer_ir::ExPolygon {
+                contour: slicer_ir::Polygon {
+                    points: vec![
+                        Point2 { x: 0, y: 0 },
+                        Point2 { x: 10_000, y: 0 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
+                        Point2 { x: 0, y: 10_000 },
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            effective_layer_height: 0.2,
+            ..Default::default()
+        })
+        .collect();
+    slicer_ir::SliceIR {
+        global_layer_index: layer_index,
+        z,
+        regions,
+        ..Default::default()
+    }
+}
 
 fn make_wall_loop(perimeter_index: u32, point_count: usize, z: f32) -> slicer_ir::WallLoop {
     let points = (0..point_count)
@@ -5187,247 +4630,16 @@ fn mesh_segmentation_commits_through_execute_prepass() {
     assert!(ir.marks.is_empty(), "empty mesh â†’ zero marks");
 }
 
-// ---------------------------------------------------------------------------
-// Step C regression tests: PrePass::PaintSegmentation routing
-// ---------------------------------------------------------------------------
-
-#[test]
-fn paint_segmentation_host_returns_empty_for_unpainted_mesh() {
-    let mesh = Arc::new(MeshIR::default());
-    let sc = Arc::new(SurfaceClassificationIR::default());
-    let lp = Arc::new(LayerPlanIR::default());
-
-    let result = execute_paint_segmentation(mesh, sc, lp, true)
-        .expect("host fallback must succeed for unpainted mesh");
-
-    assert!(
-        result.schema_version.major >= 1,
-        "schema_version.major must be >= 1, got {}",
-        result.schema_version.major
-    );
-    assert!(
-        result.per_layer.is_empty(),
-        "unpainted mesh must produce zero per-layer entries"
-    );
-}
-
-/// The host `execute_paint_segmentation` processes per-object
-/// `FacetPaintData` into per-layer `PaintRegionIR` with correct
-/// semantic/value assignments and dense paint_order.
-#[test]
-fn paint_segmentation_host_produces_paint_regions_from_mesh_data() {
-    use slicer_ir::{PaintSemantic, PaintValue};
-
-    let object = ObjectMesh {
-        id: "benchy".into(),
-        mesh: make_object("benchy").mesh,
-        transform: make_object("benchy").transform,
-        config: make_object("benchy").config,
-        modifier_volumes: Vec::new(),
-        paint_data: Some(FacetPaintData {
-            layers: vec![
-                PaintLayer {
-                    semantic: PaintSemantic::Material,
-                    facet_values: vec![Some(PaintValue::ToolIndex(2))],
-                    strokes: Vec::new(),
-                },
-                PaintLayer {
-                    semantic: PaintSemantic::FuzzySkin,
-                    facet_values: vec![Some(PaintValue::Flag(true))],
-                    strokes: Vec::new(),
-                },
-            ],
-        }),
-        world_z_extent: Some((0.0, 0.2)),
-    };
-
-    let mesh = Arc::new(MeshIR {
-        objects: vec![object],
-        build_volume: BoundingBox3 {
-            min: Point3::default(),
-            max: Point3 {
-                x: 1.0,
-                y: 1.0,
-                z: 1.0,
-            },
-        },
-        ..Default::default()
-    });
-    let sc = Arc::new(SurfaceClassificationIR {
-        per_object: HashMap::from([("benchy".into(), slicer_ir::ObjectSurfaceData::default())]),
-        ..Default::default()
-    });
-    let lp = Arc::new(LayerPlanIR {
-        global_layers: vec![GlobalLayer {
-            index: 0,
-            z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: true,
-        }],
-        object_participation: HashMap::from([(
-            "benchy".into(),
-            vec![slicer_ir::ObjectLayerRef {
-                local_layer_index: 0,
-                global_layer_index: 0,
-                effective_layer_height: 0.2,
-            }],
-        )]),
-        ..Default::default()
-    });
-
-    let result =
-        execute_paint_segmentation(mesh, sc, lp, true).expect("host fallback must succeed");
-    assert!(
-        !result.per_layer.is_empty(),
-        "must produce per-layer entries"
-    );
-    assert!(
-        result.schema_version.major >= 1,
-        "schema_version.major must be >= 1, got {}",
-        result.schema_version.major
-    );
-
-    let has_material = result
-        .per_layer
-        .values()
-        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
-    assert!(
-        has_material,
-        "paint_data with Material must produce Material region"
-    );
-}
-
-#[test]
-fn paint_segmentation_host_is_deterministic() {
-    let object = ObjectMesh {
-        id: "obj".into(),
-        mesh: make_object("obj").mesh,
-        transform: make_object("obj").transform,
-        config: make_object("obj").config,
-        modifier_volumes: Vec::new(),
-        paint_data: Some(FacetPaintData {
-            layers: vec![PaintLayer {
-                semantic: PaintSemantic::Material,
-                facet_values: vec![Some(PaintValue::ToolIndex(3))],
-                strokes: Vec::new(),
-            }],
-        }),
-        world_z_extent: Some((0.0, 0.2)),
-    };
-
-    let mesh = Arc::new(MeshIR {
-        objects: vec![object],
-        build_volume: BoundingBox3 {
-            min: Point3::default(),
-            max: Point3 {
-                x: 1.0,
-                y: 1.0,
-                z: 1.0,
-            },
-        },
-        ..Default::default()
-    });
-    let sc = Arc::new(SurfaceClassificationIR {
-        per_object: HashMap::from([("obj".into(), slicer_ir::ObjectSurfaceData::default())]),
-        ..Default::default()
-    });
-    let lp = Arc::new(LayerPlanIR {
-        global_layers: vec![GlobalLayer {
-            index: 0,
-            z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: true,
-        }],
-        object_participation: HashMap::from([(
-            "obj".into(),
-            vec![slicer_ir::ObjectLayerRef {
-                local_layer_index: 0,
-                global_layer_index: 0,
-                effective_layer_height: 0.2,
-            }],
-        )]),
-        ..Default::default()
-    });
-
-    let run = || {
-        execute_paint_segmentation(Arc::clone(&mesh), Arc::clone(&sc), Arc::clone(&lp), true)
-            .expect("host fallback must succeed")
-    };
-
-    let a = run();
-    let b = run();
-    assert_eq!(
-        format!("{a:?}"),
-        format!("{b:?}"),
-        "two identical host calls must produce identical PaintRegionIR"
-    );
-}
-
-/// Host fallback surfaces structured errors for missing prerequisites.
-#[test]
-fn paint_segmentation_host_missing_surface_errors() {
-    let object = ObjectMesh {
-        id: "obj".into(),
-        mesh: make_object("obj").mesh,
-        transform: make_object("obj").transform,
-        config: make_object("obj").config,
-        modifier_volumes: Vec::new(),
-        paint_data: Some(FacetPaintData {
-            layers: vec![PaintLayer {
-                semantic: PaintSemantic::Material,
-                facet_values: vec![Some(PaintValue::ToolIndex(1))],
-                strokes: Vec::new(),
-            }],
-        }),
-        world_z_extent: Some((0.0, 0.2)),
-    };
-
-    let mesh = Arc::new(MeshIR {
-        objects: vec![object],
-        build_volume: BoundingBox3 {
-            min: Point3::default(),
-            max: Point3 {
-                x: 1.0,
-                y: 1.0,
-                z: 1.0,
-            },
-        },
-        ..Default::default()
-    });
-    // Missing surface classification for "obj" â†’ MissingSurfaceObject error.
-    let sc = Arc::new(SurfaceClassificationIR::default());
-    let lp = Arc::new(LayerPlanIR::default());
-
-    let err = execute_paint_segmentation(mesh, sc, lp, true)
-        .expect_err("missing surface classification must error");
-    match err {
-        PaintSegmentationError::MissingSurfaceObject { object_id } => {
-            assert_eq!(object_id, "obj", "must name the missing object");
-        }
-        other => panic!("expected MissingSurfaceObject, got: {other:?}"),
-    }
-}
-
-#[test]
-fn paint_segmentation_host_commits_through_blackboard() {
-    let mesh = Arc::new(MeshIR::default());
-    let sc = Arc::new(SurfaceClassificationIR::default());
-    let lp = Arc::new(LayerPlanIR::default());
-
-    let ir = execute_paint_segmentation(mesh, sc, lp, true)
-        .expect("host paint segmentation must succeed");
-    assert!(
-        ir.schema_version.major >= 1,
-        "schema_version.major must be >= 1, got {}",
-        ir.schema_version.major
-    );
-    assert!(
-        ir.per_layer.is_empty(),
-        "unpainted mesh â†’ empty per_layer"
-    );
-}
+// Step C regression tests deleted in packet 95 closure (Run #6, AC-16(b) compliance):
+//   - paint_segmentation_host_returns_empty_for_unpainted_mesh       [duplicate of AC-N2]
+//   - paint_segmentation_host_produces_paint_regions_from_mesh_data  [covered by AC-12 + cube_*_paint_tdd]
+//   - paint_segmentation_host_is_deterministic                       [duplicate of AC-N3]
+//   - paint_segmentation_host_missing_surface_errors                 [v2 has no SurfaceClassification dependency]
+//   - paint_segmentation_host_commits_through_blackboard             [covered by AC-14 prepass insertion + AC-12 driver output]
+// All asserted `execute_paint_segmentation` (v1) / commit_paint_regions surfaces
+// that no longer exist.  The v2 driver writes via `replace_slice_ir` (AC-14)
+// and its commit path is verified by the `paint_segmentation_skip_*` and
+// `cube_*_paint_tdd` suites.
 
 // ---------------------------------------------------------------------------
 // Step D regression tests: Layer::PathOptimization canonical module

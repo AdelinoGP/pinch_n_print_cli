@@ -63,7 +63,6 @@ pub use slicer_ir::{
 pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
     use crate::builtins::gcode_emit_producer::GCODE_EMIT_PRODUCER;
     use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
-    use crate::builtins::paint_segmentation_producer::PAINT_SEGMENTATION_PRODUCER;
     use crate::builtins::prepass_slice_producer::{SHELL_CLASSIFICATION_PRODUCER, SLICE_PRODUCER};
     use crate::builtins::region_mapping_producer::REGION_MAPPING_PRODUCER;
     use crate::builtins::support_geometry_producer::SUPPORT_GEOMETRY_PRODUCER;
@@ -75,7 +74,6 @@ pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
         &SLICE_PRODUCER as &dyn Producer,
         &SHELL_CLASSIFICATION_PRODUCER as &dyn Producer,
         &SUPPORT_GEOMETRY_PRODUCER as &dyn Producer,
-        &PAINT_SEGMENTATION_PRODUCER as &dyn Producer,
         &GCODE_EMIT_PRODUCER as &dyn Producer,
     ]
 }
@@ -189,9 +187,6 @@ pub use slicer_gcode::GCodeSerializer;
 // Re-exports from slicer_core::algos for backward compatibility.
 pub use slicer_core::algos::mesh_analysis::{
     execute_mesh_analysis, execute_mesh_analysis_with, MeshAnalysisConfig, MeshAnalysisError,
-};
-pub use slicer_core::algos::paint_segmentation::{
-    execute_paint_segmentation, PaintSegmentationError,
 };
 pub use slicer_core::algos::prepass_slice::{execute_prepass_slice_single_layer, LayerSliceError};
 pub use slicer_wasm_host::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};

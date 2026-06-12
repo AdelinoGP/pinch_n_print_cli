@@ -6,13 +6,14 @@ authors = ["ModularSlicer Team"]
 
 [features]
 default = []
-host-algos = ["dep:rayon", "dep:log"]
+host-algos = ["dep:rayon", "dep:log", "dep:boostvoronoi"]
 
 [dependencies]
 clipper2-rust = { workspace = true }
 log = { version = "0.4", optional = true }
 rstar = "0.12"
 rayon = { version = "1.10", optional = true }
+boostvoronoi = { version = "0.12", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 
@@ -25,10 +26,6 @@ harness = false
 
 [[test]]
 name = "algo_mesh_analysis_tdd"
-required-features = ["host-algos"]
-
-[[test]]
-name = "algo_paint_segmentation_tdd"
 required-features = ["host-algos"]
 
 [[test]]

@@ -1004,23 +1004,11 @@ fn mesh_segmentation_is_a_real_routed_component() {
     );
 }
 
-/// Host fallback verification: `execute_paint_segmentation` returns
-/// an empty result for unpainted meshes.
-#[test]
-fn paint_segmentation_host_fallback_returns_empty_for_unpainted_mesh() {
-    use slicer_runtime::execute_paint_segmentation;
-
-    let mesh = std::sync::Arc::new(slicer_ir::MeshIR::default());
-    let sc = std::sync::Arc::new(slicer_ir::SurfaceClassificationIR::default());
-    let lp = std::sync::Arc::new(slicer_ir::LayerPlanIR::default());
-
-    let result = execute_paint_segmentation(mesh, sc, lp, true)
-        .expect("host fallback must succeed for unpainted mesh");
-    assert!(
-        result.per_layer.is_empty(),
-        "unpainted mesh must produce empty per_layer"
-    );
-}
+// paint_segmentation_host_fallback_returns_empty_for_unpainted_mesh: deleted in
+// packet 95 closure (Run #6) — exact duplicate of the live AC-N2 test
+// `paint_segmentation_skip_when_no_paint_or_no_opted_in_semantic` in the
+// executor test bucket.  v1 host fallback no longer exists; the v2 driver's
+// short-circuit (mesh_has_any_paint == false) is asserted there.
 
 // ---------------------------------------------------------------------------
 // Feature-evidence acceptance tests (Step 1 + Step 2)

@@ -17,7 +17,6 @@ mod host_keys_doc_lock_tdd;
 mod layer_collection_builder_tdd;
 mod mesh_analysis_tdd;
 mod multi_object_transform_world_z_tdd;
-mod paint_region_annotator_host_tdd;
 mod path_ordering_tdd;
 mod region_mapping_resolved_config_tdd;
 mod rotated_object_world_extent_tdd;
