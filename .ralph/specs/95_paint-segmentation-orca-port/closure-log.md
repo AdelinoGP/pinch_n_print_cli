@@ -792,3 +792,83 @@ After Run #8, the final Deviations writeup is 3 entries (not 6 as initially draf
 ### Status transition
 
 Packet flipped from `status: draft` → `status: implemented` at audit close.
+
+---
+
+## Run #9 — REOPEN after diagnose-found gcode behavior regression
+
+P95 reopened from `implemented` → `active` after a /diagnose session found that the cube_4color.3mf gcode output is broken: only T0/T1 ever emitted (T2/T3 silently dropped), and phantom internal perimeters appear along Voronoi cell boundaries (visible as the "triangular truss" inside the cube body when rendered). The diagnose session ran `cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --module-dir modules/core-modules --output ./tmp/out.gcode --report ./tmp/slicer-report.html` and confirmed via tagged `[DEBUG-p95dia]` instrumentation in `assemble_ordered_entities` and `paint_segmentation/mod.rs`:
+
+- Kernel emits 2-4 SlicedRegions per layer (BASE + 1 painted chain per distinct ToolIndex present at that Z) with correct `variant_chain` populated — `kernel side of contract works`.
+- `tool_src(paint/modifier/fallback) = 0/N/0` for every layer — `dominant_tool_index` returns `None` 100% of the time because `segment_annotations[Material]` is empty on all painted chains.
+- `distinct_resolved_tools = {1}` for walls (modifier_tool fallback to object-level `extruder=1` config-extension) and `{0}` for infill (region.region_id fallback).
+- Host bucketing at `crates/slicer-wasm-host/src/host.rs:5071-5108` merges all painted SlicedRegion walls into ONE PerimeterRegion because they share `region_id` (cube has one base region → all painted chains carry the same region_id).
+
+### Root cause (single)
+
+D9 (host-filtered dispatch + variant_chain-aware region routing) was specified by P92 (manifest + dispatch) and P93 (RegionMap cross-product) but was NEVER wired into the downstream code. The audit's "three causes" (IR contract drift; downstream sites unaware; region_id collision) are not separate — they are the same hole. The kernel is architecturally correct per D8; the rest of the pipeline is still on the v1 PaintRegionIR-era contract.
+
+### Architectural lesson — added to packet acceptance discipline
+
+**IR-shape tests are necessary but not sufficient.** Behavior tests (gcode output, perimeter geometry, tool dispatch) are required for paint pipeline acceptance. AC-17/AC-18 asserted `variant_chain` membership in SlicedRegions and passed 21/21 — but every wall on every layer was being dispatched as `T1` and every infill as `T0`. The new AC-22 (added in this run) is the gcode-output behavior gate that closes the IR-vs-behavior gap.
+
+Future paint-related packets MUST land a gcode-output regression test as part of their acceptance gate, not just IR membership tests.
+
+### Plan for this reopen
+
+(See packet.spec.md AC-22 + implementation-plan.md Steps 17, 18, 19.)
+
+1. Step 17 (prereq): fix the pre-existing off-by-one in `layer_executor.rs:675` — 3MF object-level extruder is 1-indexed, executor reads `ConfigValue::Int(N)` directly as 0-indexed. Currently masked by v1 paint pipeline; surfaces as the dominant wall-tool error once v2 dispatch lands.
+2. Step 18: land AC-22 RED tests (gcode tool set + per-layer perimeter count + fuzzy face jitter). Must be RED before Step 19's fix begins.
+3. Step 19: finish D9 wiring per Option B′:
+   - Kernel synthesizes unique region_id per painted SlicedRegion (`base_id * 1_000_000 + variant_chain_hash`); BASE chain narrows to D14 carrier only (no painted geometry).
+   - Cell-tiling assertion: `union_ex(painted_chain.polygons) ≡ base ± ε`.
+   - Layer executor derives `feature_flags.tool_index` from `region.variant_chain` Material entry BEFORE perimeter module dispatch.
+   - Host bucketing tuple verified or extended to include `variant_chain_hash`.
+   - RegionMap stage_modules audit: verify P1c populates `RegionPlan.stage_modules` per painted-variant RegionKey, fix if empty.
+4. Re-run full AC-1..22 + AC-N1..3 ceremony; cube tests should continue to pass unchanged (variant_chain contract preserved under Option B′); AC-22 drives the new gate.
+5. Final spec-review + status flip back to `implemented` only on green ceremony.
+
+### Status
+
+Reopened. status: implemented → active. Subsequent runs document the implementation work.
+
+---
+
+## Run #10 — Path B closure: AC-22 split, Test 2 deferred to P96, status flipped
+
+Spec owner chose Path B from the Run #9 PARTIAL report: defer `cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` to P96 with `#[ignore]`, split AC-22 into AC-22a (P95 gate) and AC-22b (P96 gate), bind via deviation D-95-AC22-BISECTOR-DEDUP.
+
+### Steps executed
+
+1. **P96 packet doc update FIRST** — Added AC-22b to `.ralph/specs/96_paint-segmentation-phase5-width-limit/packet.spec.md` plus Inherited-from-P95 section noting the bisector-edge ownership + Phase 5 width-limiting scope. Verified via `rg -n 'AC-22b|D-95-AC22-BISECTOR-DEDUP'` returning matches.
+2. **Test 2 marked `#[ignore]`** at `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs::cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` with reason string naming the structural mechanism + the P96 packet AC-22b binding.
+3. **P95 packet doc updates** — AC-22 split into AC-22a + AC-22b (AC-22a is the P95 closure gate; AC-22b binds the ignore + P96 fix). Deviation D-95-AC22-BISECTOR-DEDUP added to `## Deviations`.
+4. **Closure ceremony** (in a separate dispatch): `cargo test --workspace` (CLAUDE.md-mandated final gate), `cargo xtask build-guests --check`, status flip from `active` to `implemented`.
+
+### Lesson recorded for future paint-related packets
+
+**IR-shape tests are necessary but not sufficient.** Behavior tests (gcode output, perimeter geometry, tool dispatch) must be part of the acceptance gate from day one. AC-22 was added retroactively during Run #9; if it had been in the original P95 packet, the regression would have surfaced in Run #1 or #2 instead of after multiple "closure-ready" reports. The `spec-review` skill should flag this as a review finding category going forward: **"AC asserts on IR shape, behavior wire-in not verified."**
+
+### Files modified in Run #10
+
+Docs:
+- `.ralph/specs/95_paint-segmentation-orca-port/packet.spec.md` (AC-22 split into AC-22a/b; deviation D-95-AC22-BISECTOR-DEDUP added; status flipped to `implemented`)
+- `.ralph/specs/95_paint-segmentation-orca-port/closure-log.md` (this Run #10 entry)
+- `.ralph/specs/96_paint-segmentation-phase5-width-limit/packet.spec.md` (AC-22b added; Inherited-from-P95 section added)
+
+Tests:
+- `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` (one `#[ignore = "..."]` attribute on Test 2)
+
+### Final acceptance state for P95
+
+| AC | Status | Note |
+|---|---|---|
+| AC-1..AC-21 | PASS | unchanged from prior runs |
+| AC-22a | PASS | Tests 1+3 of cube_4color_gcode_output_tdd GREEN; D9 dispatch wiring complete; T0-T3 reach gcode |
+| AC-22b | DEFERRED | Test 2 `#[ignore]`d; bound to P96 AC-22b via deviation D-95-AC22-BISECTOR-DEDUP |
+| AC-N1..AC-N3 | PASS | unchanged |
+
+### Status
+
+P95 status flip from active → implemented happens in the closure ceremony (Step 4 dispatch). P96 binding is now active.

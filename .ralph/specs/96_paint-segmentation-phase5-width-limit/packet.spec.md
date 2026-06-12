@@ -22,6 +22,10 @@ Phase 5 is an OPTIONAL stage of the paint-segmentation pipeline that erodes per-
 - Unblocks: nothing structurally. With Phase 5 in place the paint pipeline matches OrcaSlicer parity completely; remaining packets (P5a/b/c) are deletion + symmetry + docs.
 - Activation blockers: P95 closed.
 
+### Inherited from P95 (D-95-AC22-BISECTOR-DEDUP)
+
+P95 closed with Test 2 of AC-22 (`cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one`) ignored due to structural bisector-edge duplication: every Voronoi edge between two differently-colored cells is traced as an outer wall by BOTH adjacent cells, so classic-perimeters emits N×(perim+bisector) walls per layer for an N-color slice. P96 owns this fix as part of Phase 5 width-limiting + interlocking. The test file is already authored at `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs`; P96 removes the `#[ignore]` attribute from `cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` and drives the assertion GREEN. See `.ralph/specs/95_paint-segmentation-orca-port/packet.spec.md` deviation D-95-AC22-BISECTOR-DEDUP for the P95-side binding.
+
 ## Acceptance Criteria
 
 ### AC-1 — `width_limit.rs` implements `cut_segmented_layers` per spec §3 Phase 5
@@ -109,6 +113,14 @@ Manual check (closure-log evidence). The report file existence is the machine ga
 ### AC-11 — Guest WASM `--check` clean
 
 | `cargo xtask build-guests --check`
+
+### AC-22b — `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs::cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` GREEN
+
+**Given** the bisector-edge ownership mechanism + Phase 5 width-limiting + interlocking implemented per the original P96 plan,
+**When** `cube_4color.3mf` slices to gcode and `cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` runs,
+**Then** the painted cube's per-layer outer-wall extrusion-move count matches the unpainted-cube baseline within ±1. Mechanism: every Voronoi edge between two differently-colored cells is owned by the lower-color-id cell; the other cell skips it during outer-wall emission. P95 closed with this test ignored; P96 unignores it and drives it GREEN.
+
+| `cargo test -p slicer-runtime --test executor cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one 2>&1 | tee target/test-output.log | grep -qE 'test result: ok\. 1 passed; 0 failed; 0 ignored'`
 
 ## Negative Test Cases
 

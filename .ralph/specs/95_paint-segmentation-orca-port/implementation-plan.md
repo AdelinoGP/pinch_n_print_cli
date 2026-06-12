@@ -241,6 +241,53 @@
 - Context cost: `S` (dispatch-only; the workspace test is long-running but the implementer doesn't absorb the output).
 - Exit condition: AC-20, AC-21 satisfied; packet ready for `status: implemented`.
 
+### Step 17: **REOPEN — Prereq**: fix off-by-one 3MF extruder mapping
+
+- Task IDs: `TASK-245`
+- Objective: 3MF object-level `extruder=N` (1-indexed) must produce `T<N-1>` in gcode (0-indexed). Currently `crates/slicer-runtime/src/layer_executor.rs:675` reads `ConfigValue::Int(n)` directly as the 0-indexed tool index, so `extruder=1` ships as `T1` instead of `T0`. This pre-existed packet 95 but was masked by v1's paint pipeline; once v2's paint dispatch lands, this becomes the dominant wall-tool source for the BASE chain and must be correct.
+- Precondition: P95 reopened to `status: active`. Step 17 lands BEFORE Step 18 because Step 19's AC-22 gate fails on the bug.
+- Postcondition: Conversion happens at exactly ONE seam (either at the loader when stamping `extensions["extruder"]` into ResolvedConfig, OR at the executor read site). Unit test asserts: 3MF `<metadata key="extruder" value="1"/>` → gcode `T0`; `value="3"` → gcode `T2`.
+- Files allowed to edit (≤ 3): trace via dispatch; expected sites are `crates/slicer-model-io/src/loader.rs` (loader stamp site) OR `crates/slicer-runtime/src/layer_executor.rs:669-680` (executor read site).
+- Expected dispatches:
+  - "Grep `extruder` in `crates/slicer-runtime/src/layer_executor.rs` + `crates/slicer-model-io/src/loader.rs` + `crates/slicer-runtime/src/prepass.rs`; return LOCATIONS of every read/write of the extruder config key + a one-line sketch of which seam is the natural 1→0 conversion site."
+  - "Land the fix at the chosen seam; add a unit test in `crates/slicer-runtime/tests/unit/` (or appropriate existing file); run targeted cargo test; FACT pass/fail."
+- Context cost: `S`.
+- Verification: `cargo test -p slicer-runtime --test unit extruder_1_indexed_to_0_indexed 2>&1 | tee target/test-output.log | grep -q 'test result: ok'`.
+- Exit condition: 1-indexed → 0-indexed conversion in place; unit test green; no regression in existing `cargo check --workspace --all-targets`.
+
+### Step 18: **REOPEN — AC-22 RED tests** land first (gcode-behavior gate)
+
+- Task IDs: `TASK-245`
+- Objective: AC-22. New gcode-output behavior tests that the diagnose session identified as missing. MUST land RED (i.e., test exists and fails on current main) before Step 19's kernel fix begins, so the kernel fix has a concrete falsifying signal.
+- Precondition: Step 17 complete.
+- Postcondition: New executor test file `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` exists with (a) test asserting unique `T<N>` set in emitted gcode for cube_4color = `{0,1,2,3}`; (b) test asserting per-layer `;TYPE:Outer wall` block count within ±1 of an unpainted cube baseline; (c) test asserting fuzzy-skin coordinate jitter present only on painted faces of cube_fuzzyPainted. Tests RED on first run.
+- Files allowed to edit (≤ 3):
+  - `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` (NEW).
+  - `crates/slicer-runtime/tests/executor/main.rs` (register the new test module).
+- Expected dispatches:
+  - "Sketch the test fixtures: cube_4color.3mf already in resources/; identify an unpainted 25mm cube fixture (e.g. `resources/20mm_cube.obj` or generate a synthetic one)."
+  - "Write the test bodies; run; FACT pass/fail (must be RED — failures expected and intentional)."
+- Context cost: `M`.
+- Exit condition: tests compile, run, RED with the documented failure mode matching the diagnose audit findings.
+
+### Step 19: **REOPEN — D9 dispatch wiring (Option B′)** — drive AC-22 GREEN
+
+- Task IDs: `TASK-245`
+- Objective: AC-22 GREEN. Wire variant_chain through the planning, dispatch, and tool-selection layers so the per-variant SlicedRegions produced by the kernel actually drive per-tool perimeter geometry and gcode tool dispatch.
+- Precondition: Steps 17 + 18 complete; AC-22 tests RED.
+- Postcondition: AC-22 GREEN. All prior ACs (AC-1..21 + AC-N1..3) remain GREEN. cube_4color gcode emits `{T0,T1,T2,T3}`; per-layer perimeter count matches unpainted baseline ±1.
+- Files allowed to edit (≤ 3 per commit; multi-commit acceptable):
+  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (kernel: unique region_id per painted SlicedRegion; cell-tiling assertion; BASE-chain narrowing to D14 carrier only).
+  - `crates/slicer-runtime/src/layer_executor.rs:683-712` (set feature_flags.tool_index from region.variant_chain Material entry before perimeter module call; same for infill region_id assignment).
+  - `crates/slicer-wasm-host/src/host.rs:5071-5108` (verify PerimeterRegionOrigin tuple splits per-variant cleanly with the new unique region_id; extend tuple if needed).
+- Expected dispatches:
+  - "Audit `crates/slicer-core/src/algos/region_mapping.rs:493-647` cross-product expansion: does RegionPlan.stage_modules get populated per painted-variant RegionKey? Or does the variant inherit BASE's full unfiltered module list? Return FACT + ≤ 10 line snippet of the stage_modules assignment site."
+  - "Implement unique region_id strategy in paint_segmentation/mod.rs: `region_id = base_region_id * STRIDE + variant_chain_hash(variant_chain)` where STRIDE is large enough that base region_ids never collide (recommend 1_000_000). Add `debug_assert!(union_ex(painted_chain.polygons).area >= base.area * (1 - eps) && <= base.area * (1 + eps))` for cell-tiling. FACT pass/fail of kernel unit tests."
+  - "In layer_executor.rs:683, derive `paint_tool` from `region.variant_chain` Material/ToolIndex when `feature_flags.tool_index` is None. Trace whether `region` here is the source perimeter region or the painted SlicedRegion — need to resolve which path produces the variant_chain info accessible at this point. FACT + ≤ 10 line snippet."
+  - "Run AC-22 + AC-17 + AC-18 + cube_4color test bucket; FACT per-test counts."
+- Context cost: `L` (acceptable here because this step is the integration point — splitting further would multiply rework risk on shared files).
+- Exit condition: AC-22 GREEN. AC-17/AC-18 still GREEN. AC-19 unpainted wedge still SHA-identical to P94_BASELINE_SHA. `cargo check --workspace --all-targets` clean.
+
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Sub-steps covered |
@@ -262,12 +309,15 @@
 | Step 14 | M | (acceptance — cube RED→GREEN) |
 | Step 15 | S | (regression checks) |
 | Step 16 | S | (workspace gate) |
+| Step 17 | S | (prereq — extruder 1-indexed fix) |
+| Step 18 | M | (AC-22 RED tests) |
+| Step 19 | L | (D9 dispatch wiring; integration point) |
 
-Aggregate: M (no L step). Total implementer effort is large; per-step context is bounded.
+Aggregate: M (Step 19 is L by design — single integration point spanning kernel + executor + host; splitting would multiply rework risk on shared files).
 
 ## Packet Completion Gate
 
-- All 17 sub-steps complete; all 21 ACs + 3 negative cases verified.
+- All 17 sub-steps complete; all 22 ACs + 3 negative cases verified.
 - Closure log records: baselines + post-packet SHAs, AC-17 / AC-18 per-test pass counts, boostvoronoi API spike outcome.
 - `docs/07_implementation_status.md` updated for `TASK-245` (delegate).
 

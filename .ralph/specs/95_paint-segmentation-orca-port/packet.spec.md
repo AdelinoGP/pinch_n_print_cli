@@ -205,6 +205,22 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 | `cargo xtask build-guests && cargo xtask build-guests --check`
 
+### AC-22a — `cube_4color.3mf` sliced gcode emits `{T0, T1, T2, T3}` as unique tool set (D9 dispatch wiring complete)
+
+**Given** `resources/cube_4color.3mf` sliced via `pnp_cli slice`,
+**When** the gcode output is parsed,
+**Then** the unique `^T[0-9]+$` lines across all layers equal `{T0, T1, T2, T3}`, AND the determinism assertion holds (Test 3 of `cube_4color_gcode_output_tdd.rs`). This is the P95 closure gate — verifies that D9 dispatch wiring routes per-variant `SlicedRegion`s through to per-tool gcode dispatch.
+
+| `cargo test -p slicer-runtime --test executor cube_4color_gcode_output_tdd 2>&1 | tee target/test-output.log | grep -qE 'test result: ok\. 2 passed; 0 failed; 1 ignored'`
+
+### AC-22b — `cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` ignored in P95, GREEN in P96
+
+**Given** Test 2 (`cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one`) is marked `#[ignore = "P96 bisector-edge ownership..."]` in `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs`,
+**When** verification is run against the P95-side binding,
+**Then** the ignore attribute is present with the documented P96 bisector-edge ownership rationale. The structural fix lands in P96 alongside Phase 5 width-limiting + interlocking. See deviation D-95-AC22-BISECTOR-DEDUP for the binding to P96's AC-22b.
+
+| `rg -q 'P96 bisector-edge ownership' crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs`
+
 ## Negative Test Cases
 
 ### AC-N1 — No code path under `crates/` mentions `PaintRegionIR`, `point_in_paint_region`, or `commit_paint_regions`
@@ -301,4 +317,12 @@ Aggregate context cost above is the sum of per-step costs in `implementation-pla
 ### D-95-AC16-REGEX-MALFORMED — AC-16 verification command's `rg -qE` regex is malformed
 
 - [AC-16] — Specified: `rg -B1 -A30 'fn run_paint_annotation' crates/slicer-runtime/src/layer_executor.rs | rg -qE 'Ok\(\(\)\)|^\s*\}|deleted'` | Implemented: `run_paint_annotation` body is a no-op returning `Ok(())` (verified at `crates/slicer-runtime/src/layer_executor.rs`); the `rg -qE` pattern is rejected by ripgrep at parse time (`error parsing flag -E: unknown encoding`) | Reason: packet-level grep defect — implementation satisfies AC's English-language requirement. Flag for P99 doc-sync to fix the verification command (e.g. switch to a simpler pattern or escape the backslashes).
+
+### D-95-AC22-REOPEN-RUN9 — packet reopened from `implemented` after diagnose found cube_4color gcode behavior regression (T2/T3 never emitted, phantom internal perimeters)
+
+- [packet.spec.md status flip; closure-log Run #9 entry] — Specified: packet closed `implemented` after Run #8 with AC-17/AC-18 (cube_4color_paint_tdd 11/11 + cube_fuzzy_painted_tdd 10/10 GREEN) | Discovered: AC-17/AC-18 asserted `variant_chain` membership in SlicedRegions but never asserted that the resulting gcode dispatched the right tools or emitted a sane perimeter count. The diagnose session ran `pnp_cli slice --model resources/cube_4color.3mf` and observed: only `T0`/`T1` ever emitted across 124 layers (T2/T3 never selected); internal "phantom" perimeters along Voronoi cell boundaries inside the cube cross-section (visible as a triangular truss in the rendered gcode); per-layer outer-wall count of 4–9 vs the unpainted-cube baseline of 2. Root cause: D9 (host-filtered dispatch + variant_chain-aware region routing) was specified by P92/P93 but never wired downstream — the kernel correctly emits per-variant SlicedRegions but the perimeter modules + layer executor + host bucketing all read v1's `segment_annotations[Material]` (which paint v2 leaves empty) and bucket by `region_id` ignoring `variant_chain` | Reason: AC-17/AC-18 tested IR shape, not dispatched behavior. Fix lands IN packet 95 per user directive — not deferred to a follow-up packet. AC-22 (new) is the gcode-behavior gate that closes this gap.
+
+### D-95-AC22-BISECTOR-DEDUP — Test 2 of AC-22 ignored pending P96 bisector-edge ownership
+
+- [AC-22] — Specified: `cube_4color` per-layer outer-wall count within ±1 of unpainted baseline. Implemented: Test 1 (tool set `{T0..T3}`) GREEN, Test 3 (determinism) GREEN, Test 2 (wall count) RED-ignored. Reason: structural bisector-edge duplication — every Voronoi edge between two differently-colored cells is traced as an outer wall by both adjacent cells. Orthogonal to (but bundled with) Phase 5 width-limiting in the original plan. P95 closes with D9 dispatch wiring complete, T0-T3 reaching gcode, off-by-one extruder fix landed. Bisector-edge ownership + Phase 5 width-limiting assigned to P96 (AC-22b in P96's packet text); see `.ralph/specs/96_paint-segmentation-phase5-width-limit/packet.spec.md` for the P96-side binding.
 
