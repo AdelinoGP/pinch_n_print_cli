@@ -309,6 +309,7 @@ fn execute_single_layer_inner(
                 arena.infill(),
                 arena.support(),
                 blackboard.region_map().map(|arc| arc.as_ref()),
+                arena.slice(),
             );
             arena.set_layer_collection(LayerCollectionIR {
                 global_layer_index: layer.index,
@@ -513,6 +514,7 @@ fn execute_single_layer_inner(
             arena.infill(),
             arena.support(),
             blackboard.region_map().map(|arc| arc.as_ref()),
+            arena.slice(),
         );
         LayerCollectionIR {
             global_layer_index: layer.index,
@@ -636,6 +638,7 @@ pub(crate) fn assemble_ordered_entities(
     infill: Option<&InfillIR>,
     support: Option<&SupportIR>,
     region_map: Option<&RegionMapIR>,
+    slice: Option<&SliceIR>,
 ) -> Vec<PrintEntity> {
     let mut out: Vec<PrintEntity> = Vec::new();
     let id_gen = LayerEntityIdGen::new();
@@ -651,6 +654,85 @@ pub(crate) fn assemble_ordered_entities(
             region_key: key,
             topo_order,
         });
+    };
+
+    // Fix 2 (Step 19 / Option B′): build two lookup tables from the SliceIR
+    // to drive the per-wall and per-infill tool resolution.
+    //
+    // (a) `variant_tool_by_region` maps `(object_id, region_id) → ToolIndex`
+    //     for the painted variants. Used when the host's per-region bucketing
+    //     correctly attributes a `PerimeterRegion` / `InfillRegion` to a
+    //     painted variant (via the synthesized `region_id` from
+    //     `paint_segmentation::paint_variant_region_id`).
+    //
+    // (b) `painted_regions` is the list of painted SlicedRegions with their
+    //     tool indices and polygons. Used as the SPATIAL fallback: when the
+    //     guest's SDK-side `SliceRegionView` adapter touches all per-region
+    //     polygons up front (see `slicer_macros::__slicer_adapt_slice_regions`),
+    //     the host's `current_slice_region` ends up at the LAST region
+    //     visited and ALL wall_loops the guest pushes get the same origin.
+    //     We salvage the per-wall tool by doing a point-in-polygon test of
+    //     the wall's start vertex against each painted SlicedRegion. This
+    //     is the path-of-least-disturbance fix that avoids changing the WIT
+    //     surface or the SDK adapter pattern (which would be a P95 + P96
+    //     architectural change; tracked as a follow-up).
+    let variant_tool_by_region: HashMap<(String, u64), u64> = slice
+        .map(|s| {
+            let mut m: HashMap<(String, u64), u64> = HashMap::new();
+            for r in &s.regions {
+                for (sem_name, value) in &r.variant_chain {
+                    if sem_name == "material" {
+                        if let slicer_ir::PaintValue::ToolIndex(n) = value {
+                            m.insert((r.object_id.clone(), r.region_id), *n as u64);
+                            break;
+                        }
+                    }
+                }
+            }
+            m
+        })
+        .unwrap_or_default();
+    let painted_regions: Vec<(u64, &Vec<slicer_ir::ExPolygon>)> = slice
+        .map(|s| {
+            let mut v: Vec<(u64, &Vec<slicer_ir::ExPolygon>)> = Vec::new();
+            for r in &s.regions {
+                if r.variant_chain.is_empty() {
+                    continue;
+                }
+                for (sem_name, value) in &r.variant_chain {
+                    if sem_name == "material" {
+                        if let slicer_ir::PaintValue::ToolIndex(n) = value {
+                            v.push((*n as u64, &r.polygons));
+                            break;
+                        }
+                    }
+                }
+            }
+            v
+        })
+        .unwrap_or_default();
+
+    // Spatial fallback: find the painted SlicedRegion whose polygons contain
+    // the given (x, y) point (mm). Returns the painted variant's ToolIndex
+    // if a containing region exists. Walls and infill paths emit in mm-space
+    // (`ExtrusionPath3D.points: Point3WithWidth { x: f32, y: f32, z: f32 }`).
+    let lookup_tool_by_point_mm = |px_mm: f32, py_mm: f32| -> Option<u64> {
+        if painted_regions.is_empty() {
+            return None;
+        }
+        let px_mm = px_mm as f64;
+        let py_mm = py_mm as f64;
+        // 1 µm tolerance. Polygon-edge ties are rare in practice; first-match
+        // policy is deterministic in SliceIR.regions order.
+        let eps_mm: f64 = 1.0e-3;
+        for (tool, polys) in &painted_regions {
+            for ep in polys.iter() {
+                if slicer_ir::point_in_polygon_winding(ep, px_mm, py_mm, eps_mm) {
+                    return Some(*tool);
+                }
+            }
+        }
+        None
     };
 
     if let Some(perim) = perimeter {
@@ -679,9 +761,32 @@ pub(crate) fn assemble_ordered_entities(
                     None
                 }
             });
+            // Per Step 19 Fix 2: look up the source SlicedRegion's
+            // Material/ToolIndex by the region's (object_id, region_id). This
+            // wins over modifier-tool but yields to a paint-pipeline-emitted
+            // per-point Material tool (forward compat: paint v2 doesn't write
+            // segment_annotations[Material] today).
+            let variant_tool: Option<u64> = variant_tool_by_region
+                .get(&(region.object_id.clone(), region.region_id))
+                .copied();
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
-                let resolved_tool = paint_tool.or(modifier_tool).unwrap_or(region.region_id);
+                // Spatial fallback: when the host's per-region bucketing
+                // collapsed all wall_loops under a single PerimeterRegion
+                // (SDK adapter LIFO touch — see comment on `painted_regions`
+                // above), classify each wall by its first vertex's containing
+                // painted SlicedRegion. This restores per-wall tool identity
+                // in the gcode without a WIT/SDK redesign.
+                let spatial_tool: Option<u64> = wl
+                    .path
+                    .points
+                    .first()
+                    .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
+                let resolved_tool = paint_tool
+                    .or(spatial_tool)
+                    .or(variant_tool)
+                    .or(modifier_tool)
+                    .unwrap_or(region.region_id);
                 let entity_key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
@@ -696,20 +801,38 @@ pub(crate) fn assemble_ordered_entities(
 
     if let Some(inf) = infill {
         for region in &inf.regions {
-            let key = RegionKey {
-                global_layer_index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
-                variant_chain: Vec::new(),
+            // Per Step 19 Fix 2: derive tool from the SlicedRegion variant
+            // chain when available; otherwise fall back to `region_id`.
+            let variant_tool: Option<u64> = variant_tool_by_region
+                .get(&(region.object_id.clone(), region.region_id))
+                .copied();
+            // Per-path spatial fallback (same reasoning as the wall loop).
+            // Infill paths are likely emitted in a single guest batch and
+            // need per-path tool resolution when host bucketing collapsed.
+            let infill_push = |path: &slicer_ir::ExtrusionPath3D,
+                               role: slicer_ir::ExtrusionRole,
+                               acc: &mut Vec<PrintEntity>| {
+                let spatial_tool: Option<u64> = path
+                    .points
+                    .first()
+                    .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
+                let resolved_tool = spatial_tool.or(variant_tool).unwrap_or(region.region_id);
+                let key = RegionKey {
+                    global_layer_index,
+                    object_id: region.object_id.clone(),
+                    region_id: resolved_tool,
+                    variant_chain: Vec::new(),
+                };
+                push(path.clone(), role, key, acc);
             };
             for path in &region.sparse_infill {
-                push(path.clone(), path.role.clone(), key.clone(), &mut out);
+                infill_push(path, path.role.clone(), &mut out);
             }
             for path in &region.solid_infill {
-                push(path.clone(), path.role.clone(), key.clone(), &mut out);
+                infill_push(path, path.role.clone(), &mut out);
             }
             for path in &region.ironing {
-                push(path.clone(), path.role.clone(), key.clone(), &mut out);
+                infill_push(path, path.role.clone(), &mut out);
             }
         }
     }

@@ -975,16 +975,19 @@ fn missing_fixture_returns_error() {
 // The 3MF loader must extract the object-scoped allowlist keys
 // (`extruder`, `enable_support`, `support_type`) from the sidecar and
 // populate `ObjectMesh.config.data` with typed `ConfigValue` entries.
-// All three Packet 67 fixtures have parent `extruder=1` at object scope;
-// bridge obj5 additionally carries `enable_support=1` and
-// `support_type=tree(auto)`.
+// OrcaSlicer 3MF authors extruder indices 1-indexed; the loader rebases
+// them to the runtime's 0-indexed convention via `saturating_sub(1)`.
+// All three Packet 67 fixtures have parent `extruder=1` at object scope
+// (which the loader stores as `Int(0)`); bridge obj5 additionally carries
+// `enable_support=1` and `support_type=tree(auto)`.
 
 #[test]
 fn load_model_populates_object_config_data() {
-    // Each fixture's parent object(s) must surface `extruder=Int(1)` in
-    // `ObjectMesh.config.data` after load_model. cube_cilindrical_modifier.3mf
-    // also carries object-scoped `extruder=1` (verified via `unzip -p ...
-    // Metadata/model_settings.config`).
+    // Each fixture's parent object(s) must surface `extruder=Int(0)` in
+    // `ObjectMesh.config.data` after load_model. The on-disk sidecars carry
+    // 1-indexed `extruder=1`; the loader rebases to 0-indexed `Int(0)`.
+    // cube_cilindrical_modifier.3mf also carries object-scoped `extruder=1`
+    // (verified via `unzip -p ... Metadata/model_settings.config`).
     let fixtures = [
         "cube_positive_n_negative.3mf",
         "cube_cilindrical_modifier.3mf",
@@ -1003,9 +1006,9 @@ fn load_model_populates_object_config_data() {
         for (idx, obj) in mesh_ir.objects.iter().enumerate() {
             assert_eq!(
                 obj.config.data.get("extruder"),
-                Some(&ConfigValue::Int(1)),
-                "{name} object[{idx}] (id={}) must have config.data[\"extruder\"] = Int(1) \
-                 from object-scoped sidecar metadata",
+                Some(&ConfigValue::Int(0)),
+                "{name} object[{idx}] (id={}) must have config.data[\"extruder\"] = Int(0) \
+                 (rebased from 1-indexed sidecar `extruder=1` to 0-indexed runtime convention)",
                 obj.id
             );
         }

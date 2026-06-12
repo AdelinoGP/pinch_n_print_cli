@@ -8,6 +8,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod cube_4color_gcode_output_tdd;
 mod cube_4color_paint_tdd;
 mod cube_fuzzy_painted_tdd;
 mod finalization_builder_insert;

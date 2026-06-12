@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig,
-    ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
+    ObjectConfig, ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_execution_plan, commit_region_mapping_builtin, Blackboard, ExecutionPlanRequest,
@@ -195,5 +195,52 @@ fn commit_stamps_per_object_resolved_config() {
     assert_eq!(
         resolved_b.top_shell_layers, 3,
         "obj-B region plan must have top_shell_layers=3 from per-object config"
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// P95 W-P1: loader → ResolvedConfig.extensions["extruder"] chain
+//
+// The 3MF loader (slicer-model-io::loader) rebases OrcaSlicer's 1-indexed
+// `extruder` metadata to the runtime's 0-indexed convention before stamping
+// `ObjectMesh.config.data["extruder"] = ConfigValue::Int(0)` (for raw
+// `extruder=1` in the 3MF). `run.rs` then lifts each `ObjectMesh.config.data`
+// entry into a `config_source` key of the form `object_config:<obj>:<key>`,
+// which `resolve_per_object_configs` (slicer-scheduler) overlays onto each
+// per-object `ResolvedConfig`. Because `extruder` is not a declared
+// `ResolvedConfig` field, it must fall through to the `extensions` overflow
+// bucket as `ConfigValue::Int(0)`.
+//
+// This test pins that handoff so a regression in any of the three hops
+// (loader rebase / `run.rs` lift / scheduler overlay) is caught here rather
+// than only at the gcode-output gate.
+// ────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn loader_extruder_int_zero_lands_in_extensions() {
+    use slicer_scheduler::{resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex};
+
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    // Simulate the `run.rs` lift of `ObjectMesh.config.data["extruder"] = Int(0)`
+    // (which is what the loader stamps for OrcaSlicer-1-indexed `extruder=1`).
+    source.insert(
+        "object_config:obj-A:extruder".to_string(),
+        ConfigValue::Int(0),
+    );
+
+    let bounds = ConfigBoundsIndex::default();
+    let global = resolve_global_config(&source, &bounds).expect("global resolution must succeed");
+    let per_object = resolve_per_object_configs(&global, &source, &["obj-A"], &bounds)
+        .expect("per-object resolution must succeed");
+
+    let cfg = per_object
+        .get("obj-A")
+        .expect("obj-A must have a per-object resolved config");
+
+    assert_eq!(
+        cfg.extensions.get("extruder"),
+        Some(&ConfigValue::Int(0)),
+        "loader-stamped `Int(0)` for `extruder` must land in `ResolvedConfig.extensions` \
+         (Int(0) is meaningful — tool 0 — and must not be dropped or coerced)"
     );
 }

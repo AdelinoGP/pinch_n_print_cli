@@ -586,7 +586,12 @@ fn resolve_object(
                     if let Some(extruder_str) = part.metadata.get("extruder") {
                         match extruder_str.parse::<i64>() {
                             Ok(v) => {
-                                config_fields.insert("extruder".to_string(), ConfigValue::Int(v));
+                                // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
+                                // Clamp at 0: raw `extruder=0` (OrcaSlicer "inherit"
+                                // sentinel on parts) stays as literal `Int(0)` for now.
+                                let rebased = if v >= 1 { v - 1 } else { 0 };
+                                config_fields
+                                    .insert("extruder".to_string(), ConfigValue::Int(rebased));
                             }
                             Err(_) => {
                                 log::warn!(
@@ -723,7 +728,10 @@ fn object_metadata_to_config_data(
     if let Some(s) = metadata.get("extruder") {
         match s.parse::<i64>() {
             Ok(v) => {
-                out.insert("extruder".to_string(), ConfigValue::Int(v));
+                // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
+                // Clamp at 0: raw `extruder=0` stays as literal `Int(0)`.
+                let rebased = if v >= 1 { v - 1 } else { 0 };
+                out.insert("extruder".to_string(), ConfigValue::Int(rebased));
             }
             Err(_) => {
                 log::warn!(

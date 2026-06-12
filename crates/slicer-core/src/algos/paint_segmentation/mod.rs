@@ -61,6 +61,99 @@ impl From<voronoi_graph::MmuGraphError> for PaintSegmentationError {
     }
 }
 
+/// Multiplier used to stride synthesized painted-chain `region_id`s above any
+/// base region_id observed in production. Base region_ids are typically 0..a
+/// few-hundred; striding by 1_000_000 keeps all painted-chain synthesized ids
+/// well above that floor while leaving room for the per-variant hash.
+///
+/// Wired into `paint_variant_region_id`. See Fix 1 in
+/// `.ralph/specs/95_paint-segmentation-orca-port/implementation-plan.md`
+/// (Step 19 dispatch wiring).
+pub const PAINT_VARIANT_REGION_ID_STRIDE: u64 = 1_000_000;
+
+/// Deterministic 64-bit content hash of a single `(semantic, value)` chain
+/// entry, used to synthesize a unique `region_id` per painted variant chain in
+/// `execute_paint_segmentation`.
+///
+/// The scheme is deliberately simple and stable (no `DefaultHasher` — its seed
+/// is per-process random). For `Material/ToolIndex(N)` it returns `N + 1` so
+/// the four-color cube fixture lands on tidy 1..=4 hashes (multiplied by the
+/// stride to keep them comfortably above base-region floor). For other
+/// variants it XOR-folds the semantic-name bytes with a value-discriminant
+/// prime and the value payload bits.
+fn paint_variant_hash(chain_key: &[(String, slicer_ir::PaintValue)]) -> u64 {
+    // BASE chain (no variants) hashes to 0 by definition.
+    if chain_key.is_empty() {
+        return 0;
+    }
+
+    // Per Option B′: cube_4color paints exactly one `Material/ToolIndex` entry
+    // per chain. Fast-path the common case so it's trivially auditable: the
+    // synthesized region_id is `base * STRIDE + (N + 1)` where N is the tool
+    // index. Other variants fall through to the deterministic XOR-fold.
+    if chain_key.len() == 1 {
+        let (sem_name, value) = &chain_key[0];
+        if sem_name == "material" {
+            if let slicer_ir::PaintValue::ToolIndex(n) = value {
+                return (*n as u64) + 1;
+            }
+        }
+    }
+
+    // Deterministic XOR-fold for arbitrary chains. Primes per discriminant
+    // keep distinct value variants from collapsing onto each other.
+    let mut h: u64 = 0xCBF2_9CE4_8422_2325; // FNV-64 offset basis
+    for (sem_name, value) in chain_key {
+        for chunk in sem_name.as_bytes().chunks(8) {
+            let mut buf = [0u8; 8];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            h ^= u64::from_le_bytes(buf);
+            h = h.wrapping_mul(0x100_0000_01B3); // FNV-64 prime
+        }
+        let (disc_prime, payload): (u64, u64) = match value {
+            slicer_ir::PaintValue::Flag(b) => (0x9E37_79B9_7F4A_7C15, *b as u64),
+            slicer_ir::PaintValue::Scalar(f) => (0xBF58_476D_1CE4_E5B9, (*f).to_bits() as u64),
+            slicer_ir::PaintValue::ToolIndex(n) => (0x94D0_49BB_1331_11EB, *n as u64),
+            slicer_ir::PaintValue::Custom(s) => {
+                let mut fold: u64 = 0;
+                for chunk in s.as_bytes().chunks(8) {
+                    let mut buf = [0u8; 8];
+                    buf[..chunk.len()].copy_from_slice(chunk);
+                    fold ^= u64::from_le_bytes(buf);
+                    fold = fold.wrapping_mul(0x100_0000_01B3);
+                }
+                (0x0A0B_0C0D_0E0F_0101, fold)
+            }
+        };
+        h = h
+            .wrapping_add(disc_prime)
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        h ^= payload;
+    }
+    // Ensure non-zero (0 is reserved for BASE).
+    if h == 0 {
+        1
+    } else {
+        h
+    }
+}
+
+/// Compute the synthesized `region_id` for a painted variant chain rooted at
+/// `base_region_id`. For the BASE chain (`chain_key.is_empty()`) returns
+/// `base_region_id` unchanged so D14 modifier-volume annotation routing and
+/// downstream consumers that key off the source region's id keep working.
+fn paint_variant_region_id(
+    base_region_id: u64,
+    chain_key: &[(String, slicer_ir::PaintValue)],
+) -> u64 {
+    if chain_key.is_empty() {
+        return base_region_id;
+    }
+    base_region_id
+        .saturating_mul(PAINT_VARIANT_REGION_ID_STRIDE)
+        .saturating_add(paint_variant_hash(chain_key))
+}
+
 /// Returns `true` if any object in `mesh` has at least one painted facet, stroke,
 /// or a non-empty support-semantic modifier-volume.  Modifier volumes (D14) are
 /// paint sources for the BASE-chain `segment_annotations`, so the short-circuit
@@ -493,48 +586,100 @@ pub fn execute_paint_segmentation(
 
             let mut new_regions: Vec<slicer_ir::SlicedRegion> = Vec::new();
 
-            // BASE chain — full layer contours; carries modifier-volume annotations.
+            // BASE chain — empty variant_chain; carries modifier-volume annotations.
+            //
+            // Fix 4 (Step 19 / Option B′ residual): the BASE chain's polygons
+            // must NOT be the full layer contour when there are also painted
+            // chains, because classic-perimeters / arachne-perimeters would
+            // emit a SECOND set of outer-wall extrusions on top of the
+            // per-color painted chains, doubling the per-layer outer-wall
+            // count (AC-22 Test 2 failure). Instead:
+            //
+            //  * If BASE has modifier-volume `segment_annotations`, we keep
+            //    BASE with the FULL layer-contour polygons so the annotation
+            //    routing continues to work (modifier-volume fixtures take a
+            //    slower but correct dual-emit path).
+            //
+            //  * Otherwise BASE acts as the RESIDUAL carrier: its polygons
+            //    are the unpainted-area cells emitted by the Voronoi cell
+            //    decomposition (`color_opt == None` entry in
+            //    `polys_by_color`). This preserves the v2 contract that the
+            //    unpainted portion of a partly-painted face appears as a
+            //    region with empty `variant_chain` (see
+            //    `cube_4color_bottom_face_painted_and_unpainted_requires_projection_coverage`)
+            //    while keeping the per-layer outer-wall count close to the
+            //    unpainted baseline.
+            //
+            //  * If neither modifier annotations nor residual cells exist for
+            //    the layer (i.e. the whole layer is covered by painted
+            //    chains), we drop BASE entirely so classic-perimeters'
+            //    `polygons.is_empty()` early-return skips it.
             let base_segment_annotations = build_modifier_segment_annotations(
                 i,
                 &layer_total_contours,
                 &modifier_vol_per_layer,
             );
+            let base_has_modifier_annotations = !base_segment_annotations.is_empty();
             let base_chain_key: Vec<(String, slicer_ir::PaintValue)> = vec![];
-            let matching_base: Vec<&slicer_ir::RegionKey> = region_map
-                .entries
-                .keys()
-                .filter(|rk| {
-                    rk.global_layer_index == global_layer_index
-                        && rk.variant_chain == base_chain_key
-                })
-                .collect();
-            if matching_base.is_empty() {
-                if let Some(existing) = working[i].regions.first() {
-                    new_regions.push(slicer_ir::SlicedRegion {
-                        object_id: existing.object_id.clone(),
-                        region_id: existing.region_id,
-                        polygons: layer_total_contours.clone(),
-                        variant_chain: base_chain_key.clone(),
-                        segment_annotations: base_segment_annotations,
-                        ..Default::default()
-                    });
-                }
+
+            // Residual polygons for the BASE chain when no modifier annotations exist.
+            // Sourced from the `None`-keyed entry in `polys_by_color` (the Voronoi
+            // cell decomposition emits a `None` entry whenever there are unpainted
+            // cells in the layer).
+            let residual_polys: Vec<slicer_ir::ExPolygon> =
+                polys_by_color.get(&None).cloned().unwrap_or_default();
+
+            let base_polygons: Vec<slicer_ir::ExPolygon> = if base_has_modifier_annotations {
+                layer_total_contours.clone()
             } else {
-                for rk in matching_base {
-                    new_regions.push(slicer_ir::SlicedRegion {
-                        object_id: rk.object_id.clone(),
-                        region_id: rk.region_id,
-                        polygons: layer_total_contours.clone(),
-                        variant_chain: base_chain_key.clone(),
-                        segment_annotations: base_segment_annotations.clone(),
-                        ..Default::default()
-                    });
+                residual_polys
+            };
+
+            // Always emit BASE so the v2 contract holds: every painted layer
+            // has at least one SlicedRegion with empty `variant_chain` (see
+            // `cube_4color_bottom_face_painted_and_unpainted_requires_projection_coverage`).
+            // When BASE has neither modifier annotations nor residual cells,
+            // its `polygons` is empty and perimeter generators short-circuit
+            // via `if polygons.is_empty() { continue; }`.
+            {
+                let matching_base: Vec<&slicer_ir::RegionKey> = region_map
+                    .entries
+                    .keys()
+                    .filter(|rk| {
+                        rk.global_layer_index == global_layer_index
+                            && rk.variant_chain == base_chain_key
+                    })
+                    .collect();
+                if matching_base.is_empty() {
+                    if let Some(existing) = working[i].regions.first() {
+                        new_regions.push(slicer_ir::SlicedRegion {
+                            object_id: existing.object_id.clone(),
+                            region_id: existing.region_id,
+                            polygons: base_polygons.clone(),
+                            variant_chain: base_chain_key.clone(),
+                            segment_annotations: base_segment_annotations,
+                            ..Default::default()
+                        });
+                    }
+                } else {
+                    for rk in matching_base {
+                        new_regions.push(slicer_ir::SlicedRegion {
+                            object_id: rk.object_id.clone(),
+                            region_id: rk.region_id,
+                            polygons: base_polygons.clone(),
+                            variant_chain: base_chain_key.clone(),
+                            segment_annotations: base_segment_annotations.clone(),
+                            ..Default::default()
+                        });
+                    }
                 }
             }
 
             // One painted chain per distinct (semantic, value) color.
+            // The `None` entry was consumed above as BASE residual polygons;
+            // here we only iterate `Some(value)` colors.
             for (color_opt, polys) in &polys_by_color {
-                let Some(value) = color_opt else { continue }; // skip None
+                let Some(value) = color_opt else { continue }; // residual consumed by BASE
                 if polys.is_empty() {
                     continue;
                 }
@@ -549,11 +694,20 @@ pub fn execute_paint_segmentation(
                     })
                     .collect();
 
+                // Fix 1 (Step 19 / Option B′): synthesize a unique region_id
+                // per painted variant chain so the host's PerimeterRegionOrigin
+                // = (object_id, region_id) bucketing emits one perimeter region
+                // per color rather than collapsing all painted chains onto the
+                // BASE region_id. The synthesized id also doubles as the
+                // tool-index source consumed by the gcode emitter via
+                // `region_key.region_id` (see
+                // `path-optimization-default::tool_index_of` and
+                // `slicer_gcode::emit::layer_change_tool_reset`).
                 if matching_keys.is_empty() {
                     if let Some(existing) = working[i].regions.first() {
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: existing.object_id.clone(),
-                            region_id: existing.region_id,
+                            region_id: paint_variant_region_id(existing.region_id, &chain_key),
                             polygons: polys.clone(),
                             variant_chain: chain_key.clone(),
                             segment_annotations: std::collections::HashMap::new(),
@@ -564,12 +718,82 @@ pub fn execute_paint_segmentation(
                     for rk in matching_keys {
                         new_regions.push(slicer_ir::SlicedRegion {
                             object_id: rk.object_id.clone(),
-                            region_id: rk.region_id,
+                            region_id: paint_variant_region_id(rk.region_id, &chain_key),
                             polygons: polys.clone(),
                             variant_chain: chain_key.clone(),
                             segment_annotations: std::collections::HashMap::new(),
                             ..Default::default()
                         });
+                    }
+                }
+            }
+
+            // Fix 1 cell-tiling diagnostic (Step 19 / Option B′):
+            // Verify that the union of all painted-chain polygons covers the
+            // BASE polygon area within 1% relative error. If a gap is observed,
+            // the Voronoi edge clipping has left holes in the cell decomposition
+            // — this is a known follow-up (do NOT paper over by re-adding the
+            // BASE outline to painted chains). The diagnostic is gated behind
+            // env var `PNP_PAINTSEG_CELL_TILING_DEBUG=1` to keep debug-build
+            // tests quiet by default. Tracked in the closure-log Run #9 entry
+            // and TBD packet 96 width-limiting work.
+            #[cfg(feature = "host-algos")]
+            if std::env::var("PNP_PAINTSEG_CELL_TILING_DEBUG")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                use crate::polygon_ops::union_ex;
+                fn expoly_area_signed_sum(polys: &[slicer_ir::ExPolygon]) -> f64 {
+                    let mut a = 0.0_f64;
+                    for ep in polys {
+                        let pts = &ep.contour.points;
+                        if pts.len() >= 3 {
+                            let mut acc = 0i128;
+                            for i in 0..pts.len() {
+                                let j = (i + 1) % pts.len();
+                                acc += (pts[i].x as i128) * (pts[j].y as i128)
+                                    - (pts[j].x as i128) * (pts[i].y as i128);
+                            }
+                            a += (acc as f64) * 0.5;
+                            for hole in &ep.holes {
+                                let hpts = &hole.points;
+                                if hpts.len() < 3 {
+                                    continue;
+                                }
+                                let mut hacc = 0i128;
+                                for i in 0..hpts.len() {
+                                    let j = (i + 1) % hpts.len();
+                                    hacc += (hpts[i].x as i128) * (hpts[j].y as i128)
+                                        - (hpts[j].x as i128) * (hpts[i].y as i128);
+                                }
+                                a -= (hacc as f64).abs() * 0.5;
+                            }
+                        }
+                    }
+                    a.abs()
+                }
+                let mut painted_polys: Vec<slicer_ir::ExPolygon> = Vec::new();
+                for r in &new_regions {
+                    if !r.variant_chain.is_empty() {
+                        painted_polys.extend(r.polygons.iter().cloned());
+                    }
+                }
+                if !painted_polys.is_empty() {
+                    let unioned = union_ex(&painted_polys);
+                    let union_area = expoly_area_signed_sum(&unioned);
+                    let base_area = expoly_area_signed_sum(&layer_total_contours);
+                    let diff = (base_area - union_area).abs();
+                    let rel = if base_area > 0.0 {
+                        diff / base_area
+                    } else {
+                        0.0
+                    };
+                    if rel > 0.01 {
+                        eprintln!(
+                            "[paint-seg cell-tiling] layer {global_layer_index}: \
+                             base_area={base_area}, union_area={union_area}, \
+                             diff={diff}, rel_diff={rel:.4}"
+                        );
                     }
                 }
             }
