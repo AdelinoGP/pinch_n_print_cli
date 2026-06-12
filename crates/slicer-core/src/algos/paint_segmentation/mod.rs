@@ -580,6 +580,198 @@ pub fn execute_paint_segmentation(
         }
     }
 
+    // ---- Phase 6 — top/bottom propagation (OrcaSlicer parity) ----------------
+    //
+    // OrcaSlicer order (MultiMaterialSegmentation.cpp:1331-1419,
+    // PrintObjectSlice.cpp:924-1081, MultiMaterialSegmentation.cpp:2053-2092):
+    //   Phase 4 (colorize + cell decomposition) →
+    //   Phase 6 (top/bottom propagation, NEW outputs per extruder) →
+    //   Phase 7 merge (diff_ex BASE − phase6 + append/union into per-color regions).
+    //
+    // Shell-window propagation: a top-painted facet propagates DOWN by
+    // `top_shell_layers` layers; a bottom-painted facet propagates UP by
+    // `bottom_shell_layers` layers. At shells = 0 both windows collapse to the
+    // single layer slab — i.e. intersection(top_proj[l] ∪ bot_proj[l],
+    // layer_input_polygons[l]) — preserving the first-cut behaviour. Shell
+    // counts are read from the BASE ResolvedConfig (configs[0]); if absent the
+    // ResolvedConfig defaults (top=3, bottom=3, matching OrcaSlicer) apply.
+    #[cfg(feature = "host-algos")]
+    {
+        use crate::polygon_ops::{difference_ex, union_ex};
+        use std::collections::BTreeMap;
+
+        // Collect distinct (semantic, value) pairs present in the mesh. For
+        // each pair build a painted-only IndexedTriangleSet that carries both
+        // facet-painted triangles (vertex indices into the object's mesh) AND
+        // stroke triangles (whose raw vertex coordinates are appended to the
+        // subset's vertex pool with fresh contiguous indices).
+        let mut painted_subsets: BTreeMap<
+            (String, slicer_ir::PaintValue),
+            (slicer_ir::PaintSemantic, slicer_ir::IndexedTriangleSet),
+        > = BTreeMap::new();
+
+        let sem_name = |s: &slicer_ir::PaintSemantic| -> String {
+            match s {
+                slicer_ir::PaintSemantic::Material => "material".to_owned(),
+                slicer_ir::PaintSemantic::FuzzySkin => "fuzzy_skin".to_owned(),
+                slicer_ir::PaintSemantic::SupportEnforcer => "support_enforcer".to_owned(),
+                slicer_ir::PaintSemantic::SupportBlocker => "support_blocker".to_owned(),
+                slicer_ir::PaintSemantic::Custom(name) => name.clone(),
+            }
+        };
+
+        for obj in &mesh.objects {
+            let Some(pd) = &obj.paint_data else { continue };
+            for layer in &pd.layers {
+                // Facet paint: triangles share the object's existing vertex pool.
+                for (facet_idx, fv) in layer.facet_values.iter().enumerate() {
+                    let Some(value) = fv else { continue };
+                    let key = (sem_name(&layer.semantic), value.clone());
+                    let entry = painted_subsets.entry(key).or_insert_with(|| {
+                        (
+                            layer.semantic.clone(),
+                            slicer_ir::IndexedTriangleSet {
+                                vertices: obj.mesh.vertices.clone(),
+                                indices: Vec::new(),
+                            },
+                        )
+                    });
+                    let base = facet_idx * 3;
+                    if base + 2 < obj.mesh.indices.len() {
+                        entry.1.indices.push(obj.mesh.indices[base]);
+                        entry.1.indices.push(obj.mesh.indices[base + 1]);
+                        entry.1.indices.push(obj.mesh.indices[base + 2]);
+                    }
+                }
+                // Stroke paint: append raw stroke-triangle vertices to the
+                // subset's vertex pool and emit fresh indices. Strokes carry
+                // their own semantic/value (overriding the layer semantic when
+                // they differ, matching `extract_stroke_data` in phase3 prep).
+                for stroke in &layer.strokes {
+                    let key = (sem_name(&stroke.semantic), stroke.value.clone());
+                    let entry = painted_subsets.entry(key).or_insert_with(|| {
+                        (
+                            stroke.semantic.clone(),
+                            slicer_ir::IndexedTriangleSet {
+                                vertices: obj.mesh.vertices.clone(),
+                                indices: Vec::new(),
+                            },
+                        )
+                    });
+                    for tri in &stroke.triangles {
+                        let base_idx = entry.1.vertices.len() as u32;
+                        entry.1.vertices.push(tri[0]);
+                        entry.1.vertices.push(tri[1]);
+                        entry.1.vertices.push(tri[2]);
+                        entry.1.indices.push(base_idx);
+                        entry.1.indices.push(base_idx + 1);
+                        entry.1.indices.push(base_idx + 2);
+                    }
+                }
+            }
+        }
+
+        // Shell-window counts come from the BASE ResolvedConfig (configs[0]).
+        // RegionMapIR pre-seeds configs[0] with `ResolvedConfig::default()`, so
+        // the fallback for missing keys is OrcaSlicer's default (top=3, bottom=3).
+        let (top_shell_layers, bottom_shell_layers): (usize, usize) =
+            match region_map.configs.first() {
+                Some(cfg) => (
+                    cfg.top_shell_layers as usize,
+                    cfg.bottom_shell_layers as usize,
+                ),
+                // TODO: when per-object/per-region paint configs are wired through
+                // execute_paint_segmentation, prefer the region-specific config
+                // here instead of the BASE default.
+                None => (3, 3),
+            };
+
+        if !painted_subsets.is_empty() && !working.is_empty() {
+            // layer_zs already computed above for modifier volumes.
+            // Per-layer BASE contours come from each layer's current BASE
+            // SlicedRegion (the empty-variant_chain region produced by Phase 4
+            // above). Fall back to a union over all regions if BASE is missing.
+            let layer_input_polygons: Vec<Vec<slicer_ir::ExPolygon>> = working
+                .iter()
+                .map(|s| {
+                    s.regions
+                        .iter()
+                        .find(|r| r.variant_chain.is_empty())
+                        .map(|r| r.polygons.clone())
+                        .unwrap_or_else(|| {
+                            s.regions
+                                .iter()
+                                .flat_map(|r| r.polygons.iter().cloned())
+                                .collect()
+                        })
+                })
+                .collect();
+
+            // Run Phase 6 for each (semantic, value) and merge into working.
+            for ((sname, value), (semantic, painted_mesh)) in &painted_subsets {
+                if painted_mesh.indices.is_empty() {
+                    continue;
+                }
+                let phase6 = top_bottom::propagate_top_bottom(
+                    painted_mesh,
+                    semantic.clone(),
+                    value.clone(),
+                    &layer_zs,
+                    &layer_input_polygons,
+                    top_shell_layers,
+                    bottom_shell_layers,
+                );
+
+                let chain_key: Vec<(String, slicer_ir::PaintValue)> =
+                    vec![(sname.clone(), value.clone())];
+
+                for (l, polys) in phase6.per_layer.iter().enumerate() {
+                    if polys.is_empty() || l >= working.len() {
+                        continue;
+                    }
+                    // Phase 7 merge step 1: diff_ex BASE − phase6 (phase6 wins).
+                    if let Some(base) = working[l]
+                        .regions
+                        .iter_mut()
+                        .find(|r| r.variant_chain.is_empty())
+                    {
+                        base.polygons = difference_ex(&base.polygons, polys);
+                    }
+
+                    // Phase 7 merge step 2: append/union phase6 into per-color
+                    // SlicedRegion. If no region has this variant_chain yet,
+                    // create one cloning the BASE's object_id / region_id.
+                    let existing_idx = working[l]
+                        .regions
+                        .iter()
+                        .position(|r| r.variant_chain == chain_key);
+                    match existing_idx {
+                        Some(idx) => {
+                            let mut combined = working[l].regions[idx].polygons.clone();
+                            combined.extend(polys.iter().cloned());
+                            working[l].regions[idx].polygons = union_ex(&combined);
+                        }
+                        None => {
+                            // Use first existing region as template for ids.
+                            if let Some(template) = working[l].regions.first() {
+                                let object_id = template.object_id.clone();
+                                let region_id = template.region_id;
+                                working[l].regions.push(slicer_ir::SlicedRegion {
+                                    object_id,
+                                    region_id,
+                                    polygons: polys.clone(),
+                                    variant_chain: chain_key.clone(),
+                                    segment_annotations: std::collections::HashMap::new(),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(Arc::new(working))
 }
 

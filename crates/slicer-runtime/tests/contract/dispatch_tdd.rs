@@ -21,8 +21,10 @@ use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-// Note: slicer_core::paint_region, execute_paint_segmentation, PaintSegmentationError,
-// PaintRegionIR, LayerPaintMap, SemanticRegion removed in packet 95 sub-step 16.
+// Note: the v1 paint-segmentation driver and its rtree-backed paint-region IR
+// shapes (the per-layer paint map + semantic-region records) were retired in
+// packet 95 sub-step 16. Paint annotations now flow through
+// `SliceIR.regions[*].segment_annotations` per D14 (AC-16).
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, FacetPaintData, GCodeIR, GlobalLayer,
     LayerCollectionIR, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintSemantic, PaintValue,
@@ -1845,10 +1847,12 @@ fn config_isolation_across_sequential_calls() {
 }
 
 // ── H. Paint region wiring tests (IGNORED - v2 integration follow-up) ────────
-// PaintRegionIR, LayerPaintMap, SemanticRegion, commit_paint_regions, and
-// paint_regions() were removed in packet 95 sub-step 16. Paint annotations now
-// live in SliceIR segment_annotations (AC-16). Tests will be re-enabled when the
-// WIT guest interface is updated to expose segment_annotations directly.
+// The v1 rtree-backed paint-region IR (per-layer paint map + semantic-region
+// records) and its host-side accessor + committer pair on the blackboard were
+// retired in packet 95 sub-step 16. Paint annotations now live in
+// `SliceIR.regions[*].segment_annotations` (AC-16). The legacy wiring tests
+// below remain disabled until the WIT guest interface is updated to expose
+// `segment_annotations` directly to guest modules.
 
 /// Contract-surface coverage for the v2 paint annotation plumbing.
 ///
@@ -1975,11 +1979,12 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
 //   - paint_region_deterministic_across_repeated_dispatches      [covered by AC-N3]
 //   - non_paint_stage_not_affected_by_blackboard_paint_data
 //   - slice_and_paint_both_visible_in_same_support_dispatch
-// All asserted PaintRegionIR-shaped contracts that no longer exist in any form.
-// `paint_regions()` / `commit_paint_regions` accessors were removed (AC-15).
-// `real_paint_region_data_visible_through_production_support_dispatch` remains
-// as the live contract-surface coverage for v2 segment_annotations plumbing
-// (rewritten below).
+// All of these asserted contracts shaped against the retired v1 rtree-backed
+// paint-region IR that no longer exists in any form. The host-side paint
+// accessor and committer methods on the blackboard were removed at the same
+// time (AC-15). `real_paint_region_data_visible_through_production_support_dispatch`
+// remains as the live contract-surface coverage for v2 `segment_annotations`
+// plumbing (rewritten below).
 
 #[test]
 fn infill_output_correct_when_slice_regions_present() {

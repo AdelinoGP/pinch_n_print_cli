@@ -1,9 +1,17 @@
 //! Phase 6 — Top/bottom surface propagation for paint-segmentation.
 //!
-//! SIMPLIFIED FIRST CUT: For each layer, emits the intersection of
-//! `top_proj[l] ∪ bottom_proj[l]` with `layer_input_polygons[l]`.
-//! Full shell-propagation (top_shell_layers / bottom_shell_layers) is a
-//! follow-up; tracked in follow_up notes at the bottom of this file.
+//! For each layer `L`, this stage emits the intersection of
+//! `layer_input_polygons[L]` with the union of:
+//!   - `top_proj[M]` for any layer `M` in `[L, L + top_shell_layers)`  — top-shell
+//!     painted top-facing facets propagate DOWN by `top_shell_layers` layers
+//!     (so a top-painted face also paints the `N-1` layers beneath it).
+//!   - `bot_proj[M]` for any layer `M` in `(L - bottom_shell_layers, L]` — symmetric
+//!     bottom-shell propagation UP by `bottom_shell_layers` layers.
+//!
+//! When `top_shell_layers == 0` and `bottom_shell_layers == 0`, both windows
+//! collapse to the single layer `L` and the result is
+//! `intersection(top_proj[L] ∪ bot_proj[L], layer_input_polygons[L])` — matching
+//! the original first-cut behaviour.
 
 use crate::polygon_ops::{intersection_ex, union_ex};
 use crate::triangle_mesh_slicer::slice_mesh_slabs;
@@ -19,29 +27,33 @@ pub struct PerLayerSemanticPolygons {
     pub per_layer: Vec<Vec<ExPolygon>>,
 }
 
-/// Propagate top/bottom painted surfaces across layers.
+/// Propagate top/bottom painted surfaces across layers with OrcaSlicer-parity
+/// shell-window propagation.
 ///
 /// # Arguments
 /// - `painted_mesh_facets` — the painted-facets-only mesh extract.
 /// - `semantic` / `value` — forwarded unchanged into the result.
 /// - `layer_zs` — layer centre Z values in mm (length N).
 /// - `layer_input_polygons` — sliced contours per layer (length N).
-/// - `top_shell_layers` / `bottom_shell_layers` — shell thickness (future use).
+/// - `top_shell_layers` — number of layers a top-facing painted facet propagates
+///   DOWN.  A facet sitting in slab `M` paints layers `M - top_shell_layers + 1
+///   .. M` (clipped to `[0, N)`).  `0` disables this contribution.
+/// - `bottom_shell_layers` — symmetric: a bottom-facing painted facet in slab
+///   `M` paints layers `M .. M + bottom_shell_layers - 1`.
 ///
-/// # Simplified first cut
-/// For each layer l:
-///   result.per_layer[l] = intersection(top_proj[l] ∪ bottom_proj[l], layer_input_polygons[l])
-///
-/// Full shell propagation (expanding top/bottom influence by `top_shell_layers`) is deferred;
-/// see follow-up notes at file bottom.
+/// # Behaviour at shell_layers = 0
+/// With both shell counts at zero, only the layer's own slab projection
+/// contributes; the output collapses to
+/// `intersection(top_proj[l] ∪ bot_proj[l], layer_input_polygons[l])` for every
+/// `l` — the first-cut behaviour preserved.
 pub fn propagate_top_bottom(
     painted_mesh_facets: &IndexedTriangleSet,
     semantic: PaintSemantic,
     value: PaintValue,
     layer_zs: &[f32],
     layer_input_polygons: &[Vec<ExPolygon>],
-    _top_shell_layers: usize,
-    _bottom_shell_layers: usize,
+    top_shell_layers: usize,
+    bottom_shell_layers: usize,
 ) -> PerLayerSemanticPolygons {
     let n = layer_zs.len();
     if n == 0 || painted_mesh_facets.vertices.is_empty() {
@@ -59,32 +71,53 @@ pub fn propagate_top_bottom(
         0.2_f32
     };
     let half = layer_thickness / 2.0;
+    // `slice_mesh_slabs` uses a strict `face_min_z < slab_hi && face_max_z > slab_lo`
+    // overlap check.  A facet that sits exactly on `layer_zs[n-1] + half` (the top
+    // boundary) — i.e. the cube's top face at z = top_z — would be excluded from
+    // the topmost slab.  Symmetrically the very bottom face sits at the lower
+    // boundary.  Extend the outermost two bounds by a tiny epsilon so these
+    // on-boundary facets are captured in their natural slab.  Epsilon is sized in
+    // mm and well below printable resolution (1 µm).
+    let bound_eps = 1.0e-3_f32;
     let mut zs_bounds: Vec<f32> = Vec::with_capacity(n + 1);
-    zs_bounds.push(layer_zs[0] - half);
+    zs_bounds.push(layer_zs[0] - half - bound_eps);
     for i in 1..n {
         zs_bounds.push((layer_zs[i - 1] + layer_zs[i]) / 2.0);
     }
-    zs_bounds.push(layer_zs[n - 1] + half);
+    zs_bounds.push(layer_zs[n - 1] + half + bound_eps);
 
     let (top_proj, bot_proj) = slice_mesh_slabs(painted_mesh_facets, &zs_bounds);
 
-    let slab_count = top_proj.len(); // == n (== zs_bounds.len()-1)
     let out_len = n.min(layer_input_polygons.len());
     let mut per_layer: Vec<Vec<ExPolygon>> = Vec::with_capacity(out_len);
 
-    for l in 0..out_len {
-        let top_l = top_proj.get(l).map(|v| v.as_slice()).unwrap_or(&[]);
-        let bot_l = bot_proj.get(l).map(|v| v.as_slice()).unwrap_or(&[]);
+    // Shell window radii.  At shells = 0 both windows collapse to {l}.
+    // top_shell_layers semantics: a top-facing painted facet at slab M paints
+    // layers `M - top_shell_layers + 1 .. M` (so layer L pulls from slabs
+    // `L ..= L + top_shell_layers - 1`).  Equivalently, sliding window of
+    // length `max(1, top_shell_layers)` starting at L.
+    let top_window = top_shell_layers.max(1);
+    let bot_window = bottom_shell_layers.max(1);
 
-        if top_l.is_empty() && bot_l.is_empty() {
+    for l in 0..out_len {
+        // Gather top contributions from slabs [l, l + top_window).
+        let top_hi = (l + top_window).min(top_proj.len());
+        let mut combined: Vec<ExPolygon> = Vec::new();
+        for m in l..top_hi {
+            combined.extend_from_slice(&top_proj[m]);
+        }
+        // Gather bottom contributions from slabs (l - bot_window, l].
+        let bot_lo = l.saturating_sub(bot_window - 1);
+        let bot_hi = (l + 1).min(bot_proj.len());
+        for m in bot_lo..bot_hi {
+            combined.extend_from_slice(&bot_proj[m]);
+        }
+
+        if combined.is_empty() {
             per_layer.push(Vec::new());
             continue;
         }
 
-        // Union top and bottom projections for this layer.
-        let mut combined: Vec<ExPolygon> = Vec::new();
-        combined.extend_from_slice(top_l);
-        combined.extend_from_slice(bot_l);
         let unioned = union_ex(&combined);
 
         // Intersect with layer's sliced contour to stay within the print body.
@@ -103,20 +136,12 @@ pub fn propagate_top_bottom(
         per_layer.push(Vec::new());
     }
 
-    let _ = slab_count; // suppress lint
-
     PerLayerSemanticPolygons {
         semantic,
         value,
         per_layer,
     }
 }
-
-// follow_up: Full shell propagation:
-//   - top:    for shell in 0..top_shell_layers, intersect top_proj[l+shell+1] with
-//             layer_input_polygons[l+shell+1] and accumulate, then difference back residue.
-//   - bottom: symmetric with bot_proj[l-shell-1].
-//   This requires iterating over adjacent slabs and is omitted in the simplified first cut.
 
 #[cfg(test)]
 mod tests {
@@ -199,14 +224,16 @@ mod tests {
             .map(|_| square_contour_mm(0.0, 0.0, 1.0, 1.0))
             .collect();
 
+        // shell_layers = 0 — original first-cut behaviour: only the slab's own
+        // layer carries the top-face projection.
         let result = propagate_top_bottom(
             &mesh,
             PaintSemantic::Material,
             PaintValue::ToolIndex(2),
             &layer_zs,
             &contours,
-            3,
-            3,
+            0,
+            0,
         );
 
         // At least one layer should have non-empty polygons (the slab covering z=1).
@@ -258,5 +285,89 @@ mod tests {
             "Expected PaintValue::Flag(true), got {:?}",
             result.value
         );
+    }
+
+    #[test]
+    fn propagate_top_bottom_top_shell_3_propagates_down_3_layers() {
+        // 5 layers, top-painted face at z=1mm (top of unit cube).  With
+        // top_shell_layers=3 the top-face slab plus the two layers below it
+        // should all receive coverage.
+        let mesh = unit_cube_painted_mesh();
+        let layer_zs: Vec<f32> = (0..5).map(|i| (i as f32 + 0.5) * 0.3).collect();
+        // layer_zs ≈ [0.15, 0.45, 0.75, 1.05, 1.35]; top face slab ≈ idx 3.
+        let contours: Vec<Vec<ExPolygon>> = layer_zs
+            .iter()
+            .map(|_| square_contour_mm(0.0, 0.0, 1.0, 1.0))
+            .collect();
+
+        let result_shells_3 = propagate_top_bottom(
+            &mesh,
+            PaintSemantic::Material,
+            PaintValue::ToolIndex(2),
+            &layer_zs,
+            &contours,
+            3, // top shell propagates DOWN by 3
+            0,
+        );
+        let result_shells_0 = propagate_top_bottom(
+            &mesh,
+            PaintSemantic::Material,
+            PaintValue::ToolIndex(2),
+            &layer_zs,
+            &contours,
+            0,
+            0,
+        );
+
+        let nonempty_count_3 = result_shells_3
+            .per_layer
+            .iter()
+            .filter(|l| !l.is_empty())
+            .count();
+        let nonempty_count_0 = result_shells_0
+            .per_layer
+            .iter()
+            .filter(|l| !l.is_empty())
+            .count();
+        assert!(
+            nonempty_count_3 > nonempty_count_0,
+            "shell_layers=3 must propagate to more layers ({} vs {} at shells=0)",
+            nonempty_count_3,
+            nonempty_count_0
+        );
+        // With a top-only painted facet near the top of the stack, top-shell=3
+        // pulls coverage onto the slab's layer and (at least) the layer below.
+        assert!(
+            nonempty_count_3 >= 2,
+            "Expected ≥2 non-empty layers at shells=3, got {}",
+            nonempty_count_3
+        );
+    }
+
+    #[test]
+    fn propagate_top_bottom_shells_zero_collapses_to_first_cut() {
+        // Property: with shells = 0, output must equal the per-slab
+        // intersection-only behaviour (no propagation).
+        let mesh = unit_cube_painted_mesh();
+        let layer_zs: Vec<f32> = (0..4).map(|i| (i as f32 + 0.5) * 0.3).collect();
+        let contours: Vec<Vec<ExPolygon>> = layer_zs
+            .iter()
+            .map(|_| square_contour_mm(0.0, 0.0, 1.0, 1.0))
+            .collect();
+
+        let result = propagate_top_bottom(
+            &mesh,
+            PaintSemantic::Material,
+            PaintValue::ToolIndex(1),
+            &layer_zs,
+            &contours,
+            0,
+            0,
+        );
+
+        // At least one layer non-empty; no padding beyond layer count.
+        assert_eq!(result.per_layer.len(), contours.len());
+        let any_nonempty = result.per_layer.iter().any(|l| !l.is_empty());
+        assert!(any_nonempty, "shells=0 still produces coverage in top slab");
     }
 }

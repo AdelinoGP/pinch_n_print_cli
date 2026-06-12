@@ -1723,3 +1723,13 @@ that data crossed the boundary intact, paint queries were honoured,
 and per-region identity (`region-key`) survived the commit path.
 This convention is *informative* — guest authors are free to encode
 signals differently as long as the matching host test reads them back.
+
+### 3MF TriangleSelector child ordering
+
+OrcaSlicer / PrusaSlicer / BambuStudio's `TriangleSelector::serialize`
+walks subdivided children in **reverse index order**
+(`for child_idx = split_sides; child_idx >= 0; --child_idx`). Any decoder
+of 3MF paint hex sequences MUST iterate child slots in reverse before
+recursing, otherwise painted states land on the wrong sub-triangle
+positions. The canonical handling lives in
+`crates/slicer-model-io/src/loader.rs:2018-2030`.

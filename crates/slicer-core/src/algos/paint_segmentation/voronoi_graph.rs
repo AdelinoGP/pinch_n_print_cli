@@ -210,6 +210,18 @@ pub struct MMU_Graph {
     /// `cell.source_index().usize()` indexes this array for segment cells (H561).
     #[cfg(feature = "host-algos")]
     pub(crate) bv_segment_colors: Vec<Option<PaintValue>>,
+    /// Pre-merge input segment endpoints (i32 coords) with their colors.
+    ///
+    /// Stored so the corner-displacement post-pass in `cells_to_expolygons_by_color`
+    /// can identify which corners a color actually OWNS in the original colored-line
+    /// input, before `merge_collinear_overlapping` reassigned some intervals to
+    /// other colors. Without this, a color whose original short-interval at a
+    /// contour corner was preempted by an overlapping shortest-segment-wins merger
+    /// would leave a leaked corner vertex untouched (see B1 diagnosis, packet 95).
+    ///
+    /// Tuple: ((sx, sy), (ex, ey), color).
+    #[cfg(feature = "host-algos")]
+    pub(crate) bv_pre_merge_segments: Vec<((i32, i32), (i32, i32), Option<PaintValue>)>,
 }
 
 /// Bucket integer segments by canonical infinite-line identity and merge any
@@ -425,6 +437,11 @@ impl MMU_Graph {
             }
             int_segments.push(((sx, sy), (ex, ey), cl.value.clone()));
         }
+        // Clone pre-merge segments before consuming `int_segments` in the merger.
+        // Needed by the corner-displacement post-pass to recover endpoints that
+        // the shortest-segment-wins merger reassigned to another color.
+        let bv_pre_merge_segments: Vec<((i32, i32), (i32, i32), Option<PaintValue>)> =
+            int_segments.clone();
         let (bv_segments, bv_segment_colors) = merge_collinear_overlapping(int_segments);
 
         // Build the diagram.
@@ -600,6 +617,7 @@ impl MMU_Graph {
             polygon_idx_offset,
             bv_segments,
             bv_segment_colors,
+            bv_pre_merge_segments,
         })
     }
 
@@ -628,6 +646,8 @@ impl MMU_Graph {
             bv_segments: Vec::new(),
             #[cfg(feature = "host-algos")]
             bv_segment_colors: Vec::new(),
+            #[cfg(feature = "host-algos")]
+            bv_pre_merge_segments: Vec::new(),
         }
     }
 
@@ -1036,50 +1056,65 @@ impl MMU_Graph {
             // Build per-colour displacement table:
             //   color_key → Vec<(corner: Point2, shift_x: i64, shift_y: i64)>
             //
-            // For every segment si and each of its two endpoints C:
-            //   if there exists another segment sj ≠ si sharing C with a DIFFERENT colour:
+            // Source of truth: PRE-merge ColoredLine endpoints
+            // (`self.bv_pre_merge_segments`).  Using POST-merge `bv_segs` here
+            // misses corners owned by a colour whose short-interval at the corner
+            // was reassigned to a different colour by the shortest-segment-wins
+            // rule in `merge_collinear_overlapping`.  Concretely, packet 95's
+            // back-face failure: a TI=3 facet stroke at left-edge interval
+            // [1172500, 1175000] is preempted by a TI=0 stroke; bv_segs[TI=3]'s
+            // endpoint moves to (1125000, 1172500), so the corner (1125000,
+            // 1175000) is no longer a TI=3 endpoint in bv_segs, no displacement
+            // entry is built for it, and the Voronoi walk's leaked corner vertex
+            // for TI=3 stays put.  Pre-merge segments preserve TI=3's original
+            // (1125000, 1175000) endpoint and trigger the displacement.
+            //
+            // For every pre-merge segment si and each of its two endpoints C:
+            //   if there exists another pre-merge segment sj ≠ si sharing C with
+            //   a DIFFERENT colour:
             //     si displaces C toward its OTHER endpoint.
-            // (Both neighbours of C displace; each moves along its own face direction.)
+            // (Both neighbours of C displace; each moves along its own face
+            // direction.)
             let mut displacement_map: std::collections::HashMap<
                 Option<PaintValue>,
                 Vec<(Point2, i64, i64)>,
             > = std::collections::HashMap::new();
 
-            let n = bv_segs.len();
-            for si in 0..n {
-                let si_color = seg_colors.get(si).and_then(|c| c.clone());
+            let pre = &self.bv_pre_merge_segments;
+            let n_pre = pre.len();
+            for si in 0..n_pre {
+                let si_color = pre[si].2.clone();
                 for endpoint_is_start in [true, false] {
                     let (cx, cy, ox, oy) = if endpoint_is_start {
                         (
-                            bv_segs[si].start.x as i64,
-                            bv_segs[si].start.y as i64,
-                            bv_segs[si].end.x as i64,
-                            bv_segs[si].end.y as i64,
+                            pre[si].0 .0 as i64,
+                            pre[si].0 .1 as i64,
+                            pre[si].1 .0 as i64,
+                            pre[si].1 .1 as i64,
                         )
                     } else {
                         (
-                            bv_segs[si].end.x as i64,
-                            bv_segs[si].end.y as i64,
-                            bv_segs[si].start.x as i64,
-                            bv_segs[si].start.y as i64,
+                            pre[si].1 .0 as i64,
+                            pre[si].1 .1 as i64,
+                            pre[si].0 .0 as i64,
+                            pre[si].0 .1 as i64,
                         )
                     };
 
-                    // si displaces C if any other segment sj has an endpoint at C with
-                    // a DIFFERENT colour (regardless of whether sj's colour is higher or
-                    // lower — both sides of the colour boundary displace symmetrically).
-                    let must_displace = (0..n).any(|sj| {
+                    // si displaces C if any other pre-merge segment sj has an
+                    // endpoint at C with a DIFFERENT colour (regardless of
+                    // whether sj's colour is higher or lower — both sides of the
+                    // colour boundary displace symmetrically).
+                    let must_displace = (0..n_pre).any(|sj| {
                         if sj == si {
                             return false;
                         }
-                        let sj_color = seg_colors.get(sj).and_then(|c| c.clone());
+                        let sj_color = pre[sj].2.clone();
                         if sj_color == si_color {
                             return false;
                         }
-                        let s_at_c =
-                            bv_segs[sj].start.x as i64 == cx && bv_segs[sj].start.y as i64 == cy;
-                        let e_at_c =
-                            bv_segs[sj].end.x as i64 == cx && bv_segs[sj].end.y as i64 == cy;
+                        let s_at_c = pre[sj].0 .0 as i64 == cx && pre[sj].0 .1 as i64 == cy;
+                        let e_at_c = pre[sj].1 .0 as i64 == cx && pre[sj].1 .1 as i64 == cy;
                         s_at_c || e_at_c
                     });
 
@@ -1110,7 +1145,7 @@ impl MMU_Graph {
                 }
             }
 
-            // Apply displacement table to each colour's polygons.
+            // Apply corner displacement table to each colour's polygons.
             for (color_key, displacements) in &displacement_map {
                 if let Some(polys) = result.get_mut(color_key) {
                     for expoly in polys.iter_mut() {
@@ -1123,6 +1158,141 @@ impl MMU_Graph {
                                     break;
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // --- Step 10: foreign-edge proximity shrink post-pass ---
+            //
+            // The corner displacement above handles exact-corner leaks, but
+            // bisector vertices in the Voronoi walk can also land inside the
+            // downstream face-proximity tolerance zone of a FOREIGN contour
+            // edge (an edge that the current colour has no pre-merge
+            // ColoredLine on).  Example (packet 95 back-face): a TI=3 stroke
+            // on the LEFT contour edge near the back-left corner produces
+            // bisector vertices like (x_min, ~1_172_872) — only ~2128 units
+            // below the back contour edge (y_max = 1_175_000), inside the
+            // 2500-unit predicate window.  TI=3 has no painted-line on the
+            // back edge, so this vertex represents a Voronoi bleed onto the
+            // back face.
+            //
+            // Fix: for every colour C, identify which canonical contour edges
+            // (infinite-line identity from `merge_collinear_overlapping`) C
+            // owns at least one pre-merge ColoredLine on.  Then for each
+            // vertex of every C polygon, if the vertex lies within
+            // `corner_shift` of a pre-merge segment of any OTHER colour on a
+            // line C does NOT own, displace the vertex perpendicular to that
+            // foreign line by `corner_shift`, away from the line.
+            //
+            // The canonical-line identity is exactly the bucket key used by
+            // `merge_collinear_overlapping`: ((cdx, cdy), perp_offset) with
+            // cdx/cdy gcd-reduced and sign-canonicalised.
+
+            fn gcd_p95(a: i64, b: i64) -> i64 {
+                let (mut a, mut b) = (a.abs(), b.abs());
+                while b != 0 {
+                    let t = a % b;
+                    a = b;
+                    b = t;
+                }
+                a
+            }
+            fn canon_dir_p95(dx: i64, dy: i64) -> (i64, i64) {
+                let g = gcd_p95(dx, dy).max(1);
+                let (mut cdx, mut cdy) = (dx / g, dy / g);
+                if cdx < 0 || (cdx == 0 && cdy < 0) {
+                    cdx = -cdx;
+                    cdy = -cdy;
+                }
+                (cdx, cdy)
+            }
+            // Canonical line identity for a pre-merge segment.
+            fn line_key_p95(sx: i32, sy: i32, ex: i32, ey: i32) -> ((i64, i64), i64) {
+                let dx = (ex as i64) - (sx as i64);
+                let dy = (ey as i64) - (sy as i64);
+                let (cdx, cdy) = canon_dir_p95(dx, dy);
+                let offset = cdx * (sy as i64) - cdy * (sx as i64);
+                ((cdx, cdy), offset)
+            }
+
+            // Build owned-line set per colour.
+            let mut owned_lines: std::collections::HashMap<
+                Option<PaintValue>,
+                std::collections::HashSet<((i64, i64), i64)>,
+            > = std::collections::HashMap::new();
+            for ((sx, sy), (ex, ey), col) in self.bv_pre_merge_segments.iter() {
+                let key = line_key_p95(*sx, *sy, *ex, *ey);
+                owned_lines.entry(col.clone()).or_default().insert(key);
+            }
+
+            // Apply foreign-edge shrink per colour.
+            for (color_key, polys) in result.iter_mut() {
+                let owned: &std::collections::HashSet<((i64, i64), i64)> =
+                    match owned_lines.get(color_key) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+
+                for expoly in polys.iter_mut() {
+                    for pt in expoly.contour.points.iter_mut() {
+                        // For each pre-merge foreign segment, check distance.
+                        for ((sx, sy), (ex, ey), other_col) in self.bv_pre_merge_segments.iter() {
+                            if other_col == color_key {
+                                continue;
+                            }
+                            let key = line_key_p95(*sx, *sy, *ex, *ey);
+                            if owned.contains(&key) {
+                                // Colour C also has at least one ColoredLine on
+                                // this same infinite line — not foreign.
+                                continue;
+                            }
+                            // Compute signed perpendicular distance from pt to the
+                            // canonical-line direction.  We only need to fence
+                            // the vertex away from the line itself (not the
+                            // bounded segment), because contour edges extend
+                            // across the entire face and any vertex within
+                            // `corner_shift` of the line is in the foreign-face
+                            // tolerance zone regardless of where on the line it
+                            // projects.  This matches the v2 vertical-face
+                            // contract: a colour confined to the left face must
+                            // not produce vertices within the back-face zone.
+                            let ((cdx, cdy), _off) = key;
+                            // Unit perpendicular: (cdy, -cdx) / sqrt(cdx^2+cdy^2).
+                            let len_sq = (cdx * cdx + cdy * cdy) as f64;
+                            if len_sq < 0.25 {
+                                continue;
+                            }
+                            let inv_len = 1.0 / len_sq.sqrt();
+                            // Perpendicular distance = (-cdy * (px - sx) + cdx * (py - sy)) / sqrt(len_sq)
+                            let dx_p = (pt.x - *sx as i64) as f64;
+                            let dy_p = (pt.y - *sy as i64) as f64;
+                            // Use the (cdy, -cdx) perpendicular convention.
+                            let perp = (cdy as f64 * dx_p - cdx as f64 * dy_p) * inv_len;
+                            let dist = perp.abs();
+                            if dist >= corner_shift as f64 {
+                                continue;
+                            }
+                            // Shift perpendicular to the foreign line, AWAY from
+                            // it.  If `perp > 0`, the vertex is on the +perp
+                            // side, so we shift further in +perp direction;
+                            // if `perp < 0`, shift further in -perp direction.
+                            // Magnitude: (corner_shift - dist) so the vertex
+                            // ends up exactly corner_shift from the line.
+                            let need = corner_shift as f64 - dist;
+                            let sign = if perp >= 0.0 { 1.0 } else { -1.0 };
+                            // Perpendicular unit vector is (cdy, -cdx) * inv_len.
+                            let ux = cdy as f64 * inv_len;
+                            let uy = -(cdx as f64) * inv_len;
+                            let shift_x = (sign * need * ux).round() as i64;
+                            let shift_y = (sign * need * uy).round() as i64;
+                            pt.x += shift_x;
+                            pt.y += shift_y;
+                            // Only apply one foreign-edge displacement per
+                            // vertex per pass; further iterations would
+                            // compound rounding error.  In practice the
+                            // closest foreign edge dominates the danger zone.
+                            break;
                         }
                     }
                 }
@@ -1665,14 +1835,6 @@ mod tests {
         }];
 
         let result = graph.cells_to_expolygons_by_color(&bbox, &contour);
-
-        // Debug: print what we got
-        for (k, v) in &result {
-            eprintln!("color {:?}: {} polys", k, v.len());
-            for poly in v {
-                eprintln!("  pts: {:?}", poly.contour.points);
-            }
-        }
 
         // Must have exactly 4 color entries.
         assert_eq!(

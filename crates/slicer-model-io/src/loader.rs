@@ -2011,7 +2011,19 @@ fn walk_triangle_selector_strokes(
         let special_side = nibble >> 2;
         let (child_verts, _) =
             split_triangle_strokes(verts, split_type, special_side, byte_offset)?;
-        for child in child_verts {
+        // OrcaSlicer/PrusaSlicer/BambuStudio `TriangleSelector::serialize` writes
+        // children in REVERSE order:
+        //
+        //     for (int child_idx = split_sides; child_idx >= 0; --child_idx)
+        //         this->serialize(tr.children[child_idx]);
+        //
+        // The deserializer therefore must consume the first child slot read
+        // from the stream as `children[N]`, the second as `children[N-1]`, …
+        // Our locally-constructed `child_verts` array is indexed `[0..=N]`
+        // matching the C++ `children[]` order, so we iterate it in reverse
+        // before recursing. Without this reversal, painted states land on the
+        // wrong sub-triangle positions when a triangle is subdivided.
+        for child in child_verts.into_iter().rev() {
             walk_triangle_selector_strokes(nibbles, pos, child, 0, out, byte_offset, depth + 1)?;
         }
     }

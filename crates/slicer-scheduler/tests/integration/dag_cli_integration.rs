@@ -114,13 +114,19 @@ fn dag_stages_with_empty_module_dir_surfaces_host_builtin_stages_only() {
     let json: Value = serde_json::from_str(&stdout).expect("json");
     let stages = json["stages"].as_array().expect("stages array");
     let stage_ids: Vec<&str> = stages.iter().filter_map(|s| s["id"].as_str()).collect();
+    // Packet 95 D1 + D8: `PrePass::PaintSegmentation` is intentionally omitted —
+    // it runs as a host stage via `run_builtin_stage` (writing back into SliceIR
+    // via `Blackboard::replace_slice_ir`) and does NOT register a distinct
+    // `Producer` in `runtime_builtins()`, so `run_dag_stages` (which enumerates
+    // stages owned by some Producer) does not surface it. See
+    // `crates/slicer-runtime/tests/unit/builtin_producers_tdd.rs` which asserts
+    // the 7-producer set excluding paint segmentation.
     for expected in [
         "PrePass::MeshAnalysis",
         "PrePass::RegionMapping",
         "PrePass::Slice",
         "PrePass::ShellClassification",
         "PrePass::SupportGeometry",
-        "PrePass::PaintSegmentation",
         "PostPass::GCodeEmit",
     ] {
         assert!(
