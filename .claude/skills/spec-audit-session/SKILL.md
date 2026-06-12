@@ -35,6 +35,7 @@ Bias toward finding problems. "Looked fine while I was building it" is not evide
    One row per change made this session:
    - `file:line` (or file range) — one-line description — **READY** or **NOT READY** *(reason)*.
    Flag explicitly when present: missing error handling, untested paths, hardcoded values, debug/log artifacts, missing input validation, unhandled edge cases.
+   Also flag explicitly: **helpers introduced this session whose only call sites are tests** — mark the row `NOT READY (helper not invoked by production driver)`. Cross-check via `rg '<helper>\s*\(' --type rust --glob '!**/tests/**' --glob '!**/*_test*.rs'`. Zero non-test hits = dead code from the pipeline's view, even if every unit test passes. This is the P95 W6/W8 trap and it survived two prior closure logs.
 
    ### 3. PACKET DEVIATIONS
    Every divergence from the spec — different approach, changed interface, added/removed behaviour, or assumption made. For each, draft a line for the packet's `Deviations` section in this exact format:

@@ -106,6 +106,7 @@ Packet-authoring defects are global; you cannot scope them away. For every AC in
 - Names exact assertion content, not generic phrases ("all required fields", "correct diagnostics").
 - Command is delegation-friendly — small, parseable output on success (not >200-line logs).
 - **AC test exercises the production code path it describes.** A test that ends in placeholder asserts (e.g. only checks pre-existing fixture data) or contains comments like `// TBD`, `// not yet implemented`, `// DOCUMENTED EXPECTATION` is **not** evidence the AC is met. Dispatch a `SNIPPETS` read of the test body and confirm its assertions reference the symbols / IR fields named in the Given/When/Then. If the test is a placeholder, log a **HIGH** finding (packet-authoring defect — same severity as a missing runnable command) and treat the AC as `PARTIAL/INCOMPLETE` regardless of test-pass status.
+- **AC test exercises the driver, not just the helper.** When an AC's verification command runs a unit test on a helper / pure function (e.g. `cargo test -p <crate> --test <helper>_tests`), dispatch a second FACT: *"in the production code path named in the AC's Given/When/Then (driver / stage entry / Phase-N runner), does any line invoke `<helper>`? LOCATIONS."* If the helper has zero call sites in production code — only in tests — log a **HIGH** finding and mark the AC `PARTIAL/INCOMPLETE` regardless of test-pass status. This is the **helper-passes-driver-never-calls-it trap** P95 W6/W8 hit: the paint-segmentation helper's unit tests passed across two closure-log runs while the Phase-6 driver shipped without wiring it in, surviving only because the workspace-test ceremony was rejected as a stale claim.
 
 Packet-quality preflight:
 
@@ -185,6 +186,7 @@ For each AC in `packet.spec.md`:
 - Given/When/Then is met by implementation.
 - Verification command passes (or explicit reason it does not yet) *(dispatch the command; FACT pass/fail)*.
 - Test exists and asserts the criterion's promised content *(dispatch: "does test `<name>` exist and assert `<content>`? FACT")*.
+- **Helper wired into production driver.** When the AC's test exercises a helper directly, dispatch *"does the driver / stage entry named in the AC invoke `<helper>` on the production path? LOCATIONS."* A green helper-unit test with no driver call site = AC unmet; do not accept "the helper is tested" as evidence the pipeline uses it.
 - No partial fulfillment — "mostly done" = incomplete.
 - Negative / rejection criteria are implemented and verified when the packet requires them.
 
