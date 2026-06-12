@@ -323,7 +323,7 @@ impl fmt::Display for BuildError {
     }
 }
 
-fn tail_lines(s: &str, n: usize) -> String {
+pub fn tail_lines(s: &str, n: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
     let start = lines.len().saturating_sub(n);
     lines[start..].join("\n")

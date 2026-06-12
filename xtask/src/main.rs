@@ -1,5 +1,6 @@
 mod build_guests;
 mod check_deviations;
+mod dist;
 mod gen_config_docs;
 
 use std::env;
@@ -19,6 +20,8 @@ SUBCOMMANDS:
     check-deviations --check  Exit 1 if doc 07's Open Deviation Map is out of sync with the log.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
+    dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
+    dist --debug          Same as `dist`, but stages the debug-profile binary.
 
 OPTIONS:
     -h, --help            Print this message.
@@ -72,6 +75,24 @@ fn main() -> ExitCode {
                 }
                 Some(other) => {
                     eprintln!("xtask: unknown flag '{other}' for check-deviations\n");
+                    eprintln!("{USAGE}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("dist") => {
+            let flag = args.get(1).map(String::as_str);
+            match flag {
+                None => {
+                    let ws = build_guests::workspace_root();
+                    ExitCode::from(dist::dist_command(&ws, false) as u8)
+                }
+                Some("--debug") => {
+                    let ws = build_guests::workspace_root();
+                    ExitCode::from(dist::dist_command(&ws, true) as u8)
+                }
+                Some(other) => {
+                    eprintln!("xtask: unknown flag '{other}' for dist\n");
                     eprintln!("{USAGE}");
                     ExitCode::from(2)
                 }

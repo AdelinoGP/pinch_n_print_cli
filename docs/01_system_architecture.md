@@ -727,6 +727,34 @@ Modules may live flat at the root or nested one level deep in
 subdirectories (the layout used by `modules/core-modules/`). The scanner
 recognises both; `Cargo.toml` files inside subdirectories are excluded.
 
+### Producing the tier-4 layout: `cargo xtask dist`
+
+`cargo xtask dist` is the canonical way to assemble the
+`{executable_dir}/modules/` layout for shipping. It rebuilds every
+core-module guest WASM, builds `pnp_cli` (release by default; `--debug`
+opt-in), wipes `target/dist/`, and stages:
+
+```text
+target/dist/
+├── pnp_cli[.exe]
+└── modules/
+    └── <module-name>/
+        ├── <module-name>.toml
+        └── <module-name>.wasm   (one subdir per core module; 21 today)
+```
+
+Because tier 4 of the search path resolves to `current_exe()/modules/`,
+running `target/dist/pnp_cli` with no `--module-dir` flags discovers all
+staged modules automatically. Test-guests under
+`crates/slicer-wasm-host/test-guests/` are filtered out — the bundle
+contains shippable core modules only.
+
+The wipe-then-stage step guarantees deleted or renamed core modules do
+not linger in old dist bundles. Implementation lives in
+`xtask/src/dist.rs` and reuses `build_guests::discover_guests` so the
+shipped set tracks the same validated walk used by `cargo xtask
+build-guests`.
+
 ### Diagnostics
 
 Setting `SLICER_DEBUG_PATHS=1` causes the host to print the assembled
