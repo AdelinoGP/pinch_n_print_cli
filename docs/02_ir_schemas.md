@@ -80,7 +80,7 @@ pub struct ObjectMesh {
                                                // SupportGeometry); not serialized for multi-pass
                                                // per-layer modules
     pub transform: Transform3d,             // world-space placement (column-major f64)
-    pub config: ObjectConfig,               // raw user config, not yet override-resolved
+    pub config: ObjectConfig,               // raw user config + sidecar overlay (see contract below)
     pub modifier_volumes: Vec<ModifierVolume>,
     pub paint_data: Option<FacetPaintData>, /// All user-painted data for this object. None if the user has not applied any paint to this object.
 }
@@ -142,7 +142,11 @@ The attribute string is decoded as a whole-facet state value:
   recursive tree of sub-triangle states. Packet 50a added the decoder.
   The dominant state across the sub-tree is stamped onto `facet_values[i]`;
   per-leaf 3D triangle geometry for subdivided facets is captured in
-  `PaintLayer.strokes` (see "Stroke geometry" below).
+  `PaintLayer.strokes` (see "Stroke geometry" below). The tree walker
+  enforces a depth guard of **64 recursion levels**; malformed trees
+  exceeding this depth are rejected with `ModelLoadError::PaintMetadata`
+  containing `"exceeds maximum depth"` (prevents stack overflow on
+  pathological input).
 
 #### Channel decode contracts
 
@@ -151,14 +155,14 @@ The attribute string is decoded as a whole-facet state value:
 | `paint_fuzzy_skin` | 1 only | state 1 → `PaintValue::Flag(true)` (`PaintSemantic::FuzzySkin`) |
 | `paint_supports` | 1, 2 | state 1 → `PaintSemantic::SupportEnforcer`; state 2 → `PaintSemantic::SupportBlocker` |
 | `paint_seam` | 1, 2 | state 1 → `PaintSemantic::Custom("seam_enforcer")`; state 2 → `PaintSemantic::Custom("seam_blocker")` |
-| `paint_color` | 1–16 | state N → `PaintValue::ToolIndex(N)` (`PaintSemantic::Material`) |
+| `paint_color` | 1–16 | state N → `PaintValue::ToolIndex(N-1)` (`PaintSemantic::Material`) |
 
 Channel-specific constraints:
 
 - `paint_fuzzy_skin`: only state 1 is valid; any other state is rejected with `ModelLoadError::PaintMetadata`.
 - `paint_supports`: only states 1 and 2 are valid; any other state is rejected.
 - `paint_seam`: only states 1 and 2 are valid; any other state is rejected.
-- `paint_color`: states 1–16 are valid (extruder indices). States greater than 16 and subdivision strings are rejected.
+- `paint_color`: states 1–16 are valid (extruder indices). States greater than 16 and subdivision strings are rejected. **ToolIndex encoding (Packet 50b):** OrcaSlicer encodes 1-based nibble states in 3MF; the loader adjusts to 0-based on commit, so the IR is uniformly 0-indexed (`ToolIndex(0..=15)`).
 
 #### Multiple layers
 
@@ -211,8 +215,17 @@ pub enum PaintValue {
     Flag(bool),
     /// Scalar (painted variable infill density, etc.)
     Scalar(f32),
-    /// Tool/material index (Material semantic only)
+    /// Tool/material index (Material semantic only). 0-based in the IR:
+    /// the 3MF `paint_color` state N (1..=16) is decoded to
+    /// `ToolIndex(N-1)` by the loader so the IR is uniformly 0-indexed.
+    /// The previous `HashablePaintValue` wrapper used at paint
+    /// segmentation was removed in Packet 91 (this enum is directly
+    /// hashable; see below). The `Custom` variant is intentionally
+    /// reserved for per-module user-defined paint values.
     ToolIndex(u32),
+    /// Community-defined paint value (string-keyed). Added for parity
+    /// with `PaintSemantic::Custom`.
+    Custom(String),
 }
 
 pub struct PaintStroke {
@@ -222,6 +235,20 @@ pub struct PaintStroke {
     pub semantic: PaintSemantic,
     pub value: PaintValue,
 }
+```
+
+#### `PaintValue` Eq+Hash invariant (Normative — Packet 91)
+
+`PaintValue` derives `Eq` + `Hash` so it can be used as a `HashMap` key
+and as a `RegionKey.variant_chain` element. `Scalar(f32)` is hashed via
+`to_bits()`; `Custom(String)` via its String contents; `Flag` and
+`ToolIndex` use discriminant + value hashing. This makes the previous
+`HashablePaintValue` wrapper (formerly in `paint_segmentation.rs`)
+obsolete — code keying `HashMap<PaintValue, _>` directly is the
+canonical pattern post-Packet 91. The same `to_bits()` portability
+caveat as `ResolvedConfig` applies.
+
+```rust
 
 pub struct ModifierVolume {
     pub id: ModifierId,
@@ -276,6 +303,131 @@ Worked example (invalid):
 - `load_order` is assigned by stable sort on manifest `module.id` (ascending UTF-8 byte order).
 - Filesystem traversal order must never influence `load_order`.
 - Ties on identical `module.id` are fatal manifest-identity errors.
+
+### `ObjectMesh` Assembly Contract (Normative — Packet 75)
+
+All `ObjectMesh` instances are constructed via
+`slicer_model_io::loader::assemble_object(mesh, id, paint_data, modifiers, config)`.
+Five wrap sites use this single entry point: the STL, OBJ, and 3MF
+loader paths in `load_model`, plus the `mesh convert` split
+re-assembly. `assemble_object` computes `world_z_extent` from the mesh
+and applies the object's transform; for single-component models that
+reuse a parent extent during convert's split re-assembly the recompute
+is identical under identity transform (locked by AC-4.3 regression in
+packet 75). Z-extent logic is centralised here —
+`compute_z_extent_for_component` from the convert path is intentionally
+unused. The `assemble_object` symbol was promoted from `pub(crate)` to
+`pub` in Packet 81 to support the CLI's `helpers_cmd.rs` move into
+`pnp-cli`.
+
+### `ObjectConfig.data` Population (Normative — Packet 67)
+
+`ObjectConfig.data: HashMap<String, ConfigValue>` is populated during
+3MF model loading from object-scoped sidecar metadata. The loader
+extracts an allowlist of keys (`extruder`, `enable_support`,
+`support_type`) from each `<object>`'s `<metadata>` block and seeds
+them into the host's `config_source` via the
+`object_config:<id>:<key>` pattern documented in §"Config Key
+Namespaces" (IR 5). This is what makes user-specified per-object
+metadata from 3MF files reach `RegionMapping` and downstream consumers.
+
+### Host-Local Sidecar Types (Normative — Packet 56)
+
+The 3MF sidecar parser at
+`crates/slicer-model-io/src/sidecar.rs::parse_3mf_sidecar` produces
+host-local types that are NEVER exposed at the WIT boundary or in any
+IR contract. They exist to thread per-part metadata from
+`Metadata/model_settings.config` through `resolve_object` to
+downstream consumers (packets 56b/56c/67).
+
+```rust
+/// Five-variant enum carrying the `<part subtype="…">` attribute.
+/// Unknown subtype values downgrade to `NormalPart` with `log::warn!`.
+pub enum PartSubtype {
+    NormalPart,
+    ModifierPart,
+    NegativePart,
+    SupportEnforcer,
+    SupportBlocker,
+}
+
+pub struct PartSidecarInfo {
+    pub subtype: PartSubtype,
+    pub metadata: BTreeMap<String, String>,
+}
+
+pub struct ObjectSidecarInfo {
+    /// Keyed by `<part id>` (u32).
+    pub parts: HashMap<u32, PartSidecarInfo>,
+    /// Object-scoped `<metadata>` entries that are not nested in a
+    /// `<part>` element. Routed into `ObjectConfig.data` and into
+    /// every modifier_volume's `config_delta` for that object.
+    pub object_metadata: BTreeMap<String, String>,
+}
+
+/// Return type of `parse_3mf_sidecar`. Outer key = `<object id>` (u32);
+/// inner key = `<part id>` (u32). Mirrors Bambu's documented sidecar
+/// XML nesting `<object id="N"><part id="M" subtype="…">`.
+pub type SidecarMap = HashMap<u32, ObjectSidecarInfo>;
+```
+
+Behaviour:
+
+- **Missing sidecar:** `Metadata/model_settings.config` absent from the
+  archive ⇒ empty `SidecarMap` returned silently (no warning).
+- **Malformed XML:** parser returns an empty `SidecarMap` and emits
+  `log::warn!` on the `slicer_model_io::sidecar` target containing the
+  substring `"treating all parts as normal_part"`. `load_model` still
+  returns `Ok(MeshIR)`; failure is non-fatal.
+- **Unknown subtype attribute:** downgraded to `PartSubtype::NormalPart`
+  with `log::warn!`.
+
+Parser plumbing: `parse_3mf_sidecar(&mut zip)` is invoked inside
+`load_3mf` after `parse_3mf_model_xml` and before the `ZipArchive` is
+dropped. The resulting map is threaded through `parse_3mf_model_xml`
+to `resolve_object` for routing (packets 56b/56c).
+
+### `ModifierVolume.config_delta` Sources (Normative — Packets 56b, 67, 68)
+
+`ModifierVolume.config_delta.fields` can be populated from two
+distinct sidecar sources in a single 3MF file:
+
+1. **Part-level `<metadata>`** inside a `<part>` element (Packet 56)
+   — keyed and stamped per the standard manifest schema.
+2. **Object-level `<metadata>`** at the `<object>` scope (Packet 67) —
+   routed to every `modifier_volume` belonging to that object. Allowlist:
+   `extruder`, `enable_support`, `support_type`.
+
+Subtype-key exclusion (Packet 68): the literal key `subtype` is
+routing metadata and is excluded from stamping into
+`RegionPlan.config.extensions`; only non-`subtype` keys flow through.
+Additionally, modifier volumes whose subtype value is
+`"support_enforcer"` or `"support_blocker"` are entirely SKIPPED
+during config stamping for OrcaSlicer parity
+(`PrintApply.cpp:590-594`). Their semantics are exercised via
+`PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
+instead, never via `PaintValue::ToolIndex` — see also the
+"Support semantics use Flag, never ToolIndex" constraint in IR 4.
+
+`ConfigDelta` semantics:
+
+- Sparse — only explicitly set fields. No baked-in defaults.
+- `priority` (deterministic ordering hint): `ModifierPart = 0`,
+  `NegativePart = 100`, `SupportEnforcer = 200`, `SupportBlocker = 300`.
+  Consumers may ignore and apply their own ordering.
+- `applies_to`: for 3MF-sourced volumes, `ModifierScope::AllFeatures`
+  scoped to the parent `ObjectId` (the volume applies only to features
+  of its parent object, not the whole plate).
+
+### Canonical region-id parser (host-only — Packet 75)
+
+The decimal-`u64` parser `parse_canonical_region_id` lives in
+`slicer-runtime/src/wit_host.rs` and is the SOLE host validator for
+the canonical region-id string format (decimal `u64` with no leading
+zeros, no other whitespace or punctuation). It is not part of the
+public SDK and must NOT be called by modules. Packet 75 deduplicated
+the prior copies and made it `pub(crate)` in one place — any new
+caller must call this symbol rather than re-implementing the parse.
 
 ## IR 2 — SurfaceClassificationIR
 
@@ -444,8 +596,12 @@ pub struct ResolvedConfig {
     pub smoothificator_adaptive: Option<bool>,
 
     /// Overflow bucket: keys contributed by modules not in the current schema snapshot.
-    /// Round-trips safely without corrupting config.
-    pub extensions: HashMap<String, ConfigValue>,
+    /// Round-trips safely without corrupting config. Migrated from
+    /// `HashMap` to `BTreeMap` in Packet 91 so that `ResolvedConfig`
+    /// can derive `Hash` (deterministic iteration order is the upside;
+    /// the existing `Hash` impl hashes f32 fields via `to_bits()` for
+    /// consistency within one process).
+    pub extensions: BTreeMap<String, ConfigValue>,
 }
 
 pub enum WallGenerator { Classic, Arachne }
@@ -474,6 +630,20 @@ Reproducibility requirements:
 
 - Config serialization/deserialization must preserve deterministic value selection for all keys affecting geometry.
 - Equality for deterministic checks is done on the quantized scaled-int form where applicable, not raw JSON textual formatting.
+
+### ResolvedConfig Hash invariant (Normative — Packet 91)
+
+`ResolvedConfig` derives `PartialEq` + `Eq` + `Hash`. All `f32`/`f64`
+fields are hashed via `to_bits()` so that `a == b ⇒ hash(a) == hash(b)`
+holds (both equality and hashing use bit-pattern comparison, not float
+equality). This is required for the Packet 91 interner that dedupes
+configs into `RegionMapIR.configs` via linear scan keyed by `==`.
+
+Portability caveat: hash output is consistent within one process but is
+NOT portable across architectures with differing NaN bit patterns. Two
+configs differing only in NaN payload bit pattern would compare unequal
+and intern as distinct entries. NaN is already a fatal validation error
+(see top of this doc), so this is theoretical for real prints.
 
 ---
 
@@ -538,6 +708,62 @@ impl PaintRegionIR {
 
 A companion `PaintRegionRTreeIndex` (defined in `slicer-core`) wraps a per-`(layer_index, semantic)` `rstar::RTree<(BoundingBox2, usize)>` spatial index, rebuilt from scratch each pipeline run alongside `PaintRegionIR` at `harvest_paint_segmentation_ir` time. It is NOT stored on the IR (not serialized, not in `PartialEq`), but passed as a separate `Arc` through the blackboard and annotation request. The query path `point_in_paint_region` uses it for O(log N) candidate selection, falling back to linear scan when absent.
 
+### Harvest Strategy (Normative — Packets 62 and 64)
+
+`harvest_paint_segmentation_ir` groups per-facet painted regions by
+`(layer_index, object_id, semantic, value)` and unions the polygons via
+`slicer_core::union` (Clipper-backed). The grouping eliminates per-facet
+fragmentation that would otherwise cause `O(regions × polygons × edges)`
+query overhead in `point_in_paint_region`.
+
+- **Group key rationale:** regions with identical `value` are
+  query-equivalent and safe to merge; `object_id` preserves per-object
+  boundaries; `paint_order` precedence (higher wins) only operates
+  between regions of DIFFERENT values, never within a same-value group
+  (so the merge is loss-free for resolution).
+- **Hole preservation:** `slicer_core::union` discards interior holes
+  from input polygons (flat-map + `union_64`, no `PolyTree`). All
+  host-produced paint region entries carry `holes: vec![]` — currently
+  safe because guest output is triangle-only. If a future WASM module
+  emits hole-bearing paint regions via the override path, the host
+  fallback union MUST switch to a hole-preserving variant before
+  shipping; the current contract would silently drop holes and include
+  previously-excluded hole interiors in queries.
+- **Vec sort order (byte-deterministic):** within each
+  `LayerPaintMap.semantic_regions` Vec, `SemanticRegion` entries are
+  sorted DESCENDING by `paint_order`, with stable tiebreakers
+  `(object_id ASC, value_key ASC)`. This makes `PaintRegionIR` output
+  byte-identical across runs with the same input.
+- **Early-break query:** because the Vec is sorted by `paint_order`
+  descending, `point_in_paint_region` may terminate iteration as soon
+  as it finds a definitive winner (highest `paint_order` containing
+  the point), skipping further polygon checks.
+- **`paint_order` after merge:** the merged `SemanticRegion` keeps the
+  `min(paint_order)` of the group (the earliest occurrence wins
+  internally; cross-group precedence is unchanged).
+
+### Synthetic Support Modifier Emission (Normative — Packet 56c)
+
+`PrePass::PaintSegmentation` reads `mesh_ir.objects[].modifier_volumes`
+directly. For each modifier volume with
+`config_delta.fields["subtype"] == ConfigValue::String("support_enforcer"
+| "support_blocker")`, the host-native path:
+
+1. Projects the modifier mesh at all layer Zs via
+   `slicer_core::slice_mesh_ex(&mv.mesh, &layer_zs)` (batched, not per-layer).
+2. Emits `SemanticRegion` entries into `LayerPaintMap.semantic_regions`
+   under `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
+   for each intersecting global layer index.
+3. Union-merges synthetic polygons with any existing
+   `Vec<SemanticRegion>` at the same `(layer, semantic)` via
+   `slicer_core::polygon_ops::union`.
+
+These synthetic entries flow through `PrePass::RegionMapping` and the
+Packet 51 `paint_overrides` overlay path unchanged. No region-mapping
+code is added — the synthetic emission is entirely upstream of mapping.
+Support semantics always emit `PaintValue::Flag(_)`, never
+`PaintValue::ToolIndex` (Packet 67 constraint).
+
 ### Paint Region Resolution Contract
 
 - `PaintRegionIR` is the canonical source for all paint semantics in downstream stages.
@@ -547,6 +773,14 @@ A companion `PaintRegionRTreeIndex` (defined in `slicer-core`) wraps a per-`(lay
 - For support logic conflicts at the same point: `SupportBlocker` takes precedence over `SupportEnforcer`.
 - Material paint resolution is consumed via `ActiveRegion.tool_index` and `WallLoop.boundary_type`.
 - For overlapping `PaintSemantic::Custom` values at the same point, highest `paint_order` wins; equal `paint_order` is a fatal deterministic conflict.
+- **Support semantics value constraint (Packet 67):**
+  `PaintSemantic::SupportEnforcer` and `PaintSemantic::SupportBlocker`
+  ALWAYS emit `PaintValue::Flag(_)`, never `PaintValue::ToolIndex`.
+  Tool indexing is reserved for `PaintSemantic::Material` from
+  per-facet MMU paint XML. This diverges from OrcaSlicer in that
+  per-object `extruder` metadata on support modifiers is decorative
+  and not consumed by the host paint-segmentation pass (see
+  `OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594`).
 
 Worked example (support overlap):
 
@@ -565,12 +799,18 @@ Worked example (custom overlap):
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 1.1.0** (Minor bump per Packet 51 — additive `paint_overrides` field on `RegionPlan`; prior version was 1.0.0.)
+**Current schema_version: 2.0.0** (Major bump by Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`).)
 
 ```rust
 pub struct RegionMapIR {
     pub schema_version: SemVer,
     pub entries: HashMap<RegionKey, RegionPlan>,
+    /// Interned `ResolvedConfig` pool. Each `RegionPlan.config` is an
+    /// index into this Vec. Pre-seeded with `ResolvedConfig::default()`
+    /// at index 0 so `ConfigId::default()` is always a valid interner
+    /// index. Use `intern_config` to add and `config_for` to resolve.
+    /// Added in Packet 91.
+    pub configs: Vec<ResolvedConfig>,
 }
 
 #[derive(Hash, Eq, PartialEq, Clone)]
@@ -578,10 +818,21 @@ pub struct RegionKey {
     pub global_layer_index: u32,
     pub object_id: ObjectId,
     pub region_id: RegionId,
+    /// Ordered `(paint_semantic_name, value)` pairs identifying this
+    /// region's paint variant. Empty for the legacy single-variant flow;
+    /// populated by Packet 93 when RegionMapping cross-product expands
+    /// each `(layer, ActiveRegion)` into one `RegionPlan` per canonical
+    /// variant chain. Added in Packet 91 (scaffolding).
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 pub struct RegionPlan {
-    pub config: ResolvedConfig,
+    /// Interned index into `RegionMapIR.configs`. Resolve via
+    /// `RegionMapIR::config_for(&key)`. Bumped from inline
+    /// `ResolvedConfig` to `ConfigId` by Packet 91 so that duplicated
+    /// configs across painted-variant `RegionPlan`s intern to a single
+    /// instance.
+    pub config: ConfigId,
     /// Ordered module invocations per stage, pre-sorted by DAG topo sort.
     pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
     /// Audit trail of paint-semantic config overlays applied to `config`
@@ -596,7 +847,52 @@ pub struct ModuleInvocation {
     /// Pre-filtered config: only keys this module declared it reads.
     pub config_view: ConfigView,
 }
+
+/// Stable index into `RegionMapIR.configs`. Stable within one
+/// `RegionMapIR` only — not portable across IRs. Introduced in Packet 91
+/// so duplicated `ResolvedConfig` payloads across painted-variant
+/// `RegionPlan`s can intern to a single instance.
+#[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq)]
+pub struct ConfigId(pub u32);
+
+impl RegionMapIR {
+    /// Resolves a `RegionKey` to its `ResolvedConfig` via the interner.
+    /// Panics if the key is unknown or the `ConfigId` is out of bounds
+    /// — both are construction invariants the interner upholds.
+    pub fn config_for(&self, key: &RegionKey) -> &ResolvedConfig { /* ... */ }
+
+    /// Interns a `ResolvedConfig`, returning the existing `ConfigId` if
+    /// an equal config is already present (linear scan — bounded by
+    /// distinct configs per print job).
+    pub fn intern_config(&mut self, rc: ResolvedConfig) -> ConfigId { /* ... */ }
+}
 ```
+
+### Config Interner Contract (Normative — Packet 91)
+
+- All production code reads a region's config via `region_map.config_for(&key)`
+  rather than direct field access. The interner model is the only supported
+  read path post-Packet 91.
+- `configs` is non-empty by construction: every `RegionMapIR` is seeded with
+  `ResolvedConfig::default()` at index 0, so `ConfigId::default()` (zero) is
+  always a valid index. Legacy single-config flows produce a one-entry Vec
+  and a single `ConfigId(0)`.
+- `intern_config` uses linear-scan deduplication; equivalent configs reuse
+  the same `ConfigId`. This prevents duplication in cross-product expansion
+  (Packet 93) where many `(variant_chain)` entries share base config payload.
+- `RegionMapIR.entries` cardinality is bounded by `DEFAULT_REGION_MAP_CAP`
+  (currently `750_000`). Overflow surfaces `RegionMappingError::CapExceeded`
+  naming the top-contributing `ObjectId`.
+
+### `RegionMappingPlanProjection` (Internal Decoupling Type — Packet 87)
+
+- **Scope:** internal to `slicer-core` and the runtime wrapper only. Not
+  serialized, not transmitted at any IR or WIT boundary.
+- **Purpose:** projection of the subset of `ExecutionPlan` (a scheduler-crate
+  type) that `execute_region_mapping` reads — specifically
+  `stage_invocations: &[(StageId, Vec<ModuleInvocation>)]`. Defined in
+  `slicer-core/src/algos/region_mapping.rs`. Allows the kernel to remain
+  IR-in/IR-out without importing scheduler types into `slicer-core`.
 
 ### Config Key Namespaces
 
@@ -612,6 +908,15 @@ global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_confi
 ```
 
 When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule (determines which semantic's config wins in `RegionPlan.config`) is distinct from the `paint_order`-based rule documented in the [Paint Region Resolution Contract](#paint-region-resolution-contract) above, which governs intra-semantic polygon overlap resolution during `PrePass::PaintSegmentation`.
+
+**Overlap determination (Normative — Packet 51):** A region's polygons
+are considered to overlap a `PaintSemantic` when
+`slicer_core::intersection(region_polygons, semantic_region_polygons)`
+returns ANY non-empty result (a single shared point or line segment
+counts). The first such overlap found by the per-region traversal wins
+the precedence vote for its semantic; all overlapping semantics
+contribute their `ResolvedConfig` snapshot to `RegionPlan.paint_overrides`
+for audit visibility.
 
 ---
 
@@ -644,7 +949,10 @@ pub struct SlicedRegion {
     /// Middle Vec: one entry per contour point in that polygon's contour.
     /// Inner value: the paint value at that point for this semantic, or None.
     /// Empty map if no paint data applies to this region at this layer.
-    pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// Renamed from `boundary_paint` in packet 91; carries paint semantics
+    /// that are NOT declared `[[region_split]]` in any module manifest
+    /// (split semantics surface through `variant_chain` instead).
+    pub segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
     /// Minimum depth (in layers, 0 = exposed) of this region within the top
     /// shell zone.  `None` outside any top shell.  Written by
     /// `PrePass::ShellClassification` (host built-in, port of OrcaSlicer's
@@ -678,6 +986,11 @@ pub struct SlicedRegion {
     /// host hook in `crates/slicer-runtime/src/region_partition.rs` runs.
     /// Added in `docs/specs/infill-fill-partition-plan.md`.
     pub sparse_infill_area: Vec<ExPolygon>,
+    /// Per-variant paint semantic chain. Empty in packet 91 (scaffold);
+    /// populated by packet 93 (region splitting cross-product) for
+    /// regions that match a `[[region_split]]` semantic in some module
+    /// manifest. Ordering matches `RegionKey.variant_chain`.
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons
@@ -779,7 +1092,16 @@ pub struct WallLoop {
 }
 
 pub struct WallFeatureFlags {
-    /// Tool override for this segment. None means use region default tool_index.
+    /// Tool override for this segment. `None` means use region default
+    /// `tool_index`. Populated during `Layer::PaintRegionAnnotation`
+    /// when the perimeter wall loop overlaps a `PaintSemantic::Material`
+    /// region from `PaintRegionIR`; the annotation propagates the
+    /// dominant `ToolIndex(n)` value to all vertices in the overlapping
+    /// wall loop. Vertices in unpainted regions have
+    /// `tool_index = None`. Consumed downstream by
+    /// `dominant_tool_index()` (assemble_ordered_entities, packet 50b)
+    /// to stamp `RegionKey.region_id` so path-optimization can group
+    /// by tool and `GCode` can emit `T{n}` tool changes.
     pub tool_index: Option<u32>,
     /// Enables fuzzy skin modulation on this segment.
     pub fuzzy_skin: bool,
@@ -815,6 +1137,11 @@ pub struct WidthProfile {
 pub struct ExtrusionPath3D {
     pub points: Vec<Point3WithWidth>,
     pub role: ExtrusionRole,
+    /// Per-move speed multiplier consumed by `resolve_feedrate`
+    /// (packet 52). Clamped to `[0.05, 5.0]` at emission time to
+    /// reject pathological values (OrcaSlicer parity confirmed). The
+    /// emitter multiplies the role-resolved base speed by `speed_factor`
+    /// before converting to the F-token.
     pub speed_factor: f32,
 }
 
@@ -833,6 +1160,38 @@ pub struct Point3WithWidth {
     /// (`overhang_1_4_speed` … `overhang_4_4_speed`). Added in packet 57.
     pub overhang_quartile: Option<u8>,
 }
+```
+
+#### Overhang quartile bucketization (Normative — Packet 57)
+
+The four overhang speed bands map to signed-distance thresholds from
+the previous-layer support polygons (negative = unsupported):
+
+| Quartile | Signed distance `d` (multiples of width `w`) | Speed key            |
+|----------|----------------------------------------------|----------------------|
+| 1 (least supported) | `d < -0.5 w`                       | `overhang_1_4_speed` |
+| 2                   | `-0.5 w ≤ d < -0.25 w`             | `overhang_2_4_speed` |
+| 3                   | `-0.25 w ≤ d < 0`                  | `overhang_3_4_speed` |
+| 4 (fully supported) | `d ≥ 0`                            | `overhang_4_4_speed` |
+
+`w` is the per-point extrusion width from `Point3WithWidth.width`.
+OrcaSlicer uses `<` for interval boundaries; this implementation
+mirrors that exactly.
+
+Invariants:
+
+- `overhang_quartile` is populated ONLY for roles in
+  `{OuterWall, InnerWall, ThinWall}`. All other roles remain `None`
+  even when overhanging — bridge-family, infill, supports, and ironing
+  use their own role base speeds; overhang modulation applies to walls
+  only.
+- Layer 0 (no previous layer to classify against) leaves all
+  `overhang_quartile` values `None` regardless of config.
+- An all-zero `overhang_*_4_speed` config (all four keys 0) short-circuits
+  the classifier (no work performed, output byte-identical to pre-packet
+  legacy path).
+
+```rust
 
 pub struct SeamCandidate {
     pub position: Point3WithWidth,
@@ -1138,6 +1497,44 @@ explicit priorities), insertion order is preserved (stable sort).
   short-circuits on the first dangling travel anchor; finalization invokes
   it before the layer is handed off to `PostPass::GCodeEmit`.
 
+### `LayerCollectionIR::default()` contract (Normative — Packet 79 fixture support)
+
+`LayerCollectionIR` derives `Default`. The default-field values are
+load-bearing because the test-support
+`LayerCollectionFixtureBuilder` (in `slicer-sdk::test_support::fixtures`)
+only sets four fields explicitly (`global_layer_index`, `z`,
+`ordered_entities`, `tool_changes`) and lets `Default` populate the
+rest: `z_hops = vec![]`, `annotations = vec![]`, `travel_moves =
+vec![]`, and `schema_version = CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`.
+Tests that assemble synthetic layers via the fixture builder rely on
+these defaults; changing the field set or the defaulted values is a
+breaking change for the fixture surface, not just the production IR.
+
+### `SlicedRegion` builder setter semantics (Normative — Packet 79 fixture support)
+
+`SliceRegionViewBuilder`'s shell / bridge setters (`top_shell_index`,
+`top_solid_fill`, `bottom_shell_index`, `bottom_solid_fill`,
+`is_bridge`, `bridge_areas`, `bridge_orientation_deg`) implement
+idempotent, last-write-wins semantics. Calling a setter with the same
+value twice is a no-op; calling it twice with different values yields
+the final value. Unset setters preserve `SliceRegionViewBuilder::new()`
+field defaults (typically `None` / `vec![]` / `false`). The contract
+exists so test migrations from hand-rolled fixture helpers can be
+mechanical — one builder chain call per original field assignment, no
+order-dependence.
+
+### `rect_polygon` fixture helper (Normative — Packet 79 fixture support)
+
+`rect_polygon(cx_mm: f32, cy_mm: f32, width_mm: f32, height_mm: f32) -> ExPolygon`
+(in `slicer-sdk::test_support::fixtures`) constructs an axis-aligned
+rectangular `ExPolygon` with vertices at
+`(cx ± width/2, cy ± height/2)` in millimetres, converted to slicer
+units via `mm_to_units()` (1 unit = 100 nm). Winding is
+counter-clockwise (signed area > 0); `holes` is `vec![]`. This is the
+canonical test fixture for rectangular shapes; production code MUST NOT
+import it (it is `#[cfg(any(test, feature = "test"))]`-gated under
+`slicer-sdk`).
+
 ---
 
 ## IR 11 — GCodeIR
@@ -1154,7 +1551,16 @@ pub struct GCodeIR {
 pub enum GCodeCommand {
     Move {
         x: Option<f32>, y: Option<f32>, z: Option<f32>,
-        e: Option<f32>, f: Option<f32>,
+        e: Option<f32>,
+        /// Feedrate (mm/min). When `Some(_)`, the emitter writes this
+        /// value verbatim and DOES NOT substitute the role-default
+        /// (Packet 52 contract). When `None`, `resolve_feedrate(&role,
+        /// speed_factor)` is applied at the print-move and z-hop
+        /// builders to dispatch one of 26 per-role `*_speed` config
+        /// keys; travel moves fall back to `travel_speed` when `f` is
+        /// `None`. This `Some` override is how upstream modules (e.g.
+        /// retract speed) keep their feedrates intact end-to-end.
+        f: Option<f32>,
         role: ExtrusionRole,
     },
     /// Retract.
@@ -1254,6 +1660,25 @@ M83  (or M82 — packet 54)
 | `filament_density` | f32 (g/cm³) | `1.24` | Header `; filament_density` line. |
 | `max_z_height` | f32 (mm) | `0.0` (auto) | Hard cap reported in header; `0.0` means "use per-print z_max". |
 | `thumbnail_path` | string | `""` | Alternative to the `--thumbnail` CLI flag; CLI wins when both set. |
+
+### Per-role feedrate emission (Normative — Packet 52)
+
+`DefaultGCodeEmitter` carries a `FeedrateConfig` struct (bound at
+construction from `ConfigView` at the postpass dispatch site) that
+holds all 26 per-role speed keys (mm/s). `resolve_feedrate(role,
+speed_factor) -> f32` is invoked at the print-move and z-hop builders
+when `Move.f` is `None`; the resulting F-token is computed as
+`round(speed_mm_per_s * 60.0 * speed_factor * 1000.0) / 1000.0`
+(mm/min, three decimal places). `speed_factor` is clamped to
+`[0.05, 5.0]` before multiplication (OrcaSlicer parity).
+
+First-layer detection: `resolve_feedrate` selects the `initial_layer_*`
+override variants (`initial_layer_speed`, `initial_layer_infill_speed`,
+`initial_layer_travel_speed`) when the move's layer is layer 0.
+First-layer membership is determined by comparing `Move.z` against the
+committed `layer_height` with an epsilon tolerance; explicit
+`is_first_layer` flags on `GlobalLayer` are not present in the IR
+post-Packet 52.
 
 ### Stream-level extrusion mode (Normative — packet 54, 59)
 

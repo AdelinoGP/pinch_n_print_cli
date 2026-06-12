@@ -106,6 +106,27 @@ truck-modeling = "0.6"   # dev-dependency for test fixtures
 
 ---
 
+## Fixture Feature Inventory Helper (Packet 90)
+
+A binary-STL parser dispatch (`measure_stl_feature_inventory`) lives in this crate to support the §Fixture Feature Inventory Verification gate in `docs/12_architecture_gate_metrics.md`. The function takes a path to a binary STL and returns the standard `KEY=VALUE` inventory block:
+
+```rust
+pub fn measure_stl_feature_inventory(path: &Path) -> Result<FeatureInventory, MeshError>;
+
+pub struct FeatureInventory {
+    pub bounding_box_x_mm: f32,
+    pub bounding_box_y_mm: f32,
+    pub bounding_box_z_mm: f32,
+    pub triangle_count: u32,
+    pub max_overhang_angle_deg: f32,
+    pub largest_flat_top_area_mm2: f32,
+    pub flat_bottom_area_mm2: f32,
+    pub bridge_gap_width_mm: f32,
+}
+```
+
+The helper is intended for fixture-authoring scripts and packet closure-log workflows; production code does not consume it. See `crates/slicer-helpers/tests/feature_inventory_tdd.rs` for the contract and `.ralph/specs/90_regression-wedge-stl-swap/closure-log.md` §Feature Inventory for the worked example.
+
 ## Coordinate System Contract
 
 All operations in this crate input and output values via `slicer_ir::Point3`,

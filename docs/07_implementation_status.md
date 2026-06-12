@@ -248,6 +248,14 @@ For closed deviations and their closure detail, read the log directly.
 - [x] `crates/slicer-runtime/tests/contract/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
 - [x] ~~`crates/slicer-runtime/tests/integration/python_bridge_init_phase_tdd.rs`~~ — closed the Python `Init` phase classification gap; **file removed 2026-05-31** as part of the Python bridge scrap (DEV-024 closure).
 
+## Foundational Baselines
+
+These commits are upstream prerequisites for spec packets and must land before the dependent packet begins. Recorded here to make the dependency chain explicit for future readers.
+
+- **Cherry-pick `5c272ef970fee2b861081799169a3ddb87e179c9`** — introduces engineered paint-fixture pair `resources/cube_4color.3mf` (37 KB) and `resources/cube_fuzzyPainted.3mf` (27 KB) plus 24 RED tests in `crates/slicer-runtime/tests/executor/cube_4color_paint_tdd.rs` and `cube_fuzzy_painted_tdd.rs`. These RED tests are the paint-segmentation parity validation gates that drive Packets P0a (P89, benchy retirement) through P4 (P95+); landing this commit is the first step of P89. The cube fixtures have per-face deterministic paint semantics documented in `docs/12_architecture_gate_metrics.md` § Fixture Catalog.
+- **CONTEXT.md AC-4.4 (Packet 75) follow-up** — Packet 75's AC-4.4 specified that `grep -c 'in the GUI' CONTEXT.md` should return `0` after a glossary-sharpening edit. The current line 28 still contains the phrase; tracked in `DEVIATION_LOG.md` DEV-073 pending a one-line edit. Either revert the AC closure or apply the edit; do not silently re-mark the gate green.
+- **Packet 93 `_paint_regions` dead parameter** — `execute_region_mapping_inner` and descendants carry an unused `_paint_regions: Option<&PaintRegionIR>` parameter since the chain-derived overlay path subsumed it. Cleanup deferred; not blocking. See packet 93 closure-log for the contract context.
+
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS

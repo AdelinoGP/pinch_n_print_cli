@@ -5,15 +5,44 @@
 > source — they elide error variants, instrumentation hooks, and lifetimes
 > for clarity. For the authoritative implementation see:
 >
-> - `crates/slicer-runtime/src/execution_plan.rs` — `ExecutionPlan`,
->   `CompiledStage`, `CompiledModule`, `CompiledModuleBuilder`.
+> Planning (`slicer-scheduler` crate — wasmtime-free, extracted in packet 85):
+>
+> - `crates/slicer-scheduler/src/execution_plan.rs` — `ExecutionPlan`,
+>   `CompiledStage`, `CompiledModuleStatic`, `CompiledModuleBuilder`.
+> - `crates/slicer-scheduler/src/manifest.rs` — manifest parser + `LoadedModule`.
+> - `crates/slicer-scheduler/src/validation.rs` — DAG validation passes.
+> - `crates/slicer-scheduler/src/topology.rs` — `topological_sort`.
+> - `crates/slicer-scheduler/src/dag.rs` — intra-stage DAG construction.
+> - `crates/slicer-scheduler/src/dag_cli.rs` — `pnp_cli dag` introspection.
+> - `crates/slicer-scheduler/src/config_resolution.rs` — config merge.
+> - `crates/slicer-scheduler/src/stage_order.rs` — canonical `STAGE_ORDER`.
+> - `crates/slicer-scheduler/src/module_search_path.rs` — manifest discovery.
+> - `crates/slicer-scheduler/src/instrumentation.rs` — planning side (`EdgeReason`,
+>   `SerialEdge`, `compute_serial_edges_for_stage`).
+>
+> Runtime / execution (`slicer-runtime` crate):
+>
 > - `crates/slicer-runtime/src/prepass.rs` — `execute_prepass` family.
 > - `crates/slicer-runtime/src/layer_executor.rs` — `execute_per_layer` family.
 > - `crates/slicer-runtime/src/layer_finalization.rs` — `execute_layer_finalization`.
 > - `crates/slicer-runtime/src/postpass.rs` — `execute_postpass` family.
-> - `crates/slicer-runtime/src/topology.rs` — `topological_sort`.
-> - `crates/slicer-runtime/src/validation.rs` — DAG validation passes.
-> - `crates/slicer-runtime/src/manifest.rs` — manifest parser + `LoadedModule`.
+> - `crates/slicer-runtime/src/instrumentation.rs` — runtime side
+>   (`PipelineInstrumentation` trait, `Phase`, `TierKind`,
+>   `compute_serial_edges_from_compiled`).
+>
+> WASM hosting (`slicer-wasm-host` crate — extracted in packet 83):
+>
+> - `crates/slicer-wasm-host/src/traits.rs` — runner traits (`PrepassRunner`,
+>   `LayerRunner`, `FinalizationRunner`, `PostpassRunner`) and their
+>   `*StageInput<'a>` borrow-struct inputs.
+> - `crates/slicer-wasm-host/src/host.rs` — four co-located `bindgen!`
+>   invocations (per-world WIT remap onto the canonical layer world per ADR-0002).
+>
+> Scheduler-no-wasmtime invariant (Packet 85): `slicer-scheduler` declares
+> no dep on `slicer-wasm-host`, `slicer-runtime`, or `wasmtime`. Verify
+> with `cargo tree -p slicer-scheduler --edges normal | grep wasmtime`
+> (must be empty). This is what enables the ~5500 LOC of planning logic
+> to be unit-tested without instantiating any WASM component.
 
 The scheduler has four phases, all completing before a single layer is sliced. Phases 1–3 are pure data transformation — no WASM executes until Phase 4.
 
@@ -66,6 +95,39 @@ Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized 
 The manifest naming is canonical for author-facing docs and examples. Runtime field names are internal and must not appear in user-facing manifest examples.
 
 Ingestion scans all module search paths and deserializes every `.toml`. TOML schema errors produce a structured `LoadError` with file path and field name. No module is silently skipped.
+
+### `[[region_split]]` Aggregation and Tied-Priority Diagnostic (Normative — Packet 92)
+
+When ingestion completes, the scheduler aggregates the
+`[[region_split]]` array entries from every loaded manifest into a single
+canonical `BTreeMap<String, AggregatedRegionSplitEntry>` keyed by
+semantic name and ordered by `(priority, name)`. The map is consumed by:
+
+- `Phase 2` DAG construction (per-layer dispatch filter — see below).
+- `PrePass::RegionMapping` builtin (cross-product expansion — see
+  "RegionMapping (Builtin)" further down).
+
+Per-manifest validation (Packet 92):
+
+1. **Duplicate semantic within one manifest** → `LoadErrorKind::DuplicateRegionSplitSemantic`.
+2. **`value_type = "scalar"`** → rejected at load time
+   (`LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`). Scalar
+   paint values route through `segment_annotations` instead (see
+   `docs/02_ir_schemas.md` IR 6 `SlicedRegion`).
+3. **Community semantic with `priority < 1000`** → rejected
+   (`LoadErrorKind::CommunityPriorityBelowFloor`). The `COMMUNITY_PRIORITY_FLOOR`
+   is `1000`; core semantics (`material = 100`, `fuzzy_skin = 200`)
+   are listed in `CORE_REGION_SPLIT_PRIORITIES`.
+4. **Core semantic with `priority` ≠ registry value** → rejected
+   (`LoadErrorKind::CoreSemanticPriorityMismatch`).
+
+Cross-manifest **tied-priority warning** (non-fatal): if two distinct
+semantics from different manifests declare the same priority, a
+`LoadDiagnostic { level: DiagnosticLevel::Warning, path, field, message }`
+is appended to the diagnostics vec. The message names both semantics,
+both manifest paths, the shared priority, and the lexicographic
+tiebreaker order used to keep aggregation deterministic. Scheduler
+operation continues; this is purely an author-facing nudge.
 
 ### IR Access Path Format (Normative)
 
@@ -187,6 +249,32 @@ pub fn build_intra_stage_dag(
     Ok(nodes.into_values().collect())
 }
 ```
+
+### Per-Layer Region-Split Dispatch Filter (Normative — Packet 92)
+
+After the intra-stage DAG is sorted, each `LoadedModule` carries a
+cached `region_split_semantics: HashSet<String>` on its
+`CompiledModuleStatic` descriptor (the set of semantic names declared
+in the module's `[[region_split]]` array). The host applies a per-layer
+filter at dispatch time using this set; the granularity is per-(module
+× layer), NOT per-(module × region):
+
+- A module whose `region_split_semantics` is **empty** runs
+  unconditionally (paint-transparent default — preserves pre-packet-92
+  behaviour for every existing module).
+- A module with a non-empty set `S` is **skipped on layer `L`** if NO
+  region in `L`'s `RegionMapIR` entries has a `variant_chain` whose
+  semantic ∈ `S`.
+- **Conservative-allow edge case:** if the slice for `L` is `None`
+  (rare; layer not yet sliced or filter consulted out of order), the
+  filter conservatively allows the module to run rather than skipping
+  it. This is the safe default; missing the run would silently drop
+  output, missing the skip wastes a no-op call.
+
+The filter helper is `module_invocation_allowed_on_layer(...)` (called
+from `layer_executor.rs:362`). Filter cost is `O(|regions| × |S|)` per
+dispatch decision; the `region_split_semantics` HashSet keeps the
+inner check at O(1).
 
 ---
 
@@ -495,6 +583,44 @@ fn compute_reachability(
 
 During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (`PrintApply.cpp:590-594`). Scope is global per object — the only `ModifierScope` variant in use is `AllFeatures`; bbox / polygon-level overlap is a future refinement when partial-volume scopes are introduced.
 
+### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
+
+The region-mapping kernel signature is extended to consume
+`aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>`
+from the execution plan. This map is the canonical aggregator output
+populated by `slicer-scheduler::region_split::aggregate_region_splits`
+at plan construction (see Phase 1 §`[[region_split]]` aggregation
+above). The producer wrapper
+(`crates/slicer-runtime/src/builtins/region_mapping_producer.rs`)
+threads it from `ExecutionPlan` into `execute_region_mapping`. The
+kernel uses it to:
+
+1. Determine which paint semantics are opted-in per region (filter
+   `MeshIR.objects[].paint_data.layers` against the keyset).
+2. Drive cross-product expansion of `variant_chain` per `(layer,
+   ActiveRegion)` — see `docs/02_ir_schemas.md` IR 5 § Config Interner.
+3. Detect Scalar paint values defensively: any `PaintValue::Scalar`
+   encountered in a region-split path becomes
+   `RegionMappingError::DeterministicConflict` (Packet 93 guard, the
+   manifest validator from Packet 92 normally catches it first).
+
+`enumerate_canonical_chains` produces chains deterministically in
+BTreeMap (semantic-name) order with `PaintValue` ordered as
+`Flag < ToolIndex(0) < ToolIndex(1) < … < Custom(s_lex)`. This order
+is contract — test fixtures and integration tests lock it.
+
+**Cap and overflow:** `DEFAULT_REGION_MAP_CAP = 750_000` (raised from
+`1_000` in Packet 93 to accommodate worst-realistic envelopes of 16
+colors × 1000 layers × 16 regions × ~3 modifier subtypes). Overflow
+surfaces `RegionMappingError::CapExceeded` naming
+`top_contributor_object_id` so callers can diagnose which object
+exploded the cross-product.
+
+**Cross-crate dependency:** `slicer-core` depends on `slicer-scheduler`
+for the `AggregatedRegionSplitEntry` type. Relocating the type to
+`slicer-ir` to clean up the edge is a deferred follow-up; verify with
+`cargo tree -p slicer-core --edges normal`.
+
 ```rust
 fn build_region_map(
     layer_plan: &LayerPlanIR,
@@ -560,6 +686,53 @@ fn resolve_active_regions(
 ```
 
 Any implementation with per-call filtering over all regions (`O(n_regions)`) is non-compliant.
+
+### Layer Stage Dispatch ConfigView Sourcing (Normative — Packet 51)
+
+`dispatch_layer_call` constructs a fresh `ConfigView` for each module
+invocation by reading the **per-region `RegionPlan.config`** via
+`blackboard.region_map()` and the current `(layer, object, region_id)`,
+NOT from the module's `module.config_view` field that was bound at
+load time. This ensures per-paint-semantic config overlays stamped
+into `RegionPlan.config` during `PrePass::RegionMapping` are visible to
+dispatched Layer-tier modules. The frozen-at-load `module.config_view`
+is retained only for prepass and finalization stages where there is no
+region-level overlay.
+
+### PrePass Config-View Plumbing (Normative — Packet 73)
+
+Every PrePass export (`layer-planning`, `seam-planning`,
+`support-geometry`, `paint-segmentation`) receives a `config-view`
+parameter providing read-only access to declared config keys, normalised
+across stages by Packet 73 (the `support-geometry` runner was the final
+holdout). Modules declaring no `[config.schema]` receive an empty
+`ConfigView`. Config keys are looked up by string name; absent keys
+return `None`. The `support-geometry` runner specifically:
+
+- Now honours `support_enabled` (false → planner is invoked but emits
+  no plan; was previously discarded by an empty `ConfigView` injection).
+- Surfaces planner fatals as `DispatchError` instead of swallowing them
+  inside the macro/host glue (required by Packet 73 AC-N2).
+
+### Required-Tool Fallback (Normative — Packet 68)
+
+When the layer executor resolves required tool assignment for a region
+and `dominant_tool_index()` returns `None` (no Material paint touches
+the region's walls), the executor reads
+`RegionPlan.config.extensions["extruder"]` as a `ConfigValue::Int(tool)`
+fallback and uses that as `Some(tool)`. This is what makes
+`extruder = N` in a 3MF `<object>`/`<modifier>` metadata block reach
+G-code emit even on unpainted geometry — the value flows through:
+
+1. 3MF sidecar metadata → `ObjectConfig.data` / `ModifierVolume.config_delta`.
+2. `RegionMapping` stamps `extruder` into `RegionPlan.config.extensions`
+   (subtype-key exclusion still applies to `support_enforcer` /
+   `support_blocker` modifier subtypes; see `docs/02_ir_schemas.md`).
+3. Layer executor's fallback reads `extensions["extruder"]` when
+   `dominant_tool_index()` returns `None`.
+
+Paint-derived `dominant_tool_index()` always wins when present (priority
+order: `Material` paint > `extensions.extruder` > default `0`).
 
 ### RegionMapIR Memory Budget Contract (Normative)
 
@@ -660,9 +833,104 @@ pub struct WasmInstancePool {
 }
 ```
 
+### Runner-Trait Input Borrow Structs (Normative — Packet 83)
+
+Runner trait signatures (`PrepassRunner::run_prepass`,
+`LayerRunner::run_layer`, `FinalizationRunner::run_finalization`,
+`PostpassRunner::run_postpass`) accept IR-typed `*StageInput<'a>`
+borrow structs rather than raw `&Blackboard` or `&LayerArena`. This
+decouples the dispatcher (which lives in `slicer-wasm-host`) from
+runtime-owned aggregates (which stay in `slicer-runtime`):
+
+```rust
+pub struct LayerStageInput<'a> {
+    pub stage_id:    StageId,
+    pub layer_index: u32,
+    pub region:      &'a ActiveRegion,
+    pub slice:       &'a SliceIR,
+    pub perimeter:   Option<&'a PerimeterIR>,
+    // … other field-level borrows the dispatcher reads
+}
+
+// PrepassStageInput<'a>, FinalizationStageInput<'a>,
+// PostpassStageInput<'a> follow the same pattern.
+```
+
+The orchestrator constructs the input struct at each dispatch call
+site by projecting field-level borrows from `Blackboard` / `LayerArena`,
+then hands it to the wasm-host's `instance.call_*` path. Errors from
+the runner narrow to crate-local enums (e.g. `PrepassRunnerError`) in
+`slicer-ir`; the broader `PrepassExecutionError` in `slicer-runtime`
+implements `From<PrepassRunnerError>` with lossless variant remap.
+
+Concurrent with Packet 83, `CompiledModule` was renamed
+`CompiledModuleStatic` and a `CompiledModuleLive<'s>` borrow type was
+introduced; Packet 85 completed the migration of wasmtime fields out
+of Static and dropped the transitional `pub type CompiledModule =
+CompiledModuleStatic` alias. See ADR-0005 and ADR-0007.
+
+### Multiple `PostPass::LayerFinalization` Modules (Normative — Packet 88)
+
+`PostPass::LayerFinalization` admits multiple modules in the same
+stage (e.g. `overhang-classifier-default` + `part-cooling` +
+`skirt-brim` + `wipe-tower`). Modules execute SEQUENTIALLY, ordered by
+their claims' topological sort. Two modules MUST NOT claim the same
+role (claim conflict → DAG validation failure). Example role split:
+
+| Module                        | Holds claim                       |
+|-------------------------------|-----------------------------------|
+| `overhang-classifier-default` | `overhang-speed-factor`           |
+| `part-cooling`                | `layer-cooling`                   |
+| `skirt-brim`                  | `skirt`, `brim`                   |
+| `wipe-tower`                  | `wipe-tower`, `prime-tower`       |
+| `top-surface-ironing`         | `ironing` (`PostPass::Finalization` since packet 38-rev1) |
+
+A finalization module is permitted to be unconditionally `layer_parallel_safe = false` (enforced by Phase 2 DAG construction); modules in the same stage execute in dependency order without any mutual-exclusion machinery. `wipe-tower`'s manifest declares `[compatibility].requires = ["skirt-brim", "part-cooling", "top-surface-ironing"]` to force itself last.
+
+### Model Loading — 3MF Sidecar Parse Order (Normative — Packet 56)
+
+Inside `load_3mf` the host opens the 3MF ZIP archive, calls
+`parse_3mf_model_xml`, and then invokes
+`parse_3mf_sidecar(&mut zip)` BEFORE the `ZipArchive` is dropped.
+The resulting `HashMap<u32, ObjectSidecarInfo>` is threaded through
+`parse_3mf_model_xml` to `resolve_object` as an additional parameter
+(unused in Packet 56 — branched only in Packets 56b/56c). Missing
+sidecar files return an empty map silently; malformed XML returns an
+empty map plus a `log::warn!` on the `slicer_model_io::sidecar` target.
+Either way `load_model` returns `Ok(MeshIR)` — sidecar failure is
+non-fatal and falls back to treating all parts as `NormalPart`. See
+`docs/02_ir_schemas.md` § Host-Local Sidecar Types for the exact
+return types.
+
 ### Modifier-Part and Negative-Volume Routing (packets 56b / 56c)
 
 Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied during `PrePass::MeshSegmentation`: the host subtracts negative-volume triangles from the object's segmented region map and routes support-subtype modifiers into the Support claim's per-region override stream (packet 56c).
+
+#### Negative-Part Per-Layer Subtract (Normative — Packet 56c)
+
+Negative-part subtract is a **per-layer host stage** inserted inside
+`layer_executor.rs::run_paint_annotation`, after `arena.take_slice()`
+returns the layer's `SliceIR` and BEFORE the paint annotation loop
+begins. This insertion point is binding (see proposed ADR-0012):
+
+- Earlier designs put the subtract in a prepass phase-0 built-in or in
+  `pipeline.rs`; both were infeasible because `Vec<SliceIR>` is
+  produced per-layer during execution, not during prepass.
+- The per-layer seam guarantees paint annotation and all downstream
+  per-layer consumers (perimeters, infill, support) see post-subtract
+  polygons.
+
+Per-layer call order is locked:
+`arena.take_slice()` → `apply_negative_part_subtract(...)` →
+`run_paint_annotation` loop → downstream per-layer stages.
+
+For each `ModifierVolume` whose
+`config_delta.fields["subtype"] == "negative_part"`, the stage
+projects the modifier mesh at `slice_ir.z` via
+`slicer_core::slice_mesh_ex(&mv.mesh, &[slice_ir.z])` and applies
+`slicer_core::polygon_ops::difference` to each
+`slice_ir.regions[ri].polygons`. Modifiers whose Z extent does not
+contain `slice_ir.z` are skipped. The function has no global state.
 
 ### PrePass Execution (sequential)
 
@@ -725,6 +993,23 @@ is unnecessary.
 #### Layer::PaintRegionAnnotation Stage (packet 64)
 
 `Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `execute_slice_postprocess_paint_annotation()` annotates slice-region entities with paint data from `PaintRegionIR`. This stage follows a guard-based fallback contract: any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
+
+The annotation loop processes contour points in **parallel chunks of
+32** (`par_chunks(32)`, rayon). Results are byte-identical to serial
+execution — per-point paint queries are order-independent, so the
+chunked schedule is purely a wall-clock optimisation. Thread-local
+warnings and `DeterministicConflict` detection flags are merged at
+the end of the layer; cross-thread state contention is zero. Observed
+multi-thread utilisation is exposed via report wall-clock timing
+(non-gating).
+
+`DeterministicConflict` Timing (Normative — Packet 64): overlapping
+`Custom` paint regions with equal `paint_order` are detected at
+`PrePass::PaintSegmentation` time and surfaced as a fatal prepass
+error (`PaintSegmentationError::DeterministicConflict`). This is a
+correctness improvement over the pre-Packet-64 path where the same
+conflict failed per-layer at query time. The host annotation path
+keeps the `point_in_paint_region` conflict check as defence-in-depth.
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -917,6 +1202,51 @@ See progress event schema: `./docs/09_progress_events.md`.
 modules are forbidden from producing OrcaSlicer-specific strings (`;LAYER_CHANGE`,
 `;TYPE:`, `;Z:`, `;HEIGHT:`) themselves. The host emits these per-layer in
 exactly this order before the first extrusion entity on each layer:
+
+#### `GCodeEmitter` Trait Signature (Normative — Packet 86)
+
+The G-code emission machinery lives in the `slicer-gcode` crate
+(extracted in Packet 86). The traits accept IR-typed inputs only — no
+`&Blackboard` parameter — and return errors in `GCodeEmitError`
+(crate-local):
+
+```rust
+pub trait GCodeEmitter {
+    fn emit_gcode(&self, layers: &[LayerCollectionIR])
+        -> Result<GCodeIR, GCodeEmitError>;
+}
+
+pub trait GCodeSerializer {
+    fn serialize_gcode(&self, gcode_ir: &GCodeIR)
+        -> Result<String, GCodeEmitError>;
+}
+```
+
+`PostPass::GCodeEmit` is implemented in
+`slicer-runtime/src/builtins/gcode_emit_producer.rs` as a metadata-only
+`BuiltinProducer` descriptor (~42 LOC). The actual call site lives in
+`run.rs` / `postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode`,
+converting `GCodeEmitError` → `PostpassError` at the boundary via a free
+function (not a `From` impl — orphan rule prevents that). This
+preserves ADR-0001's in-stage-commit pattern without introducing a
+`slicer-gcode` → `slicer-runtime` circular dependency.
+
+#### Overhang Classifier Prepass (Normative — Packet 57)
+
+`DefaultGCodeEmitter::emit_gcode` runs an **embedded prepass** that
+invokes `slicer_core::algos::overhang_classifier::classify_layers`
+once per print (after cloning the layer set, before per-layer
+emission). The classifier walks the layer set and stamps
+`Point3WithWidth.overhang_quartile` (`1..=4`) on every wall-family
+extrusion point against the previous layer's support polygons. The
+emission path then uses `resolve_feedrate(role, speed_factor)` to
+dispatch the matching `overhang_*_4_speed` config key per wall point.
+
+Why inside `emit_gcode`: this single call site covers both pipeline
+arms (`pnp_cli slice` and the WASM dispatch path) without separate
+plumbing in `pipeline.rs`. The classifier short-circuits when all four
+`overhang_*_4_speed` keys are zero (legacy-equivalent mode produces
+byte-identical output to pre-Packet-57).
 
 ```
 ;LAYER_CHANGE

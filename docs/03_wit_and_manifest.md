@@ -51,6 +51,21 @@ reads dep files via `include_str!`, wraps each `package x;` in nested-package br
 with the world file, and passes the result to `wit_bindgen::generate!{ inline: … }`. Both sides
 parse the same bytes from `deps/*.wit` — identity agreement is structural, not by convention.
 
+### Nested-package directory layout (Normative — Packet 72)
+
+Each world package is in its own subdirectory under `deps/`
+(`deps/world-X/world-X.wit`) because `wasmtime`'s `push_path` /
+`push_dir` resolution requires **one main package per directory**.
+The umbrella structure (`root.wit` at top + `deps/`) lets host
+`bindgen!{ path: ... }` and guest `include_str!` resolve cross-package
+`use` statements natively without inline copies.
+
+Dead-code retirement (Packet 72): the unused `gcode-output-interface`
+was deleted during the single-source unification. It does NOT appear
+in the canonical `crates/slicer-schema/wit/` and must not be
+re-introduced — emit `gcode-output-builder` operations through the
+`world-layer`/`world-postpass` resources instead.
+
 Three rules govern all WIT design decisions:
 
 1. The host never trusts module declarations at runtime. Access control is enforced per-call.
@@ -130,8 +145,15 @@ interface geometry {
     record point3 { x: f32, y: f32, z: f32 }
     record point3-with-width {
         x: f32, y: f32, z: f32,
-        width: f32,         // local extrusion width in mm
-        flow-factor: f32,   // multiplier on base extrusion volume
+        width: f32,                  // local extrusion width in mm
+        flow-factor: f32,            // multiplier on base extrusion volume
+        // Overhang quartile classification (1..=4) for wall-family roles
+        // only (OuterWall/InnerWall/ThinWall). Populated by the overhang
+        // classifier prepass inside `DefaultGCodeEmitter::emit_gcode`;
+        // `none` for non-wall roles and for paths not yet classified.
+        // Added in packet 57; the legacy 5-field shape is also accepted by
+        // the bindgen `with:` remap so older host builds still load.
+        overhang-quartile: option<u8>,
     }
     record bounding-box2 { min: point2, max: point2 }
     record bounding-box3 { min: point3, max: point3 }
@@ -911,6 +933,24 @@ keys = ["pattern", "density", "multiline-count"]
 [config.overridable-per-layer]
 keys = ["density"]      # density can vary per-layer; pattern cannot
 
+# ── Region-split semantics declaration (Normative — Packet 92) ─────────────
+# Each [[region_split]] entry declares one paint semantic this module wants
+# the host to split regions on. The host aggregates entries across all
+# loaded manifests into a canonical BTreeMap ordered by (priority, name),
+# and exposes the resulting semantic set to PrePass::RegionMapping for
+# cross-product expansion of variant_chain.
+[[region_split]]
+semantic   = "material"        # PaintSemantic name (snake_case)
+priority   = 100               # Core priorities (locked):
+                                #   material   = 100
+                                #   fuzzy_skin = 200
+                                # Community semantics must have priority >= 1000
+                                # (COMMUNITY_PRIORITY_FLOOR).
+value-type = "tool-index"      # flag | tool-index | custom-string
+                                # `scalar` is REJECTED at manifest load —
+                                # Scalar paints route through
+                                # SlicedRegion.segment_annotations instead.
+
 # ── Hints ─────────────────────────────────────────────────────────────────────
 [hints]
 # <!-- VERIFY: `manifest.rs` parses only `layer-parallel-safe`; other hint
@@ -923,6 +963,52 @@ estimated-ms-per-layer = 12    # informational; not consumed by the host today
 # All other stages: true allows the host to run multiple layers simultaneously.
 layer-parallel-safe    = true
 ```
+
+### Config-Key Wildcard Syntax (Normative — Packet 76)
+
+Config keys declared in `[config.schema]` and any `[config.overridable-per-*]`
+section may use the `<prefix>:*` wildcard form. A declared key of the form
+`<prefix>:*` matches all runtime keys whose name begins with `<prefix>:`,
+enabling modules to declare a single schema entry for dynamically-named
+keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
+Static keys (without the `:*` suffix) continue to require exact-match.
+The matcher lives at
+`crates/slicer-scheduler/src/execution_plan.rs::config_view_allowed_key`.
+
+### `[[region_split]]` Validation Rules (Normative — Packet 92)
+
+Per-manifest:
+
+1. **Duplicate semantic** within a single manifest →
+   `LoadErrorKind::DuplicateRegionSplitSemantic`.
+2. **`value-type = "scalar"`** → rejected
+   (`LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`). See
+   `docs/02_ir_schemas.md` for the routing rationale.
+3. **Community semantic with `priority < 1000`** → rejected
+   (`LoadErrorKind::CommunityPriorityBelowFloor`). `COMMUNITY_PRIORITY_FLOOR = 1000`.
+4. **Core semantic (`material`, `fuzzy_skin`) with `priority` ≠ registry
+   value** → rejected (`LoadErrorKind::CoreSemanticPriorityMismatch`).
+   `CORE_REGION_SPLIT_PRIORITIES = { "material" => 100, "fuzzy_skin" => 200 }`.
+
+Cross-manifest: distinct semantics from different manifests that share a
+priority emit a non-fatal `LoadDiagnostic { level: Warning, ... }` naming
+both manifests and the lexicographic tiebreaker order; aggregation
+continues.
+
+### Variant-chain enumeration order is contract (Normative — Packet 93)
+
+The canonical order for `variant_chain` enumeration in
+`PrePass::RegionMapping` is deterministic and locked by test fixtures:
+
+- **Semantics** are ordered by `BTreeMap` iteration of the aggregated
+  `region_split` map (lexicographic on `semantic` name within priority
+  tiers).
+- **PaintValue** instances within each semantic are ordered:
+  `Flag(false) < Flag(true) < ToolIndex(0) < ToolIndex(1) < ... < Custom(s_lex)`.
+
+Reordering breaks every existing region-split test suite. Any change
+to the enumeration order must be a coordinated packet with explicit
+test-fixture updates.
 
 ### Configuration keys added by recent packets
 

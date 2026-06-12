@@ -159,6 +159,21 @@ already been costed.
   `DispatchFixture` (or any runtime-typed scaffolding) there.** The dep
   direction is owned by AC-N3.
 
+## Amendment (Packet 85): instrumentation split, scheduler-no-wasmtime invariant, isolation-mode tests
+
+Documented explicitly so future architecture reviews see the normative shape rather than reconstruct it from the prose above.
+
+- **`instrumentation.rs` is split.** The planning side (`compute_serial_edges_for_stage`, `EdgeReason`, `SerialEdge`) lives in `slicer-scheduler/src/instrumentation.rs`. The runtime side (`PipelineInstrumentation` trait, `Phase`, `TierKind`, `compute_serial_edges_from_compiled`) stays in `slicer-runtime/src/instrumentation.rs`. The split is mandatory because `dag.rs` (which moved to the scheduler) imports `EdgeReason`; bringing the runtime trait along would re-introduce a scheduler→runtime back-edge.
+- **Scheduler-no-wasmtime invariant.** `slicer-scheduler` MUST NOT depend (directly or transitively) on `wasmtime`, `slicer-wasm-host`, or `slicer-runtime`. Verify with `cargo tree -p slicer-scheduler --edges normal | grep -E '(wasmtime|slicer-wasm-host|slicer-runtime)'` (must be empty). This is what enables the ~5500 LOC of planning logic to be tested without instantiating WASM components.
+- **Transitional re-export shim.** `crates/slicer-runtime/src/lib.rs` carries a `pub use slicer_scheduler::*;` block (with per-line `// kept:` comments naming the surviving consumer) for backwards source compatibility. The shim is for tests and existing call sites; a follow-up packet cleans it up.
+- **Isolation-mode tests.** `crates/slicer-scheduler/tests/` exercises the scheduler's public surface (`build_execution_plan`, `validate_startup_dag`, `load_modules_from_roots`, `run_dag_*`) without importing `slicer-wasm-host` or `slicer-runtime` symbols. ≥18 such tests must exist as the architectural acceptance check for the Static/Live split. Any scheduler test that links `slicer-wasm-host` belongs in `slicer-wasm-host/tests/` instead.
+
+### What future architecture reviews must not re-litigate (Packet 85 amendment)
+
+- **Do not re-merge the two `instrumentation.rs` files** — the planning side has callers in the scheduler that pre-date dispatcher concerns, and recombining them re-introduces the back-edge.
+- **Do not add `slicer-wasm-host` or `wasmtime` as a dep of `slicer-scheduler`** under any circumstance. If a scheduler path needs a runtime concern, project that concern into a trait the runtime implements and the scheduler accepts as `&dyn Trait`.
+- **Do not delete the transitional re-export shim without a planned grace period.** The shim's per-line comments name the consumers; remove each line only when its consumer migrates to the direct path.
+
 ## Cross-references
 
 - ADR-0002 (WIT marshalling type unification) — confirms what stays in

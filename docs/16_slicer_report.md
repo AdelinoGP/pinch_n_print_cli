@@ -37,6 +37,23 @@ exactly as it did before this feature existed. Cost: one relaxed atomic
 load per allocation (from the global `AccountingAllocator` wrapper) plus
 inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
 
+### Parent-directory creation and error semantics (Normative — Packet 65)
+
+Parent directories for both `--output` and `--report` paths are created
+automatically when missing, via `pnp_cli::io::write_with_parents`. The
+two flags differ on what happens when directory creation fails:
+
+- **`--output`** — a failure to create the parent directory causes the
+  CLI to exit non-zero with a structured error. The slice does NOT
+  proceed (no G-code, no partial output).
+- **`--report`** — a failure to create the parent directory emits a
+  `log::warn!` and the slice CONTINUES. G-code is still written to
+  `--output`; the HTML report is skipped. The report is a debugging
+  aid; a missing report directory should not block a successful slice.
+
+Both flags accept `PathBuf` (Packet 65 normalised every path arg in the
+`Slice` subcommand to `PathBuf`; no string-typed path arguments remain).
+
 ## What the report shows
 
 - **Header**: model path, total wall-clock, layer count, module-call count,
@@ -105,11 +122,24 @@ runs where arrays are empty and counts are zero.
   - `allocator.rs` — `AccountingAllocator<A: GlobalAlloc>` with a thread-local
     scope stack and a global `enable()` flag.
   - `model.rs` — `Report`, `LayerRecord`, `StageRecord`, `ModuleRecord`,
-    `ParallelismRecord`.
+    `ParallelismRecord`. Only `PhaseWallTimes` derives `Serialize`; the
+    other model structs are deliberately serde-free (see "LlmReport
+    curation pattern" below).
   - `collector.rs` — `Collector` impl `PipelineInstrumentation`. Uses a
     thread-local scope stack so rayon workers don't contend on a Mutex
     per bracket — only finalized records cross the lock.
+    Phase wall-clock timestamps live in `phase_*_wall_ns: Mutex<u64>`
+    fields on the collector (PrePass / PerLayer / PostPass — Packet 66).
+    All phase callbacks are single-threaded (main thread only), so the
+    Mutex is uncontended; it is used for consistency with the rest of
+    the collector's locking pattern, not for synchronisation.
   - `render.rs` — `format!`-based HTML, inline CSS, inline SVG Gantt.
+    Also defines `LlmReport`, a render-private curation struct selecting
+    a subset of `Report` fields for the JSON data block (Packet 66 —
+    avoids forcing `serde::Serialize` onto every model struct or onto
+    transitive types like `TierKind` / `SerialEdge`). The curation
+    approach is deliberate; reviewers should not propose deriving
+    `Serialize` on model.rs structs to "simplify" the JSON path.
 
 Hook points: `pipeline.rs::run_pipeline_with_instrumentation` brackets
 each phase; `layer_executor.rs::execute_single_layer` brackets layer /

@@ -46,6 +46,112 @@ opt-level = "s"    # optimize for size in WASM output
 lto = true
 ```
 
+### Guest Build Invariants (Normative — Packets 56, 63, 84, 88)
+
+These rules govern what a guest WASM crate may depend on. Violating
+them re-introduces host-only baggage (rayon, log, wasmtime,
+slicer-runtime) into the guest dependency tree and breaks WASM build
+isolation.
+
+- **No transitive `slicer-runtime` / `slicer-wasm-host` / `wasmtime`
+  dep.** A guest must depend only on `slicer-sdk` (and indirectly on
+  `slicer-ir`, `slicer-schema`, `slicer-macros`). Verify with
+  `cargo tree -p <your-guest> --edges normal | grep -E
+  '(slicer-runtime|slicer-wasm-host|wasmtime)'` (must be empty).
+- **No `slicer-core` dep when the `host-algos` feature is the only way
+  in.** `slicer-core` exposes pure geometry primitives unconditionally
+  (`polygon_ops`, `aabb_tree`, `triangle-mesh-slicer`), but the
+  host-side algorithm kernels (`mesh_analysis`, `paint_segmentation`,
+  `support_geometry`, `region_mapping`, `overhang_classifier`) live
+  behind the `host-algos` feature, which is enabled by `slicer-runtime`
+  and NOT by `slicer-sdk`. Depending on `slicer-core` from a guest
+  would risk pulling `host-algos` into the guest's build graph, which
+  would pull `rayon` and `log` with it (P84 lesson).
+- **Native deps must be WASM-compatible.** Any third-party dep loaded
+  via the SDK must compile to `wasm32-unknown-unknown` (or be gated
+  off for that target). Example: `rstar` was confirmed WASM-compatible
+  in Packet 63 with `default-features = false`; check `cargo build
+  --target wasm32-unknown-unknown` before adding new deps.
+- **Test-support APIs never leak into production.**
+  `slicer_sdk::test_support` and `slicer_sdk::test_prelude` are gated
+  by `#![cfg(any(test, feature = "test"))]`; `cargo xtask
+  build-guests` never enables the `test` feature, so guest `.wasm`
+  artifacts carry no test symbols.
+
+#### Self-Contained Module Pattern (Normative — Packet 88)
+
+Some host-side algorithms are good candidates for **relocation into a
+FinalizationModule guest** rather than reuse via a `slicer-core`
+dependency. Selection criteria:
+
+- The algorithm is a deterministic, self-contained kernel (accepts IR
+  views, emits mutations) with no external state.
+- Users benefit from being able to swap or disable it.
+- Its `slicer-core` dependencies (if any) would pull `host-algos` into
+  the guest tree.
+
+Authoring rules:
+
+1. Copy the algorithm source into
+   `modules/core-modules/<name>/src/`.
+2. Replicate any primitives it needs from `slicer-core`
+   (e.g. `LinesDistancer2D` for overhang classification — Packet 88
+   precedent).
+3. Depend on `slicer-ir` + `slicer-sdk` only; verify with `cargo tree`
+   per the rules above.
+4. Document in the module manifest which host-side algorithm is being
+   replaced so future auditors can locate the divergence.
+
+ADR-0008 (`overhang-as-finalization-module`) is the worked example;
+follow the same shape for any future kernel that meets the selection
+criteria.
+
+#### Host Logging Conventions (Normative — Packet 56)
+
+Modules may use the project's existing `log` facade
+(`log::warn!`, `log::trace!`). Use a stable `target:` to make output
+greppable. The host loader and built-in services follow these
+conventions:
+
+- `slicer_model_io::loader` — STL/OBJ/3MF parse path.
+- `slicer_model_io::sidecar` — 3MF sidecar (`Metadata/model_settings.config`)
+  parser. Malformed XML emits `log::warn!` containing
+  `"treating all parts as normal_part"` (non-fatal fallback). Missing
+  sidecar files are silent.
+- `slicer_runtime::*` — runtime / dispatch / instrumentation.
+
+Community modules: pick `target: "<module-id>::<component>"` so users
+can filter your output independently.
+
+### Misplaced-vs-Legitimately-Located Test Heuristic (Normative — Packet 80)
+
+When migrating module tests between crates, the question is whether a test that imports a module belongs in the module's own crate or in the runtime/host crate. The heuristic:
+
+1. **System-under-test is the module's public trait impl** (e.g. `MyInfillModule::run_infill` is what the assertions hit) → relocate the test into the module crate. The runtime is fixture; the module is the SUT.
+2. **System-under-test is a runtime symbol** (e.g. `Blackboard`, `commit_*_builtin`, `GCodeEmitter`) that happens to consume the module as an input → leave the test in the runtime crate and annotate it. The module is fixture; the runtime is the SUT.
+
+Tests that fall into category (2) must carry an explicit `// NOT RELOCATABLE: <reason>` comment on the test function or module so future bulk-migration passes do not silently move them. Three canonical examples in `crates/slicer-runtime/tests/`:
+
+- `gcode_part_cooling_emission_tdd.rs` — exercises `DefaultGCodeEmitter::emit_gcode`'s cooling/fan path; the cooling module is fixture input.
+- `gcode_toolchange_purge_emission_tdd.rs` — exercises the emitter's tool-change + purge interaction; the wipe-tower module is fixture input.
+- `slicing_promotion_tdd.rs` — exercises the host's slice-promotion glue; consumed modules are fixture input.
+
+A future `GCodeEmitter` crate extraction (already prefigured by Packet 86's `slicer-gcode`) will re-evaluate these annotations: tests whose SUT migrates with the emitter will follow it; tests that remain runtime-coupled stay.
+
+### G-code Emission Crate (Informative — Packet 86)
+
+If your module's output reaches G-code, the formatting layer is the
+`slicer-gcode` crate (extracted in Packet 86 from
+`slicer-runtime/src/gcode_emit.rs`). It owns `DefaultGCodeEmitter`,
+`DefaultGCodeSerializer`, and the `GCodeEmitter` / `GCodeSerializer`
+traits. The crate is zero-dep on `slicer-runtime` / `slicer-wasm-host`
+/ `slicer-scheduler`, which means it can be exercised in unit tests
+without instantiating a full pipeline — useful when authoring
+`PostPass::GCodePostProcess` or `PostPass::TextPostProcess` modules
+that need golden fixtures for the host's pre-mutation output.
+See `crates/slicer-gcode/tests/golden_emit_tdd.rs` for a working
+construct-a-tiny-GCodeIR-and-serialise example.
+
 ### Module Entry Point (`#[slicer_module]`)
 
 The `#[slicer_module]` macro generates the WIT export bindings, validates that the impl matches the declared stage, and wires up the `on-print-start` / `on-print-end` lifecycle.
@@ -188,6 +294,23 @@ The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
 "SurfaceClassificationIR", "LayerPlanIR", "PaintRegionIR"]`, `writes =
 ["SupportPlanIR"]`, and `[module] wit-world = "slicer:world-prepass@1.0.0"`.
+
+#### PrePass Config-View Plumbing (Normative — Packet 73)
+
+Every PrePass export receives a `config-view` parameter providing
+read-only access to declared config keys (uniform across
+`layer-planning`, `seam-planning`, `support-geometry`, and
+`paint-segmentation`). Modules declaring no `[config.schema]` receive
+an empty `ConfigView`; keys absent from the view return `None` on
+lookup. This was normalised in Packet 73 for `support-geometry` (the
+final holdout) — two behavioural consequences for module authors:
+
+- Honour `support_enabled` (and analogous keys) directly. Earlier hosts
+  injected an empty `ConfigView`, so a planner that probed
+  `support_enabled` saw `None` and ran anyway; that path is gone.
+- Surface planner fatals as `Err(ModuleError::fatal(...))`. They are
+  propagated by the host as `DispatchError` (no longer swallowed by
+  macro/host glue).
 
 ### Single-Stage-Per-Impl Constraint
 

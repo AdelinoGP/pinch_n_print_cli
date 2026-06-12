@@ -74,6 +74,33 @@ mm/min value ready for `F{:.0}` serialization. Modules must always work in
 mm/s; emitting mm/min internally is a contract violation that double-scales
 at the boundary.
 
+### Speed-factor clamp (Normative — Packet 52)
+
+`ExtrusionPath3D.speed_factor: f32` is a per-move multiplier applied at
+F-token emission. `resolve_feedrate` clamps it to **`[0.05, 5.0]`** before
+multiplying by the role-resolved base speed. The clamp rejects pathological
+values (0.0 would emit `F0`; negative or NaN values would silently produce
+wrong feedrates). OrcaSlicer parity confirmed against
+`GCodeWriter::set_speed`.
+
+---
+
+## PaintStroke Vertex Conversion (Normative — packet 50a)
+
+`PaintLayer.strokes` is populated only for subdivided 3MF facets. The 3MF
+document supplies `<triangle>` vertices in **millimetres**, but
+`PaintStroke.triangles: Vec<[Point3; 3]>` carries vertices in
+**slicer units (1 unit = 100 nm)**. The 3MF loader applies `mm_to_units()`
+to every component before committing the stroke. Forgetting this conversion
+produces coordinates 10,000× too large — a silent contract violation that
+would propagate through every downstream stage that consumes
+`PaintLayer.strokes` (paint segmentation, region mapping).
+
+The `mm_to_units()` helper lives in `slicer-helpers`. Tests covering the
+3MF subdivision parser pin the conversion explicitly; any future format
+that surfaces strokes in millimetres must apply the same conversion at
+the loader boundary, never at consumption time.
+
 ---
 
 ## Quick Reference

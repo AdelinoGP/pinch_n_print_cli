@@ -201,6 +201,30 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 The four `overhang_*_4_speed` keys all-zero short-circuits the overhang
 classifier for byte-identical pre-packet-57 output.
 
+**Overhang speed key consumption (Packet 88):** the four `overhang_*_4_speed`
+keys are still REGISTERED on `gcode_emit.rs::FeedrateConfig` (table above)
+so host-side fallback resolution stays trivial, but the active CONSUMER
+is the `overhang-classifier-default` FinalizationModule
+(`modules/core-modules/overhang-classifier-default/`) — see ADR-0008.
+The module reads the four keys plus three base wall / infill / travel
+speeds to compute per-quartile speed factors via `SetSpeedFactor`
+mutations on wall-family entities; the host's
+`overhang_classifier::classify_layers` prepass only stamps
+`Point3WithWidth.overhang_quartile` (1..=4), it does NOT read the speed
+keys. Treat the source column above as "registration site"; treat ADR-0008
+as the authoritative pointer to the consumer.
+
+**`union_paint_regions_at_harvest` toggle (Packet 64):** a temporary
+benchmarking key was added on the `paint-segmentation` scope —
+`union_paint_regions_at_harvest: bool, default true`. When `true`,
+paint regions are unioned per-`(layer, object, semantic, value)` at
+harvest (the production path; see `docs/02_ir_schemas.md` §"Harvest
+Strategy"). When `false`, regions retain per-facet polygons but
+`SemanticRegion.aabb` is still computed. The toggle exists to
+A/B-test the union step's wall-clock impact; not recommended for
+production use. Once Packet 64's perf claims are independently
+re-verified the key can be retired.
+
 ## Deviations from OrcaSlicer (generated)
 
 Generated keys whose numeric default differs from the matching key in
