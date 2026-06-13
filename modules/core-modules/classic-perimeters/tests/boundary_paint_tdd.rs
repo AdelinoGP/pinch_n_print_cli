@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigView, PaintSemantic, PaintValue, WallBoundaryType};
+use slicer_ir::{ConfigView, LoopType, PaintSemantic, PaintValue, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -316,4 +316,105 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
             }
         }
     }
+}
+
+// --------------------------------------------------------------------------
+// AC-22b — external-contour dedup (trace the model perimeter once per object)
+// --------------------------------------------------------------------------
+
+/// A painted cell of object `object_id` whose group carries the shared model
+/// `boundary` as its `external_contour`. `polys` is the cell's own area.
+fn painted_cell(
+    object_id: &str,
+    polys: Vec<slicer_ir::ExPolygon>,
+    boundary: Vec<slicer_ir::ExPolygon>,
+) -> SliceRegionView {
+    let mut r = SliceRegionView::default();
+    r.set_object_id(object_id.to_string());
+    r.set_region_id(0);
+    r.set_polygons(polys);
+    r.set_z(0.2);
+    r.set_effective_layer_height(0.2);
+    r.set_external_contour(Some(boundary));
+    r
+}
+
+fn count_outer(output: &PerimeterOutputBuilder) -> usize {
+    output
+        .wall_loops()
+        .iter()
+        .filter(|w| w.loop_type == LoopType::Outer)
+        .count()
+}
+
+/// Two painted cells of ONE object that share an `external_contour` must yield
+/// exactly ONE outer wall (the model perimeter traced once), not one per cell —
+/// the AC-22b dedup. Without it, each cell would emit its own outer wall.
+#[test]
+fn painted_cells_share_one_outer_wall_via_external_contour() {
+    let config = config_2_walls();
+    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    // Shared model boundary covering both cells, and the two cell halves.
+    let boundary = vec![square_polygon(5.0, 5.0, 10.0)];
+    let left = painted_cell("cube", vec![square_polygon(2.5, 5.0, 5.0)], boundary.clone());
+    let right = painted_cell("cube", vec![square_polygon(7.5, 5.0, 5.0)], boundary.clone());
+
+    module
+        .run_perimeters(0, &[left, right], &paint, &mut output, &config)
+        .unwrap();
+
+    assert_eq!(
+        count_outer(&output),
+        1,
+        "two painted cells of one object must share ONE outer wall (traced once \
+         from external_contour); got {} outer loops",
+        count_outer(&output)
+    );
+    // Each cell still contributes its own inner wall.
+    let inner = output
+        .wall_loops()
+        .iter()
+        .filter(|w| w.loop_type == LoopType::Inner)
+        .count();
+    assert!(inner >= 2, "each cell should still emit an inner wall; got {inner}");
+}
+
+/// Contrast: with NO external_contour, each region traces its own outer wall —
+/// confirming the dedup above is doing real work (and that the unpainted path is
+/// unchanged).
+#[test]
+fn regions_without_external_contour_emit_outer_wall_each() {
+    let config = config_2_walls();
+    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    let mut a = SliceRegionView::default();
+    a.set_object_id("cube".to_string());
+    a.set_region_id(0);
+    a.set_polygons(vec![square_polygon(2.5, 5.0, 5.0)]);
+    a.set_z(0.2);
+    a.set_effective_layer_height(0.2);
+
+    let mut b = SliceRegionView::default();
+    b.set_object_id("cube".to_string());
+    b.set_region_id(0);
+    b.set_polygons(vec![square_polygon(20.0, 5.0, 5.0)]);
+    b.set_z(0.2);
+    b.set_effective_layer_height(0.2);
+
+    module
+        .run_perimeters(0, &[a, b], &paint, &mut output, &config)
+        .unwrap();
+
+    assert_eq!(
+        count_outer(&output),
+        2,
+        "two regions without external_contour must each emit their own outer wall; \
+         got {} outer loops",
+        count_outer(&output)
+    );
 }

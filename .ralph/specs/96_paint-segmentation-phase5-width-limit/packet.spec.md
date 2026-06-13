@@ -249,3 +249,24 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- `[AC-22b mechanism]` — Specified: per-edge `bisector_edge_skip_mask: Option<Vec<Vec<bool>>>` consumed by the perimeter guest | Implemented: per-object `external_contour: Option<Vec<ExPolygon>>` (host `union_ex`) + trace-the-perimeter-once in arachne & classic perimeters | Reason: the WASM perimeter guest cannot reconstruct the boundary (boolean polygon ops are no-ops in the guest), Arachne's medial-axis walls do not map 1:1 onto original polygon edges, and per-cell tracing fragments the perimeter across colour cells. Registered `D-96-AC22-EXTERNAL-CONTOUR`.
+- `[AC-22b test counter]` — Specified: count `G1` lines containing ` E` as outer-wall moves | Implemented: require ` E` AND (` X` or ` Y`) — i.e. real extrusion segments | Reason: `E`-only filament retract/unretract pairs are not wall extrusions and inflated 29 layers by +2; the mechanism already yields 124×4 real extrusion segments before the counter change; applied symmetrically to painted and unpainted baselines. Registered `D-96-AC22-RETRACT-COUNTER`.
+- `[AC-8]` — Specified: a single AC-8 asserting default-config wedge AND cube byte-identical to the Step-0 baseline | Implemented: split into AC-8a (wedge, unchanged P95 baseline) and AC-8b (cube re-baselined post-dedup to `ad0245c3…`, was `cd762cb1…`) | Reason: AC-22b necessarily changes the default-config painted cube output, mutually exclusive with the original single AC-8. Registered `D-96-AC8-CUBE-REBASELINE`.
+- `[Defaults]` — Specified: (implied OrcaSlicer non-zero) | Implemented: all three MMU keys default `0.0`/`false` | Reason: preserve byte-identical default-config output; users opt in. Registered `D-96-DEFAULT-ZERO`.
+- `[interlocking_beam]` — Specified (original draft): constant-depth bands | Implemented: `beam = true` SKIPS Phase 5 at the driver | Reason: OrcaSlicer parity, `MultiMaterialSegmentation.cpp:2452`. Registered `D-96-BEAM-FLAG-SKIPS`.
+
+## Closure Log
+
+- **TASK-246** (Phase 5) complete; **TASK-246-BISECTOR** (external-contour dedup) complete.
+- **AC-8a** wedge gcode SHA byte-identical to `target/p96-baseline-wedge.sha` (`aa4da2fa…`).
+- **AC-8b** cube gcode SHA byte-identical to the post-dedup baseline `target/p96-baseline-cube.sha` = `ad0245c3463174606718d13675b1f9b4f1c09b6af5fdf13f3c2ec791dab54ebf` (pre-dedup was `cd762cb10cb0cbd51cd4863573fc94c7e9e0ffd94eea3674398e39e000b0d709`).
+- **AC-22b** GREEN: `1 passed; 0 failed; 0 ignored`. Painted cube = 4 outer-wall extrusion moves/layer on all 124 layers (matches the unpainted baseline). classic-perimeters' dedup path additionally covered by `boundary_paint_tdd::painted_cells_share_one_outer_wall_via_external_contour`.
+- **AC-10** 21/21 cube tests GREEN (11 `cube_4color_paint_tdd` + 10 `cube_fuzzy_painted_tdd`).
+- **AC-1/N1/N2/N3** Phase 5 kernel + driver-skip GREEN; **AC-5/6/7** integration GREEN (`cube_4color_phase5_tdd`).
+- **AC-9** HTML report generated with `mmu_segmented_region_max_width = 2.0` at `/tmp/p96-cube-banded-report.html` (machine gate: file exists). The report renders per-layer painted variant regions; eroded banded structure is the geometric effect verified by AC-5 (width-set slice differs from default).
+- **AC-11** `cargo xtask build-guests --check` clean.
+- Full workspace acceptance ceremony: **2145 passed, 0 failed, 5 ignored**. `cargo clippy --workspace --all-targets -D warnings` clean.
+- All Doc Impact Statement greps PASS.
