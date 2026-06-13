@@ -8,8 +8,7 @@
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, MeshSegmentationIR, RegionMapIR, SeamPlanIR, SupportGeometryIR, SupportPlanIR,
-    SurfaceClassificationIR,
+    LayerPlanIR, RegionMapIR, SeamPlanIR, SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
 };
 
 /// One committed output produced by a prepass stage invocation.
@@ -19,8 +18,6 @@ pub enum PrepassStageOutput {
     None,
     /// Stage produced `SurfaceClassificationIR`.
     SurfaceClassification(Arc<SurfaceClassificationIR>),
-    /// Stage produced `MeshSegmentationIR`.
-    MeshSegmentation(Arc<MeshSegmentationIR>),
     /// Stage produced `LayerPlanIR`.
     LayerPlan(Arc<LayerPlanIR>),
     /// Stage produced `SeamPlanIR`.

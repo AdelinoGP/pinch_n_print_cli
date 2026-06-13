@@ -385,7 +385,6 @@ fn stage_fn_signature(stage: &str) -> &'static str {
         "Layer::PathOptimization" => "fn run_path_optimization(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut GcodeOutputBuilder,\n        _collection: &mut LayerCollectionBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PrePass::MeshAnalysis" => "fn run_mesh_analysis(\n        &self,\n        _objects: &[ObjectId],\n        _output: &mut MeshAnalysisOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PrePass::LayerPlanning" => "fn run_layer_planning(\n        &self,\n        _objects: &[ObjectId],\n        _output: &mut LayerPlanOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
-        "PrePass::MeshSegmentation" => "fn run_mesh_segmentation(\n        &self,\n        _objects: &[MeshObjectView],\n        _output: &mut MeshSegmentationOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PrePass::PaintSegmentation" => "fn run_paint_segmentation(\n        &self,\n        _objects: &[PaintSegmentationObjectView],\n        _output: &mut PaintSegmentationOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PostPass::LayerFinalization" => "fn run_finalization(\n        &self,\n        _layers: &[LayerCollectionView],\n        _output: &mut FinalizationOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         "PostPass::GCodePostProcess" => "fn run_gcode_postprocess(\n        &self,\n        _commands: &[GcodeCommandView],\n        _output: &mut GcodeOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
@@ -518,10 +517,6 @@ mod tests {
             "slicer:world-prepass@1.0.0"
         );
         assert_eq!(
-            wit_world_for_stage("PrePass::MeshSegmentation"),
-            "slicer:world-prepass@1.0.0"
-        );
-        assert_eq!(
             wit_world_for_stage("PrePass::PaintSegmentation"),
             "slicer:world-prepass@1.0.0"
         );
@@ -562,13 +557,6 @@ mod tests {
         let manifest = generate_manifest("mesh-tool", "PrePass::MeshAnalysis");
         assert!(manifest.contains(r#"wit-world    = "slicer:world-prepass@1.0.0""#));
         assert!(manifest.contains(r#"id = "PrePass::MeshAnalysis""#));
-    }
-
-    #[test]
-    fn manifest_prepass_mesh_segmentation_stage() {
-        let manifest = generate_manifest("mesh-seg", "PrePass::MeshSegmentation");
-        assert!(manifest.contains(r#"wit-world    = "slicer:world-prepass@1.0.0""#));
-        assert!(manifest.contains(r#"id = "PrePass::MeshSegmentation""#));
     }
 
     #[test]
@@ -678,7 +666,6 @@ mod tests {
         for stage in &[
             "PrePass::MeshAnalysis",
             "PrePass::LayerPlanning",
-            "PrePass::MeshSegmentation",
             "PrePass::PaintSegmentation",
         ] {
             let lib = generate_lib_rs("test-mod", stage);

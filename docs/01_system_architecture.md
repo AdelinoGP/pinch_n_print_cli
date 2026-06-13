@@ -64,17 +64,9 @@ traces are maintained in:
 
 ### Tier 1 — PrePass (Sequential, Whole-Model)
 
-Runs once before any layer is sliced. Results are written to the Blackboard and become immutable during per-layer processing.
+Runs once before any layer is sliced. Results are written to the Blackboard and become immutable during per-layer processing. (Sub-facet paint strokes are normalized into whole-triangle assignments earlier, at model-load time, by the host loader's `split_triangle_strokes` — there is no separate mesh-segmentation prepass stage.)
 
 ```
-PrePass::MeshSegmentation  [new — runs first]
-  Input:  MeshIR (raw, may contain sub-facet paint strokes)
-  Output: MeshIR (modified — triangles clipped at sub-facet stroke boundaries;
-          every triangle has exactly one paint value per semantic after this stage)
-  Purpose: Convert sub-facet brush strokes into whole-triangle paint assignments
-           so all downstream stages see a uniformly tagged mesh.
-           If no sub-facet strokes are present, this stage is a no-op.
-
 PrePass::MeshAnalysis
   Input:  MeshIR (loaded STL/3MF/OBJ)
   Output: SurfaceClassificationIR
@@ -92,7 +84,7 @@ PrePass::LayerPlanning
            Handle catch-up layers for regions with different heights.
 
 PrePass::PaintSegmentation 
-  Input:  MeshIR (with whole-triangle paint assignments from MeshSegmentation)
+  Input:  MeshIR (with whole-triangle paint assignments normalized at load)
           SurfaceClassificationIR
           LayerPlanIR (authoritative global Z sequence)
   Output: PaintRegionIR
@@ -460,7 +452,6 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 
 | Stage                                    | Reads                                                              | Writes                                                              |
 |------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
-| `PrePass::MeshSegmentation`              | `MeshIR`                                                           | `MeshIR` (paint-assignment normalization)                           |
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                           |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                       |
 | `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `PaintRegionIR`                                                     |
@@ -486,7 +477,6 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 
 | Producer \ Consumer   | MeshAnalysis | LayerPlanning | PaintSegmentation | SupportGeometry | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
 |-----------------------|--------------|---------------|-------------------|-----------------|---------------|-------|------------------|------------|--------|---------|------------------|-------------------|-----------|
-| MeshSegmentation      |              | `X`           | `X`               |                 |               | `X`   |                  |            |        |         |                  |                   |           |
 | MeshAnalysis          |              | `X`           | `X`               | `X`             |               |       |                  |            |        | `X`     |                  |                   |           |
 | LayerPlanning         |              |               | `X`               | `X`             | `X`           | `X`   |                  |            |        |         |                  |                   |           |
 | PaintSegmentation     |              |               |                   | `X`             |               |       | `X`              | `X`        |        | `X`     |                  |                   |           |

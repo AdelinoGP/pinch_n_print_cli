@@ -17,7 +17,6 @@ use crate::region_split::{aggregate_region_splits, AggregatedRegionSplitEntry};
 /// [`load_live_modules_for_plan`] are grouped and sorted in this
 /// order; stages not present among the loaded modules are skipped.
 pub const STAGE_ORDER: &[&str] = &[
-    "PrePass::MeshSegmentation",
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
     "PrePass::SeamPlanning",

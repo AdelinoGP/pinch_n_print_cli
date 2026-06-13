@@ -172,7 +172,6 @@ fn validate_stage_id(module: &LoadedModule) -> Result<(), SchedulerError> {
 
 ```rust
 pub static STAGE_ORDER: &[StageId] = &[
-    StageId::PrePassMeshSegmentation,
     StageId::PrePassMeshAnalysis,
     StageId::PrePassLayerPlanning,
     StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
@@ -904,7 +903,7 @@ return types.
 
 ### Modifier-Part and Negative-Volume Routing (packets 56b / 56c)
 
-Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied during `PrePass::MeshSegmentation`: the host subtracts negative-volume triangles from the object's segmented region map and routes support-subtype modifiers into the Support claim's per-region override stream (packet 56c).
+Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied by the per-layer negative-part subtract host stage described in the next section (packet 56c): the host subtracts negative-volume geometry per layer and routes support-subtype modifiers into the Support claim's per-region override stream.
 
 #### Negative-Part Per-Layer Subtract (Normative — Packet 56c)
 
@@ -1372,9 +1371,8 @@ startup
   └─ freeze ExecutionPlan
 
 slice command
-  ├─ load model → MeshIR
+  ├─ load model → MeshIR (paint normalized at load via split_triangle_strokes)
   ├─ execute_prepass()
-    │    ├─ PrePassMeshSegmentation → MeshIR (normalized paint) → Blackboard
     │    ├─ PrePassMeshAnalysis     → SurfaceClassificationIR   → Blackboard
     │    ├─ PrePassLayerPlanning    → LayerPlanIR               → Blackboard
     │    ├─ PrePassSeamPlanning     → SeamPlanIR                → Blackboard  (optional)

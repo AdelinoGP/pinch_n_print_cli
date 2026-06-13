@@ -7,10 +7,10 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
-    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    ObjectMesh, PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
-    RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey,
-    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, ObjectMesh,
+    PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, RetractMode,
+    SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR, SupportGeometryKey, SupportIR,
+    SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
@@ -57,7 +57,6 @@ pub struct DeferredTravelMove {
 pub struct Blackboard {
     mesh_ir: Arc<MeshIR>,
     surface_classification: Option<Arc<SurfaceClassificationIR>>,
-    mesh_segmentation: Option<Arc<MeshSegmentationIR>>,
     layer_plan: Option<Arc<LayerPlanIR>>,
     seam_plan: Option<Arc<SeamPlanIR>>,
     support_plan: Option<Arc<SupportPlanIR>>,
@@ -74,7 +73,6 @@ impl Blackboard {
         Self {
             mesh_ir,
             surface_classification: None,
-            mesh_segmentation: None,
             layer_plan: None,
             seam_plan: None,
             support_plan: None,
@@ -104,9 +102,6 @@ impl Blackboard {
         let mut total: u64 = estimated_mesh_ir_bytes(&self.mesh_ir);
         if let Some(arc) = self.surface_classification.as_ref() {
             total = total.saturating_add(estimated_surface_classification_bytes(arc));
-        }
-        if let Some(arc) = self.mesh_segmentation.as_ref() {
-            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
         }
         if let Some(arc) = self.layer_plan.as_ref() {
             total = total.saturating_add(estimated_layer_plan_bytes(arc));
@@ -145,24 +140,6 @@ impl Blackboard {
     #[must_use]
     pub fn surface_classification(&self) -> Option<&Arc<SurfaceClassificationIR>> {
         self.surface_classification.as_ref()
-    }
-
-    /// Commit `MeshSegmentationIR` exactly once.
-    pub fn commit_mesh_segmentation(
-        &mut self,
-        ir: Arc<MeshSegmentationIR>,
-    ) -> Result<(), BlackboardError> {
-        commit_prepass(
-            &mut self.mesh_segmentation,
-            ir,
-            BlackboardPrepassSlot::MeshSegmentation,
-        )
-    }
-
-    /// Return the committed mesh-segmentation IR, if available.
-    #[must_use]
-    pub fn mesh_segmentation(&self) -> Option<&Arc<MeshSegmentationIR>> {
-        self.mesh_segmentation.as_ref()
     }
 
     /// Commit `LayerPlanIR` exactly once.

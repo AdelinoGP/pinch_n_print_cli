@@ -726,12 +726,6 @@ fn chunk2_ir_schema_versions_are_default_sourced() {
         slicer_ir::CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
         "SupportGeometryIR::default().schema_version must equal CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION"
     );
-    // PaintRegionIR removed in packet 95 sub-step 16 (v2 integration follow-up)
-    assert_eq!(
-        MeshSegmentationIR::default().schema_version,
-        slicer_ir::CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
-        "MeshSegmentationIR::default().schema_version must equal CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION"
-    );
     assert_eq!(
         RegionMapIR::default().schema_version,
         slicer_ir::CURRENT_REGION_MAP_IR_SCHEMA_VERSION,

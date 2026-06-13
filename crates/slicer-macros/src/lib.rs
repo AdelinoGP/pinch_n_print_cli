@@ -448,8 +448,7 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
         "PrePass::MeshAnalysis"
         | "PrePass::LayerPlanning"
         | "PrePass::SeamPlanning"
-        | "PrePass::SupportGeometry"
-        | "PrePass::MeshSegmentation" => Some(WorldGlueKind::Prepass),
+        | "PrePass::SupportGeometry" => Some(WorldGlueKind::Prepass),
         "Layer::Slice"
         | "Layer::SlicePostProcess"
         | "Layer::Perimeters"
@@ -1172,9 +1171,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 }
 
 /// Emit the `wit_bindgen`-backed component export glue for the prepass
-/// world for all documented prepass stages. `MeshSegmentation` routes
-/// through the real prepass world here; its SDK output-builder bridge
-/// still retains the staged limitations documented in the per-stage arms below.
+/// world for all documented prepass stages.
 fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-prepass/world-prepass.wit");
 
@@ -1302,7 +1299,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
         }
     };
 
-    let (mesh_arm, layer_arm, mesh_seg_arm, seam_arm, support_arm) = match detected_stage {
+    let (mesh_arm, layer_arm, seam_arm, support_arm) = match detected_stage {
         "PrePass::MeshAnalysis" => (
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
@@ -1376,7 +1373,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 }
             },
             quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! { Ok(()) }, // seam_arm (unused)
             quote! { Ok(()) }, // support_arm (unused)
         ),
@@ -1433,59 +1429,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::MeshSegmentation" => (
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            // STEP H: forward real `_objects` as skeletal
-            // `MeshObjectView`s (only `object_id` populated; the WIT
-            // `run-mesh-segmentation` surface provides just
-            // `list<object-id>`, so geometry/paint can't cross the
-            // boundary without separate host-service calls), then drain
-            // the SDK builder's `triangle_paint_marks` back through the
-            // WIT `mesh-segmentation-output::mark-triangle-paint`
-            // resource method. The SDK's legacy `push_modification` /
-            // `ObjectMeshModification` stream is intentionally NOT
-            // drained: it has no WIT representation and is reserved for
-            // native-mode authoring. Push failures surface as fatal
-            // `ModuleError` (mirrors the LayerPlanning / MeshAnalysis
-            // bridge shape from STEP F / STEP G).
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
-                    .into_iter()
-                    .map(__slicer_mesh_object_from_wit)
-                    .collect();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::MeshSegmentationOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_segmentation(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                for __slicer_mark in sdk_output.triangle_paint_marks() {
-                    if let Err(e) = _output.mark_triangle_paint(
-                        &__slicer_mark.object_id,
-                        __slicer_mark.facet_index,
-                        &__slicer_mark.semantic,
-                        &__slicer_mark.value,
-                    ) {
-                        return Err(ModuleError {
-                            code: 10,
-                            message: e,
-                            fatal: true,
-                        });
-                    }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
             quote! { Ok(()) }, // seam_arm (unused)
             quote! { Ok(()) }, // support_arm (unused)
         ),
@@ -1496,7 +1439,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             // the WIT seam-planning-output resource.
             quote! { Ok(()) }, // mesh_arm (unused)
             quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
                 let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
@@ -1567,7 +1509,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
         "PrePass::SupportGeometry" => (
             quote! { Ok(()) }, // mesh_arm (unused)
             quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! { Ok(()) }, // seam_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
@@ -1652,7 +1593,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) },
             quote! { Ok(()) },
             quote! { Ok(()) },
-            quote! { Ok(()) },
         ),
     };
 
@@ -1685,13 +1625,6 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
                     #layer_arm
-                }
-                fn run_mesh_segmentation(
-                    _objects: Vec<MeshObjectView>,
-                    _output: MeshSegmentationOutput,
-                    config: ConfigView,
-                ) -> Result<(), ModuleError> {
-                    #mesh_seg_arm
                 }
                 fn run_seam_planning(
                     _objects: Vec<MeshObjectView>,

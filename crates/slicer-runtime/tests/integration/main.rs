@@ -19,7 +19,6 @@ mod infill_partition_e2e_tdd;
 mod infill_partitioned_input_tdd;
 mod live_module_loading_tdd;
 mod machine_start_end_gcode_emission_tdd;
-mod macro_mesh_segmentation_geometry_tdd;
 mod multi_infill_holder_dispatch_tdd;
 mod perimeter_postprocess_preserve_tdd;
 mod pipeline_tdd;

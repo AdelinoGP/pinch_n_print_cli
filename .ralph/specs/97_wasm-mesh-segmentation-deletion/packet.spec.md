@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 97
 task_ids: [TASK-247]
 backlog_source: docs/specs/paint-pipeline-orca-parity-roadmap.md
@@ -60,9 +60,11 @@ Delete the entire infrastructure for a "guest WASM module can override mesh-segm
 
 | `! rg -q 'FacetPaintMark|MeshSegmentationIR|PrepassStageOutput::MeshSegmentation' crates/slicer-ir/`
 
-### AC-9 — Macro-roundtrip contract test + integration geometry test DELETED; kernel unit test PRESERVED; executor test REWIRED to host path
+### AC-9 — Macro-roundtrip contract test + integration geometry test DELETED; kernel/executor tests already retired by P94r (no rewire)
 
-| `test ! -f crates/slicer-runtime/tests/contract/macro_mesh_segmentation_output_roundtrip_tdd.rs && test ! -f crates/slicer-runtime/tests/integration/macro_mesh_segmentation_geometry_tdd.rs && test -f crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs && test -f crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs && ! rg -q 'wasm|guest_mesh_segmentation|run-mesh-segmentation' crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs`
+**Amended (P94r reconciliation):** P94r retired the mesh-segmentation stage entirely — no host kernel, no host producer, no host path. The kernel unit test (`crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs`) and the executor test (`crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs`) were deleted with it; there is nothing to preserve or rewire. P97 deletes the two surviving WASM-macro tests. All four mesh-seg test files must be ABSENT post-packet.
+
+| `test ! -f crates/slicer-runtime/tests/contract/macro_mesh_segmentation_output_roundtrip_tdd.rs && test ! -f crates/slicer-runtime/tests/integration/macro_mesh_segmentation_geometry_tdd.rs && test ! -f crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs && test ! -f crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs`
 
 ### AC-10 — Dispatch contract arms at `dispatch_tdd.rs:282, 4771-5074, 6187-…` deleted
 
@@ -84,14 +86,12 @@ Delete the entire infrastructure for a "guest WASM module can override mesh-segm
 
 **Given** the cleanup goal,
 **When** `rg -nE 'mesh_segmentation|MeshSegmentation' crates/ modules/` runs,
-**Then** the result is bounded to:
-- (No live code references survive — the kernel, host BuiltinProducer constant, and driver wiring were already deleted by P94r before P97 runs.)
-- `crates/slicer-runtime/src/blackboard.rs` (the `replace_mesh` method's doc-comment may mention "mesh segmentation"; allowed).
-- `crates/slicer-core/src/algos/mesh_segmentation.rs` (kernel) and its `mod.rs` / `lib.rs` re-export.
-- `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` (kernel test — kept).
-- `crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs` (executor test — kept, rewired).
-- A handful of integration tests in P94's surface (kept).
-- Documentation hits in `docs/specs/orca-paint-segmentation-parity.md` and `docs/specs/paint-pipeline-orca-parity-roadmap.md` (allowed; these are historical and intentional references).
+**Then** the result is bounded to (amended for P94r reality — the kernel, host producer, kernel test, and executor test no longer exist, so they are NOT survivors):
+- No live code references survive in `crates/` or `modules/`. P94r already deleted the kernel (`crates/slicer-core/src/algos/mesh_segmentation.rs`), the host producer (`mesh_segmentation_producer.rs`), the kernel unit test, and the executor test; P97 deletes the residual WASM-guest surface, the SDK builder/trait, the IR types, the dispatch + harvest arms, the scheduler canonical-stage entry, and the `sdk-prepass-meshseg-guest` test-guest.
+- `crates/slicer-runtime/tests/unit/builtin_producers_tdd.rs` — the narrative comment "P94r removed mesh_segmentation; expected 7 host built-in producers" (allowed).
+- `crates/slicer-runtime/src/blackboard.rs` — the `replace_mesh` doc-comment may mention "mesh segmentation" (allowed).
+- Documentation hits in `docs/specs/orca-paint-segmentation-parity.md` and `docs/specs/paint-pipeline-orca-parity-roadmap.md` (historical; allowed).
+- `.ralph/specs/**` historical packet narrative (allowed).
 
 Manual review of the LOCATIONS dispatch confirms each survivor is intended. The grep below is the count-only gate; the LOCATIONS check is human.
 
@@ -173,3 +173,12 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- [AC-9] — Specified: kernel unit test PRESERVED + executor test REWIRED to host path (both must exist) | Implemented: amended to assert all four kernel/WASM test files ABSENT, no rewire | Reason: packet 94 (TASK-244) already deleted the kernel, kernel test, executor test, and host producer and retired the stage entirely — no host path exists to rewire to; original AC-9 was impossible against the real tree.
+- [AC-14] — Specified: survivor allow-list listed the kernel, kernel test, and executor test as kept artifacts | Implemented: allow-list corrected to narrative/doc-only (builtin_producers_tdd.rs:60 tombstone comment, docs/specs, .ralph/specs); zero live-code survivors, post-deletion count = 1 | Reason: those artifacts were already deleted by packet 94 and cannot be survivors.
+- [requirements.md §In Scope] — Specified: ~25 enumerated deletion sites | Implemented: ~39 files (added slicer-sdk prepass surface, slicer-core/src/stage_io.rs, slicer-schema/src/lib.rs, slicer-scheduler/src/execution_plan.rs source, slicer-ir/src/lib.rs re-exports, guest_fixture_freshness/macro_all_worlds/wit_drift/e2e/pipeline tests, prepass-guest cleanup, root Cargo.toml member) | Reason: original list under-enumerated the live reference graph; packet designates Step-1 inventory + cargo check + AC-14 as authoritative.
+- [In Scope — unnamed types] — Specified: (not named) | Implemented: also deleted SDK types TrianglePaintMark + ObjectMeshModification | Reason: both were mesh-segmentation-only dependents of the deleted MeshSegmentationOutput builder; audit verified zero surviving references.
+- [AC-15] — Specified: cargo clippy && cargo test --workspace green | Implemented: same + required test-data correction manifest_ingestion_tdd.rs core-module count 21→20 | Reason: deleting the mesh-segmentation module legitimately reduced the discovered core-module count by one (strict-equality assertion updated, not weakened).
+- [Doc Impact Statement] — Specified: remove mesh-segmentation references from docs/03 and docs/04 at packet close (with "if remains, P5c covers" fallback) | Implemented: docs/01, docs/02, docs/03, docs/04, docs/05, docs/10 canonical references removed/corrected in P97 (not deferred); docs/07 task-ledger history intentionally preserved | Reason: production-readiness directive — the stale references describe code deleted by packets 94/97, so they were corrected here rather than left for P99.

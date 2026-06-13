@@ -132,15 +132,6 @@ fn stage_layer_planning() {
 }
 
 #[test]
-fn stage_mesh_segmentation_is_scaffoldable_per_architecture() {
-    let tmp = run_new("mesh-seg", "PrePass::MeshSegmentation").unwrap();
-    let lib = fs::read_to_string(tmp.path().join("mesh-seg/src/lib.rs")).unwrap();
-    assert!(lib.contains("run_mesh_segmentation"));
-    let manifest = fs::read_to_string(tmp.path().join("mesh-seg/mesh-seg.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-prepass@1.0.0"));
-}
-
-#[test]
 fn stage_paint_segmentation_is_scaffoldable_per_architecture() {
     let tmp = run_new("paint-seg", "PrePass::PaintSegmentation").unwrap();
     let lib = fs::read_to_string(tmp.path().join("paint-seg/src/lib.rs")).unwrap();

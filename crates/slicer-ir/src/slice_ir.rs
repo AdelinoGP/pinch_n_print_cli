@@ -232,14 +232,6 @@ pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `MeshSegmentationIR`. Initial 1.0.0 — no bumps recorded
-/// in `docs/02_ir_schemas.md` as of TASK-200b.
-pub const CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 0,
-    patch: 0,
-};
-
 /// Schema version for `RegionMapIR`. Bumped to 2.0.0 by packet 91 — breaking
 /// field changes: `RegionPlan.config` is now a `ConfigId` (interner index),
 /// `configs` Vec added to `RegionMapIR`, `RegionKey.variant_chain` added.
@@ -1075,54 +1067,6 @@ impl Default for SupportGeometryIR {
             support_layer_height_mm: 0.0,
             support_top_z_distance_mm: 0.0,
             entries: HashMap::new(),
-        }
-    }
-}
-
-// ============================================================================
-// Mesh Segmentation IR Types
-// ============================================================================
-
-/// One whole-triangle paint mark emitted by a `PrePass::MeshSegmentation`
-/// module via `mark-triangle-paint`.
-///
-/// Matches `world-prepass.wit::mesh-segmentation-output::mark-triangle-paint`:
-/// the guest normalizes sub-facet strokes into per-triangle paint values and
-/// reports `(semantic, value)` for a specific `(object_id, facet_index)`.
-/// Semantic and value are free-form strings at this layer — the consumer
-/// decides how to parse `value` (tool index, boolean flag, named material).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FacetPaintMark {
-    /// Object the mark applies to.
-    pub object_id: ObjectId,
-    /// Zero-based facet index into the object's triangle list.
-    pub facet_index: u32,
-    /// Paint semantic (e.g. `"material"`, `"fuzzy_skin"`, `"support_enforcer"`).
-    pub semantic: String,
-    /// Paint value associated with the semantic.
-    pub value: String,
-}
-
-/// Mesh segmentation IR produced by `PrePass::MeshSegmentation`.
-///
-/// Commits a deterministic, ordered list of per-facet paint marks covering
-/// every object. Downstream stages (today: none in the routed topology)
-/// can read this to understand which facets carry which paint semantic at
-/// whole-triangle granularity after stroke normalization. The invariant
-/// is "exactly one value per `(object_id, facet_index, semantic)` triple".
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MeshSegmentationIR {
-    /// Schema version of this IR.
-    pub schema_version: SemVer,
-    /// Deterministic, insertion-ordered list of paint marks.
-    pub marks: Vec<FacetPaintMark>,
-}
-
-impl Default for MeshSegmentationIR {
-    fn default() -> Self {
-        Self {
-            schema_version: CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
-            marks: Vec::new(),
         }
     }
 }

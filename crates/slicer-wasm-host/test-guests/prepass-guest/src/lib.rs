@@ -13,9 +13,6 @@ impl Guest for Component {
     fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_mesh_segmentation(_objects: Vec<MeshObjectView>, _output: MeshSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
-        Ok(())
-    }
     fn run_seam_planning(_objects: Vec<MeshObjectView>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }

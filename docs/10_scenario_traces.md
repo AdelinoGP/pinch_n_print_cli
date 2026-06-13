@@ -50,7 +50,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 ### Execution trace
 
-1. `PrePass::MeshSegmentation` normalizes sub-facet strokes to deterministic triangle assignments.
+1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes`), before PrePass.
 2. `PrePass::PaintSegmentation` emits `PaintRegionIR` per semantic per layer with `paint_order`.
 3. `Layer::SlicePostProcess` annotates `SlicedRegion.boundary_paint` after polygon edits.
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.

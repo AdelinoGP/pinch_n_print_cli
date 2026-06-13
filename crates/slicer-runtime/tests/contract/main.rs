@@ -13,7 +13,6 @@ mod config_view_encapsulation_source_tdd;
 mod dispatch_tdd;
 mod guest_fixture_freshness_tdd;
 mod macro_all_worlds_roundtrip_tdd;
-mod macro_mesh_segmentation_output_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;
 mod paint_region_transport_widening_tdd;
 mod postpass_gcode_boundary_tdd;

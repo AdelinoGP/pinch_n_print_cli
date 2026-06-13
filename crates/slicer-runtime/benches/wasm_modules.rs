@@ -86,7 +86,6 @@ fn discover_core_modules() -> Vec<DiscoveredModule> {
 
 fn bench_export_name_for_stage(c: &mut Criterion) {
     let stages: &[&str] = &[
-        "PrePass::MeshSegmentation",
         "PrePass::MeshAnalysis",
         "PrePass::LayerPlanning",
         "PrePass::SeamPlanning",

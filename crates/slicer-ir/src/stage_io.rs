@@ -259,8 +259,6 @@ impl std::error::Error for PostpassError {}
 pub enum BlackboardPrepassSlot {
     /// Surface classification produced by `PrePass::MeshAnalysis`.
     SurfaceClassification,
-    /// Mesh segmentation marks produced by `PrePass::MeshSegmentation`.
-    MeshSegmentation,
     /// Layer plan produced by `PrePass::LayerPlanning`.
     LayerPlan,
     /// Seam plan produced by `PrePass::SeamPlanning`.
@@ -280,7 +278,6 @@ impl fmt::Display for BlackboardPrepassSlot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::SurfaceClassification => "surface-classification",
-            Self::MeshSegmentation => "mesh-segmentation",
             Self::LayerPlan => "layer-plan",
             Self::SeamPlan => "seam-plan",
             Self::SupportPlan => "support-plan",

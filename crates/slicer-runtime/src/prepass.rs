@@ -273,7 +273,6 @@ fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
         PrepassStageOutput::SurfaceClassification(_) => {
             Some(String::from("SurfaceClassificationIR"))
         }
-        PrepassStageOutput::MeshSegmentation(_) => Some(String::from("MeshSegmentationIR")),
         PrepassStageOutput::LayerPlan(_) => Some(String::from("LayerPlanIR")),
         PrepassStageOutput::SeamPlan(_) => Some(String::from("SeamPlanIR")),
         PrepassStageOutput::SupportPlan(_) => Some(String::from("SupportPlanIR")),
@@ -650,7 +649,6 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::SurfaceClassification => {
                 blackboard.surface_classification().is_some()
             }
-            BlackboardPrepassSlot::MeshSegmentation => blackboard.mesh_segmentation().is_some(),
             BlackboardPrepassSlot::LayerPlan => blackboard.layer_plan().is_some(),
             BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),
             BlackboardPrepassSlot::SeamPlan => blackboard.seam_plan().is_some(),
@@ -718,7 +716,6 @@ fn commit_stage_output(
         PrepassStageOutput::SurfaceClassification(ir) => {
             blackboard.commit_surface_classification(ir)
         }
-        PrepassStageOutput::MeshSegmentation(ir) => blackboard.commit_mesh_segmentation(ir),
         PrepassStageOutput::LayerPlan(ir) => blackboard.commit_layer_plan(ir),
         PrepassStageOutput::SeamPlan(ir) => blackboard.commit_seam_plan(ir),
         PrepassStageOutput::SupportPlan(ir) => blackboard.commit_support_plan(ir),

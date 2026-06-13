@@ -48,7 +48,6 @@ pub use slice_ir::{
     FacetClass,
     // Paint types
     FacetPaintData,
-    FacetPaintMark,
     GCodeCommand,
     // GCode types
     GCodeIR,
@@ -69,8 +68,6 @@ pub use slice_ir::{
     LayerPlanIR,
     LoopType,
     MeshIR,
-    MeshSegmentationIR,
-
     ModifierId,
     ModifierScope,
     // Modifier types
@@ -162,7 +159,6 @@ pub use slice_ir::{
     CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
     CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION,
     CURRENT_MESH_IR_SCHEMA_VERSION,
-    CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
     CURRENT_PERIMETER_IR_SCHEMA_VERSION,
     CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
     CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION,

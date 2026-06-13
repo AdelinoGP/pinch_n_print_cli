@@ -18,7 +18,7 @@ The pinch_n_print architecture historically supported guest WASM modules overrid
 
 This packet performs the surgical deletion. The roadmap's P5a section enumerates each deletion site with file path + approximate line range; the packet executes the deletions, verifies no surviving consumer, forces a guest rebuild, and confirms the workspace tests stay green.
 
-The KEPT artifacts are: the host kernel at `crates/slicer-core/src/algos/mesh_segmentation.rs`, the kernel unit test at `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs`, the host BuiltinProducer constant at `crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs` (from P94), and the driver wiring at `crates/slicer-runtime/src/prepass.rs` (from P94). The executor test at `crates/slicer-runtime/tests/executor/mesh_segmentation_executor_tdd.rs` is REWIRED to test the host built-in path (no WASM roundtrip).
+**Amended (P94r reconciliation):** the artifacts the original framing called "KEPT" no longer exist. P94r retired the mesh-segmentation stage in full — the host kernel (`crates/slicer-core/src/algos/mesh_segmentation.rs`), the kernel unit test (`algo_mesh_segmentation_tdd.rs`), the host producer (`crates/slicer-runtime/src/builtins/mesh_segmentation_producer.rs`), and the executor test (`mesh_segmentation_executor_tdd.rs`) were ALL deleted by P94r. `crates/slicer-runtime/src/lib.rs` registers no mesh-seg producer, and `builtin_producers_tdd.rs:60` records "P94r removed mesh_segmentation; expected 7 host built-in producers." P97 therefore preserves and rewires NOTHING — it is pure deletion of the residual WASM-guest + IR + SDK + dispatch + scheduler + test surface.
 
 ## In Scope
 
@@ -43,10 +43,23 @@ The KEPT artifacts are: the host kernel at `crates/slicer-core/src/algos/mesh_se
 - `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs:653` — canonical-stages drop.
 - `crates/slicer-runtime/benches/wasm_modules.rs:89` — bench entry.
 
+### Additional in-scope sites (Step 1 inventory — the list above was under-enumerated)
+
+These live references must also be deleted for `cargo check --workspace --all-targets` + AC-14 to pass:
+
+- `crates/slicer-schema/src/lib.rs` — WIT/world constants referencing mesh-segmentation.
+- `crates/slicer-core/src/stage_io.rs` — `MeshSegmentation(Arc<MeshSegmentationIR>)` variant + import (distinct file from `slicer-ir/src/stage_io.rs`).
+- `crates/slicer-ir/src/lib.rs` — `FacetPaintMark` / `MeshSegmentationIR` re-exports; `crates/slicer-ir/tests/ir_tests.rs` — schema-version asserts.
+- `crates/slicer-sdk/src/{prepass_builders.rs,traits.rs,prepass_types.rs,prelude.rs}` + `tests/prepass_module_tdd.rs` — `MeshSegmentationOutput` builder, `run_mesh_segmentation` trait method.
+- `crates/slicer-scheduler/src/execution_plan.rs` — canonical-stage entry (SOURCE, not just the scheduler tests).
+- `crates/slicer-wasm-host/tests/contract/prepass_output_builder_validation_tdd.rs`; `crates/slicer-wasm-host/test-guests/sdk-prepass-meshseg-guest/` (delete dir) + `test-guests/prepass-guest/src/lib.rs`.
+- `crates/slicer-runtime/tests/contract/{macro_all_worlds_roundtrip_tdd.rs,wit_drift_detection_tdd.rs,main.rs}`, `tests/integration/{pipeline_tdd.rs,main.rs}`, `tests/e2e/slice_end_to_end_tdd.rs`, `src/instrumentation.rs`.
+- `crates/slicer-macros/tests/binding_surface_tdd.rs`.
+- Guest/workspace registry: root `Cargo.toml` / `xtask` guest lists, if they reference the deleted dirs.
+
 ## Out of Scope
 
-- The host kernel + producer + driver wiring (P94 territory; KEPT).
-- The kernel unit test at `crates/slicer-core/tests/algo_mesh_segmentation_tdd.rs` (KEPT).
+- The mesh-segmentation kernel, host producer, kernel test, and executor test — ALL already deleted by P94r (TASK-250 retired the stage entirely); not recreated here. Recreating mesh-segmentation as a host stage would contradict P94r/TASK-250 and is explicitly out of scope.
 - Paint-segmentation kernel — P3/P4.
 - Doc updates to `docs/02`, `docs/03`, `docs/04` — P5c (99) — except where the deletion forces a doc update inline (the host stage_id `host:mesh_segmentation` remains documented).
 - Loader symmetry — P5b (98).

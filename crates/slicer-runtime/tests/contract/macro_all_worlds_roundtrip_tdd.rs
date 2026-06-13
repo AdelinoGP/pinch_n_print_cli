@@ -297,53 +297,6 @@ fn prepass_world_macro_guest_is_deterministic() {
     }
 }
 
-// â”€â”€ Prepass world (MeshSegmentation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn fixture_case_config(case: &str) -> ConfigView {
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "fixture_case".to_string(),
-        ConfigValue::String(case.to_string()),
-    );
-    ConfigView::from_map(fields)
-}
-
-#[test]
-fn prepass_meshseg_macro_guest_round_trips_typed_config_and_result() {
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest("sdk-prepass-meshseg-guest");
-
-    let module = make_module(
-        "com.test.sdk-prepass-meshseg",
-        "PrePass::MeshSegmentation",
-        "slicer:world-prepass@1.0.0",
-        component,
-        fixture_case_config("marks_basic"),
-    );
-    let bb = Blackboard::new(empty_mesh_ir(), 0);
-    let stage: StageId = "PrePass::MeshSegmentation".to_string();
-    let out =
-        PrepassStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), prepass_input(&bb))
-            .expect("marks_basic path must succeed through macro-arm typed glue");
-    match out {
-        PrepassStageOutput::MeshSegmentation(ir) => {
-            assert!(
-                !ir.marks.is_empty(),
-                "macro-arm must drain mark_triangle_paint into a non-empty MeshSegmentationIR"
-            );
-            assert_eq!(
-                ir.marks[0].facet_index, 12,
-                "marks_basic marks triangle index 12"
-            );
-        }
-        other => panic!(
-            "expected PrepassStageOutput::MeshSegmentation, got {:?}",
-            other
-        ),
-    }
-}
-
 // â”€â”€ Layer world (Infill) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn one_layer_arena() -> (slicer_runtime::LayerArena, GlobalLayer) {

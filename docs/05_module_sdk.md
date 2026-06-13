@@ -237,7 +237,6 @@ only needs to override the one for its own stage.
 
 | Manifest `stage.id`               | Trait method called                           | Output builder              |
 |-----------------------------------|-----------------------------------------------|-----------------------------|
-| `PrePass::MeshSegmentation`       | `run_mesh_segmentation`                       | `MeshSegmentationOutput`    |
 | `PrePass::MeshAnalysis`           | `run_mesh_analysis`                           | `MeshAnalysisOutput`        |
 | `PrePass::LayerPlanning`          | `run_layer_planning`                          | `LayerPlanOutput`           |
 | `PrePass::PaintSegmentation`      | `run_paint_segmentation`                      | `PaintSegmentationOutput`   |
@@ -329,16 +328,9 @@ blocks in the same crate that target the same world will fail to link with
 duplicate-symbol errors.
 
 Workaround: when one trait permits multiple stages (e.g. `PrepassModule`
-permits `run_mesh_analysis`, `run_paint_segmentation`, `run_mesh_segmentation`,
-`run_layer_planning`, `run_seam_planning`, `run_support_geometry`), author one
+permits `run_mesh_analysis`, `run_paint_segmentation`, `run_layer_planning`, `run_seam_planning`, `run_support_geometry`), author one
 sibling crate per stage. Each sibling overrides only the one stage method it
-implements and relies on the trait's default `Ok(())` bodies for the rest. The
-test guests `crates/slicer-runtime/test-guests/sdk-prepass-paintseg-guest/` and
-`crates/slicer-runtime/test-guests/sdk-prepass-meshseg-guest/` are reference exemplars: each is a
-standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`,
-`slicer-schema`, `wit-bindgen` as deps) with exactly one `#[slicer_module]
-impl PrepassModule for ...` block overriding `on_print_start` plus the one
-prepass stage method.
+implements and relies on the trait's default `Ok(())` bodies for the rest. The test guest `crates/slicer-wasm-host/test-guests/sdk-prepass-guest/` is a reference exemplar: a standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`, `slicer-schema`, `wit-bindgen` as deps) with a `#[slicer_module] impl PrepassModule for ...` block overriding `on_print_start` plus the prepass stage method(s) it implements.
 
 Macro authors note (relevant when the prepass world inline WIT or the
 `segmentation_helpers` quote block in `build_prepass_world_glue` is touched):
@@ -372,7 +364,7 @@ pub use slicer_wit::layer_module::{
 
 // PrePass module authoring:
 pub use slicer_sdk::prepass_builders::{
-    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput,
+    LayerPlanOutput, MeshAnalysisOutput,
     PaintSegmentationOutput, SeamPlanningOutput, SupportGeometryOutput,
 };
 pub use slicer_sdk::prepass_types::{

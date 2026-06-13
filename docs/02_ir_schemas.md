@@ -76,7 +76,7 @@ pub struct MeshIR {
 pub struct ObjectMesh {
     pub id: ObjectId,                       // stable UUID string
     pub mesh: IndexedTriangleSet,           // host-owned; serialized to WASM only for single-pass modules
-                                               // (PaintSegmentation, MeshSegmentation, SeamPlanning,
+                                               // (PaintSegmentation, SeamPlanning,
                                                // SupportGeometry); not serialized for multi-pass
                                                // per-layer modules
     pub transform: Transform3d,             // world-space placement (column-major f64)
@@ -98,7 +98,7 @@ pub struct PaintLayer {
     /// None = unpainted — inherits default behavior for this semantic.
     pub facet_values: Vec<Option<PaintValue>>,
     /// Sub-facet strokes that cross triangle boundaries.
-    /// Resolved into whole-triangle values by PrePass::MeshSegmentation.
+    /// Resolved into whole-triangle values by the host loader (split_triangle_strokes).
     pub strokes: Vec<PaintStroke>,
 }
 

@@ -94,9 +94,6 @@ pub struct RegionLayerProposal {
 }
 
 /// A read-only view of an object's mesh and paint data.
-///
-/// Used by `PrepassModule::run_mesh_segmentation` to provide mesh geometry
-/// and paint stroke information to segmentation modules.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MeshObjectView {
     /// Unique identifier of the object.

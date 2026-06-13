@@ -43,16 +43,6 @@ world prepass-module {
         config: config-view,
     ) -> result<_, module-error>;
 
-    resource mesh-segmentation-output {
-        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
-    }
-
-    export run-mesh-segmentation: func(
-        objects: list<mesh-object-view>,
-        output: mesh-segmentation-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
     record region-layer-proposal {
         object-id: object-id, region-id: region-id,
         effective-layer-height: f32,

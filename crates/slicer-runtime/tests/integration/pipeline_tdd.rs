@@ -867,8 +867,8 @@ fn prepass_audits_live_path() {
 
     // Note: when PrepassStageOutput::None is returned, runtime_writes is empty.
     // This is correct - the module performed reads but produced no output.
-    // A read-producing module would return a non-None output with MeshSegmentationIR
-    // or SurfaceClassificationIR, which would populate runtime_writes.
+    // A read-producing module would return a non-None output with SurfaceClassificationIR,
+    // which would populate runtime_writes.
 }
 
 // ---------- Test 10b: live-path layer audits contain SliceIR reads ----------

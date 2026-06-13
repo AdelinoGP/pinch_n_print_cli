@@ -89,13 +89,6 @@ pub const STAGES: &[StageSpec] = &[
     },
     // ── Prepass world (slicer:world-prepass@1.0.0) ─────────────────────
     StageSpec {
-        method: "run_mesh_segmentation",
-        stage_id: "PrePass::MeshSegmentation",
-        wit_export: "run-mesh-segmentation",
-        world_id: "slicer:world-prepass@1.0.0",
-        trait_name: "PrepassModule",
-    },
-    StageSpec {
         method: "run_mesh_analysis",
         stage_id: "PrePass::MeshAnalysis",
         wit_export: "run-mesh-analysis",
@@ -319,7 +312,6 @@ pub fn export_for_stage_id(stage_id: &str) -> Option<&'static str> {
 /// Mirrors the `stage_id` column of [`STAGES`] in canonical order.
 /// See docs/04 STAGE_ORDER.
 pub const VALID_STAGES: &[&str] = &[
-    "PrePass::MeshSegmentation",
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
     "PrePass::PaintSegmentation",
@@ -394,11 +386,11 @@ mod tests {
         //   Layer world: 8 (slice-postprocess, perimeters, wall-postprocess,
         //                   infill, infill-postprocess, support,
         //                   support-postprocess, path-optimization)
-        //   Prepass world: 6 (mesh-segmentation, mesh-analysis, layer-planning,
+        //   Prepass world: 5 (mesh-analysis, layer-planning,
         //                     paint-segmentation, seam-planning, support-generation)
         //   Finalization world: 1
         //   Postpass world: 2
-        assert_eq!(STAGES.len(), 17);
+        assert_eq!(STAGES.len(), 16);
     }
 
     #[test]

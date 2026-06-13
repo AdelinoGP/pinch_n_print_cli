@@ -30,7 +30,6 @@ pub struct MeshObjectView;
 pub struct ObjectId(pub String);
 pub struct PaintSegmentationObjectView;
 pub struct MeshAnalysisOutput;
-pub struct MeshSegmentationOutput;
 pub struct LayerPlanOutput;
 pub struct PaintSegmentationOutput;
 pub struct LayerCollectionView;

@@ -294,13 +294,6 @@ pub struct MeshAnalysisOutputData;
 /// just a table entry so the resource-handle lifecycle works; the actual data
 /// lives on the context.
 pub struct LayerPlanOutputData;
-/// Backing data for prepass `mesh-segmentation-output` resource.
-///
-/// Triangle paint marks emitted by `mark-triangle-paint` during a WIT prepass
-/// invocation are stored on `HostExecutionContext::mesh_segmentation_marks`.
-/// This struct is just a table-entry tag so the resource-handle lifecycle
-/// works; the actual data lives on the context.
-pub struct MeshSegmentationOutputData;
 /// Backing data for prepass `seam-planning-output` resource.
 ///
 /// Seam-plan entries emitted by `push-seam-plan` during a WIT prepass
@@ -765,14 +758,6 @@ pub struct HostExecutionContext {
     /// Empty for all non-MeshAnalysis stages.
     pub(crate) mesh_analysis_surface_groups: Vec<(String, prepass::SurfaceGroupProposal)>,
 
-    /// Triangle paint marks collected from `mark-triangle-paint` calls
-    /// during a prepass `run-mesh-segmentation` invocation. Tuple layout
-    /// mirrors the WIT method signature exactly:
-    /// `(object_id, facet_index, semantic, value)`. Insertion order is
-    /// preserved so `harvest_mesh_segmentation_ir` can build a
-    /// deterministic `MeshSegmentationIR.marks` sequence.
-    pub(crate) mesh_segmentation_marks: Vec<(String, u32, String, String)>,
-
     /// Seam-plan entries collected during a prepass `run-seam-planning`
     /// invocation. Stored as raw `prepass::SeamPlanEntry` records so the
     /// harvest helper can convert them to `SeamPlanIR` without losing any field.
@@ -920,7 +905,6 @@ impl HostExecutionContextBuilder {
             layer_plan_proposals: Vec::new(),
             mesh_analysis_annotations: Vec::new(),
             mesh_analysis_surface_groups: Vec::new(),
-            mesh_segmentation_marks: Vec::new(),
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
@@ -1066,11 +1050,6 @@ impl HostExecutionContext {
     /// Per-object surface groups collected during `run-mesh-analysis`.
     pub fn mesh_analysis_surface_groups(&self) -> &[(String, prepass::SurfaceGroupProposal)] {
         &self.mesh_analysis_surface_groups
-    }
-
-    /// Triangle paint marks collected during `run-mesh-segmentation`.
-    pub fn mesh_segmentation_marks(&self) -> &[(String, u32, String, String)] {
-        &self.mesh_segmentation_marks
     }
 
     /// Seam-plan entries collected during `run-seam-planning`.
@@ -1292,18 +1271,6 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::LayerPlanOutput>> {
         let rep = self.table.push(LayerPlanOutputData)?;
-        Ok(Resource::new_own(rep.rep()))
-    }
-
-    /// Push a mesh-segmentation-output resource (prepass world). The
-    /// returned handle is what the host passes into
-    /// `run-mesh-segmentation`; guest calls to `mark-triangle-paint` go
-    /// through `HostMeshSegmentationOutput::mark_triangle_paint` below,
-    /// which appends tuples to `mesh_segmentation_marks`.
-    pub fn push_mesh_segmentation_output(
-        &mut self,
-    ) -> wasmtime::Result<Resource<prepass::MeshSegmentationOutput>> {
-        let rep = self.table.push(MeshSegmentationOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -2019,7 +1986,7 @@ fn ir_to_wit_paint_layer_view(layer: &slicer_ir::PaintLayer) -> prepass::PaintLa
     }
 }
 
-/// Convert a slicer-ir `ObjectMesh` to a WIT `MeshObjectView` for MeshSegmentation.
+/// Convert a slicer-ir `ObjectMesh` to a WIT `MeshObjectView` for prepass modules.
 ///
 /// This converter extracts the mesh geometry and paint data from an `ObjectMesh`
 /// and produces a read-only WIT view suitable for passing to prepass modules.
@@ -3565,43 +3532,6 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::SupportGeometryOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SupportGeometryOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?;
-            Ok(())
-        }
-    }
-
-    impl pm::HostMeshSegmentationOutput for HostExecutionContext {
-        fn mark_triangle_paint(
-            &mut self,
-            _handle: Resource<pm::MeshSegmentationOutput>,
-            obj: String,
-            facet_index: u32,
-            semantic: String,
-            value: String,
-        ) -> wasmtime::Result<Result<(), String>> {
-            // Validate the mark before collecting. `semantic` must be
-            // non-empty (the consumer keys on it); `obj` must be a real
-            // object id. `value` may be empty to mean "clear" — that's
-            // the caller's prerogative. We accept any finite facet_index
-            // because the host can't cheaply reach mesh topology from
-            // this resource impl; downstream consumers validate against
-            // real triangle counts.
-            if obj.is_empty() {
-                return Ok(Err(String::from(
-                    "mesh-segmentation-output: obj must be a non-empty object id",
-                )));
-            }
-            if semantic.is_empty() {
-                return Ok(Err(String::from(
-                    "mesh-segmentation-output: semantic must be a non-empty string",
-                )));
-            }
-            self.mesh_segmentation_marks
-                .push((obj, facet_index, semantic, value));
-            Ok(Ok(()))
-        }
-        fn drop(&mut self, rep: Resource<pm::MeshSegmentationOutput>) -> wasmtime::Result<()> {
-            let typed: Resource<MeshSegmentationOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }

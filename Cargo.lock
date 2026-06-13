@@ -1531,16 +1531,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh-segmentation"
-version = "0.1.0"
-dependencies = [
- "slicer-ir",
- "slicer-schema",
- "slicer-sdk",
- "wit-bindgen 0.57.1",
-]
-
-[[package]]
 name = "meshopt"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

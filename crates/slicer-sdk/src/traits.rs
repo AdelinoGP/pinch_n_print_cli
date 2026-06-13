@@ -16,8 +16,8 @@ use crate::layer_collection_builder::LayerCollectionBuilder;
 use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
-    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
-    SeamPlanningOutput, SupportGeometryOutput,
+    LayerPlanOutput, MeshAnalysisOutput, PaintSegmentationOutput, SeamPlanningOutput,
+    SupportGeometryOutput,
 };
 use crate::prepass_types::{
     LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
@@ -560,19 +560,6 @@ pub trait PrepassModule: Sized {
         Ok(())
     }
 
-    /// Run mesh segmentation to normalize sub-facet paint strokes.
-    ///
-    /// Clips triangles at paint stroke boundaries so each triangle carries
-    /// exactly one paint value per semantic. Default implementation does nothing.
-    fn run_mesh_segmentation(
-        &self,
-        _objects: &[MeshObjectView],
-        _output: &mut MeshSegmentationOutput,
-        _config: &ConfigView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
-    }
-
     /// Run paint segmentation to project 3D painted facets into 2D per-layer regions.
     ///
     /// Receives objects with paint layers, transform matrices, and participating
@@ -589,9 +576,8 @@ pub trait PrepassModule: Sized {
 
     /// Run seam planning to compute optimal seam positions for each region.
     ///
-    /// Uses the mesh from `run_mesh_segmentation` and facet annotations from
-    /// `run_mesh_analysis` to score and select seam positions for each region.
-    /// Default implementation does nothing.
+    /// Uses facet annotations from `run_mesh_analysis` to score and select
+    /// seam positions for each region. Default implementation does nothing.
     fn run_seam_planning(
         &self,
         _objects: &[MeshObjectView],

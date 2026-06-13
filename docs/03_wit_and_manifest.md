@@ -536,17 +536,6 @@ world prepass-module {
 
     record module-error { code: u32, message: string, fatal: bool }
 
-    // MeshSegmentation stage
-    resource mesh-segmentation-output {
-        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
-    }
-
-    export run-mesh-segmentation: func(
-        objects: list<mesh-object-view>,
-        output: mesh-segmentation-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
     // MeshAnalysis stage
     enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
     record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
@@ -1661,7 +1650,7 @@ for type-identity, resource-handle, and dispatch correctness.
 | Guest                | World                       | Verifies                                                                  |
 |----------------------|-----------------------------|---------------------------------------------------------------------------|
 | `layer-infill-guest` | `slicer:world-layer`        | All Layer-stage exports, output builders, paint queries, region-key commit |
-| `prepass-guest`      | `slicer:world-prepass`      | PrePass exports (mesh segmentation/analysis, paint, seam, support)        |
+| `prepass-guest`      | `slicer:world-prepass`      | PrePass exports (mesh analysis, paint, seam, support)                     |
 | `finalization-guest` | `slicer:world-finalization` | `LayerCollectionView` reads + `FinalizationOutputBuilder` writes          |
 | `postpass-guest`     | `slicer:world-postpass`     | `gcode-command` round-trip + text postprocess                             |
 

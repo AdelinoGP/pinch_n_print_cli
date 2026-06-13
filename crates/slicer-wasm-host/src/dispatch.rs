@@ -816,25 +816,6 @@ impl WasmRuntimeDispatcher {
                     )
                     .map_err(mk_call_err)
             }
-            "PrePass::MeshSegmentation" => {
-                let mesh_object_views: Vec<_> = mesh_ir
-                    .objects
-                    .iter()
-                    .map(host::object_mesh_to_wit_mesh_object_view)
-                    .collect();
-                let output = store
-                    .data_mut()
-                    .push_mesh_segmentation_output()
-                    .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_mesh_segmentation(
-                        &mut store,
-                        &mesh_object_views,
-                        own(output),
-                        own(config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
             "PrePass::SeamPlanning" => {
                 let mesh_object_views: Vec<_> = mesh_ir
                     .objects
@@ -1695,35 +1676,6 @@ fn harvest_support_plan_ir_from(
     })
 }
 
-/// Harvest `mark-triangle-paint` tuples collected by a prepass
-/// `run-mesh-segmentation` invocation into a `MeshSegmentationIR`.
-fn harvest_mesh_segmentation_ir(ctx: host::HostExecutionContext) -> slicer_ir::MeshSegmentationIR {
-    harvest_mesh_segmentation_ir_from(ctx.mesh_segmentation_marks)
-}
-
-/// Pure core of [`harvest_mesh_segmentation_ir`]: paint-mark tuples →
-/// `MeshSegmentationIR`.
-fn harvest_mesh_segmentation_ir_from(
-    mesh_segmentation_marks: Vec<(String, u32, String, String)>,
-) -> slicer_ir::MeshSegmentationIR {
-    use slicer_ir::{FacetPaintMark, MeshSegmentationIR};
-
-    let marks: Vec<FacetPaintMark> = mesh_segmentation_marks
-        .into_iter()
-        .map(|(object_id, facet_index, semantic, value)| FacetPaintMark {
-            object_id,
-            facet_index,
-            semantic,
-            value,
-        })
-        .collect();
-
-    MeshSegmentationIR {
-        marks,
-        ..Default::default()
-    }
-}
-
 /// Convert the `(object_id, FacetAnnotation)` / `(object_id, SurfaceGroupProposal)`
 /// pushes into a `MeshAnalysisAuxiliary` record.
 fn harvest_mesh_analysis_auxiliary(
@@ -1897,13 +1849,6 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                 }
             })?;
             return Ok(slicer_core::PrepassStageOutput::LayerPlan(
-                std::sync::Arc::new(ir),
-            ));
-        }
-
-        if stage_id == "PrePass::MeshSegmentation" {
-            let ir = harvest_mesh_segmentation_ir(ctx);
-            return Ok(slicer_core::PrepassStageOutput::MeshSegmentation(
                 std::sync::Arc::new(ir),
             ));
         }

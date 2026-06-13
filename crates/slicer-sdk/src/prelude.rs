@@ -26,9 +26,8 @@ pub use crate::postpass_types::{GcodeCommand, GcodeOutputCommand};
 
 // Prepass types and builders
 pub use crate::prepass_builders::{
-    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, ObjectMeshModification,
-    PaintRegionEntry, PaintSegmentationOutput, SeamPlanningOutput, SupportGeometryOutput,
-    TrianglePaintMark,
+    LayerPlanOutput, MeshAnalysisOutput, PaintRegionEntry, PaintSegmentationOutput,
+    SeamPlanningOutput, SupportGeometryOutput,
 };
 pub use crate::prepass_types::{
     FacetAnnotation, FacetClass, LayerPlanView, LayerPlanViewEntry, LayerProposal, MeshObjectView,

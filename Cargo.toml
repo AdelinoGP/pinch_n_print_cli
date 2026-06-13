@@ -23,7 +23,6 @@ members = [
     "modules/core-modules/tree-support",
     "modules/core-modules/support-surface-ironing",
     "modules/core-modules/top-surface-ironing",
-    "modules/core-modules/mesh-segmentation",
     "modules/core-modules/wipe-tower",
     "modules/core-modules/skirt-brim",
     "modules/core-modules/fuzzy-skin",

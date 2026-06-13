@@ -23,7 +23,7 @@ pub use slicer_scheduler::instrumentation::{
 /// `Phase::PerLayer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Phase {
-    /// Sequential pre-pass tier (MeshSegmentation, MeshAnalysis, …).
+    /// Sequential pre-pass tier (MeshAnalysis, …).
     PrePass,
     /// Per-layer tier executed in parallel across layers, sequential within.
     PerLayer,

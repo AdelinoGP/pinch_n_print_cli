@@ -904,7 +904,6 @@ fn canonical_core_module_artifacts_are_real_components() {
         "traditional-support",
         "tree-support",
         "layer-planner-default",
-        "mesh-segmentation",
         "path-optimization-default",
         "skirt-brim",
         "wipe-tower",
@@ -964,44 +963,17 @@ fn canonical_core_module_artifacts_are_real_components() {
 
 /// Regression guard: every documented prepass stage is now routed.
 ///
-/// Both `PrePass::MeshSegmentation` (Step B, 2026-04-14) and
-/// `PrePass::PaintSegmentation` (Step C, 2026-04-15) are real
-/// components â€” no prepass stage should be left at the documented
+/// `PrePass::PaintSegmentation` (Step C, 2026-04-15) is a real
+/// component — no prepass stage should be left at the documented
 /// 8-byte placeholder anymore. If future work splits out a new
 /// prepass stage, this test is the first place that should catch the
-/// regression. `mesh_segmentation_is_a_real_routed_component`
-/// verifies the real binary.
+/// regression.
 #[test]
 fn no_un_routed_prepass_modules_remain() {
     // Intentionally empty: all historically un-routed prepass stages
     // are now real components. Kept as a name-stable anchor so the
     // future addition of a new prepass stage can be checked against
     // the documented skip path here (docs/07 Known Deviations Â§TASK-109).
-}
-
-/// Regression guard for Step B: the canonical `mesh-segmentation.wasm`
-/// artifact must be a real component-model binary (not an 8-byte
-/// placeholder) and carry the `\0asm` magic prefix. Protects against
-/// the pre-Step-B state where the documented stage silently reverted
-/// to placeholder skip behavior.
-#[test]
-fn mesh_segmentation_is_a_real_routed_component() {
-    let path = core_modules_dir()
-        .join("mesh-segmentation")
-        .join("mesh-segmentation.wasm");
-    let meta = std::fs::metadata(&path).expect("stat mesh-segmentation.wasm");
-    assert!(
-        meta.len() >= 10_000,
-        "mesh-segmentation.wasm is {} bytes; a real wit-bindgen component is \
-         ~30 KB+. Rebuild via `cargo xtask build-guests`.",
-        meta.len(),
-    );
-    let bytes = std::fs::read(&path).expect("read mesh-segmentation.wasm");
-    assert_eq!(
-        &bytes[0..4],
-        b"\0asm",
-        "mesh-segmentation.wasm missing WASM magic; likely a bad rebuild."
-    );
 }
 
 // paint_segmentation_host_fallback_returns_empty_for_unpainted_mesh: deleted in

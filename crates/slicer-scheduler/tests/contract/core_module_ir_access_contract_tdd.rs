@@ -40,7 +40,6 @@ fn required_contract_for_stage(
     stage: &str,
 ) -> Option<(&'static [&'static str], &'static [&'static str])> {
     match stage {
-        "PrePass::MeshSegmentation" => Some((&["MeshIR"], &["MeshIR"])),
         "PrePass::MeshAnalysis" => Some((&["MeshIR"], &["SurfaceClassificationIR"])),
         "PrePass::LayerPlanning" => {
             Some((&["MeshIR", "SurfaceClassificationIR"], &["LayerPlanIR"]))
@@ -230,7 +229,6 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
 
     for (stem, module) in &modules {
         let allowed_upstream_roots: &[&str] = match module.stage() {
-            "PrePass::MeshSegmentation" => &["MeshIR"],
             "PrePass::MeshAnalysis" => &["MeshIR"],
             "PrePass::LayerPlanning" => &["MeshIR", "SurfaceClassificationIR"],
             "PrePass::SeamPlanning" => &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],

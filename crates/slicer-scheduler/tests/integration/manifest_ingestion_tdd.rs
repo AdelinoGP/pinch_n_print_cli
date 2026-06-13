@@ -601,11 +601,12 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 21 core modules as of 2026-06-05 (overhang-classifier-default).
+    // We expect exactly 20 core modules as of 2026-06-13 (packet 97 deleted the dead
+    // mesh-segmentation WASM-guest module; was 21 with overhang-classifier-default).
     assert_eq!(
         report.modules.len(),
-        21,
-        "expected 21 core modules, got {}: {:?}",
+        20,
+        "expected 20 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -648,10 +649,6 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     assert!(
         stages.contains(&"Layer::Support"),
         "should have support modules"
-    );
-    assert!(
-        stages.contains(&"PrePass::MeshSegmentation"),
-        "should have mesh segmentation"
     );
     assert!(
         stages.contains(&"PrePass::LayerPlanning"),
@@ -808,7 +805,6 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     // until that step removes the build artifacts.
     const NON_PLACEHOLDER: &[&str] = &[
         "com.core.layer-planner-default",
-        "com.core.mesh-segmentation",
         "com.core.paint-segmentation",
         "com.core.path-optimization-default",
         "com.core.classic-perimeters",
