@@ -79,6 +79,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
+            external_contour: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -173,6 +174,7 @@ fn guest_reads_region_z_from_ir_view() {
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
+            external_contour: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -245,6 +247,7 @@ fn guest_emits_output_via_infill_builder() {
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
+            external_contour: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -325,6 +328,7 @@ fn guest_logs_via_host_services() {
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
+            external_contour: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -402,6 +406,7 @@ fn repeated_calls_produce_independent_outputs() {
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
+                external_contour: None,
             })
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();

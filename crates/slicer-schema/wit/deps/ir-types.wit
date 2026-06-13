@@ -40,6 +40,7 @@ interface ir-handles {
         bridge-orientation-deg: func() -> f32;
         sparse-infill-area: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
+        external-contour: func() -> option<list<ex-polygon>>;
     }
 
     record seam-position { point: point3-with-width, wall-index: u32 }

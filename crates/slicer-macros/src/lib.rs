@@ -2175,6 +2175,11 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                     sdk_view.set_sparse_infill_area(sparse_infill_area);
                     sdk_view.set_held_claims(r.held_claims());
+                    sdk_view.set_external_contour(r.external_contour().map(|b| {
+                        b.iter()
+                            .map(__slicer_wit_expolygon_to_ir)
+                            .collect::<::std::vec::Vec<::slicer_ir::ExPolygon>>()
+                    }));
                     out.push(sdk_view);
                 }
                 out

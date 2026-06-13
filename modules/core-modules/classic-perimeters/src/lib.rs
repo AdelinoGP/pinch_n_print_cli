@@ -9,7 +9,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
 use slicer_ir::{
@@ -90,130 +90,180 @@ impl LayerModule for ClassicPerimeters {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        for region in regions {
-            let polygons = region.polygons();
-            if polygons.is_empty() {
+        // Group regions by object so each painted object's model perimeter is
+        // traced exactly once (AC-22b bisector-edge dedup).
+        let mut by_object: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, region) in regions.iter().enumerate() {
+            if region.polygons().is_empty() {
                 continue;
             }
+            by_object
+                .entry(region.object_id().clone())
+                .or_default()
+                .push(i);
+        }
 
-            let z = region.z();
+        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
 
-            if self.wall_count == 0 {
-                // No walls — entire input becomes infill area
-                let _ = output.set_infill_areas(polygons.to_vec());
-                continue;
-            }
+        for indices in by_object.values() {
+            // A painted object exposes a shared external contour on its cells.
+            let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
 
-            // Generate wall loops via iterative insets
-            let mut current_polygons = polygons.to_vec();
-            let mut all_wall_polygons: Vec<(u32, Vec<ExPolygon>)> = Vec::new();
-
-            for i in 0..self.wall_count {
-                let inset_delta = if i == 0 {
-                    // Outer wall: inset by half line width
-                    -(self.line_width / 2.0)
-                } else {
-                    // Inner walls: inset by full line width from previous
-                    -self.line_width
-                };
-
-                let inset_result = offset(
-                    &current_polygons,
-                    inset_delta,
-                    OffsetJoinType::Miter,
-                    self.perimeter_arc_tolerance,
-                );
-                if inset_result.is_empty() {
-                    break;
+            if let Some(boundary) = shared_boundary {
+                // Trace the model perimeter ONCE as the outer wall (single loop).
+                if self.wall_count > 0 {
+                    let z = regions[indices[0]].z();
+                    self.emit_walls(boundary, z, &empty_annotations, true, false, output);
                 }
-
-                all_wall_polygons.push((i, inset_result.clone()));
-                current_polygons = inset_result;
-            }
-
-            // Push wall loops
-            for (perimeter_index, wall_polys) in &all_wall_polygons {
-                let is_outer = *perimeter_index == 0;
-                let loop_type = if is_outer {
-                    LoopType::Outer
-                } else {
-                    LoopType::Inner
-                };
-                let role = if is_outer {
-                    ExtrusionRole::OuterWall
-                } else {
-                    ExtrusionRole::InnerWall
-                };
-                let speed_factor = if is_outer {
-                    self.outer_speed_factor
-                } else {
-                    self.inner_speed_factor
-                };
-
-                for (poly_idx, poly) in wall_polys.iter().enumerate() {
-                    let points = expolygon_to_path3d(&poly.contour, z, self.line_width);
-                    if points.is_empty() {
+                // Each cell adds only inner walls + infill from its own polygon.
+                for &i in indices {
+                    let region = &regions[i];
+                    let polygons = region.polygons();
+                    let z = region.z();
+                    if self.wall_count == 0 {
+                        let _ = output.set_infill_areas(polygons.to_vec());
                         continue;
                     }
-                    let num_points = points.len();
-
-                    // Propagate segment_annotations into feature flags for outer walls only
-                    let (mut feature_flags, boundary_type) = if is_outer {
-                        build_outer_wall_flags(num_points, poly_idx, region.segment_annotations())
-                    } else {
-                        (
-                            vec![default_feature_flags(); num_points],
-                            WallBoundaryType::Interior,
-                        )
-                    };
-                    // Closing-repeat vertex carries the same flag as its identical
-                    // first vertex (paint propagation, fuzzy-skin gating).
-                    // build_outer_wall_flags indexes the source per-point Vec
-                    // which has only N entries; the (N+1)th slot defaults —
-                    // mirror flags[0] explicitly to preserve paint semantics
-                    // across the closing edge.
-                    slicer_sdk::mirror_first_to_last(&mut feature_flags);
-
-                    let wall = WallLoop {
-                        perimeter_index: *perimeter_index,
-                        loop_type,
-                        path: ExtrusionPath3D {
-                            points,
-                            role: role.clone(),
-                            speed_factor,
-                        },
-                        width_profile: WidthProfile {
-                            widths: vec![self.line_width; num_points],
-                        },
-                        feature_flags,
-                        boundary_type,
-                    };
-                    let _ = output.push_wall_loop(wall);
+                    self.emit_walls(polygons, z, region.segment_annotations(), false, true, output);
                 }
-            }
-
-            // Generate seam candidates from outer wall concave corners
-            if let Some((_, outer_polys)) = all_wall_polygons.first() {
-                for poly in outer_polys {
-                    generate_seam_candidates(&poly.contour, z, output);
-                }
-            }
-
-            // Compute infill area: inset innermost wall by half line width
-            if !current_polygons.is_empty() {
-                let infill = offset(
-                    &current_polygons,
-                    -(self.line_width / 2.0),
-                    OffsetJoinType::Miter,
-                    self.perimeter_arc_tolerance,
-                );
-                if !infill.is_empty() {
-                    let _ = output.set_infill_areas(infill);
+            } else {
+                // Unpainted object: full per-region emission (unchanged).
+                for &i in indices {
+                    let region = &regions[i];
+                    let polygons = region.polygons();
+                    let z = region.z();
+                    if self.wall_count == 0 {
+                        let _ = output.set_infill_areas(polygons.to_vec());
+                        continue;
+                    }
+                    self.emit_walls(polygons, z, region.segment_annotations(), true, true, output);
                 }
             }
         }
 
         Ok(())
+    }
+}
+
+impl ClassicPerimeters {
+    /// Emit wall loops (plus seam candidates and infill) for `polygons`.
+    ///
+    /// `emit_outer` / `emit_inner` gate which bands and the infill are produced
+    /// (AC-22b): a painted object's perimeter is traced ONCE from the shared
+    /// external contour (`true, false`) so the outer-wall count matches the
+    /// unpainted baseline, and each colour cell adds only its inner walls + infill
+    /// (`false, true`). Unpainted regions pass `true, true`.
+    #[allow(clippy::too_many_arguments)]
+    fn emit_walls(
+        &self,
+        polygons: &[ExPolygon],
+        z: f32,
+        segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        emit_outer: bool,
+        emit_inner: bool,
+        output: &mut PerimeterOutputBuilder,
+    ) {
+        // Generate wall loops via iterative insets.
+        let mut current_polygons = polygons.to_vec();
+        let mut all_wall_polygons: Vec<(u32, Vec<ExPolygon>)> = Vec::new();
+
+        for i in 0..self.wall_count {
+            let inset_delta = if i == 0 {
+                -(self.line_width / 2.0)
+            } else {
+                -self.line_width
+            };
+            let inset_result = offset(
+                &current_polygons,
+                inset_delta,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            if inset_result.is_empty() {
+                break;
+            }
+            all_wall_polygons.push((i, inset_result.clone()));
+            current_polygons = inset_result;
+        }
+
+        for (perimeter_index, wall_polys) in &all_wall_polygons {
+            let is_outer = *perimeter_index == 0;
+            // AC-22b: emit only the requested bands (outer-once / inner-per-cell).
+            if (is_outer && !emit_outer) || (!is_outer && !emit_inner) {
+                continue;
+            }
+            let loop_type = if is_outer {
+                LoopType::Outer
+            } else {
+                LoopType::Inner
+            };
+            let role = if is_outer {
+                ExtrusionRole::OuterWall
+            } else {
+                ExtrusionRole::InnerWall
+            };
+            let speed_factor = if is_outer {
+                self.outer_speed_factor
+            } else {
+                self.inner_speed_factor
+            };
+
+            for (poly_idx, poly) in wall_polys.iter().enumerate() {
+                let points = expolygon_to_path3d(&poly.contour, z, self.line_width);
+                if points.is_empty() {
+                    continue;
+                }
+                let num_points = points.len();
+
+                let (mut feature_flags, boundary_type) = if is_outer {
+                    build_outer_wall_flags(num_points, poly_idx, segment_annotations)
+                } else {
+                    (
+                        vec![default_feature_flags(); num_points],
+                        WallBoundaryType::Interior,
+                    )
+                };
+                slicer_sdk::mirror_first_to_last(&mut feature_flags);
+
+                let wall = WallLoop {
+                    perimeter_index: *perimeter_index,
+                    loop_type,
+                    path: ExtrusionPath3D {
+                        points,
+                        role: role.clone(),
+                        speed_factor,
+                    },
+                    width_profile: WidthProfile {
+                        widths: vec![self.line_width; num_points],
+                    },
+                    feature_flags,
+                    boundary_type,
+                };
+                let _ = output.push_wall_loop(wall);
+            }
+        }
+
+        // Seam candidates belong to the outer wall (the shared-perimeter pass).
+        if emit_outer {
+            if let Some((_, outer_polys)) = all_wall_polygons.first() {
+                for poly in outer_polys {
+                    generate_seam_candidates(&poly.contour, z, output);
+                }
+            }
+        }
+
+        // Only the inner/infill pass owns the infill region.
+        if emit_inner && !current_polygons.is_empty() {
+            let infill = offset(
+                &current_polygons,
+                -(self.line_width / 2.0),
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            if !infill.is_empty() {
+                let _ = output.set_infill_areas(infill);
+            }
+        }
     }
 }
 

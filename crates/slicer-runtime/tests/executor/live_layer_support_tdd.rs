@@ -480,6 +480,7 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            external_contour: None,
         })
         .collect();
 
@@ -985,6 +986,7 @@ mod planner_consuming_tier {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            external_contour: None,
         };
         slicer_ir::SliceIR {
             global_layer_index: layer_index,
@@ -1311,6 +1313,7 @@ mod planner_consuming_tier {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
+                external_contour: None,
             }],
             ..Default::default()
         };

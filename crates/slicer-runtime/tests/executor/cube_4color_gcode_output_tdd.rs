@@ -283,8 +283,17 @@ fn outer_wall_counts_per_layer(gcode: &str) -> Vec<usize> {
         if !in_outer {
             continue;
         }
-        // Extrusion move inside an outer-wall block.
-        if (trimmed.starts_with("G1 ") || trimmed.starts_with("G1\t")) && trimmed.contains(" E") {
+        // Outer-wall EXTRUSION SEGMENT: a G1 that moves in XY while extruding.
+        // E-only moves (filament retract / unretract / static wipe) are NOT wall
+        // segments and must be excluded — otherwise a retract that lands inside
+        // the outer-wall block inflates the count by the retract/unretract pair.
+        // This counts equally for painted and unpainted gcode, so the baseline
+        // comparison stays apples-to-apples.
+        let is_extrusion_segment = (trimmed.starts_with("G1 ")
+            || trimmed.starts_with("G1\t"))
+            && trimmed.contains(" E")
+            && (trimmed.contains(" X") || trimmed.contains(" Y"));
+        if is_extrusion_segment {
             current += 1;
         }
     }
@@ -333,8 +342,12 @@ fn cube_4color_gcode_emits_all_four_tool_indices() {
 // Test 2 — per-layer outer-wall count matches unpainted baseline within 1
 // --------------------------------------------------------------------------
 
+// AC-22b: bisector-edge dedup. The host attaches each painted cell's clean model
+// boundary (`SlicedRegion::external_contour`, a per-object `union_ex` computed
+// host-side); the perimeter guest keeps only outer-wall edges on that boundary and
+// skips paint-cell interfaces, so each interface is traced by no cell and the
+// painted cube's per-layer outer-wall count matches the unpainted baseline.
 #[test]
-#[ignore = "P96 bisector-edge ownership: every Voronoi edge between two differently-colored cells is traced as an outer wall by both adjacent cells; P96 implements per-edge ownership alongside Phase 5 width-limiting + interlocking. See P96 packet AC-22b."]
 fn cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one() {
     let painted = slice_fixture_file(&cube_4color_path());
     let unpainted = slice_synthetic_mesh("unpainted_25mm_cube", unpainted_25mm_cube());

@@ -31,6 +31,29 @@ max-ir-schema     = "5.0.0"
 # mesh-segmentation-output::mark-triangle-paint (docs/03 world-prepass.wit).
 "mesh_seg_mark:*" = "string"
 
+[config.schema.mmu_segmented_region_max_width]
+type = "f32"
+default = 0.0
+units = "mm"
+unit = "mm"
+minimum = 0.0
+min = 0.0
+description = "Maximum width of a paint-segmented region (mm). 0 disables width limiting (OrcaSlicer parity)."
+
+[config.schema.mmu_segmented_region_interlocking_depth]
+type = "f32"
+default = 0.0
+units = "mm"
+unit = "mm"
+minimum = 0.0
+min = 0.0
+description = "Interlocking depth between adjacent layers (mm). 0 disables interlocking. When >0, even layers use this depth; odd layers fall back to mmu_segmented_region_max_width."
+
+[config.schema.mmu_segmented_region_interlocking_beam]
+type = "bool"
+default = false
+description = "When true, the entire Phase 5 (cut_segmented_layers) pass is SKIPPED at the driver. OrcaSlicer parity: MultiMaterialSegmentation.cpp:2452."
+
 [config.overridable-per-region]
 keys = []
 

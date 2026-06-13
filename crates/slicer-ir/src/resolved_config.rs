@@ -153,6 +153,9 @@ impl ResolvedConfig {
         if let Some(v) = self.smoothificator_adaptive {
             m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
         }
+        // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
+        // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
+        // prints, breaking byte-identicality vs baseline.
         // Merge extension keys (module-contributed, already in ConfigValue form).
         for (k, v) in &self.extensions {
             m.insert(k.clone(), v.clone());
@@ -663,6 +666,15 @@ declare_resolved_config! {
     /// Whether the wipe tower is enabled for multi-material purge.
     /// Default false matches single-material shipping behavior.
     cli "wipe_tower_enabled" wipe_tower_enabled: bool = false => extract_bool;
+
+    // MMU segmented region (Phase 5 — width limiting / interlocking)
+    /// Maximum width of MMU segmented regions in mm. `0.0` means no limit.
+    cli "mmu_segmented_region_max_width" mmu_segmented_region_max_width: f32 = 0.0 => extract_float;
+    /// Interlocking depth for MMU segmented regions in mm. `0.0` means no interlocking.
+    cli "mmu_segmented_region_interlocking_depth" mmu_segmented_region_interlocking_depth: f32 = 0.0 => extract_float;
+    /// When true, Phase 5 width-limiting is skipped entirely (OrcaSlicer
+    /// interlocking-beam parity). Default `false` matches single-material behaviour.
+    cli "mmu_segmented_region_interlocking_beam" mmu_segmented_region_interlocking_beam: bool = false => extract_bool;
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future
@@ -724,6 +736,12 @@ impl PartialEq for ResolvedConfig {
                 .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.retract_length.to_bits() == other.retract_length.to_bits()
             && self.wipe_tower_enabled == other.wipe_tower_enabled
+            && self.mmu_segmented_region_max_width.to_bits()
+                == other.mmu_segmented_region_max_width.to_bits()
+            && self.mmu_segmented_region_interlocking_depth.to_bits()
+                == other.mmu_segmented_region_interlocking_depth.to_bits()
+            && self.mmu_segmented_region_interlocking_beam
+                == other.mmu_segmented_region_interlocking_beam
             && self.extensions == other.extensions
     }
 }
@@ -785,6 +803,11 @@ impl std::hash::Hash for ResolvedConfig {
         }
         self.retract_length.to_bits().hash(state);
         self.wipe_tower_enabled.hash(state);
+        self.mmu_segmented_region_max_width.to_bits().hash(state);
+        self.mmu_segmented_region_interlocking_depth
+            .to_bits()
+            .hash(state);
+        self.mmu_segmented_region_interlocking_beam.hash(state);
         self.extensions.hash(state);
     }
 }

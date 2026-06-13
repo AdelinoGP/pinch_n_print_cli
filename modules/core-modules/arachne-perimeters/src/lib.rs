@@ -16,7 +16,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
 use slicer_ir::{
@@ -115,20 +115,72 @@ impl LayerModule for ArachnePerimeters {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        for region in regions {
-            let polygons = region.polygons();
-            if polygons.is_empty() {
+        // Group regions by object so each painted object's model perimeter is
+        // traced exactly once (AC-22b bisector-edge dedup).
+        let mut by_object: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        for (i, region) in regions.iter().enumerate() {
+            if region.polygons().is_empty() {
                 continue;
             }
+            by_object
+                .entry(region.object_id().clone())
+                .or_default()
+                .push(i);
+        }
 
-            let z = region.z();
+        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
 
-            if self.wall_count == 0 {
-                let _ = output.set_infill_areas(polygons.to_vec());
-                continue;
+        for indices in by_object.values() {
+            // A painted object exposes a shared external contour on its cells.
+            let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
+
+            if let Some(boundary) = shared_boundary {
+                // Trace the model perimeter ONCE as the outer wall — a single loop,
+                // so the painted object's outer-wall count matches the unpainted
+                // baseline instead of fragmenting across colour cells.
+                if self.wall_count > 0 {
+                    let z = regions[indices[0]].z();
+                    self.generate_arachne_walls(boundary, z, &empty_annotations, true, false, output);
+                }
+                // Each cell contributes only inner walls + infill from its own
+                // polygon (no per-cell outer wall).
+                for &i in indices {
+                    let region = &regions[i];
+                    let polygons = region.polygons();
+                    let z = region.z();
+                    if self.wall_count == 0 {
+                        let _ = output.set_infill_areas(polygons.to_vec());
+                        continue;
+                    }
+                    self.generate_arachne_walls(
+                        polygons,
+                        z,
+                        region.segment_annotations(),
+                        false,
+                        true,
+                        output,
+                    );
+                }
+            } else {
+                // Unpainted object: full per-region emission (unchanged).
+                for &i in indices {
+                    let region = &regions[i];
+                    let polygons = region.polygons();
+                    let z = region.z();
+                    if self.wall_count == 0 {
+                        let _ = output.set_infill_areas(polygons.to_vec());
+                        continue;
+                    }
+                    self.generate_arachne_walls(
+                        polygons,
+                        z,
+                        region.segment_annotations(),
+                        true,
+                        true,
+                        output,
+                    );
+                }
             }
-
-            self.generate_arachne_walls(polygons, z, region.segment_annotations(), output);
         }
 
         Ok(())
@@ -143,11 +195,22 @@ impl ArachnePerimeters {
     /// 2. For each wall band, determine local width by measuring the distance between
     ///    the outer and inner boundaries of that band at each vertex.
     /// 3. If a region is too thin for the requested wall count, reduce walls and adapt widths.
+    ///
+    /// `emit_outer` / `emit_inner` gate which wall bands (and the infill) are
+    /// produced (AC-22b). For a painted cell group the model perimeter is traced
+    /// ONCE from the shared external contour (`emit_outer=true, emit_inner=false`),
+    /// and each cell contributes only its inner walls + infill
+    /// (`emit_outer=false, emit_inner=true`) — so the perimeter is a single loop
+    /// (matching the unpainted baseline count) while infill stays per-colour.
+    /// Unpainted regions pass `true, true` (unchanged full emission).
+    #[allow(clippy::too_many_arguments)]
     fn generate_arachne_walls(
         &self,
         polygons: &[ExPolygon],
         z: f32,
         segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        emit_outer: bool,
+        emit_inner: bool,
         output: &mut PerimeterOutputBuilder,
     ) {
         // Build the boundary rings: boundary[0] = original, boundary[i] = i-th inset
@@ -177,8 +240,11 @@ impl ArachnePerimeters {
 
         // We need at least 2 boundaries to form a wall band (outer + inner boundary)
         if boundaries.len() < 2 {
-            // Region too thin for even one wall — make it all infill
-            let _ = output.set_infill_areas(polygons.to_vec());
+            // Region too thin for even one wall — make it all infill (only the
+            // inner/infill pass owns infill; the shared outer-wall pass does not).
+            if emit_inner {
+                let _ = output.set_infill_areas(polygons.to_vec());
+            }
             return;
         }
 
@@ -187,6 +253,10 @@ impl ArachnePerimeters {
         // For each wall band, generate wall loops with variable-width profiles
         for wall_idx in 0..num_walls {
             let is_outer = wall_idx == 0;
+            // AC-22b: emit only the requested bands (outer-once / inner-per-cell).
+            if (is_outer && !emit_outer) || (!is_outer && !emit_inner) {
+                continue;
+            }
             let _outer_boundary = &boundaries[wall_idx];
             let inner_boundary = &boundaries[wall_idx + 1];
 
@@ -260,24 +330,28 @@ impl ArachnePerimeters {
             }
         }
 
-        // Seam candidates from outer wall contours
-        if boundaries.len() >= 2 {
+        // Seam candidates belong to the outer wall (the shared-perimeter pass).
+        if emit_outer && boundaries.len() >= 2 {
             for poly in &boundaries[1] {
                 generate_seam_candidates(&poly.contour, z, output);
             }
         }
 
-        // Infill area: inset innermost boundary by half line width
-        let innermost = &boundaries[boundaries.len() - 1];
-        if !innermost.is_empty() {
-            let infill = offset(
-                innermost,
-                -(self.line_width / 2.0),
-                OffsetJoinType::Miter,
-                self.perimeter_arc_tolerance,
-            );
-            if !infill.is_empty() {
-                let _ = output.set_infill_areas(infill);
+        // Infill area: inset innermost boundary by half line width. Only the
+        // inner/infill pass owns infill (the shared outer-wall pass must not, or it
+        // would overwrite each cell's per-colour infill region).
+        if emit_inner {
+            let innermost = &boundaries[boundaries.len() - 1];
+            if !innermost.is_empty() {
+                let infill = offset(
+                    innermost,
+                    -(self.line_width / 2.0),
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                if !infill.is_empty() {
+                    let _ = output.set_infill_areas(infill);
+                }
             }
         }
     }

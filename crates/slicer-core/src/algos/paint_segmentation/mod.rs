@@ -1,3 +1,5 @@
+/// AC-22b — per-edge bisector ownership tagging for classic-perimeters skip-mask.
+pub mod bisector_ownership;
 /// Paint-segmentation algorithm modules (ported from OrcaSlicer).
 ///
 /// Coordinate constants divided by 100 (OrcaSlicer: 1 nm, ModularSlicer: 100 nm).
@@ -25,6 +27,8 @@ pub mod triangle_intersect;
 pub mod voronoi_graph;
 /// Phase 4d/4e — prune redundant arcs and dangling nodes from the MMU graph.
 pub mod voronoi_prune;
+/// Phase 5 — width limiting and interlocking kernel (`cut_segmented_layers`).
+pub mod width_limit;
 
 // ---------------------------------------------------------------------------
 // Step 9 — execute_paint_segmentation driver (AC-12)
@@ -41,6 +45,13 @@ pub enum PaintSegmentationError {
     EmptyInputUnexpected(String),
     /// Catch-all for other errors.
     Other(String),
+    /// A Phase 5 config parameter had an out-of-range value (e.g. negative).
+    InvalidPhase5Config {
+        /// The config key that was invalid (e.g. `"mmu_segmented_region_max_width"`).
+        key: String,
+        /// The rejected value.
+        value: i64,
+    },
 }
 
 impl std::fmt::Display for PaintSegmentationError {
@@ -49,6 +60,9 @@ impl std::fmt::Display for PaintSegmentationError {
             Self::Voronoi(e) => write!(f, "voronoi error: {e}"),
             Self::EmptyInputUnexpected(s) => write!(f, "unexpected empty input: {s}"),
             Self::Other(s) => write!(f, "paint segmentation v2 error: {s}"),
+            Self::InvalidPhase5Config { key, value } => {
+                write!(f, "invalid Phase 5 config: {key} = {value}")
+            }
         }
     }
 }
@@ -804,6 +818,26 @@ pub fn execute_paint_segmentation(
         }
     }
 
+    // ---- External-contour tagging (AC-22b bisector-edge dedup) ----------------
+    //
+    // Must run AFTER variant-composition writes working[i].regions (so the contour
+    // reflects the final pre-erosion polygons) and BEFORE Phase 5 width-limiting
+    // (which may clip or replace polygons). Per object, the union of the original
+    // (pre-segmentation) slice polygons is the gap-free model perimeter; it is
+    // attached to every painted cell so the guest can keep only the real perimeter
+    // edges of each cell and skip paint-cell interfaces. `union_ex` is computed
+    // here (host) because boolean polygon ops are unreliable in the WASM guest.
+    bisector_ownership::populate_external_contours(&mut working, &slice_ir);
+
+    // ---- Phase 5 — width limiting / interlocking (OrcaSlicer parity) ----------
+    //
+    // OrcaSlicer: `cut_segmented_layers` (MultiMaterialSegmentation.cpp:1294).
+    // Guarded by `!interlocking_beam` inside `run_phase5_width_limit`.
+    #[cfg(feature = "host-algos")]
+    {
+        run_phase5_width_limit(&mut working, &region_map)?;
+    }
+
     // ---- Phase 6 — top/bottom propagation (OrcaSlicer parity) ----------------
     //
     // OrcaSlicer order (MultiMaterialSegmentation.cpp:1331-1419,
@@ -1069,6 +1103,98 @@ fn build_modifier_segment_annotations(
     }
 
     annotations
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 width-limit integration helper
+// ---------------------------------------------------------------------------
+
+/// Read Phase 5 config from `region_map`, guard on `!interlocking_beam`, build
+/// adapter slices, invoke [`width_limit::cut_segmented_layers`], and write the
+/// eroded polygons back into `working`.
+///
+/// Returns `true` if the kernel was invoked, `false` if the beam guard or
+/// zero-default short-circuit applied. The boolean is used only by AC-N3.
+#[cfg(feature = "host-algos")]
+fn run_phase5_width_limit(
+    working: &mut [slicer_ir::SliceIR],
+    region_map: &slicer_ir::RegionMapIR,
+) -> Result<bool, PaintSegmentationError> {
+    // Read MMU Phase 5 config from the first available RegionKey.
+    // These parameters are global, not per-region. The map-empty case is
+    // defensive — the driver already short-circuits on an empty map.
+    let (width_units, depth_units, interlocking_beam) = match region_map.entries.keys().next() {
+        Some(key) => {
+            let cfg = region_map.config_for(key);
+            (
+                slicer_ir::mm_to_units(cfg.mmu_segmented_region_max_width),
+                slicer_ir::mm_to_units(cfg.mmu_segmented_region_interlocking_depth),
+                cfg.mmu_segmented_region_interlocking_beam,
+            )
+        }
+        None => (0, 0, false),
+    };
+
+    // AC-2 / OrcaSlicer parity: beam=true skips Phase 5 entirely.
+    if interlocking_beam {
+        return Ok(false);
+    }
+
+    // AC-8: zero defaults — skip adapter work entirely (no mutation).
+    if width_units == 0 && depth_units == 0 {
+        return Ok(false);
+    }
+
+    // Build per-layer variant maps (painted chains only).
+    let mut variants_per_layer = working
+        .iter()
+        .map(|s| {
+            let mut map = std::collections::BTreeMap::new();
+            for r in &s.regions {
+                if r.variant_chain.is_empty() {
+                    continue;
+                }
+                map.insert(r.variant_chain.clone(), r.polygons.clone());
+            }
+            map
+        })
+        .collect::<Vec<_>>();
+
+    // Input geometry per layer: full union of all regions (BASE + painted).
+    let input_expolygons_per_layer = working
+        .iter()
+        .map(|s| {
+            s.regions
+                .iter()
+                .flat_map(|r| r.polygons.iter().cloned())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    // Invoke Phase 5 kernel (AC-4: all three config keys read above).
+    width_limit::cut_segmented_layers(
+        &mut variants_per_layer,
+        &input_expolygons_per_layer,
+        width_units,
+        depth_units,
+    )?;
+
+    // Write-back: update painted region polygons (D15: empty result persists).
+    for (i, layer_map) in variants_per_layer.iter().enumerate() {
+        if i >= working.len() {
+            break;
+        }
+        for region in &mut working[i].regions {
+            if region.variant_chain.is_empty() {
+                continue;
+            }
+            if let Some(polys) = layer_map.get(&region.variant_chain) {
+                region.polygons = polys.clone();
+            }
+        }
+    }
+
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------
@@ -1629,6 +1755,92 @@ mod driver_v2_tests {
                     .iter()
                     .all(|p| p.iter().all(|s| s.is_none())),
             "painted chain must NOT receive modifier-volume SupportEnforcer annotations (D14)"
+        );
+    }
+
+    // ---- Phase 5 driver-level test (AC-N3) -----------------------------------
+
+    /// AC-N3: `interlocking_beam = true` with nonzero width/depth → Phase 5 skipped.
+    ///
+    /// Proves that `run_phase5_width_limit` returns `Ok(false)` and leaves
+    /// `working` unchanged when `mmu_segmented_region_interlocking_beam = true`.
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn interlocking_beam_true_skips_phase5_driver() {
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+
+        // ResolvedConfig with beam=true and nonzero width/depth.
+        let cfg = slicer_ir::ResolvedConfig {
+            mmu_segmented_region_max_width: 2.0,
+            mmu_segmented_region_interlocking_depth: 0.5,
+            mmu_segmented_region_interlocking_beam: true,
+            ..slicer_ir::ResolvedConfig::default()
+        };
+
+        // RegionMapIR with one painted-chain entry using the custom config.
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "obj1".to_string(),
+                region_id: 0u64,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+            },
+            RegionPlan::default(), // ConfigId(0) resolves to `cfg` above
+        );
+        let region_map = slicer_ir::RegionMapIR {
+            schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+            entries,
+            configs: vec![cfg],
+        };
+
+        // One layer with one painted region.
+        let painted_polys = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(1.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(1.0),
+                        y: u(1.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(1.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+        let mut working = vec![SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.5,
+            regions: vec![SlicedRegion {
+                object_id: "obj1".to_string(),
+                region_id: 1u64,
+                polygons: painted_polys.clone(),
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+                ..Default::default()
+            }],
+        }];
+        let working_snapshot = working.clone();
+
+        // Phase 5 must be skipped when beam=true.
+        let invoked = super::run_phase5_width_limit(&mut working, &region_map)
+            .expect("run_phase5_width_limit must not error");
+        assert!(!invoked, "beam=true must skip Phase 5 (return false)");
+
+        // working must be byte-for-byte identical to the pre-call snapshot.
+        assert_eq!(
+            working, working_snapshot,
+            "beam=true must leave working unmodified"
         );
     }
 }

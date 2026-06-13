@@ -158,6 +158,9 @@ pub struct SliceRegionData {
     pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
+    /// Clean model boundary for the painted cell group (AC-22b bisector dedup).
+    /// `Some(boundary)` for painted regions; `None` for unpainted regions.
+    pub external_contour: Option<Vec<layer::slicer::types::geometry::ExPolygon>>,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -2219,6 +2222,10 @@ pub fn sliced_region_to_data(
         bridge_orientation_deg: region.bridge_orientation_deg,
         sparse_infill_area: ir_to_wit_expolygons(&region.sparse_infill_area),
         held_claims,
+        external_contour: region
+            .external_contour
+            .as_ref()
+            .map(|b| ir_to_wit_expolygons(b)),
     }
 }
 
@@ -2301,6 +2308,7 @@ mod region_origin_tests {
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
+                external_contour: None,
             })
             .expect("push slice region");
 
@@ -2704,6 +2712,13 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn held_claims(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<String>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.held_claims.clone())
+    }
+    fn external_contour(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Option<Vec<ExPolygon>>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.external_contour.clone())
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

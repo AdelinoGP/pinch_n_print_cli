@@ -343,6 +343,7 @@ pub fn execute_prepass_slice_single_layer(
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            external_contour: None,
         };
 
         assemble_bridge_areas(&mut sliced_region, surface_class);

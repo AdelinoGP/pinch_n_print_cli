@@ -694,6 +694,7 @@ fn expansion_margin_grows_polygon_observably() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
+        external_contour: None,
     };
 
     assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
@@ -800,6 +801,7 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
+        external_contour: None,
     };
 
     // Must not panic.

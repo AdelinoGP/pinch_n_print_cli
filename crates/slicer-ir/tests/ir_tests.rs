@@ -439,6 +439,7 @@ mod tests {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            external_contour: None,
         };
 
         test_serde_roundtrip!(region);
@@ -477,6 +478,7 @@ mod tests {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            external_contour: None,
         };
 
         test_serde_roundtrip!(region);

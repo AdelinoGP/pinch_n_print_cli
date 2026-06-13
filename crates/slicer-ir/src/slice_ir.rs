@@ -1322,6 +1322,20 @@ pub struct SlicedRegion {
     /// `crates/slicer-runtime/src/region_partition.rs`.
     #[serde(default)]
     pub sparse_infill_area: Vec<ExPolygon>,
+    /// Clean model boundary for outer-wall ownership (AC-22b bisector-edge dedup).
+    /// `None` = this region is not part of a painted cell group; the perimeter
+    /// generator traces its own polygon in full (default; unpainted regions/layers,
+    /// byte-identical output).
+    /// `Some(boundary)` = the gap-free external contour of the whole painted cell
+    /// group this region belongs to (union of every sibling region sharing the same
+    /// `object_id`, computed host-side via `union_ex` where boolean ops are reliable).
+    /// The perimeter generator keeps an OUTER-wall edge only when it lies on this
+    /// boundary, and skips edges interior to it (paint-cell interfaces). Because
+    /// every cell shares the same boundary and each owns only its perimeter portion,
+    /// each interface is emitted by no cell and the model perimeter is traced once.
+    /// Populated by paint-segmentation's external-contour tagging stage.
+    #[serde(default)]
+    pub external_contour: Option<Vec<ExPolygon>>,
 }
 
 /// Slice IR
