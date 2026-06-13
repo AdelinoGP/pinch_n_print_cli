@@ -944,3 +944,13 @@ cargo run --bin pnp_cli --release -- slice \
   vocabulary.
 - A consistent post-slice paint pipeline with no surviving placeholder kernels,
   dead WASM surfaces, or doc/code drift.
+
+---
+
+## Post-roadmap obligation — perimeter-module OrcaSlicer parity
+
+The 11-packet roadmap closes with `external_contour`-driven single-trace outer walls for painted regions (D-96-AC22-EXTERNAL-CONTOUR). This is a parity-incomplete simplification — OrcaSlicer's MMU produces per-color outer wall fragments with tool changes at color transitions, not a union-traced single wall per object.
+
+The reshape obligation is owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](./perimeter-modules-orca-parity-roadmap.md) under the "Inherited from P96 — AC-22b reshape obligation" section. Tasks T-P96-A through T-P96-F supersede this mechanism with per-color outer-wall fragmentation + deterministic per-edge bisector ownership.
+
+Closing the 11-packet roadmap with status `implemented` on P96 is correct — Phase 5 work itself is real and complete. The AC-22b mechanism is documented debt with a binding cross-reference.

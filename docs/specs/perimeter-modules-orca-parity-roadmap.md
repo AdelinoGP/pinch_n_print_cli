@@ -13,6 +13,7 @@
 - [`docs/specs/overhang-pipeline-restructuring.md`](./overhang-pipeline-restructuring.md) — moves overhang classification to PrePass via mesh cross-sections; adds `OverhangRegion.xy_footprint` (was D-12 here) and per-layer quartile polygons; refactors `overhang-classifier-default` to read-from-IR. **Precondition for T-024 (per-vertex overhang_quartile propagation) and T-077 (`extra_perimeters_on_overhangs`).** Authored by [ADR-0012](../adr/0012-overhang-classification-at-prepass.md) (to be written).
 - [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. Partially superseded by ADR-0012 (classification moves to PrePass; speed-factor application stays at finalization).
 - [ADR-0011](../adr/0011-perimeter-module-owns-wall-sequencing.md) — perimeter module owns wall-sequence reordering.
+- [`docs/specs/paint-pipeline-orca-parity-roadmap.md`](./paint-pipeline-orca-parity-roadmap.md) — **Inherited obligation:** P96 closed AC-22b via a non-parity `SlicedRegion.external_contour` simplification (D-96-AC22-EXTERNAL-CONTOUR). This roadmap supersedes that mechanism with per-color outer-wall fragmentation + deterministic per-edge bisector ownership. See "Inherited from P96 — AC-22b reshape obligation" section below.
 - **Out-of-scope sibling roadmap (referenced from closed decision):**
   - Spiral vase + non-planar wall pipeline (per D-3): LayerPlanning surface-group synthesis + `non-planar-walls` PerimetersPostProcess module + helical Z modulation.
 
@@ -89,6 +90,25 @@ Phases:
 | D-7 | ~~Voronoi crate strategy — vendor `boost::polygon` port, adopt existing Rust crate, or write from scratch?~~ **CLOSED:** Adopt [`boostvoronoi`](https://docs.rs/boostvoronoi/) — pure-Rust port of `boost::polygon::voronoi`, matches OrcaSlicer's algorithm choice. Confirmed pre-grill. |
 | D-8 | ~~`ExtrusionRole::GapFill` vs reuse `SparseInfill` + `is_thin_wall` flag?~~ **CLOSED:** add new `ExtrusionRole::GapFill` and `LoopType::GapFill` variants. Both enums marked `#[non_exhaustive]` if not already. Downstream consumers (`priority_for_role`, GCodeEmit, `part-cooling` fan dispatch, etc.) gain one match arm each. | |
 | D-9 | ~~0-width-sentinel contract for `LimitedBeadingStrategy` — coordinate with all three infill modules, or post-process out of Arachne output before downstream sees it?~~ **CLOSED:** strip from external output. The infill-fill-partition plan now conveys the boundary information via `perimeter.infill_areas` polygon shape + host-side partition, so 0-width sentinels' cross-module-marker role is obviated. `LimitedBeadingStrategy`'s internal sentinel-insertion stays faithful for bead-count math; a strip-pass drops zero-width beads before `WallLoop` assembly. Documented as deliberate deviation in `docs/DEVIATION_LOG.md`. | |
+
+---
+
+## Inherited from P96 — AC-22b reshape obligation
+
+P96 closed `cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one` via `SlicedRegion.external_contour` — a host-side `union_ex` of sibling painted regions that perimeter modules trace once per painted object, eliminating per-color outer-wall fragments. This is OrcaSlicer-divergent. OrcaSlicer's MMU emits per-color outer-wall fragments with tool changes at color transitions ("fragmentation" is the parity-correct behavior, not a defect).
+
+This roadmap must supersede that mechanism. Tasks below fold into the existing M1 phases (cross-references in `Phase`):
+
+| ID | Title | Phase | Files | Acceptance |
+|---|---|---|---|---|
+| T-P96-A | Reshape AC-22b assertion from union-baseline to per-color fragmentation | Phase 9 | `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` | Test renamed to `cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes`; assertion: per painted layer, N outer-wall extrusion sequences ≈ N distinct colors; union covers external perimeter; each fragment preceded by `T<N>` matching its ToolIndex; transitions at cell-boundary corners within ε. |
+| T-P96-B | Revert `external_contour` consumption in classic-perimeters and arachne-perimeters | Phase 1 / Phase 2 | `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs` | Both modules trace outer walls per-cell again for painted SlicedRegions. `SlicedRegion.external_contour` IR field remains in place (harmless plumbing) but is unused; T-P96-D may delete it. |
+| T-P96-C | Implement OrcaSlicer-parity per-edge bisector-edge ownership | Phase 4 / Phase 5 | `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs`, perimeter modules | At each shared edge between two adjacent same-object painted cells of different colors, exactly one side owns the wall. Deterministic tie-break (e.g. lower color ID; match OrcaSlicer's rule by reading source). No edge traced twice; no edge traced zero times. |
+| T-P96-D | Delete unused `external_contour` IR field after T-P96-A/B/C land GREEN | Phase 1 | `crates/slicer-ir/src/slice_ir.rs`, WIT, host populator, ~5 files | Field removed, `cargo check --workspace --all-targets` clean. Cleanup task. |
+| T-P96-E | Address arachne medial-axis non-mapping for bisector ownership | Phase 10–12 (M2) | `modules/core-modules/arachne-perimeters/` (post-rename `variable-width-perimeters` then real arachne) | Per-edge masks don't map 1:1 onto Arachne's medial-axis walls. Bisector dedup happens at the boundary level (Arachne's input contour), not at the wall level. Verify against OrcaSlicer's Arachne MMU usage; cite line numbers in the task acceptance. |
+| T-P96-F | Re-baseline cube_4color SHA + add deviation entry | Phase 9 | `.ralph/specs/<packet>/closure-log.md`, `docs/DEVIATION_LOG.md` | Capture `P<packet>_CUBE_4COLOR_PARITY_SHA`. Add `D-<packet>-AC22-PARITY-RESHAPE` superseding D-96-AC22-EXTERNAL-CONTOUR. |
+
+Ordering: T-P96-A lands the test RED first. T-P96-B reverts `external_contour` consumption (test stays RED but for a different reason — bisectors traced twice). T-P96-C implements ownership (test goes GREEN). T-P96-D cleanup. T-P96-E in M2 alongside the real Arachne work. T-P96-F at packet close.
 
 ---
 

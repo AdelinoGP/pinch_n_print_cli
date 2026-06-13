@@ -244,6 +244,12 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-049** (In Progress) — Cooling subset of DEV-009 (Benchy Phase H output partially correct) is now resolved via packet 53.
 <!-- END GENERATED: open-deviations -->
 
+## Known parity gaps (post-roadmap work)
+
+Forward-looking parity obligations that survive a completed packet's `status: implemented` flip — recorded here so they remain discoverable across subsequent roadmap work. Each entry names the originating deviation, the responsible follow-up roadmap, and the production impact while the gap is open.
+
+- **Perimeter-module OrcaSlicer parity for multi-color (D-96-AC22-EXTERNAL-CONTOUR).** Painted-region outer walls are currently traced once per object via `SlicedRegion.external_contour` (a host-side `union_ex` of sibling painted cells). OrcaSlicer's MMU emits per-color outer-wall fragments with tool changes at color transitions. The reshape is owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md) — tasks T-P96-A through T-P96-F. Production impact: no effect on single-color models; multi-color models currently produce a single outer wall in the dominant color rather than per-color fragments until the reshape lands.
+
 ## Tests Added as Gap Locks
 
 - [x] `crates/slicer-runtime/tests/contract/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
