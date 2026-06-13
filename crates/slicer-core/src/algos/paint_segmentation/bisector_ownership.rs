@@ -169,7 +169,10 @@ mod tests {
         let left = painted_region("cube", vec![sq(0, 0, 10_000, 10_000)], 0);
         let right = painted_region("cube", vec![sq(10_000, 0, 20_000, 10_000)], 1);
         // Pre-segmentation slice: one gap-free 2×1 mm rectangle for "cube".
-        let original = vec![layer(vec![unpainted_region("cube", vec![sq(0, 0, 20_000, 10_000)])])];
+        let original = vec![layer(vec![unpainted_region(
+            "cube",
+            vec![sq(0, 0, 20_000, 10_000)],
+        )])];
         let mut working = vec![layer(vec![left, right])];
 
         populate_external_contours(&mut working, &original);
@@ -179,14 +182,21 @@ mod tests {
                 .external_contour
                 .as_ref()
                 .expect("painted cell must carry its object's external contour");
-            assert_eq!(bbox(b), (0, 0, 20_000, 10_000), "boundary is the merged rectangle");
+            assert_eq!(
+                bbox(b),
+                (0, 0, 20_000, 10_000),
+                "boundary is the merged rectangle"
+            );
         }
     }
 
     /// Fully-unpainted layer: every region's external contour stays `None`.
     #[test]
     fn fully_unpainted_layer_all_none() {
-        let original = vec![layer(vec![unpainted_region("cube", vec![sq(0, 0, 20_000, 10_000)])])];
+        let original = vec![layer(vec![unpainted_region(
+            "cube",
+            vec![sq(0, 0, 20_000, 10_000)],
+        )])];
         let mut working = vec![layer(vec![
             unpainted_region("cube", vec![sq(0, 0, 10_000, 10_000)]),
             unpainted_region("cube", vec![sq(10_000, 0, 20_000, 10_000)]),
@@ -215,8 +225,14 @@ mod tests {
 
         populate_external_contours(&mut working, &original);
 
-        assert!(working[0].regions[0].external_contour.is_some(), "painted object cell");
-        assert!(working[0].regions[1].external_contour.is_some(), "painted object cell");
+        assert!(
+            working[0].regions[0].external_contour.is_some(),
+            "painted object cell"
+        );
+        assert!(
+            working[0].regions[1].external_contour.is_some(),
+            "painted object cell"
+        );
         assert!(
             working[0].regions[2].external_contour.is_none(),
             "fully-unpainted object stays None even in a painted layer"

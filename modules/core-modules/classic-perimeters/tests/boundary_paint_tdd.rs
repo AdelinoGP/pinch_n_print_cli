@@ -359,8 +359,16 @@ fn painted_cells_share_one_outer_wall_via_external_contour() {
 
     // Shared model boundary covering both cells, and the two cell halves.
     let boundary = vec![square_polygon(5.0, 5.0, 10.0)];
-    let left = painted_cell("cube", vec![square_polygon(2.5, 5.0, 5.0)], boundary.clone());
-    let right = painted_cell("cube", vec![square_polygon(7.5, 5.0, 5.0)], boundary.clone());
+    let left = painted_cell(
+        "cube",
+        vec![square_polygon(2.5, 5.0, 5.0)],
+        boundary.clone(),
+    );
+    let right = painted_cell(
+        "cube",
+        vec![square_polygon(7.5, 5.0, 5.0)],
+        boundary.clone(),
+    );
 
     module
         .run_perimeters(0, &[left, right], &paint, &mut output, &config)
@@ -379,7 +387,10 @@ fn painted_cells_share_one_outer_wall_via_external_contour() {
         .iter()
         .filter(|w| w.loop_type == LoopType::Inner)
         .count();
-    assert!(inner >= 2, "each cell should still emit an inner wall; got {inner}");
+    assert!(
+        inner >= 2,
+        "each cell should still emit an inner wall; got {inner}"
+    );
 }
 
 /// Contrast: with NO external_contour, each region traces its own outer wall —

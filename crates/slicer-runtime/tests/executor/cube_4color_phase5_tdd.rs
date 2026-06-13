@@ -86,7 +86,10 @@ fn motion(gcode: &str) -> Vec<String> {
 #[test]
 fn cube_4color_phase5_width_limit_bands() {
     let default_g = slice_cube("ac5_default", None);
-    let width_g = slice_cube("ac5_width2", Some(r#"{"mmu_segmented_region_max_width": 2.0}"#));
+    let width_g = slice_cube(
+        "ac5_width2",
+        Some(r#"{"mmu_segmented_region_max_width": 2.0}"#),
+    );
 
     assert_ne!(
         motion(&default_g),
@@ -101,8 +104,14 @@ fn cube_4color_phase5_width_limit_bands() {
 #[test]
 fn cube_4color_phase5_interlocking_alternates() {
     let default_g = slice_cube("ac6_default", None);
-    let depth_g = slice_cube("ac6_depth05", Some(r#"{"mmu_segmented_region_interlocking_depth": 0.5}"#));
-    let width_g = slice_cube("ac6_width05", Some(r#"{"mmu_segmented_region_max_width": 0.5}"#));
+    let depth_g = slice_cube(
+        "ac6_depth05",
+        Some(r#"{"mmu_segmented_region_interlocking_depth": 0.5}"#),
+    );
+    let width_g = slice_cube(
+        "ac6_width05",
+        Some(r#"{"mmu_segmented_region_max_width": 0.5}"#),
+    );
 
     assert_ne!(
         motion(&default_g),

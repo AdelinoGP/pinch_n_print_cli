@@ -128,7 +128,8 @@ impl LayerModule for ArachnePerimeters {
                 .push(i);
         }
 
-        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
+        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
+            HashMap::new();
 
         for indices in by_object.values() {
             // A painted object exposes a shared external contour on its cells.
@@ -140,7 +141,14 @@ impl LayerModule for ArachnePerimeters {
                 // baseline instead of fragmenting across colour cells.
                 if self.wall_count > 0 {
                     let z = regions[indices[0]].z();
-                    self.generate_arachne_walls(boundary, z, &empty_annotations, true, false, output);
+                    self.generate_arachne_walls(
+                        boundary,
+                        z,
+                        &empty_annotations,
+                        true,
+                        false,
+                        output,
+                    );
                 }
                 // Each cell contributes only inner walls + infill from its own
                 // polygon (no per-cell outer wall).

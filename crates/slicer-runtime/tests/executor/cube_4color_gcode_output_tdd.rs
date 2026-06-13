@@ -289,8 +289,7 @@ fn outer_wall_counts_per_layer(gcode: &str) -> Vec<usize> {
         // the outer-wall block inflates the count by the retract/unretract pair.
         // This counts equally for painted and unpainted gcode, so the baseline
         // comparison stays apples-to-apples.
-        let is_extrusion_segment = (trimmed.starts_with("G1 ")
-            || trimmed.starts_with("G1\t"))
+        let is_extrusion_segment = (trimmed.starts_with("G1 ") || trimmed.starts_with("G1\t"))
             && trimmed.contains(" E")
             && (trimmed.contains(" X") || trimmed.contains(" Y"));
         if is_extrusion_segment {

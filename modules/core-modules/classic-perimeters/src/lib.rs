@@ -103,7 +103,8 @@ impl LayerModule for ClassicPerimeters {
                 .push(i);
         }
 
-        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
+        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
+            HashMap::new();
 
         for indices in by_object.values() {
             // A painted object exposes a shared external contour on its cells.
@@ -124,7 +125,14 @@ impl LayerModule for ClassicPerimeters {
                         let _ = output.set_infill_areas(polygons.to_vec());
                         continue;
                     }
-                    self.emit_walls(polygons, z, region.segment_annotations(), false, true, output);
+                    self.emit_walls(
+                        polygons,
+                        z,
+                        region.segment_annotations(),
+                        false,
+                        true,
+                        output,
+                    );
                 }
             } else {
                 // Unpainted object: full per-region emission (unchanged).
@@ -136,7 +144,14 @@ impl LayerModule for ClassicPerimeters {
                         let _ = output.set_infill_areas(polygons.to_vec());
                         continue;
                     }
-                    self.emit_walls(polygons, z, region.segment_annotations(), true, true, output);
+                    self.emit_walls(
+                        polygons,
+                        z,
+                        region.segment_annotations(),
+                        true,
+                        true,
+                        output,
+                    );
                 }
             }
         }
