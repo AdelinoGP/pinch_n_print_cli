@@ -935,6 +935,7 @@ pub struct SliceIR {
 }
 
 pub struct SlicedRegion {
+    // P96 field: pub external_contour: Option<Vec<ExPolygon>> — see field documentation below.
     pub object_id: ObjectId,
     pub region_id: RegionId,
     /// Closed polygon islands. Coordinates in scaled integer units (1 unit = 100 nm = 10⁻⁴ mm).
@@ -991,6 +992,15 @@ pub struct SlicedRegion {
     /// regions that match a `[[region_split]]` semantic in some module
     /// manifest. Ordering matches `RegionKey.variant_chain`.
     pub variant_chain: Vec<(String, PaintValue)>,
+    /// Gap-free outer boundary of the region's painted cell group. Added P96 (AC-22b bisector-edge dedup).
+    /// `None` for unpainted regions/layers; `Some` for painted object groups.
+    /// Populated host-side via per-object `union_ex` of the pre-segmentation slice.
+    /// Consumed by perimeter generators (arachne + classic) to trace the model perimeter once
+    /// per painted object, so painted outer-wall count matches the unpainted baseline.
+    /// Replaces the originally-drafted per-edge `bisector_edge_skip_mask` bool mask
+    /// (unworkable: WASM guest boolean ops are no-ops; Arachne medial-axis walls don't
+    /// map 1:1 to original edges; per-cell tracing fragments the perimeter).
+    pub external_contour: Option<Vec<ExPolygon>>,
 }
 
 /// ### Post-`Layer::Perimeters` invariant: four canonical fill polygons

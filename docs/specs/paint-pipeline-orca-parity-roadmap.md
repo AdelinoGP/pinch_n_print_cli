@@ -696,6 +696,8 @@ cargo run --bin pnp_cli --release -- slice \
 
 ### P4 — Phase 5: width limiting + interlocking
 
+**Status**: implemented — packets P95 (`cut_segmented_layers` width-limit + interlocking, TASK-246) + P96 (AC-22b bisector-edge dedup via `SlicedRegion.external_contour`, TASK-246-BISECTOR). **D-95-AC22-BISECTOR-DEDUP**: resolved — P95-deferred bisector-edge test is GREEN in P96 via the `external_contour` per-object model-boundary mechanism.
+
 **Goal**: implement OrcaSlicer's `cut_segmented_layers` per spec §3 Phase 5 so
 `mmu_segmented_region_max_width` and `mmu_segmented_region_interlocking_depth`
 config keys take geometric effect. User explicitly opted into full parity.
