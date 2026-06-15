@@ -923,7 +923,11 @@ fn load_3mf_cube_fuzzy_painted_no_material_layer() {
 }
 
 #[test]
-fn load_3mf_cube_fuzzy_painted_fuzzy_strokes_are_empty() {
+fn load_3mf_cube_fuzzy_painted_fuzzy_strokes_populated() {
+    // Pre-P98: fuzzy_skin sub-facet hex strokes were dropped (hardcoded Vec::new() returned an
+    // empty strokes vec). Post-P98 (Step 2): decode_strokes_for_channel is wired for
+    // paint_fuzzy_skin, so hex subdivision (circles) now produces PaintStrokes and strokes is
+    // non-empty at the loader level. cube_fuzzyPainted.3mf has hex subdivision on some facets.
     let path = cube_fuzzy_painted_path();
     let mesh = load_model(&path).unwrap();
     let pd = mesh.objects[0].paint_data.as_ref().unwrap();
@@ -933,9 +937,224 @@ fn load_3mf_cube_fuzzy_painted_fuzzy_strokes_are_empty() {
         .find(|l| l.semantic == PaintSemantic::FuzzySkin)
         .expect("no FuzzySkin layer");
     assert!(
-        fuzzy.strokes.is_empty(),
-        "3MF fuzzy skin hex subdivision (circles) is parsed by model_loader but \
-         strokes are hardcoded to Vec::new() in model_loader.rs:1627. \
-         Once fixed, fuzzy circles will become distinguishable from full-face fuzzy paint."
+        !fuzzy.strokes.is_empty(),
+        "FuzzySkin strokes must be non-empty: Step 2 decodes hex subdivision in cube_fuzzyPainted.3mf"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Packet 98: paint-channel symmetry — sub-facet stroke tests (Step 3)
+//
+// Hex "401" encoding (OrcaSlicer nibble-reversed storage):
+//   raw hex chars: '4','0','1'
+//   parse_nibbles reverses → bytes ['1','0','4'] → nibbles [1, 0, 4]
+//   walk:  nibble[0]=1, split_type=1 (non-leaf, 2 children), special_side=0
+//          children iterated in REVERSE:
+//            nibble[1]=0, split_type=0 (leaf), state_bits=0, state=0 → skip
+//            nibble[2]=4, split_type=0 (leaf), state_bits=1, state=1 → push stroke
+//   Result: 1 sub-facet stroke with state=1; dominant whole-face state also=1 (≠0).
+//   Both conditions for stroke decode pass: hex.len()=3>2, *_state=Some(1)≠0.
+// ---------------------------------------------------------------------------
+
+/// AC: paint_color sub-facet strokes are decoded and exposed as PaintStroke{Material, ToolIndex}.
+///
+/// Uses cube_4color.3mf which has hex subdivision (paint circles) on the Material channel.
+#[test]
+fn paint_color_subfacet_strokes_decoded() {
+    let path = cube_4color_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let mat = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("Material layer must exist in cube_4color");
+    assert!(
+        !mat.strokes.is_empty(),
+        "Material strokes must be non-empty: cube_4color has hex subdivision on paint_color"
+    );
+    let has_tool_index_stroke = mat.strokes.iter().any(|s| {
+        s.semantic == PaintSemantic::Material && matches!(s.value, PaintValue::ToolIndex(_))
+    });
+    assert!(
+        has_tool_index_stroke,
+        "at least one Material stroke must have value=ToolIndex(n); got strokes: {:?}",
+        mat.strokes
+            .iter()
+            .map(|s| (&s.semantic, &s.value))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// AC: paint_supports sub-facet strokes are decoded into SupportEnforcer/SupportBlocker PaintStrokes.
+///
+/// Hex "401" on paint_supports → state=1 → SupportEnforcer stroke with Flag(true).
+/// Triangle vertices chosen to be non-degenerate; midpoint(v1,v2)=(0.5,0.5,0) is also distinct.
+#[test]
+fn paint_supports_subfacet_strokes_decoded() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    // paint_supports="401": dominant state=1 → SupportEnforcer; sub-facet stroke state=1 → SupportEnforcer+Flag(true)
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_supports="401" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh = load_model(f.path()).expect("should load paint_supports subfacet 3MF");
+    let pd = mesh.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let enforcer = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::SupportEnforcer)
+        .expect("SupportEnforcer layer must exist for paint_supports state=1");
+    assert!(
+        !enforcer.strokes.is_empty(),
+        "SupportEnforcer strokes must be non-empty for hex '401'"
+    );
+    let has_enforcer_stroke = enforcer
+        .strokes
+        .iter()
+        .any(|s| s.semantic == PaintSemantic::SupportEnforcer && s.value == PaintValue::Flag(true));
+    assert!(
+        has_enforcer_stroke,
+        "at least one stroke must have semantic=SupportEnforcer, value=Flag(true)"
+    );
+}
+
+/// AC: paint_seam sub-facet strokes are decoded into Custom("seam_enforcer")/Custom("seam_blocker") PaintStrokes.
+///
+/// Hex "401" on paint_seam → state=1 → seam_enforcer stroke with Flag(true).
+#[test]
+fn paint_seam_subfacet_strokes_decoded() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    // paint_seam="401": dominant state=1 → seam_enforcer; sub-facet stroke state=1 → Custom("seam_enforcer")+Flag(true)
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_seam="401" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh = load_model(f.path()).expect("should load paint_seam subfacet 3MF");
+    let pd = mesh.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let seam = pd
+        .layers
+        .iter()
+        .find(|l| matches!(&l.semantic, PaintSemantic::Custom(s) if s == "seam_enforcer"))
+        .expect("seam_enforcer layer must exist for paint_seam state=1");
+    assert!(
+        !seam.strokes.is_empty(),
+        "seam_enforcer strokes must be non-empty for hex '401'"
+    );
+    let has_seam_stroke = seam.strokes.iter().any(|s| {
+        matches!(&s.semantic, PaintSemantic::Custom(n) if n == "seam_enforcer")
+            && s.value == PaintValue::Flag(true)
+    });
+    assert!(
+        has_seam_stroke,
+        "at least one stroke must have semantic=Custom('seam_enforcer'), value=Flag(true)"
+    );
+}
+
+/// AC: paint_fuzzy_skin sub-facet strokes are decoded and exposed as PaintStroke{FuzzySkin, Flag(true)}.
+///
+/// Uses cube_fuzzyPainted.3mf which has hex subdivision (paint circles) on the FuzzySkin channel.
+/// Step 2 wired decode_strokes_for_channel for this channel; strokes are no longer hardcoded empty.
+#[test]
+fn paint_fuzzy_skin_subfacet_strokes_decoded() {
+    let path = cube_fuzzy_painted_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let fuzzy = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::FuzzySkin)
+        .expect("FuzzySkin layer must exist in cube_fuzzyPainted");
+    assert!(
+        !fuzzy.strokes.is_empty(),
+        "FuzzySkin strokes must be non-empty: cube_fuzzyPainted has hex subdivision (circles)"
+    );
+    let has_fuzzy_stroke = fuzzy
+        .strokes
+        .iter()
+        .any(|s| s.semantic == PaintSemantic::FuzzySkin && s.value == PaintValue::Flag(true));
+    assert!(
+        has_fuzzy_stroke,
+        "at least one FuzzySkin stroke must have value=Flag(true)"
+    );
+}
+
+/// AC: a malformed paint_seam hex returns ModelLoadError (not a panic).
+///
+/// "ZZZZ" contains invalid hex digits; parse_nibbles propagates PaintMetadata immediately
+/// when decode_paint_hex_state is called during attribute parsing.
+#[test]
+fn paint_seam_malformed_hex_rejected() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_seam="ZZZZ" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let err = load_model(f.path()).unwrap_err();
+    assert!(
+        matches!(err, ModelLoadError::PaintMetadata { .. }),
+        "expected PaintMetadata error for malformed seam hex 'ZZZZ', got: {:?}",
+        err
+    );
+    // Confirm no panic occurred — the assert above already proves it (panics don't return Err).
+}
+
+/// AC: an empty paint channel hex produces zero strokes and no error.
+///
+/// Empty string → decode_paint_hex_state returns Ok(0) → state=0 → no layer created,
+/// no stroke decode triggered (hex.len()=0 ≤ 2), paint_data=None.
+#[test]
+fn paint_channel_empty_hex_noop() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    // Empty paint_seam attribute: state=0, no layer, no strokes.
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_seam="" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh = load_model(f.path()).expect("empty paint_seam hex must not cause an error");
+    // state=0 → has_any_paint stays false → paint_data=None
+    let stroke_count: usize = mesh
+        .objects
+        .iter()
+        .filter_map(|o| o.paint_data.as_ref())
+        .flat_map(|pd| pd.layers.iter())
+        .map(|l| l.strokes.len())
+        .sum();
+    assert_eq!(
+        stroke_count, 0,
+        "empty hex must produce zero strokes across all layers"
+    );
+}
+
+/// AC: a 3MF with none of the four paint attributes loads OK and has zero paint strokes.
+///
+/// Uses the synthetic threemf_cube_file() which has no paint_color / paint_supports /
+/// paint_seam / paint_fuzzy_skin attributes on any triangle.
+#[test]
+fn threemf_no_paint_channels_no_strokes() {
+    let f = threemf_cube_file();
+    let mesh = load_model(f.path()).expect("unpainted 3MF must load without error");
+    for obj in &mesh.objects {
+        assert!(
+            obj.paint_data.is_none(),
+            "unpainted 3MF object must have paint_data=None; got: {:?}",
+            obj.paint_data.as_ref().map(|pd| pd
+                .layers
+                .iter()
+                .map(|l| &l.semantic)
+                .collect::<Vec<_>>())
+        );
+    }
 }

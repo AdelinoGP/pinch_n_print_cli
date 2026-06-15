@@ -342,6 +342,9 @@ struct MeshCollector {
     color_strokes: Vec<PaintStroke>,
     support_strokes_enforcer: Vec<PaintStroke>,
     support_strokes_blocker: Vec<PaintStroke>,
+    seam_strokes_enforcer: Vec<PaintStroke>,
+    seam_strokes_blocker: Vec<PaintStroke>,
+    fuzzy_strokes: Vec<PaintStroke>,
 }
 
 impl MeshCollector {
@@ -357,6 +360,9 @@ impl MeshCollector {
             color_strokes: Vec::new(),
             support_strokes_enforcer: Vec::new(),
             support_strokes_blocker: Vec::new(),
+            seam_strokes_enforcer: Vec::new(),
+            seam_strokes_blocker: Vec::new(),
+            fuzzy_strokes: Vec::new(),
         }
     }
 }
@@ -916,6 +922,10 @@ fn parse_sub_model_objects(
                             let mut color_byte_offset: usize = 0;
                             let mut support_hex: Option<String> = None;
                             let mut support_byte_offset: usize = 0;
+                            let mut seam_hex: Option<String> = None;
+                            let mut seam_byte_offset: usize = 0;
+                            let mut fuzzy_hex: Option<String> = None;
+                            let mut fuzzy_byte_offset: usize = 0;
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"v1" => v1 = Some(parse_u32(&attr.value)?),
@@ -931,6 +941,8 @@ fn parse_sub_model_objects(
                                                     byte_offset: reader.error_position() as usize,
                                                 }
                                             })?;
+                                        fuzzy_hex = Some(value_str.to_string());
+                                        fuzzy_byte_offset = reader.error_position() as usize;
                                         let state = decode_paint_hex_state(
                                             value_str,
                                             reader.error_position() as usize,
@@ -988,6 +1000,8 @@ fn parse_sub_model_objects(
                                                     byte_offset: reader.error_position() as usize,
                                                 }
                                             })?;
+                                        seam_hex = Some(value_str.to_string());
+                                        seam_byte_offset = reader.error_position() as usize;
                                         let state = decode_paint_hex_state(
                                             value_str,
                                             reader.error_position() as usize,
@@ -1053,21 +1067,22 @@ fn parse_sub_model_objects(
                                             mc.vertices[v2_idx],
                                             mc.vertices[v3_idx],
                                         ];
-                                        if let Ok(pairs) = decode_paint_hex_strokes(
+                                        let strokes = decode_strokes_for_channel(
                                             hex,
                                             tri_verts,
                                             color_byte_offset,
-                                        ) {
-                                            for (sub_verts, sub_state) in pairs {
-                                                mc.color_strokes.push(PaintStroke {
-                                                    triangles: vec![sub_verts],
-                                                    semantic: PaintSemantic::Material,
-                                                    value: PaintValue::ToolIndex(
-                                                        sub_state.saturating_sub(1),
-                                                    ),
-                                                });
-                                            }
-                                        }
+                                            |s| {
+                                                if s == 0 {
+                                                    None
+                                                } else {
+                                                    Some((
+                                                        PaintSemantic::Material,
+                                                        PaintValue::ToolIndex(s.saturating_sub(1)),
+                                                    ))
+                                                }
+                                            },
+                                        )?;
+                                        mc.color_strokes.extend(strokes);
                                     }
                                 }
                             }
@@ -1085,28 +1100,109 @@ fn parse_sub_model_objects(
                                             mc.vertices[v2_idx],
                                             mc.vertices[v3_idx],
                                         ];
-                                        if let Ok(pairs) = decode_paint_hex_strokes(
+                                        let strokes = decode_strokes_for_channel(
                                             hex,
                                             tri_verts,
                                             support_byte_offset,
-                                        ) {
-                                            for (sub_verts, sub_state) in pairs {
-                                                let stroke = PaintStroke {
-                                                    triangles: vec![sub_verts],
-                                                    semantic: if sub_state == 1 {
-                                                        PaintSemantic::SupportEnforcer
-                                                    } else {
-                                                        PaintSemantic::SupportBlocker
-                                                    },
-                                                    value: PaintValue::Flag(true),
-                                                };
-                                                if sub_state == 1 {
-                                                    mc.support_strokes_enforcer.push(stroke);
-                                                } else {
-                                                    mc.support_strokes_blocker.push(stroke);
-                                                }
+                                            |s| match s {
+                                                1 => Some((
+                                                    PaintSemantic::SupportEnforcer,
+                                                    PaintValue::Flag(true),
+                                                )),
+                                                2 => Some((
+                                                    PaintSemantic::SupportBlocker,
+                                                    PaintValue::Flag(true),
+                                                )),
+                                                _ => None,
+                                            },
+                                        )?;
+                                        for stroke in strokes {
+                                            if stroke.semantic == PaintSemantic::SupportEnforcer {
+                                                mc.support_strokes_enforcer.push(stroke);
+                                            } else {
+                                                mc.support_strokes_blocker.push(stroke);
                                             }
                                         }
+                                    }
+                                }
+                            }
+                            if let Some(hex) = &seam_hex {
+                                if hex.len() > 2 && seam_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    if v1_idx < mc.vertices.len()
+                                        && v2_idx < mc.vertices.len()
+                                        && v3_idx < mc.vertices.len()
+                                    {
+                                        let tri_verts = [
+                                            mc.vertices[v1_idx],
+                                            mc.vertices[v2_idx],
+                                            mc.vertices[v3_idx],
+                                        ];
+                                        let strokes = decode_strokes_for_channel(
+                                            hex,
+                                            tri_verts,
+                                            seam_byte_offset,
+                                            |s| match s {
+                                                1 => Some((
+                                                    PaintSemantic::Custom(
+                                                        "seam_enforcer".to_string(),
+                                                    ),
+                                                    PaintValue::Flag(true),
+                                                )),
+                                                2 => Some((
+                                                    PaintSemantic::Custom(
+                                                        "seam_blocker".to_string(),
+                                                    ),
+                                                    PaintValue::Flag(true),
+                                                )),
+                                                _ => None,
+                                            },
+                                        )?;
+                                        for stroke in strokes {
+                                            if matches!(
+                                                &stroke.semantic,
+                                                PaintSemantic::Custom(t) if t == "seam_enforcer"
+                                            ) {
+                                                mc.seam_strokes_enforcer.push(stroke);
+                                            } else {
+                                                mc.seam_strokes_blocker.push(stroke);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(hex) = &fuzzy_hex {
+                                if hex.len() > 2 && fuzzy_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    if v1_idx < mc.vertices.len()
+                                        && v2_idx < mc.vertices.len()
+                                        && v3_idx < mc.vertices.len()
+                                    {
+                                        let tri_verts = [
+                                            mc.vertices[v1_idx],
+                                            mc.vertices[v2_idx],
+                                            mc.vertices[v3_idx],
+                                        ];
+                                        let strokes = decode_strokes_for_channel(
+                                            hex,
+                                            tri_verts,
+                                            fuzzy_byte_offset,
+                                            |s| {
+                                                if s == 0 {
+                                                    None
+                                                } else {
+                                                    Some((
+                                                        PaintSemantic::FuzzySkin,
+                                                        PaintValue::Flag(true),
+                                                    ))
+                                                }
+                                            },
+                                        )?;
+                                        mc.fuzzy_strokes.extend(strokes);
                                     }
                                 }
                             }
@@ -1310,6 +1406,10 @@ fn parse_3mf_model_xml(
                             let mut color_byte_offset: usize = 0;
                             let mut support_hex: Option<String> = None;
                             let mut support_byte_offset: usize = 0;
+                            let mut seam_hex: Option<String> = None;
+                            let mut seam_byte_offset: usize = 0;
+                            let mut fuzzy_hex: Option<String> = None;
+                            let mut fuzzy_byte_offset: usize = 0;
 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
@@ -1326,6 +1426,8 @@ fn parse_3mf_model_xml(
                                                     byte_offset: reader.error_position() as usize,
                                                 }
                                             })?;
+                                        fuzzy_hex = Some(value_str.to_string());
+                                        fuzzy_byte_offset = reader.error_position() as usize;
                                         let state = decode_paint_hex_state(
                                             value_str,
                                             reader.error_position() as usize,
@@ -1383,6 +1485,8 @@ fn parse_3mf_model_xml(
                                                     byte_offset: reader.error_position() as usize,
                                                 }
                                             })?;
+                                        seam_hex = Some(value_str.to_string());
+                                        seam_byte_offset = reader.error_position() as usize;
                                         let state = decode_paint_hex_state(
                                             value_str,
                                             reader.error_position() as usize,
@@ -1444,19 +1548,22 @@ fn parse_3mf_model_xml(
                                         mc.vertices[v2_idx],
                                         mc.vertices[v3_idx],
                                     ];
-                                    if let Ok(pairs) =
-                                        decode_paint_hex_strokes(hex, tri_verts, color_byte_offset)
-                                    {
-                                        for (sub_verts, sub_state) in pairs {
-                                            mc.color_strokes.push(PaintStroke {
-                                                triangles: vec![sub_verts],
-                                                semantic: PaintSemantic::Material,
-                                                value: PaintValue::ToolIndex(
-                                                    sub_state.saturating_sub(1),
-                                                ),
-                                            });
-                                        }
-                                    }
+                                    let strokes = decode_strokes_for_channel(
+                                        hex,
+                                        tri_verts,
+                                        color_byte_offset,
+                                        |s| {
+                                            if s == 0 {
+                                                None
+                                            } else {
+                                                Some((
+                                                    PaintSemantic::Material,
+                                                    PaintValue::ToolIndex(s.saturating_sub(1)),
+                                                ))
+                                            }
+                                        },
+                                    )?;
+                                    mc.color_strokes.extend(strokes);
                                 }
                             }
                             if let Some(hex) = &support_hex {
@@ -1469,28 +1576,95 @@ fn parse_3mf_model_xml(
                                         mc.vertices[v2_idx],
                                         mc.vertices[v3_idx],
                                     ];
-                                    if let Ok(pairs) = decode_paint_hex_strokes(
+                                    let strokes = decode_strokes_for_channel(
                                         hex,
                                         tri_verts,
                                         support_byte_offset,
-                                    ) {
-                                        for (sub_verts, sub_state) in pairs {
-                                            let stroke = PaintStroke {
-                                                triangles: vec![sub_verts],
-                                                semantic: if sub_state == 1 {
-                                                    PaintSemantic::SupportEnforcer
-                                                } else {
-                                                    PaintSemantic::SupportBlocker
-                                                },
-                                                value: PaintValue::Flag(true),
-                                            };
-                                            if sub_state == 1 {
-                                                mc.support_strokes_enforcer.push(stroke);
-                                            } else if sub_state == 2 {
-                                                mc.support_strokes_blocker.push(stroke);
-                                            }
+                                        |s| match s {
+                                            1 => Some((
+                                                PaintSemantic::SupportEnforcer,
+                                                PaintValue::Flag(true),
+                                            )),
+                                            2 => Some((
+                                                PaintSemantic::SupportBlocker,
+                                                PaintValue::Flag(true),
+                                            )),
+                                            _ => None,
+                                        },
+                                    )?;
+                                    for stroke in strokes {
+                                        if stroke.semantic == PaintSemantic::SupportEnforcer {
+                                            mc.support_strokes_enforcer.push(stroke);
+                                        } else {
+                                            mc.support_strokes_blocker.push(stroke);
                                         }
                                     }
+                                }
+                            }
+                            if let Some(hex) = &seam_hex {
+                                if hex.len() > 2 && seam_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    let tri_verts = [
+                                        mc.vertices[v1_idx],
+                                        mc.vertices[v2_idx],
+                                        mc.vertices[v3_idx],
+                                    ];
+                                    let strokes = decode_strokes_for_channel(
+                                        hex,
+                                        tri_verts,
+                                        seam_byte_offset,
+                                        |s| match s {
+                                            1 => Some((
+                                                PaintSemantic::Custom("seam_enforcer".to_string()),
+                                                PaintValue::Flag(true),
+                                            )),
+                                            2 => Some((
+                                                PaintSemantic::Custom("seam_blocker".to_string()),
+                                                PaintValue::Flag(true),
+                                            )),
+                                            _ => None,
+                                        },
+                                    )?;
+                                    for stroke in strokes {
+                                        if matches!(
+                                            &stroke.semantic,
+                                            PaintSemantic::Custom(t) if t == "seam_enforcer"
+                                        ) {
+                                            mc.seam_strokes_enforcer.push(stroke);
+                                        } else {
+                                            mc.seam_strokes_blocker.push(stroke);
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(hex) = &fuzzy_hex {
+                                if hex.len() > 2 && fuzzy_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    let tri_verts = [
+                                        mc.vertices[v1_idx],
+                                        mc.vertices[v2_idx],
+                                        mc.vertices[v3_idx],
+                                    ];
+                                    let strokes = decode_strokes_for_channel(
+                                        hex,
+                                        tri_verts,
+                                        fuzzy_byte_offset,
+                                        |s| {
+                                            if s == 0 {
+                                                None
+                                            } else {
+                                                Some((
+                                                    PaintSemantic::FuzzySkin,
+                                                    PaintValue::Flag(true),
+                                                ))
+                                            }
+                                        },
+                                    )?;
+                                    mc.fuzzy_strokes.extend(strokes);
                                 }
                             }
 
@@ -1703,7 +1877,7 @@ impl MeshCollector {
                         }
                     })
                     .collect(),
-                strokes: Vec::new(),
+                strokes: self.fuzzy_strokes.clone(),
             });
         }
 
@@ -1757,7 +1931,7 @@ impl MeshCollector {
                         }
                     })
                     .collect(),
-                strokes: Vec::new(),
+                strokes: self.seam_strokes_enforcer.clone(),
             });
         }
 
@@ -1775,7 +1949,7 @@ impl MeshCollector {
                         }
                     })
                     .collect(),
-                strokes: Vec::new(),
+                strokes: self.seam_strokes_blocker.clone(),
             });
         }
 
@@ -2045,6 +2219,31 @@ fn walk_triangle_selector_strokes(
 /// place two midpoint vertices at the same coordinate.
 fn is_degenerate_triangle(tri: &[Point3; 3]) -> bool {
     tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]
+}
+
+/// Decode a TriangleSelector hex-encoded paint channel into [`PaintStroke`] values.
+///
+/// Calls [`decode_paint_hex_strokes`] and maps each `(sub_verts, sub_state)` pair through
+/// `map_state`. States for which `map_state` returns `None` are skipped (e.g. state 0 =
+/// unpainted). Errors from malformed hex are propagated via `?`.
+fn decode_strokes_for_channel(
+    hex: &str,
+    tri_verts: [Point3; 3],
+    byte_offset: usize,
+    map_state: impl Fn(u32) -> Option<(PaintSemantic, PaintValue)>,
+) -> Result<Vec<PaintStroke>, ModelLoadError> {
+    let pairs = decode_paint_hex_strokes(hex, tri_verts, byte_offset)?;
+    let mut out = Vec::new();
+    for (sub_verts, sub_state) in pairs {
+        if let Some((semantic, value)) = map_state(sub_state) {
+            out.push(PaintStroke {
+                triangles: vec![sub_verts],
+                semantic,
+                value,
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// Decode a TriangleSelector hex-encoded state string into leaf sub-triangles and their states.
