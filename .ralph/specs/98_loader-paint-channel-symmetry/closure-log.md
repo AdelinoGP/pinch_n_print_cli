@@ -134,6 +134,15 @@ D-98-SEAM-NO-CONSUMER is deferred to that roadmap. The AC-7 test
 `paint_channel_seam_strokes_have_no_live_consumer` documents the gap and asserts the
 data-reaches-SliceIR fact so the regression is locked in.
 
+**Post-roadmap supersession:** the seam-consumer wiring is bound in the perimeter-modules
+OrcaSlicer-parity roadmap under "Inherited from P98 — paint_seam stroke consumption
+obligation" (task **T-P98-SEAM**, Phase 8 — wire painted seam_enforcer/seam_blocker into
+`slicer-helpers::perimeter_utils::generate_seam_candidates` + `seam-placer`). See
+[`docs/specs/perimeter-modules-orca-parity-roadmap.md`](../../../docs/specs/perimeter-modules-orca-parity-roadmap.md).
+Surfaced as a known parity gap in `docs/07_implementation_status.md` §"Known parity gaps
+(post-roadmap work)". D-98-SEAM-NO-CONSUMER is intentional debt with a documented binding,
+to be superseded by `D-<packet>-SEAM-CONSUMED` when T-P98-SEAM lands.
+
 ### D-98-SUPPORTS-VARIANT-CHAIN-UNREAD (informational; pre-existing, not P98)
 The `variant_chain("support_enforcer")` entry produced by `execute_paint_segmentation` is
 itself unread by any module. However, painted support enforcers ARE functionally consumed:

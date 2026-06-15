@@ -38,6 +38,10 @@ Last updated: 2026-06-02
 - Coverage check (2026-04-17): every open `DEV-###` row in `docs/DEVIATION_LOG.md` is now owned by at least one task below.
 - Parent tasks marked `[~]` are umbrella items retained for continuity; they close only when all listed child tasks land.
 
+### Fixture quality
+
+- [ ] **D-98-FIXTURE-CYLINDER-METADATA-DRIFT** — `resources/cube_cilindrical_modifier.3mf`: after P98's manual fixture edit, the cylinder modifier's `matrix` metadata reports a ~(17.98, 16.49) translation offset while the modifier mesh geometry is unchanged (vertex centroid ~(133.99, 113.25) ⟹ ~8.99 offset). Metadata and geometry now disagree about the cylinder position. `modifier_volume_carries_typed_metadata` (asserts the metadata string) and `modifier_world_aabb_matches_composition` (asserts the mesh centroid) each pass against their own source, so the drift is masked by the test split. Owner: fixture maintainer. Resolution: re-export the fixture so metadata and geometry agree, or document the intended offset and reconcile the two assertions. Out of P98 scope (loader paint symmetry); flagged at P98 closure 2026-06-15.
+
 ### Workstream 1 — Manifest and contract conformance
 
 - [x] TASK-121 Populate `[ir-access]` for all 17 core-module manifests per docs/01 Stage I/O Contract. Covers DEV-002. Must turn `core_module_ir_access_contract_tdd.rs` green.
@@ -251,6 +255,7 @@ For closed deviations and their closure detail, read the log directly.
 Forward-looking parity obligations that survive a completed packet's `status: implemented` flip — recorded here so they remain discoverable across subsequent roadmap work. Each entry names the originating deviation, the responsible follow-up roadmap, and the production impact while the gap is open.
 
 - **Perimeter-module OrcaSlicer parity for multi-color (D-96-AC22-EXTERNAL-CONTOUR).** Painted-region outer walls are currently traced once per object via `SlicedRegion.external_contour` (a host-side `union_ex` of sibling painted cells). OrcaSlicer's MMU emits per-color outer-wall fragments with tool changes at color transitions. The reshape is owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md) — tasks T-P96-A through T-P96-F. Production impact: no effect on single-color models; multi-color models currently produce a single outer wall in the dominant color rather than per-color fragments until the reshape lands.
+- **Painted seam strokes have no consumer (D-98-SEAM-NO-CONSUMER).** P98 decodes `paint_seam` sub-facet strokes, which now reach `SlicedRegion.variant_chain` as `("seam_enforcer"/"seam_blocker", …)`, but no live module reads them — `seam-placer` scores seams geometrically from `SeamCandidate`, not from paint. The consumer is owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md) — task T-P98-SEAM (Phase 8). Production impact: `paint_seam` annotations in 3MFs are decoded and carried but currently have no effect on seam placement until the wiring lands.
 
 ## Tests Added as Gap Locks
 

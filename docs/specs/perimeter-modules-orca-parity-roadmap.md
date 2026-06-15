@@ -14,6 +14,7 @@
 - [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. Partially superseded by ADR-0012 (classification moves to PrePass; speed-factor application stays at finalization).
 - [ADR-0011](../adr/0011-perimeter-module-owns-wall-sequencing.md) — perimeter module owns wall-sequence reordering.
 - [`docs/specs/paint-pipeline-orca-parity-roadmap.md`](./paint-pipeline-orca-parity-roadmap.md) — **Inherited obligation:** P96 closed AC-22b via a non-parity `SlicedRegion.external_contour` simplification (D-96-AC22-EXTERNAL-CONTOUR). This roadmap supersedes that mechanism with per-color outer-wall fragmentation + deterministic per-edge bisector ownership. See "Inherited from P96 — AC-22b reshape obligation" section below.
+- [`docs/specs/paint-pipeline-orca-parity-roadmap.md`](./paint-pipeline-orca-parity-roadmap.md) — **Inherited obligation (P98):** P98 decoded `paint_seam` sub-facet strokes that now reach `SlicedRegion.variant_chain` (`("seam_enforcer"/"seam_blocker", …)`) but have no live consumer (D-98-SEAM-NO-CONSUMER) — `seam-placer` scores seams geometrically. This roadmap wires painted seam_enforcer/seam_blocker into seam-candidate generation. See "Inherited from P98 — paint_seam stroke consumption obligation" section below.
 - **Out-of-scope sibling roadmap (referenced from closed decision):**
   - Spiral vase + non-planar wall pipeline (per D-3): LayerPlanning surface-group synthesis + `non-planar-walls` PerimetersPostProcess module + helical Z modulation.
 
@@ -109,6 +110,20 @@ This roadmap must supersede that mechanism. Tasks below fold into the existing M
 | T-P96-F | Re-baseline cube_4color SHA + add deviation entry | Phase 9 | `.ralph/specs/<packet>/closure-log.md`, `docs/DEVIATION_LOG.md` | Capture `P<packet>_CUBE_4COLOR_PARITY_SHA`. Add `D-<packet>-AC22-PARITY-RESHAPE` superseding D-96-AC22-EXTERNAL-CONTOUR. |
 
 Ordering: T-P96-A lands the test RED first. T-P96-B reverts `external_contour` consumption (test stays RED but for a different reason — bisectors traced twice). T-P96-C implements ownership (test goes GREEN). T-P96-D cleanup. T-P96-E in M2 alongside the real Arachne work. T-P96-F at packet close.
+
+---
+
+## Inherited from P98 — paint_seam stroke consumption obligation
+
+P98 (loader paint-channel symmetry) made the 3MF loader decode `paint_seam` sub-facet strokes for all four channels. Those strokes now flow through `host:paint_segmentation` into `SlicedRegion.variant_chain` as `("seam_enforcer", _)` / `("seam_blocker", _)` entries — but **no live module reads them** (registered `D-98-SEAM-NO-CONSUMER`). `seam-placer` selects seams from geometric `SeamCandidate` scores computed by the perimeter generators, not from paint annotations. P98 makes seam paint *available*; this roadmap must wire the *consumer*.
+
+This obligation folds into Phase 8 (Seam-candidate quality):
+
+| ID | Title | Phase | Files | Acceptance |
+|---|---|---|---|---|
+| T-P98-SEAM | Consume painted seam_enforcer/seam_blocker in seam-candidate generation | Phase 8 | `crates/slicer-helpers/src/perimeter_utils.rs` (`generate_seam_candidates`), `modules/core-modules/seam-placer/src/lib.rs` | Painted `seam_enforcer` regions bias seam-candidate selection toward enclosed perimeter vertices; painted `seam_blocker` regions exclude enclosed vertices from candidacy. TDD on a fixture carrying both channels (e.g. `resources/cube_cilindrical_modifier.3mf`, which carries `seam_enforcer` strokes): a vertex inside a seam_enforcer region is chosen as the seam over a sharper-corner candidate outside it; a vertex inside a seam_blocker region is never chosen. Supersede `D-98-SEAM-NO-CONSUMER` with `D-<packet>-SEAM-CONSUMED` at close. |
+
+Note: T-082/T-083 already audit seam-placer's candidate-list contract and the seam-planner interaction; T-P98-SEAM is the concrete paint→candidate wiring those audits feed into. Until it lands, painted seams are decoded and carried but have no effect on seam placement (production impact: `paint_seam` in 3MFs is silently inert).
 
 ---
 
