@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 98
 task_ids: [TASK-248]
 backlog_source: docs/specs/paint-pipeline-orca-parity-roadmap.md
@@ -36,9 +36,11 @@ This is a surgical loader fix: hoist a 60-line block into a parameterized helper
 
 **Given** the new helper,
 **When** the parse-attributes block in `loader.rs` is inspected,
-**Then** four call sites exist — one each for `paint_color`, `paint_supports`, `paint_seam`, `paint_fuzzy_skin` — each with the channel-appropriate `PaintSemantic` argument. The old inlined block at lines 1237-1295 is gone.
+**Then** a call site exists for each of `paint_color`, `paint_supports`, `paint_seam`, `paint_fuzzy_skin`, each with the channel-appropriate per-state semantic mapping. The old inlined decode blocks are gone.
 
-| `[ $(rg -c 'decode_strokes_for_channel\(' crates/slicer-model-io/src/loader.rs) -eq 4 ]`
+> **AS-BUILT correction (P98):** the packet originally assumed a single parse loop and `-eq 4`. `loader.rs` actually has **two** parse loops (`parse_3mf_model_xml` + `parse_sub_model_objects`); genuine symmetry requires 4 call sites in each = **8 call sites + 1 definition = 9** occurrences. The `-eq 4` form would only pass if one loop were left un-symmetrized (i.e. the bug half-fixed), so it was corrected to `-eq 9`. See closure-log.md.
+
+| `[ $(rg -c 'decode_strokes_for_channel\(' crates/slicer-model-io/src/loader.rs) -eq 9 ]`
 
 ### AC-3 — Per-channel stroke test: `paint_color` decodes to `PaintSemantic::Material(ToolIndex)`
 
@@ -68,13 +70,19 @@ This is a surgical loader fix: hoist a 60-line block into a parameterized helper
 
 | `cargo test -p slicer-model-io paint_fuzzy_skin_subfacet_strokes_decoded 2>&1 | tee target/test-output.log`
 
-### AC-7 — After P94's `host:mesh_segmentation` runs, `cube_fuzzyPainted.3mf`'s strokes are normalized to `facet_values`
+### AC-7 — Loaded paint strokes reach the live slice consumer (`host:paint_segmentation`) and produce observable `SlicedRegion` effects, per channel
 
-**Given** a painted cube with `paint_fuzzy_skin` strokes,
-**When** prepass runs to completion,
-**Then** `paint_data.layers[*].strokes.is_empty()` evaluates true for the fuzzy_skin channel; `facet_values` carries the `FuzzySkin(Flag(true))` assignments on the affected triangles.
+> **REWRITTEN (P98):** the original AC asserted strokes were normalized into `facet_values` by `host:mesh_segmentation`. That consumer was retired by P94r and deleted by P97. The live consumer is `host:paint_segmentation` (P95 — `slicer_core::algos::paint_segmentation::execute_paint_segmentation`, called at `prepass.rs:540-566`), which reads `PaintLayer.strokes` directly. AC-7 is rewritten to assert the strokes reach that consumer with a per-channel behavior assertion. See deviation **D-98-AC7-CONSUMER-PATH** in closure-log.md.
 
-| `cargo test -p slicer-runtime --test executor cube_fuzzyPainted_paint_fuzzy_skin_strokes_normalized 2>&1 | tee target/test-output.log`
+**Given** a model whose paint channels populate `PaintLayer.strokes` at load time,
+**When** `execute_paint_segmentation` runs over the loaded `MeshIR`,
+**Then** each channel produces its live observable on `SlicedRegion`:
+- `paint_color` → a region whose `variant_chain` contains `("material", PaintValue::ToolIndex(N))`;
+- `paint_fuzzy_skin` → a region whose `variant_chain` contains `("fuzzy_skin", PaintValue::Flag(true))` (the primary P98 win — these strokes were dropped pre-P98);
+- `paint_supports` → the live SupportEnforcer/Blocker observable populated from a `PaintLayer` stroke;
+- `paint_seam` → the strokes reach `SlicedRegion` (`variant_chain` `("seam_enforcer"/"seam_blocker", …)`) **but no live module consumes them** — recorded as deviation **D-98-SEAM-NO-CONSUMER** (seam-placer scores seams geometrically, not from paint). The test documents the gap.
+
+| `cargo test -p slicer-runtime --test executor paint_channel_ 2>&1 | tee target/test-output.log`
 
 ### AC-8 — Behavior preservation on unpainted regression_wedge.stl (no paint channels)
 
@@ -101,6 +109,8 @@ This is a surgical loader fix: hoist a 60-line block into a parameterized helper
 | `cargo run --bin pnp_cli --release -- slice --model resources/cube_fuzzyPainted.3mf --module-dir modules/core-modules --output /tmp/p98-cube-fuzzy.gcode && sha256sum /tmp/p98-cube-fuzzy.gcode`
 
 ### AC-11 — Guest WASM `--check` clean
+
+> **AS-BUILT (P98): PASS.** Initial `--check` reported STALE; a full `cargo xtask build-guests` (31 guests rebuilt) followed by `cargo xtask build-guests --check` returns **CLEAN** (exit 0, no STALE lines). The staleness was simply unbuilt artifacts, not an unfixable condition — verified by an actual rebuild per CLAUDE.md §"Guest WASM Staleness".
 
 | `cargo xtask build-guests --check`
 
