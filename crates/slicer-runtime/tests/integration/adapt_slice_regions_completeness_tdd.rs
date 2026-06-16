@@ -256,21 +256,24 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     let bb = Blackboard::new(empty_mesh_ir(), 1);
 
     let stage: StageId = "Layer::Infill".to_string();
-    let commit_data = LayerStageRunner::run_stage(
+    let commit = LayerStageRunner::run_stage(
         &dispatcher,
         &stage,
         &layer,
         &module.as_live(),
         layer_input(&bb, &arena),
     )
-    .expect("dispatch must succeed under the field-witness config");
-    slicer_runtime::commit_layer_outputs_for_test(
-        &stage,
-        module.module.module_id(),
-        layer_index,
-        commit_data,
+    .expect("dispatch must succeed under the field-witness config")
+    .expect("dispatch must produce a commit for the field-witness config");
+    slicer_runtime::apply_for_test(
         &mut arena,
-        None,
+        commit,
+        &slicer_runtime::StageApplyContext {
+            stage_id: &stage,
+            module_id: module.module.module_id(),
+            layer_index,
+            seam_plan: None,
+        },
     )
     .expect("commit must succeed");
 

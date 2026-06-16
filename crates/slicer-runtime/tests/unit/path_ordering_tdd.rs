@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{
@@ -223,12 +223,9 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
         layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         if stage_id == "Layer::Infill" {
-            return Ok(LayerStageCommitData {
-                infill_output: Some(self.infill.clone()),
-                ..Default::default()
-            });
+            return Ok(Some(LayerStageCommit::Infill(self.infill.clone())));
         }
         // Delegate PathOptimization to the live WASM dispatcher.
         // Pass self.path_opt_module with real pool/component so the guest actually runs.
@@ -736,15 +733,12 @@ impl LayerStageRunner for NoProposalStubRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         if stage_id == "Layer::Infill" {
-            return Ok(LayerStageCommitData {
-                infill_output: Some(self.infill.clone()),
-                ..Default::default()
-            });
+            return Ok(Some(LayerStageCommit::Infill(self.infill.clone())));
         }
         // No proposal â€" no set_entity_order call, no layer_collection_proposal.
-        Ok(LayerStageCommitData::default())
+        Ok(None)
     }
 }
 

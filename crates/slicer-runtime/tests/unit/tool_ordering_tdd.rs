@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
@@ -433,14 +433,13 @@ impl LayerStageRunner for LiveDispatcherWithLayerCollection {
         layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         if stage_id == "Layer::Infill" {
             // Inject the pre-staged layer_collection so the executor commits it to the
             // arena before Layer::PathOptimization runs (bypasses auto-assembly fallback).
-            return Ok(LayerStageCommitData {
-                layer_collection_output: Some(self.layer_collection.clone()),
-                ..Default::default()
-            });
+            return Ok(Some(LayerStageCommit::SeedLayerCollection(
+                self.layer_collection.clone(),
+            )));
         }
         // Delegate PathOptimization to the live WASM dispatcher with real pool/component.
         let live = CompiledModuleLive::new(

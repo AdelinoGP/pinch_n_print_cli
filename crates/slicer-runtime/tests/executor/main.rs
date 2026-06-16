@@ -8,6 +8,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod apply_commit_regression_tdd;
 mod cube_4color_gcode_output_tdd;
 mod cube_4color_paint_tdd;
 mod cube_4color_phase5_tdd;

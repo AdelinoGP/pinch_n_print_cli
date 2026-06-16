@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LayerCollectionIR,
     LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
@@ -569,13 +569,10 @@ impl<'a> slicer_runtime::LayerStageRunner for PerimeterSeedingRunner<'a> {
         layer: &GlobalLayer,
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, slicer_runtime::LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, slicer_runtime::LayerStageError> {
         if stage_id == "Layer::Perimeters" {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
-                return Ok(LayerStageCommitData {
-                    perimeter_output: Some(perimeter),
-                    ..Default::default()
-                });
+                return Ok(Some(LayerStageCommit::Perimeters(perimeter)));
             }
         }
         slicer_runtime::LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)

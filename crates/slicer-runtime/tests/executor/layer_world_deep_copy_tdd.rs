@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2,
     Point3, Point3WithWidth, Polygon, SemVer, StageId, WallBoundaryType, WallFeatureFlags,
@@ -200,15 +200,12 @@ impl<'a> LayerStageRunner for SeedingRunner<'a> {
         layer: &GlobalLayer,
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         if stage_id == "Layer::Perimeters" {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
-                // Return the perimeter directly via LayerStageCommitData; the executor
-                // will commit it to the arena after run_stage returns.
-                return Ok(LayerStageCommitData {
-                    perimeter_output: Some(perimeter),
-                    ..Default::default()
-                });
+                // Return the perimeter directly via LayerStageCommit; the executor
+                // will apply it to the arena after run_stage returns.
+                return Ok(Some(LayerStageCommit::Perimeters(perimeter)));
             }
         }
 

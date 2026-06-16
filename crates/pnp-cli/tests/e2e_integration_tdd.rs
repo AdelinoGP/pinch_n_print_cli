@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerStageCommitData, LayerStageError,
-    PrintMetadata, SemVer, StageId,
+    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerStageError, PrintMetadata, SemVer,
+    StageId,
 };
 use slicer_model_io::{load_model, ModelLoadError};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
@@ -95,8 +95,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData::default())
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, LayerStageError> {
+        Ok(None)
     }
 }
 

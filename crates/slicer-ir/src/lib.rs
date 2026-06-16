@@ -23,9 +23,8 @@ pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
 pub use stage_io::{
     BlackboardError, BlackboardPrepassSlot, FinalizationError, FinalizationOutput, LayerArenaError,
-    LayerArenaSlot, LayerStageCommit, LayerStageCommitData, LayerStageError, LayerStageOutput,
-    PathOptimizationCommit, PostpassError, PostpassOutput, PrepassRunnerError, RetractSpec,
-    TravelMoveDest,
+    LayerArenaSlot, LayerStageCommit, LayerStageError, LayerStageOutput, PathOptimizationCommit,
+    PostpassError, PostpassOutput, PrepassRunnerError, RetractSpec, TravelMoveDest,
 };
 pub use validation::validate_travel_anchors;
 

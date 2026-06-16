@@ -7,10 +7,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
-    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
-    PrintMetadata, SemVer, StageId,
+    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, LayerStageCommit, MeshIR,
+    Point3, PrintMetadata, SemVer, StageId,
 };
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners};
 use slicer_runtime::{
@@ -106,8 +105,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData::default())
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+        Ok(None)
     }
 }
 
@@ -367,7 +366,7 @@ fn run_pipeline_propagates_layer_error() {
             _layer: &GlobalLayer,
             _module: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
-        ) -> Result<LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<LayerStageCommit>, LayerStageError> {
             Err(LayerStageError::FatalModule {
                 stage_id: "Layer::Slice".into(),
                 module_id: "slice-mod".into(),
@@ -467,9 +466,9 @@ fn run_pipeline_calls_stages_in_order() {
             _layer: &GlobalLayer,
             _module: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
-        ) -> Result<LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<LayerStageCommit>, LayerStageError> {
             self.0.lock().unwrap().push("per_layer".into());
-            Ok(LayerStageCommitData::default())
+            Ok(None)
         }
     }
 
@@ -716,9 +715,9 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             _layer: &GlobalLayer,
             _module: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
-        ) -> Result<LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<LayerStageCommit>, LayerStageError> {
             *self.0.lock().unwrap() += 1;
-            Ok(LayerStageCommitData::default())
+            Ok(None)
         }
     }
 
@@ -894,8 +893,8 @@ fn layer_audits_live_path() {
             _layer: &GlobalLayer,
             _module: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
-        ) -> Result<LayerStageCommitData, LayerStageError> {
-            Ok(LayerStageCommitData::default())
+        ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+            Ok(None)
         }
         fn last_runtime_reads(&self) -> Vec<String> {
             vec!["SliceIR.regions.polygons".to_string()]

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use slicer_ir::{
     BoundingBox3, GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR,
-    LayerStageCommitData, MeshIR, Point3, PrintMetadata, SemVer, StageId,
+    LayerStageCommit, MeshIR, Point3, PrintMetadata, SemVer, StageId,
 };
 use slicer_runtime::pipeline::{
     run_pipeline_with_instrumentation, PipelineConfig, PipelineStageRunners,
@@ -148,8 +148,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData::default())
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+        Ok(None)
     }
 }
 

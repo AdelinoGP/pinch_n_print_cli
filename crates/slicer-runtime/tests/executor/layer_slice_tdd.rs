@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_ir::SliceIR;
 use slicer_runtime::{
     execute_per_layer, execute_prepass_slice_single_layer, Blackboard, CompiledModuleLive,
@@ -170,7 +170,7 @@ impl LayerStageRunner for RecordingRunner {
         layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         let region_count = input
             .slice
             .expect("host-built-in Layer::Slice must have staged SliceIR")
@@ -180,7 +180,7 @@ impl LayerStageRunner for RecordingRunner {
             .lock()
             .unwrap()
             .push((layer.index, region_count));
-        Ok(LayerStageCommitData::default())
+        Ok(None)
     }
 }
 
@@ -243,8 +243,8 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
             _l: &GlobalLayer,
             _m: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
-        ) -> Result<LayerStageCommitData, LayerStageError> {
-            Ok(LayerStageCommitData::default())
+        ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+            Ok(None)
         }
     }
 

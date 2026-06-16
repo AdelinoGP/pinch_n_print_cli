@@ -19,10 +19,10 @@
 #![allow(missing_docs)]
 
 use slicer_ir::{
-    ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommitData, Point3WithWidth,
-    SemVer, SupportIR,
+    ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommit, Point3WithWidth, SemVer,
+    SupportIR,
 };
-use slicer_runtime::commit_layer_outputs_for_test;
+use slicer_runtime::{apply_for_test, StageApplyContext};
 
 use crate::common::wasm_cache;
 
@@ -59,28 +59,24 @@ fn make_support_path(
     }
 }
 
-/// Helper: make a `LayerStageCommitData` with support paths.
-fn support_commit(paths: Vec<ExtrusionPath3D>) -> LayerStageCommitData {
-    let support_ir = if paths.is_empty() {
-        None
-    } else {
-        Some(SupportIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layer_index: 0,
-            support_paths: paths,
-            interface_paths: vec![],
-            raft_paths: vec![],
-            ironing_paths: vec![],
-        })
-    };
-    LayerStageCommitData {
-        support_output: support_ir,
-        ..Default::default()
+/// Helper: make a `LayerStageCommit` with support paths.
+/// Returns `None` when the path list is empty (no commit needed).
+fn support_commit(paths: Vec<ExtrusionPath3D>) -> Option<LayerStageCommit> {
+    if paths.is_empty() {
+        return None;
     }
+    Some(LayerStageCommit::Support(SupportIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: 0,
+        support_paths: paths,
+        interface_paths: vec![],
+        raft_paths: vec![],
+        ironing_paths: vec![],
+    }))
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -103,15 +99,19 @@ fn tree_support_dispatch_commits_support_material_paths() {
     ]);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        commit,
-        &mut arena,
-        None,
-    )
-    .expect("commit must succeed");
+    if let Some(c) = commit {
+        apply_for_test(
+            &mut arena,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("commit must succeed");
+    }
 
     let support_ir = arena
         .support()
@@ -154,15 +154,19 @@ fn traditional_support_dispatch_commits_support_material_paths() {
     ]);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        commit,
-        &mut arena,
-        None,
-    )
-    .expect("commit must succeed");
+    if let Some(c) = commit {
+        apply_for_test(
+            &mut arena,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("commit must succeed");
+    }
 
     let support_ir = arena
         .support()
@@ -200,15 +204,19 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     let commit = support_commit(vec![make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4)]);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        commit,
-        &mut arena,
-        None,
-    )
-    .expect("commit must succeed");
+    if let Some(c) = commit {
+        apply_for_test(
+            &mut arena,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("commit must succeed");
+    }
 
     let support_ir = arena.support().expect(
         "SupportIR must be set even when needs_support=false if SupportEnforcer was present",
@@ -231,15 +239,20 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
     let commit = support_commit(vec![]);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        commit,
-        &mut arena,
-        None,
-    )
-    .expect("commit must succeed (empty commit is not an error)");
+    // Empty commit (None) means no apply_for_test call needed; arena stays empty.
+    if let Some(c) = commit {
+        apply_for_test(
+            &mut arena,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("commit must succeed (empty commit is not an error)");
+    }
 
     let support_ir = arena.support(); // arena.support() returns Option
     assert!(
@@ -265,27 +278,35 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     };
 
     let mut arena1 = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        make_two_paths(),
-        &mut arena1,
-        None,
-    )
-    .expect("first commit must succeed");
+    if let Some(c) = make_two_paths() {
+        apply_for_test(
+            &mut arena1,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("first commit must succeed");
+    }
 
     // Second run — identical input
     let mut arena2 = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        make_two_paths(),
-        &mut arena2,
-        None,
-    )
-    .expect("second commit must succeed");
+    if let Some(c) = make_two_paths() {
+        apply_for_test(
+            &mut arena2,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("second commit must succeed");
+    }
 
     // Compare SupportIR outputs
     let ir1 = arena1.support().expect("first run must produce SupportIR");
@@ -343,15 +364,20 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
     let commit = support_commit(vec![]);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
-        "Layer::Support",
-        module_id,
-        layer_index,
-        commit,
-        &mut arena,
-        None,
-    )
-    .expect("commit must succeed for blocker case (empty is valid)");
+    // Empty commit (None) — no apply_for_test needed; blocker leaves arena empty.
+    if let Some(c) = commit {
+        apply_for_test(
+            &mut arena,
+            c,
+            &StageApplyContext {
+                stage_id: "Layer::Support",
+                module_id,
+                layer_index,
+                seam_plan: None,
+            },
+        )
+        .expect("commit must succeed for blocker case (empty is valid)");
+    }
 
     let support_ir = arena.support();
     assert!(
@@ -785,15 +811,19 @@ fn support_deterministic_across_repeated_runs() {
             layer_input(bb, &arena),
         )
         .expect("support dispatch must succeed");
-        commit_layer_outputs_for_test(
-            "Layer::Support",
-            bundle.module.module_id(),
-            layer.index,
-            commit_data,
-            &mut arena,
-            None,
-        )
-        .expect("commit must succeed");
+        if let Some(c) = commit_data {
+            apply_for_test(
+                &mut arena,
+                c,
+                &StageApplyContext {
+                    stage_id: "Layer::Support",
+                    module_id: bundle.module.module_id(),
+                    layer_index: layer.index,
+                    seam_plan: None,
+                },
+            )
+            .expect("commit must succeed");
+        }
         arena
             .support()
             .expect("SupportIR must be present")

@@ -14,8 +14,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
-use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, SemVer, StageId};
+use slicer_ir::{
+    ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, LayerStageCommit, SemVer, StageId,
+};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
@@ -92,8 +93,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData::default())
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+        Ok(None)
     }
 }
 

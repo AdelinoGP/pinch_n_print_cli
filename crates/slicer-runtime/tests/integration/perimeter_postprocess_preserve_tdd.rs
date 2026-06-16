@@ -18,12 +18,11 @@
 //!    `SliceIR.regions[*].sparse_infill_area` ends up populated.
 
 use slicer_ir::{
-    ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerStageCommitData, LoopType, ObjectId,
-    PerimeterIR, PerimeterRegion, Point2, Point3WithWidth, Polygon, RegionId, SeamCandidate,
-    SeamReason, SemVer, SliceIR, SlicedRegion, WallBoundaryType, WallLoop, WidthProfile,
+    ExPolygon, ExtrusionPath3D, ExtrusionRole, LayerStageCommit, LoopType, ObjectId, PerimeterIR,
+    PerimeterRegion, Point2, Point3WithWidth, Polygon, RegionId, SeamCandidate, SeamReason, SemVer,
+    SliceIR, SlicedRegion, WallBoundaryType, WallLoop, WidthProfile,
 };
-use slicer_runtime::layer_executor::commit_layer_outputs_for_test;
-use slicer_runtime::LayerArena;
+use slicer_runtime::{apply_for_test, LayerArena, StageApplyContext};
 
 // ── fixture helpers (mirrors region_partition_tdd.rs:24-96) ──────────────────
 
@@ -180,11 +179,8 @@ fn synthetic_seam_candidate() -> SeamCandidate {
     }
 }
 
-fn commit_with_perimeter(ir: PerimeterIR) -> LayerStageCommitData {
-    LayerStageCommitData {
-        perimeter_output: Some(ir),
-        ..Default::default()
-    }
+fn commit_with_perimeter(ir: PerimeterIR) -> LayerStageCommit {
+    LayerStageCommit::PerimetersPostProcess(Some(ir))
 }
 
 // ── Test 1: Fix 4 — preserve fields when post-process emits empty ───────────
@@ -220,13 +216,15 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
         resolved_seam: None,
     });
 
-    commit_layer_outputs_for_test(
-        "Layer::PerimetersPostProcess",
-        "test",
-        0,
-        commit_with_perimeter(ir_owned),
+    apply_for_test(
         &mut arena,
-        None,
+        commit_with_perimeter(ir_owned),
+        &StageApplyContext {
+            stage_id: "Layer::PerimetersPostProcess",
+            module_id: "test",
+            layer_index: 0,
+            seam_plan: None,
+        },
     )
     .expect("commit");
 
@@ -316,13 +314,15 @@ fn pairs_regions_by_object_id_not_by_position() {
         resolved_seam: None,
     });
 
-    commit_layer_outputs_for_test(
-        "Layer::PerimetersPostProcess",
-        "test",
-        0,
-        commit_with_perimeter(ir_owned),
+    apply_for_test(
         &mut arena,
-        None,
+        commit_with_perimeter(ir_owned),
+        &StageApplyContext {
+            stage_id: "Layer::PerimetersPostProcess",
+            module_id: "test",
+            layer_index: 0,
+            seam_plan: None,
+        },
     )
     .expect("commit");
 
@@ -414,13 +414,15 @@ fn partition_re_fires_under_post_process_only_path() {
         resolved_seam: None,
     });
 
-    commit_layer_outputs_for_test(
-        "Layer::PerimetersPostProcess",
-        "test",
-        0,
-        commit_with_perimeter(ir_owned),
+    apply_for_test(
         &mut arena,
-        None,
+        commit_with_perimeter(ir_owned),
+        &StageApplyContext {
+            stage_id: "Layer::PerimetersPostProcess",
+            module_id: "test",
+            layer_index: 0,
+            seam_plan: None,
+        },
     )
     .expect("commit");
 

@@ -81,13 +81,10 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             layer: &GlobalLayer,
             module: &CompiledModuleLive<'_>,
             input: LayerStageInput<'_>,
-        ) -> Result<slicer_ir::LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<slicer_ir::LayerStageCommit>, LayerStageError> {
             if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    return Ok(slicer_ir::LayerStageCommitData {
-                        perimeter_output: Some(p),
-                        ..Default::default()
-                    });
+                    return Ok(Some(slicer_ir::LayerStageCommit::Perimeters(p)));
                 }
             }
             LayerStageRunner::run_stage(&self.inner, stage_id, layer, module, input)
@@ -208,13 +205,10 @@ fn path_optimization_deterministic_across_repeated_runs() {
             layer: &GlobalLayer,
             module: &CompiledModuleLive<'_>,
             input: LayerStageInput<'_>,
-        ) -> Result<slicer_ir::LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<slicer_ir::LayerStageCommit>, LayerStageError> {
             if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    return Ok(slicer_ir::LayerStageCommitData {
-                        perimeter_output: Some(p),
-                        ..Default::default()
-                    });
+                    return Ok(Some(slicer_ir::LayerStageCommit::Perimeters(p)));
                 }
             }
             LayerStageRunner::run_stage(&self.inner, stage_id, layer, module, input)
@@ -573,13 +567,10 @@ fn path_optimization_end_to_end_populates_z_hops() {
             layer: &GlobalLayer,
             module: &CompiledModuleLive<'_>,
             input: LayerStageInput<'_>,
-        ) -> Result<slicer_ir::LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<slicer_ir::LayerStageCommit>, LayerStageError> {
             if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    return Ok(slicer_ir::LayerStageCommitData {
-                        perimeter_output: Some(p),
-                        ..Default::default()
-                    });
+                    return Ok(Some(slicer_ir::LayerStageCommit::Perimeters(p)));
                 }
             }
             LayerStageRunner::run_stage(&self.inner, stage_id, layer, module, input)
@@ -662,13 +653,10 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
             layer: &GlobalLayer,
             module: &CompiledModuleLive<'_>,
             input: LayerStageInput<'_>,
-        ) -> Result<slicer_ir::LayerStageCommitData, LayerStageError> {
+        ) -> Result<Option<slicer_ir::LayerStageCommit>, LayerStageError> {
             if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    return Ok(slicer_ir::LayerStageCommitData {
-                        perimeter_output: Some(p),
-                        ..Default::default()
-                    });
+                    return Ok(Some(slicer_ir::LayerStageCommit::Perimeters(p)));
                 }
             }
             LayerStageRunner::run_stage(&self.inner, stage_id, layer, module, input)

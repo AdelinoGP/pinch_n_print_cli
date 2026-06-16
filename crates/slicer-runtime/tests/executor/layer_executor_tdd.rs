@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::LayerStageCommit;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
     RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, StageId, Transform3d,
@@ -410,7 +410,7 @@ impl LayerStageRunner for ScriptedRunner {
         layer: &GlobalLayer,
         module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         let key = (layer.index, stage_id.clone(), module.module_id.to_string());
 
         // Record invocation
@@ -426,12 +426,12 @@ impl LayerStageRunner for ScriptedRunner {
             });
         }
 
-        // Non-fatal errors: return default commit data (continue with next module).
+        // Non-fatal errors: return None (continue with next module).
         // The old NonFatalError variant is no longer part of the trait return type;
-        // non-fatal behaviour is expressed by returning Ok with empty commit data.
+        // non-fatal behaviour is expressed by returning Ok(None).
         let _non_fatal = self.non_fatal_errors.get(&key);
 
-        Ok(LayerStageCommitData::default())
+        Ok(None)
     }
 }
 
@@ -469,7 +469,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
         layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         // Record the layer index as an identity marker (arena no longer passed to runner).
         // Each layer gets its own arena in the executor; the executor identity is verified
         // by the fact that only one layer-index appears per per-layer slot.
@@ -478,7 +478,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
             .unwrap()
             .insert(layer.index, layer.index as usize);
 
-        Ok(LayerStageCommitData::default())
+        Ok(None)
     }
 }
 
@@ -701,21 +701,44 @@ impl LayerStageRunner for StagingRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        let mut data = LayerStageCommitData::default();
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         match stage_id.as_str() {
-            "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
-                data.perimeter_output = self.perimeter.lock().unwrap().take();
+            "Layer::Perimeters" => Ok(self
+                .perimeter
+                .lock()
+                .unwrap()
+                .take()
+                .map(LayerStageCommit::Perimeters)),
+            "Layer::PerimetersPostProcess" => {
+                let ir = self.perimeter.lock().unwrap().take();
+                Ok(Some(LayerStageCommit::PerimetersPostProcess(ir)))
             }
-            "Layer::Infill" | "Layer::InfillPostProcess" => {
-                data.infill_output = self.infill.lock().unwrap().take();
-            }
-            "Layer::Support" | "Layer::SupportPostProcess" => {
-                data.support_output = self.support.lock().unwrap().take();
-            }
-            _ => {}
+            "Layer::Infill" => Ok(self
+                .infill
+                .lock()
+                .unwrap()
+                .take()
+                .map(LayerStageCommit::Infill)),
+            "Layer::InfillPostProcess" => Ok(self
+                .infill
+                .lock()
+                .unwrap()
+                .take()
+                .map(LayerStageCommit::InfillPostProcess)),
+            "Layer::Support" => Ok(self
+                .support
+                .lock()
+                .unwrap()
+                .take()
+                .map(LayerStageCommit::Support)),
+            "Layer::SupportPostProcess" => Ok(self
+                .support
+                .lock()
+                .unwrap()
+                .take()
+                .map(LayerStageCommit::SupportPostProcess)),
+            _ => Ok(None),
         }
-        Ok(data)
     }
 }
 
@@ -1089,7 +1112,7 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
         layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
         // Record catch-up metadata from the source active_regions surface.
         // We take the first region as the canary; if there are multiple regions
         // all must carry the same catch-up flags per the pre-pass contract.
@@ -1099,7 +1122,7 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
                 catchup_z_bottom: region.catchup_z_bottom,
             });
         }
-        Ok(LayerStageCommitData::default())
+        Ok(None)
     }
 }
 

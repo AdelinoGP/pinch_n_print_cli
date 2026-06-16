@@ -142,10 +142,10 @@ pub fn assert_perpendicular(x: f32, y: f32, z: f32, edge1: [f32; 3], edge2: [f32
 
 // ── commit_hec_for_test ───────────────────────────────────────────────────────
 // Thin test helper that converts a legacy `HostExecutionContext` (built in tests
-// via `HostExecutionContextBuilder`) into the new `LayerStageCommitData` IR
-// struct, then delegates to `slicer_runtime::commit_layer_outputs_for_test`.
+// via `HostExecutionContextBuilder`) into the new `LayerStageCommit` IR enum,
+// then delegates to `slicer_runtime::apply_for_test`.
 // Only the stage families exercised by the executor tests are handled; all other
-// stage_ids produce an empty `LayerStageCommitData::default()`.
+// stage_ids are treated as a no-op (no commit).
 
 #[allow(dead_code)]
 pub fn commit_hec_for_test(
@@ -156,11 +156,14 @@ pub fn commit_hec_for_test(
     arena: &mut slicer_runtime::LayerArena,
     seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), slicer_ir::LayerStageError> {
-    use slicer_ir::LayerStageCommitData;
+    use slicer_ir::{
+        LayerAnnotationKind, LayerStageCommit, PathOptimizationCommit, RetractSpec, TravelMoveDest,
+    };
     use slicer_runtime::wit_host::{
         convert_infill_output, convert_perimeter_output, convert_support_output,
         GcodeCommandCollected,
     };
+    use slicer_runtime::StageApplyContext;
 
     let mk_fatal = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
         stage_id: stage_id.to_string(),
@@ -168,48 +171,100 @@ pub fn commit_hec_for_test(
         message: format!("invalid {what} output: {reason}"),
     };
 
-    let mut data = LayerStageCommitData::default();
+    let apply_ctx = StageApplyContext {
+        stage_id,
+        module_id,
+        layer_index,
+        seam_plan: seam_plan_ir,
+    };
 
-    match stage_id {
-        "Layer::Infill" | "Layer::InfillPostProcess" => {
+    let commit_opt: Option<LayerStageCommit> = match stage_id {
+        "Layer::Infill" => {
             let infill = ctx.infill_output();
             if !infill.sparse_paths.is_empty()
                 || !infill.solid_paths.is_empty()
                 || !infill.ironing_paths.is_empty()
             {
-                data.infill_output = Some(
-                    convert_infill_output(infill, layer_index)
-                        .map_err(|r| mk_fatal("infill", r))?,
-                );
+                let ir = convert_infill_output(infill, layer_index)
+                    .map_err(|r| mk_fatal("infill", r))?;
+                Some(LayerStageCommit::Infill(ir))
+            } else {
+                None
             }
         }
-        "Layer::Support" | "Layer::SupportPostProcess" => {
+        "Layer::InfillPostProcess" => {
+            let infill = ctx.infill_output();
+            if !infill.sparse_paths.is_empty()
+                || !infill.solid_paths.is_empty()
+                || !infill.ironing_paths.is_empty()
+            {
+                let ir = convert_infill_output(infill, layer_index)
+                    .map_err(|r| mk_fatal("infill", r))?;
+                Some(LayerStageCommit::InfillPostProcess(ir))
+            } else {
+                None
+            }
+        }
+        "Layer::Support" => {
             let support = ctx.support_output();
             if !support.support_paths.is_empty()
                 || !support.interface_paths.is_empty()
                 || !support.raft_paths.is_empty()
             {
-                data.support_output = Some(
-                    convert_support_output(support, layer_index)
-                        .map_err(|r| mk_fatal("support", r))?,
-                );
+                let ir = convert_support_output(support, layer_index)
+                    .map_err(|r| mk_fatal("support", r))?;
+                Some(LayerStageCommit::Support(ir))
+            } else {
+                None
             }
         }
-        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
+        "Layer::SupportPostProcess" => {
+            let support = ctx.support_output();
+            if !support.support_paths.is_empty()
+                || !support.interface_paths.is_empty()
+                || !support.raft_paths.is_empty()
+            {
+                let ir = convert_support_output(support, layer_index)
+                    .map_err(|r| mk_fatal("support", r))?;
+                Some(LayerStageCommit::SupportPostProcess(ir))
+            } else {
+                None
+            }
+        }
+        "Layer::Perimeters" => {
             let perimeter = ctx.perimeter_output();
             let has_any = !perimeter.wall_loops.is_empty()
                 || !perimeter.rotated_wall_loops.is_empty()
                 || !perimeter.infill_areas.is_empty()
                 || !perimeter.seam_candidates.is_empty();
             if has_any {
-                data.perimeter_output = Some(
-                    convert_perimeter_output(perimeter, layer_index)
-                        .map_err(|r| mk_fatal("perimeter", r))?,
-                );
+                let ir = convert_perimeter_output(perimeter, layer_index)
+                    .map_err(|r| mk_fatal("perimeter", r))?;
+                Some(LayerStageCommit::Perimeters(ir))
+            } else {
+                None
+            }
+        }
+        "Layer::PerimetersPostProcess" => {
+            let perimeter = ctx.perimeter_output();
+            let has_any = !perimeter.wall_loops.is_empty()
+                || !perimeter.rotated_wall_loops.is_empty()
+                || !perimeter.infill_areas.is_empty()
+                || !perimeter.seam_candidates.is_empty();
+            if has_any {
+                let ir = convert_perimeter_output(perimeter, layer_index)
+                    .map_err(|r| mk_fatal("perimeter", r))?;
+                Some(LayerStageCommit::PerimetersPostProcess(Some(ir)))
+            } else {
+                None
             }
         }
         "Layer::PathOptimization" => {
-            let anchor = 0u32;
+            let mut tool_changes = Vec::new();
+            let mut z_hops = Vec::new();
+            let mut annotations = Vec::new();
+            let mut retracts = Vec::new();
+            let mut travel_moves = Vec::new();
             for (i, cmd) in ctx.gcode_output().commands.iter().enumerate() {
                 match cmd {
                     GcodeCommandCollected::ToolChange {
@@ -217,27 +272,25 @@ pub fn commit_hec_for_test(
                         from_tool,
                         to_tool,
                     } => {
-                        data.tool_changes.push(slicer_ir::ToolChange {
+                        tool_changes.push(slicer_ir::ToolChange {
                             after_entity_index: *after_entity_index,
                             from_tool: *from_tool,
                             to_tool: *to_tool,
                         });
                     }
                     GcodeCommandCollected::Comment(text) => {
-                        data.annotations.push(slicer_ir::LayerAnnotation {
-                            after_entity_index: anchor,
-                            kind: slicer_ir::LayerAnnotationKind::Comment(text.clone()),
-                        });
+                        annotations.push(LayerAnnotationKind::Comment(text.clone()));
                     }
                     GcodeCommandCollected::Raw(text) => {
-                        data.annotations.push(slicer_ir::LayerAnnotation {
-                            after_entity_index: anchor,
-                            kind: slicer_ir::LayerAnnotationKind::Raw(text.clone()),
-                        });
+                        annotations.push(LayerAnnotationKind::Raw(text.clone()));
                     }
                     GcodeCommandCollected::Move(cmd) => {
-                        data.deferred_travel_moves
-                            .push((anchor, cmd.x, cmd.y, cmd.z, cmd.f));
+                        travel_moves.push(TravelMoveDest {
+                            x: cmd.x,
+                            y: cmd.y,
+                            z: cmd.z,
+                            f: cmd.f,
+                        });
                     }
                     GcodeCommandCollected::ZHop { hop_height, .. } => {
                         if !hop_height.is_finite() || *hop_height <= 0.0 {
@@ -250,18 +303,14 @@ pub fn commit_hec_for_test(
                                 ),
                             });
                         }
-                        data.z_hops.push(slicer_ir::ZHop {
-                            after_entity_index: anchor,
-                            hop_height: *hop_height,
-                        });
+                        z_hops.push(*hop_height);
                     }
                     GcodeCommandCollected::Retract {
                         length,
                         speed,
                         mode,
                     } => {
-                        data.retracts.push(slicer_ir::TravelRetract {
-                            after_entity_index: anchor,
+                        retracts.push(RetractSpec {
                             length: *length,
                             speed: *speed,
                             is_unretract: false,
@@ -273,8 +322,7 @@ pub fn commit_hec_for_test(
                         speed,
                         mode,
                     } => {
-                        data.retracts.push(slicer_ir::TravelRetract {
-                            after_entity_index: anchor,
+                        retracts.push(RetractSpec {
                             length: *length,
                             speed: *speed,
                             is_unretract: true,
@@ -294,18 +342,32 @@ pub fn commit_hec_for_test(
                     }
                 }
             }
+            let is_empty = tool_changes.is_empty()
+                && z_hops.is_empty()
+                && annotations.is_empty()
+                && retracts.is_empty()
+                && travel_moves.is_empty();
+            if is_empty {
+                None
+            } else {
+                Some(LayerStageCommit::PathOptimization(PathOptimizationCommit {
+                    tool_changes,
+                    z_hops,
+                    annotations,
+                    retracts,
+                    travel_moves,
+                    order_proposal: None,
+                }))
+            }
         }
-        _ => {}
-    }
+        _ => None,
+    };
 
-    slicer_runtime::commit_layer_outputs_for_test(
-        stage_id,
-        module_id,
-        layer_index,
-        data,
-        arena,
-        seam_plan_ir,
-    )
+    if let Some(commit) = commit_opt {
+        slicer_runtime::apply_for_test(arena, commit, &apply_ctx)
+    } else {
+        Ok(())
+    }
 }
 
 // ── Stage input helpers ───────────────────────────────────────────────────────
@@ -407,23 +469,34 @@ pub fn run_layer_and_commit_with_bundle(
     blackboard: &Blackboard,
     arena: &mut slicer_runtime::LayerArena,
 ) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_runtime::StageApplyContext;
     use slicer_wasm_host::LayerStageRunner;
     let live = bundle.as_live();
     let input = layer_input(blackboard, arena);
-    let commit_data =
+    let commit_opt =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     let seam_plan_arc = blackboard.seam_plan().cloned();
-    slicer_runtime::commit_layer_outputs_for_test(
+    let ctx = StageApplyContext {
         stage_id,
-        bundle.module.module_id(),
-        layer.index,
-        commit_data,
-        arena,
-        seam_plan_arc.as_deref(),
-    )
+        module_id: bundle.module.module_id(),
+        layer_index: layer.index,
+        seam_plan: seam_plan_arc.as_deref(),
+    };
+    // PerimetersPostProcess(None) still needs apply so seam back-fill runs on
+    // the existing arena perimeter even when the guest emitted no new perimeter.
+    let effective_commit = if commit_opt.is_none() && stage_id == "Layer::PerimetersPostProcess" {
+        Some(slicer_ir::LayerStageCommit::PerimetersPostProcess(None))
+    } else {
+        commit_opt
+    };
+    if let Some(commit) = effective_commit {
+        slicer_runtime::apply_for_test(arena, commit, &ctx)
+    } else {
+        Ok(())
+    }
 }
 
-/// Convenience: dispatch a Layer stage AND commit the resulting LayerStageCommitData
+/// Convenience: dispatch a Layer stage AND commit the resulting LayerStageCommit
 /// to the arena in one call — bridges the orchestration split so tests that previously
 /// expected `run_stage` to mutate `arena` continue to work via this single helper.
 #[allow(dead_code)]
@@ -435,6 +508,7 @@ pub fn run_layer_and_commit(
     blackboard: &Blackboard,
     arena: &mut slicer_runtime::LayerArena,
 ) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_runtime::StageApplyContext;
     use slicer_wasm_host::LayerStageRunner;
     let live = slicer_wasm_host::CompiledModuleLive::new(
         module.module_id(),
@@ -444,15 +518,25 @@ pub fn run_layer_and_commit(
         Arc::clone(module.config_view()),
     );
     let input = layer_input(blackboard, arena);
-    let commit_data =
+    let commit_opt =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     let seam_plan_arc = blackboard.seam_plan().cloned();
-    slicer_runtime::commit_layer_outputs_for_test(
+    let ctx = StageApplyContext {
         stage_id,
-        module.module_id(),
-        layer.index,
-        commit_data,
-        arena,
-        seam_plan_arc.as_deref(),
-    )
+        module_id: module.module_id(),
+        layer_index: layer.index,
+        seam_plan: seam_plan_arc.as_deref(),
+    };
+    // PerimetersPostProcess(None) still needs apply so seam back-fill runs on
+    // the existing arena perimeter even when the guest emitted no new perimeter.
+    let effective_commit = if commit_opt.is_none() && stage_id == "Layer::PerimetersPostProcess" {
+        Some(slicer_ir::LayerStageCommit::PerimetersPostProcess(None))
+    } else {
+        commit_opt
+    };
+    if let Some(commit) = effective_commit {
+        slicer_runtime::apply_for_test(arena, commit, &ctx)
+    } else {
+        Ok(())
+    }
 }

@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     ConfigValue, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, LayerStageCommit,
-    LayerStageCommitData, ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey,
-    RegionMapIR, SliceIR, StageId, SupportIR, WallFeatureFlags,
+    ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR, SliceIR, StageId,
+    SupportIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -123,9 +123,8 @@ impl std::error::Error for LayerExecutionError {}
 
 // LayerStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
 // from slicer_runtime via the transitional re-exports block in lib.rs (P83 Step 4c+4d).
-// The trait signature changed to take CompiledModuleLive<'_> + LayerStageInput<'_> and
-// return LayerStageCommitData — the executor call site builds these from CompiledModule +
-// Blackboard + LayerArena before invoking the runner.
+// It takes CompiledModuleLive<'_> + LayerStageInput<'_> and returns
+// Option<LayerStageCommit> (ADR-0020); the executor's `apply` performs the arena writes.
 
 /// Executes the Tier-2 per-layer parallel pipeline using rayon.
 ///
@@ -355,7 +354,7 @@ fn execute_single_layer_inner(
                 perimeter: arena.perimeter(),
                 layer_collection: arena.layer_collection(),
             };
-            // Capture seam_plan for commit_layer_outputs (Layer::PerimetersPostProcess path).
+            // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
 
             let run_result = runner.run_stage(&stage.stage_id, layer, &live_module, input);
@@ -370,7 +369,7 @@ fn execute_single_layer_inner(
                 wasm_after,
             );
             let commit = match run_result {
-                Ok(commit_data) => commit_data,
+                Ok(commit) => commit,
                 Err(e) => {
                     instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
                     return Err(LayerExecutionError::FatalLayer {
@@ -382,13 +381,11 @@ fn execute_single_layer_inner(
                 }
             };
 
-            // Route the invocation's output through the per-stage apply (ADR-0020).
-            // `from_legacy` bridges the still-struct-returning runner into the enum
-            // (deleted in Step C); `None` means the invocation committed nothing.
-            // `apply` owns the stage's own pre/post hooks — entity-order proposal,
-            // seam back-fill, fill partition, anchor stamping — so there is no
-            // replayed protocol here.
-            if let Some(staged) = LayerStageCommit::from_legacy(&stage.stage_id, commit) {
+            // Apply the invocation's per-stage commit (ADR-0020). `None` means it
+            // committed nothing. `apply` owns the stage's own pre/post hooks —
+            // entity-order proposal, seam back-fill, fill partition, anchor
+            // stamping — so there is no replayed protocol here.
+            if let Some(staged) = commit {
                 let ctx = StageApplyContext {
                     stage_id: &stage.stage_id,
                     module_id: module.module_id().as_str(),
@@ -820,34 +817,51 @@ pub(crate) fn assemble_ordered_entities(
     out
 }
 
-// ── 7 RUNTIME items moved from dispatch.rs (P83 Step 4c+4d) ─────────────────
+// ── Runtime-side per-stage commit (ADR-0020) ───────────────────────────────
 //
-// These items lived in `slicer-runtime/src/dispatch.rs` in the pre-P83 split.
-// They depend only on `LayerArena` and `slicer-ir` types, so they move here
-// rather than into `slicer-wasm-host` (which must not depend on slicer-runtime).
-// `commit_layer_outputs` signature changed: `ctx: &HostExecutionContext` →
-// `commit: LayerStageCommitData` (P83 Step 4d — symmetric IR-typed boundary).
+// `apply` (above) and these helpers depend only on `LayerArena` and `slicer-ir`
+// types, so they live here rather than in `slicer-wasm-host` (which must not
+// depend on slicer-runtime). The producer in `slicer-wasm-host` builds the
+// `LayerStageCommit`; this side performs the arena writes.
 
-/// Test-only wrapper around the private `commit_layer_outputs` so integration
-/// tests can exercise the PathOptimization GCode-override rejection path
-/// without compiling a bespoke WAT guest per case.
+/// Test-only wrapper around the crate-private [`apply`] so integration tests can
+/// exercise per-stage commit behavior (e.g. the PerimetersPostProcess field
+/// preservation or the PathOptimization anchor stamping) without compiling a
+/// bespoke WAT guest per case.
+#[doc(hidden)]
+pub fn apply_for_test(
+    arena: &mut LayerArena,
+    commit: LayerStageCommit,
+    ctx: &StageApplyContext<'_>,
+) -> Result<(), slicer_ir::LayerStageError> {
+    apply(arena, commit, ctx)
+}
+
+/// Test-only convenience shim: wraps [`apply_for_test`] behind the same
+/// `(stage_id, module_id, layer_index, commit, arena, seam_plan)` signature
+/// that the pre-ADR-0020 `commit_layer_outputs_for_test` had, so test helpers
+/// in `tests/common/mod.rs` and `tests/contract/` can use it without building
+/// a `StageApplyContext` by hand.
+///
+/// `commit` is `Option<LayerStageCommit>` (the new `run_stage` return type);
+/// `None` is a no-op.
 #[doc(hidden)]
 pub fn commit_layer_outputs_for_test(
     stage_id: &str,
     module_id: &str,
     layer_index: u32,
-    commit: LayerStageCommitData,
+    commit: Option<LayerStageCommit>,
     arena: &mut LayerArena,
-    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
+    seam_plan: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), slicer_ir::LayerStageError> {
-    commit_layer_outputs(
+    let Some(c) = commit else { return Ok(()) };
+    let ctx = StageApplyContext {
         stage_id,
         module_id,
         layer_index,
-        commit,
-        arena,
-        seam_plan_ir,
-    )
+        seam_plan,
+    };
+    apply(arena, c, &ctx)
 }
 
 /// Host-local projection of a single staged
@@ -1291,328 +1305,6 @@ pub(crate) fn apply(
                 });
             }
         }
-    }
-    Ok(())
-}
-
-/// Commit IR-typed layer stage output data into the per-layer arena.
-///
-/// Called after `LayerStageRunner::run_stage` returns a `LayerStageCommitData`.
-/// The wasm-host's `deconstruct_layer_ctx` already converted the WIT output types
-/// into IR types before this point, so this function only performs arena writes
-/// and validation — no WIT type conversion happens here.
-///
-/// `seam_plan_ir` is only consulted by the `Layer::PerimetersPostProcess` path to
-/// back-fill `resolved_seam` on regions that weren't resolved by the guest.
-fn commit_layer_outputs(
-    stage_id: &str,
-    module_id: &str,
-    layer_index: u32,
-    commit: LayerStageCommitData,
-    arena: &mut LayerArena,
-    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
-) -> Result<(), slicer_ir::LayerStageError> {
-    let mk_validation_err = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
-        stage_id: stage_id.to_string(),
-        module_id: module_id.to_string(),
-        message: format!("invalid {what} output: {reason}"),
-    };
-
-    // Test-escape-hatch: if a mock runner injects a pre-built LayerCollectionIR, commit it
-    // to the arena so the next stage (e.g. Layer::PathOptimization) sees it in input.layer_collection.
-    if let Some(lc) = commit.layer_collection_output {
-        let _ = arena.take_layer_collection(); // clear any auto-assembled one
-        arena.set_layer_collection(lc);
-    }
-
-    match stage_id {
-        "Layer::Infill" | "Layer::InfillPostProcess" => {
-            let Some(ir) = commit.infill_output else {
-                return Ok(());
-            };
-            if stage_id == "Layer::InfillPostProcess" {
-                let _ = arena.take_infill();
-            }
-            if let Some(mut existing) = arena.take_infill() {
-                merge_infill_ir(&mut existing, ir);
-                arena
-                    .set_infill(existing)
-                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-            } else {
-                arena
-                    .set_infill(ir)
-                    .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-            }
-        }
-        "Layer::Support" | "Layer::SupportPostProcess" => {
-            let Some(ir) = commit.support_output else {
-                return Ok(());
-            };
-            if stage_id == "Layer::SupportPostProcess" {
-                let _ = arena.take_support();
-            }
-            arena
-                .set_support(ir)
-                .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-        }
-        "Layer::Perimeters" => {
-            let Some(ir) = commit.perimeter_output else {
-                return Ok(());
-            };
-            let _ = arena.take_perimeter();
-            arena
-                .set_perimeter(ir)
-                .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-            // Host-side fill-polygon partition. Splits `perimeter.infill_areas`
-            // into the four pairwise-disjoint canonical fill polygons
-            // (bridge > bottom > top > sparse) on the per-layer arena's
-            // `SliceIR`. See `docs/specs/infill-fill-partition-plan.md`.
-            // Fires at `Layer::Perimeters` only (Q6); `PerimetersPostProcess`
-            // mutates wall loops but not the inner wall-inset polygon, so a
-            // second firing would be redundant work.
-            crate::region_partition::sync_perimeter_infill_areas_into_slice(arena, layer_index)?;
-        }
-        "Layer::PerimetersPostProcess" => {
-            let mut original = arena.take_perimeter();
-            if let (Some(seam_ir), Some(ref mut orig_perim)) = (seam_plan_ir, &mut original) {
-                for region in &mut orig_perim.regions {
-                    if region.resolved_seam.is_none() {
-                        if let Some(entry) = seam_ir.entries.iter().find(|e| {
-                            e.region_key.global_layer_index == layer_index
-                                && e.region_key.object_id == region.object_id
-                                && e.region_key.region_id == region.region_id
-                        }) {
-                            region.resolved_seam = Some(entry.chosen_candidate.clone());
-                        }
-                    }
-                }
-            }
-            // After each Layer::PerimetersPostProcess set_perimeter site,
-            // re-fire the fill-polygon partition. Q6 originally fired only at
-            // Layer::Perimeters because no module mutates infill_areas at
-            // post-process time today — but the review (finding #5/#6)
-            // pointed out two real edge cases the early Q6 missed:
-            //   (a) Layer::Perimeters returned None and PerimetersPostProcess
-            //       stages a perimeter via (Some(ir_owned), None) — partition
-            //       was never called → sparse_infill_area stays empty.
-            //   (b) PerimetersPostProcess legitimately replaces the perimeter
-            //       via (None, Some(orig_perim)) — same gap.
-            // Idempotent re-run is cheap (HashMap-indexed find now O(N+M))
-            // and guarantees post-perimeter modules see the partitioned IR.
-            match (commit.perimeter_output, original) {
-                (Some(mut ir_owned), Some(orig_perim)) => {
-                    // PerimetersPostProcess modules typically only emit wall
-                    // loops (fuzzy-skin) or seam rotations (seam-placer); they
-                    // are not expected to re-populate `infill_areas` or
-                    // `seam_candidates`. When the post-process replaces the
-                    // perimeter wholesale, copy those untouched fields from the
-                    // original perimeter so the host-side region partition that
-                    // re-fires below still sees a non-empty wall_inset. Without
-                    // this, a post-process module that doesn't call
-                    // `set_infill_areas` wipes the wall-inset polygon and the
-                    // partition zeroes every region's sparse/top/bottom fills
-                    // (cube "no sparse infill" symptom). Empty-vs-set is
-                    // distinguished by `set_infill_areas` having been called at
-                    // all; the IR field cannot represent that nuance, so we use
-                    // the heuristic "incoming empty → preserve original" — the
-                    // legitimate "clear infill_areas" use case has no current
-                    // call site.
-                    //
-                    // Pairing is by `(object_id, region_id)`, NOT by positional
-                    // index: a post-process module that drops a region (e.g.
-                    // seam-placer on a coordinate-space mismatch) produces an
-                    // `ir_owned.regions` shorter than `orig_perim.regions`, and
-                    // positional pairing would mis-route preserved fields to
-                    // the wrong region. Mirrors the seam-injection lookup at
-                    // the top of this arm.
-                    for region in ir_owned.regions.iter_mut() {
-                        let orig_region = orig_perim.regions.iter().find(|r| {
-                            r.object_id == region.object_id && r.region_id == region.region_id
-                        });
-                        let Some(orig_region) = orig_region else {
-                            continue;
-                        };
-                        if region.resolved_seam.is_none() {
-                            if let Some(rs) = &orig_region.resolved_seam {
-                                region.resolved_seam = Some(rs.clone());
-                            }
-                        }
-                        if region.infill_areas.is_empty() {
-                            region.infill_areas = orig_region.infill_areas.clone();
-                        }
-                        if region.seam_candidates.is_empty() {
-                            region.seam_candidates = orig_region.seam_candidates.clone();
-                        }
-                    }
-                    arena
-                        .set_perimeter(ir_owned)
-                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                }
-                (Some(ir_owned), None) => {
-                    arena
-                        .set_perimeter(ir_owned)
-                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                }
-                (None, Some(orig_perim)) => {
-                    arena
-                        .set_perimeter(orig_perim)
-                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                }
-                (None, None) => {}
-            }
-            // The match above sets a perimeter in three of four arms; the
-            // fourth (`None, None`) leaves the arena perimeter slot empty.
-            // Replace the previously-tracked `needs_partition` boolean
-            // with a direct check on the arena state — equivalent
-            // semantically and easier to read.
-            if arena.perimeter().is_some() {
-                crate::region_partition::sync_perimeter_infill_areas_into_slice(
-                    arena,
-                    layer_index,
-                )?;
-            }
-        }
-        "Layer::SlicePostProcess" => {
-            if commit.slice_polygon_updates.is_empty() && commit.slice_path_z_updates.is_empty() {
-                return Ok(());
-            }
-            let mut existing =
-                arena
-                    .take_slice()
-                    .ok_or_else(|| slicer_ir::LayerStageError::FatalModule {
-                        stage_id: stage_id.to_string(),
-                        module_id: module_id.to_string(),
-                        message: "Layer::SlicePostProcess has no staged SliceIR to merge into; \
-                          Layer::Slice must commit per-region slice output first"
-                            .into(),
-                    })?;
-
-            // Apply polygon updates: replace region.polygons by (object_id, region_id) match.
-            for (i, (key, polys)) in commit.slice_polygon_updates.iter().enumerate() {
-                let ridx = existing
-                    .regions
-                    .iter()
-                    .position(|r| r.object_id == key.object_id && r.region_id == key.region_id)
-                    .ok_or_else(|| {
-                        mk_validation_err(
-                            "slice postprocess",
-                            format!(
-                                "polygon_update[{i}] targets unknown region \
-                             (object_id='{}', region_id='{}')",
-                                key.object_id, key.region_id,
-                            ),
-                        )
-                    })?;
-                existing.regions[ridx].polygons = polys.clone();
-            }
-
-            // Apply path-Z updates: validate bounds (the actual Z mutation is a no-op
-            // because slicer_ir::ExPolygon has no per-point Z field — same as the WIT path).
-            for (i, (key, path_idx, vertex_idx, _z)) in
-                commit.slice_path_z_updates.iter().enumerate()
-            {
-                let ridx = existing
-                    .regions
-                    .iter()
-                    .position(|r| r.object_id == key.object_id && r.region_id == key.region_id)
-                    .ok_or_else(|| {
-                        mk_validation_err(
-                            "slice postprocess",
-                            format!(
-                                "path_z_update[{i}] targets unknown region \
-                             (object_id='{}', region_id='{}')",
-                                key.object_id, key.region_id,
-                            ),
-                        )
-                    })?;
-                let region = &existing.regions[ridx];
-                let poly_count = region.polygons.len();
-                let poly = region.polygons.get(*path_idx as usize).ok_or_else(|| {
-                    mk_validation_err(
-                        "slice postprocess",
-                        format!(
-                            "path_z_update[{i}]: polygon index {path_idx} out of range \
-                             for region ({}, {}) with {poly_count} polygons",
-                            key.object_id, key.region_id,
-                        ),
-                    )
-                })?;
-                if (*vertex_idx as usize) >= poly.contour.points.len() {
-                    return Err(mk_validation_err(
-                        "slice postprocess",
-                        format!(
-                            "path_z_update[{i}]: vertex index {vertex_idx} out of range \
-                             for contour with {} points",
-                            poly.contour.points.len(),
-                        ),
-                    ));
-                }
-            }
-
-            arena
-                .set_slice(existing)
-                .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-        }
-        "Layer::PathOptimization" => {
-            let anchor = arena
-                .layer_collection()
-                .map(|lc| lc.ordered_entities.len().saturating_sub(1) as u32)
-                .unwrap_or(0);
-
-            // tool_changes, z_hops, annotations, retracts, deferred_travel_moves are
-            // pre-categorised by the wasm-host's deconstruct_layer_ctx.
-            for tc in commit.tool_changes {
-                arena.push_deferred_tool_change(tc);
-            }
-            for mut zh in commit.z_hops {
-                // Validate hop_height before accepting (matches old per-command validation).
-                if !zh.hop_height.is_finite() || zh.hop_height <= 0.0 {
-                    return Err(slicer_ir::LayerStageError::FatalModule {
-                        stage_id: stage_id.to_string(),
-                        module_id: module_id.to_string(),
-                        message: format!(
-                            "Layer::PathOptimization push-z-hop rejected: \
-                             hop-height={} is not finite and strictly positive",
-                            zh.hop_height
-                        ),
-                    });
-                }
-                // Override placeholder anchor (0 from deconstruct) with real anchor,
-                // matching original dispatch.rs behavior where z_hops were created
-                // with `after_entity_index: anchor`.
-                zh.after_entity_index = anchor;
-                arena.push_deferred_z_hop(zh);
-            }
-            for mut ann in commit.annotations {
-                // Override the placeholder anchor (0) set by deconstruct_layer_ctx
-                // with the real entity-count-based anchor, matching the original
-                // dispatch.rs::commit_layer_outputs behavior.
-                ann.after_entity_index = anchor;
-                arena.push_deferred_annotation(ann);
-            }
-            for r in commit.retracts {
-                arena.push_deferred_retract(crate::blackboard::DeferredRetract {
-                    // Override placeholder anchor to match original behavior.
-                    after_entity_index: anchor,
-                    length: r.length,
-                    speed: r.speed,
-                    is_unretract: r.is_unretract,
-                    mode: r.mode,
-                });
-            }
-            for (_after_idx, x, y, z, f) in commit.deferred_travel_moves {
-                arena.push_deferred_travel_move(crate::blackboard::DeferredTravelMove {
-                    // Placeholder anchor (0) from deconstruct is overridden here with
-                    // the real entity-count-based anchor, matching original dispatch.rs behavior.
-                    after_entity_index: anchor,
-                    x,
-                    y,
-                    z,
-                    f,
-                });
-            }
-        }
-        _ => {}
     }
     Ok(())
 }

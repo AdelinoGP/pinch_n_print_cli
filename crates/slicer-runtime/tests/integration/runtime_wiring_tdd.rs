@@ -10,10 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
-    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
-    PrintMetadata, SemVer, StageId,
+    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR,
+    LayerStageCommit, MeshIR, Point3, PrintMetadata, SemVer, StageId,
 };
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
@@ -105,8 +104,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
-    ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData::default())
+    ) -> Result<Option<LayerStageCommit>, LayerStageError> {
+        Ok(None)
     }
 }
 

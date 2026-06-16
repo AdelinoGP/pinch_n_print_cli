@@ -1900,7 +1900,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         layer: &GlobalLayer,
         module: &CompiledModuleLive<'_>,
         input: LayerStageInput<'_>,
-    ) -> Result<slicer_ir::LayerStageCommitData, slicer_ir::LayerStageError> {
+    ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
         let module_id_str = module.module_id.as_str();
         let (envelope_floor, envelope_height) =
             derive_layer_output_envelope_from_input(layer, input.slice);
@@ -2018,7 +2018,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                return Ok(slicer_ir::LayerStageCommitData::default());
+                return Ok(None);
             }
             Err(e) => {
                 return Err(slicer_ir::LayerStageError::FatalModule {
@@ -2029,7 +2029,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             }
         };
 
-        // Deconstruct HostExecutionContext → LayerStageCommitData.
+        // Deconstruct HostExecutionContext → Option<LayerStageCommit>.
         deconstruct_layer_ctx(stage_id, module_id_str, layer.index, ctx)
     }
 
@@ -2201,26 +2201,30 @@ fn derive_layer_output_envelope_from_input(
     (floor, ceiling - floor)
 }
 
-// ── Layer-context deconstruction (HostExecutionContext → LayerStageCommitData) ─
+// ── Layer-context deconstruction (HostExecutionContext → LayerStageCommit) ─────
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into
-/// a `LayerStageCommitData`. Mirrors the `commit_layer_outputs` logic from the
-/// original `slicer-runtime::dispatch` but produces only plain IR values —
-/// no arena mutations. The runtime-side `commit_layer_outputs` in Step 4d
-/// will consume the resulting struct and perform the actual arena writes.
+/// the per-stage [`slicer_ir::LayerStageCommit`] the runtime's `apply` consumes
+/// (ADR-0020). Produces only plain IR values — no arena mutations. Returns
+/// `Ok(None)` when the invocation committed nothing (empty guest output).
+///
+/// The deferred g-code groups carry **no** anchor: the producer has no arena and
+/// cannot compute `ordered_entities.len()-1`, so `apply` stamps it. There is no
+/// placeholder field to leak (the structural fix for the anchor bug). The
+/// `Layer::Perimeters` seam injection is no longer flagged — it is implied by the
+/// `Perimeters` variant and performed inside `apply`.
 fn deconstruct_layer_ctx(
     stage_id: &str,
     module_id: &str,
     layer_index: u32,
     ctx: HostExecutionContext,
-) -> Result<slicer_ir::LayerStageCommitData, slicer_ir::LayerStageError> {
+) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+    use slicer_ir::LayerStageCommit;
     let mk_fatal = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
         stage_id: stage_id.to_string(),
         module_id: module_id.to_string(),
         message: format!("invalid {what} output: {reason}"),
     };
-
-    let mut data = slicer_ir::LayerStageCommitData::default();
 
     match stage_id {
         "Layer::Infill" | "Layer::InfillPostProcess" => {
@@ -2229,11 +2233,15 @@ fn deconstruct_layer_ctx(
                 && infill.solid_paths.is_empty()
                 && infill.ironing_paths.is_empty()
             {
-                return Ok(data);
+                return Ok(None);
             }
             let ir = host::convert_infill_output(infill, layer_index)
                 .map_err(|r| mk_fatal("infill", r))?;
-            data.infill_output = Some(ir);
+            Ok(Some(if stage_id == "Layer::InfillPostProcess" {
+                LayerStageCommit::InfillPostProcess(ir)
+            } else {
+                LayerStageCommit::Infill(ir)
+            }))
         }
         "Layer::Support" | "Layer::SupportPostProcess" => {
             let support = &ctx.support_output;
@@ -2241,42 +2249,50 @@ fn deconstruct_layer_ctx(
                 && support.interface_paths.is_empty()
                 && support.raft_paths.is_empty()
             {
-                return Ok(data);
+                return Ok(None);
             }
             let ir = host::convert_support_output(support, layer_index)
                 .map_err(|r| mk_fatal("support", r))?;
-            data.support_output = Some(ir);
-        }
-        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
-            let perimeter = &ctx.perimeter_output;
-            let has_any_output = if stage_id == "Layer::PerimetersPostProcess" {
-                !perimeter.wall_loops.is_empty()
-                    || !perimeter.rotated_wall_loops.is_empty()
-                    || !perimeter.infill_areas.is_empty()
-                    || !perimeter.seam_candidates.is_empty()
+            Ok(Some(if stage_id == "Layer::SupportPostProcess" {
+                LayerStageCommit::SupportPostProcess(ir)
             } else {
-                !perimeter.wall_loops.is_empty()
-                    || !perimeter.infill_areas.is_empty()
-                    || !perimeter.seam_candidates.is_empty()
-            };
+                LayerStageCommit::Support(ir)
+            }))
+        }
+        "Layer::Perimeters" => {
+            let perimeter = &ctx.perimeter_output;
+            let has_any_output = !perimeter.wall_loops.is_empty()
+                || !perimeter.infill_areas.is_empty()
+                || !perimeter.seam_candidates.is_empty();
             if !has_any_output {
-                return Ok(data);
+                return Ok(None);
             }
             let ir = host::convert_perimeter_output(perimeter, layer_index)
                 .map_err(|r| mk_fatal("perimeter", r))?;
-            data.perimeter_output = Some(ir);
-            // Signal the runtime to perform post-commit seam injection from SeamPlanIR
-            // for the Layer::Perimeters stage. The original dispatch.rs run_stage body
-            // did this after commit_layer_outputs; the symmetric boundary requires the
-            // flag to cross the wasm-host/runtime split.
-            if stage_id == "Layer::Perimeters" {
-                data.needs_seam_injection = true;
-            }
+            Ok(Some(LayerStageCommit::Perimeters(ir)))
+        }
+        "Layer::PerimetersPostProcess" => {
+            // Post-process always commits for its stage: even an empty output
+            // re-partitions the existing perimeter (apply's `(None, Some)` arm).
+            let perimeter = &ctx.perimeter_output;
+            let has_any_output = !perimeter.wall_loops.is_empty()
+                || !perimeter.rotated_wall_loops.is_empty()
+                || !perimeter.infill_areas.is_empty()
+                || !perimeter.seam_candidates.is_empty();
+            let ir = if has_any_output {
+                Some(
+                    host::convert_perimeter_output(perimeter, layer_index)
+                        .map_err(|r| mk_fatal("perimeter", r))?,
+                )
+            } else {
+                None
+            };
+            Ok(Some(LayerStageCommit::PerimetersPostProcess(ir)))
         }
         "Layer::SlicePostProcess" => {
             let sp = &ctx.slice_postprocess_output;
             if sp.polygon_updates.is_empty() && sp.path_z_updates.is_empty() {
-                return Ok(data);
+                return Ok(None);
             }
             // Flatten WIT RegionKey → slicer_ir::RegionKey for polygon updates.
             let polygon_updates: Vec<(slicer_ir::RegionKey, Vec<slicer_ir::ExPolygon>)> = sp
@@ -2332,16 +2348,16 @@ fn deconstruct_layer_ctx(
                     Some((ir_key, *path_idx, *vertex_idx, *z))
                 })
                 .collect();
-            data.slice_polygon_updates = polygon_updates;
-            data.slice_path_z_updates = path_z_updates;
+            Ok(Some(LayerStageCommit::SlicePostProcess {
+                polygon_updates,
+                path_z_updates,
+            }))
         }
         "Layer::PathOptimization" => {
-            // anchor = index of last entity (matches original dispatch.rs logic)
-            // For deconstruction we default to 0; the runtime commit step
-            // (layer_executor.rs Step 4d) has access to the staged
-            // LayerCollectionIR and can compute the real anchor there.
-            // Here we just extract the raw GCode commands into typed fields.
-            let anchor = 0u32; // overridden by commit step using the actual ordered_entities
+            // The deferred groups carry no anchor — `apply` stamps the real
+            // end-of-layer value from arena state (ADR-0020). `tool_changes`
+            // keep their guest-provided `after_entity_index`.
+            let mut commit = slicer_ir::PathOptimizationCommit::default();
             use host::GcodeCommandCollected;
             for (i, cmd) in ctx.gcode_output.commands.iter().enumerate() {
                 match cmd {
@@ -2350,29 +2366,29 @@ fn deconstruct_layer_ctx(
                         from_tool,
                         to_tool,
                     } => {
-                        data.tool_changes.push(slicer_ir::ToolChange {
+                        commit.tool_changes.push(slicer_ir::ToolChange {
                             after_entity_index: *after_entity_index,
                             from_tool: *from_tool,
                             to_tool: *to_tool,
                         });
                     }
                     GcodeCommandCollected::Comment(text) => {
-                        data.annotations.push(slicer_ir::LayerAnnotation {
-                            after_entity_index: anchor,
-                            kind: slicer_ir::LayerAnnotationKind::Comment(text.clone()),
-                        });
+                        commit
+                            .annotations
+                            .push(slicer_ir::LayerAnnotationKind::Comment(text.clone()));
                     }
                     GcodeCommandCollected::Raw(text) => {
-                        data.annotations.push(slicer_ir::LayerAnnotation {
-                            after_entity_index: anchor,
-                            kind: slicer_ir::LayerAnnotationKind::Raw(text.clone()),
-                        });
+                        commit
+                            .annotations
+                            .push(slicer_ir::LayerAnnotationKind::Raw(text.clone()));
                     }
                     GcodeCommandCollected::Move(cmd) => {
-                        // Stored as (anchor, x, y, z, feed_rate) — runtime Step 4d
-                        // resolves the anchor to an entity_id in TravelMove.
-                        data.deferred_travel_moves
-                            .push((anchor, cmd.x, cmd.y, cmd.z, cmd.f));
+                        commit.travel_moves.push(slicer_ir::TravelMoveDest {
+                            x: cmd.x,
+                            y: cmd.y,
+                            z: cmd.z,
+                            f: cmd.f,
+                        });
                     }
                     GcodeCommandCollected::ZHop { hop_height, .. } => {
                         if !hop_height.is_finite() || *hop_height <= 0.0 {
@@ -2385,18 +2401,14 @@ fn deconstruct_layer_ctx(
                                 ),
                             });
                         }
-                        data.z_hops.push(slicer_ir::ZHop {
-                            after_entity_index: anchor,
-                            hop_height: *hop_height,
-                        });
+                        commit.z_hops.push(*hop_height);
                     }
                     GcodeCommandCollected::Retract {
                         length,
                         speed,
                         mode,
                     } => {
-                        data.retracts.push(slicer_ir::TravelRetract {
-                            after_entity_index: anchor,
+                        commit.retracts.push(slicer_ir::RetractSpec {
                             length: *length,
                             speed: *speed,
                             is_unretract: false,
@@ -2408,8 +2420,7 @@ fn deconstruct_layer_ctx(
                         speed,
                         mode,
                     } => {
-                        data.retracts.push(slicer_ir::TravelRetract {
-                            after_entity_index: anchor,
+                        commit.retracts.push(slicer_ir::RetractSpec {
                             length: *length,
                             speed: *speed,
                             is_unretract: true,
@@ -2429,16 +2440,11 @@ fn deconstruct_layer_ctx(
                     }
                 }
             }
-            // Extract the entity-order proposal (set via guest's set-entity-order WIT call).
-            // The original dispatch.rs::run_stage called apply_entity_order_proposal(arena, &proposal)
-            // BEFORE commit_layer_outputs. With the symmetric boundary, we carry the proposal
-            // across and let layer_executor.rs apply it before committing PathOptimization outputs.
-            data.entity_order_proposal = ctx.layer_collection_proposal().cloned();
+            commit.order_proposal = ctx.layer_collection_proposal().cloned();
+            Ok(Some(LayerStageCommit::PathOptimization(commit)))
         }
-        _ => {}
+        _ => Ok(None),
     }
-
-    Ok(data)
 }
 
 // ── Finalization pushes applier ────────────────────────────────────────────────
