@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 99
 task_ids: [TASK-249]
 backlog_source: docs/specs/paint-pipeline-orca-parity-roadmap.md
@@ -211,3 +211,31 @@ The residual matches that still trigger the strict greps are all in **intentiona
 **Status impact:** Packet status remains `draft` (user chose `implement` mode without explicit finalization). Implementation is functionally complete; the deviation is a packet-authoring observation, not a regression.
 
 **Confirmed by user:** Yes, via the swarm close-out question on 2026-06-15.
+
+### DEV-4 — Prepass-order count interpretation (9 vs 6 stages) + heading-level sub-finding
+
+**Discovered during:** Spec-audit re-verification of AC-1 "Given" clause.
+
+**What:** Packet's AC-1 "Given" specified a 9-stage sequence including `user-early`, `user-late`, `slice`, and `shell_classification`. The post-audit implementation resolves this as 6 `PrePass::*` enum variants (MeshSegmentation retired, MeshAnalysis, LayerPlanning, RegionMapping, PaintSegmentation, SupportGeometry) plus 2 host-callable Layer stages (`host:slice`, `host:shell_classification`) that bracket `PaintSegmentation` in the broader pipeline.
+
+**Resolution:** docs/01 line 75 now reads "The six prepass stages execute in this order:" and a new follow-up paragraph (immediately after the code block) explains that `host:slice` and `host:shell_classification` are Layer-stage host calls (not `PrePass::*` enum variants) that run between `MeshAnalysis` (stage 2) and `PaintSegmentation` (stage 5). The `PrePass::*` enum is the type-system boundary in the production scheduler; the packet's "Given" wording collapsed PrePass stages and host-callable Layer stages into a single 9-stage list, which is a category error. The packet's authoritative resolution of the "Given" clause is the 6-PrePass + 2-host-callable-Layer split, recorded here.
+
+**Heading-level sub-finding:** The "Variant-Chain Region Splitting" sub-section in docs/01 uses `####` (4 hashes) at line 191 instead of the packet's design.md-specified `###` (3 hashes). Trivial; the section is still locatable and the content is correct. Recorded for completeness only.
+
+### META-1 — AC-10.1's grep gate was too narrow to catch cross-doc inconsistency (packet-text defect)
+
+**Discovered during:** Spec-audit diff review of docs/04_host_scheduler.md.
+
+**What:** AC-10.1's "Then" clause specifies "`PrePass::MeshSegmentation` ... produces MeshIR via `replace_mesh`" for a stage that was retired by P94r (host kernel removed) + P97 (WASM guest removed). The grep gate `rg -q 'PrePass::MeshSegmentation.*replace_mesh' docs/04_host_scheduler.md` only checks for the literal string pattern on the same line — it does not validate the output name nor check that the stage is consistent with the rest of the doc set.
+
+The initial implementation satisfied the gate by writing a row that contradicted docs/01 (the stage is retired) and misassigned `SurfaceClassificationIR` (which is the output of `MeshAnalysis`, not `MeshSegmentation`). The post-audit fix deleted the row entirely (since the stage is retired), so AC-10.1's grep gate now FAILs by design — the gate is **INTENT-MET, not satisfied**.
+
+**Lesson for future retro-sync packets:**
+
+1. Phrase retired-stage rows with no output claim (the `PrePass::MeshSegmentation` row should have been written as "(retired — see docs/01)" or omitted entirely, rather than fabricating a `replace_mesh` output).
+2. AC grep gates for retro-sync packets should include cross-doc consistency checks. Example gate that would have caught this defect: `rg 'PrePass::MeshSegmentation' docs/ should return only matches consistent with 'retired' framing; any 'produces ...' sentence on a retired-stage row should fail the gate`.
+3. AC-10.1's "Then" clause for the MeshSegmentation row is itself a packet-text defect (it claims the stage produces MeshIR, but the stage is retired). The grep gate inherited the defect.
+
+**Resolution:** The packet is implemented; AC-10.1's grep gate is INTENT-MET (the row no longer exists because the stage is retired). The packet-text defect is recorded here for the next packet-authoring pass.
+
+**Confirmed by user:** Yes, via the audit close-out on 2026-06-15.
