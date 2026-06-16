@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 101_dispatch-tdd-axis-aligned-split
 task_ids: []
 backlog_source: architecture review (session 2026-06-11, /improve-codebase-architecture Candidate 4 — DispatchFixture & suite split)
@@ -28,7 +28,7 @@ This packet relocates every surviving test in `dispatch_tdd.rs` (the two proof t
 
 - **AC-2. Given** `dispatch_tdd.rs` has been deleted from `crates/slicer-runtime/tests/contract/` and removed from `tests/contract/main.rs`, **when** the same `cargo check --workspace --all-targets` is run, **then** it still returns exit code 0 (no orphan imports, no dangling `pub mod dispatch_tdd;` declaration). | `cargo check --workspace --all-targets && test ! -f crates/slicer-runtime/tests/contract/dispatch_tdd.rs`
 
-- **AC-3. Given** all migrations are complete, **when** `cargo test -p slicer-runtime --test contract` is run with output teed to `target/test-output.log`, **then** the bucket reports `^test result: ok\.` with `0 failed`, and the test count equals the pre-packet count of `dispatch_tdd.rs` minus the two tests already living on the new fixture in packet 100 (which are now in `dispatch_perimeter_output_tdd.rs` and `dispatch_protocol_tdd.rs` respectively) — i.e. the absolute test count of `cargo test -p slicer-runtime --test contract` is preserved across this packet. | `cargo test -p slicer-runtime --test contract 2>&1 | tee target/test-output.log && rg -q 'test result: ok\. \d+ passed; 0 failed' target/test-output.log`
+- **AC-3. Given** all migrations are complete, **when** `cargo test -p slicer-runtime --test contract` is run with output teed to `target/test-output.log`, **then** the bucket reports `^test result: ok\.` with `0 failed`, **and** the summed `#[test]` count across the eight `dispatch_*_tdd.rs` files equals the recorded pre-split baseline of **86** unique tests (the count of distinct `#[test]` functions in the original `dispatch_tdd.rs`, recoverable via `git show f8e574d^:crates/slicer-runtime/tests/contract/dispatch_tdd.rs`). This count-preservation clause is mandatory: the original `0 failed`-only check could not detect dropped tests (it passed while 22 tests were silently lost — see Deviations). | `cargo test -p slicer-runtime --test contract 2>&1 | tee target/test-output.log && rg -q 'test result: ok\. \d+ passed; 0 failed' target/test-output.log && test "86" = "$(grep -rcE '^\s*#\[test\]' crates/slicer-runtime/tests/contract/dispatch_*_tdd.rs | awk -F: '{s+=$2} END{print s}')"`
 
 - **AC-4. Given** every test in the eight new files uses `DispatchFixture` and (where IR is needed) `ir_builders` exclusively, **when** `grep -rE 'make_compiled_module|make_slice_ir|make_perimeter_ir|make_wall_loop|make_loaded_module|make_object' crates/slicer-runtime/tests/contract/dispatch_*_tdd.rs` is run, **then** zero matches are returned. | `! grep -rE 'make_compiled_module|make_slice_ir|make_perimeter_ir|make_wall_loop|make_loaded_module|make_object' crates/slicer-runtime/tests/contract/dispatch_*_tdd.rs`
 
@@ -54,6 +54,35 @@ Gate commands only — the full matrix lives in `requirements.md` §Verification
 - `docs/adr/0005-runner-traits-in-slicer-wasm-host.md` — load directly (142 lines).
 - `docs/adr/0006-export-for-stage-id-sole-lookup.md` — load directly (≈ 90 lines). Governs `dispatch_protocol_tdd.rs`'s export-name lookup tests; the file MUST use `slicer_schema::export_for_stage_id` only.
 - `CLAUDE.md` §Test Discipline — read lines 51–86 only.
+
+## Deviations
+
+The first implementation pass (commits `f8e574d` + `43e7226`) was **not** a faithful
+pure refactor and was corrected in a remediation pass:
+
+- **22 tests were silently dropped** during the split (negative/rejection, isolation,
+  determinism, and the named packet-100 proof test
+  `real_perimeter_region_data_visible_through_infill_postprocess_dispatch`). All 22 were
+  restored onto `DispatchFixture` + `ir_builders` with assertions and input values
+  preserved byte-for-byte across the infill/perimeter/support/pathopt/identity/
+  prepass-harvest axes.
+- **4 test-name collisions** (same name in two files with divergent bodies) were
+  resolved: 3 spurious copies removed from `dispatch_support_output_tdd.rs` (the faithful
+  copies live in `dispatch_identity_tdd.rs`), and 1 invented `Layer::Infill` variant of
+  `empty_guest_output_does_not_populate_arena` deleted from `dispatch_infill_output_tdd.rs`
+  (the original is a `Layer::SupportPostProcess` test, faithfully kept in
+  `dispatch_support_output_tdd.rs`).
+- The surviving `support_output` copy of `empty_guest_output_does_not_populate_arena`
+  was using `.no_wasm()` (missing-component path) instead of the real default guest the
+  original used; corrected to the real-guest no-op-output path.
+- **AC-3 was strengthened.** The original AC-3 command only asserted `0 failed`, which
+  could not detect dropped tests (it passed green while 22 were lost). It now also
+  asserts the summed `#[test]` count across `dispatch_*_tdd.rs` equals the recorded
+  pre-split baseline of **86**.
+
+Post-remediation: name-level diff vs the original is exactly 86/86/86 (0 missing,
+0 extra, 0 duplicate); `cargo test -p slicer-runtime --test contract` = 164 passed /
+0 failed; AC-1/AC-2/AC-4/AC-5/AC-N1/AC-N2 all green.
 
 ## Doc Impact Statement (Required)
 
