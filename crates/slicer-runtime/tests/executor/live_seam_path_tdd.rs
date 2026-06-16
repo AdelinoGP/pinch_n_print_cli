@@ -830,7 +830,7 @@ fn seam_z_outside_layer_envelope_rejected() {
 /// This test exercises the full dispatch path:
 ///   `WasmRuntimeDispatcher::run_stage` â†’ `dispatch_layer_call` â†’
 ///   `push_perimeter_regions` (injects seam) â†’ WASM guest â†’
-///   `commit_layer_outputs_for_test` â†’ PerimeterIR in arena.
+///   `apply_for_test` â†’ PerimeterIR in arena.
 #[test]
 fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     use slicer_ir::{

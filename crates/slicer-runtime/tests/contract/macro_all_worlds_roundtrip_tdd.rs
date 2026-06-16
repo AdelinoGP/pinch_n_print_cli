@@ -578,13 +578,16 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
         layer_input(&bb, &arena),
     )
     .expect("success path must succeed");
-    slicer_runtime::commit_layer_outputs_for_test(
-        &stage,
-        "com.test.sdk-layer-infill-witness-out",
-        9,
-        __commit,
+    let __commit = __commit.expect("Layer::Infill must produce a commit");
+    slicer_runtime::apply_for_test(
         &mut arena,
-        None,
+        __commit,
+        &slicer_runtime::StageApplyContext {
+            stage_id: &stage,
+            module_id: "com.test.sdk-layer-infill-witness-out",
+            layer_index: 9,
+            seam_plan: None,
+        },
     )
     .expect("commit must succeed");
 
@@ -674,13 +677,16 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
             layer_input(&bb, &arena),
         )
         .unwrap();
-        slicer_runtime::commit_layer_outputs_for_test(
-            &stage,
-            "com.test.sdk-layer-infill-det-content",
-            2,
-            __commit,
+        let __commit = __commit.expect("Layer::Infill must produce a commit");
+        slicer_runtime::apply_for_test(
             &mut arena,
-            None,
+            __commit,
+            &slicer_runtime::StageApplyContext {
+                stage_id: &stage,
+                module_id: "com.test.sdk-layer-infill-det-content",
+                layer_index: 2,
+                seam_plan: None,
+            },
         )
         .expect("commit");
         let w =

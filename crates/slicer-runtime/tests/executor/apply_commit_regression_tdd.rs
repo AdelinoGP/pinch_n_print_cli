@@ -222,7 +222,11 @@ fn apply_path_optimization_applies_entity_order_proposal() {
          (the apply_entity_order_proposal call P83 Step 4d dropped)"
     );
     let topo: Vec<u32> = lc.ordered_entities.iter().map(|e| e.topo_order).collect();
-    assert_eq!(topo, vec![0, 1, 2], "topo_order must be reassigned to new slots");
+    assert_eq!(
+        topo,
+        vec![0, 1, 2],
+        "topo_order must be reassigned to new slots"
+    );
 }
 
 // ── 3. z-hop anchor stamped at end-of-layer (len-1), not placeholder 0 ───────

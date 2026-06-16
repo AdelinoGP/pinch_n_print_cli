@@ -837,33 +837,6 @@ pub fn apply_for_test(
     apply(arena, commit, ctx)
 }
 
-/// Test-only convenience shim: wraps [`apply_for_test`] behind the same
-/// `(stage_id, module_id, layer_index, commit, arena, seam_plan)` signature
-/// that the pre-ADR-0020 `commit_layer_outputs_for_test` had, so test helpers
-/// in `tests/common/mod.rs` and `tests/contract/` can use it without building
-/// a `StageApplyContext` by hand.
-///
-/// `commit` is `Option<LayerStageCommit>` (the new `run_stage` return type);
-/// `None` is a no-op.
-#[doc(hidden)]
-pub fn commit_layer_outputs_for_test(
-    stage_id: &str,
-    module_id: &str,
-    layer_index: u32,
-    commit: Option<LayerStageCommit>,
-    arena: &mut LayerArena,
-    seam_plan: Option<&slicer_ir::SeamPlanIR>,
-) -> Result<(), slicer_ir::LayerStageError> {
-    let Some(c) = commit else { return Ok(()) };
-    let ctx = StageApplyContext {
-        stage_id,
-        module_id,
-        layer_index,
-        seam_plan,
-    };
-    apply(arena, c, &ctx)
-}
-
 /// Host-local projection of a single staged
 /// `LayerCollectionIR.ordered_entities[i]` entry, mirroring the WIT
 /// `ordered-entity-view` record. Built once per `Layer::PathOptimization`

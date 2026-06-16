@@ -511,3 +511,25 @@ pub enum LayerStageCommit {
     /// not its caller; never produced by a production runner. See ADR-0020.
     SeedLayerCollection(crate::LayerCollectionIR),
 }
+
+impl LayerStageCommit {
+    /// The canonical per-layer `StageId` this commit belongs to, matching the
+    /// corresponding row in `slicer-schema::STAGES`. `None` for the test-only
+    /// `SeedLayerCollection`, which has no production stage.
+    ///
+    /// The non-`None` set is exactly the eight `world-layer` stages — a property
+    /// pinned by a meta-test so the enum and `STAGES` cannot drift (ADR-0020).
+    pub fn stage_id(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Perimeters(_) => "Layer::Perimeters",
+            Self::PerimetersPostProcess(_) => "Layer::PerimetersPostProcess",
+            Self::Infill(_) => "Layer::Infill",
+            Self::InfillPostProcess(_) => "Layer::InfillPostProcess",
+            Self::Support(_) => "Layer::Support",
+            Self::SupportPostProcess(_) => "Layer::SupportPostProcess",
+            Self::SlicePostProcess { .. } => "Layer::SlicePostProcess",
+            Self::PathOptimization(_) => "Layer::PathOptimization",
+            Self::SeedLayerCollection(_) => return None,
+        })
+    }
+}

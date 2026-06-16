@@ -131,8 +131,8 @@ pub use instrumentation::{
     EdgeReason, NoopInstrumentation, Phase, PipelineInstrumentation, SerialEdge, TierKind,
 };
 pub use layer_executor::{
-    apply_entity_order_proposal, apply_for_test, commit_layer_outputs_for_test,
-    project_ordered_entities, OrderedEntityView, StageApplyContext,
+    apply_entity_order_proposal, apply_for_test, project_ordered_entities, OrderedEntityView,
+    StageApplyContext,
 };
 pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,

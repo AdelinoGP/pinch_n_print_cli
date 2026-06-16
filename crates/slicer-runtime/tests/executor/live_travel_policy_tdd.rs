@@ -1,12 +1,12 @@
 //! TDD: live travel policy on the host PathOptimization dispatch path.
 //!
-//! Verifies that `commit_layer_outputs_for_test` for `Layer::PathOptimization`
+//! Verifies that `apply_for_test` for `Layer::PathOptimization`
 //! correctly routes Retract/Unretract decisions into the deferred-retract queue
 //! and ZHop decisions into the deferred-z-hop queue â€” and that no-retract
 //! fixtures produce no orphan entries in either queue.
 //!
 //! These tests exercise the HOST DISPATCH commit path via
-//! `commit_layer_outputs_for_test`, not the WASM boundary. The WASM-level
+//! `apply_for_test`, not the WASM boundary. The WASM-level
 //! coverage (building path-optimization-default.wasm with travel policy) is
 //! handled by the rebuild gate in `cargo xtask build-guests`.
 
