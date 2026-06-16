@@ -1,4 +1,4 @@
-# Requirements: 101_slicer-helpers-polygon-ops
+# Requirements: 103_slicer-helpers-polygon-ops
 
 ## Packet Metadata
 
@@ -35,8 +35,8 @@ This packet adds all six primitives in one place. It is fully infrastructural �
 ## Out of Scope
 
 - Wiring any of the primitives into `classic-perimeters` or `arachne-perimeters` thin-wall / gap-fill / spacing logic — that's Phase 5 / Phase 6 work (later packets).
-- Phase 1 shared utils (paint/seam helpers) — that's packet `100_perimeter-modules-foundations`.
-- Phase 2 per-vertex flag propagation — packet `102_perimeter-propagation-and-surface-rules`.
+- Phase 1 shared utils (paint/seam helpers) — that's packet `102_perimeter-modules-foundations`.
+- Phase 2 per-vertex flag propagation — packet `104_perimeter-propagation-and-surface-rules`.
 - Real `boostvoronoi` integration or `SkeletalTrapezoidationGraph` — M2 work.
 - Any OrcaSlicer reference recording or recorded-output golden fixtures. All golden tests here are analytic (computable from inputs).
 - Performance optimisation. The primitives must be correct against the analytic fixtures; benchmark-quality is a follow-up concern.

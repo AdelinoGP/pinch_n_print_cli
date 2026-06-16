@@ -1,4 +1,4 @@
-# Requirements: 102_perimeter-propagation-and-surface-rules
+# Requirements: 104_perimeter-propagation-and-surface-rules
 
 ## Packet Metadata
 
@@ -69,7 +69,7 @@ Files to inspect for this packet:
 - Negative cases: `AC-N1` (empty bridge_areas → no panics, no false positives), `AC-N2` (non-top layer → top-only-wall flag is no-op).
 - Refinements not captured in Given/When/Then:
   - `AC-3`'s WIT accessor name MUST be `overhang-areas`, not `overhang_regions`, because the data shape is `Vec<ExPolygon>` (already-projected XY footprints), not raw `OverhangRegion` structs. Naming convention follows `bridge-areas`. The accessor is host-populated by intersecting `OverhangRegion.xy_footprint` (which the sibling roadmap O-T010 adds) with this region's polygon; until O-T010 lands, the accessor returns an empty slice — silent dependency that this packet documents in the closure log.
-- Cross-packet impact: depends on packet `100_perimeter-modules-foundations`; independent of packet `101_slicer-helpers-polygon-ops`. Unblocks Phase 5/6 packets that consume the per-vertex flag and the view accessors.
+- Cross-packet impact: depends on packet `102_perimeter-modules-foundations`; independent of packet `103_slicer-helpers-polygon-ops`. Unblocks Phase 5/6 packets that consume the per-vertex flag and the view accessors.
 
 ## Verification Commands
 

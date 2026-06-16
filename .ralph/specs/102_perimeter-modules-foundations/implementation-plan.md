@@ -1,4 +1,4 @@
-# Implementation Plan: 100_perimeter-modules-foundations
+# Implementation Plan: 102_perimeter-modules-foundations
 
 ## Execution Rules
 
@@ -227,5 +227,5 @@ Aggregate context cost: `M`. No single step is `L`. Per-step file edit count nev
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and confirm each returns PASS.
 - Confirm the three gate commands in `packet.spec.md` §Verification are green.
-- Record any remaining packet-local risk in the closure log under `.ralph/specs/100_perimeter-modules-foundations/closure-log.md` (e.g., if the manifest-vs-code reconcile direction had to flip from the `[FWD]` default).
+- Record any remaining packet-local risk in the closure log under `.ralph/specs/102_perimeter-modules-foundations/closure-log.md` (e.g., if the manifest-vs-code reconcile direction had to flip from the `[FWD]` default).
 - Confirm the implementer's peak context usage stayed under 70% during the run; if it exceeded 70% at any step, log it as a packet-authoring lesson for future spec-packet-generator runs (likely indicates Step 2 or Step 5 needs further subdivision in similar future packets).

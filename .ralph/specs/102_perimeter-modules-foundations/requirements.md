@@ -1,4 +1,4 @@
-# Requirements: 100_perimeter-modules-foundations
+# Requirements: 102_perimeter-modules-foundations
 
 ## Packet Metadata
 
@@ -69,7 +69,7 @@ Files to inspect for this packet:
 
 - Positive cases: `AC-1` (shared crate exports), `AC-2` (no duplicate definitions in modules), `AC-3` (MaterialBoundary widened + schema bump), `AC-4` (no `let _ = output\.` remaining), `AC-5` (per-layer config override), `AC-6` (manifest-vs-code defaults reconciled). Refinement: AC-3's schema bump is **additive** — the migration adapter must allow `serde::Deserialize` of the old single-tool shape (`{ adjacent_tool: u32 }`) into the new shape (single-element `segments` Vec with `near_tool: Some(_)`, `far_tool: Some(adjacent_tool)`).
 - Negative cases: `AC-N1` (builder capacity error surfaces as `ModuleError`), `AC-N2` (3-tool polygon emits 3 transitions, not 1).
-- Cross-packet impact: unblocks packet `102_perimeter-propagation-and-surface-rules` (Phase 2 inner-wall material boundary work consumes the widened `MaterialBoundary`). Independent of packet `101_slicer-helpers-polygon-ops`.
+- Cross-packet impact: unblocks packet `104_perimeter-propagation-and-surface-rules` (Phase 2 inner-wall material boundary work consumes the widened `MaterialBoundary`). Independent of packet `103_slicer-helpers-polygon-ops`.
 
 ## Verification Commands
 

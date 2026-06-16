@@ -1,4 +1,4 @@
-# Implementation Plan: 101_slicer-helpers-polygon-ops
+# Implementation Plan: 103_slicer-helpers-polygon-ops
 
 ## Execution Rules
 
@@ -196,5 +196,5 @@ Aggregate context cost: `M`. No single step is `L`. Per-step file edit count nev
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and confirm each returns PASS.
 - Confirm the three gate commands in `packet.spec.md` §Verification are green.
 - Record schema-bump direction (4.1→4.2 or 4.2→4.3 depending on packet 100 sequencing) in the closure log.
-- Record any remaining packet-local risk in `.ralph/specs/101_slicer-helpers-polygon-ops/closure-log.md` (likely candidates: medial_axis tolerance scaling rule for non-1mm fixtures; clarifying whether AC-1's join tolerance is calibrated tight enough for Phase 5/6 thin-wall usage).
+- Record any remaining packet-local risk in `.ralph/specs/103_slicer-helpers-polygon-ops/closure-log.md` (likely candidates: medial_axis tolerance scaling rule for non-1mm fixtures; clarifying whether AC-1's join tolerance is calibrated tight enough for Phase 5/6 thin-wall usage).
 - Confirm the implementer's peak context usage stayed under 70%. If Step 2 pushed it higher, log it as evidence for splitting `medial_axis` into its own packet in similar future work.

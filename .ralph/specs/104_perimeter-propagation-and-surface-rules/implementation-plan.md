@@ -1,4 +1,4 @@
-# Implementation Plan: 102_perimeter-propagation-and-surface-rules
+# Implementation Plan: 104_perimeter-propagation-and-surface-rules
 
 ## Execution Rules
 
@@ -204,6 +204,6 @@ Aggregate context cost: `M`. No single step is `L`. Per-step file edit count nev
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and confirm each returns PASS.
 - Confirm the three gate commands in `packet.spec.md` §Verification are green.
-- Record any test-fixture re-baseline (re-baselined integration tests touching wall geometry on top-shell / first-layer fixtures) in `.ralph/specs/102_perimeter-propagation-and-surface-rules/closure-log.md` with the new SHA.
+- Record any test-fixture re-baseline (re-baselined integration tests touching wall geometry on top-shell / first-layer fixtures) in `.ralph/specs/104_perimeter-propagation-and-surface-rules/closure-log.md` with the new SHA.
 - Note the sibling-roadmap silent dependency in the closure log: `overhang_areas()` returns empty Vec until `overhang-pipeline-restructuring` O-T010 lands; when that lands, no further change to this packet is needed (the accessor consumes the new data automatically).
 - Confirm the implementer's peak context usage stayed under 70%.

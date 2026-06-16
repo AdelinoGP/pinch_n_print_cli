@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 101_slicer-helpers-polygon-ops
+packet: 103_slicer-helpers-polygon-ops
 task_ids:
   - T-040
   - T-041
@@ -12,7 +12,7 @@ backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: 101_slicer-helpers-polygon-ops
+# Packet Contract: 103_slicer-helpers-polygon-ops
 
 ## Goal
 
@@ -24,7 +24,7 @@ Touches `slicer-helpers` (new files for `medial_axis`, `polygon_tree`, `geometry
 
 ## Prerequisites and Blockers
 
-- Depends on: none. This packet is fully independent of packet `100_perimeter-modules-foundations` (different crate); the two may proceed in parallel.
+- Depends on: none. This packet is fully independent of packet `102_perimeter-modules-foundations` (different crate); the two may proceed in parallel.
 - Unblocks:
   - All Phase 5 spacing-model work in M1 (later packet) — needs `offset2_ex` and the polygon tree.
   - All Phase 6 thin-wall + gap-fill work in M1 (later packet) — needs `medial_axis` and `ThickPolyline`.

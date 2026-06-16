@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 102_perimeter-propagation-and-surface-rules
+packet: 104_perimeter-propagation-and-surface-rules
 task_ids:
   - T-020
   - T-021
@@ -16,7 +16,7 @@ backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: 102_perimeter-propagation-and-surface-rules
+# Packet Contract: 104_perimeter-propagation-and-surface-rules
 
 ## Goal
 
@@ -29,7 +29,7 @@ Touches `slicer-sdk` (new view accessors for `overhang_areas` and `surface_group
 ## Prerequisites and Blockers
 
 - Depends on:
-  - Packet `100_perimeter-modules-foundations` — needs the shared `slicer-helpers::perimeter_utils` crate and the widened `WallBoundaryType::MaterialBoundary` Vec representation (T-013 in packet 100 → T-021/T-022 inner-wall material boundary here).
+  - Packet `102_perimeter-modules-foundations` — needs the shared `slicer-helpers::perimeter_utils` crate and the widened `WallBoundaryType::MaterialBoundary` Vec representation (T-013 in packet 100 → T-021/T-022 inner-wall material boundary here).
 - Unblocks:
   - Phase 5 (Classic spacing model + wall sequencing) and Phase 6 (thin-walls + gap-fill) in M1 — once per-vertex propagation is correct, those phases consume the same flag types.
 - Activation blockers: none — D-4 closed (extend `SliceRegionView` per ADR-level decision in the roadmap), D-10 closed (overhang quartile derivation deferred to sibling roadmap), D-11 closed (non-planar wall emission in scope).

@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 100_perimeter-modules-foundations
+packet: 102_perimeter-modules-foundations
 task_ids:
   - T-010
   - T-011
@@ -16,7 +16,7 @@ backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: 100_perimeter-modules-foundations
+# Packet Contract: 102_perimeter-modules-foundations
 
 ## Goal
 
@@ -31,8 +31,8 @@ Touches `slicer-helpers`, `slicer-ir`, `slicer-schema/wit`, both `core-modules/{
 - Depends on:
   - infill-fill-partition Phase 2.0 — landed (verified: `SlicedRegion.sparse_infill_area` at `crates/slicer-ir/src/slice_ir.rs:1268`, `slice-region-view::sparse-infill-area` accessor at line 41, schema 4.1.0). T-013's schema bump is additive (4.1.0 → 4.2.0).
 - Unblocks:
-  - Packet `102_perimeter-propagation-and-surface-rules` (Phases 2 + 3 of M1) — depends on the shared utils crate and per-layer config plumbing this packet establishes.
-  - Packet `101_slicer-helpers-polygon-ops` (Phase 4) is independent of this packet and may proceed in parallel.
+  - Packet `104_perimeter-propagation-and-surface-rules` (Phases 2 + 3 of M1) — depends on the shared utils crate and per-layer config plumbing this packet establishes.
+  - Packet `103_slicer-helpers-polygon-ops` (Phase 4) is independent of this packet and may proceed in parallel.
 - Activation blockers: none — all decisions from grilling session closed (D-1 through D-15).
 
 ## Acceptance Criteria
