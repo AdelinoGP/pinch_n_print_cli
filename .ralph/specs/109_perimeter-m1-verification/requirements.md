@@ -1,4 +1,4 @@
-# Requirements: 107_perimeter-m1-verification
+# Requirements: 109_perimeter-m1-verification
 
 ## Packet Metadata
 
@@ -19,7 +19,7 @@
 
 ## Problem Statement
 
-M1 of the perimeter parity roadmap has shipped 5 implementation packets (P102 foundations, P103 polygon ops, P104 propagation + surface rules, P105 spacing + fill + MMU, P106 special modes + seam) but has no end-to-end parity verification. Without recorded OrcaSlicer reference outputs and a parity harness, regressions during M2 work (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack) will land undetected. The audit also enumerated 7 edge cases that lack regression coverage (3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override) — each represents a class of silent-failure mode in the per-vertex flag propagation or per-region wall-count override logic. Finally, the P96 inherited reshape obligation (T-P96-A) leaves the 4-color cube TDD in a divergent state (the test assertion was reshaped to match OrcaSlicer fragmentation by P105, but the test name and recorded SHA still reflect the pre-reshape baseline) and the `external_contour` IR field remains in `SlicedRegion` as dead weight after P105's revert.
+M1 of the perimeter parity roadmap has shipped 7 implementation packets (P102 foundations, P103 polygon ops, P104 propagation + surface rules, P105 spacing + fill + MMU, P106 overhang PrePass foundation, P107 overhang consumers + refactor, P108 special modes + seam) but has no end-to-end parity verification. Without recorded OrcaSlicer reference outputs and a parity harness, regressions during M2 work (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack) will land undetected. The audit also enumerated 7 edge cases that lack regression coverage (3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override) — each represents a class of silent-failure mode in the per-vertex flag propagation or per-region wall-count override logic. Finally, the P96 inherited reshape obligation (T-P96-A) leaves the 4-color cube TDD in a divergent state (the test assertion was reshaped to match OrcaSlicer fragmentation by P105, but the test name and recorded SHA still reflect the pre-reshape baseline) and the `external_contour` IR field remains in `SlicedRegion` as dead weight after P105's revert.
 
 This packet closes all four concerns. The parity harness + 6 recorded fixtures give M2 a regression bed; the 7 edge-case TDDs lock down propagation correctness; the cube_4color test gets its final renamed-and-rebased state with a new SHA captured under the packet's deviation entry; `external_contour` is removed end-to-end (IR + WIT + host populator + view accessor — ~5 files); and `docs/07_implementation_status.md` records M1 as shipped.
 

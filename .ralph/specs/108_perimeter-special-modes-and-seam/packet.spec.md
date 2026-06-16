@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 106_perimeter-special-modes-and-seam
+packet: 108_perimeter-special-modes-and-seam
 task_ids:
   - T-070
   - T-071
@@ -19,7 +19,7 @@ backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: 106_perimeter-special-modes-and-seam
+# Packet Contract: 108_perimeter-special-modes-and-seam
 
 ## Goal
 
@@ -27,17 +27,19 @@ Land the Phase 7 wall-count overrides (`extra_perimeters` config bonus, narrow-i
 
 ## Scope Boundaries
 
-Touches both perimeter modules' `lib.rs` + manifests, `slicer-helpers::perimeter_utils` (sharp-corner threshold + paint-seam consumption helpers), `seam-placer/src/lib.rs` (consume painted bias/exclusion), `docs/15_config_keys_reference.md`, and `docs/DEVIATION_LOG.md` (D-98-SEAM-NO-CONSUMER supersession + D-OVERHANG-EXTRA-PERIMETERS-DEFERRED registration for T-077). T-077 ships as a no-op with registered deviation because its preconditions (`SliceRegionView::overhang_areas()` from P104 + non-empty `OverhangRegion.xy_footprint` from `overhang-pipeline-restructuring` sibling roadmap) are unmet; the config key is registered and the consumer code path exists but produces zero extra perimeters until the upstream data flows.
+Touches both perimeter modules' `lib.rs` + manifests, `slicer-helpers::perimeter_utils` (sharp-corner threshold + paint-seam consumption helpers), `seam-placer/src/lib.rs` (consume painted bias/exclusion), `docs/15_config_keys_reference.md`, and `docs/DEVIATION_LOG.md` (D-98-SEAM-NO-CONSUMER supersession). T-077 is now a real consumer of `region.overhang_areas()` — the upstream data flow lights up via P106 (overhang PrePass foundation) + P107 (overhang view-accessor + consumer refactor); this packet wires the perimeter-side consumption to actually add extra perimeters in overhang regions.
 
 ## Prerequisites and Blockers
 
 - Depends on:
   - **P102** (foundations) — shared utils crate, multi-segment `MaterialBoundary`.
-  - **P104** (propagation + surface rules) — `SliceRegionView::surface_group()` accessor (T-074b/c/d consume), `overhang_areas()` accessor (T-077 consumes if non-empty).
+  - **P104** (propagation + surface rules) — `SliceRegionView::surface_group()` accessor (T-074b/c/d consume), `overhang_areas()` accessor (T-077 consumes — now returns non-empty after P106+P107).
   - **P105** (spacing + fill + MMU) — outer/inner widths, wall_sequence, ThinWall/GapFill emission (T-074d skips them for non-planar regions).
+  - **P106** (overhang PrePass foundation) — populates `OverhangRegion.xy_footprint` at MeshAnalysis; new `PrePass::OverhangAnnotation` stage produces `overhang_quartile_polygons`.
+  - **P107** (overhang consumers + refactor) — confirms P104's `overhang_areas()` stub returns non-empty data.
 - Unblocks:
-  - **P107 (M1 verification + closure)** — T-103 will close the deviations this packet registers.
-- Activation blockers: none for the packet itself. T-077's full operation is gated on P104 implementation + overhang-pipeline-restructuring Phase 3 shipping; this packet registers the deviation as deferred and is otherwise independently shippable.
+  - **P109 (M1 verification + closure)** — T-103 will close the deviations this packet registers (D-98-SEAM-NO-CONSUMER supersession).
+- Activation blockers: none. All preconditions are concrete predecessor packets, not external sibling roadmaps.
 
 ## Acceptance Criteria
 
@@ -46,7 +48,7 @@ Touches both perimeter modules' `lib.rs` + manifests, `slicer-helpers::perimeter
 - **AC-3. Given** a `SlicedRegion` whose `nonplanar_surface` is `Some(SurfaceGroupId(7))` and the corresponding `SurfaceGroup.shell_count == 3`, **when** `run_perimeters` runs, **then** `PerimeterRegion.walls` contains exactly 3 walls all with `loop_type = LoopType::NonPlanarShell` (NOT `Outer` or `Inner`), `infill_areas` is empty, and no `ThinWall` or `GapFill` loops are emitted regardless of `detect_thin_wall` or `gap_infill_speed` config. | `cargo test -p slicer-runtime --test integration nonplanar_shell_emission_tdd -- --nocapture 2>&1 | tee target/test-output.log`
 - **AC-4. Given** a square contour with 4 corners (90°) and an additional 30 redundant collinear points along each edge, **when** seam-candidate generation runs with `seam_candidate_angle_threshold_deg = 30.0`, **then** `PerimeterRegion.seam_candidates` contains exactly 4 entries (one per corner) — NOT 124 (every vertex) and NOT 0; corner positions match the 4 corner XYs within ±0.01 mm. | `cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd -- --nocapture 2>&1 | tee target/test-output.log`
 - **AC-5. Given** a `boundary_paint` region carrying `PaintSemantic::SeamEnforcer` over a flat (non-corner) wall segment AND a sharper corner candidate outside the enforced region, **when** `seam-placer` selects the seam, **then** the resolved seam falls inside the `SeamEnforcer` region (the enforcer's bias outweighs the sharper-corner geometric score). Given a `SeamBlocker` region covering a wall corner, **then** that corner is **excluded** from `seam_candidates` entirely. | `cargo test -p slicer-runtime --test integration painted_seam_enforcer_blocker_tdd -- --nocapture 2>&1 | tee target/test-output.log`
-- **AC-6. Given** T-077 (`extra_perimeters_on_overhangs`) shipping under current preconditions (P104 not yet implemented OR overhang-pipeline-restructuring Phase 3 unshipped — empty `overhang_areas()`), **when** the config is enabled, **then** zero extra perimeters are added (no-op due to empty input), AND `docs/DEVIATION_LOG.md` carries an entry `D-<packet>-OVERHANG-EXTRA-PERIMETERS-DEFERRED` referencing both preconditions. | `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_deferred_tdd -- --nocapture 2>&1 | tee target/test-output.log && rg -q 'D-.*-OVERHANG-EXTRA-PERIMETERS-DEFERRED' docs/DEVIATION_LOG.md`
+- **AC-6. Given** an overhang-ramp fixture where `region.overhang_areas()` returns non-empty (P106's `xy_footprint` populated + P107's view-accessor lighting up P104's stub) and `extra_perimeters_on_overhangs = true`, **when** `run_perimeters` runs on a layer with overhang regions, **then** the wall_count inside `region.overhang_areas()` polygons is N+1 (one extra perimeter beyond the configured base `wall_count = N`), while wall_count outside those polygons stays at N. With `extra_perimeters_on_overhangs = false`, the wall count is N everywhere regardless of overhang membership. | `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd -- --nocapture 2>&1 | tee target/test-output.log`
 
 ## Negative Test Cases
 
@@ -57,7 +59,7 @@ Touches both perimeter modules' `lib.rs` + manifests, `slicer-helpers::perimeter
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_deferred_tdd && cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`
+- `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_tdd && cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`
 
 ## Authoritative Docs
 
@@ -70,7 +72,7 @@ Touches both perimeter modules' `lib.rs` + manifests, `slicer-helpers::perimeter
 ## Doc Impact Statement (Required)
 
 - `docs/15_config_keys_reference.md` — register `extra_perimeters` (int, default 0), `smaller_perimeter_line_width` (float, default 0.25), `smaller_perimeter_threshold_mm` (float, default 0.8), `narrow_loop_length_threshold_mm` (float, default 10.0), `seam_candidate_angle_threshold_deg` (float, default 30.0), `extra_perimeters_on_overhangs` (bool, default false) — `rg -q 'extra_perimeters' docs/15_config_keys_reference.md && rg -q 'smaller_perimeter_line_width' docs/15_config_keys_reference.md && rg -q 'seam_candidate_angle_threshold_deg' docs/15_config_keys_reference.md && rg -q 'extra_perimeters_on_overhangs' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` — supersede `D-98-SEAM-NO-CONSUMER` with `D-<packet>-SEAM-CONSUMED`, register `D-<packet>-OVERHANG-EXTRA-PERIMETERS-DEFERRED` — `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md && rg -q 'D-.*-OVERHANG-EXTRA-PERIMETERS-DEFERRED' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — supersede `D-98-SEAM-NO-CONSUMER` with `D-<packet>-SEAM-CONSUMED` — `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md`
 - `docs/05_module_sdk.md` §"Seam-candidate generation" — document the sharp-corner threshold + paint-seam consumption convention — `rg -q 'seam_candidate_angle_threshold_deg' docs/05_module_sdk.md && rg -q 'SeamEnforcer.*bias\|SeamBlocker.*exclude' docs/05_module_sdk.md`
 
 <!-- snippet: orca-delegation -->

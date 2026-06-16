@@ -1,4 +1,4 @@
-# Design: 106_perimeter-special-modes-and-seam
+# Design: 108_perimeter-special-modes-and-seam
 
 ## Controlling Code Paths
 
@@ -15,7 +15,7 @@
 - Per-layer config rule: all 6 new config keys are read via `_config.get*` per `run_perimeters` call.
 - Non-planar branch invariant (per D-11 closure): when `region.nonplanar_surface.is_some()`, the perimeter module emits `shell_count` walls of `LoopType::NonPlanarShell` and produces empty `infill_areas`; the downstream `non-planar-walls` module (sibling roadmap, not in this packet's scope) does the Z modulation. The perimeter module does NOT compute or write per-vertex non-planar Z here.
 - `LoopType::NonPlanarShell` already exists in the IR (no schema bump in this packet). The variant is used for the first time by emission code in this packet.
-- T-077 deferred-by-data invariant: when `region.overhang_areas()` returns empty, the `extra_perimeters_on_overhangs` consumer adds zero walls regardless of config. The code path is wired and tested for the empty case; non-empty behavior is covered by the future packet that lands once the preconditions ship.
+- T-077 real-consumer invariant: when `region.overhang_areas()` returns non-empty (post-P106+P107 data flow), the `extra_perimeters_on_overhangs` consumer adds one extra wall inside the overhang polygons; outside, wall count is unaffected. The code path also handles empty input gracefully (e.g., layers with no overhang) — zero extras, no panic.
 - Seam-candidate sparseness invariant: `seam-placer` MUST tolerate `seam_candidates.len() == 0` (returns `Err(SeamPlacerError::NoCandidates)` per AC-N2). If T-082 audit finds the current `seam-placer` panics or silently produces a degenerate seam on empty input, that's a Step 4 fix.
 
 ## Code Change Surface
@@ -49,7 +49,7 @@
 ## Read-Only Context
 
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read Phase 7 + Phase 8 sub-tables + "Inherited from P98" section.
-- `docs/specs/overhang-pipeline-restructuring.md` — read full — purpose: understand T-077's deferred-consumer context.
+- `docs/specs/overhang-pipeline-restructuring.md` — read full — purpose: understand the now-shipped upstream data flow T-077 consumes.
 - `docs/02_ir_schemas.md` — delegate SUMMARY for `LoopType`, `SurfaceGroup`, `PaintSemantic::SeamEnforcer`/`SeamBlocker`.
 - `docs/05_module_sdk.md` — delegate SUMMARY for `SliceRegionView::surface_group()` and `PaintRegionLayerView::get_regions`.
 - `docs/DEVIATION_LOG.md` — read `D-98-SEAM-NO-CONSUMER` and any recent OVERHANG-related entries.
@@ -70,7 +70,7 @@
 - "Summarize OrcaSlicerDocumented/src/libslic3r/Feature/SeamPlacer/SeamPlacer.cpp for sharp-corner candidate selection + painted seam consumption; return SUMMARY ≤ 200 words, no code." — Step 4.
 - "FACT: confirm OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:1569 carries `loop_number = wall_loops + surface.extra_perimeters - 1`; return single-line FACT." — Step 1.
 - "Find call sites of `generate_seam_candidates` (legacy) across the workspace; return LOCATIONS ≤ 10 entries." — Step 4 migration scope.
-- "Run `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_deferred_tdd && cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`; return FACT pass/fail per test." — packet close.
+- "Run `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_tdd && cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`; return FACT pass/fail per test." — packet close.
 
 ## Data and Contract Notes
 
@@ -90,7 +90,7 @@
 
 ## Risks and Tradeoffs
 
-- T-077 ships as a deferred no-op + deviation. Risk: future implementer who reads the config schema might assume the feature works. Mitigation: explicit deviation entry, doc-comment in the consumer code path naming both preconditions, AC-6 test that asserts the no-op behavior under empty preconditions.
+- T-077 consumes data from two upstream packets (P106 + P107). Risk: if P106 or P107 ships incomplete (e.g., `xy_footprint` populated but accessor pre-filter buggy), T-077's overhang region check would silently produce wrong wall counts. Mitigation: AC-6 directly tests both "non-empty overhang → N+1 walls" and "empty overhang → N walls" paths on the same fixture, catching either failure mode.
 - Sharp-corner threshold's default (30°) may cut some users' historical "every-vertex seam" expectations. Mitigation: register the config so users can lower it; document the default in the seam-placer SDK doc.
 - `apply_seam_paint_bias` runs over all candidates after threshold filtering. Performance is O(candidates × paint_regions). With the candidate density reduced by ~25× (T-080), this stays well under budget. If a fixture surfaces a perf regression, switch to AABB pre-filtering of paint regions.
 - The T-082 + T-083 deliverables are documentation, not code — risk that they get cut. Mitigation: the Doc Impact Statement greps fail if the sections aren't present, blocking packet close.
@@ -104,5 +104,5 @@
 ## Open Questions
 
 - `[FWD]` `seam_enforcer_bias_factor` exact value: roadmap doesn't specify. Default `0.1` chosen for "10× preferred"; if a fixture shows enforcer regions losing to extremely sharp corners outside, raise the factor (lower the number). Configurable via a future packet if needed.
-- `[FWD]` T-077 deferred test name: `extra_perimeters_on_overhangs_deferred_tdd` is verbose. If a shorter convention emerges, use it; otherwise current name is fine.
+- `[FWD]` T-077 test fixture: overhang-ramp mesh shared with P106 + P107 is the natural fixture; if the regression fixture conventions differ, follow existing patterns.
 - `[FWD]` T-083 seam-planner interaction: if the implementer finds during the audit that seam-planner-default DOES feed perimeter-time candidate generation (contrary to current assumption), revise the doc note + add an integration test. Otherwise the one-paragraph note is sufficient.

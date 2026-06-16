@@ -1,4 +1,4 @@
-# Implementation Plan: 106_perimeter-special-modes-and-seam
+# Implementation Plan: 108_perimeter-special-modes-and-seam
 
 ## Execution Rules
 
@@ -115,29 +115,26 @@
   - `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md` — exit 0.
 - Exit condition: AC-5 + AC-N2 green; D-98-SEAM-NO-CONSUMER superseded; T-082/T-083 doc paragraphs present.
 
-### Step 5: T-077 — Deferred extra_perimeters_on_overhangs consumer + deviation registration
+### Step 5: T-077 — extra_perimeters_on_overhangs real consumer
 
 - Task IDs:
-  - `T-077` — Register config + wire deferred consumer
-- Objective: register `extra_perimeters_on_overhangs`; wire the consumer code path in both perimeter modules that reads `region.overhang_areas()` and adds extras inside those regions; register `D-<packet>-OVERHANG-EXTRA-PERIMETERS-DEFERRED` deviation; AC test asserts no-op under empty preconditions.
-- Precondition: Step 4 exit condition met.
+  - `T-077` — Register config + wire real consumer (consumes data from P106+P107)
+- Objective: register `extra_perimeters_on_overhangs`; wire the consumer code path in both perimeter modules that reads `region.overhang_areas()` (returning non-empty post-P106+P107) and adds one extra perimeter inside those areas; AC fixture exercises both non-empty (overhang ramp) and empty (flat region) paths on the same layer.
+- Precondition: Step 4 exit condition met; P106 + P107 are `status: implemented` (data flow available).
 - Postcondition: AC-6 passes.
 - Files allowed to read:
   - Both perimeter modules' `lib.rs` — range-read the extra-perimeter loop.
-  - `docs/DEVIATION_LOG.md` — format reference.
-- Files allowed to edit (≤ 3):
-  - Both perimeter `lib.rs` + `modules/core-modules/{classic,arachne}-perimeters/*.toml` (manifest register) — counts as 3 if classic+arachne `lib.rs` count as one logical edit; otherwise split into 5a (classic) + 5b (arachne).
-  - `crates/slicer-runtime/tests/integration/extra_perimeters_on_overhangs_deferred_tdd.rs` (NEW).
-  - `docs/DEVIATION_LOG.md` — register `D-<packet>-OVERHANG-EXTRA-PERIMETERS-DEFERRED`.
-- Files explicitly out-of-bounds: P104's `overhang_areas()` accessor (do not re-edit); sibling roadmap files.
+- Files allowed to edit (≤ 3 per sub-step):
+  - 5a (manifests): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
+  - 5b (consumers + test): both perimeter `lib.rs` + `crates/slicer-runtime/tests/integration/extra_perimeters_on_overhangs_tdd.rs` (NEW; fixture asserts N+1 walls in overhang region + N walls in flat region on the same layer).
+- Files explicitly out-of-bounds: P104's `overhang_areas()` accessor (do not re-edit); P106/P107 source.
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_deferred_tdd`; FACT pass/fail."
+  - "Run `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd`; FACT pass/fail per case."
 - Context cost: `S`
-- Authoritative docs: `docs/specs/perimeter-modules-orca-parity-roadmap.md` T-077 row; `docs/specs/overhang-pipeline-restructuring.md`.
-- OrcaSlicer refs: none directly (the OrcaSlicer behavior is the future target, not the current deferred shape).
+- Authoritative docs: `docs/specs/perimeter-modules-orca-parity-roadmap.md` T-077 row; `docs/specs/overhang-pipeline-restructuring.md` (predecessor data flow).
+- OrcaSlicer refs: none directly — the OrcaSlicer behavior `extra_perimeters_on_overhangs` is the implementation target; the SUMMARY for it is captured by P105's investigation if needed.
 - Verification:
-  - `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_deferred_tdd 2>&1 | tee target/test-output.log` — FACT.
-  - `rg -q 'D-.*-OVERHANG-EXTRA-PERIMETERS-DEFERRED' docs/DEVIATION_LOG.md` — exit 0.
+  - `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd 2>&1 | tee target/test-output.log` — FACT.
 - Exit condition: AC-6 green.
 
 ## Per-Step Budget Roll-Up
@@ -167,5 +164,5 @@ Aggregate context cost: `M`. No step `L`. Per-step file edit count ≤ 3 (sub-st
 - Re-dispatch every pipe-suffixed AC command from `packet.spec.md`.
 - Confirm gate commands green.
 - Record T-082 audit findings in the closure log (was seam-placer robust to empty input, or did it need a fix? what was the fix?).
-- Record T-077 status: confirm it's deferred-no-op under current preconditions and the deviation is registered with both precondition references.
+- Record T-077 fixture verification: confirm AC-6 fixture produces N+1 walls inside `region.overhang_areas()` and N walls outside on the same layer.
 - Confirm implementer's peak context usage < 70%.

@@ -1,4 +1,4 @@
-# Requirements: 106_perimeter-special-modes-and-seam
+# Requirements: 108_perimeter-special-modes-and-seam
 
 ## Packet Metadata
 
@@ -33,19 +33,19 @@ The seam quality work has two halves:
 1. **Sharp-corner threshold (T-080..T-083)**: current modules push **every wall vertex** as a seam candidate. For a 100-vertex polygon, that's 100 candidates per layer-region. Seam-placer's scoring runs over all of them. Replacing with an angle-threshold (only corners with turn-angle ≥ ~30°) reduces candidates ~25× on typical shapes.
 2. **Painted seam consumption (T-P98-SEAM, inherited)**: P98 decoded `paint_seam` sub-facet strokes into `SeamEnforcer`/`SeamBlocker` semantics in `boundary_paint`, but no live module reads them (`D-98-SEAM-NO-CONSUMER`). This packet wires the consumer: enforcer regions bias seam-candidate selection toward enclosed vertices; blocker regions exclude enclosed vertices.
 
-T-077 (`extra_perimeters_on_overhangs`) is included in scope but ships as a deferred no-op + registered deviation because its data-flow preconditions (P104 implementation + sibling roadmap Phase 3) are unmet. The config key is registered and the consumer code path is wired against `region.overhang_areas()`; when the accessor returns non-empty, T-077 starts working without further code change.
+T-077 (`extra_perimeters_on_overhangs`) is a real consumer in this packet — its data-flow preconditions (P104 stub accessor + P106 PrePass-side `xy_footprint` population + P107 view-accessor confirmation) all ship before this packet runs. The config key is registered and the consumer code path adds one extra perimeter inside `region.overhang_areas()` polygons when enabled.
 
 ## In Scope
 
 - Both perimeter modules' `lib.rs` (Phase 7 consumers): `extra_perimeters` bonus consumption, narrow-island detection + smaller-width emission, non-planar branch (`LoopType::NonPlanarShell` emission with `shell_count` from `SurfaceGroup`).
-- Both perimeter modules' `lib.rs` (T-077 deferred consumer): read `region.overhang_areas()`; when non-empty, add extra perimeters within those areas. With current empty-accessor preconditions, this code path produces zero extras.
+- Both perimeter modules' `lib.rs` (T-077 real consumer): read `region.overhang_areas()`; when non-empty, add one extra perimeter inside those areas; `wall_count` outside overhang regions is unaffected.
 - `crates/slicer-helpers/src/perimeter_utils.rs`:
   - Extend `generate_seam_candidates` with `angle_threshold_deg: f32` parameter; emit only corners exceeding the threshold; rename to `generate_sharp_corner_seam_candidates` or version-2 alongside the existing (which both modules then call with the new threshold).
   - Add `apply_seam_paint_bias(&mut Vec<SeamCandidate>, &PaintRegionLayerView)` helper that biases enforcer-enclosed candidates and removes blocker-enclosed candidates.
 - `modules/core-modules/seam-placer/src/lib.rs`: confirm candidate-list-density assumptions are robust to sparser input (T-082 audit); document or fix; call `apply_seam_paint_bias` before scoring.
 - Both perimeter manifests + `docs/15_config_keys_reference.md`: register 6 new config keys (`extra_perimeters`, `smaller_perimeter_line_width`, `smaller_perimeter_threshold_mm`, `narrow_loop_length_threshold_mm`, `seam_candidate_angle_threshold_deg`, `extra_perimeters_on_overhangs`).
 - `docs/05_module_sdk.md` §"Seam-candidate generation" — document the new convention.
-- `docs/DEVIATION_LOG.md` — supersede `D-98-SEAM-NO-CONSUMER`; register `D-<packet>-OVERHANG-EXTRA-PERIMETERS-DEFERRED`.
+- `docs/DEVIATION_LOG.md` — supersede `D-98-SEAM-NO-CONSUMER` only. T-077's deferred-no-op deviation is **not** registered because the upstream data is available before this packet runs (P106 + P107 are predecessors).
 - 6 new TDD files covering ACs.
 
 ## Out of Scope
@@ -82,12 +82,12 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` (extra_perimeters bonus), `AC-2` (narrow-island smaller_perimeter), `AC-3` (non-planar shell emission with shell_count), `AC-4` (sharp-corner threshold reduces candidate count), `AC-5` (painted enforcer biases, painter blocker excludes), `AC-6` (T-077 deferred no-op + deviation logged).
+- Positive cases: `AC-1` (extra_perimeters bonus), `AC-2` (narrow-island smaller_perimeter), `AC-3` (non-planar shell emission with shell_count), `AC-4` (sharp-corner threshold reduces candidate count), `AC-5` (painted enforcer biases, painter blocker excludes), `AC-6` (T-077 adds N+1 walls in overhang regions vs N elsewhere).
 - Negative cases: `AC-N1` (non-planar skips thin-wall even when config enabled), `AC-N2` (blocker exhausts candidates → graceful error).
 - Refinements not captured in Given/When/Then:
   - Sharp-corner threshold is signed turn angle (concave + convex both count toward threshold — both are sharp in absolute value). Concave corners get a slight score bonus (visibility hides better) per the existing `generate_seam_candidates` convention.
   - `apply_seam_paint_bias` enforcer bias factor: multiply the candidate's score by `seam_enforcer_bias_factor` (default 0.1, lower = more preferred). Blocker exclusion: remove candidate entirely (do not just deboost).
-- Cross-packet impact: depends on P102 + P104 + P105. Unblocks P107.
+- Cross-packet impact: depends on P102 + P104 + P105 + **P106 + P107** (overhang foundation + consumers). Unblocks P109.
 
 ## Verification Commands
 
@@ -100,15 +100,14 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test integration nonplanar_shell_emission_tdd` | AC-3 + AC-N1 | FACT pass/fail per case |
 | `cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd` | AC-4 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration painted_seam_enforcer_blocker_tdd` | AC-5 + AC-N2 | FACT pass/fail per case |
-| `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_deferred_tdd` | AC-6 (no-op verification) | FACT pass/fail |
+| `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd` | AC-6 (N+1 in overhang, N elsewhere) | FACT pass/fail per case |
 | `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md` | T-P98-SEAM deviation supersession | FACT pass/fail |
-| `rg -q 'D-.*-OVERHANG-EXTRA-PERIMETERS-DEFERRED' docs/DEVIATION_LOG.md` | T-077 deviation registration | FACT pass/fail |
 | `cargo xtask build-guests --check` | Guest WASM coherence | FACT clean / STALE list |
 
 ## Step Completion Expectations
 
 - Cross-step invariant: existing `boundary_paint_tdd.rs`, `arachne_perimeters_tdd.rs`, `classic_perimeters_tdd.rs`, and `mmu_bisector_dedup_tdd.rs` (from P105) regression tests MUST stay green at every step. The new code paths add wall-count overrides and seam-candidate filtering — they must not regress existing single-color planar wall shapes.
-- Step ordering rationale: wall-count overrides (Step 1-3) before seam work (Step 4-5) because the overrides change `walls` content, which seam-candidate generation reads. T-077 deferred consumer (Step 6) lands last because it depends on all prior wall-emission logic and only adds a no-op-by-default code path.
+- Step ordering rationale: wall-count overrides (Step 1-3) before seam work (Step 4-5) because the overrides change `walls` content, which seam-candidate generation reads. T-077 (Step 6) lands last because it depends on all prior wall-emission logic; AC-6 fixture exercises the full P106 + P107 + this packet's data path.
 - Shared scratch state: none.
 
 ## Context Discipline Notes
