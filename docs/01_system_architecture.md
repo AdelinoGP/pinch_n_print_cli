@@ -72,33 +72,37 @@ is retired (the loader's output is the authoritative normalized form).
 
 #### PrePass Stage Order
 
-The six prepass stages execute in this order:
+The seven prepass stages execute in this order:
 
 ```
-1. PrePass::MeshSegmentation   (retired — loader already normalizes strokes)
+1. PrePass::MeshSegmentation     (retired — loader already normalizes strokes)
 2. PrePass::MeshAnalysis
 3. PrePass::LayerPlanning
-4. PrePass::RegionMapping      (host-built-in; cross-product variant expansion)
-5. PrePass::PaintSegmentation  (post-slice; reads SliceIR, writes via replace_slice_ir)
-6. PrePass::SupportGeometry    (host-built-in always runs; guest optional)
+4. PrePass::OverhangAnnotation   (introduced P106; populates SurfaceClassificationIR.overhang_quartile_polygons)
+5. PrePass::PaintSegmentation    (post-slice; reads SliceIR, writes via replace_slice_ir)
+6. PrePass::RegionMapping        (host-built-in; cross-product variant expansion)
+7. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
 ```
 
 Stages 1–3 are the classic mesh-analysis and layer-planning pipeline.
-`PrePass::RegionMapping` (stage 4) now performs cross-product expansion: each
-`(layer, object, active_region)` is split into one `RegionPlan` per canonical
-**variant chain** (see §"Variant-Chain Region Splitting" below). `PaintRegionIR`
-is deleted; per-variant polygons are produced by `PrePass::PaintSegmentation`
-(stage 5), which runs after `host:slice` and `host:shell_classification` and
-writes back via `replace_slice_ir`. `PrePass::SupportGeometry` (stage 6) runs
-last so it can consume the fully-split `SliceIR`.
+`PrePass::OverhangAnnotation` (stage 4; introduced P106) runs after LayerPlanning
+and populates per-layer quartile band polygons into `SurfaceClassificationIR` so
+Tier 2 consumers can read pre-classified overhang data without cross-layer access.
+`PrePass::PaintSegmentation` (stage 5) runs after `host:slice` and
+`host:shell_classification` and writes per-variant polygons back into `SliceIR`
+via `replace_slice_ir`. `PaintRegionIR` is deleted. `PrePass::RegionMapping`
+(stage 6) then performs cross-product expansion: each `(layer, object,
+active_region)` is split into one `RegionPlan` per canonical **variant chain**
+(see §"Variant-Chain Region Splitting" below). `PrePass::SupportGeometry`
+(stage 7) runs last so it can consume the fully-split `SliceIR`.
 
 **Note:** `host:slice` and `host:shell_classification` are Layer-stage host
 calls (not `PrePass::*` enum variants) that run between `PrePass::MeshAnalysis`
-(stage 2) and `PrePass::PaintSegmentation` (stage 5) in the broader pipeline.
+(stage 2) and `PrePass::PaintSegmentation` (stage 6) in the broader pipeline.
 The packet's AC-1 "Given" referenced them as part of a nine-stage prepass-style
-sequence; this doc enumerates the six `PrePass::*`-tagged stages per the
+sequence; this doc enumerates the seven `PrePass::*`-tagged stages per the
 post-roadmap type system, with `host:slice` and `host:shell_classification`
-treated as Layer-stages that bracket stage 5.
+treated as Layer-stages that bracket stage 6.
 
 ```
 PrePass::MeshSegmentation  [retired — loader does this work]
@@ -122,6 +126,17 @@ PrePass::LayerPlanning
            Handle multi-object LCM synchronization layers.
            Assign non-planar shells to surface groups.
            Handle catch-up layers for regions with different heights.
+
+PrePass::OverhangAnnotation  [introduced P106; owned by core-modules/overhang-annotator-default]
+  Input:  MeshIR + LayerPlanIR (committed by MeshAnalysis + LayerPlanning)
+  Output: SurfaceClassificationIR.overhang_quartile_polygons (per-layer HashMap<u32, Vec<QuartileBand>>)
+  Purpose: For each layer Z in LayerPlanIR, compute mesh cross-sections at the current and
+           prior layer Z, derive per-point distances from the previous cross-section, and
+           partition the 2D footprint into 4 quartile bands (thresholds: line_width × {0.5, 1.0,
+           1.5, 2.0}). Band 1 is closest to support; band 4 is the most overhanging edge.
+           Consumers (perimeter modules, infill modules, seam modules) read these polygons via
+           point-in-polygon without cross-layer access — the classification is pre-computed at
+           PrePass time. See ADR-0012.
 
 PrePass::RegionMapping  [host-built-in, not a module stage]
   Input:  LayerPlanIR + LoadedModules + ResolvedConfig + MeshIR.paint_data
@@ -511,9 +526,10 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 
 | Stage                                    | Reads                                                              | Writes                                                              |
 |------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
-| `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                           |
-| `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                       |
-| `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `SliceIR` (via `replace_slice_ir`; per-variant polygons)            |
+| `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                                                                |
+| `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                                                            |
+| `PrePass::OverhangAnnotation`            | `MeshIR`, `LayerPlanIR`                                            | `SurfaceClassificationIR.overhang_quartile_polygons` (per-layer quartile bands; introduced P106)         |
+| `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `SliceIR` (via `replace_slice_ir`; per-variant polygons)                                                 |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |

@@ -14,7 +14,7 @@
 - Task IDs:
   - `T-100` — Build reference-fixture parity harness
 - Objective: implement `crates/slicer-runtime/tests/integration/perimeter_parity.rs` containing the harness + per-field tolerance comparator + a self-test that constructs a synthetic mismatch and asserts the comparator detects it.
-- Precondition: P102..P106 implementations landed (status: implemented); workspace builds clean.
+- Precondition: P102..P108 implementations landed (status: implemented); workspace builds clean.
 - Postcondition: AC-1 + AC-N1 pass.
 - Files allowed to read:
   - `crates/slicer-ir/src/slice_ir.rs` — range-read `PerimeterIR` + `PerimeterRegion` + `WallLoop` definitions for the comparator.
@@ -151,7 +151,7 @@
 - Authoritative docs: the three docs being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - All five Doc Impact Statement greps return hits.
+  - All four Doc Impact Statement greps return hits.
   - `rg -q 'D-96-AC22-EXTERNAL-CONTOUR.*superseded' docs/DEVIATION_LOG.md` — exit 0.
 - Exit condition: AC-6 green; status doc + roadmap reflect M1 close.
 
@@ -200,7 +200,7 @@ Aggregate context cost: `M`. No step `L`. Per-step file edit count ≤ 3 (Step 5
 
 - Re-dispatch every pipe-suffixed AC command from `packet.spec.md`.
 - Confirm the three gate commands green.
-- Record the captured cube_4color SHA in the closure log and in `docs/DEVIATION_LOG.md` as `P107_CUBE_4COLOR_PARITY_SHA` (or `P<packet>_CUBE_4COLOR_PARITY_SHA` matching the packet number).
+- Record the captured cube_4color SHA in the closure log and in `docs/DEVIATION_LOG.md` as `P109_CUBE_4COLOR_PARITY_SHA`.
 - Record the OrcaSlicer commit-hash (or version) the 6 fixture SUMMARYs were derived from.
-- Confirm M1 close: `docs/07_implementation_status.md` reflects "M1 — Classic perimeter parity (P102..P107): complete".
+- Confirm M1 close: `docs/07_implementation_status.md` reflects "M1 — Classic perimeter parity (P102..P108) verified by P109: complete".
 - Confirm implementer's peak context usage < 70%.

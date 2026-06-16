@@ -41,7 +41,7 @@
 - `modules/core-modules/overhang-classifier-default/src/lib.rs` — refactor.
 - `crates/slicer-wasm-host/src/host.rs` — populator.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — WIT.
-- `modules/core-modules/overhang-classifier-default/{classify,lines_distancer}.rs` — DELETE.
+- `modules/core-modules/overhang-classifier-default/src/{classify,lines_distancer}.rs` — DELETE.
 - `modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml` — manifest.
 - 3 new TDD files.
 - 4 docs per Doc Impact Statement.
@@ -52,7 +52,7 @@
 - `docs/adr/0012-overhang-classification-at-prepass.md` — read full — purpose: confirm classification reads from IR.
 - `docs/specs/overhang-pipeline-restructuring.md` — range-read Phase 3/4/5.
 - `docs/05_module_sdk.md` — delegate SUMMARY for `SliceRegionView` accessor convention.
-- `modules/core-modules/overhang-classifier-default/src/lib.rs` — read full (≤ 100 LOC pre-refactor).
+- `modules/core-modules/overhang-classifier-default/src/lib.rs` — read full (≤ 200 LOC pre-refactor; actual ~106 LOC).
 - `modules/core-modules/overhang-classifier-default/src/classify.rs` — read once to confirm what's deleted; do not re-read.
 - `crates/slicer-sdk/src/views.rs` — range-read existing accessor patterns.
 - `crates/slicer-wasm-host/src/host.rs` — range-read populator pattern (e.g., bridge_areas populator).

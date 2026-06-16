@@ -67,23 +67,23 @@
 - Task IDs:
   - `T-080` — Replace every-vertex candidate with sharp-corner threshold
   - `T-081` — Register `seam_candidate_angle_threshold_deg`
-- Objective: add `generate_sharp_corner_seam_candidates` helper to `slicer-helpers::perimeter_utils`; register the config key; migrate both perimeter modules to call the new helper.
+- Objective: add `generate_sharp_corner_seam_candidates` helper to `slicer-core::perimeter_utils`; register the config key; migrate both perimeter modules to call the new helper.
 - Precondition: Step 2 exit condition met.
 - Postcondition: AC-4 passes.
 - Files allowed to read:
-  - `crates/slicer-helpers/src/perimeter_utils.rs` (range-read existing `generate_seam_candidates`).
+  - `crates/slicer-core/src/perimeter_utils.rs` (range-read existing `generate_seam_candidates`).
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-helpers/src/perimeter_utils.rs`
-  - `crates/slicer-helpers/tests/sharp_corner_seam_threshold_tdd.rs` (NEW)
+  - `crates/slicer-core/src/perimeter_utils.rs`
+  - `crates/slicer-core/tests/sharp_corner_seam_threshold_tdd.rs` (NEW)
   - Both perimeter `lib.rs` migration (counts as one file conceptually; if it must be two, do classic first as 3a and arachne as 3b).
 - Files explicitly out-of-bounds: `seam-placer` (Step 4); manifests (handled with Step 2's reference doc).
 - Expected sub-agent dispatches:
   - "Find call sites of `generate_seam_candidates` across the workspace; LOCATIONS ≤ 10 entries."
-  - "Run `cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`; FACT pass/fail."
+  - "Run `cargo test -p slicer-core --test sharp_corner_seam_threshold_tdd`; FACT pass/fail."
 - Context cost: `S`
 - Authoritative docs: `docs/specs/perimeter-modules-orca-parity-roadmap.md` T-080/T-081 rows.
 - OrcaSlicer refs: optional `OrcaSlicerDocumented/src/libslic3r/Feature/SeamPlacer/SeamPlacer.cpp` SUMMARY ≤ 100 words for angle-threshold default; default to 30° if SUMMARY doesn't specify.
-- Verification: `cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd 2>&1 | tee target/test-output.log` — FACT.
+- Verification: `cargo test -p slicer-core --test sharp_corner_seam_threshold_tdd 2>&1 | tee target/test-output.log` — FACT.
 - Exit condition: AC-4 green; both perimeter modules call the new helper.
 
 ### Step 4: T-082/T-083/T-P98-SEAM — Painted seam consumption + seam-placer audit + integration
@@ -92,15 +92,15 @@
   - `T-082` — Audit seam-placer for dense-candidate dependency
   - `T-083` — Document seam-planner-default interaction
   - `T-P98-SEAM` — Consume painted seam_enforcer/blocker
-- Objective: add `apply_seam_paint_bias` helper in `slicer-helpers::perimeter_utils`; call it from `seam-placer/src/lib.rs` (or from perimeter modules before commit — implementer's choice per design); audit seam-placer for empty-list robustness; document seam-planner interaction; supersede `D-98-SEAM-NO-CONSUMER`.
+- Objective: add `apply_seam_paint_bias` helper in `slicer-core::perimeter_utils`; call it from `seam-placer/src/lib.rs` (or from perimeter modules before commit — implementer's choice per design); audit seam-placer for empty-list robustness; document seam-planner interaction; supersede `D-98-SEAM-NO-CONSUMER`.
 - Precondition: Step 3 exit condition met.
 - Postcondition: AC-5 + AC-N2 pass; deviation supersession landed.
 - Files allowed to read:
   - `modules/core-modules/seam-placer/src/lib.rs` — full (audit target).
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — confirm where to land the helper.
+  - `crates/slicer-core/src/perimeter_utils.rs` — confirm where to land the helper.
   - `docs/DEVIATION_LOG.md` — `D-98-SEAM-NO-CONSUMER` entry.
 - Files allowed to edit (≤ 3 per sub-step):
-  - 4a (helper): `crates/slicer-helpers/src/perimeter_utils.rs`.
+  - 4a (helper): `crates/slicer-core/src/perimeter_utils.rs`.
   - 4b (consumer + test): `modules/core-modules/seam-placer/src/lib.rs` + `crates/slicer-runtime/tests/integration/painted_seam_enforcer_blocker_tdd.rs` (NEW).
   - 4c (docs): `docs/05_module_sdk.md` (audit + interaction notes) + `docs/DEVIATION_LOG.md`.
 - Files explicitly out-of-bounds: perimeter modules' `lib.rs` (no further edits in this step); `seam-planner-default/src/lib.rs` (T-083 deliverable is doc-based, not source).

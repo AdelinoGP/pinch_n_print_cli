@@ -25,14 +25,14 @@
 - Files allowed to edit (≤ 3 per sub-step):
   - 1a (SDK + WIT): `crates/slicer-sdk/src/views.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`.
   - 1b (host populator): `crates/slicer-wasm-host/src/host.rs`.
-  - 1c (contract test): `crates/slicer-runtime/tests/contract/slice_region_view_overhang_areas_non_empty_tdd.rs` (NEW).
+  - 1c (contract test): `crates/slicer-runtime/tests/contract/slice_region_view_overhang_areas_non_empty_tdd.rs` (NEW) + `crates/slicer-runtime/tests/contract/main.rs` (register `mod slice_region_view_overhang_areas_non_empty_tdd;`).
 - Files explicitly out-of-bounds:
   - Module source (Step 2).
   - IR (P106 owns; no IR change here).
 - Expected sub-agent dispatches:
   - "Find the `bridge_areas` populator pattern in `crates/slicer-wasm-host/src/host.rs`; return SNIPPETS ≤ 30 lines."
   - "FACT: confirm `QuartileBand` shape from P106 — return field list."
-  - "Run `cargo build --tests --workspace`; FACT pass/fail."
+  - "Run `cargo check --workspace --all-targets`; FACT pass/fail."
   - "Run `cargo xtask build-guests --check`; FACT (clean / STALE list)."
 - Context cost: `M`
 - Authoritative docs: `docs/05_module_sdk.md` (delegate SUMMARY), `docs/03_wit_and_manifest.md` §"WIT/Type Changes Checklist".
@@ -71,7 +71,7 @@
   - `! ls modules/core-modules/overhang-classifier-default/src/classify.rs 2>/dev/null` — exit 0 (file absent).
   - `! ls modules/core-modules/overhang-classifier-default/src/lines_distancer.rs 2>/dev/null` — exit 0.
   - `[ $(wc -l < modules/core-modules/overhang-classifier-default/src/lib.rs) -le 80 ]` — exit 0 (LOC bound).
-  - `! rg -q 'path_geometry\|LayerCollectionIR' modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml` — exit 0.
+  - `! rg -q 'LayerCollectionIR\.path_geometry' modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml` — exit 0.
 - Exit condition: AC-3 + AC-4 green; module shrunk; auxiliary files deleted.
 
 ### Step 3: O-T050 — End-to-end overhang propagation TDD
@@ -84,7 +84,7 @@
 - Files allowed to read:
   - `modules/core-modules/overhang-classifier-default/src/lib.rs` (post-refactor).
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-runtime/tests/integration/overhang_pipeline_e2e_tdd.rs` (NEW; both AC-5 positive + AC-N1 negative)
+  - `crates/slicer-runtime/tests/integration/overhang_pipeline_e2e_tdd.rs` (NEW; both AC-5 positive + AC-N1 negative) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_pipeline_e2e_tdd;`)
   - `crates/slicer-runtime/tests/fixtures/overhang_ramp.stl` (NEW; or analogous synthetic fixture; see open question)
 - Files explicitly out-of-bounds: any source.
 - Expected sub-agent dispatches:
@@ -106,7 +106,7 @@
 - Files allowed to read:
   - `modules/core-modules/overhang-classifier-default/src/lib.rs` (post-refactor) — confirm behaviour.
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-runtime/tests/integration/overhang_classifier_refactor_regression_tdd.rs` (NEW)
+  - `crates/slicer-runtime/tests/integration/overhang_classifier_refactor_regression_tdd.rs` (NEW) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_classifier_refactor_regression_tdd;`)
   - `crates/slicer-runtime/tests/fixtures/overhang_classifier_baseline_speeds.json` (NEW; recorded baseline)
 - Files explicitly out-of-bounds: any source.
 - Expected sub-agent dispatches:
@@ -138,9 +138,9 @@
 - Authoritative docs: the two files being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'D-10.*closed\|D-10.*resolved' docs/DEVIATION_LOG.md` — exit 0.
-  - `rg -q 'OVERHANG-QUARTILE-NONE.*closed\|OVERHANG-QUARTILE-NONE.*resolved' docs/DEVIATION_LOG.md` — exit 0.
-  - `rg -q 'T-024.*unblocked\|T-077.*unblocked' docs/specs/perimeter-modules-orca-parity-roadmap.md` — exit 0.
+  - `rg -q 'D-10.*(closed|resolved)' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q 'OVERHANG-QUARTILE-NONE.*(closed|resolved)' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q '(T-024|T-077).*unblocked' docs/specs/perimeter-modules-orca-parity-roadmap.md` — exit 0.
 - Exit condition: AC-7 green; deviation log + roadmap markers updated.
 
 ### Step 6: O-T052 — Architecture doc updates

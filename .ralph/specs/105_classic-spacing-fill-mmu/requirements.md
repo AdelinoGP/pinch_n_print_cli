@@ -3,12 +3,12 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `T-050` — Port minimal `Flow::new_from_width_height` math (width → spacing) to `slicer-helpers::flow`
+  - `T-050` — Port minimal `Flow::new_from_width_height` math (width → spacing) to `slicer-core::flow`
   - `T-051` — Distinct `outer_wall_line_width` + `inner_wall_line_width` (replace single `line_width`)
   - `T-052` — Implement `ext_perimeter_spacing2` (outer↔first-inner) vs `perimeter_spacing` (inner↔inner) arithmetic
   - `T-053` — Register + implement `precise_outer_wall` mode (gated on `wall_sequence == InnerOuter`)
   - `T-054` — Register `wall_sequence` enum in perimeter manifests; deregister from `path-optimization-default` per ADR-0011
-  - `T-054b` — Implement `OuterInner` and `InnerOuter` modes in `wall_sequence_reorder`
+  - `T-054b` — Implement `OuterInner` and `InnerOuter` modes in `wall_sequence_reorder` (in `slicer-core::perimeter_utils`)
   - `T-054c` — Implement `InnerOuterInner` sandwich mode (per-outer-contour grouping via in-module wall tree)
   - `T-060` — Register `detect_thin_wall` config key
   - `T-061` — Implement thin-wall detection cascade (`offset2_ex` + `opening_ex` + `medial_axis`)
@@ -34,8 +34,8 @@ This packet lands the entire wall-emission geometry stack in one coordinated cha
 
 ## In Scope
 
-- New `crates/slicer-helpers/src/flow.rs` exporting `pub fn line_width_to_spacing(width: f32, layer_height: f32, nozzle_diameter: f32) -> f32` and the related `flow_to_width` round-trip. Port the minimal subset of OrcaSlicer's `Flow::new_from_width_height` that the perimeter modules need.
-- Extension to `crates/slicer-helpers/src/perimeter_utils.rs`: `pub fn wall_sequence_reorder(walls: &mut Vec<WallLoop>, mode: WallSequence, wall_tree: &[PolygonTreeNode])` implementing all three modes.
+- New `crates/slicer-core/src/flow.rs` exporting `pub fn line_width_to_spacing(width: f32, layer_height: f32, nozzle_diameter: f32) -> f32` and the related `flow_to_width` round-trip. Port the minimal subset of OrcaSlicer's `Flow::new_from_width_height` that the perimeter modules need.
+- Extension to `crates/slicer-core/src/perimeter_utils.rs`: `pub fn wall_sequence_reorder(walls: &mut Vec<WallLoop>, mode: WallSequence, wall_tree: &[PolygonTreeNode])` implementing all three modes.
 - Config-key registrations in both perimeter manifests + `docs/15_config_keys_reference.md`: `outer_wall_line_width`, `inner_wall_line_width`, `precise_outer_wall`, `wall_sequence`, `detect_thin_wall`, `gap_infill_speed`, `filter_out_gap_fill`.
 - Deregister `wall_sequence` from `modules/core-modules/path-optimization-default/path-optimization-default.toml` (ADR-0011 migration).
 - New IR variants in `crates/slicer-ir/src/slice_ir.rs`: `LoopType::GapFill`, `ExtrusionRole::GapFill`. Both enums declared `#[non_exhaustive]`.
@@ -69,7 +69,7 @@ This packet lands the entire wall-emission geometry stack in one coordinated cha
 | `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md` | ~80 lines | Read full. |
 | `docs/02_ir_schemas.md` | ~900 lines | Delegate SUMMARY for `LoopType`, `ExtrusionRole`, `SlicedRegion`, schema-version contract. Range-read around the modified definitions. |
 | `docs/03_wit_and_manifest.md` | ~400 lines | Range-read §"WIT/Type Changes Checklist" (~30 lines). |
-| `docs/13_slicer_helpers_crate.md` | ~250 lines | Read full. |
+| `docs/01_system_architecture.md` | ~250 lines | Read §"Crate Boundaries" full. |
 | `docs/15_config_keys_reference.md` | ~300 lines | Range-read §"Walls" and §"Quality". |
 | `docs/DEVIATION_LOG.md` | varies | Range-read the most recent N entries (`D-96-AC22-*` rows) to align format. |
 
@@ -104,7 +104,7 @@ Files to inspect for this packet:
 | `cargo check --workspace --all-targets` | Cross-crate compile after IR + WIT + host additions | FACT pass/fail; SNIPPETS ≤ 20 lines on fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Workspace clippy gate | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration outer_inner_width_and_spacing_tdd` | AC-1 | FACT pass/fail |
-| `cargo test -p slicer-helpers --test wall_sequence_reorder_tdd` | AC-2 (all 3 modes) | FACT pass/fail |
+| `cargo test -p slicer-core --test wall_sequence_reorder_tdd` | AC-2 (all 3 modes) | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration thin_wall_emission_tdd` | AC-3 + AC-N1 | FACT pass/fail per case |
 | `cargo test -p slicer-runtime --test integration gap_fill_emission_tdd` | AC-4 + AC-N2 | FACT pass/fail per case |
 | `cargo test -p slicer-core --test paint_segmentation_bisector_mask_tdd` | AC-5 host populator + symmetry | FACT pass/fail |
@@ -112,7 +112,7 @@ Files to inspect for this packet:
 | `cargo xtask build-guests --check` | Guest WASM coherence after WIT change | FACT clean / STALE list |
 | `rg -q 'pub bisector_edge_skip_mask: Vec<Vec<bool>>' crates/slicer-ir/src/slice_ir.rs` | AC-5 field present | FACT pass/fail |
 | `! rg -q '\.external_contour\(\)' modules/core-modules/classic-perimeters/src/lib.rs modules/core-modules/arachne-perimeters/src/lib.rs` | AC-6 revert complete | FACT pass/fail |
-| `rg -q 'tie-break.*lower color-ID\|tie-break.*matching OrcaSlicer' docs/specs/orca-mmu-perimeter-investigation.md` | T-P96-A0 deliverable | FACT pass/fail |
+| `rg -q 'tie-break' docs/specs/orca-mmu-perimeter-investigation.md` | T-P96-A0 deliverable (one-pager states the bisector tie-break rule) | FACT pass/fail |
 
 ## Step Completion Expectations
 
@@ -122,9 +122,9 @@ Files to inspect for this packet:
 
 ## Context Discipline Notes
 
-- This packet has 7 implementation steps and ~19 tasks. Per-step file edit count is held to ≤ 3 throughout. The implementer must keep each step independently committable — do NOT batch two steps' edits into one commit even if "they're related".
+- This packet has 8 implementation steps (7 source + 1 doc-impact landing) and ~19 tasks. Per-step file edit count is held to ≤ 3 throughout. The implementer must keep each step independently committable — do NOT batch two steps' edits into one commit even if "they're related".
 - `crates/slicer-ir/src/slice_ir.rs` is ~1700 lines — range-read by `rg -n 'LoopType\|ExtrusionRole\|SlicedRegion\|CURRENT_SLICE_IR_SCHEMA_VERSION'` then ±40 lines.
 - `crates/slicer-core/src/algos/paint_segmentation/` is a directory — `wc -l` each file before reading; range-read the `voronoi_graph` or analogous file by `rg -n 'bisector|cell_neighbor'` and load only the relevant chunk.
 - Both perimeter modules' `lib.rs` files post-P102/P103/P104 state will be ~600-800 LOC each. Range-read `run_perimeters` body and the per-cell wall-trace loop only. Loading the whole file each step is forbidden.
-- Likely temptation read: the existing `arachne-perimeters/src/lib.rs` ray-cast logic. Skip — that logic was promoted to `slicer-helpers::geometry` in P103.
+- Likely temptation read: the existing `arachne-perimeters/src/lib.rs` ray-cast logic. Skip — that logic was promoted to `slicer_core::geometry` in P103.
 - Sub-agent return-format for the heaviest dispatch: OrcaSlicer `wall_sequence` SUMMARY (≤ 200 words) is the longest contract; the sandwich mode is structurally complex and the SUMMARY MUST describe the per-outer-contour grouping and the inset-index reordering rule without code. Re-dispatch if the return includes implementation pseudocode.

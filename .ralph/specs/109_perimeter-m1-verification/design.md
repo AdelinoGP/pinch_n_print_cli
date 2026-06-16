@@ -3,13 +3,13 @@
 ## Controlling Code Paths
 
 - Primary code path: parity harness (`crates/slicer-runtime/tests/integration/perimeter_parity.rs`) consumes JSON-serialized `PerimeterIR` reference files and compares slice output via a per-field tolerance comparator. Edge-case TDDs (`crates/slicer-runtime/tests/integration/perimeter_edge_cases.rs`) construct synthetic `SliceIR` inputs and assert specific propagation properties. cube_4color reshape rewrites the existing executor test's assertion logic per ADR-0013. `external_contour` deletion ripples through ~5 files: IR (`slice_ir.rs`), WIT (`ir-types.wit`), host populator (`host.rs`), SDK view (`views.rs`), paint-segmentation computation (`paint_segmentation/<file>.rs`).
-- Neighboring tests / fixtures: 7 new fixtures directories (under `crates/slicer-runtime/tests/fixtures/perimeter_parity/`), 1 new integration test file, 1 reshaped executor test, ~30 closure-log entries in `docs/DEVIATION_LOG.md`.
+- Neighboring tests / fixtures: 6 new fixtures directories (under `crates/slicer-runtime/tests/fixtures/perimeter_parity/`), 2 new integration test files (`perimeter_parity.rs` + `perimeter_edge_cases.rs`), 1 reshaped executor test, ~30 closure-log entries in `docs/DEVIATION_LOG.md`.
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
 ## Architecture Constraints
 
 <!-- snippet: wasm-staleness -->
-- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test.
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
 - Schema-bump contract for additive removal: bump 4.3.0 → 4.4.0; old fixtures must still deserialize. Pattern: `#[serde(default, skip_serializing)]` on whatever vestigial sniff still acknowledges the field name during parse, OR clean removal if the implementer confirms no committed fixture relies on the old shape (delegated FACT).
 - T-105 workspace test ceremony is the ONE allowed `cargo test --workspace` invocation per CLAUDE.md exception. All other ACs use targeted per-test invocations.
@@ -108,4 +108,4 @@
 
 - `[FWD]` Tolerance calibration: ±0.005 mm XYZ and ±0.01 mm width are reasonable defaults. If recorded fixtures consistently fail by sub-tolerance margins, document and slightly widen (≤ 0.01 mm XYZ); do not tighten without explicit user direction.
 - `[FWD]` cube_4color rename atomicity: if the rename touches downstream test-harness references (other tests or CI scripts), include those in the same commit. The LOCATIONS dispatch in Step 4 catches them.
-- `[FWD]` M1 status entry format in `docs/07_implementation_status.md`: match the format of any prior milestone entries; if no prior format exists, use "Milestone M1 — Classic perimeter parity (P102..P107): complete YYYY-MM-DD".
+- `[FWD]` M1 status entry format in `docs/07_implementation_status.md`: match the format of any prior milestone entries; if no prior format exists, use "Milestone M1 — Classic perimeter parity (P102..P108) verified by P109: complete YYYY-MM-DD".

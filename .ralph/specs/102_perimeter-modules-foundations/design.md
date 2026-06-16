@@ -2,8 +2,8 @@
 
 ## Controlling Code Paths
 
-- Primary code path: `slicer_helpers::perimeter_utils` (new) becomes the single source for paint-propagation, seam-candidate, and point-conversion helpers. Both perimeter modules' `run_perimeters` migrates to `use slicer_helpers::perimeter_utils::{…}` and a new `?`-propagating dispatch through `PerimeterOutputBuilder`.
-- Neighboring tests / fixtures: `modules/core-modules/{classic,arachne}-perimeters/tests/boundary_paint_tdd.rs` (existing — must stay green); `crates/slicer-helpers/tests/perimeter_utils_three_tool_boundary_tdd.rs` (new); `crates/slicer-ir/tests/material_boundary_widening_tdd.rs` (new); `crates/slicer-runtime/tests/contract/per_layer_config_override_tdd.rs` (new); `crates/slicer-runtime/tests/contract/perimeter_builder_capacity_error_tdd.rs` (new); `crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs` (new).
+- Primary code path: `slicer_core::perimeter_utils` (new) becomes the single source for paint-propagation, seam-candidate, and point-conversion helpers. Both perimeter modules' `run_perimeters` migrates to `use slicer_core::perimeter_utils::{…}` and a new `?`-propagating dispatch through `PerimeterOutputBuilder`.
+- Neighboring tests / fixtures: `modules/core-modules/{classic,arachne}-perimeters/tests/boundary_paint_tdd.rs` (existing — must stay green); `crates/slicer-core/tests/perimeter_utils_three_tool_boundary_tdd.rs` (new); `crates/slicer-ir/tests/material_boundary_widening_tdd.rs` (new); `crates/slicer-runtime/tests/contract/per_layer_config_override_tdd.rs` (new); `crates/slicer-runtime/tests/contract/perimeter_builder_capacity_error_tdd.rs` (new); `crates/slicer-runtime/tests/integration/manifest_default_reconcile_tdd.rs` (new).
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
 ## Architecture Constraints
@@ -17,10 +17,10 @@
 
 ## Code Change Surface
 
-- Selected approach: extract the seven helpers + `BASE_SPEED` into a single new file `crates/slicer-helpers/src/perimeter_utils.rs` (per D-14 / roadmap T-010, hosting in `slicer-helpers` rather than a new crate because `slicer-helpers` is already the dual-use helper home and a new crate adds Cargo / WIT dependency churn). Both modules `use slicer_helpers::perimeter_utils::*` at the module head; the local `fn` definitions are deleted line-for-line. `MaterialBoundary` widens via a Rust-side `Vec<MaterialBoundarySegment>` and a WIT-side `list<material-boundary-segment>` variant payload, both schema-bumped together. `?`-propagation sweeps both `lib.rs` files for the literal pattern `let _ = output\.` and rewrites each call site. The `_config` parameter wiring uses the existing `ConfigView::get*` API; no SDK trait change is needed (the parameter is already typed `&ConfigView`, just unused).
+- Selected approach: extract the seven helpers + `BASE_SPEED` into a single new file `crates/slicer-core/src/perimeter_utils.rs` (per D-14 / roadmap T-010, hosting in `slicer-core` rather than a new crate because `slicer-core` is already the per-layer geometry home per `docs/13` §Out of Scope and a new crate adds Cargo / WIT dependency churn). **Note:** D-14's original `slicer-helpers` placement decision has been reversed by the roadmap-wide `D-ROADMAP-CRATE-PLACEMENT` correction (per `docs/13_slicer_helpers_crate.md` §Out of Scope); `perimeter_utils.rs` lands in `slicer-core`, not `slicer-helpers`, as recorded in §Locked Assumptions below. Both modules `use slicer_core::perimeter_utils::*` at the module head; the local `fn` definitions are deleted line-for-line. `MaterialBoundary` widens via a Rust-side `Vec<MaterialBoundarySegment>` and a WIT-side `list<material-boundary-segment>` variant payload, both schema-bumped together. `?`-propagation sweeps both `lib.rs` files for the literal pattern `let _ = output\.` and rewrites each call site. The `_config` parameter wiring uses the existing `ConfigView::get*` API; no SDK trait change is needed (the parameter is already typed `&ConfigView`, just unused).
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — new module with exported helpers.
-  - `crates/slicer-helpers/src/lib.rs` — `pub mod perimeter_utils;` line added.
+  - `crates/slicer-core/src/perimeter_utils.rs` — new module with exported helpers.
+  - `crates/slicer-core/src/lib.rs` — `pub mod perimeter_utils;` line added.
   - `crates/slicer-ir/src/slice_ir.rs` — `WallBoundaryType::MaterialBoundary` widened; new `MaterialBoundarySegment` struct; `CURRENT_SLICE_IR_SCHEMA_VERSION` bumped to 4.2.0; `serde` migration adapter.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — `material-boundary-segment` record + updated `wall-boundary-type` variant.
   - `modules/core-modules/classic-perimeters/src/lib.rs` — delete duplicated helpers, add `use`, propagate `Result`s via `?`, read `_config` for per-layer overrides, document `_paint` disuse.
@@ -36,11 +36,11 @@
 
 Primary edit surface exceeds the 3-file target because the packet bundles 10 roadmap tasks per the user's "as few packets as possible" directive. The four primary files are listed first; each additional file is justified.
 
-- `crates/slicer-helpers/src/perimeter_utils.rs` — role: new shared module; expected change: create file with ~170 LOC of helper definitions moved from the two perimeter modules.
+- `crates/slicer-core/src/perimeter_utils.rs` — role: new shared module; expected change: create file with ~170 LOC of helper definitions moved from the two perimeter modules.
 - `crates/slicer-ir/src/slice_ir.rs` — role: IR widening; expected change: replace `MaterialBoundary { adjacent_tool: u32 }` with `MaterialBoundary { segments: Vec<MaterialBoundarySegment> }`, add `MaterialBoundarySegment` struct, bump schema version, add `serde` migration adapter (~40 LOC delta).
 - `modules/core-modules/classic-perimeters/src/lib.rs` — role: consumer migration + Result propagation + per-layer config; expected change: ~100 LOC removed (duplicated helpers), ~10 LOC changed (`use` import, `?` propagation, `_config` reads), ~5 LOC doc-comment for `_paint` disuse.
 - `modules/core-modules/arachne-perimeters/src/lib.rs` — role: same as classic; expected change: mirror of the classic change.
-- `crates/slicer-helpers/src/lib.rs` — role: module declaration; expected change: 1-line `pub mod perimeter_utils;` addition. Justified because it's a trivial extension required for AC-1.
+- `crates/slicer-core/src/lib.rs` — role: module declaration; expected change: 1-line `pub mod perimeter_utils;` addition. Justified because it's a trivial extension required for AC-1.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — role: WIT-side mirror of the IR widening; expected change: ~10 LOC for the new record + variant payload update. Justified because the WIT type-identity rule requires host and guest schemas to match (per CLAUDE.md).
 - `modules/core-modules/{classic,arachne}-perimeters/*.toml` — role: manifest default reconcile; expected change: 3 lines per file (default values). Justified as small mechanical edit.
 
@@ -81,7 +81,8 @@ Primary edit surface exceeds the 3-file target because the packet bundles 10 roa
 
 ## Locked Assumptions and Invariants
 
-- The two perimeter modules remain sibling-independent — neither imports the other; both consume the shared utils from `slicer-helpers`.
+- The two perimeter modules remain sibling-independent — neither imports the other; both consume the shared utils from `slicer-core`.
+- `perimeter_utils.rs` placed in `slicer-core` per docs/13 §Out of Scope (per-layer geometry operations belong in slicer-core, not slicer-helpers). Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT` matching the P103 pattern.
 - The shared utils' API is **pure** (no I/O, no logging, no state). This invariant is preserved so the helpers can be called from both guest WASM contexts without host-services dependency.
 - `WallBoundaryType::MaterialBoundary` semantics: every boundary segment names exactly one transition between two tools (`near_tool` → `far_tool`); polygons with N transitions emit N segments in clockwise order matching the polygon's contour winding.
 - `BASE_SPEED = 50.0` (mm/s) remains the outer-wall normalisation reference. Bumped by mutual agreement only — neither manifest defaults nor code fallbacks may change this in isolation.
@@ -91,7 +92,7 @@ Primary edit surface exceeds the 3-file target because the packet bundles 10 roa
 
 - WIT-type-identity break: editing `ir-types.wit` without rebuilding guest WASM produces silent test failures that look unrelated. Mitigation: explicit `cargo xtask build-guests --check` gate in Step 2's exit condition.
 - Schema-bump test-fixture regression: existing committed `SliceIR` JSON fixtures with the old `MaterialBoundary { adjacent_tool: u32 }` shape might not deserialize without the migration adapter. Mitigation: include the migration adapter in Step 2, not Step 5; add a parse-old-shape test in `material_boundary_widening_tdd`.
-- Helper-extraction sequencing: extracting helpers and migrating both modules in one step is too large (>3 files / step). Mitigated by Step 1 doing only the `slicer-helpers::perimeter_utils.rs` creation + `classic-perimeters` migration, leaving `arachne-perimeters` migration as Step 1b (Step 1's second half — see implementation plan).
+- Helper-extraction sequencing: extracting helpers and migrating both modules in one step is too large (>3 files / step). Mitigated by Step 1 doing only the `slicer-core::perimeter_utils.rs` creation + `classic-perimeters` migration, leaving `arachne-perimeters` migration as Step 1b (Step 1's second half — see implementation plan).
 - Manifest reconcile direction: the roadmap defaults to "manifest is source of truth". If the maintainers prefer the code values, this is a 1-line edit to the manifest instead of the code. Documented as `[FWD]` in §Open Questions.
 
 ## Context Cost Estimate

@@ -40,7 +40,9 @@ This packet lands the PrePass foundation: ADR-0012 (supersedes ADR-0008's "unnec
 - `crates/slicer-core/src/algos/overhang_annotation.rs` (NEW) — the classifier producing `overhang_quartile_polygons` for the Blackboard.
 - Stage declaration + scheduling: `PrePass::OverhangAnnotation` added to `crates/slicer-scheduler/src/execution_plan.rs` (or analogous) in stage order strictly after `MeshAnalysis` + `LayerPlanning`; host stage runner in `crates/slicer-runtime/src/prepass.rs` (or analogous) invokes the classifier and writes to Blackboard.
 - 4 new TDD files covering AC-3 through AC-6 + AC-N1 + AC-N2.
-- Doc updates per the Doc Impact Statement.
+- Doc updates per the Doc Impact Statement:
+  - `docs/04_host_scheduler.md` (EDIT — register `PrePass::OverhangAnnotation` in STAGE_ORDER, add stage description paragraph and Stage Prerequisites table entry)
+  - `docs/01_system_architecture.md` (EDIT — register `PrePass::OverhangAnnotation` in PrePass Stage Order list, prose block, and Stage I/O Contract table)
 
 ## Out of Scope
 

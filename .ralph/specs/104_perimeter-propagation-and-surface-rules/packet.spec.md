@@ -24,12 +24,12 @@ Make both perimeter modules read the per-region data already exposed by upstream
 
 ## Scope Boundaries
 
-Touches `slicer-sdk` (new view accessors for `overhang_areas` and `surface_group`), `slicer-ir` WIT mirror for those accessors, the shared `slicer-helpers::perimeter_utils` (extend `build_wall_flags` to drive both outer and inner walls), and both `classic-perimeters` / `arachne-perimeters` `lib.rs` + `.toml` files to consume the new view accessors and register the two new config keys. `overhang_quartile` per-vertex propagation (T-024) lands as `None` with a registered deviation since the sibling roadmap (`overhang-pipeline-restructuring`) has not yet shipped its Phase 3 accessors.
+Touches `slicer-sdk` (new view accessors for `overhang_areas` and `surface_group`), `slicer-ir` WIT mirror for those accessors, the shared `slicer_core::perimeter_utils` (extend `build_wall_flags` to drive both outer and inner walls), and both `classic-perimeters` / `arachne-perimeters` `lib.rs` + `.toml` files to consume the new view accessors and register the two new config keys. `overhang_quartile` per-vertex propagation (T-024) lands as `None` with a registered deviation since the sibling roadmap (`overhang-pipeline-restructuring`) has not yet shipped its Phase 3 accessors.
 
 ## Prerequisites and Blockers
 
 - Depends on:
-  - Packet `102_perimeter-modules-foundations` — needs the shared `slicer-helpers::perimeter_utils` crate and the widened `WallBoundaryType::MaterialBoundary` Vec representation (T-013 in packet 100 → T-021/T-022 inner-wall material boundary here).
+  - Packet `102_perimeter-modules-foundations` — needs the shared `slicer_core::perimeter_utils` module and the widened `WallBoundaryType::MaterialBoundary` Vec representation (T-013 in packet 102 → T-021/T-022 inner-wall material boundary here).
 - Unblocks:
   - Phase 5 (Classic spacing model + wall sequencing) and Phase 6 (thin-walls + gap-fill) in M1 — once per-vertex propagation is correct, those phases consume the same flag types.
 - Activation blockers: none — D-4 closed (extend `SliceRegionView` per ADR-level decision in the roadmap), D-10 closed (overhang quartile derivation deferred to sibling roadmap), D-11 closed (non-planar wall emission in scope).
@@ -38,11 +38,11 @@ Touches `slicer-sdk` (new view accessors for `overhang_areas` and `surface_group
 ## Acceptance Criteria
 
 - **AC-1. Given** a `SlicedRegion` whose `bridge_areas` contains a single rectangle covering exactly the right half of its outer polygon, **when** `run_perimeters` emits the outer wall, **then** wall vertices whose XY lies inside the bridge rectangle have `feature_flags[i].is_bridge == true` and vertices outside have `is_bridge == false` (point-in-polygon test; one transition expected at the rectangle boundary). | `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd -- --nocapture 2>&1 | tee target/test-output.log`
-- **AC-2. Given** a multi-tool polygon where outer **and** an inner wall (perimeter_index = 1) cross a material boundary between tools 1 and 2, **when** `build_wall_flags` is invoked for each wall, **then** the inner wall's `boundary_type` is `WallBoundaryType::MaterialBoundary { segments: vec![MaterialBoundarySegment { near_tool: Some(1), far_tool: Some(2), .. }] }` (NOT the pre-packet hardcoded `Interior`), and the inner wall's `feature_flags[i].tool_index` reflects per-vertex tool membership. | `cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd -- --nocapture 2>&1 | tee target/test-output.log`
+- **AC-2. Given** a multi-tool polygon where outer **and** an inner wall (perimeter_index = 1) cross a material boundary between tools 1 and 2, **when** `build_wall_flags` is invoked for each wall, **then** the inner wall's `boundary_type` is `WallBoundaryType::MaterialBoundary { segments: vec![MaterialBoundarySegment { near_tool: Some(1), far_tool: Some(2), .. }] }` (NOT the pre-packet hardcoded `Interior`), and the inner wall's `feature_flags[i].tool_index` reflects per-vertex tool membership. | `cargo test -p slicer-core --test inner_wall_material_boundary_tdd -- --nocapture 2>&1 | tee target/test-output.log`
 - **AC-3. Given** the extended `SliceRegionView`, **when** the public surface is inspected, **then** the view exposes `pub fn overhang_areas(&self) -> &[ExPolygon]` and `pub fn surface_group(&self) -> Option<&SurfaceGroup>` accessors (visible via `cargo doc` and via the WIT-mirrored `slice-region-view` interface), and the host-side populator fills both fields from `SurfaceClassificationIR` at view-construction. | `rg -q 'pub fn overhang_areas\(&self\) -> &\[ExPolygon\]' crates/slicer-sdk/src/views.rs && rg -q 'pub fn surface_group\(&self\) -> Option<&SurfaceGroup>' crates/slicer-sdk/src/views.rs && rg -q 'overhang-areas: func\(\) -> list<ex-polygon>' crates/slicer-schema/wit/deps/ir-types.wit`
 - **AC-4. Given** a region with `top_shell_index() == Some(0)`, a base `wall_count = 4`, and the config `only_one_wall_top = true`, **when** `run_perimeters` runs, **then** the resulting `PerimeterRegion.walls` contains exactly **1** outer wall (`loop_type = Outer`) and zero inner walls. With `only_one_wall_top = false` on the same fixture, the wall count is 4. | `cargo test -p slicer-runtime --test contract only_one_wall_top_tdd -- --nocapture 2>&1 | tee target/test-output.log`
 - **AC-5. Given** a region with base `wall_count = 4` running at `layer_index = 0` and config `only_one_wall_first_layer = true`, **when** `run_perimeters` runs, **then** `walls.len() == 1`. At `layer_index = 5` on the same fixture, `walls.len() == 4`. | `cargo test -p slicer-runtime --test contract only_one_wall_first_layer_tdd -- --nocapture 2>&1 | tee target/test-output.log`
-- **AC-6. Given** the current state of `docs/specs/overhang-pipeline-restructuring.md` (sibling roadmap Phase 3 not landed at packet implementation time), **when** any vertex flag is emitted, **then** every `Point3WithWidth.overhang_quartile` is `None`, the module doc-comment explicitly states the deferral, and `docs/DEVIATION_LOG.md` carries a `D-<packet>-OVERHANG-QUARTILE-NONE` entry referencing this packet and the sibling roadmap. | `rg -q 'overhang_quartile.*None.*sibling roadmap' modules/core-modules/classic-perimeters/src/lib.rs && rg -q 'overhang_quartile.*None.*sibling roadmap' modules/core-modules/arachne-perimeters/src/lib.rs && rg -q 'D-.*-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md`
+- **AC-6. Given** the current state of `docs/specs/overhang-pipeline-restructuring.md` (sibling roadmap Phase 3 not landed at packet implementation time), **when** any vertex flag is emitted, **then** every `Point3WithWidth.overhang_quartile` is `None`, the module doc-comment explicitly states the deferral, and `docs/DEVIATION_LOG.md` carries a `D-104-OVERHANG-QUARTILE-NONE` entry referencing this packet and the sibling roadmap. | `rg -q 'overhang_quartile.*None.*sibling roadmap' modules/core-modules/classic-perimeters/src/lib.rs && rg -q 'overhang_quartile.*None.*sibling roadmap' modules/core-modules/arachne-perimeters/src/lib.rs && rg -q 'D-104-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md`
 
 ## Negative Test Cases
 
@@ -53,7 +53,7 @@ Touches `slicer-sdk` (new view accessors for `overhang_areas` and `surface_group
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd only_one_wall_top_tdd only_one_wall_first_layer_tdd && cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd`
+- `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd only_one_wall_top_tdd only_one_wall_first_layer_tdd 2>&1 | tee target/test-output.log && cargo test -p slicer-core --test inner_wall_material_boundary_tdd 2>&1 | tee -a target/test-output.log`
 
 ## Authoritative Docs
 
@@ -69,7 +69,7 @@ This packet modifies the following doc sections:
 
 - `docs/15_config_keys_reference.md` §"Walls" — register `only_one_wall_top` (bool, default false) and `only_one_wall_first_layer` (bool, default false) — `rg -q 'only_one_wall_top.*bool.*default: false' docs/15_config_keys_reference.md && rg -q 'only_one_wall_first_layer.*bool.*default: false' docs/15_config_keys_reference.md`
 - `docs/05_module_sdk.md` §"SliceRegionView accessors" — document new `overhang_areas()` and `surface_group()` accessors — `rg -q 'overhang_areas.*ExPolygon' docs/05_module_sdk.md && rg -q 'surface_group.*SurfaceGroup' docs/05_module_sdk.md`
-- `docs/DEVIATION_LOG.md` — add `D-<packet>-OVERHANG-QUARTILE-NONE` entry — `rg -q 'D-.*-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — add `D-104-OVERHANG-QUARTILE-NONE` entry — `rg -q 'D-104-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

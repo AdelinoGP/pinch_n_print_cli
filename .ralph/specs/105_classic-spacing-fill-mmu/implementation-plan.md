@@ -29,7 +29,7 @@
 - Authoritative docs: see Files allowed to read.
 - OrcaSlicer refs: `MultiMaterialSegmentation.cpp`, `PerimeterGenerator.cpp` per-color branches (delegate SUMMARY).
 - Verification:
-  - `rg -q 'tie-break.*lower color-ID\|tie-break.*matching OrcaSlicer' docs/specs/orca-mmu-perimeter-investigation.md` — exit 0.
+  - `rg -q 'tie-break' docs/specs/orca-mmu-perimeter-investigation.md` — exit 0.
 - Exit condition: one-pager exists with file:line citations + stated tie-break rule.
 
 ### Step 2: T-062b — IR enum additions + `bisector_edge_skip_mask` field
@@ -51,7 +51,7 @@
   - 2c (downstream match arms): the LOCATIONS dispatch reports specific files; expect `modules/core-modules/part-cooling/src/lib.rs`, GCodeEmit role priority table, possibly `path-optimization-default`. Each consumer gets a 1-3 line arm addition.
 - Files explicitly out-of-bounds for this step:
   - Any perimeter module `lib.rs` (Step 4+ work).
-  - `slicer-helpers` (Step 3+ work).
+  - `slicer-core` (Step 3+ work).
   - `paint_segmentation/` (Step 3 work).
 - Expected sub-agent dispatches:
   - "Find all exhaustive `match` blocks on `LoopType` across the workspace; return LOCATIONS ≤ 20 entries."
@@ -87,7 +87,7 @@
   - Possibly one other file in the same directory for the call site if separation is needed.
 - Files explicitly out-of-bounds for this step:
   - Perimeter modules.
-  - `slicer-helpers`.
+  - `slicer-core` (perimeter_utils / flow modules).
   - Other `slicer-core` algos.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-core --test paint_segmentation_bisector_mask_tdd`; return FACT pass/fail + assertion text on fail."
@@ -104,18 +104,18 @@
 ### Step 4: T-050/T-051/T-052/T-053 — Spacing model + outer/inner widths
 
 - Task IDs:
-  - `T-050` — Flow math in `slicer-helpers::flow`
+  - `T-050` — Flow math in `slicer-core::flow`
   - `T-051` — outer/inner widths replacing single line_width
   - `T-052` — `ext_perimeter_spacing2` + `perimeter_spacing` arithmetic
   - `T-053` — `precise_outer_wall` mode (gated)
-- Objective: add `slicer_helpers::flow` module; register the four config keys; rewrite the wall-inset computation in both perimeter modules to use distinct outer/inner widths and the canonical spacing formula.
+- Objective: add `slicer_core::flow` module; register the four config keys; rewrite the wall-inset computation in both perimeter modules to use distinct outer/inner widths and the canonical spacing formula.
 - Precondition: Step 3 exit condition met; `cargo check --workspace --all-targets` clean.
 - Postcondition: AC-1 verification command passes.
 - Files allowed to read (with line-range hints when > 300 lines):
   - Both perimeter modules' `lib.rs` — range-read the `run_perimeters` body and the wall-inset loop.
-  - `docs/13_slicer_helpers_crate.md` — full.
+  - `docs/01_system_architecture.md` — §"Crate Boundaries" full.
 - Files allowed to edit (≤ 3 per sub-step):
-  - 4a (helpers): `crates/slicer-helpers/src/flow.rs` (NEW), `crates/slicer-helpers/src/lib.rs` (mod declaration), `crates/slicer-helpers/tests/flow_tdd.rs` (NEW; spacing-formula unit test).
+  - 4a (helpers): `crates/slicer-core/src/flow.rs` (NEW), `crates/slicer-core/src/lib.rs` (mod declaration), `crates/slicer-core/tests/flow_tdd.rs` (NEW; spacing-formula unit test).
   - 4b (manifests): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `docs/15_config_keys_reference.md`.
   - 4c (consumers): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/outer_inner_width_and_spacing_tdd.rs` (NEW).
 - Files explicitly out-of-bounds for this step:
@@ -125,15 +125,15 @@
 - Expected sub-agent dispatches:
   - "Summarize OrcaSlicerDocumented/src/libslic3r/Flow.cpp for `Flow::new_from_width_height` math; return SUMMARY ≤ 100 words."
   - "Summarize OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:1501-1506,1644 for ext_perimeter_spacing2 + precise_outer_wall gating; return SUMMARY ≤ 150 words."
-  - "Run `cargo test -p slicer-helpers --test flow_tdd`; return FACT pass/fail."
+  - "Run `cargo test -p slicer-core --test flow_tdd`; return FACT pass/fail."
   - "Run `cargo test -p slicer-runtime --test integration outer_inner_width_and_spacing_tdd`; return FACT pass/fail."
 - Context cost: `M` (largest step — three sub-steps + two OrcaSlicer SUMMARYs + new tests)
 - Authoritative docs:
   - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — T-050/T-051/T-052/T-053 rows.
-  - `docs/13_slicer_helpers_crate.md`.
+  - `docs/01_system_architecture.md`.
 - OrcaSlicer refs: `Flow.cpp`, `PerimeterGenerator.cpp:1501-1506,1644` (delegate SUMMARY).
 - Verification:
-  - `cargo test -p slicer-helpers --test flow_tdd 2>&1 | tee target/test-output.log` — FACT.
+  - `cargo test -p slicer-core --test flow_tdd 2>&1 | tee target/test-output.log` — FACT.
   - `cargo test -p slicer-runtime --test integration outer_inner_width_and_spacing_tdd 2>&1 | tee target/test-output.log` — FACT.
 - Exit condition: AC-1 green; spacing measured between walls matches `ext_perimeter_spacing2 = (outer + inner) / 2` and `perimeter_spacing = inner`.
 
@@ -143,15 +143,15 @@
   - `T-054` — Register `wall_sequence` in perimeter manifests; deregister from `path-optimization-default`
   - `T-054b` — Implement `OuterInner` + `InnerOuter` modes in `wall_sequence_reorder`
   - `T-054c` — Implement `InnerOuterInner` sandwich mode
-- Objective: migrate `wall_sequence` config registration per ADR-0011; implement all three modes in `slicer-helpers::perimeter_utils::wall_sequence_reorder`; call from both perimeter modules; in-module wall tree built during generation and discarded after reorder.
+- Objective: migrate `wall_sequence` config registration per ADR-0011; implement all three modes in `slicer_core::perimeter_utils::wall_sequence_reorder`; call from both perimeter modules; in-module wall tree built during generation and discarded after reorder.
 - Precondition: Step 4 exit condition met.
 - Postcondition: AC-2 verification command passes for all three modes.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — full (post-P102).
+  - `crates/slicer-core/src/perimeter_utils.rs` — full (post-P102).
   - `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
   - Both perimeter modules' `lib.rs` (`run_perimeters` body).
 - Files allowed to edit (≤ 3 per sub-step):
-  - 5a (helper): `crates/slicer-helpers/src/perimeter_utils.rs`, `crates/slicer-helpers/tests/wall_sequence_reorder_tdd.rs` (NEW).
+  - 5a (helper): `crates/slicer-core/src/perimeter_utils.rs`, `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` (NEW).
   - 5b (config migration): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
   - 5c (consumers): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`.
 - Files explicitly out-of-bounds for this step:
@@ -159,14 +159,14 @@
   - Thin-wall / gap-fill / MMU code paths.
 - Expected sub-agent dispatches:
   - "Summarize OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:1801-1913 for wall_sequence reorder including InnerOuterInner sandwich; return SUMMARY ≤ 200 words, no code."
-  - "Run `cargo test -p slicer-helpers --test wall_sequence_reorder_tdd`; return FACT pass/fail per mode."
+  - "Run `cargo test -p slicer-core --test wall_sequence_reorder_tdd`; return FACT pass/fail per mode."
 - Context cost: `M` (helper + manifests + two-module consumer)
 - Authoritative docs:
   - `docs/adr/0011-perimeter-module-owns-wall-sequencing.md` — read full.
   - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — T-054/b/c rows.
 - OrcaSlicer refs: `PerimeterGenerator.cpp:1801-1913` (delegate SUMMARY).
 - Verification:
-  - `cargo test -p slicer-helpers --test wall_sequence_reorder_tdd 2>&1 | tee target/test-output.log` — FACT.
+  - `cargo test -p slicer-core --test wall_sequence_reorder_tdd 2>&1 | tee target/test-output.log` — FACT.
   - `rg -q 'wall_sequence' modules/core-modules/path-optimization-default/path-optimization-default.toml` — exit 1 (key deregistered).
 - Exit condition: AC-2 green; `wall_sequence` registered only in perimeter manifests.
 
@@ -179,18 +179,18 @@
   - `T-063` — Gap collection per-inset
   - `T-064` — Gap-fill emission as WallLoop{GapFill}
   - `T-065` — Register `gap_infill_speed` + `filter_out_gap_fill`
-- Objective: register the three config keys; implement the thin-wall + gap-fill code paths in both perimeter modules using `slicer-helpers::medial_axis` + `offset2_ex` + `opening_ex` from P103.
+- Objective: register the three config keys; implement the thin-wall + gap-fill code paths in both perimeter modules using `slicer_core::medial_axis` + `offset2_ex` + `opening_ex` from P103.
 - Precondition: Step 5 exit condition met.
 - Postcondition: AC-3, AC-N1, AC-4, AC-N2 verification commands pass.
 - Files allowed to read (with line-range hints when > 300 lines):
   - Both perimeter modules' `lib.rs`.
-  - `crates/slicer-helpers/src/medial_axis.rs` (from P103) — confirm signature.
+  - `crates/slicer-core/src/medial_axis.rs` (from P103) — confirm signature.
 - Files allowed to edit (≤ 3 per sub-step):
   - 6a (manifests): both perimeter `.toml`, `docs/15_config_keys_reference.md`.
   - 6b (thin-wall consumer): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/thin_wall_emission_tdd.rs` (NEW).
   - 6c (gap-fill consumer): same two `lib.rs` (re-edit), `crates/slicer-runtime/tests/integration/gap_fill_emission_tdd.rs` (NEW).
 - Files explicitly out-of-bounds for this step:
-  - `slicer-helpers` — medial_axis / offset2_ex already exist from P103.
+  - `slicer-core` (medial_axis / offset2_ex already exist from P103; no new additions in this step).
   - MMU code paths (Step 7).
 - Expected sub-agent dispatches:
   - "Summarize OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:1596-1609 + 1665-1670,1930-1958 for thin-wall + gap-fill cascades; return SUMMARY ≤ 200 words."
@@ -222,7 +222,7 @@
 - Files explicitly out-of-bounds for this step:
   - `slicer-ir` (field present from Step 2; not edited).
   - `slicer-core/paint_segmentation/` (populator present from Step 3; not edited).
-  - `slicer-helpers` (no helper change in this step).
+  - `slicer-core` flow/perimeter_utils modules (no change in this step).
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-runtime --test integration mmu_bisector_dedup_tdd`; return FACT pass/fail per case (4-color cube test + single-color baseline test)."
   - "Find call sites of `region.external_contour()` in the perimeter modules; return LOCATIONS ≤ 5 entries (expected zero after revert)."
@@ -244,10 +244,10 @@
 - Postcondition: all five Doc Impact Statement greps return hits.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `docs/02_ir_schemas.md` — range-read sections being edited.
-  - `docs/13_slicer_helpers_crate.md` — full.
+  - `docs/01_system_architecture.md` — §"Crate Boundaries" full.
   - `docs/15_config_keys_reference.md` — range-read.
 - Files allowed to edit (≤ 3):
-  - `docs/02_ir_schemas.md`, `docs/13_slicer_helpers_crate.md`, `docs/15_config_keys_reference.md`.
+  - `docs/02_ir_schemas.md`, `docs/01_system_architecture.md`, `docs/15_config_keys_reference.md`.
 - Files explicitly out-of-bounds for this step:
   - All source files.
 - Expected sub-agent dispatches:

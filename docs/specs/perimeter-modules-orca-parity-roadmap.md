@@ -55,7 +55,7 @@ Phases:
 - Phase 1 — Cross-cutting foundations
 - Phase 2 — Upstream-data propagation
 - Phase 3 — Surface-driven wall-count rules
-- Phase 4 — `slicer-helpers` polygon-op primitives
+- Phase 4 — `slicer-core` polygon-op primitives
 - Phase 5 — Classic spacing model
 - Phase 6 — Thin-walls + gap-fill
 - Phase 7 — Classic special modes
@@ -116,7 +116,7 @@ Tasks fold into existing M1 phases (cross-references in `Phase`):
 | T-P96-C2 | Variable-width-perimeters consumes `bisector_edge_skip_mask` using the same per-cell trace logic as classic (algorithmic equivalence — variable-width's iterative-inset construction maps the same way). | Phase 4 / Phase 5 | `modules/core-modules/variable-width-perimeters/src/lib.rs` (post-rename) | T-P96-A also GREEN for variable-width-perimeters. |
 | T-P96-C3 | Parity verification: golden-file check of full `cube_4color` G-code output against a recorded OrcaSlicer reference (tolerances per parity-harness pattern in T-100). | Phase 9 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_orca.gcode` (recorded), `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (harness extension) | Per-color fragment counts, tool-change positions, and wall-coverage union match Orca within tolerance. Investigation citation from T-P96-A0 referenced in test comment. |
 | T-P96-D | Delete unused `external_contour` IR field after T-P96-A through T-P96-C3 land GREEN | Phase 1 | `crates/slicer-ir/src/slice_ir.rs:1282`, WIT, host populator, ~5 files | Field removed; `cargo check --workspace --all-targets` clean. SliceIR schema version bump. Cleanup task — strictly after C3. |
-| T-P96-E | `[blocked: D-15]` Arachne MMU dedup at boundary level (NOT per-edge wall mask). Preprocessing of per-color input contour before SkeletalTrapezoidation: each color's input cell has bisector edges with neighboring different-color cells contracted/removed per the tie-break rule. The result is per-color preprocessed input cells that Arachne ingests normally. | Phase 10–12 (M2) | `modules/core-modules/arachne-perimeters/` (M2 real-Arachne module), `crates/slicer-helpers/src/arachne/preprocess.rs` | Per OrcaSlicer Arachne MMU citation from T-P96-A0. Cube_4color parity test (T-P96-C3) passes for Arachne. |
+| T-P96-E | `[blocked: D-15]` Arachne MMU dedup at boundary level (NOT per-edge wall mask). Preprocessing of per-color input contour before SkeletalTrapezoidation: each color's input cell has bisector edges with neighboring different-color cells contracted/removed per the tie-break rule. The result is per-color preprocessed input cells that Arachne ingests normally. | Phase 10–12 (M2) | `modules/core-modules/arachne-perimeters/` (M2 real-Arachne module), `crates/slicer-core/src/arachne/preprocess.rs` | Per OrcaSlicer Arachne MMU citation from T-P96-A0. Cube_4color parity test (T-P96-C3) passes for Arachne. |
 | T-P96-F | Re-baseline cube_4color SHA + add deviation entry | Phase 9 | `.ralph/specs/<packet>/closure-log.md`, `docs/DEVIATION_LOG.md` | Capture `P<packet>_CUBE_4COLOR_PARITY_SHA`. Add `D-<packet>-AC22-PARITY-RESHAPE` superseding D-96-AC22-EXTERNAL-CONTOUR. Cross-reference ADR-0013. |
 
 Ordering:
@@ -142,7 +142,7 @@ This obligation folds into Phase 8 (Seam-candidate quality):
 
 | ID | Title | Phase | Files | Acceptance |
 |---|---|---|---|---|
-| T-P98-SEAM | Consume painted seam_enforcer/seam_blocker in seam-candidate generation | Phase 8 | `crates/slicer-helpers/src/perimeter_utils.rs` (`generate_seam_candidates`), `modules/core-modules/seam-placer/src/lib.rs` | Painted `seam_enforcer` regions bias seam-candidate selection toward enclosed perimeter vertices; painted `seam_blocker` regions exclude enclosed vertices from candidacy. TDD on a fixture carrying both channels (e.g. `resources/cube_cilindrical_modifier.3mf`, which carries `seam_enforcer` strokes): a vertex inside a seam_enforcer region is chosen as the seam over a sharper-corner candidate outside it; a vertex inside a seam_blocker region is never chosen. Supersede `D-98-SEAM-NO-CONSUMER` with `D-<packet>-SEAM-CONSUMED` at close. |
+| T-P98-SEAM | Consume painted seam_enforcer/seam_blocker in seam-candidate generation | Phase 8 | `crates/slicer-core/src/perimeter_utils.rs` (`generate_seam_candidates`), `modules/core-modules/seam-placer/src/lib.rs` | Painted `seam_enforcer` regions bias seam-candidate selection toward enclosed perimeter vertices; painted `seam_blocker` regions exclude enclosed vertices from candidacy. TDD on a fixture carrying both channels (e.g. `resources/cube_cilindrical_modifier.3mf`, which carries `seam_enforcer` strokes): a vertex inside a seam_enforcer region is chosen as the seam over a sharper-corner candidate outside it; a vertex inside a seam_blocker region is never chosen. Supersede `D-98-SEAM-NO-CONSUMER` with `D-<packet>-SEAM-CONSUMED` at close. |
 
 Note: T-082/T-083 already audit seam-placer's candidate-list contract and the seam-planner interaction; T-P98-SEAM is the concrete paint→candidate wiring those audits feed into. Until it lands, painted seams are decoded and carried but have no effect on seam placement (production impact: `paint_seam` in 3MFs is silently inert).
 
@@ -164,11 +164,11 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-010 | Create `slicer-perimeter-utils` (new sub-module under `slicer-helpers` or standalone crate — pick at task time) | `crates/slicer-helpers/src/perimeter_utils.rs` or new crate | Public API surface: `build_outer_wall_flags`, `has_adjacent_material_change`, `find_adjacent_tool`, `extract_tool_index`, `default_feature_flags`, `expolygon_to_path3d`, `BASE_SPEED`. |
+| T-010 | Create `slicer-perimeter-utils` (new sub-module under `slicer-core` or standalone crate — pick at task time) | `crates/slicer-core/src/perimeter_utils.rs` or new crate | Public API surface: `build_outer_wall_flags`, `has_adjacent_material_change`, `find_adjacent_tool`, `extract_tool_index`, `default_feature_flags`, `expolygon_to_path3d`, `BASE_SPEED`. |
 | T-011 | Migrate `classic-perimeters` to consume `slicer-perimeter-utils`; delete the duplicated definitions | `modules/core-modules/classic-perimeters/src/lib.rs` | Module no longer defines these symbols locally; tests still green. |
 | T-012 | Migrate `arachne-perimeters` to consume `slicer-perimeter-utils`; delete the duplicated definitions | `modules/core-modules/arachne-perimeters/src/lib.rs` | Same as T-011. ≥160 LOC removed across both modules. |
 | T-013 | Widen `WallBoundaryType::MaterialBoundary` to `Vec<MaterialBoundarySegment { point_range, near_tool, far_tool }>` | `crates/slicer-ir/src/slice_ir.rs`, schema version bump | New struct compiles and serialises; old data round-trips through a migration adapter. |
-| T-014 | Update `build_outer_wall_flags` to emit the full transition list (not just first adjacent tool) | `crates/slicer-helpers/src/perimeter_utils.rs` (or wherever T-010 placed it) | 3-tool triangle TDD passes; all transitions captured. |
+| T-014 | Update `build_outer_wall_flags` to emit the full transition list (not just first adjacent tool) | `crates/slicer-core/src/perimeter_utils.rs` (or wherever T-010 placed it) | 3-tool triangle TDD passes; all transitions captured. |
 | T-015 | Plumb `LayerOverrides` into both modules' `run_perimeters` via the unused `_config` parameter | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs`, `crates/slicer-sdk/src/traits.rs` | `line_width`, `wall_count`, speeds re-resolved per-layer; new TDD asserts layer-0 vs layer-5 differs when overridden. |
 | T-016 | Replace every `let _ = output.<fn>(…)` with `?` propagation in both modules | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs` | No remaining swallowed `Result`. |
 | T-017 | Document `PerimeterOutputBuilder` failure modes (capacity, contract violation) in `docs/05_module_sdk.md` and add a negative-path TDD | `docs/05_module_sdk.md`, `modules/core-modules/classic-perimeters/tests/*` | Failure-mode contract documented; TDD passes. |
@@ -181,11 +181,11 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-020 | Per-vertex `is_bridge` from `region.bridge_areas()` containment | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs`, `crates/slicer-helpers/src/perimeter_utils.rs` | For each wall vertex, point-in-polygon test against `bridge_areas`. Bridge-fixture TDD asserts only covered vertices flagged. |
-| T-021 | Per-vertex `tool_index` propagated to **inner** walls (not just outer) when material boundary exists | `crates/slicer-helpers/src/perimeter_utils.rs` (shared `build_wall_flags`) | Inner-wall TDD: 2-tool fixture → inner walls carry `MaterialBoundary` where adjacent. |
-| T-022 | Drop hardcoded `WallBoundaryType::Interior` for inner walls; compute boundary_type via same logic as outer | `crates/slicer-helpers/src/perimeter_utils.rs` | Same TDD as T-021. |
+| T-020 | Per-vertex `is_bridge` from `region.bridge_areas()` containment | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs`, `crates/slicer-core/src/perimeter_utils.rs` | For each wall vertex, point-in-polygon test against `bridge_areas`. Bridge-fixture TDD asserts only covered vertices flagged. |
+| T-021 | Per-vertex `tool_index` propagated to **inner** walls (not just outer) when material boundary exists | `crates/slicer-core/src/perimeter_utils.rs` (shared `build_wall_flags`) | Inner-wall TDD: 2-tool fixture → inner walls carry `MaterialBoundary` where adjacent. |
+| T-022 | Drop hardcoded `WallBoundaryType::Interior` for inner walls; compute boundary_type via same logic as outer | `crates/slicer-core/src/perimeter_utils.rs` | Same TDD as T-021. |
 | T-023 | `[blocked: D-4]` Expose `OverhangRegion` lookup on per-layer-per-region view — scoped to `extra_perimeters_on_overhangs` (T-074-new) only, not quartile derivation | `crates/slicer-sdk/src/views.rs`, `crates/slicer-sdk/src/traits.rs` | View accessor returns per-vertex-resolvable overhang regions for the current layer/object. |
-| T-024 | `[precondition: overhang-pipeline-restructuring Phase 3]` Perimeter module reads `SliceRegionView::overhang_quartile_polygons()` (added by sibling roadmap O-T031) and propagates per-vertex `Point3WithWidth.overhang_quartile` via point-in-polygon test, mirroring T-020's `is_bridge` pattern. If sibling roadmap hasn't landed at packet-generation time, T-024 ships as the original "leave None" version with a registered deviation. | `modules/core-modules/{classic,variable-width}-perimeters/src/lib.rs`, `crates/slicer-helpers/src/perimeter_utils.rs` | Overhang-ramp fixture: vertices in flagged quartile band carry expected quartile value; vertices outside overhang regions carry `None`. |
+| T-024 | `[precondition: overhang-pipeline-restructuring Phase 3]` Perimeter module reads `SliceRegionView::overhang_quartile_polygons()` (added by sibling roadmap O-T031) and propagates per-vertex `Point3WithWidth.overhang_quartile` via point-in-polygon test, mirroring T-020's `is_bridge` pattern. If sibling roadmap hasn't landed at packet-generation time, T-024 ships as the original "leave None" version with a registered deviation. | `modules/core-modules/{classic,variable-width}-perimeters/src/lib.rs`, `crates/slicer-core/src/perimeter_utils.rs` | Overhang-ramp fixture: vertices in flagged quartile band carry expected quartile value; vertices outside overhang regions carry `None`. |
 | T-025 | Per-vertex `flow_factor` plumbing (read from config / per-region overrides if applicable) | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs` | If no per-region flow compensation exists yet, document the field as "currently always 1.0; will be set when flow-compensation lands". Don't silently hardcode. |
 
 ## Phase 3 — Surface-driven wall-count rules
@@ -197,30 +197,30 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 | T-032 | Register `only_one_wall_first_layer` config key in `docs/15_config_keys_reference.md` | `docs/15_config_keys_reference.md`, both `.toml` manifests | Documented + manifested. |
 | T-033 | Read `_layer_index == 0` and `only_one_wall_first_layer == true`; force `wall_count = 1` | `modules/core-modules/{classic,arachne}-perimeters/src/lib.rs` | First-layer TDD passes. |
 
-## Phase 4 — `slicer-helpers` polygon-op primitives
+## Phase 4 — `slicer-core` polygon-op primitives
 
 **Theme.** These primitives are dual-use (Classic Phase 5-6 and Arachne Phase 10 pre-processing). Done now to unblock Classic.
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-040 | Port `offset2_ex(polys, -d, +d)` and `opening_ex(polys, d)` to `slicer-helpers` | `crates/slicer-helpers/src/polygon_ops.rs` | Output matches OrcaSlicer golden fixture for canonical polygons. |
-| T-041 | Port `ExPolygon::medial_axis(min_width, max_width, &out)` to `slicer-helpers` | `crates/slicer-helpers/src/medial_axis.rs` | Wedge-fixture golden test matches OrcaSlicer within tolerance. |
-| T-042 | Add `ThickPolyline` and `Point2WithWidth` IR types; `variable_width()` converter to `Vec<Point3WithWidth>` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-helpers/src/medial_axis.rs` | Round-trip TDD: ThickPolyline → variable-width path → ThickPolyline preserves widths. |
-| T-043 | Port hole/contour containment + tree-builder (`PerimeterGeneratorLoop` analogue) to `slicer-helpers` | `crates/slicer-helpers/src/polygon_tree.rs` | Tree structure matches OrcaSlicer golden fixture for nested-hole polygon. |
-| T-044 | Port `keep_largest_contour_only` helper (used by spiral-vase) | `crates/slicer-helpers/src/polygon_ops.rs` | Multi-polygon input → single-polygon output (largest by area). |
-| T-045 | Promote `ray_to_polygons`, `nearest_point_on_polygons`, `point_to_segment_nearest` from `arachne-perimeters` to `slicer-helpers` | `crates/slicer-helpers/src/geometry.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs` | Module no longer defines these; tests still green. |
+| T-040 | Port `offset2_ex(polys, -d, +d)` and `opening_ex(polys, d)` to `slicer-core` | `crates/slicer-core/src/polygon_ops.rs` | Output matches OrcaSlicer golden fixture for canonical polygons. |
+| T-041 | Port `ExPolygon::medial_axis(min_width, max_width, &out)` to `slicer-core` | `crates/slicer-core/src/medial_axis.rs` | Wedge-fixture golden test matches OrcaSlicer within tolerance. |
+| T-042 | Add `ThickPolyline` and `Point2WithWidth` IR types; `variable_width()` converter to `Vec<Point3WithWidth>` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-core/src/medial_axis.rs` | Round-trip TDD: ThickPolyline → variable-width path → ThickPolyline preserves widths. |
+| T-043 | Port hole/contour containment + tree-builder (`PerimeterGeneratorLoop` analogue) to `slicer-core` | `crates/slicer-core/src/polygon_tree.rs` | Tree structure matches OrcaSlicer golden fixture for nested-hole polygon. |
+| T-044 | Port `keep_largest_contour_only` helper (used by spiral-vase) | `crates/slicer-core/src/polygon_ops.rs` | Multi-polygon input → single-polygon output (largest by area). |
+| T-045 | Promote `ray_to_polygons`, `nearest_point_on_polygons`, `point_to_segment_nearest` from `arachne-perimeters` to `slicer-core` | `crates/slicer-core/src/geometry.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs` | Module no longer defines these; tests still green. |
 
 ## Phase 5 — Classic spacing model
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-050 | Port minimal `Flow::new_from_width_height(width, layer_height, nozzle_diameter)` math (width→spacing conversion) to `slicer-helpers` | `crates/slicer-helpers/src/flow.rs` | Unit tests against OrcaSlicer reference table. |
+| T-050 | Port minimal `Flow::new_from_width_height(width, layer_height, nozzle_diameter)` math (width→spacing conversion) to `slicer-core` | `crates/slicer-core/src/flow.rs` | Unit tests against OrcaSlicer reference table. |
 | T-051 | Replace single `line_width` field in `classic-perimeters` with `outer_wall_line_width` + `inner_wall_line_width` (+ `smaller_perimeter_line_width` reserved) | `modules/core-modules/classic-perimeters/src/lib.rs`, `.toml` | Outer wall renders at outer width, inner at inner. Manifest keys registered in `docs/15_config_keys_reference.md`. |
 | T-052 | Implement `ext_perimeter_spacing2` (outer↔first-inner) vs `perimeter_spacing` (inner↔inner) arithmetic from `PerimeterGenerator.cpp:1501-1506, 1644` | `modules/core-modules/classic-perimeters/src/lib.rs` | Golden fixture asserts spacing-between-loops at expected values. |
 | T-053 | Register and implement `precise_outer_wall` mode (gated on `wall_sequence == InnerOuter`) | `modules/core-modules/classic-perimeters/{src/lib.rs,classic-perimeters.toml}`, `docs/15_config_keys_reference.md` | Mode active only under correct wall-sequence gate; outer-wall spacing arithmetic adjusts per Orca. |
 | T-054 | Register `wall_sequence` enum (`OuterInner` / `InnerOuter` / `InnerOuterInner`) in perimeter manifests; deregister from `path-optimization-default` per [ADR-0011](../adr/0011-perimeter-module-owns-wall-sequencing.md) | `docs/15_config_keys_reference.md`, both perimeter `.toml` manifests, `modules/core-modules/path-optimization-default/path-optimization-default.toml` | Key registered on perimeter modules only; `path-optimization-default` no longer declares it; startup validation rejects unknown reads. |
-| T-054b | Implement `OuterInner` and `InnerOuter` modes in `slicer-perimeter-utils::wall_sequence_reorder` | `crates/slicer-helpers/src/perimeter_utils/wall_sequence.rs`, `modules/core-modules/{classic,variable-width}-perimeters/src/lib.rs` | OuterInner reverses entity order; InnerOuter is canonical. TDD: each mode produces expected sequence on a 3-wall fixture. |
-| T-054c | Implement `InnerOuterInner` sandwich mode (per-outer-contour grouping using in-module wall tree) | `crates/slicer-helpers/src/perimeter_utils/wall_sequence.rs` | Multi-island fixture: each island's loops interleave correctly; cross-island loops are not interleaved. TDD assertions match Orca's `process_classic()` lines 1801–1913. |
+| T-054b | Implement `OuterInner` and `InnerOuter` modes in `slicer-perimeter-utils::wall_sequence_reorder` | `crates/slicer-core/src/perimeter_utils/wall_sequence.rs`, `modules/core-modules/{classic,variable-width}-perimeters/src/lib.rs` | OuterInner reverses entity order; InnerOuter is canonical. TDD: each mode produces expected sequence on a 3-wall fixture. |
+| T-054c | Implement `InnerOuterInner` sandwich mode (per-outer-contour grouping using in-module wall tree) | `crates/slicer-core/src/perimeter_utils/wall_sequence.rs` | Multi-island fixture: each island's loops interleave correctly; cross-island loops are not interleaved. TDD assertions match Orca's `process_classic()` lines 1801–1913. |
 
 ## Phase 6 — Thin-walls + gap-fill
 
@@ -254,7 +254,7 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-080 | Replace every-vertex-candidate heuristic with sharp-corner threshold (config key `seam_candidate_angle_threshold_deg`, default ≈30°) | `crates/slicer-helpers/src/perimeter_utils.rs` (the shared `generate_seam_candidates`) | Square-fixture TDD: 4 candidates (one per corner), not N=hundreds. |
+| T-080 | Replace every-vertex-candidate heuristic with sharp-corner threshold (config key `seam_candidate_angle_threshold_deg`, default ≈30°) | `crates/slicer-core/src/perimeter_utils.rs` (the shared `generate_seam_candidates`) | Square-fixture TDD: 4 candidates (one per corner), not N=hundreds. |
 | T-081 | Register `seam_candidate_angle_threshold_deg` config key | `docs/15_config_keys_reference.md`, both `.toml` manifests | Documented + manifested. |
 | T-082 | Audit `seam-placer/src/lib.rs` for any dependency on dense candidate lists; document in roadmap if downstream contract requires changes | `modules/core-modules/seam-placer/src/lib.rs` (read-only) | Either confirms no change needed, or files a task in this roadmap to update seam-placer in tandem. |
 | T-083 | Confirm/document interaction with `seam-planner-default`: does its `PrePass::SeamPlanning` output feed perimeter-side candidate generation? | `modules/core-modules/seam-planner-default/src/lib.rs` (read), `docs/01_system_architecture.md` (update if needed) | Documented decision: either perimeter consumes seam-planner output, or the two are independent. |
@@ -287,24 +287,24 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
 | T-200 | ADR `0010-arachne-port-strategy.md`: document Voronoi crate selection (D-7), pure-Rust constraints, degeneracy handling expectations | `docs/adr/0010-arachne-port-strategy.md` | ADR merged; D-7 closed. |
-| T-201 | Vendor / depend on chosen Voronoi crate; wrap in `slicer-helpers::voronoi` with Orca-shaped API surface | `crates/slicer-helpers/src/voronoi.rs`, `Cargo.toml` | API surface: `voronoi_from_segments(Vec<Segment>) -> HalfEdgeGraph`. Collinear/T-junction stress fixtures pass. |
-| T-202 | Port `SkeletalTrapezoidationGraph` (half-edge graph storing R-values per edge) | `crates/slicer-helpers/src/skeletal_trapezoidation/graph.rs` | Graph reproduces Orca's graph for square + wedge golden fixtures. |
-| T-203 | Discretize parabolic VD edges to line segments | `crates/slicer-helpers/src/skeletal_trapezoidation/discretize.rs` | Output matches OrcaSlicer discretized graph within tolerance. |
-| T-204 | Port the 9-stage pre-processing pipeline from `WallToolPaths.cpp:590-604` (triple-offset, simplify, fixSelfIntersections, removeSmallAreas, etc.) | `crates/slicer-helpers/src/arachne/preprocess.rs` | Output matches Orca's pre-processed-outline fixture. Hazard ("destroys features < epsilon_offset ~11.5 µm") documented in doc-comment. |
+| T-201 | Vendor / depend on chosen Voronoi crate; wrap in `slicer-core::voronoi` with Orca-shaped API surface | `crates/slicer-core/src/voronoi.rs`, `Cargo.toml` | API surface: `voronoi_from_segments(Vec<Segment>) -> HalfEdgeGraph`. Collinear/T-junction stress fixtures pass. |
+| T-202 | Port `SkeletalTrapezoidationGraph` (half-edge graph storing R-values per edge) | `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` | Graph reproduces Orca's graph for square + wedge golden fixtures. |
+| T-203 | Discretize parabolic VD edges to line segments | `crates/slicer-core/src/skeletal_trapezoidation/discretize.rs` | Output matches OrcaSlicer discretized graph within tolerance. |
+| T-204 | Port the 9-stage pre-processing pipeline from `WallToolPaths.cpp:590-604` (triple-offset, simplify, fixSelfIntersections, removeSmallAreas, etc.) | `crates/slicer-core/src/arachne/preprocess.rs` | Output matches Orca's pre-processed-outline fixture. Hazard ("destroys features < epsilon_offset ~11.5 µm") documented in doc-comment. |
 | T-205 | Create new `modules/core-modules/arachne-perimeters/` skeleton with manifest + empty `LayerModule` impl | `modules/core-modules/arachne-perimeters/` | Module loads under `com.core.arachne-perimeters`; `incompatible-with` declares `com.core.classic-perimeters` and `com.core.variable-width-perimeters`. |
 
 ## Phase 11 — BeadingStrategy stack
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-210 | Define `BeadingStrategy` trait in `slicer-helpers::beading` (`compute`, `optimal_bead_count`, `get_transition_thickness`, etc.) | `crates/slicer-helpers/src/beading/mod.rs` | Trait covers all 5 strategies' surface. |
-| T-211 | Port `DistributedBeadingStrategy` (Gaussian-weighted width distribution) | `crates/slicer-helpers/src/beading/distributed.rs` | Reference Beading output matches Orca for 10 thickness inputs. |
-| T-212 | Port `RedistributeBeadingStrategy` (preserve outer-wall width consistency) | `crates/slicer-helpers/src/beading/redistribute.rs` | Reference Beadings match Orca on outer-consistent fixture. |
-| T-213 | Port `WideningBeadingStrategy` (thin-feature single-wall regime) | `crates/slicer-helpers/src/beading/widening.rs` | Thin-wedge fixture: features < min_input_width handled correctly. |
-| T-214 | Port `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset, decorator) | `crates/slicer-helpers/src/beading/outer_wall_inset.rs` | Outer-wall-only offset; inner walls untouched. |
-| T-215 | Port `LimitedBeadingStrategy` (max-bead-count cap; 0-width sentinel insertion). Sentinels stay internal — see T-215b for strip-pass. | `crates/slicer-helpers/src/beading/limited.rs` | Internal sentinels inserted at correct positions on cap-boundary fixture; bead-count math correct end-to-end. |
-| T-215b | Implement strip-pass: drop zero-width beads from BeadingStrategy output before `WallLoop` assembly per D-9. Register the deviation in `docs/DEVIATION_LOG.md` with rationale. | `crates/slicer-helpers/src/beading/limited.rs` (or assembly boundary), `docs/DEVIATION_LOG.md` | External `WallLoop`s carry no zero-width entries; deviation logged. |
-| T-216 | Port `BeadingStrategyFactory` stack composition (Distributed → Redistribute → Widening → OuterWallInset → Limited) | `crates/slicer-helpers/src/beading/factory.rs` | Stack composition order asserted in test; mismatch fails. |
+| T-210 | Define `BeadingStrategy` trait in `slicer-core::beading` (`compute`, `optimal_bead_count`, `get_transition_thickness`, etc.) | `crates/slicer-core/src/beading/mod.rs` | Trait covers all 5 strategies' surface. |
+| T-211 | Port `DistributedBeadingStrategy` (Gaussian-weighted width distribution) | `crates/slicer-core/src/beading/distributed.rs` | Reference Beading output matches Orca for 10 thickness inputs. |
+| T-212 | Port `RedistributeBeadingStrategy` (preserve outer-wall width consistency) | `crates/slicer-core/src/beading/redistribute.rs` | Reference Beadings match Orca on outer-consistent fixture. |
+| T-213 | Port `WideningBeadingStrategy` (thin-feature single-wall regime) | `crates/slicer-core/src/beading/widening.rs` | Thin-wedge fixture: features < min_input_width handled correctly. |
+| T-214 | Port `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset, decorator) | `crates/slicer-core/src/beading/outer_wall_inset.rs` | Outer-wall-only offset; inner walls untouched. |
+| T-215 | Port `LimitedBeadingStrategy` (max-bead-count cap; 0-width sentinel insertion). Sentinels stay internal — see T-215b for strip-pass. | `crates/slicer-core/src/beading/limited.rs` | Internal sentinels inserted at correct positions on cap-boundary fixture; bead-count math correct end-to-end. |
+| T-215b | Implement strip-pass: drop zero-width beads from BeadingStrategy output before `WallLoop` assembly per D-9. Register the deviation in `docs/DEVIATION_LOG.md` with rationale. | `crates/slicer-core/src/beading/limited.rs` (or assembly boundary), `docs/DEVIATION_LOG.md` | External `WallLoop`s carry no zero-width entries; deviation logged. |
+| T-216 | Port `BeadingStrategyFactory` stack composition (Distributed → Redistribute → Widening → OuterWallInset → Limited) | `crates/slicer-core/src/beading/factory.rs` | Stack composition order asserted in test; mismatch fails. |
 | ~~T-217~~ | **SUPERSEDED** by D-9 closure + T-215b. No coordination needed with infill modules; sentinels are stripped before external output. | — | — |
 | T-218 | Register all 11 Arachne `m_params.*` config keys in `docs/15_config_keys_reference.md` (`min_feature_size`, `min_bead_width`, `wall_transition_filter_deviation`, `wall_transition_length`, `wall_transition_angle`, `wall_distribution_count`, `min_length_factor`, `initial_layer_min_bead_width`, `outer_wall_offset`, `max_bead_count`, `optimal_width`) | `docs/15_config_keys_reference.md`, `arachne-perimeters.toml` | All keys documented + manifested. |
 
@@ -312,20 +312,20 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-220 | Port centrality filtering (`filterCentral`, `filterNoncentralRegions`) | `crates/slicer-helpers/src/skeletal_trapezoidation/centrality.rs` | Central-edge marks match Orca for 3 reference fixtures. |
-| T-221 | Bead-count assignment on central edges (`optimal_bead_count(R)` per edge) | `crates/slicer-helpers/src/skeletal_trapezoidation/bead_count.rs` | Per-edge bead counts match Orca on golden fixture. |
-| T-222 | Port bead-count upward + downward propagation (`propagateBeadingsUpward`, `propagateBeadingsDownward`) — marks `TransitionMiddle` / `TransitionEnd` | `crates/slicer-helpers/src/skeletal_trapezoidation/propagation.rs` | Transition placement matches Orca on 3 reference fixtures. |
-| T-223 | Port `generateToolpaths()` — emits `Vec<VariableWidthLines>` (sorted by inset_idx) | `crates/slicer-helpers/src/arachne/generate_toolpaths.rs` | Per-junction width topology matches Orca on tapered-wedge fixture. |
+| T-220 | Port centrality filtering (`filterCentral`, `filterNoncentralRegions`) | `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs` | Central-edge marks match Orca for 3 reference fixtures. |
+| T-221 | Bead-count assignment on central edges (`optimal_bead_count(R)` per edge) | `crates/slicer-core/src/skeletal_trapezoidation/bead_count.rs` | Per-edge bead counts match Orca on golden fixture. |
+| T-222 | Port bead-count upward + downward propagation (`propagateBeadingsUpward`, `propagateBeadingsDownward`) — marks `TransitionMiddle` / `TransitionEnd` | `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs` | Transition placement matches Orca on 3 reference fixtures. |
+| T-223 | Port `generateToolpaths()` — emits `Vec<VariableWidthLines>` (sorted by inset_idx) | `crates/slicer-core/src/arachne/generate_toolpaths.rs` | Per-junction width topology matches Orca on tapered-wedge fixture. |
 | T-224 | Define `ExtrusionLine` + `ExtrusionJunction` IR types | `crates/slicer-ir/src/slice_ir.rs` | Types compile; existing `Point3WithWidth` round-trips via converter. |
-| T-225 | Port `stitch_extrusions` (join open polylines within `bead_width_x - 1nm`) | `crates/slicer-helpers/src/arachne/stitch.rs` | Stitch-fixture output matches Orca; primary perimeters preserved. |
-| T-226 | Port `simplifyToolPaths` (DP simplification per ExtrusionLine) | `crates/slicer-helpers/src/arachne/simplify.rs` | Output vertex counts match Orca within tolerance. |
-| T-227 | Port `removeSmallLines` (drop odd, non-closed lines shorter than `min_length_factor * min_width`) | `crates/slicer-helpers/src/arachne/remove_small.rs` | Primary perimeters never removed; transition lines correctly dropped. |
+| T-225 | Port `stitch_extrusions` (join open polylines within `bead_width_x - 1nm`) | `crates/slicer-core/src/arachne/stitch.rs` | Stitch-fixture output matches Orca; primary perimeters preserved. |
+| T-226 | Port `simplifyToolPaths` (DP simplification per ExtrusionLine) | `crates/slicer-core/src/arachne/simplify.rs` | Output vertex counts match Orca within tolerance. |
+| T-227 | Port `removeSmallLines` (drop odd, non-closed lines shorter than `min_length_factor * min_width`) | `crates/slicer-core/src/arachne/remove_small.rs` | Primary perimeters never removed; transition lines correctly dropped. |
 
 ## Phase 13 — Wire-up + verification
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-230 | Wire all of `slicer-helpers::arachne` + `slicer-helpers::beading` + `slicer-helpers::skeletal_trapezoidation` into `arachne-perimeters` module's `run_perimeters` | `modules/core-modules/arachne-perimeters/src/lib.rs` | Module produces WallLoops with per-junction width; pre-processing + SKT + beading + extrusion-gen runs end-to-end on golden fixture. |
+| T-230 | Wire all of `slicer-core::arachne` + `slicer-core::beading` + `slicer-core::skeletal_trapezoidation` into `arachne-perimeters` module's `run_perimeters` | `modules/core-modules/arachne-perimeters/src/lib.rs` | Module produces WallLoops with per-junction width; pre-processing + SKT + beading + extrusion-gen runs end-to-end on golden fixture. |
 | T-231 | Extend parity harness (T-100) with 4 Arachne fixtures: tapered wedge, narrow strip with widening, max-bead-count cap, complex multi-feature polygon | `crates/slicer-runtime/tests/fixtures/perimeter_parity/` | Fixtures pass within calibrated tolerances. |
 | T-232 | Walk every M2 deviation entry from T-003 update; close or justify | `docs/DEVIATION_LOG.md`, `docs/07_implementation_status.md` | All Arachne deviations closed or justified. |
 | T-233 | Update `docs/01_system_architecture.md` Tier-2 box to reflect real Arachne availability; remove "iterative-inset approximation" caveat | `docs/01_system_architecture.md` | Doc reflects reality. |
@@ -369,7 +369,7 @@ T-013, T-042, T-224
 **`crates/slicer-sdk/`**
 T-015, T-017, T-023, T-070
 
-**`crates/slicer-helpers/`**
+**`crates/slicer-core/`**
 T-010, T-014, T-040, T-041, T-042, T-043, T-044, T-045, T-050, T-080, T-201, T-202, T-203, T-204, T-210–T-217, T-220–T-227
 
 **`docs/`**

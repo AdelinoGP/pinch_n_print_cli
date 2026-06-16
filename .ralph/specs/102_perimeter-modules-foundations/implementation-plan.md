@@ -9,27 +9,27 @@
 
 ## Steps
 
-### Step 1: Extract shared helpers to `slicer-helpers::perimeter_utils` and migrate `classic-perimeters`
+### Step 1: Extract shared helpers to `slicer-core::perimeter_utils` and migrate `classic-perimeters`
 
 - Task IDs:
   - `T-010` — Create shared helpers module
   - `T-011` — Migrate `classic-perimeters` to consume it
-- Objective: create `crates/slicer-helpers/src/perimeter_utils.rs` exporting the seven helpers + `BASE_SPEED`, delete the local definitions from `classic-perimeters/src/lib.rs`, replace with `use` imports.
+- Objective: create `crates/slicer-core/src/perimeter_utils.rs` exporting the seven helpers + `BASE_SPEED`, delete the local definitions from `classic-perimeters/src/lib.rs`, replace with `use` imports.
 - Precondition: workspace builds clean (`cargo check --workspace` green before any edit).
 - Postcondition: AC-1 verification command passes (symbols exported); AC-2 partial — `classic-perimeters/src/lib.rs` has no local `fn` defs for the seven helpers; `arachne-perimeters/src/lib.rs` still does (migration in Step 1b).
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/classic-perimeters/src/lib.rs` — full file (≤ 420 lines) — verify exact helper locations.
-  - `crates/slicer-helpers/src/lib.rs` — current `pub mod …` declarations.
-  - `crates/slicer-helpers/Cargo.toml` — confirm `slicer-ir` dep is already present.
+  - `crates/slicer-core/src/lib.rs` — current `pub mod …` declarations.
+  - `crates/slicer-core/Cargo.toml` — confirm `slicer-ir` dep is already present.
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-helpers/src/perimeter_utils.rs` (NEW)
-  - `crates/slicer-helpers/src/lib.rs`
+  - `crates/slicer-core/src/perimeter_utils.rs` (NEW)
+  - `crates/slicer-core/src/lib.rs`
   - `modules/core-modules/classic-perimeters/src/lib.rs`
 - Files explicitly out-of-bounds for this step:
   - `modules/core-modules/arachne-perimeters/src/lib.rs` — Step 1b
   - Any IR / WIT file — Step 2
 - Expected sub-agent dispatches:
-  - `Run cargo check -p slicer-helpers --all-targets after the helper extraction; return FACT (pass/fail) + SNIPPETS (≤ 20 lines on fail).`
+  - `Run cargo check -p slicer-core --all-targets after the helper extraction; return FACT (pass/fail) + SNIPPETS (≤ 20 lines on fail).`
   - `Run cargo test -p classic-perimeters --test boundary_paint_tdd after the classic migration; return FACT (pass/fail).`
 - Context cost: `M` (one new file, one migration; ~170 LOC moved)
 - Authoritative docs:
@@ -39,7 +39,7 @@
 - Verification:
   - `cargo test -p classic-perimeters --test boundary_paint_tdd 2>&1 | tee target/test-output.log` — dispatch as FACT pass/fail.
   - `! rg -q '^fn (build_outer_wall_flags|has_adjacent_material_change|find_adjacent_tool|extract_tool_index|default_feature_flags|expolygon_to_path3d|generate_seam_candidates)' modules/core-modules/classic-perimeters/src/lib.rs` — exit code 0 means no local defs remain.
-- Exit condition: `classic-perimeters` `boundary_paint_tdd` test passes AND no local helper `fn` defs remain in its `lib.rs` AND `slicer-helpers::perimeter_utils` exports all eight named symbols.
+- Exit condition: `classic-perimeters` `boundary_paint_tdd` test passes AND no local helper `fn` defs remain in its `lib.rs` AND `slicer-core::perimeter_utils` exports all eight named symbols.
 
 ### Step 1b: Migrate `arachne-perimeters` to the shared helpers
 
@@ -54,7 +54,7 @@
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
 - Files explicitly out-of-bounds for this step:
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — already done; only consume.
+  - `crates/slicer-core/src/perimeter_utils.rs` — already done; only consume.
   - Any IR / WIT file.
 - Expected sub-agent dispatches:
   - `Run cargo test -p arachne-perimeters --test boundary_paint_tdd after the migration; return FACT (pass/fail).`
@@ -79,18 +79,18 @@
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-ir/src/slice_ir.rs` — range-read by `rg -n 'WallBoundaryType|MaterialBoundary|CURRENT_SLICE_IR_SCHEMA_VERSION'`, then `Read` ±40 lines around each hit. Do NOT load the full file.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — full file (≤ 200 lines).
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — full file (recently created; small).
+  - `crates/slicer-core/src/perimeter_utils.rs` — full file (recently created; small).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-ir/src/slice_ir.rs`
   - `crates/slicer-schema/wit/deps/ir-types.wit`
-  - `crates/slicer-helpers/src/perimeter_utils.rs`
+  - `crates/slicer-core/src/perimeter_utils.rs`
 - Files explicitly out-of-bounds for this step:
   - Both perimeter modules' `lib.rs` files — they consume the change via `perimeter_utils`; no direct edit needed (unless a `match` arm exists, which delegation must confirm).
   - `docs/02_ir_schemas.md` — doc impact handled in Step 5.
 - Expected sub-agent dispatches:
   - `Find all match arms or constructors of WallBoundaryType::MaterialBoundary across the workspace; return LOCATIONS (≤ 20 entries).`
   - `Run cargo test -p slicer-ir --test material_boundary_widening_tdd; return FACT (pass/fail) + assertion text on fail.`
-  - `Run cargo test -p slicer-helpers --test perimeter_utils_three_tool_boundary_tdd; return FACT (pass/fail).`
+  - `Run cargo test -p slicer-core --test perimeter_utils_three_tool_boundary_tdd; return FACT (pass/fail).`
   - `Run cargo xtask build-guests --check; return FACT (clean / STALE list ≤ 5 lines).`
 - Context cost: `M` (three-crate edit; new tests + migration adapter)
 - Authoritative docs:
@@ -101,7 +101,7 @@
   - None for this step (the widening shape is local-design per ADR-0011 / D-13 closure).
 - Verification:
   - `cargo test -p slicer-ir --test material_boundary_widening_tdd 2>&1 | tee target/test-output.log` — FACT.
-  - `cargo test -p slicer-helpers --test perimeter_utils_three_tool_boundary_tdd 2>&1 | tee target/test-output.log` — FACT.
+  - `cargo test -p slicer-core --test perimeter_utils_three_tool_boundary_tdd 2>&1 | tee target/test-output.log` — FACT.
   - `cargo build --tests --workspace 2>&1 | tee target/test-output.log` — FACT (catches WIT type identity break before runtime).
   - `cargo xtask build-guests --check` — must report no STALE entries after rebuild.
 - Exit condition: AC-3 + AC-N2 green, no STALE guests reported, all `MaterialBoundary` call sites adjusted, `CURRENT_SLICE_IR_SCHEMA_VERSION` reads `4.2.0`.
@@ -197,7 +197,7 @@
   - `rg -q 'MaterialBoundarySegment' docs/02_ir_schemas.md` — confirms IR doc section landed.
   - `rg -q '4\.2\.0.*MaterialBoundary' docs/02_ir_schemas.md` — confirms schema-bump rationale documented.
   - `rg -q 'PerimeterOutputBuilder failure modes' docs/05_module_sdk.md` — confirms (also touched in Step 4) section present.
-  - `rg -q 'wall_count.*default: 2' docs/15_config_keys_reference.md` — confirms reconciled default.
+  - Targeted `rg` greps (one per row) confirming the `wall_count`, `outer_wall_speed`, `inner_wall_speed` rows in `docs/15_config_keys_reference.md` match the post-reconcile value chosen per design.md §Open Questions `[FWD]` (manifest-wins default = 3 / 30.0 / 45.0). Note: the doc uses markdown table rows like `| \`wall_count\` | int | \`3\` | … |`, not `key: value`; write the greps to match that shape.
 - Exit condition: AC-6 green AND all four Doc Impact Statement greps return hits AND module doc-comments explicitly state `_paint`'s intentional disuse with reference to packet 102.
 
 ## Per-Step Budget Roll-Up

@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- Primary code path: `slicer_helpers::flow::line_width_to_spacing` (new) drives the spacing arithmetic in both perimeter modules. `slicer_helpers::perimeter_utils::wall_sequence_reorder` (new) takes the generated `Vec<WallLoop>` + in-module wall tree and reorders per the configured `WallSequence`. `slicer_core::algos::paint_segmentation::compute_bisector_edge_skip_mask` (new) populates `SlicedRegion.bisector_edge_skip_mask` host-side at paint-segmentation commit. Both perimeter modules' `run_perimeters` is rewritten to (a) compute outer/inner widths separately from config, (b) run thin-wall detection via `medial_axis`, (c) collect gaps per-inset and emit gap-fill via `medial_axis`, (d) consume `bisector_edge_skip_mask` during the per-cell outer-wall trace, (e) invoke `wall_sequence_reorder` before commit. `external_contour` consumption is removed from both modules; the IR field stays (deleted in P107 T-P96-D).
+- Primary code path: `slicer_core::flow::line_width_to_spacing` (new) drives the spacing arithmetic in both perimeter modules. `slicer_core::perimeter_utils::wall_sequence_reorder` (new) takes the generated `Vec<WallLoop>` + in-module wall tree and reorders per the configured `WallSequence`. `slicer_core::algos::paint_segmentation::compute_bisector_edge_skip_mask` (new) populates `SlicedRegion.bisector_edge_skip_mask` host-side at paint-segmentation commit. Both perimeter modules' `run_perimeters` is rewritten to (a) compute outer/inner widths separately from config, (b) run thin-wall detection via `medial_axis`, (c) collect gaps per-inset and emit gap-fill via `medial_axis`, (d) consume `bisector_edge_skip_mask` during the per-cell outer-wall trace, (e) invoke `wall_sequence_reorder` before commit. `external_contour` consumption is removed from both modules; the IR field stays (deleted in P107 T-P96-D).
 - Neighboring tests / fixtures: 6 new TDD files. Existing `boundary_paint_tdd.rs`, `arachne_perimeters_tdd.rs`, and `classic_perimeters_tdd.rs` regression tests must stay green. The 4-color cube fixture from P96's `cube_4color_gcode_output_tdd.rs` is referenced but not edited here (T-P96-A reshape lands in P107).
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
@@ -23,11 +23,11 @@
 
 ## Code Change Surface
 
-- Selected approach: bundle the four workstreams in one packet because they share the same `lib.rs` editing surface in both perimeter modules; splitting forces three sequential touches of the same file with inter-packet AC churn. Pipeline within each module's `run_perimeters` becomes: read configs → compute outer/inner widths → build wall geometry (with new spacing) → run thin-wall detection (medial_axis) → run gap collection + gap-fill emission → apply per-cell bisector mask → reorder via wall_sequence → commit. Each phase is a discrete pure-function call to `slicer-helpers`; the module orchestrates. T-P96-A0 produces the doc one-pager that grounds the bisector tie-break rule used in T-P96-C0's host populator.
+- Selected approach: bundle the four workstreams in one packet because they share the same `lib.rs` editing surface in both perimeter modules; splitting forces three sequential touches of the same file with inter-packet AC churn. Pipeline within each module's `run_perimeters` becomes: read configs → compute outer/inner widths → build wall geometry (with new spacing) → run thin-wall detection (medial_axis) → run gap collection + gap-fill emission → apply per-cell bisector mask → reorder via wall_sequence → commit. Each phase is a discrete pure-function call to `slicer-core`; the module orchestrates. T-P96-A0 produces the doc one-pager that grounds the bisector tie-break rule used in T-P96-C0's host populator.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `crates/slicer-helpers/src/flow.rs` (NEW) — `pub fn line_width_to_spacing(width, layer_height, nozzle_diameter) -> f32`; `pub fn flow_to_width(spacing, layer_height, nozzle_diameter) -> f32`.
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — extend with `pub fn wall_sequence_reorder(&mut Vec<WallLoop>, WallSequence, &[PolygonTreeNode])`; add `pub enum WallSequence { OuterInner, InnerOuter, InnerOuterInner }`.
-  - `crates/slicer-helpers/src/lib.rs` — `pub mod flow;` declaration.
+  - `crates/slicer-core/src/flow.rs` (NEW) — `pub fn line_width_to_spacing(width, layer_height, nozzle_diameter) -> f32`; `pub fn flow_to_width(spacing, layer_height, nozzle_diameter) -> f32`.
+  - `crates/slicer-core/src/perimeter_utils.rs` — extend with `pub fn wall_sequence_reorder(&mut Vec<WallLoop>, WallSequence, &[PolygonTreeNode])`; add `pub enum WallSequence { OuterInner, InnerOuter, InnerOuterInner }`.
+  - `crates/slicer-core/src/lib.rs` — `pub mod flow;` declaration.
   - `crates/slicer-ir/src/slice_ir.rs` — add `LoopType::GapFill`; add `ExtrusionRole::GapFill`; mark both `#[non_exhaustive]`; add `pub bisector_edge_skip_mask: Vec<Vec<bool>>` on `SlicedRegion` with `#[serde(default)]`; bump `CURRENT_SLICE_IR_SCHEMA_VERSION` to `4.3.0`.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — `loop-type` and `extrusion-role` variants gain `gap-fill`; `sliced-region` record gains `bisector-edge-skip-mask` field; `slice-region-view` gains accessor.
   - `crates/slicer-wasm-host/src/host.rs` — `SliceRegionData` field; populator fills from `SlicedRegion`.
@@ -54,8 +54,8 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 
 - `modules/core-modules/classic-perimeters/src/lib.rs` — role: `run_perimeters` rewrite; expected change: ~250 LOC delta (new spacing + thin-wall + gap-fill + mask consumption + wall_sequence reorder).
 - `modules/core-modules/arachne-perimeters/src/lib.rs` — role: mirror of classic; expected change: ~250 LOC delta.
-- `crates/slicer-helpers/src/perimeter_utils.rs` — role: `wall_sequence_reorder` + `WallSequence` enum + `compute_bisector_skip_helpers`; expected change: ~150 LOC added.
-- `crates/slicer-helpers/src/flow.rs` (NEW) — role: Flow math; expected change: ~80 LOC.
+- `crates/slicer-core/src/perimeter_utils.rs` — role: `wall_sequence_reorder` + `WallSequence` enum + `compute_bisector_skip_helpers`; expected change: ~150 LOC added.
+- `crates/slicer-core/src/flow.rs` (NEW) — role: Flow math; expected change: ~80 LOC.
 - `crates/slicer-ir/src/slice_ir.rs` — role: enum variants + field + schema bump; expected change: ~30 LOC.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — role: WIT mirrors; expected change: ~15 LOC.
 - `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs` (or analogous) — role: bisector mask computation; expected change: ~100 LOC.
@@ -71,7 +71,7 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 - `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md` — read full — purpose: confirm mask carrier + tie-break + revert-not-delete sequencing.
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read Phase 5, Phase 6, and "Inherited from P96" sections.
 - `docs/02_ir_schemas.md` — delegate SUMMARY for `LoopType`, `ExtrusionRole`, `SlicedRegion`, schema-version contract.
-- `docs/13_slicer_helpers_crate.md` — read full — purpose: align new `flow` module + `perimeter_utils` extension with crate convention.
+- `docs/01_system_architecture.md` — read §"Crate Boundaries" full — purpose: align new `flow` module + `perimeter_utils` extension with crate placement convention.
 - `docs/15_config_keys_reference.md` — range-read §"Walls" and §"Quality".
 - `CLAUDE.md` — §"Guest WASM Staleness" + §"WIT/Type Changes Checklist".
 
@@ -115,10 +115,11 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 - `ext_perimeter_spacing2 = (outer_wall_line_width + inner_wall_line_width) / 2` (the OrcaSlicer formula). Documented in `flow.rs` doc-comment.
 - `wall_sequence_reorder` is a pure function: same `Vec<WallLoop>` + same `mode` + same tree → same output. No randomness, no global state.
 - `1 unit = 100 nm` invariant preserved in all new spacing arithmetic. Every mm↔unit boundary uses `from_mm` / `units_to_mm` helpers; raw `* 10_000.0` is forbidden.
+- `flow.rs` and `perimeter_utils/wall_sequence.rs` placed in `slicer-core` per docs/13 §Out of Scope. Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT`.
 
 ## Risks and Tradeoffs
 
-- Packet size (19 tasks across 4 workstreams) is at the upper limit of single-Ralph-run usability. Mitigation: 7 explicit steps with files-to-edit ≤ 3 each; every AC verifiable in isolation. If the implementer's context approaches 70% during Step 4 (the largest), they halt and resume in a fresh agent for Step 5 onward.
+- Packet size (19 tasks across 4 workstreams) is at the upper limit of single-Ralph-run usability. Mitigation: 8 explicit steps (7 source + 1 doc-impact landing) with files-to-edit ≤ 3 each; every AC verifiable in isolation. If the implementer's context approaches 70% during Step 4 (the largest), they halt and resume in a fresh agent for Step 5 onward.
 - `wall_sequence` deregistration from `path-optimization-default` is a small mechanical change but touches a module not otherwise in scope. Verified: the key is consumed-nowhere in path-optimization (it was registered there as a vestige per ADR-0011); deregistration is a manifest-only edit, no source changes.
 - Bisector tie-break correctness depends on T-P96-A0's investigation finding a specific OrcaSlicer rule. If A0 finds none (Orca's rule is opaque or non-deterministic), the default "lower color-ID owns" rule is applied. Either way the system is deterministic; the question is just whether outputs match OrcaSlicer per fixture.
 - Adding `#[non_exhaustive]` to `LoopType` and `ExtrusionRole` is a one-time backward-compat improvement but forces every exhaustive `match` on these enums to add a wildcard or new arm. The Step 2 LOCATIONS dispatch enumerates these for the implementer.
@@ -132,6 +133,6 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 
 ## Open Questions
 
-- `[FWD]` `WallSequence` enum location: `slicer-helpers::perimeter_utils` is the assumed home (per existing T-054 row in roadmap). If a more canonical home exists (`slicer-ir`?), the implementer can relocate; cross-roadmap impact is negligible.
+- `[FWD]` `WallSequence` enum location: `slicer_core::perimeter_utils` is the assumed home (per existing T-054 row in roadmap). If a more canonical home exists (`slicer-ir`?), the implementer can relocate; cross-roadmap impact is negligible.
 - `[FWD]` T-P96-A0 investigation: if the OrcaSlicer source for MMU per-color is unclear or contradictory, default to "lower color-ID owns" and document the search effort in the one-pager. Do not block the packet on a perfect OrcaSlicer match.
 - `[FWD]` `Flow::new_from_width_height` parity: the minimal port should be sufficient for `line_width_to_spacing(width, layer_height, nozzle_diameter) -> f32`. If the implementer finds the formula needs an additional `bridge_flow_ratio` parameter or similar, document and add — but only if a test demands it.

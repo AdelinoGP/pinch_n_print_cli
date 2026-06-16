@@ -80,7 +80,7 @@
   - "Find the plane-triangle intersection function in `crates/slicer-core/src/algos/support_geometry.rs`; return LOCATIONS (function name + line range)."
   - "Run `cargo test -p slicer-core --test prepass_support_geometry_tdd`; return FACT pass/fail."
 - Context cost: `M`
-- Authoritative docs: `docs/13_slicer_helpers_crate.md` (read full — analogous module convention) — actually no, this is `slicer-core` not `slicer-helpers`; align with `slicer-core/src/algos/` existing conventions.
+- Authoritative docs: align with `slicer-core/src/algos/` existing conventions (this is `slicer-core`, not `slicer-helpers` — `docs/13_slicer_helpers_crate.md` does not apply).
 - OrcaSlicer refs: none for Step 3.
 - Verification:
   - `rg -q 'pub fn cross_section_at_z' crates/slicer-core/src/algos/mesh_cross_section.rs` — exit 0.
@@ -98,14 +98,14 @@
 - Files allowed to read:
   - `crates/slicer-core/src/algos/mesh_cross_section.rs` (just created in Step 3).
   - `crates/slicer-ir/src/slice_ir.rs` (range-read `QuartileBand`, `SurfaceClassificationIR`).
-- Files allowed to edit (≤ 3):
-  - `crates/slicer-core/src/algos/overhang_annotation.rs` (NEW)
-  - `crates/slicer-core/src/algos/mod.rs` (declare `pub mod overhang_annotation`)
-  - `crates/slicer-core/tests/overhang_annotation_ramp_tdd.rs` (NEW; also contains the no-overhang case AC-N1)
+- Files allowed to edit (≤ 3 per sub-step):
+  - 4a (algorithm): `crates/slicer-core/src/algos/overhang_annotation.rs` (NEW), `crates/slicer-core/src/algos/mod.rs` (declare `pub mod overhang_annotation`).
+  - 4b (positive TDD): `crates/slicer-core/tests/overhang_annotation_ramp_tdd.rs` (NEW; AC-5).
+  - 4c (negative TDD): `crates/slicer-core/tests/overhang_annotation_no_overhang_case.rs` (NEW; AC-N1 — separate test binary so the AC-N1 verification command `cargo test --test overhang_annotation_no_overhang_case` resolves).
 - Files explicitly out-of-bounds: stage wiring (Step 5).
 - Expected sub-agent dispatches:
   - "Summarize OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:159-199 for `detect_steep_overhang` algorithm; SUMMARY ≤ 150 words. Confirm: input is slice polygons; threshold formula uses `extrusion_width × multiplier`; quartile band count is 4."
-  - "Run `cargo test -p slicer-core --test overhang_annotation_ramp_tdd overhang_annotation_no_overhang_case`; FACT pass/fail per case."
+  - "Run `cargo test -p slicer-core --test overhang_annotation_ramp_tdd` and `cargo test -p slicer-core --test overhang_annotation_no_overhang_case`; FACT pass/fail per case."
 - Context cost: `M` (largest step — algorithm + reference TDD)
 - Authoritative docs: `docs/specs/overhang-pipeline-restructuring.md` Phase 2 rows.
 - OrcaSlicer refs: `PerimeterGenerator.cpp:159-199` (delegate SUMMARY).
@@ -151,19 +151,22 @@
 - Files allowed to read:
   - `docs/01_system_architecture.md` (range-read §"Tier 1 — PrePass").
   - `docs/02_ir_schemas.md` (range-read SurfaceClassificationIR section).
-- Files allowed to edit (≤ 3):
-  - `docs/01_system_architecture.md`
+- Files allowed to edit (≤ 4):
+  - `docs/04_host_scheduler.md` (EDIT — register `PrePass::OverhangAnnotation` in STAGE_ORDER after `PrePassLayerPlanning`, add stage description paragraph, add Stage Prerequisites table entry)
+  - `docs/01_system_architecture.md` (EDIT — register `PrePass::OverhangAnnotation` in PrePass Stage Order list, prose block, and Stage I/O Contract table)
   - `docs/02_ir_schemas.md`
 - Files explicitly out-of-bounds: source files.
 - Expected sub-agent dispatches:
   - "For each Doc Impact grep, run `rg -q`; return FACT pass/fail per grep."
 - Context cost: `S`
-- Authoritative docs: the two files being edited.
+- Authoritative docs: the three files being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'PrePass::OverhangAnnotation' docs/01_system_architecture.md` — exit 0.
+  - `rg -q 'PrePass::OverhangAnnotation' docs/04_host_scheduler.md` — exit 0.
+  - `rg -q 'OverhangAnnotation' docs/01_system_architecture.md` — exit 0.
   - `rg -q 'OverhangRegion.*xy_footprint' docs/02_ir_schemas.md` — exit 0.
   - `rg -q 'overhang_quartile_polygons' docs/02_ir_schemas.md` — exit 0.
+- Falsifying check after edits: `rg -q 'PrePassOverhangAnnotation' docs/04_host_scheduler.md && rg -q 'OverhangAnnotation' docs/01_system_architecture.md` — both must exit 0; if either fails the doc edits are incomplete.
 - Exit condition: all Doc Impact Statement greps pass.
 
 ## Per-Step Budget Roll-Up

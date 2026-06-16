@@ -174,6 +174,7 @@ fn validate_stage_id(module: &LoadedModule) -> Result<(), SchedulerError> {
 pub static STAGE_ORDER: &[StageId] = &[
     StageId::PrePassMeshAnalysis,
     StageId::PrePassLayerPlanning,
+    StageId::PrePassOverhangAnnotation,  // introduced P106; populates SurfaceClassificationIR.overhang_quartile_polygons
     StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
     StageId::PrePassSupportGeometry,     // optional; runs when a support-planner module is loaded
     StageId::PrePassPaintSegmentation,
@@ -202,6 +203,8 @@ pub static STAGE_ORDER: &[StageId] = &[
     StageId::PostPassTextPostProcess,
 ];
 ```
+
+`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` via mesh cross-section analysis. Reads `MeshIR` + per-layer slices from `PrePass::LayerPlanning`. Owned by `core-modules/overhang-annotator-default` (introduced in P106).
 
 ### Intra-Stage DAG (within one stage)
 
@@ -1001,6 +1004,7 @@ must not run their own ad-hoc presence checks for these slots.
 | Stage                              | Required Slots                                                            |
 |------------------------------------|---------------------------------------------------------------------------|
 | `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
+| `PrePass::OverhangAnnotation`      | `MeshIR`, `LayerPlanIR`; writes `overhang_quartile_polygons` into `SurfaceClassificationIR` |
 | `PrePass::SeamPlanning`            | `LayerPlan`                                                               |
 | `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
@@ -1406,9 +1410,10 @@ startup
 slice command
   ├─ load model → MeshIR (paint normalized at load via split_triangle_strokes)
   ├─ execute_prepass()
-    │    ├─ PrePassMeshAnalysis     → SurfaceClassificationIR   → Blackboard
-    │    ├─ PrePassLayerPlanning    → LayerPlanIR               → Blackboard
-    │    ├─ PrePassSeamPlanning     → SeamPlanIR                → Blackboard  (optional)
+    │    ├─ PrePassMeshAnalysis          → SurfaceClassificationIR   → Blackboard
+    │    ├─ PrePassLayerPlanning         → LayerPlanIR               → Blackboard
+    │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons) → Blackboard  (P106)
+    │    ├─ PrePassSeamPlanning          → SeamPlanIR                → Blackboard  (optional)
     │    ├─ PrePassSupportGeometry  → SupportGeometryIR+SupportPlanIR → Blackboard  (optional)
         │    ├─ PrePassPaintSegmentation→ PaintRegionIR             → Blackboard
     │    └─ PrePassRegionMapping    → RegionMapIR               → Blackboard

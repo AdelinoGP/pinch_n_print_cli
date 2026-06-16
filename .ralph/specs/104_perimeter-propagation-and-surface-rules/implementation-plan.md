@@ -15,7 +15,7 @@
   - `T-023` — Expose `OverhangRegion` lookup (`overhang_areas()`)
   - Implicit: `surface_group()` accessor for future T-074b/c/d non-planar consumption (D-11 close, D-4 close)
 - Objective: add the two accessor methods on `SliceRegionView`, mirror them in WIT, fill them in the host populator. Both fields start empty/`None` for any region whose upstream PrePass has not yet emitted the data (silent dependency on sibling roadmap O-T010).
-- Precondition: workspace builds clean; packet 100 has landed (shared utils crate exists).
+- Precondition: workspace builds clean; packet 102 has landed (shared utils crate exists).
 - Postcondition: AC-3 verification grep passes; `cargo xtask build-guests --check` reports no STALE.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-sdk/src/views.rs` — range-read by `rg -n 'impl SliceRegionView|fn (bridge_areas|nonplanar_surface)'`.
@@ -53,20 +53,20 @@
   - `T-020` — Per-vertex `is_bridge` from `region.bridge_areas()`
   - `T-021` — Per-vertex `tool_index` propagated to inner walls
   - `T-022` — Drop hardcoded `WallBoundaryType::Interior` for inner walls
-- Objective: extend `slicer_helpers::perimeter_utils::build_wall_flags` to accept `is_outer: bool` and run the same Material / FuzzySkin / boundary-type extraction on inner walls; add `pub fn point_in_any_polygon(&Point2, &[ExPolygon]) -> bool` helper; write `inner_wall_material_boundary_tdd` and `per_vertex_is_bridge_propagation_tdd`.
+- Objective: extend `slicer_core::perimeter_utils::build_wall_flags` to accept `is_outer: bool` and run the same Material / FuzzySkin / boundary-type extraction on inner walls; add `pub fn point_in_any_polygon(&Point2, &[ExPolygon]) -> bool` helper; write `inner_wall_material_boundary_tdd` and `per_vertex_is_bridge_propagation_tdd`.
 - Precondition: Step 1 exit condition met; `cargo check --workspace --all-targets` clean.
 - Postcondition: AC-1, AC-2, AC-N1 verification commands pass.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — full (created by packet 100; small).
+  - `crates/slicer-core/src/perimeter_utils.rs` — full (created by packet 102; small).
   - `modules/core-modules/classic-perimeters/tests/boundary_paint_tdd.rs` — regression-coverage reference.
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-helpers/src/perimeter_utils.rs`
-  - `crates/slicer-helpers/tests/inner_wall_material_boundary_tdd.rs` (NEW)
+  - `crates/slicer-core/src/perimeter_utils.rs`
+  - `crates/slicer-core/tests/inner_wall_material_boundary_tdd.rs` (NEW)
   - `crates/slicer-runtime/tests/contract/per_vertex_is_bridge_propagation_tdd.rs` (NEW; contains AC-1 and AC-N1 cases)
 - Files explicitly out-of-bounds for this step:
   - Any perimeter module `lib.rs` — consumed in Step 3.
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd`; return FACT pass/fail + assertion text on fail."
+  - "Run `cargo test -p slicer-core --test inner_wall_material_boundary_tdd`; return FACT pass/fail + assertion text on fail."
   - "Run `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd`; return FACT pass/fail."
 - Context cost: `M` (helper extension + two new tests)
 - Authoritative docs:
@@ -74,7 +74,7 @@
 - OrcaSlicer refs:
   - None for this step.
 - Verification:
-  - `cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd 2>&1 | tee target/test-output.log` — FACT.
+  - `cargo test -p slicer-core --test inner_wall_material_boundary_tdd 2>&1 | tee target/test-output.log` — FACT.
   - `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd 2>&1 | tee target/test-output.log` — FACT.
 - Exit condition: AC-1, AC-2, AC-N1 green; `boundary_paint_tdd` regression tests still green for both modules.
 
@@ -93,7 +93,7 @@
   - `modules/core-modules/classic-perimeters/src/lib.rs`
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
 - Files explicitly out-of-bounds for this step:
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — already extended in Step 2.
+  - `crates/slicer-core/src/perimeter_utils.rs` — already extended in Step 2.
   - Manifests — Step 4.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p classic-perimeters --tests`; return FACT pass/fail with failing-test names."

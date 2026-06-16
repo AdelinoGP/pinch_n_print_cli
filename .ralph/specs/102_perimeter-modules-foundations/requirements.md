@@ -3,7 +3,7 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `T-010` — Create `slicer-perimeter-utils` (shared crate or `slicer-helpers` submodule)
+  - `T-010` — Create `slicer-perimeter-utils` (shared crate or `slicer-core` submodule)
   - `T-011` — Migrate `classic-perimeters` to consume shared utils
   - `T-012` — Migrate `arachne-perimeters` to consume shared utils
   - `T-013` — Widen `WallBoundaryType::MaterialBoundary` to `Vec<MaterialBoundarySegment>`
@@ -25,7 +25,7 @@ This packet closes the four defects together with the duplication extraction bec
 
 ## In Scope
 
-- New module `slicer-helpers::perimeter_utils` exporting the seven helper functions and one constant currently duplicated between the two perimeter modules.
+- New module `slicer-core::perimeter_utils` exporting the seven helper functions and one constant currently duplicated between the two perimeter modules.
 - `WallBoundaryType` widening: replace `MaterialBoundary { adjacent_tool: u32 }` with `MaterialBoundary { segments: Vec<MaterialBoundarySegment> }` where `MaterialBoundarySegment { point_range: std::ops::Range<u32>, near_tool: Option<u32>, far_tool: Option<u32> }`. Bump `CURRENT_SLICE_IR_SCHEMA_VERSION` from `4.1.0` to `4.2.0` (additive — `#[serde(default)]` migration adapter for the old single-tool shape is acceptable).
 - WIT-side mirror in `crates/slicer-schema/wit/deps/ir-types.wit` for the new `material-boundary-segment` record + `wall-boundary-type` variant.
 - Both `lib.rs` files migrate to the shared utils, propagate `Result`s via `?`, read per-layer overrides via `_config`, and either consume `_paint` or document its intentional disuse.
@@ -38,10 +38,10 @@ This packet closes the four defects together with the duplication extraction bec
 
 ## Out of Scope
 
-- Per-vertex `is_bridge`, `overhang_quartile`, `flow_factor` propagation — Phase 2 (packet 102).
-- Inner-wall `tool_index` propagation (drop hardcoded `Interior`) — Phase 2 (packet 102, depends on T-013 from this packet).
+- Per-vertex `is_bridge`, `overhang_quartile`, `flow_factor` propagation — Phase 2 (packet 104).
+- Inner-wall `tool_index` propagation (drop hardcoded `Interior`) — Phase 2 (packet 104, depends on T-013 from this packet).
 - Wall-sequence reordering (`OuterInner` / `InnerOuter` / `InnerOuterInner`) — Phase 5 (later packet).
-- Polygon-op primitives (`medial_axis`, `offset2_ex`, hole-tree, `keep_largest_contour_only`, ray ops) — Phase 4 (packet 101, fully parallel).
+- Polygon-op primitives (`medial_axis`, `offset2_ex`, hole-tree, `keep_largest_contour_only`, ray ops) — Phase 4 (packet 103, fully parallel).
 - Rename of `arachne-perimeters` → `variable-width-perimeters` — separate packet (precedes M2).
 - `infill-fill-partition` host-side hook — already landed in `slicer-runtime`.
 - Any change to wall-emission geometry. This packet is purely infrastructural; same input regions → same wall loops.
@@ -77,7 +77,7 @@ Files to inspect for this packet:
 | --- | --- | --- |
 | `cargo check --workspace --all-targets` | Cross-crate compile after IR + WIT changes | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Workspace clippy gate after migration | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
-| `cargo test -p slicer-helpers --test perimeter_utils_three_tool_boundary_tdd` | Confirms AC-3 + AC-N2 (multi-segment MaterialBoundary) | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
+| `cargo test -p slicer-core --test perimeter_utils_three_tool_boundary_tdd` | Confirms AC-3 + AC-N2 (multi-segment MaterialBoundary) | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
 | `cargo test -p slicer-ir --test material_boundary_widening_tdd` | Confirms AC-3 schema-version bump + Vec representation | FACT pass/fail |
 | `cargo test -p slicer-runtime --test contract per_layer_config_override_tdd` | Confirms AC-5 per-layer overrides | FACT pass/fail |
 | `cargo test -p slicer-runtime --test contract perimeter_builder_capacity_error_tdd` | Confirms AC-N1 builder error propagation | FACT pass/fail |
@@ -93,8 +93,8 @@ Files to inspect for this packet:
 
 ## Context Discipline Notes
 
-- `crates/slicer-ir/src/slice_ir.rs` is ~1700 lines. The implementer MUST range-read it: use `rg -n 'WallBoundaryType\|MaterialBoundary\|CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs` first, then `Read` with `offset`/`limit` ±40 lines around each hit. Loading the whole file is forbidden.
+- `crates/slicer-ir/src/slice_ir.rs` is ~1700 lines. The implementer MUST range-read it: use `rg -n 'WallBoundaryType|MaterialBoundary|CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs` first, then `Read` with `offset`/`limit` ±40 lines around each hit. Loading the whole file is forbidden.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — load in full only if < 200 lines; otherwise delegate a SUMMARY of the `wall-boundary-type` variant and adjacent records.
 - Both perimeter modules' `lib.rs` files are 400–700 lines. The implementer may load each once (it's the change target) but should not load the entire file during read-only fact-checks — range-read instead.
-- Likely temptation read: `modules/core-modules/seam-placer/src/lib.rs` (curious about how it consumes the change). Skip — D-1 ADR-0011 settled the wall-sequence ownership; seam-placer is not touched by this packet.
+- Likely temptation read: `modules/core-modules/seam-placer/src/lib.rs` (curious about how it consumes the change). Skip — ADR-0011 settled the wall-sequence ownership; seam-placer is not touched by this packet.
 - Sub-agent return-format for the heaviest dispatch: `WallBoundaryType` widening parity check across consumers must return `LOCATIONS` (≤ 20 lines), not `SNIPPETS` — the implementer cares only about call-site count and file paths.

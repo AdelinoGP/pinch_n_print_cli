@@ -10,7 +10,7 @@
   - `T-074b` — Detect non-planar regions via `nonplanar_surface.is_some()`; emit `LoopType::NonPlanarShell`
   - `T-074c` — Read `SurfaceGroup.shell_count`; override `wall_count` for non-planar regions
   - `T-074d` — Skip thin-wall, gap-fill, `infill_areas` for non-planar regions
-  - `T-077` — Register `extra_perimeters_on_overhangs`; implement consumer (ships as no-op + deviation per current preconditions)
+  - `T-077` — Register `extra_perimeters_on_overhangs`; implement real consumer that adds N+1 walls inside `region.overhang_areas()` (post-P106+P107 data flow)
   - `T-080` — Replace every-vertex seam-candidate heuristic with sharp-corner threshold
   - `T-081` — Register `seam_candidate_angle_threshold_deg`
   - `T-082` — Audit seam-placer for dependency on dense candidate lists
@@ -39,7 +39,7 @@ T-077 (`extra_perimeters_on_overhangs`) is a real consumer in this packet — it
 
 - Both perimeter modules' `lib.rs` (Phase 7 consumers): `extra_perimeters` bonus consumption, narrow-island detection + smaller-width emission, non-planar branch (`LoopType::NonPlanarShell` emission with `shell_count` from `SurfaceGroup`).
 - Both perimeter modules' `lib.rs` (T-077 real consumer): read `region.overhang_areas()`; when non-empty, add one extra perimeter inside those areas; `wall_count` outside overhang regions is unaffected.
-- `crates/slicer-helpers/src/perimeter_utils.rs`:
+- `crates/slicer-core/src/perimeter_utils.rs`:
   - Extend `generate_seam_candidates` with `angle_threshold_deg: f32` parameter; emit only corners exceeding the threshold; rename to `generate_sharp_corner_seam_candidates` or version-2 alongside the existing (which both modules then call with the new threshold).
   - Add `apply_seam_paint_bias(&mut Vec<SeamCandidate>, &PaintRegionLayerView)` helper that biases enforcer-enclosed candidates and removes blocker-enclosed candidates.
 - `modules/core-modules/seam-placer/src/lib.rs`: confirm candidate-list-density assumptions are robust to sparser input (T-082 audit); document or fix; call `apply_seam_paint_bias` before scoring.
@@ -98,7 +98,7 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd` | AC-1 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration narrow_island_smaller_perimeter_tdd` | AC-2 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration nonplanar_shell_emission_tdd` | AC-3 + AC-N1 | FACT pass/fail per case |
-| `cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd` | AC-4 | FACT pass/fail |
+| `cargo test -p slicer-core --test sharp_corner_seam_threshold_tdd` | AC-4 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration painted_seam_enforcer_blocker_tdd` | AC-5 + AC-N2 | FACT pass/fail per case |
 | `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd` | AC-6 (N+1 in overhang, N elsewhere) | FACT pass/fail per case |
 | `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md` | T-P98-SEAM deviation supersession | FACT pass/fail |
@@ -114,6 +114,6 @@ Files to inspect for this packet:
 
 - Both perimeter modules' `lib.rs` post-P105 will be ~800-1000 LOC each. Range-read `run_perimeters` only — do NOT load the whole file each step.
 - `modules/core-modules/seam-placer/src/lib.rs` is smaller (≤ 300 LOC). Read full for the T-082 audit; edit narrowly.
-- `crates/slicer-helpers/src/perimeter_utils.rs` post-P105 will carry `wall_sequence_reorder` + the new seam helpers; range-read by `rg -n 'fn generate_seam_candidates'` before editing.
+- `crates/slicer-core/src/perimeter_utils.rs` post-P105 will carry `wall_sequence_reorder` + the new seam helpers; range-read by `rg -n 'fn generate_seam_candidates'` before editing.
 - Likely temptation read: `seam-planner-default/src/lib.rs` for the T-083 documentation. **Skip** — T-083's deliverable is a one-paragraph documentation note in `docs/05_module_sdk.md` based on what seam-planner-default's manifest declares; reading its source is not required.
 - Sub-agent return-format for the heaviest dispatch: SeamPlacer SUMMARY (≤ 200 words) — must describe the candidate-scoring convention and where painted-seam consumption fits in the priority order. Re-dispatch if return includes implementation pseudocode.

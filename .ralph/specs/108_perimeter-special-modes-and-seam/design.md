@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- Primary code path: in `run_perimeters` (both modules), three early-stage branches read upstream data and adjust the wall-emission loop — `extra_perimeters` bumps `loop_number`, narrow-island detection swaps in `smaller_perimeter_line_width`, non-planar detection short-circuits the loop entirely (emit `shell_count` `NonPlanarShell` walls, skip thin/gap/infill). After wall emission, `slicer_helpers::perimeter_utils::generate_sharp_corner_seam_candidates` produces the sparse candidate list using the angle threshold; `apply_seam_paint_bias` biases enforcer-enclosed entries and removes blocker-enclosed entries; the result lands in `PerimeterRegion.seam_candidates`. `seam-placer` reads from there as it does today (no architectural change), but now scores over a sparser list whose enforcer/blocker semantics are pre-applied.
+- Primary code path: in `run_perimeters` (both modules), three early-stage branches read upstream data and adjust the wall-emission loop — `extra_perimeters` bumps `loop_number`, narrow-island detection swaps in `smaller_perimeter_line_width`, non-planar detection short-circuits the loop entirely (emit `shell_count` `NonPlanarShell` walls, skip thin/gap/infill). After wall emission, `slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates` produces the sparse candidate list using the angle threshold; `apply_seam_paint_bias` biases enforcer-enclosed entries and removes blocker-enclosed entries; the result lands in `PerimeterRegion.seam_candidates`. `seam-placer` reads from there as it does today (no architectural change), but now scores over a sparser list whose enforcer/blocker semantics are pre-applied.
 - Neighboring tests / fixtures: 6 new TDD files. Existing regression tests from P102/P103/P104/P105 must stay green.
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
@@ -20,11 +20,11 @@
 
 ## Code Change Surface
 
-- Selected approach: each Phase 7 override is a discrete branch at the head of `run_perimeters`'s wall-emission loop; the three overrides are mutually exclusive (a region is non-planar, OR narrow, OR neither — non-planar takes precedence). Seam-candidate quality is two helper additions in `slicer-helpers::perimeter_utils` plus a `seam-placer` integration point for paint-bias application. T-077 is the narrowest of the seven changes — a one-branch addition that reads `overhang_areas()` and adds extras only inside those areas; under current preconditions, that input is always empty.
+- Selected approach: each Phase 7 override is a discrete branch at the head of `run_perimeters`'s wall-emission loop; the three overrides are mutually exclusive (a region is non-planar, OR narrow, OR neither — non-planar takes precedence). Seam-candidate quality is two helper additions in `slicer-core::perimeter_utils` plus a `seam-placer` integration point for paint-bias application. T-077 is the narrowest of the seven changes — a one-branch addition that reads `overhang_areas()` and adds extras only inside those areas; post-P106+P107 the upstream data flow is live, so the consumer's non-empty path is exercised by AC-6.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `modules/core-modules/classic-perimeters/src/lib.rs` — Phase 7 + Phase 8 consumer additions (~120 LOC delta).
   - `modules/core-modules/arachne-perimeters/src/lib.rs` — mirror.
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — add `pub fn generate_sharp_corner_seam_candidates(contour, z, angle_threshold_deg, output)`; add `pub fn apply_seam_paint_bias(candidates, &PaintRegionLayerView)`; keep the existing `generate_seam_candidates` for back-compat (deprecated; callers migrate).
+  - `crates/slicer-core/src/perimeter_utils.rs` — add `pub fn generate_sharp_corner_seam_candidates(contour, z, angle_threshold_deg, output)`; add `pub fn apply_seam_paint_bias(candidates, &PaintRegionLayerView)`; keep the existing `generate_seam_candidates` for back-compat (deprecated; callers migrate).
   - `modules/core-modules/seam-placer/src/lib.rs` — call `apply_seam_paint_bias` before scoring; return `Err(SeamPlacerError::NoCandidates)` on empty input (AC-N2 fix if audit finds a regression).
   - Both perimeter `.toml` manifests — register 6 config keys.
   - `docs/15_config_keys_reference.md` — register the 6 keys.
@@ -40,7 +40,7 @@
 
 - `modules/core-modules/classic-perimeters/src/lib.rs` — primary consumer.
 - `modules/core-modules/arachne-perimeters/src/lib.rs` — mirror.
-- `crates/slicer-helpers/src/perimeter_utils.rs` — two new helpers.
+- `crates/slicer-core/src/perimeter_utils.rs` — two new helpers.
 - `modules/core-modules/seam-placer/src/lib.rs` — integration + AC-N2 robustness.
 - `modules/core-modules/{classic,arachne}-perimeters/*.toml` — 6 config keys each.
 - `docs/15_config_keys_reference.md`, `docs/05_module_sdk.md`, `docs/DEVIATION_LOG.md` — per Doc Impact Statement.
@@ -70,7 +70,7 @@
 - "Summarize OrcaSlicerDocumented/src/libslic3r/Feature/SeamPlacer/SeamPlacer.cpp for sharp-corner candidate selection + painted seam consumption; return SUMMARY ≤ 200 words, no code." — Step 4.
 - "FACT: confirm OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:1569 carries `loop_number = wall_loops + surface.extra_perimeters - 1`; return single-line FACT." — Step 1.
 - "Find call sites of `generate_seam_candidates` (legacy) across the workspace; return LOCATIONS ≤ 10 entries." — Step 4 migration scope.
-- "Run `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_tdd && cargo test -p slicer-helpers --test sharp_corner_seam_threshold_tdd`; return FACT pass/fail per test." — packet close.
+- "Run `cargo test -p slicer-runtime --test integration extra_perimeters_config_tdd narrow_island_smaller_perimeter_tdd nonplanar_shell_emission_tdd painted_seam_enforcer_blocker_tdd extra_perimeters_on_overhangs_tdd && cargo test -p slicer-core --test sharp_corner_seam_threshold_tdd`; return FACT pass/fail per test." — packet close.
 
 ## Data and Contract Notes
 
@@ -86,7 +86,8 @@
 - `extra_perimeters` and narrow-island handling are independent and additive within the planar branch (a narrow island with `extra_perimeters = 2` gets 2 extra walls AT the smaller width).
 - Sharp-corner threshold uses **absolute** turn angle (degrees from straight). Default 30° matches OrcaSlicer's documented seam-placer convention.
 - `apply_seam_paint_bias` enforcer bias factor: `score *= 0.1` (lower is more preferred). Blocker exclusion is a list-filter, not a score deboost.
-- T-077 consumer code path is wired and tested **for the empty case** only. Non-empty behavior tested in a future packet once preconditions ship.
+- T-077 consumer code path is wired and tested for **both** non-empty (overhang → N+1 walls) and empty (flat → N walls) inputs on the same AC-6 fixture, because the P106+P107 data flow is a hard predecessor of this packet.
+- `perimeter_utils` consumed from `slicer-core` per docs/13 §Out of Scope. Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT`.
 
 ## Risks and Tradeoffs
 

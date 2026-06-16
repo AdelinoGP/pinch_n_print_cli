@@ -3,7 +3,7 @@
 ## Controlling Code Paths
 
 - Primary code path: `SliceRegionView` (SDK) → `build_wall_flags` (shared utils, extended) → per-vertex `WallFeatureFlags` writes inside `run_perimeters` (both modules). Two new config gates (`only_one_wall_top`, `only_one_wall_first_layer`) read in `run_perimeters` to override the effective `wall_count`.
-- Neighboring tests / fixtures: 5 new TDD files under `crates/slicer-runtime/tests/contract/` and `crates/slicer-helpers/tests/`. Existing `boundary_paint_tdd.rs` regression coverage in both modules must stay green.
+- Neighboring tests / fixtures: 5 new TDD files under `crates/slicer-runtime/tests/contract/` and `crates/slicer-core/tests/`. Existing `boundary_paint_tdd.rs` regression coverage in both modules must stay green.
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
 ## Architecture Constraints
@@ -16,16 +16,16 @@
 
 - View-accessor convention: `overhang_areas()` and `surface_group()` follow the existing `bridge_areas()` / `nonplanar_surface()` pattern — pre-filtered per-region at view construction; the guest receives only data relevant to the current region. No raw `SurfaceClassificationIR` access from guest space.
 - `T-024` deferral invariant: `Point3WithWidth.overhang_quartile` MUST be set to `None` in every emit path (NOT left at field default, NOT inherited from caller). The doc-comment cites the sibling roadmap.
-- Per-layer config rule (carries over from packet 100): `only_one_wall_top` and `only_one_wall_first_layer` MUST be read from `_config.get_bool` per `run_perimeters` invocation, not cached at `on_print_start`. Per-layer overrides take effect.
+- Per-layer config rule (carries over from packet 102, T-015): `only_one_wall_top` and `only_one_wall_first_layer` MUST be read from `_config.get_bool` per `run_perimeters` invocation, not cached at `on_print_start`. Per-layer overrides take effect.
 
 ## Code Change Surface
 
-- Selected approach: add the two view accessors with **host-side pre-filtering** — the host populator intersects `OverhangRegion.xy_footprint` (currently empty until sibling roadmap O-T010 lands) with the region's polygon, and resolves `nonplanar_surface: Option<SurfaceGroupId>` to `Option<&SurfaceGroup>` by lookup in `SurfaceClassificationIR.per_object[…].surface_groups`. Both accessors return `&[ExPolygon]` / `Option<&SurfaceGroup>` view references — no Vec cloning. `build_wall_flags` in the shared utils gains an `is_outer: bool` parameter; the existing outer-wall logic moves under `if is_outer` and a new inner-wall code path runs the same Material / FuzzySkin extraction logic against the inner polygon (which has its own contour vertices and its own paint values per packet 100's IR widening). Per-vertex `is_bridge` derivation runs once per wall vertex via a point-in-polygon helper against `region.bridge_areas()`. `only_one_wall_top` and `only_one_wall_first_layer` are checked at the head of `run_perimeters`'s wall-emission loop; when either fires, `wall_count` is locally clamped to 1 before the loop iterates.
+- Selected approach: add the two view accessors with **host-side pre-filtering** — the host populator intersects `OverhangRegion.xy_footprint` (currently empty until sibling roadmap O-T010 lands) with the region's polygon, and resolves `nonplanar_surface: Option<SurfaceGroupId>` to `Option<&SurfaceGroup>` by lookup in `SurfaceClassificationIR.per_object[…].surface_groups`. Both accessors return `&[ExPolygon]` / `Option<&SurfaceGroup>` view references — no Vec cloning. `build_wall_flags` in the shared utils gains an `is_outer: bool` parameter; the existing outer-wall logic moves under `if is_outer` and a new inner-wall code path runs the same Material / FuzzySkin extraction logic against the inner polygon (which has its own contour vertices and its own paint values per packet 102's IR widening). Per-vertex `is_bridge` derivation runs once per wall vertex via a point-in-polygon helper against `region.bridge_areas()`. `only_one_wall_top` and `only_one_wall_first_layer` are checked at the head of `run_perimeters`'s wall-emission loop; when either fires, `wall_count` is locally clamped to 1 before the loop iterates.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `crates/slicer-sdk/src/views.rs` — add `pub fn overhang_areas`, `pub fn surface_group`; add the corresponding fields on `SliceRegionView` struct.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — `overhang-areas` and `surface-group` accessors on `slice-region-view`.
   - `crates/slicer-wasm-host/src/host.rs` — `SliceRegionData` field additions; populator fills both fields at view-construction.
-  - `crates/slicer-helpers/src/perimeter_utils.rs` — extend `build_wall_flags` with `is_outer` parameter and inner-wall code path; add `point_in_any_polygon(&Point2, &[ExPolygon]) -> bool` helper.
+  - `crates/slicer-core/src/perimeter_utils.rs` — extend `build_wall_flags` with `is_outer` parameter and inner-wall code path; add `point_in_any_polygon(&Point2, &[ExPolygon]) -> bool` helper.
   - `modules/core-modules/classic-perimeters/src/lib.rs` — call `build_wall_flags(.., is_outer=false)` for inner walls; read `region.bridge_areas()` for `is_bridge`; read `_config.get_bool("only_one_wall_top")` and `_config.get_bool("only_one_wall_first_layer")`; explicitly set `overhang_quartile = None` with deferred-roadmap doc-comment.
   - `modules/core-modules/arachne-perimeters/src/lib.rs` — same as classic.
   - `modules/core-modules/{classic,arachne}-perimeters/*.toml` — register the two new config keys.
@@ -40,7 +40,7 @@
 
 Primary edit surface exceeds 3 files; the packet bundles 10 roadmap tasks per the user's directive. The **three highest-LOC-delta** files are listed first:
 
-- `crates/slicer-helpers/src/perimeter_utils.rs` — role: `build_wall_flags` extension + `point_in_any_polygon` helper; expected change: ~80 LOC.
+- `crates/slicer-core/src/perimeter_utils.rs` — role: `build_wall_flags` extension + `point_in_any_polygon` helper; expected change: ~80 LOC.
 - `modules/core-modules/classic-perimeters/src/lib.rs` — role: consume new view accessors, read bridge_areas per-vertex, gate wall_count on the two new flags; expected change: ~60 LOC.
 - `modules/core-modules/arachne-perimeters/src/lib.rs` — role: mirror of classic; expected change: ~60 LOC.
 - `crates/slicer-sdk/src/views.rs` — role: two new accessors + struct fields; expected change: ~30 LOC.
@@ -68,7 +68,7 @@ Primary edit surface exceeds 3 files; the packet bundles 10 roadmap tasks per th
 - `crates/slicer-core/src/algos/mesh_analysis.rs` — out of scope. The sibling roadmap (overhang-pipeline-restructuring O-T010) edits this file to add `OverhangRegion.xy_footprint`; this packet's `overhang_areas()` accessor consumes whatever exists (currently empty Vec until O-T010 lands).
 - `crates/slicer-core/src/algos/prepass_slice.rs` — out of scope.
 - `crates/slicer-runtime/src/region_partition.rs` — out of scope.
-- All `slicer-helpers` files except `perimeter_utils.rs` — out of scope.
+- All `slicer-core` files except `perimeter_utils.rs` — out of scope.
 - All modules under `modules/core-modules/` except the two perimeter modules — out of scope.
 
 ## Expected Sub-Agent Dispatches
@@ -77,7 +77,7 @@ Primary edit surface exceeds 3 files; the packet bundles 10 roadmap tasks per th
 - "Summarize `docs/02_ir_schemas.md` for the `SurfaceGroup` struct shape and the host populator pattern for `bridge_areas`; return SUMMARY ≤ 150 words" — purpose: Step 1 view-accessor + host-populator template.
 - "Run `cargo check --workspace --all-targets` after each step; return FACT pass/fail + SNIPPETS ≤ 20 lines on fail" — purpose: cross-crate compile gate.
 - "Run `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd`; return FACT pass/fail + assertion text on fail" — purpose: AC-1 verification.
-- "Run `cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd`; return FACT pass/fail" — purpose: AC-2.
+- "Run `cargo test -p slicer-core --test inner_wall_material_boundary_tdd`; return FACT pass/fail" — purpose: AC-2.
 - "Run `cargo test -p slicer-runtime --test contract only_one_wall_top_tdd only_one_wall_first_layer_tdd`; return FACT pass/fail per test" — purpose: AC-4 + AC-5.
 - "Run `cargo xtask build-guests --check`; return FACT (clean / STALE list ≤ 5 entries)" — purpose: Step 1 closure gate after WIT change.
 
@@ -95,6 +95,7 @@ Primary edit surface exceeds 3 files; the packet bundles 10 roadmap tasks per th
 - `Point3WithWidth.overhang_quartile = None` is invariant until the sibling roadmap lands. The deviation registration documents this.
 - `only_one_wall_top` triggers **only** when `region.top_shell_index() == Some(0)` (exactly the topmost solid layer). `Some(1)` and `Some(2)` (sub-top shells) do NOT trigger — matches OrcaSlicer's `top_shell_index == 0` gate.
 - `only_one_wall_first_layer` triggers **only** when `_layer_index == 0`. Layer 1 onwards is unaffected.
+- `perimeter_utils` consumed from `slicer-core` per docs/13 §Out of Scope. Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT` (P102, P103, P105, P108, P110, P111, P112 also renamed).
 
 ## Risks and Tradeoffs
 
@@ -111,4 +112,4 @@ Primary edit surface exceeds 3 files; the packet bundles 10 roadmap tasks per th
 ## Open Questions
 
 - `[FWD]` Inner-wall paint sampling strategy: nearest-vertex projection is a pragmatic stopgap (good enough for most cases; lossy for sub-line-width features). If the implementer finds the regression baseline shifts more than 5% of vertex flags during AC-2 testing, escalate; otherwise document the choice in the perimeter_utils doc-comment and proceed.
-- `[FWD]` `flow_factor` config key shape (T-025): the roadmap defers actual flow-compensation. If the implementer wants a config key registered now (e.g. `flow_compensation: float`, default `1.0`), add it under §"Walls" in `docs/15_config_keys_reference.md`. Otherwise the per-vertex `flow_factor: 1.0` hardcode stays, documented as "future work".
+- **Resolved** — `flow_factor` config key shape (T-025): no new key registered in this packet. The per-vertex `flow_factor` is hardcoded to `1.0` with a doc-comment citing "future work / flow-compensation algorithm pending". This matches requirements.md §In Scope ("read from config when present; document `1.0` default rationale") and the Step 3 plumbing (`flow_factor = 1.0`). When a future packet introduces the flow-compensation algorithm, it will register the key and replace the `1.0` hardcode in one atomic change.

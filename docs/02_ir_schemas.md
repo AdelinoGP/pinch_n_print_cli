@@ -1604,3 +1604,17 @@ pre-packet-60 behavior at `{:.4}`).
 | New enum variant         | Minor (1.0 → 1.1) | Yes — old modules treat as unknown |
 
 The `extensions: HashMap<String, ConfigValue>` field on `ResolvedConfig` is the soft landing zone for config keys contributed by modules not present in the host's schema snapshot. Keys always round-trip safely.
+
+### Reservation Table — perimeter parity roadmap (P102–P112)
+
+| Version | Packet | Rationale |
+|---------|--------|-----------|
+| 4.1.0 | (current) | — |
+| 4.2.0 | P102 | `WallBoundaryType::MaterialBoundary` widening (T-013) |
+| 4.3.0 | P103 | `ThickPolyline` + `Point2WithWidth` additive types (T-042) |
+| 4.4.0 | P105 | `LoopType::GapFill` + `ExtrusionRole::GapFill` additive variants (T-062b) |
+| 4.5.0 | P106 | `SurfaceClassificationIR.overhang_quartile_polygons` additive field (O-T010..O-T012) |
+| 4.6.0 | P109 | `SlicedRegion.external_contour` additive removal (T-P96-D) |
+| 4.7.0 | P112 | `ExtrusionLine` + `ExtrusionJunction` additive types (T-224) |
+
+Reservations apply only to the perimeter parity roadmap (P102..P112 + P106/P107). Other concurrent packets must coordinate with the active roadmap maintainer before bumping. Multiple bumps within a single packet are not permitted.

@@ -43,7 +43,7 @@ This packet closes all four concerns. The parity harness + 6 recorded fixtures g
 
 - M2 work (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack + real Arachne port) — separate roadmap and separate packets.
 - Sibling roadmap work (overhang-pipeline-restructuring, spiral-vase-and-non-planar-pipeline) — out of M1 scope.
-- New perimeter-module feature work — all done by P102–P106.
+- New perimeter-module feature work — all done by P102–P108.
 - Recording M2 reference fixtures — that's M2's verification packet.
 - Adding new edge cases beyond the 7 audit-called-out cases — future audits can extend the suite.
 
@@ -61,7 +61,7 @@ This packet closes all four concerns. The parity harness + 6 recorded fixtures g
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
 
-All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDocumented/` into the implementer's own context. Dispatch contract: return `LOCATIONS` (file:line + 1-line context, ≤ 20 entries) or `SUMMARY` (≤ 200 words, no code unless asked).
+All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDocumented/` into the implementer's own context. Dispatch contract: return `LOCATIONS` (file:line + 1-line context, ≤ 20 entries) or `SUMMARY` (≤ 200 words, no code unless asked). Code snippets in returns are capped at 30 lines.
 
 Files to inspect for this packet:
 
@@ -87,7 +87,7 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test integration perimeter_edge_cases` | AC-3 (7 edge cases) | FACT pass/fail per case |
 | `cargo test -p slicer-runtime --test executor cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes` | AC-4 | FACT pass/fail |
 | `cargo xtask build-guests --check` | Guest WASM coherence after IR removal | FACT clean / STALE list |
-| `cargo test --workspace 2>&1 | tee target/test-output.log | tail -5` | T-105 / AC-7 closure ceremony | FACT (summary line + count) |
+| `cargo test --workspace 2>&1 \| tee target/test-output.log \| tail -5` | T-105 / AC-7 closure ceremony | FACT (summary line + count) |
 
 ## Step Completion Expectations
 
@@ -99,6 +99,6 @@ Files to inspect for this packet:
 
 - This packet has 7 steps. The largest is Step 2 (6 reference fixtures, each requires an OrcaSlicer SUMMARY dispatch + a JSON fixture write).
 - `crates/slicer-ir/src/slice_ir.rs` is ~1700 LOC — range-read by `rg -n 'external_contour|SlicedRegion|CURRENT_SLICE_IR_SCHEMA_VERSION'`.
-- `docs/DEVIATION_LOG.md` may have grown significantly during M1 — `wc -l` first; range-read by `rg -n '^|.*D-1[0-9]|^|.*D-OVERHANG\|^|.*D-96-AC22'`. Do NOT load full.
+- `docs/DEVIATION_LOG.md` may have grown significantly during M1 — `wc -l` first; range-read by `rg -n 'D-1[0-9]|D-OVERHANG|D-96-AC22' docs/DEVIATION_LOG.md`. Do NOT load full.
 - Likely temptation: re-read OrcaSlicer source for the 6 reference fixtures. **Delegate SUMMARYs** instead; the recorded JSON files are derived from documented OrcaSlicer behavior, not from reading source.
 - Sub-agent return-format for the heaviest dispatch: per-fixture SUMMARY (≤ 100 words each); 6 dispatches total. If any returns > 150 words or includes code, re-dispatch tighter.

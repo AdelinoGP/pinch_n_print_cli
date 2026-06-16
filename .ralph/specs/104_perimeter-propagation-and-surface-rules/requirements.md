@@ -21,18 +21,18 @@
 
 PrePass already exposes per-region bridge polygons (`SlicedRegion.bridge_areas`, populated by `MeshAnalysis` per packet 36-rev1), top/bottom shell indices (`top_shell_index`, `bottom_shell_index`), non-planar surface IDs (`nonplanar_surface`), and full `SurfaceClassificationIR.OverhangRegion` data. The perimeter modules **read none of this beyond polygon outlines** — `is_bridge` is hardcoded false on every emitted vertex; inner walls carry hardcoded `WallBoundaryType::Interior` regardless of multi-tool paint; `top_shell_index == Some(0)` does not reduce wall count even when the user sets `only_one_wall_top`; first-layer wall count is the same as mid-print wall count even when the user sets `only_one_wall_first_layer`. These four defaults silently override real upstream data, producing wall geometry that disagrees with the user's intent and with OrcaSlicer parity.
 
-This packet wires that data through, end to end: extends `SliceRegionView` with the missing accessors (`overhang_areas`, `surface_group`), extends the shared `build_wall_flags` helper from packet 100 to compute per-vertex flags for both outer and inner walls (not just outer), and adds the two top/first-layer wall-count overrides. `overhang_quartile` per-vertex propagation (T-024) is the one exception: the algorithm needs cross-layer mesh-cross-section data the sibling roadmap (`overhang-pipeline-restructuring`) is preparing. Until that lands, this packet documents the deferral as a registered deviation rather than emit incorrect data or leave the field dead in IR.
+This packet wires that data through, end to end: extends `SliceRegionView` with the missing accessors (`overhang_areas`, `surface_group`), extends the shared `build_wall_flags` helper from packet 102 to compute per-vertex flags for both outer and inner walls (not just outer), and adds the two top/first-layer wall-count overrides. `overhang_quartile` per-vertex propagation (T-024) is the one exception: the algorithm needs cross-layer mesh-cross-section data the sibling roadmap (`overhang-pipeline-restructuring`) is preparing. Until that lands, this packet documents the deferral as a registered deviation rather than emit incorrect data or leave the field dead in IR.
 
 ## In Scope
 
 - `crates/slicer-sdk/src/views.rs`: add `pub fn overhang_areas(&self) -> &[ExPolygon]` and `pub fn surface_group(&self) -> Option<&SurfaceGroup>` accessors on `SliceRegionView`. Host populator (`crates/slicer-wasm-host/src/host.rs`) fills both from `SurfaceClassificationIR` at view-construction.
 - `crates/slicer-schema/wit/deps/ir-types.wit`: mirror `overhang-areas: func() -> list<ex-polygon>;` and `surface-group: func() -> option<surface-group>;` (the `surface-group` record itself already exists from PrePass IRs).
-- `crates/slicer-helpers/src/perimeter_utils.rs`: extend `build_wall_flags` to accept an `is_outer: bool` parameter (default trait usage is the existing outer path); add a new code path that runs the same Material/FuzzySkin propagation on inner walls. Add point-in-polygon helper for `is_bridge` derivation. Add `flow_factor` resolution helper.
+- `crates/slicer-core/src/perimeter_utils.rs`: extend `build_wall_flags` to accept an `is_outer: bool` parameter (default trait usage is the existing outer path); add a new code path that runs the same Material/FuzzySkin propagation on inner walls. Add point-in-polygon helper for `is_bridge` derivation. Add `flow_factor` resolution helper.
 - Both `lib.rs` files in `classic-perimeters` and `arachne-perimeters`: call `build_wall_flags` for inner walls in addition to outer; consume `region.bridge_areas()` for per-vertex `is_bridge`; read `only_one_wall_top` and `only_one_wall_first_layer` from `_config`; explicitly set `Point3WithWidth.overhang_quartile = None` with doc-comment citing sibling roadmap.
 - Both manifests: register `only_one_wall_top` (bool, default `false`) and `only_one_wall_first_layer` (bool, default `false`).
 - `docs/15_config_keys_reference.md`: register both new keys.
 - `docs/05_module_sdk.md`: document the two new `SliceRegionView` accessors.
-- `docs/DEVIATION_LOG.md`: register `D-<packet>-OVERHANG-QUARTILE-NONE`.
+- `docs/DEVIATION_LOG.md`: register `D-104-OVERHANG-QUARTILE-NONE`.
 - 5 new TDD files covering AC-1 through AC-5 + the negatives.
 
 ## Out of Scope
@@ -78,11 +78,11 @@ Files to inspect for this packet:
 | `cargo check --workspace --all-targets` | Cross-crate compile after SDK + WIT additions | FACT pass/fail; SNIPPETS ≤ 20 lines on fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Workspace clippy gate | FACT pass/fail |
 | `cargo test -p slicer-runtime --test contract per_vertex_is_bridge_propagation_tdd` | AC-1 + AC-N1 | FACT pass/fail |
-| `cargo test -p slicer-helpers --test inner_wall_material_boundary_tdd` | AC-2 | FACT pass/fail |
+| `cargo test -p slicer-core --test inner_wall_material_boundary_tdd` | AC-2 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test contract only_one_wall_top_tdd` | AC-4 + AC-N2 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test contract only_one_wall_first_layer_tdd` | AC-5 | FACT pass/fail |
 | `cargo xtask build-guests --check` | Guest WASM coherence after WIT change | FACT clean / STALE list |
-| `rg -q 'D-.*-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md` | AC-6 deviation entry landed | FACT pass/fail |
+| `rg -q 'D-104-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md` | AC-6 deviation entry landed | FACT pass/fail |
 
 ## Step Completion Expectations
 
@@ -94,6 +94,6 @@ Files to inspect for this packet:
 
 - `crates/slicer-sdk/src/views.rs` is ~360 lines — range-read by `rg -n 'impl SliceRegionView|fn (bridge_areas|top_shell_index|nonplanar_surface)'` then ±40 lines around each hit.
 - `crates/slicer-wasm-host/src/host.rs` is large — DO NOT load in full. Range-read by `rg -n 'sliced_region_to_data|SliceRegionData'` and edit only the populator path.
-- Both perimeter modules' `lib.rs` files are post-packet-100 state (≈ 400–600 LOC each after the helper extraction). Range-read each file's `run_perimeters` body only.
+- Both perimeter modules' `lib.rs` files are post-packet-102 state (≈ 400–600 LOC each after the helper extraction). Range-read each file's `run_perimeters` body only.
 - Likely temptation read: `crates/slicer-core/src/algos/mesh_analysis.rs` to see how `OverhangRegion.xy_footprint` is computed. **Skip** — that's sibling roadmap O-T010 territory. The accessor introduced here just reads whatever `xy_footprint` exists (currently empty until O-T010 lands); the data flow is correct regardless.
 - Sub-agent return-format for the heaviest dispatch: the `only_one_wall_top/first_layer` OrcaSlicer SUMMARY must return ≤ 100 words. Anything longer indicates the SUMMARY is including code instead of behavior description; re-dispatch tighter.
