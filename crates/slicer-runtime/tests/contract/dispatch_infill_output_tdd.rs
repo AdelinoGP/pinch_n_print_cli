@@ -389,29 +389,6 @@ fn guest_infill_output_committed_to_arena() {
 }
 
 #[test]
-fn empty_guest_output_does_not_populate_arena() {
-    let mut fx = dispatch_fixture::for_stage("Layer::Infill")
-        .no_wasm()
-        .build();
-
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        active_regions: Vec::new(),
-        has_nonplanar: false,
-        is_sync_layer: false,
-    };
-
-    fx.run_layer(&layer)
-        .expect("Layer::Infill dispatch+commit should succeed");
-
-    assert!(
-        fx.arena.infill().is_none(),
-        "infill slot should be empty for no-op stage"
-    );
-}
-
-#[test]
 fn output_commitment_deterministic_across_repeated_runs() {
     let fx = dispatch_fixture::for_stage("Layer::Infill")
         .with_slice(ir_builders::slice_ir::with_count(1).build())
@@ -549,4 +526,195 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         "pipeline with output commitment should complete: {:?}",
         result.err()
     );
+}
+
+// ── Restored tests (migrated from dispatch_tdd.rs split) ──────────────────────
+
+#[test]
+fn infill_output_correct_when_slice_regions_present() {
+    // Verify that the existing output commitment for infill is not
+    // regressed when real slice region data is provided.
+    let mut fields: HashMap<String, slicer_ir::ConfigValue> = HashMap::new();
+    fields.insert("infill-spacing".into(), slicer_ir::ConfigValue::Float(3.0));
+
+    let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_slice(
+            ir_builders::slice_ir::with_count(1)
+                .at_layer(5)
+                .at_z(1.0)
+                .build(),
+        )
+        .with_config(slicer_ir::ConfigView::from_map(fields))
+        .build();
+
+    let layer = GlobalLayer {
+        index: 5,
+        z: 1.0,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    fx.run_layer(&layer).unwrap();
+
+    let infill = fx.arena.infill().expect("infill should be populated");
+    let path = &infill.regions[0].sparse_infill[0];
+    // Config spacing=3.0 → second point x = 30.0
+    assert_eq!(
+        path.points[1].x, 30.0,
+        "config wiring still works with slice regions present"
+    );
+    // First point encodes region data: z from slice, region_count=1, poly_count=1
+    // Expected = |base_regions| × |polygons_per_region|; with_count(1) produces
+    // 1 SlicedRegion each with exactly 1 ExPolygon.
+    // Cross-product: 1 region × 1 ExPolygon = 1 total polygon visible.
+    assert_eq!(path.points[0].z, 1.0, "z from slice region");
+    assert_eq!(path.points[0].flow_factor, 1.0, "1 region visible");
+    assert_eq!(path.points[0].width, 1.0, "1 polygon visible");
+    assert_eq!(
+        infill.global_layer_index, 5,
+        "layer index preserved in output"
+    );
+}
+
+#[test]
+fn empty_perimeter_input_valid_for_infill_postprocess() {
+    // When no PerimeterIR is staged, guest sees zero regions and emits no
+    // output (per-region loop). The empty-bypass keeps the infill slot empty
+    // — this is the documented empty case and must not fail.
+    let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess").build();
+
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    // Do not stage any perimeter IR.
+
+    fx.run_layer(&layer).unwrap();
+
+    assert!(
+        fx.arena.infill().is_none(),
+        "no input regions → no output → empty bypass"
+    );
+}
+
+#[test]
+fn stage_without_perimeter_input_does_not_see_perimeter_state() {
+    // Layer::Infill consumes slice regions, not perimeter regions. Even if
+    // PerimeterIR is staged in the arena, the infill guest should not
+    // observe it — with zero slice regions, the guest emits no geometry.
+    let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        // Stage perimeter data only; no slice data.
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_count(4)
+                .at_layer(0)
+                .walls(2)
+                .infill(5)
+                .build(),
+        )
+        .build();
+
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    fx.run_layer(&layer).unwrap();
+
+    // No infill output confirms perimeter state was not misrouted into the
+    // slice-region view.
+    assert!(
+        fx.arena.infill().is_none(),
+        "Infill stage must not see perimeter data as slice regions"
+    );
+}
+
+#[test]
+fn failed_commit_does_not_leak_into_next_call() {
+    // Two sequential calls sharing one arena: first succeeds and populates
+    // infill, second (for perimeters) with empty output should not see leaked
+    // infill.
+    let mut fx = dispatch_fixture::for_stage("Layer::Infill")
+        .with_slice(ir_builders::slice_ir::with_count(1).build())
+        .build();
+
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    // First call: infill (produces output)
+    let r1 = fx.run_layer(&layer);
+    assert!(r1.is_ok(), "infill should succeed");
+    assert!(
+        fx.arena.infill().is_some(),
+        "infill slot should be populated"
+    );
+
+    // Second call: perimeters (no-op — should not contaminate anything).
+    // Build a second fixture just to source its bundle for the Perimeters
+    // stage, then dispatch against the shared arena/blackboard.
+    let fxp = dispatch_fixture::for_stage("Layer::Perimeters").build();
+    let r2 = run_layer_and_commit_with_bundle(
+        &fx.dispatcher,
+        "Layer::Perimeters",
+        &layer,
+        &fxp.bundle,
+        &fx.blackboard,
+        &mut fx.arena,
+    );
+    assert!(r2.is_ok(), "perimeters should succeed");
+    // Perimeter slot should be empty (no-op guest), infill slot unchanged.
+    assert!(
+        fx.arena.perimeter().is_none(),
+        "perimeter slot should stay empty"
+    );
+    assert!(
+        fx.arena.infill().is_some(),
+        "infill slot should still be populated"
+    );
+}
+
+// ── IR builder unit tests ─────────────────────────────────────────────────────
+
+#[test]
+fn ir_builders_slice_ir_with_count_shape() {
+    let ir = crate::common::ir_builders::slice_ir::with_count(3)
+        .at_z(0.2)
+        .build();
+    assert_eq!(ir.global_layer_index, 0);
+    assert_eq!(ir.z, 0.2);
+    assert_eq!(ir.regions.len(), 3);
+    for i in 0..3 {
+        assert_eq!(ir.regions[i].object_id, format!("obj-{i}"));
+        assert_eq!(ir.regions[i].region_id, i as u64);
+        assert_eq!(ir.regions[i].polygons.len(), 1);
+        assert_eq!(ir.regions[i].polygons[0].contour.points.len(), 4);
+        assert!(ir.regions[i].polygons[0].holes.is_empty());
+        assert_eq!(ir.regions[i].effective_layer_height, 0.2);
+    }
+}
+
+#[test]
+fn ir_builders_slice_ir_with_ids_shape() {
+    let ir = crate::common::ir_builders::slice_ir::with_ids(&[
+        ("custom-obj", 17u64),
+        ("other-obj", 99u64),
+    ])
+    .at_z(0.5)
+    .build();
+    assert_eq!(ir.regions.len(), 2);
+    assert_eq!(ir.regions[0].object_id, "custom-obj");
+    assert_eq!(ir.regions[0].region_id, 17);
+    assert_eq!(ir.regions[1].object_id, "other-obj");
+    assert_eq!(ir.regions[1].region_id, 99);
 }

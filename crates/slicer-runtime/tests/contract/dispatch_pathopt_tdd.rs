@@ -700,3 +700,315 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         "default emitter must lift to layer.z + hop_height for committed z_hops"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Restored regression tests (originally in dispatch_tdd.rs):
+//   - path_optimization_receives_real_perimeter_regions
+//   - path_optimization_dispatch_emits_per_layer_marker
+//   - path_optimization_dispatch_is_deterministic
+// ---------------------------------------------------------------------------
+
+const PATH_OPT_DEFAULT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"
+);
+
+/// Ported verbatim from the original `dispatch_tdd.rs`: load the canonical
+/// `path-optimization-default.wasm` component, returning `None` (so the
+/// caller skips) when the artifact is missing.
+fn load_path_optimization_default(
+    _engine: &slicer_runtime::WasmEngine,
+) -> Option<Arc<slicer_runtime::WasmComponent>> {
+    let path = std::path::Path::new(PATH_OPT_DEFAULT_PATH);
+    if !path.exists() {
+        return None;
+    }
+    Some(wasm_cache::compiled_component_at(path))
+}
+
+/// Build a `TestModuleBundle` wrapping a caller-supplied component for the
+/// given module id/stage. Replicates the construction the original legacy
+/// compiled-module test helper performed, using only public
+/// `slicer_runtime`/`slicer_wasm_host` APIs (no forbidden legacy helper).
+fn bundle_with_component(
+    id: &str,
+    stage: &str,
+    component: Arc<slicer_runtime::WasmComponent>,
+) -> TestModuleBundle {
+    use slicer_ir::SemVer;
+    use slicer_runtime::manifest::LoadedModuleBuilder;
+    use slicer_runtime::{build_wasm_instance_pool, CompiledModuleBuilder, WasmArtifactMetadata};
+
+    let loaded = LoadedModuleBuilder::new(
+        id,
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        stage,
+        "slicer:world-layer@1.0.0",
+        std::path::PathBuf::from("/dev/null"),
+    )
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
+
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
+    );
+    let module = CompiledModuleBuilder::new(id)
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(HashMap::new())))
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
+}
+
+#[test]
+fn path_optimization_receives_real_perimeter_regions() {
+    // PathOptimization does not commit to an arena slot; it should still
+    // consume perimeter-region data (this test proves no panic / error path
+    // and is verified by the dispatch succeeding when perimeter IR is staged).
+    let mut fx = dispatch_fixture::for_stage("Layer::PathOptimization")
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_count(4)
+                .at_layer(0)
+                .walls(2)
+                .infill(0)
+                .build(),
+        )
+        .build();
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    let r = fx.run_layer(&layer);
+    assert!(
+        r.is_ok(),
+        "path-optimization with real perimeter regions should succeed: {:?}",
+        r.err()
+    );
+}
+
+/// End-to-end guard: the canonical `Layer::PathOptimization` module
+/// runs on the real per-layer path against a real Benchy-equivalent
+/// set-up — the arena already carries a committed `PerimeterIR` (via
+/// the `Layer::Perimeters` stage) and a pre-staged `LayerCollectionIR`
+/// with `ordered_entities`. The guest's `push_comment` output
+/// survives through to `LayerCollectionIR.annotations`, which the
+/// default G-code emitter renders as a `; path-optimization layer X
+/// regions=Y entities=Z` line (see benchy_end_to_end_tdd.rs for the
+/// observed 239-marker count on the real Benchy run).
+#[test]
+fn path_optimization_dispatch_emits_per_layer_marker() {
+    use slicer_runtime::{Blackboard, LayerArena};
+
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_path_optimization_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: path-optimization-default.wasm missing");
+            return;
+        }
+    };
+    let module = bundle_with_component(
+        "com.test.path-opt-dispatch",
+        "Layer::PathOptimization",
+        component,
+    );
+
+    // Pre-seed the arena with a perimeter commit so the guest sees a
+    // non-empty region list (region_count=1, entity_count=1 on the
+    // guest side). A PerimeterRegion with one wall loop.
+    let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+    let mut arena = LayerArena::new();
+    let wall = slicer_ir::WallLoop {
+        perimeter_index: 0,
+        loop_type: slicer_ir::LoopType::Outer,
+        path: slicer_ir::ExtrusionPath3D {
+            points: vec![
+                slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+                slicer_ir::Point3WithWidth {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+                slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+            ],
+            role: slicer_ir::ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        width_profile: slicer_ir::WidthProfile {
+            widths: vec![0.4; 3],
+        },
+        feature_flags: vec![
+            slicer_ir::WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            };
+            3
+        ],
+        boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+    };
+    let perim = slicer_ir::PerimeterIR {
+        global_layer_index: 7,
+        regions: vec![slicer_ir::PerimeterRegion {
+            object_id: "obj".into(),
+            region_id: 0,
+            walls: vec![wall],
+            seam_candidates: Vec::new(),
+            infill_areas: Vec::new(),
+            resolved_seam: None,
+        }],
+        ..Default::default()
+    };
+    arena.set_perimeter(perim).expect("seed perimeter");
+
+    let layer = slicer_ir::GlobalLayer {
+        index: 7,
+        z: 1.4,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    crate::common::run_layer_and_commit_with_bundle(
+        &dispatcher,
+        "Layer::PathOptimization",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
+
+    // Dispatch already ran commit_layer_outputs; the comment
+    // is now in the arena as a deferred annotation. Verify it.
+    let annotations = arena.take_deferred_annotations();
+    assert_eq!(
+        annotations.len(),
+        1,
+        "exactly one path-optimization marker expected, got {}",
+        annotations.len()
+    );
+    match &annotations[0].kind {
+        slicer_ir::LayerAnnotationKind::Comment(text) => {
+            assert!(
+                text.contains("path-optimization layer 7"),
+                "expected 'path-optimization layer 7' in annotation text, got: {text}"
+            );
+            assert!(
+                text.contains("regions=1"),
+                "expected 'regions=1' in annotation text, got: {text}"
+            );
+            assert!(
+                text.contains("entities=1"),
+                "expected 'entities=1' (one wall loop) in annotation text, got: {text}"
+            );
+        }
+        other => panic!("expected Comment annotation, got {other:?}"),
+    }
+}
+
+/// Two back-to-back dispatches with the same arena seed produce
+/// byte-identical annotation output.
+#[test]
+fn path_optimization_dispatch_is_deterministic() {
+    use slicer_runtime::{Blackboard, LayerArena};
+
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_path_optimization_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: path-optimization-default.wasm missing");
+            return;
+        }
+    };
+    let layer = slicer_ir::GlobalLayer {
+        index: 3,
+        z: 0.6,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+
+    let run_once = || -> Vec<slicer_ir::LayerAnnotation> {
+        let module = bundle_with_component(
+            "com.test.path-opt-det",
+            "Layer::PathOptimization",
+            Arc::clone(&component),
+        );
+        let mut arena = LayerArena::new();
+        crate::common::run_layer_and_commit_with_bundle(
+            &dispatcher,
+            "Layer::PathOptimization",
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .unwrap();
+        arena.take_deferred_annotations()
+    };
+    let a = run_once();
+    let b = run_once();
+    assert_eq!(a.len(), b.len());
+    for (x, y) in a.iter().zip(b.iter()) {
+        assert_eq!(x.after_entity_index, y.after_entity_index);
+        assert_eq!(format!("{:?}", x.kind), format!("{:?}", y.kind));
+    }
+}

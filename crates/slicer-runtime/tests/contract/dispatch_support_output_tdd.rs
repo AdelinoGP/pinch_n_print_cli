@@ -2,14 +2,13 @@ use crate::common::*;
 use slicer_ir::{
     ExPolygon, GlobalLayer, PaintSemantic, PaintValue, Point2, Polygon, SliceIR, SlicedRegion,
 };
-use slicer_runtime::wit_host::*;
 use std::collections::HashMap;
 
 #[test]
 fn empty_guest_output_does_not_populate_arena() {
-    let mut fx = dispatch_fixture::for_stage("Layer::SupportPostProcess")
-        .no_wasm()
-        .build();
+    // When the guest produces no paths (empty but valid), the arena slot should
+    // remain empty. The test guest's run_support_postprocess is a no-op stub.
+    let mut fx = dispatch_fixture::for_stage("Layer::SupportPostProcess").build();
 
     let layer = GlobalLayer {
         index: 0,
@@ -17,7 +16,8 @@ fn empty_guest_output_does_not_populate_arena() {
         ..Default::default()
     };
 
-    fx.run_layer(&layer).expect("dispatch should succeed");
+    fx.run_layer(&layer)
+        .expect("Layer::SupportPostProcess dispatch+commit should succeed");
 
     assert!(
         fx.arena.support().is_none(),
@@ -136,94 +136,6 @@ fn support_postprocess_empty_bypass_when_no_slice_regions() {
     assert!(
         fx.arena.support().is_none(),
         "empty-input post-process: empty bypass preserved"
-    );
-}
-
-#[test]
-fn support_postprocess_commit_preserves_distinct_region_identities() {
-    let mut fx = dispatch_fixture::for_stage("Layer::SupportPostProcess")
-        .with_slice(ir_builders::slice_ir::with_count(2).build())
-        .build();
-
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        ..Default::default()
-    };
-    fx.run_layer(&layer).unwrap();
-
-    let support = fx.arena.support().expect("support populated");
-    assert_eq!(
-        support.support_paths.len(),
-        2,
-        "two origin-tagged paths preserved"
-    );
-    assert_eq!(
-        support.support_paths[0].points[0].x, 1.0,
-        "region 0 has 1 polygon"
-    );
-    assert_eq!(
-        support.support_paths[1].points[0].x, 1.0,
-        "region 1 has 1 polygon"
-    );
-}
-
-#[test]
-fn support_postprocess_identity_isolation_across_dispatches() {
-    let mut fx1 = dispatch_fixture::for_stage("Layer::SupportPostProcess")
-        .with_slice(ir_builders::slice_ir::with_count(3).build())
-        .build();
-    let mut fx2 = dispatch_fixture::for_stage("Layer::SupportPostProcess")
-        .with_slice(ir_builders::slice_ir::with_count(1).build())
-        .build();
-
-    let layer = GlobalLayer {
-        index: 0,
-        z: 0.2,
-        ..Default::default()
-    };
-    fx1.run_layer(&layer).unwrap();
-    fx2.run_layer(&layer).unwrap();
-
-    assert_eq!(
-        fx1.arena.support().unwrap().support_paths.len(),
-        3,
-        "dispatch 1 kept its 3 regions"
-    );
-    assert_eq!(
-        fx2.arena.support().unwrap().support_paths.len(),
-        1,
-        "dispatch 2 kept its 1 region (no leak)"
-    );
-}
-
-#[test]
-fn support_output_rejects_untagged_push_in_identity_mode() {
-    // Manual collected output with mixed tagged/untagged pushes.
-    let mk_path = || ExtrusionPath3d {
-        points: vec![Point3WithWidth {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            width: 0.4,
-            flow_factor: 1.0,
-            overhang_quartile: None,
-        }],
-        role: ExtrusionRole::SupportMaterial,
-        speed_factor: 1.0,
-    };
-    let output = SupportOutputCollected {
-        support_paths: vec![mk_path(), mk_path()],
-        support_path_origins: vec![Some(("obj-0".into(), 0)), None],
-        ..Default::default()
-    };
-
-    let result = convert_support_output(&output, 0);
-    assert!(result.is_err(), "untagged push in identity mode must fail");
-    let msg = result.unwrap_err();
-    assert!(
-        msg.contains("active slice source region") || msg.contains("without an active"),
-        "diagnostic should explain missing region context: {msg}"
     );
 }
 

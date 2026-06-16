@@ -333,3 +333,229 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         "diagnostic should explain missing region context: {msg}"
     );
 }
+
+// ── Restored tests (recovered after file split) ──────────────────────────
+
+#[test]
+fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
+    // Guest's run_infill_postprocess encodes:
+    //   point[0].x = region_count
+    //   point[0].y = total wall_loops
+    //   point[0].z = total infill polygons
+    let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(ir_builders::slice_ir::with_count(3).at_z(0.4).build())
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_count(3)
+                .at_layer(2)
+                .walls(2)
+                .infill(4)
+                .build(),
+        )
+        .build();
+
+    let layer = GlobalLayer {
+        index: 2,
+        z: 0.4,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    fx.run_layer(&layer).unwrap();
+
+    let infill = fx.arena.infill().expect("infill slot should be populated");
+    assert_eq!(infill.regions.len(), 3, "one InfillRegion per input region");
+    for (i, r) in infill.regions.iter().enumerate() {
+        let p = &r.solid_infill[0].points[0];
+        assert_eq!(p.x, 2.0, "each region sees its own 2 walls");
+        assert_eq!(p.y, 4.0, "each region sees its own 4 infill polygons");
+        assert_eq!(r.object_id, format!("obj-{i}"), "object_id preserved");
+        assert_eq!(r.region_id, i as u64, "region_id preserved");
+    }
+}
+
+#[test]
+fn perimeter_region_isolation_across_sequential_dispatches() {
+    let mut a1 = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_count(5)
+                .at_layer(0)
+                .walls(1)
+                .infill(2)
+                .build(),
+        )
+        .build();
+    a1.run_layer(&default_layer()).unwrap();
+
+    let mut a2 = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_perimeter(
+            ir_builders::perimeter_ir::with_count(1)
+                .at_layer(0)
+                .walls(7)
+                .infill(3)
+                .build(),
+        )
+        .build();
+    a2.run_layer(&default_layer()).unwrap();
+
+    let i1 = a1.arena.infill().unwrap();
+    let i2 = a2.arena.infill().unwrap();
+    assert_eq!(i1.regions.len(), 5, "first dispatch: 5 regions committed");
+    assert_eq!(i2.regions.len(), 1, "second dispatch: 1 region (no leak)");
+    let p1 = &i1.regions[0].solid_infill[0].points[0];
+    let p2 = &i2.regions[0].solid_infill[0].points[0];
+    assert_eq!(p1.x, 1.0, "first dispatch: each region has 1 wall");
+    assert_eq!(p1.y, 2.0, "first dispatch: each region has 2 infill polys");
+    assert_eq!(p2.x, 7.0, "second dispatch: 7 walls per region (no leak)");
+    assert_eq!(p2.y, 3.0, "second dispatch: 3 infill polys (no leak)");
+}
+
+#[test]
+fn perimeter_region_deterministic_across_repeated_dispatches() {
+    let mut results = Vec::new();
+    for _ in 0..3 {
+        let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
+            .with_perimeter(
+                ir_builders::perimeter_ir::with_count(2)
+                    .at_layer(0)
+                    .walls(3)
+                    .infill(4)
+                    .build(),
+            )
+            .build();
+        fx.run_layer(&default_layer()).unwrap();
+        results.push(fx.arena.take_infill().unwrap());
+    }
+    assert_eq!(results[0], results[1]);
+    assert_eq!(results[1], results[2]);
+}
+
+#[test]
+fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
+    // If a guest emits perimeter output without ever querying a perimeter
+    // region (origin tags all None) AND there were source regions, the
+    // identity-preservation contract is violated. Verify convert_perimeter_output
+    // surfaces a structured diagnostic in this case.
+    use slicer_runtime::wit_host::{
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+    };
+    // One untagged wall_loop and one tagged seam_candidate => mixed mode.
+    let output = PerimeterOutputCollected {
+        wall_loops: vec![WallLoopView {
+            perimeter_index: 0,
+            loop_type: WallLoopType::Outer,
+            path: ExtrusionPath3d {
+                points: vec![Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                }],
+                role: ExtrusionRole::OuterWall,
+                speed_factor: 1.0,
+            },
+            feature_flags: vec![WallFeatureFlag {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: vec![],
+            }],
+        }],
+        wall_loop_origins: vec![None],
+        infill_areas: Vec::new(),
+        infill_areas_origin: None,
+        rotated_wall_loops: Vec::new(),
+        rotated_wall_loop_origins: Vec::new(),
+        seam_candidates: Vec::new(),
+        seam_candidate_origins: Vec::new(),
+        resolved_seam: None,
+        resolved_seam_origin: None,
+    };
+    // Force "any_tagged" by setting a dummy infill_areas_origin so the
+    // identity-preserving path is taken; then the untagged wall_loop fails.
+    let mut output = output;
+    output.infill_areas_origin = Some(("dummy".into(), 0));
+    let result = convert_perimeter_output(&output, 0);
+    assert!(result.is_err(), "untagged push in identity mode must fail");
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("active perimeter source region") || msg.contains("without an active"),
+        "diagnostic should explain missing region context: {msg}"
+    );
+}
+
+#[test]
+fn slice_postprocess_rejects_nan_z_update() {
+    use slicer_runtime::wit_host::{
+        merge_slice_postprocess_into, RegionKey, SlicePostprocessCollected,
+    };
+
+    let existing = ir_builders::slice_ir::with_count(1)
+        .at_layer(0)
+        .at_z(0.2)
+        .build();
+    let key = RegionKey {
+        layer_index: 0,
+        object_id: existing.regions[0].object_id.clone(),
+        region_id: existing.regions[0].region_id.to_string(),
+    };
+    let output = SlicePostprocessCollected {
+        polygon_updates: Vec::new(),
+        path_z_updates: vec![(key, 0, 0, f32::NAN)],
+    };
+
+    let result = merge_slice_postprocess_into(existing, &output);
+    assert!(result.is_err(), "NaN Z update should be rejected");
+    let msg = result.unwrap_err();
+    assert!(msg.contains("NaN"), "error should mention NaN: {msg}");
+}
+
+#[test]
+fn slice_postprocess_rejects_unknown_region_key() {
+    use slicer_runtime::wit_host::{
+        merge_slice_postprocess_into, RegionKey, SlicePostprocessCollected,
+    };
+
+    let existing = ir_builders::slice_ir::with_count(2)
+        .at_layer(0)
+        .at_z(0.2)
+        .build();
+    let bogus = RegionKey {
+        layer_index: 0,
+        object_id: "does-not-exist".to_string(),
+        region_id: "999".to_string(),
+    };
+    let output = SlicePostprocessCollected {
+        polygon_updates: vec![(bogus, Vec::new())],
+        path_z_updates: Vec::new(),
+    };
+
+    let result = merge_slice_postprocess_into(existing, &output);
+    assert!(
+        result.is_err(),
+        "unknown region key must fail with structured diagnostic"
+    );
+    let msg = result.unwrap_err();
+    assert!(
+        msg.contains("unknown region") && msg.contains("does-not-exist"),
+        "diagnostic should explain mapping failure: {msg}"
+    );
+}
+
+#[test]
+fn empty_slice_postprocess_does_not_populate_arena() {
+    // The test guest's run_slice_postprocess is a no-op, so slice slot stays empty.
+    let mut fx = dispatch_fixture::for_stage("Layer::SlicePostProcess").build();
+
+    fx.run_layer(&default_layer())
+        .expect("Layer::SlicePostProcess dispatch+commit should succeed");
+    assert!(
+        fx.arena.slice().is_none(),
+        "slice slot should be empty for no-op"
+    );
+}
