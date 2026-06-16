@@ -10,7 +10,14 @@ mod common;
 
 mod config_view_binding_tdd;
 mod config_view_encapsulation_source_tdd;
-mod dispatch_tdd;
+mod dispatch_config_tdd;
+mod dispatch_identity_tdd;
+mod dispatch_infill_output_tdd;
+mod dispatch_pathopt_tdd;
+mod dispatch_perimeter_output_tdd;
+mod dispatch_prepass_harvest_tdd;
+mod dispatch_protocol_tdd;
+mod dispatch_support_output_tdd;
 mod guest_fixture_freshness_tdd;
 mod macro_all_worlds_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;
