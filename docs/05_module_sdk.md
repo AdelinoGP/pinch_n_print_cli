@@ -416,9 +416,9 @@ to receive a non-empty plan. Modules whose algorithm is inherently per-layer
 (e.g. `traditional-support`'s scan-line filler) intentionally omit the
 declaration so the audit contract reflects that they ignore the plan.
 
-For native host-side tests, `SliceRegionView` also exposes a convenience
-`boundary_paint()` accessor over the documented WIT `boundary-paint` data so
-perimeter generators can consume contour-parallel annotations ergonomically.
+For native host-side tests, `SliceRegionView` also exposes paint annotation
+accessors so perimeter generators can consume contour-parallel segment
+annotations ergonomically via the WIT `boundary-paint` resource.
 
 ### `LayerCollectionBuilder` — Path Optimization (packet 32)
 
@@ -475,27 +475,20 @@ host::log_debug("Took {} µs", host::now_us() - t0);
 // Paint region queries
 use slicer_sdk::paint::{PaintSemantic, PaintValue};
 
-// Test whether a 2D point falls within any painted region of a given semantic.
-// Returns the paint value if inside, None if outside all regions.
-let fuzzy: Option<PaintValue> = host::point_in_paint_region(
-    &paint_view,
-    PaintSemantic::FuzzySkin,
-    x_units, y_units,
-);
+// Query paint regions for a semantic at the current layer.
+// Returns the list of semantic regions (polygons + paint value).
+let regions = paint_view.get_regions(PaintSemantic::FuzzySkin);
+let fuzzy: Option<&PaintValue> = regions.first().map(|r| &r.value);
 
-// Test all points of a path segment against painted regions.
-// Returns a Vec<bool> parallel to the segment points.
-let flags: Vec<bool> = host::segment_in_paint_region(
-    &paint_view,
-    PaintSemantic::FuzzySkin,
-    &segment_points,
-);
+// For segment-level annotation, read SliceRegionView's boundary-paint
+// resource directly — maps to SlicedRegion.segment_annotations on the
+// blackboard side (module must declare the WIT reads).
+let annotation = region.boundary_paint();
 ```
 
 #### Host Call Performance Contract (Normative)
 
 - Boundary crossings are not free; modules must avoid per-point host calls in hot loops when batch alternatives exist.
-- Prefer `segment_in_paint_region()` over repeated `point_in_paint_region()` for path annotations.
 - For geometry transforms, aggregate polygon sets and invoke clipping/offset in fewer larger calls.
 
 Recommended budgeting:

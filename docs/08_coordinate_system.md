@@ -186,6 +186,31 @@ you are off by a factor of 100. The correct epsilon is `1`.
 
 ---
 
+## Constant Conversion Table
+
+Every OrcaSlicer constant divides by 100 when ported to ModularSlicer because
+1 ModularSlicer unit = 100 nm (10⁻⁴ mm), whereas OrcaSlicer uses 1 nm = 1 unit.
+The table below is sourced from `docs/specs/orca-paint-segmentation-parity.md` §5.
+
+| Constant | OrcaSlicer value (1 nm units) | ModularSlicer value (100 nm units) | Note |
+|----------|------------------------------|-------------------------------------|------|
+| `SCALED_EPSILON` | ~100 | 1 | Minimum representable offset |
+| EdgeGrid `cell_size` | `scale(10 mm)` ≈ 10,000,000 | 100,000 | 10 mm cell side |
+| `append_threshold` | `50 * SCALED_EPSILON` ≈ 5,000 | 50 | Max distance for line-to-contour projection |
+| Collinearity angle | 30° | 30° | Max deviation from parallel (unitless) |
+| Gap merge threshold | `scale(0.1 mm)` ≈ 100,000 | 1,000 | Merge same-color adjacent segments |
+| Color island filter | `scale(0.2 mm)` ≈ 200,000 | 2,000 | Absorb isolated short color islands |
+| Phase 1 expansion | `10 * SCALED_EPSILON` ≈ 1,000 | 10 | Offset before `union_ex` |
+| Phase 1 simplification | `5 * SCALED_EPSILON` ≈ 500 | 5 | Simplify after contraction |
+| Small polygon filter | `scale²(0.1 mm)` ≈ 10¹⁰ | 1,000,000 sq units | ~0.01 mm² |
+| Phase 2 bbox offset | `20 * SCALED_EPSILON` ≈ 2,000 | 20 | Enlarge bbox for adjacent layers |
+| Horizontal threshold | — | 0.001 mm | Z extent below this → horizontal face |
+| Z-filter epsilon | — | 0.001 mm | Tolerance for Z-range layer inclusion |
+| VD vertex merge | `SCALED_EPSILON` ≈ 100 | 1 | Near-duplicate Voronoi vertex merge radius |
+| `cos²(30°)` | ~0.75 | ~0.75 | Pre-filter for collinearity (unitless) |
+
+---
+
 ## SDK Helpers
 
 Never write raw scaling arithmetic in module code. Use the SDK helpers:

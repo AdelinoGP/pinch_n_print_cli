@@ -1474,7 +1474,7 @@ reads = [
 
 ### Boundary paint on slice regions
 
-reads = ["SliceIR.regions.boundary_paint"]
+reads = ["SliceIR.regions.segment_annotations"]
 
 ### Wall feature flags
 

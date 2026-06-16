@@ -275,6 +275,41 @@ from `layer_executor.rs:362`). Filter cost is `O(|regions| × |S|)` per
 dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
+### Host-Filtered Dispatch (Normative — Packet 92)
+
+In addition to the per-layer region-split filter above, the host applies a
+**paint-transparent dispatch gate** before invoking any module. This is the
+**host-filtered dispatch** contract:
+
+- A **paint-transparent** caller (one that does not declare any paint-mutating
+  or geometry-mutating stage claims) is allowed to invoke only stages that are
+  read-only with respect to paint and geometry IR. The predicate
+  `module_invocation_allowed_on_layer(...)` implements this gate.
+- A module that declares `[[region_split]]` semantics is considered
+  **paint-mutating**; paint-transparent callers cannot invoke it.
+- A module that claims any geometry-mutating stage (`MeshAnalysis`,
+  `LayerPlanning`, `Slice`, `ShellClassification`, `SupportGeometry`, etc.)
+  is similarly blocked for paint-transparent callers.
+- **Non-paint-transparent** callers (modules that declare at least one
+  paint-mutating or geometry-mutating claim) are **unrestricted** — the host
+  does not filter their invocations beyond the per-layer region-split check
+  above.
+
+This two-tier filter ensures that paint-transparent modules cannot silently
+corrupt shared paint/geometry state: the host gate is a hard precondition,
+not a module advisory.
+
+### Universal Empty-Polygon Dispatch Guard
+
+For **all** PrePass stages and all GCode-emitting stages, the host applies a
+universal guard before dispatching a module: if the module's input polygons
+are empty (zero contours, zero area), dispatch is skipped entirely. This
+applies regardless of the caller's paint-transparency status and regardless of
+the stage's position in the pipeline. The rationale: dispatching a module
+with empty inputs is always a no-op (there is no geometry to process, slice,
+or annotate), so skipping it avoids wasted WASM-call overhead and keeps the
+instrumentation log free of phantom empty-stage entries.
+
 ---
 
 ## Phase 3 — DAG Validation
@@ -965,10 +1000,9 @@ must not run their own ad-hoc presence checks for these slots.
 
 | Stage                              | Required Slots                                                            |
 |------------------------------------|---------------------------------------------------------------------------|
-| `PrePass::MeshAnalysis`            | (none)                                                                    |
 | `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
 | `PrePass::SeamPlanning`            | `LayerPlan`                                                               |
-| `PrePass::PaintSegmentation`       | `SurfaceClassification`, `LayerPlan`                                      |
+| `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
 | `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry` (committed by the host built-in within this stage before the guest runs) |
 
@@ -978,7 +1012,7 @@ the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
 
-`PrePass::PaintSegmentation` follows a guard-based fallback contract: if a WASM module claims this stage in its manifest, the module runs and produces `PaintRegionIR`. If no module claims the stage, the host built-in `execute_paint_segmentation()` handles it.
+
 
 #### Precision-Key Touch Points (packet 60)
 
@@ -991,7 +1025,7 @@ is unnecessary.
 
 #### Layer::PaintRegionAnnotation Stage (packet 64)
 
-`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `execute_slice_postprocess_paint_annotation()` annotates slice-region entities with paint data from `PaintRegionIR`. This stage follows a guard-based fallback contract: any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
+`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `execute_slice_postprocess_paint_annotation()` annotates slice-region entities with paint data from `PaintRegionIR`. Any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
 
 The annotation loop processes contour points in **parallel chunks of
 32** (`par_chunks(32)`, rayon). Results are byte-identical to serial
@@ -1007,8 +1041,7 @@ multi-thread utilisation is exposed via report wall-clock timing
 `PrePass::PaintSegmentation` time and surfaced as a fatal prepass
 error (`PaintSegmentationError::DeterministicConflict`). This is a
 correctness improvement over the pre-Packet-64 path where the same
-conflict failed per-layer at query time. The host annotation path
-keeps the `point_in_paint_region` conflict check as defence-in-depth.
+   conflict failed per-layer at query time.
 
 ### Per-Layer Execution (rayon parallel)
 

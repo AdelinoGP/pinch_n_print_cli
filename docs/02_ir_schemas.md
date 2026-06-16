@@ -226,6 +226,12 @@ pub enum PaintValue {
     /// Community-defined paint value (string-keyed). Added for parity
     /// with `PaintSemantic::Custom`.
     Custom(String),
+    /// Vector paint value — deferred follow-up variant. Tagged for future
+    /// multi-channel paint (e.g. per-axis infill density). Currently
+    /// unsupported; modules MUST NOT produce `PaintValue::Vector` and host
+    /// MUST reject it at IR validation time.
+    #[doc(hidden)]
+    Vector(Vec<f32>),
 }
 
 pub struct PaintStroke {
@@ -647,159 +653,11 @@ and intern as distinct entries. NaN is already a fatal validation error
 
 ---
 
-## IR 4 — `PaintRegionIR`
-
-**Stage:** Output of `PrePass::PaintSegmentation` (runs after `PrePass::LayerPlanning`)
-**Lifetime:** Blackboard (immutable after PrePass)
-
-```rust
-/// Per-layer, per-semantic 2D polygon regions derived from 3D facet paint.
-/// All downstream stages query this IR by semantic rather than receiving
-/// separate material/fuzzy/support IRs.
-pub struct PaintRegionIR {
-    pub schema_version: SemVer,
-    pub per_layer: HashMap<u32, LayerPaintMap>,
-}
-
-pub struct LayerPaintMap {
-    pub global_layer_index: u32,
-    /// Keyed by semantic. A semantic is absent from the map if no
-    /// paint of that type was applied to any object in the scene.
-    pub semantic_regions: HashMap<PaintSemantic, Vec<SemanticRegion>>,
-}
-
-pub struct SemanticRegion {
-    pub object_id: ObjectId,
-    pub polygons: Vec<ExPolygon>,
-    pub value: PaintValue,
-    /// Increasing ordinal used to resolve overlaps for the same semantic.
-    /// Higher value means "painted later" and therefore higher precedence.
-    pub paint_order: u64,
-    /// Optional axis-aligned bounding box pre-filter. Computed at
-    /// `harvest_paint_segmentation_ir` time from unioned polygon contour
-    /// points. Set to `None` when deserialized from storage (field is
-    /// `#[serde(skip_deserializing, default)]`).
-    /// Used as a reconstruction-only optimization in
-    /// `semantic_region_contains_point` — when present and the point is
-    /// outside the AABB, the full polygon containment check is skipped.
-    /// When absent (e.g., deserialized IR), queries fall through to full
-    /// polygon containment without error.
-    pub aabb: Option<BoundingBox2>,
-}
-
-impl PaintRegionIR {
-    /// Convenience accessor used by per-layer stage modules.
-    /// Returns empty slice if no regions exist for this layer/semantic pair.
-    pub fn get(
-        &self,
-        layer_index: u32,
-        semantic: &PaintSemantic,
-    ) -> &[SemanticRegion] {
-        self.per_layer
-            .get(&layer_index)
-            .and_then(|l| l.semantic_regions.get(semantic))
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-    }
-}
-```
-
-### Companion `PaintRegionRTreeIndex` (not stored on IR)
-
-A companion `PaintRegionRTreeIndex` (defined in `slicer-core`) wraps a per-`(layer_index, semantic)` `rstar::RTree<(BoundingBox2, usize)>` spatial index, rebuilt from scratch each pipeline run alongside `PaintRegionIR` at `harvest_paint_segmentation_ir` time. It is NOT stored on the IR (not serialized, not in `PartialEq`), but passed as a separate `Arc` through the blackboard and annotation request. The query path `point_in_paint_region` uses it for O(log N) candidate selection, falling back to linear scan when absent.
-
-### Harvest Strategy (Normative — Packets 62 and 64)
-
-`harvest_paint_segmentation_ir` groups per-facet painted regions by
-`(layer_index, object_id, semantic, value)` and unions the polygons via
-`slicer_core::union` (Clipper-backed). The grouping eliminates per-facet
-fragmentation that would otherwise cause `O(regions × polygons × edges)`
-query overhead in `point_in_paint_region`.
-
-- **Group key rationale:** regions with identical `value` are
-  query-equivalent and safe to merge; `object_id` preserves per-object
-  boundaries; `paint_order` precedence (higher wins) only operates
-  between regions of DIFFERENT values, never within a same-value group
-  (so the merge is loss-free for resolution).
-- **Hole preservation:** `slicer_core::union` discards interior holes
-  from input polygons (flat-map + `union_64`, no `PolyTree`). All
-  host-produced paint region entries carry `holes: vec![]` — currently
-  safe because guest output is triangle-only. If a future WASM module
-  emits hole-bearing paint regions via the override path, the host
-  fallback union MUST switch to a hole-preserving variant before
-  shipping; the current contract would silently drop holes and include
-  previously-excluded hole interiors in queries.
-- **Vec sort order (byte-deterministic):** within each
-  `LayerPaintMap.semantic_regions` Vec, `SemanticRegion` entries are
-  sorted DESCENDING by `paint_order`, with stable tiebreakers
-  `(object_id ASC, value_key ASC)`. This makes `PaintRegionIR` output
-  byte-identical across runs with the same input.
-- **Early-break query:** because the Vec is sorted by `paint_order`
-  descending, `point_in_paint_region` may terminate iteration as soon
-  as it finds a definitive winner (highest `paint_order` containing
-  the point), skipping further polygon checks.
-- **`paint_order` after merge:** the merged `SemanticRegion` keeps the
-  `min(paint_order)` of the group (the earliest occurrence wins
-  internally; cross-group precedence is unchanged).
-
-### Synthetic Support Modifier Emission (Normative — Packet 56c)
-
-`PrePass::PaintSegmentation` reads `mesh_ir.objects[].modifier_volumes`
-directly. For each modifier volume with
-`config_delta.fields["subtype"] == ConfigValue::String("support_enforcer"
-| "support_blocker")`, the host-native path:
-
-1. Projects the modifier mesh at all layer Zs via
-   `slicer_core::slice_mesh_ex(&mv.mesh, &layer_zs)` (batched, not per-layer).
-2. Emits `SemanticRegion` entries into `LayerPaintMap.semantic_regions`
-   under `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
-   for each intersecting global layer index.
-3. Union-merges synthetic polygons with any existing
-   `Vec<SemanticRegion>` at the same `(layer, semantic)` via
-   `slicer_core::polygon_ops::union`.
-
-These synthetic entries flow through `PrePass::RegionMapping` and the
-Packet 51 `paint_overrides` overlay path unchanged. No region-mapping
-code is added — the synthetic emission is entirely upstream of mapping.
-Support semantics always emit `PaintValue::Flag(_)`, never
-`PaintValue::ToolIndex` (Packet 67 constraint).
-
-### Paint Region Resolution Contract
-
-- `PaintRegionIR` is the canonical source for all paint semantics in downstream stages.
-- If no paint exists for `(layer, semantic)`, `get(...)` returns an empty slice.
-- For overlapping regions with the same semantic, highest `paint_order` wins.
-- Different semantic families do not override each other (for example `Material` and `FuzzySkin` can both apply at one point).
-- For support logic conflicts at the same point: `SupportBlocker` takes precedence over `SupportEnforcer`.
-- Material paint resolution is consumed via `ActiveRegion.tool_index` and `WallLoop.boundary_type`.
-- For overlapping `PaintSemantic::Custom` values at the same point, highest `paint_order` wins; equal `paint_order` is a fatal deterministic conflict.
-- **Support semantics value constraint (Packet 67):**
-  `PaintSemantic::SupportEnforcer` and `PaintSemantic::SupportBlocker`
-  ALWAYS emit `PaintValue::Flag(_)`, never `PaintValue::ToolIndex`.
-  Tool indexing is reserved for `PaintSemantic::Material` from
-  per-facet MMU paint XML. This diverges from OrcaSlicer in that
-  per-object `extruder` metadata on support modifiers is decorative
-  and not consumed by the host paint-segmentation pass (see
-  `OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594`).
-
-Worked example (support overlap):
-
-- Region R has both `SupportEnforcer=true` and `SupportBlocker=true` at one point.
-- Effective result: no support generated at that point (`SupportBlocker` precedence).
-
-Worked example (custom overlap):
-
-- `Custom(com.example.texture/roughness@1)` has two overlapping polygons.
-- If `paint_order` is `12` and `19`, value from `19` is used.
-- If both are `19` with different values, host raises a fatal deterministic conflict.
-
----
-
-## IR 5 — RegionMapIR
+## IR 4 — RegionMapIR
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 2.0.0** (Major bump by Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`).)
+**Current schema_version: 2.0.0** (Major bump by Packet 91 — `RegionPlan.config` is now a `ConfigId` interner index, `RegionMapIR.configs` Vec added, `RegionKey.variant_chain` added. Prior versions: 1.0.0 initial; 1.1.0 (Packet 51 — additive `paint_overrides` field on `RegionPlan`). RegionMapIR schema remains at 2.0.0 post-roadmap.)
 
 ```rust
 pub struct RegionMapIR {
@@ -899,7 +757,7 @@ impl RegionMapIR {
 Config keys follow a structured namespace convention used in `ResolvedConfig` and print-profile JSON:
 
 - `object_config:<id>:<key>` — per-object override for the object whose `ObjectId` matches `<id>`. Recognised since DEV-040 (Packet 35a).
-- `paint_config:<semantic>:<key>` — per-paint-semantic override. Applied during `PrePass::RegionMapping` when the region's polygons overlap a `SemanticRegion` in `PaintRegionIR` for the corresponding `PaintSemantic`. Built-in `PaintSemantic` variants serialize as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` serializes the inner string `s` verbatim (e.g. `paint_config:ironing:line_width`). Added in Packet 51.
+- `paint_config:<semantic>:<key>` — per-paint-semantic override. Applied during `PrePass::RegionMapping` when the region's polygons overlap a painted region for the corresponding `PaintSemantic`. Built-in `PaintSemantic` variants serialize as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` serializes the inner string `s` verbatim (e.g. `paint_config:ironing:line_width`). Added in Packet 51.
 
 **Override precedence** (lowest → highest):
 
@@ -924,7 +782,7 @@ for audit visibility.
 
 **Stage:** Output of `Layer::Slice`, mutated by `Layer::SlicePostProcess`
 
-**Current schema_version: 4.1.0** (minor bump from 4.0.0 in `docs/specs/infill-fill-partition-plan.md` — additive `SlicedRegion.sparse_infill_area` field for the host-side fill-polygon partition. `#[serde(default)]` preserves backward compatibility with serialized 4.0.0 fixtures. Earlier versions: 1.2.0 (packet 36, bridge fields), 3.0.0 (slice-prepass migration, shell index + solid_fill), 4.0.0 (packet 91 segment annotations + variant chain).)
+**Current schema_version: 2.0.0** (Major bump by Packet 99 — SliceIR schema reset to 2.0.0 to align with the post-roadmap paint-pipeline shape: `SlicedRegion.boundary_paint` renamed to `segment_annotations`, `SlicedRegion.variant_chain` added. Prior versions: 1.2.0 (packet 36, bridge fields), 3.0.0 (slice-prepass migration, shell index + solid_fill), 4.0.0 (packet 91 segment annotations + variant chain), 4.1.0 (additive `SlicedRegion.sparse_infill_area` field).)
 
 ```rust
 pub struct SliceIR {
@@ -1093,19 +951,19 @@ pub struct WallLoop {
     /// A segment from vertex i to vertex i+1 uses flags[i].
     /// Empty vec means no feature paint applies to this loop —
     /// all segments use default behavior.
-    /// Populated by the perimeter generator from SlicedRegion.boundary_paint.
+    /// Populated by the perimeter generator from SlicedRegion.segment_annotations.
     pub feature_flags: Vec<WallFeatureFlags>,
     /// Identifies whether this wall is adjacent to another material region.
-    /// Set by the perimeter generator when PaintRegionIR contains Material
-    /// regions at this layer.
-    pub boundary_type: WallBoundaryType,
+     /// Set by the perimeter generator when material paint regions are
+     /// present at this layer.
+     pub boundary_type: WallBoundaryType,
 }
 
 pub struct WallFeatureFlags {
-    /// Tool override for this segment. `None` means use region default
-    /// `tool_index`. Populated during `Layer::PaintRegionAnnotation`
-    /// when the perimeter wall loop overlaps a `PaintSemantic::Material`
-    /// region from `PaintRegionIR`; the annotation propagates the
+     /// Tool override for this segment. `None` means use region default
+     /// `tool_index`. Populated during `Layer::PaintRegionAnnotation`
+     /// when the perimeter wall loop overlaps a `PaintSemantic::Material`
+     /// paint region; the annotation propagates the
     /// dominant `ToolIndex(n)` value to all vertices in the overlapping
     /// wall loop. Vertices in unpainted regions have
     /// `tool_index = None`. Consumed downstream by

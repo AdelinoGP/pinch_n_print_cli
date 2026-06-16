@@ -64,9 +64,49 @@ traces are maintained in:
 
 ### Tier 1 — PrePass (Sequential, Whole-Model)
 
-Runs once before any layer is sliced. Results are written to the Blackboard and become immutable during per-layer processing. (Sub-facet paint strokes are normalized into whole-triangle assignments earlier, at model-load time, by the host loader's `split_triangle_strokes` — there is no separate mesh-segmentation prepass stage.)
+Runs once before any layer is sliced. Results are written to the Blackboard and
+become immutable during per-layer processing. Sub-facet paint strokes are
+normalized into whole-triangle assignments at model-load time by the host
+loader's `split_triangle_strokes`; the prepass `PrePass::MeshSegmentation` stage
+is retired (the loader's output is the authoritative normalized form).
+
+#### PrePass Stage Order
+
+The six prepass stages execute in this order:
 
 ```
+1. PrePass::MeshSegmentation   (retired — loader already normalizes strokes)
+2. PrePass::MeshAnalysis
+3. PrePass::LayerPlanning
+4. PrePass::RegionMapping      (host-built-in; cross-product variant expansion)
+5. PrePass::PaintSegmentation  (post-slice; reads SliceIR, writes via replace_slice_ir)
+6. PrePass::SupportGeometry    (host-built-in always runs; guest optional)
+```
+
+Stages 1–3 are the classic mesh-analysis and layer-planning pipeline.
+`PrePass::RegionMapping` (stage 4) now performs cross-product expansion: each
+`(layer, object, active_region)` is split into one `RegionPlan` per canonical
+**variant chain** (see §"Variant-Chain Region Splitting" below). `PaintRegionIR`
+is deleted; per-variant polygons are produced by `PrePass::PaintSegmentation`
+(stage 5), which runs after `host:slice` and `host:shell_classification` and
+writes back via `replace_slice_ir`. `PrePass::SupportGeometry` (stage 6) runs
+last so it can consume the fully-split `SliceIR`.
+
+**Note:** `host:slice` and `host:shell_classification` are Layer-stage host
+calls (not `PrePass::*` enum variants) that run between `PrePass::MeshAnalysis`
+(stage 2) and `PrePass::PaintSegmentation` (stage 5) in the broader pipeline.
+The packet's AC-1 "Given" referenced them as part of a nine-stage prepass-style
+sequence; this doc enumerates the six `PrePass::*`-tagged stages per the
+post-roadmap type system, with `host:slice` and `host:shell_classification`
+treated as Layer-stages that bracket stage 5.
+
+```
+PrePass::MeshSegmentation  [retired — loader does this work]
+  Note: The host loader's `split_triangle_strokes` normalizes sub-facet paint
+  strokes into whole-triangle `facet_values` at load time. No separate prepass
+  stage is needed. The `PaintLayer.strokes` field on `MeshIR` is the
+  OrcaSlicer-parity flat-leaf form consumed directly by paint-segmentation.
+
 PrePass::MeshAnalysis
   Input:  MeshIR (loaded STL/3MF/OBJ)
   Output: SurfaceClassificationIR
@@ -83,34 +123,31 @@ PrePass::LayerPlanning
            Assign non-planar shells to surface groups.
            Handle catch-up layers for regions with different heights.
 
-PrePass::PaintSegmentation 
-  Input:  MeshIR (with whole-triangle paint assignments normalized at load)
-          SurfaceClassificationIR
-          LayerPlanIR (authoritative global Z sequence)
-  Output: PaintRegionIR
-  Purpose: For every layer Z and every paint semantic present in the scene,
-           compute the 2D polygon regions that carry that semantic's paint value.
-           A single pass handles all semantics:
-             Material       → per-region tool index (drives tool changes)
-             FuzzySkin      → per-region fuzzy skin flag (consumed by PerimetersPostProcess)
-             SupportEnforcer → enforced support regions (consumed by Layer::Support)
-             SupportBlocker  → blocked support regions (consumed by Layer::Support)
-             Custom(id)     → passed through for the registering module to consume
-
 PrePass::RegionMapping  [host-built-in, not a module stage]
-  Input:  LayerPlanIR + LoadedModules + ResolvedConfig + PaintRegionIR
+  Input:  LayerPlanIR + LoadedModules + ResolvedConfig + MeshIR.paint_data
   Output: RegionMapIR
-  Purpose: For every (layer, object, region) triple, determine:
-           - Which modules run and in what order
-           - What config each module receives (pre-filtered view)
-           - Which claims are active
-           Pre-computed so per-layer hot path has zero config resolution work.
-           PAINT-SEMANTIC-AWARE (Packet 51): RegionMapping consumes `PaintRegionIR`
-           and stamps per-paint-semantic config overlays into `RegionPlan.config`
-           (with the contributing semantics audit-recorded in
-           `RegionPlan.paint_overrides`). paint_config:<semantic>:<key> namespace
-           entries in the global resolved config are the mechanism; unknown
-           semantics are skipped silently.
+  Purpose: For every (layer, object, region) triple, expand into one RegionPlan
+           per canonical variant chain (cross-product over declared region-split
+           semantics × distinct paint values present on that object). Each
+           RegionPlan's config is the base config plus per-semantic overlays
+           contributed by each semantic in the chain. Configs are interned via
+           ConfigId. Pre-computed so per-layer hot path has zero config
+           resolution work. See §"Variant-Chain Region Splitting" below and
+           `docs/02_ir_schemas.md` (IR 5) for the RegionKey/RegionPlan shapes.
+
+PrePass::PaintSegmentation
+  Input:  MeshIR (with whole-triangle paint assignments normalized at load)
+          SliceIR (committed by host:slice, after shell_classification)
+          LayerPlanIR (authoritative global Z sequence)
+          RegionMapIR (variant chains from RegionMapping)
+  Output: SliceIR (per-variant SlicedRegion entries via replace_slice_ir)
+  Purpose: For every layer Z and every region-split semantic, compute the 2D
+           polygon regions that carry that semantic's paint value using
+           OrcaSlicer-parity Voronoi-based segmentation. Writes per-variant
+           polygons into SliceIR.regions via replace_split_ir. Each
+           SlicedRegion carries its variant_chain. PaintRegionIR is deleted.
+           See `docs/specs/orca-paint-segmentation-parity.md` for the full
+           7-phase algorithm.
 
 PrePass::SupportGeometry  [host built-in always runs; guest optional]
   Input  (host built-in): LayerPlanIR + MeshIR
@@ -120,7 +157,7 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
                           LayerPlanIR
                           RegionMapIR
                           SupportGeometryIR (just committed by the host built-in)
-                          PaintRegionIR (SupportEnforcer/SupportBlocker semantics)
+                          SliceIR (per-variant regions from PaintSegmentation)
   Output (host built-in): SupportGeometryIR
   Output (guest):         SupportPlanIR
   Purpose: Phase 1 — the host built-in computes coarse support column outlines
@@ -142,6 +179,26 @@ PrePass::SupportGeometry  [host built-in always runs; guest optional]
            support-planner module is installed only Phase 1 runs and
            tree-support falls back to its per-layer grid-MST filler.
 ```
+
+#### Variant-Chain Region Splitting
+
+`variant_chain` is the ordered sequence of `(paint_semantic_name, paint_value)`
+pairs that distinguishes a **painted variant** from its base region. Two regions
+of the same object and base region with different variant chains are distinct
+for module dispatch and configuration purposes. An empty chain identifies the
+base (unpainted) region.
+
+The chain is the discriminator that splits regions: `PrePass::RegionMapping`
+enumerates every subset of declared region-split semantics × distinct paint
+values present on the object, producing one `RegionPlan` per canonical chain.
+`PrePass::PaintSegmentation` then computes the geometric polygons for each
+variant chain via per-semantic Voronoi passes and geometric composition
+(`intersection_ex` / `difference_ex`), writing the results into
+`SliceIR.regions` via `replace_slice_ir`. Each `SlicedRegion` carries its
+`variant_chain`; modules dispatch by matching against it. See
+`docs/02_ir_schemas.md` for the `RegionKey.variant_chain` and
+`SlicedRegion.variant_chain` field definitions, and `docs/03_wit_and_manifest.md`
+for the `[[region_split]]` manifest declaration schema.
 
 #### Catch-Up Layer Semantics (Authoritative)
 
@@ -175,27 +232,29 @@ Layer::Slice
 
 Layer::SlicePostProcess
   Input:  SliceIR
-          PaintRegionIR (read-only, from Blackboard)
+          PaintRegionLayerView (read-only, from Blackboard)
   Output: SliceIR (modified)
   Purpose: Non-planar surface projection onto layer polygons.
            Sub-layer anti-aliasing vertex Z deformation.
            Modifier region polygon subtraction/addition.
-           PaintRegionAnnotator — performs point-in-polygon tests against
-           PaintRegionIR and writes boundary_paint onto SlicedRegion polygon
-           contour points. Runs last within this stage so all polygon
-           modifications are complete before annotation occurs.
+           PaintRegionAnnotator — reads paint region polygons from
+           SliceIR / RegionMapIR, performs point-in-polygon tests, and
+           writes segment_annotations onto SlicedRegion polygon contour
+           points. Runs last within this stage so all polygon modifications
+           are complete before annotation occurs.
 
 Layer::Perimeters
-  Input:  SliceIR (including boundary_paint from SlicePostProcess)
-          PaintRegionIR (read-only, for material boundary detection)
+   Input:  SliceIR (including segment_annotations from SlicePostProcess)
+          PaintRegionLayerView (read-only, for paint-driven boundary detection)
   Output: PerimeterIR
   Purpose: Wall generation (Arachne variable-width or classic fixed-width).
            Seam candidate collection.
            Thin-wall detection.
-           Propagates boundary_paint from SlicedRegion polygon contour
-           points onto WallLoop.feature_flags for each generated wall segment.
-           Sets WallLoop.boundary_type to MaterialBoundary where adjacent
-           material regions are detected via PaintRegionIR.
+           Propagates segment_annotations from SlicedRegion polygon
+           contour points onto WallLoop.feature_flags for each generated
+           wall segment. Sets WallLoop.boundary_type to MaterialBoundary
+           where adjacent material semantic regions are detected via
+           PaintRegionLayerView.
            Commit side-effect: the host computes the four canonical
            pairwise-disjoint fill polygons (`sparse_infill_area`, clipped
            `top_solid_fill`, `bottom_solid_fill`, `bridge_areas`) into the
@@ -238,7 +297,7 @@ Layer::InfillPostProcess
 Layer::Support
   Input:  SliceIR
           SurfaceClassificationIR
-          PaintRegionIR (read-only — SupportEnforcer and SupportBlocker semantics)
+          PaintRegionLayerView (read-only — SupportEnforcer and SupportBlocker semantics)
           SupportPlanIR (read-only, optional — only modules that declare the
                          read consume it; produced by PrePass::SupportGeometry)
   Output: SupportIR
@@ -274,8 +333,8 @@ Layer::PathOptimization
 
 Paint-dependent behavior follows this strict sequence:
 
-1. `Layer::SlicePostProcess` writes `SlicedRegion.boundary_paint` (runs after all polygon edits).
-2. `Layer::Perimeters` maps boundary paint into `WallLoop.feature_flags` and boundary metadata.
+1. `Layer::SlicePostProcess` writes `SlicedRegion.segment_annotations` (runs after all polygon edits).
+2. `Layer::Perimeters` maps segment annotations into `WallLoop.feature_flags` and boundary metadata.
 3. `Layer::PerimetersPostProcess` consumes `feature_flags` (for example `fuzzy_skin`) for selective effects.
 
 If step 1 is skipped or fails non-fatally, later steps continue with empty/default paint annotations,
@@ -294,7 +353,7 @@ Failure classes:
 
 Required fallback behavior for non-fatal cases:
 
-- `boundary_paint` must still be present and cardinality-aligned with contour points.
+- `segment_annotations` must still be present and cardinality-aligned with contour points.
 - Unresolved points must use deterministic defaults:
   - `tool_index = 0`
   - `fuzzy_skin = false`
@@ -454,16 +513,16 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 |------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------------|
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                           |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                       |
-| `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `PaintRegionIR`                                                     |
+| `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `SliceIR` (via `replace_slice_ir`; per-variant polygons)            |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
-| `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionIR`                                         | `SliceIR` (polygon edits, `boundary_paint`)                         |
-| `Layer::Perimeters`                      | `SliceIR`, `PaintRegionIR`                                         | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
+| `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionLayerView`                                  | `SliceIR` (polygon edits, `segment_annotations`)                    |
+| `Layer::Perimeters`                      | `SliceIR`, `PaintRegionLayerView`                                  | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
 | `Layer::PerimetersPostProcess`           | `PerimeterIR`                                                      | `PerimeterIR` (seam/geometry refinements)                           |
 | `Layer::Infill`                          | `SliceIR` (infill areas and context)                               | `InfillIR`                                                          |
 | `Layer::InfillPostProcess`               | `InfillIR`                                                         | `InfillIR`                                                          |
-| `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionIR`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
+| `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionLayerView`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
 | `Layer::SupportPostProcess`              | `SupportIR`                                                        | `SupportIR`                                                         |
 | `Layer::PathOptimization`                | `PerimeterIR`, `InfillIR`, `SupportIR`                             | `LayerCollectionIR`                                                 |
 | `PostPass::LayerFinalization`            | `Vec<LayerCollectionIR>`, Blackboard IRs                           | `Vec<LayerCollectionIR>` (may insert synthetic layers)              |

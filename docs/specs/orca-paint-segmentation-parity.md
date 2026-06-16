@@ -1,6 +1,6 @@
 # OrcaSlicer-Parity Paint Segmentation
 
-Status: awaiting Slice Rework (blocked)
+Status: implemented
 Prerequisite: Layer Slicing moved to PrePass stage, all SliceIR layers available in BlackBoard
 Date: 2026-05-21
 OrcaSlicer reference: `OrcaSlicerDocumented/generated_documentation/pseudocode_multimaterial_segmentation.md`

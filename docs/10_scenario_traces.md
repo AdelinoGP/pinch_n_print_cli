@@ -52,7 +52,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes`), before PrePass.
 2. `PrePass::PaintSegmentation` emits `PaintRegionIR` per semantic per layer with `paint_order`.
-3. `Layer::SlicePostProcess` annotates `SlicedRegion.boundary_paint` after polygon edits.
+3. `Layer::SlicePostProcess` annotates `SlicedRegion.segment_annotations` after polygon edits.
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.
 5. `Layer::PerimetersPostProcess` applies perpendicular XY fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
 6. `Layer::Support` applies support precedence: blocker over enforcer.
