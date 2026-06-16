@@ -43,7 +43,7 @@
 
 - Task IDs:
   - (packet-scope: 100_dispatch-fixture-and-ir-builders)
-- Objective: introduce `crates/slicer-runtime/tests/common/dispatch_fixture.rs` with the `DispatchFixture` value (owning `dispatcher`, `blackboard`, `arena`, `bundle`) and the `DispatchFixtureBuilder` chain (`for_stage` → `with_slice` / `with_perimeter` / `with_config` / `with_wat` / `no_wasm` → `build`). Implement per-runner methods `run_layer / run_prepass / run_finalization / run_postpass` by delegating to the existing `run_layer_and_commit*` family and the four `*StageRunner::run_stage` trait calls.
+- Objective: introduce `crates/slicer-runtime/tests/common/dispatch_fixture.rs` with the `DispatchFixture` value (owning `dispatcher`, `blackboard`, `arena`, `bundle`) and the `DispatchFixtureBuilder` chain (`for_stage` (a free function, not a `DispatchFixture` method) → `with_slice` / `with_perimeter` / `with_config` / `with_wat` / `no_wasm` → `build`). Implement per-runner methods `run_layer(&mut self, ...) -> Result<(), slicer_ir::LayerStageError>` (delegates to `run_layer_and_commit_with_bundle`; `&mut self` is required for arena mutation), `run_prepass(&self) -> Result<slicer_core::PrepassStageOutput, slicer_ir::PrepassRunnerError>`, `run_finalization(&self, layers: &mut Vec<LayerCollectionIR>) -> Result<slicer_ir::FinalizationOutput, slicer_ir::FinalizationError>`, `run_postpass(&self, gcode: &mut GCodeIR) -> Result<slicer_ir::PostpassOutput, slicer_ir::PostpassError>` (uses `PostpassStageRunner::run_gcode_postprocess`) by delegating to the existing `run_layer_and_commit_with_bundle` family and the four `*StageRunner::run_stage` trait calls.
 - Precondition: Step 1's exit condition is met.
 - Postcondition: `tests/common/dispatch_fixture.rs` exists and compiles; `tests/common/mod.rs` declares `pub mod dispatch_fixture;`; `cargo check --workspace --all-targets` returns exit 0 even though no test uses the fixture yet.
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -76,7 +76,7 @@
   - (packet-scope: 100_dispatch-fixture-and-ir-builders)
 - Objective: replace the body of `missing_component_gracefully_skipped` (currently at `dispatch_tdd.rs:496`) with the fluent-builder form, preserving observable assertions.
 - Precondition: Steps 1 and 2 exit conditions met.
-- Postcondition: the test body uses `DispatchFixture::for_stage("Layer::Infill").no_wasm().build()` and `fx.run_layer(&layer)?`; the observable assertions (`Ok(LayerStageCommitData::default())`, arena untouched) are unchanged; the test passes.
+- Postcondition: the test body uses `crate::common::dispatch_fixture::for_stage("Layer::Infill").no_wasm().build()` and `fx.run_layer(&layer)?`; the observable assertions are unchanged from the pre-migration form: `result.is_ok()` and `fx.arena.take_infill().is_none()` (the arena is in its default-empty state, no `solid_infill` committed, no error variants raised, no panics); the test passes.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-runtime/tests/contract/dispatch_tdd.rs` — lines `496-550` only
 - Files allowed to edit (≤ 3):
@@ -101,7 +101,7 @@
   - (packet-scope: 100_dispatch-fixture-and-ir-builders)
 - Objective: replace the body of `real_perimeter_region_data_visible_through_infill_postprocess_dispatch` (currently at `dispatch_tdd.rs:2102`) with the fluent-builder form using both `DispatchFixture` and `ir_builders`, preserving the round-trip assertion.
 - Precondition: Steps 1–3 exit conditions met.
-- Postcondition: the test body uses `DispatchFixture::for_stage("Layer::InfillPostProcess").with_slice(ir_builders::slice_ir::with_count(3).at_z(0.4).build()).with_perimeter(ir_builders::perimeter_ir::with_count(3).at_layer(2).walls(2).infill(4).build()).build()` and `fx.run_layer(&layer)?`; the round-trip assertion on `point[0].{x, y, z} == (3.0, 6.0, 12.0)` is unchanged; the test passes.
+- Postcondition: the test body uses `DispatchFixture::for_stage("Layer::InfillPostProcess").with_slice(ir_builders::slice_ir::with_count(3).at_z(0.4).build()).with_perimeter(ir_builders::perimeter_ir::with_count(3).at_layer(2).walls(2).infill(4).build()).build()` and `fx.run_layer(&layer)?`; the round-trip assertion is unchanged from the pre-migration form: per-region `p.x == 2.0` (the per-region wall count) and `p.y == 4.0` (the per-region infill polygon count); `r.object_id == format!("obj-{i}")` and `r.region_id == i as u64` are preserved; the WAT test guest encodes per-region counts, not aggregate counts, so the assertion is per-region rather than the aggregate `(3, 6, 12)`; the test passes.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-runtime/tests/contract/dispatch_tdd.rs` — lines `2055-2220` only (the test body and any closely-coupled helper just above it)
 - Files allowed to edit (≤ 3):

@@ -499,11 +499,10 @@ fn missing_component_gracefully_skipped() {
     // be a fatal error â€” the pipeline should skip the module silently so that
     // placeholder modules do not block the run.  The load path emits a
     // structured diagnostic; dispatch-time skips gracefully.
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_no_wasm("com.test.nowasm", "Layer::Infill");
+    let mut fx = crate::common::dispatch_fixture::for_stage("Layer::Infill")
+        .no_wasm()
+        .build();
 
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
@@ -511,16 +510,8 @@ fn missing_component_gracefully_skipped() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    let mut arena = LayerArena::new();
 
-    let result = crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::Infill",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    );
+    let result = fx.run_layer(&layer);
 
     // Graceful skip: the module is missing its compiled component; the
     // dispatcher returns Ok and leaves the arena untouched.
@@ -531,7 +522,7 @@ fn missing_component_gracefully_skipped() {
     );
     // No output committed â€” the module was skipped entirely.
     assert!(
-        arena.take_infill().is_none(),
+        fx.arena.take_infill().is_none(),
         "arena must be empty after skipping a module with no compiled component"
     );
 }
@@ -2197,13 +2188,21 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     //   point[0].x = region_count
     //   point[0].y = total wall_loops
     //   point[0].z = total infill polygons
-    let engine = wasm_cache::shared_engine();
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_test_guest(&engine);
-    let module =
-        make_compiled_module_with("com.test.infill-pp", "Layer::InfillPostProcess", component);
+    let mut fx = crate::common::dispatch_fixture::for_stage("Layer::InfillPostProcess")
+        .with_slice(
+            crate::common::ir_builders::slice_ir::with_count(3)
+                .at_z(0.4)
+                .build(),
+        )
+        .with_perimeter(
+            crate::common::ir_builders::perimeter_ir::with_count(3)
+                .at_layer(2)
+                .walls(2)
+                .infill(4)
+                .build(),
+        )
+        .build();
 
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
         index: 2,
         z: 0.4,
@@ -2211,20 +2210,10 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    let mut arena = LayerArena::new();
-    arena.set_perimeter(make_perimeter_ir(2, 3, 2, 4)).unwrap();
 
-    crate::common::run_layer_and_commit_with_bundle(
-        &dispatcher,
-        "Layer::InfillPostProcess",
-        &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
-    .unwrap();
+    fx.run_layer(&layer).unwrap();
 
-    let infill = arena.infill().expect("infill slot should be populated");
+    let infill = fx.arena.infill().expect("infill slot should be populated");
     assert_eq!(infill.regions.len(), 3, "one InfillRegion per input region");
     for (i, r) in infill.regions.iter().enumerate() {
         let p = &r.solid_infill[0].points[0];
@@ -5318,4 +5307,39 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         ),
         Err(e) => panic!("SeamPlanning dispatch failed: {e}"),
     }
+}
+
+// ── IR builder unit tests ─────────────────────────────────────────────────────
+
+#[test]
+fn ir_builders_slice_ir_with_count_shape() {
+    let ir = crate::common::ir_builders::slice_ir::with_count(3)
+        .at_z(0.2)
+        .build();
+    assert_eq!(ir.global_layer_index, 0);
+    assert_eq!(ir.z, 0.2);
+    assert_eq!(ir.regions.len(), 3);
+    for i in 0..3 {
+        assert_eq!(ir.regions[i].object_id, format!("obj-{i}"));
+        assert_eq!(ir.regions[i].region_id, i as u64);
+        assert_eq!(ir.regions[i].polygons.len(), 1);
+        assert_eq!(ir.regions[i].polygons[0].contour.points.len(), 4);
+        assert!(ir.regions[i].polygons[0].holes.is_empty());
+        assert_eq!(ir.regions[i].effective_layer_height, 0.2);
+    }
+}
+
+#[test]
+fn ir_builders_slice_ir_with_ids_shape() {
+    let ir = crate::common::ir_builders::slice_ir::with_ids(&[
+        ("custom-obj", 17u64),
+        ("other-obj", 99u64),
+    ])
+    .at_z(0.5)
+    .build();
+    assert_eq!(ir.regions.len(), 2);
+    assert_eq!(ir.regions[0].object_id, "custom-obj");
+    assert_eq!(ir.regions[0].region_id, 17);
+    assert_eq!(ir.regions[1].object_id, "other-obj");
+    assert_eq!(ir.regions[1].region_id, 99);
 }

@@ -7,6 +7,8 @@
 // `crates/slicer-wasm-host/tests/common/` by design (P83.1, AC-N3 — no dev-edge
 // back to runtime). A future packet can extract them into a shared
 // `slicer-test-fixtures` crate if duplication grows.
+pub mod dispatch_fixture;
+pub mod ir_builders;
 pub mod model_cache;
 pub mod seed;
 pub mod slicer_cache;
