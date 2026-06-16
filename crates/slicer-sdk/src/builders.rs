@@ -142,7 +142,7 @@ impl PerimeterOutputBuilder {
 
     /// Push a wall loop with the seam at points[0] (rotated).
     ///
-    /// Used by seam-placer during `Layer::WallPostProcess` to commit
+    /// Used by seam-placer during `Layer::PerimetersPostProcess` to commit
     /// seam-first wall loop geometry. The `pos` and `wall_index` are
     /// the resolved seam reference; the `rotated_loop` contains the
     /// wall loop with path.points[0] as the seam vertex.

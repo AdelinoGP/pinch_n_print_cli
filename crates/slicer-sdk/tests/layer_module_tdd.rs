@@ -173,9 +173,9 @@ fn test_07_run_perimeters_signature_matches_wit() {
 // Test 6: run_wall_postprocess signature matches WIT
 // =============================================================================
 
-struct WallPostprocessTestModule;
+struct PerimetersPostProcessTestModule;
 
-impl LayerModule for WallPostprocessTestModule {
+impl LayerModule for PerimetersPostProcessTestModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
@@ -198,7 +198,7 @@ impl LayerModule for WallPostprocessTestModule {
 #[test]
 fn test_08_run_wall_postprocess_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = WallPostprocessTestModule::on_print_start(&config).unwrap();
+    let module = PerimetersPostProcessTestModule::on_print_start(&config).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = PerimeterOutputBuilder::new();
 

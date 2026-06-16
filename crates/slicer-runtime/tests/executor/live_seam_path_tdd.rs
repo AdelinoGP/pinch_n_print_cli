@@ -12,7 +12,7 @@
 //!
 //! Key invariants verified:
 //!   - Rotated wall loops with seam at points[0] are committed to PerimeterIR
-//!   - resolved_seam is committed to PerimeterIR after WallPostProcess dispatch
+//!   - resolved_seam is committed to PerimeterIR after PerimetersPostProcess dispatch
 //!   - resolved_seam.point.z matches the source loop layer Z
 //!   - Empty perimeter output (no loops, no candidates) skips commit without error
 //!   - Z envelope violations are rejected at push-reordered-wall-loop
@@ -190,7 +190,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
 
     let perimeter_ir = arena
         .perimeter()
-        .expect("PerimeterIR must be set after WallPostProcess commit");
+        .expect("PerimeterIR must be set after PerimetersPostProcess commit");
 
     let resolved = &perimeter_ir
         .regions
@@ -220,7 +220,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
 /// Test that an empty perimeter output (no loops, no candidates) does not error
 /// and produces no PerimeterIR in the arena.
 #[test]
-fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
+fn empty_perimeter_output_for_perimeterspostprocess_skips_commit() {
     let module_id = "com.test.empty-perimeter";
     let layer_index = 0u32;
 

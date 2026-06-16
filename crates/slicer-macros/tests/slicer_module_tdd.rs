@@ -561,12 +561,12 @@ fn test_11_generates_wit_export_layer() {
 // Test 12: Macro detects run_wall_postprocess stage
 // ============================================================================
 
-pub struct WallPostprocessModule;
+pub struct PerimetersPostProcessModule;
 
 #[slicer_module]
-impl LayerModule for WallPostprocessModule {
+impl LayerModule for PerimetersPostProcessModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(WallPostprocessModule)
+        Ok(PerimetersPostProcessModule)
     }
 
     fn run_wall_postprocess(
@@ -582,9 +582,9 @@ impl LayerModule for WallPostprocessModule {
 
 #[test]
 fn test_12_detects_wall_postprocess_stage() {
-    assert!(WallPostprocessModule::__slicer_has_stage_function());
+    assert!(PerimetersPostProcessModule::__slicer_has_stage_function());
     assert_eq!(
-        WallPostprocessModule::__slicer_stage_name(),
+        PerimetersPostProcessModule::__slicer_stage_name(),
         "Layer::PerimetersPostProcess"
     );
 }
@@ -823,7 +823,7 @@ fn test_20_all_documented_stages_covered_by_macro() {
     assert_eq!(InfillModule::__slicer_stage_name(), "Layer::Infill");
     assert_eq!(PerimeterModule::__slicer_stage_name(), "Layer::Perimeters");
     assert_eq!(
-        WallPostprocessModule::__slicer_stage_name(),
+        PerimetersPostProcessModule::__slicer_stage_name(),
         "Layer::PerimetersPostProcess"
     );
     assert_eq!(

@@ -1,6 +1,6 @@
 //! Seam placer module.
 //!
-//! Implements `LayerModule::run_wall_postprocess` for the `Layer::WallPostProcess` stage.
+//! Implements `LayerModule::run_wall_postprocess` for the `Layer::PerimetersPostProcess` stage.
 //! Reads resolved seam from perimeter regions and rotates wall loop geometry
 //! so path.points[0] is the seam vertex.
 //!

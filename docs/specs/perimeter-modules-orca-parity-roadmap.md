@@ -28,7 +28,7 @@ This codebase splits `process_classic()`'s responsibilities across several modul
 | Wall-loop geometry, hole/contour nesting, thin-walls, gap-fill, spiral vase | **Perimeter module** (classic / arachne) |
 | Per-vertex paint/material/bridge/overhang/fuzzy flags on `WallLoop.feature_flags` | **Perimeter module** (propagation only — data computed upstream) |
 | Seam candidate scoring (corner-based) | **Perimeter module** (producer) |
-| Seam candidate selection + wall rotation | `seam-placer` at `Layer::WallPostProcess` |
+| Seam candidate selection + wall rotation | `seam-placer` at `Layer::PerimetersPostProcess` |
 | Fuzzy-skin XY perturbation | `fuzzy-skin` at `Layer::PerimetersPostProcess` |
 | Overhang speed-quartile dispatch | `overhang-classifier-default` at `PostPass::LayerFinalization` |
 | Bridge detection (mesh-level) | `PrePass::MeshAnalysis` → `SurfaceClassificationIR` |

@@ -1,7 +1,7 @@
 //! TDD tests for the seam placer module (TASK-084).
 //!
 //! Tests verify seam candidate selection and resolved seam output
-//! for the `Layer::WallPostProcess` stage.
+//! for the `Layer::PerimetersPostProcess` stage.
 
 use std::collections::HashMap;
 

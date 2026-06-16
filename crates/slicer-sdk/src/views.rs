@@ -443,7 +443,7 @@ pub struct PerimeterRegionView {
     wall_loops: Vec<WallLoop>,
     infill_areas: Vec<ExPolygon>,
     seam_candidates: Vec<SeamCandidate>,
-    /// Resolved seam position, if set by seam-placer during WallPostProcess.
+    /// Resolved seam position, if set by seam-placer during PerimetersPostProcess.
     resolved_seam: Option<SeamPosition>,
 }
 
