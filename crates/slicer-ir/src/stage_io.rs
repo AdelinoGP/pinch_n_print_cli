@@ -524,3 +524,176 @@ pub struct LayerStageCommitData {
     /// to `true` whenever a perimeter was committed for the `Layer::Perimeters` stage.
     pub needs_seam_injection: bool,
 }
+
+// ============================================================================
+// Per-stage layer commit (ADR-0020)
+// ============================================================================
+//
+// `LayerStageCommit` is the deep replacement for the passive `LayerStageCommitData`
+// value-bag: a flat per-stage enum mirroring `slicer-schema::STAGES`. The runtime's
+// `apply` consumes exactly one variant per module invocation, making illegal
+// `(stage, output)` pairings unrepresentable and the per-stage commit protocol a
+// compiler-checked exhaustive match. See ADR-0020 for the full rationale.
+//
+// During the staged migration (ADR-0020 Steps A/B), `from_legacy` bridges the
+// still-struct-returning runner into the enum so the consumer can route through
+// `apply` without churning every mock. The bridge is deleted in Step C when the
+// producer (`deconstruct_layer_ctx`) builds the enum directly.
+
+/// Anchor-less retract / unretract spec emitted by a `Layer::PathOptimization`
+/// module. The entity anchor is resolved by the runtime's `apply` from arena
+/// state — never carried here — so no placeholder index can leak (ADR-0020).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetractSpec {
+    /// Retraction length in mm.
+    pub length: f32,
+    /// Retraction speed in mm/s.
+    pub speed: f32,
+    /// `true` = Unretract; `false` = Retract.
+    pub is_unretract: bool,
+    /// Emit-mode (`Gcode` inline-E vs `Firmware` `G10`/`G11`).
+    pub mode: crate::RetractMode,
+}
+
+/// Anchor-less travel-move destination emitted by a `Layer::PathOptimization`
+/// module. The anchor is resolved by `apply`; only the destination is carried.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TravelMoveDest {
+    /// X destination (module coordinate units, 100 nm).
+    pub x: Option<f32>,
+    /// Y destination (module coordinate units, 100 nm).
+    pub y: Option<f32>,
+    /// Z destination (module coordinate units, 100 nm).
+    pub z: Option<f32>,
+    /// Feed-rate override in mm/s (`None` = keep current speed).
+    pub f: Option<f32>,
+}
+
+/// G-code side-effects emitted by a `Layer::PathOptimization` module.
+///
+/// `tool_changes` carry their own guest-provided `after_entity_index` (genuine
+/// per-command anchoring). The four end-of-layer groups carry **no** anchor —
+/// `apply` stamps `ordered_entities.len()-1` from arena state. This is the
+/// structural fix for the placeholder-`0` anchor bug (ADR-0020): there is no
+/// field to hold a lie.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PathOptimizationCommit {
+    /// Tool-change commands; each keeps its guest `after_entity_index`.
+    pub tool_changes: Vec<crate::ToolChange>,
+    /// Z-hop heights (mm); anchored at end-of-layer by `apply`.
+    pub z_hops: Vec<f32>,
+    /// Comment / raw annotations; anchored at end-of-layer by `apply`.
+    pub annotations: Vec<crate::LayerAnnotationKind>,
+    /// Retract / unretract decisions; anchored at end-of-layer by `apply`.
+    pub retracts: Vec<RetractSpec>,
+    /// Travel-move destinations; anchored at end-of-layer by `apply`.
+    pub travel_moves: Vec<TravelMoveDest>,
+    /// `set-entity-order` proposal `(index, reverse)`; applied before the
+    /// g-code groups are anchored. `None` = guest did not reorder.
+    pub order_proposal: Option<Vec<(u32, bool)>>,
+}
+
+/// One module invocation's committed output, keyed by stage (ADR-0020).
+///
+/// Exactly one variant per per-layer stage in `slicer-schema::STAGES`, plus the
+/// documented test-only `SeedLayerCollection`. `run_stage` returns
+/// `Option<LayerStageCommit>`; `None` means the invocation committed nothing
+/// (empty guest output or a missing component).
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayerStageCommit {
+    /// `Layer::Perimeters`: replace the arena perimeter slot, partition fill
+    /// polygons, then back-fill `resolved_seam` from the seam plan.
+    Perimeters(crate::PerimeterIR),
+    /// `Layer::PerimetersPostProcess`: reconcile against the existing perimeter
+    /// (preserve `infill_areas`/`seam_candidates`/`resolved_seam` by region key),
+    /// then re-partition. Carries `None` when the post-process emitted no
+    /// perimeter of its own (the existing perimeter is re-partitioned in place).
+    PerimetersPostProcess(Option<crate::PerimeterIR>),
+    /// `Layer::Infill`: merge per-region paths into the arena infill slot.
+    Infill(crate::InfillIR),
+    /// `Layer::InfillPostProcess`: replace the arena infill slot.
+    InfillPostProcess(crate::InfillIR),
+    /// `Layer::Support`: set the arena support slot.
+    Support(crate::SupportIR),
+    /// `Layer::SupportPostProcess`: replace the arena support slot.
+    SupportPostProcess(crate::SupportIR),
+    /// `Layer::SlicePostProcess`: mutate the existing arena `SliceIR` in place.
+    SlicePostProcess {
+        /// Per-region polygon replacements `(region_key, replacement_polygons)`.
+        polygon_updates: Vec<(crate::RegionKey, Vec<crate::ExPolygon>)>,
+        /// Per-region path-Z updates `(region_key, path_idx, vertex_idx, new_z)`.
+        path_z_updates: Vec<(crate::RegionKey, u32, u32, f32)>,
+    },
+    /// `Layer::PathOptimization`: apply the entity-order proposal, then
+    /// accumulate the g-code side-effects onto the deferred queues.
+    PathOptimization(PathOptimizationCommit),
+    /// Test-only escape hatch: pre-seed a `LayerCollectionIR` into the arena so a
+    /// downstream stage consumes a known entity list. Named for its arena effect,
+    /// not its caller; never produced by a production runner. See ADR-0020.
+    SeedLayerCollection(crate::LayerCollectionIR),
+}
+
+impl LayerStageCommit {
+    /// Bridge a legacy `LayerStageCommitData` + `stage_id` into the per-stage
+    /// enum (ADR-0020 Steps A/B). Returns `None` when the invocation committed
+    /// nothing, preserving the early-return semantics of the original
+    /// `commit_layer_outputs`. Deleted in Step C once the producer builds the
+    /// enum directly.
+    ///
+    /// `SeedLayerCollection` takes priority: the sole caller sets
+    /// `layer_collection_output` *instead of* real stage output, never alongside
+    /// it, so prioritising it here loses nothing.
+    pub fn from_legacy(stage_id: &str, data: LayerStageCommitData) -> Option<Self> {
+        if let Some(lc) = data.layer_collection_output {
+            return Some(Self::SeedLayerCollection(lc));
+        }
+        match stage_id {
+            "Layer::Perimeters" => data.perimeter_output.map(Self::Perimeters),
+            // Post-process always commits for its stage: even an empty output
+            // re-partitions the existing perimeter (original commit_layer_outputs
+            // ran the arm unconditionally for the stage's modules).
+            "Layer::PerimetersPostProcess" => {
+                Some(Self::PerimetersPostProcess(data.perimeter_output))
+            }
+            "Layer::Infill" => data.infill_output.map(Self::Infill),
+            "Layer::InfillPostProcess" => data.infill_output.map(Self::InfillPostProcess),
+            "Layer::Support" => data.support_output.map(Self::Support),
+            "Layer::SupportPostProcess" => data.support_output.map(Self::SupportPostProcess),
+            "Layer::SlicePostProcess" => {
+                if data.slice_polygon_updates.is_empty() && data.slice_path_z_updates.is_empty() {
+                    None
+                } else {
+                    Some(Self::SlicePostProcess {
+                        polygon_updates: data.slice_polygon_updates,
+                        path_z_updates: data.slice_path_z_updates,
+                    })
+                }
+            }
+            "Layer::PathOptimization" => {
+                let commit = PathOptimizationCommit {
+                    tool_changes: data.tool_changes,
+                    z_hops: data.z_hops.into_iter().map(|z| z.hop_height).collect(),
+                    annotations: data.annotations.into_iter().map(|a| a.kind).collect(),
+                    retracts: data
+                        .retracts
+                        .into_iter()
+                        .map(|r| RetractSpec {
+                            length: r.length,
+                            speed: r.speed,
+                            is_unretract: r.is_unretract,
+                            mode: r.mode,
+                        })
+                        .collect(),
+                    travel_moves: data
+                        .deferred_travel_moves
+                        .into_iter()
+                        .map(|(_anchor, x, y, z, f)| TravelMoveDest { x, y, z, f })
+                        .collect(),
+                    order_proposal: data.entity_order_proposal,
+                };
+                Some(Self::PathOptimization(commit))
+            }
+            _ => None,
+        }
+    }
+}
