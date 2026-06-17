@@ -105,7 +105,7 @@ S, S, M, M, M, M, M, S → aggregate **M**. No L step. Largest: Steps 3/5.
 
 - AC-1…AC-6 and AC-N1/AC-N2 all pass (commands in `packet.spec.md` / `requirements.md`).
 - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` clean.
-- `marshal/` contains no `wasmtime` reference; `grep -c 'bindgen!' host.rs` still 4 (ADR-0005 untouched).
+- `marshal/` contains no `wasmtime` reference; `rg -c 'component::bindgen!' host.rs` still 4 (ADR-0005 untouched — counts invocations, not comment mentions of `bindgen!`).
 
 ## Acceptance Ceremony
 

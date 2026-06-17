@@ -47,10 +47,10 @@ Authoritative criteria are AC-1…AC-7 and AC-N1 in `packet.spec.md`. Refinement
 |----|---------|-----------------|
 | AC-1 | `rg -n 'interface host-services' crates/slicer-schema/wit/deps/common.wit && ! rg -n 'interface host-services' crates/slicer-schema/wit/deps/world-layer/ crates/slicer-schema/wit/deps/world-prepass/ crates/slicer-schema/wit/deps/world-finalization/ crates/slicer-schema/wit/deps/world-postpass/` | FACT: both clauses pass |
 | AC-2 | `rg -n 'import slicer:common/host-services' crates/slicer-schema/wit/deps/world-*/*.wit \| wc -l` | FACT: count == 4 |
-| AC-3 | `rg -cn 'host_services::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` | FACT: == 1 |
+| AC-3 | `rg -c 'impl hs::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` and `! rg -n 'impl (phs\|fhs\|pphs)::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` | FACT: count==1, second clause empty |
 | AC-4 | `rg -cn 'module_errors::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` | FACT: == 1 |
 | AC-5 | `rg -n 'slicer:common/(host-services\|module-errors)' crates/slicer-wasm-host/src/host.rs \| wc -l` | FACT: >= 6 |
-| AC-6 | `rg -c 'bindgen!' crates/slicer-wasm-host/src/host.rs` | FACT: == 4 |
+| AC-6 | `rg -c 'component::bindgen!' crates/slicer-wasm-host/src/host.rs` | FACT: == 4 |
 | AC-7 | `cargo xtask build-guests 2>&1 \| tee target/test-output.log; cargo xtask build-guests --check 2>&1 \| tee -a target/test-output.log; ! rg -i 'STALE' target/test-output.log` | FACT: rebuild ok + no STALE |
 | AC-N1 | `cargo test -p slicer-runtime --test contract macro_ 2>&1 \| tee target/test-output.log; rg 'test result:.*0 failed' target/test-output.log` | FACT: pass/fail + first failing assertion |
 | Gate | `cargo build --workspace --all-targets` then `cargo clippy --workspace --all-targets -- -D warnings` | FACT: exit code + first error |

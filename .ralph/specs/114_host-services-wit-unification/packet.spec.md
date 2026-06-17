@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 114_host-services-wit-unification
 task_ids: []
 backlog_source: docs/adr/0002-wit-marshalling-type-unification.md
@@ -24,13 +24,13 @@ Origin/backlog note: net-new architecture-review work governed by ADR-0002 (this
 
 - **AC-2** — Given the shared interface, When this packet lands, Then each of the four world WITs imports it via `import slicer:common/host-services;`. | `rg -n 'import slicer:common/host-services' crates/slicer-schema/wit/deps/world-*/*.wit | wc -l` (expect `4`)
 
-- **AC-3** — Given the host-side remap, When this packet lands, Then exactly one `impl <…>host_services::Host for HostExecutionContext` block remains in `host.rs` (the layer world's; `phs`/`fhs`/`pphs` copies deleted). | `rg -cn 'host_services::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` (expect `1`)
+- **AC-3** — Given the host-side remap, When this packet lands, Then exactly one host-services `Host` impl remains in `host.rs` — `impl hs::Host for HostExecutionContext`, where `hs` aliases `layer::slicer::common::host_services` — and the per-world `phs`/`fhs`/`pphs` copies are deleted. (The grep targets the `hs` alias: post-remap the surviving impl is written `impl hs::Host`, not the spelled-out path.) | `rg -c 'impl hs::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` (expect `1`) and `! rg -n 'impl (phs|fhs|pphs)::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs`
 
 - **AC-4** — Given the same remap extended to `module-errors`, When this packet lands, Then exactly one `impl <…>module_errors::Host for HostExecutionContext` block remains in `host.rs` (was four at host.rs:1660–1663). | `rg -cn 'module_errors::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` (expect `1`)
 
 - **AC-5** — Given the remap is what collapses the impls, When this packet lands, Then the prepass/finalization/postpass `bindgen!` blocks each remap `slicer:common/host-services` and `slicer:common/module-errors` onto the layer world in their `with:`. | `rg -n 'slicer:common/(host-services|module-errors)' crates/slicer-wasm-host/src/host.rs | wc -l` (expect `>= 6`)
 
-- **AC-6** — Given ADR-0005's invariant, When this packet lands, Then `host.rs` still contains exactly four `bindgen!` invocations. | `rg -c 'bindgen!' crates/slicer-wasm-host/src/host.rs` (expect `4`)
+- **AC-6** — Given ADR-0005's invariant, When this packet lands, Then `host.rs` still contains exactly four `bindgen!` invocations. | `rg -c 'component::bindgen!' crates/slicer-wasm-host/src/host.rs` (expect `4`)
 
 - **AC-7** — Given the WIT change, When guests are rebuilt, Then `cargo xtask build-guests --check` reports no `STALE:` afterward. | `cargo xtask build-guests 2>&1 | tee target/test-output.log; cargo xtask build-guests --check 2>&1 | tee -a target/test-output.log; ! rg -i 'STALE' target/test-output.log`
 
@@ -54,6 +54,14 @@ Origin/backlog note: net-new architecture-review work governed by ADR-0002 (this
 ## Doc Impact Statement (Required)
 
 Amend `docs/adr/0002` "Consequence" (and/or add a short ADR) to record that the shared `slicer:common` interfaces (`host-services`, `module-errors`) are now remapped onto the layer world alongside geometry/config, and that a future fifth world MUST remap them too. This doc edit is Step 5 of this packet.
+
+## Deviations
+
+- **[AC-3 — gate command corrected]** — AC-3 was authored as `rg -cn 'host_services::Host for HostExecutionContext' host.rs` (expect 1). Post-remap the surviving impl is written `impl hs::Host for HostExecutionContext` (the `hs` alias resolves to `layer::slicer::common::host_services`), so the original pattern returns 0 — a false-FAIL even though exactly one impl exists and the three per-world copies are deleted. Gate corrected to `rg -c 'impl hs::Host …' (==1)` plus `! rg 'impl (phs|fhs|pphs)::Host …'`; re-verified PASS. The substantive condition was always met. (AC-4/module-errors is spelled out, so its grep is unaffected.)
+
+- **[Test-guest import edits — covered by FWD]** — Three files under `crates/slicer-wasm-host/test-guests/*/src/lib.rs` were hand-edited from `slicer::world_*::host_services` to `slicer::common::host_services`. requirements.md §In Scope excluded hand-edits to `modules/core-modules/*/src` (those were untouched — correct); the test-guest edits are a different path explicitly authorized by design.md's `[FWD]` provision (hardcoded per-world import paths would otherwise fail typed instantiation). Within scope; recorded for traceability.
+
+- **[AC-6 — gate command corrected]** — AC-6 was `rg -c 'bindgen!' host.rs` (expect 4). The worker added three explanatory comments mentioning "`bindgen!` block", so the pattern now counts 8 (4 invocations + 4 comment/doc mentions) — a false-FAIL. The ADR-0005 invariant (exactly four `bindgen!` *invocations*) holds. Gate corrected to `rg -c 'component::bindgen!' host.rs` (matches only `wasmtime::component::bindgen!({`), re-verified == 4.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

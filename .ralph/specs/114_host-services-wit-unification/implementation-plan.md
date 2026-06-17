@@ -39,7 +39,7 @@
 - Edit (≤1): `host.rs`.
 - Dispatches: `cargo build --workspace --all-targets` (FACT pass/fail + first error); WIT-checklist grep for `host-services` across `host.rs`/`dispatch.rs`/`wit-guest` (FACT: any stray site?).
 - Context cost: **M**.
-- Verify: `rg -cn 'host_services::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` == 1; `rg -cn 'module_errors::Host for HostExecutionContext' …` == 1; `rg -c 'bindgen!' …` == 4.
+- Verify: `rg -c 'impl hs::Host for HostExecutionContext' crates/slicer-wasm-host/src/host.rs` == 1 (the `hs` alias is `layer::slicer::common::host_services`) and `! rg -n 'impl (phs|fhs|pphs)::Host for HostExecutionContext' …`; `rg -cn 'module_errors::Host for HostExecutionContext' …` == 1; `rg -c 'component::bindgen!' …` == 4.
 - Cheapest falsifier: build fails (path mismatch) or any count wrong.
 
 ### Step 4 — Rebuild guests; prove relink
@@ -82,7 +82,7 @@ M, S, M, M, S, S → aggregate **M**. No L step. Largest: Steps 1/3/4.
 
 - AC-1…AC-7 and AC-N1 all pass.
 - `cargo build --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` clean.
-- `cargo xtask build-guests --check` reports no `STALE:`; `rg -c 'bindgen!' host.rs` == 4 (ADR-0005 untouched).
+- `cargo xtask build-guests --check` reports no `STALE:`; `rg -c 'component::bindgen!' host.rs` == 4 (ADR-0005 untouched).
 - ADR-0002 amended.
 
 ## Acceptance Ceremony
