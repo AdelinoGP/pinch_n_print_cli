@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the ModularSlicer architecture.
+// -----------------------------------------------------------------------------
 /// Phase 3 driver — intersect painted triangles with layer Z plane.
 use crate::algos::paint_segmentation::colorize::Contour;
 use crate::algos::paint_segmentation::painted_line::{PaintedLine, PaintedLineVisitor};

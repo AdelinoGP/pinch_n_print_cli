@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/Brim.cpp / Skirt.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the ModularSlicer architecture.
+// -----------------------------------------------------------------------------
 //! Skirt and brim module for priming and adhesion paths.
 //!
 //! Runs in the `PostPass::LayerFinalization` stage, operating on the full

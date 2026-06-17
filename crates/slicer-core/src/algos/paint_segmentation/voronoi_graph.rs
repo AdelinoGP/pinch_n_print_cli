@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the ModularSlicer architecture.
+// -----------------------------------------------------------------------------
 #[cfg(feature = "host-algos")]
 use boostvoronoi::geometry::{Line as BvLine, Point as BvPoint};
 /// Voronoi graph construction for MMU paint-segmentation (Step 5 — RISK GATE).

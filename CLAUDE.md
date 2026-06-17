@@ -135,6 +135,10 @@ When modifying WIT types or interface definitions:
 
 Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before a packet can be closed; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony, not during implementation iterations (see Test Discipline above).
 
+## OrcaSlicer Attribution Rules
+
+Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures compliance with AGPLv3 and proper attribution to the original authors.
+
 ## Doc Index
 
 Read these directly rather than relying on summaries — they are kept current and authoritative.

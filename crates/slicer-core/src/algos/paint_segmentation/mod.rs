@@ -1,3 +1,13 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the ModularSlicer architecture.
+// -----------------------------------------------------------------------------
 /// AC-22b — per-edge bisector ownership tagging for classic-perimeters skip-mask.
 pub mod bisector_ownership;
 /// Paint-segmentation algorithm modules (ported from OrcaSlicer).
