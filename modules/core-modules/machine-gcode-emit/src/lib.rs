@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/[Various]
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Core module: emits machine_start_gcode / machine_end_gcode by prepending and appending
 //! Raw commands to the GCodePostProcess stream. Performs single-pass [key] substitution

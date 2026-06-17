@@ -1,4 +1,4 @@
-//! WIT / wasmtime marshalling and dispatch for ModularSlicer's WASM module host.
+//! WIT / wasmtime marshalling and dispatch for Pinch 'n Print's WASM module host.
 //!
 //! Extracted from `slicer-runtime` in packet 83. ADR-0002 requires all four
 //! `bindgen!` invocations (layer / prepass / finalization / postpass) to be

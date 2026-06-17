@@ -1,4 +1,4 @@
-# ModularSlicer — System Architecture
+# Pinch 'n Print — System Architecture
 
 ## High-Level Architecture
 

@@ -6,9 +6,9 @@
 // Original C++ source path: src/libslic3r/GCode/SeamPlacer.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Default seam planner for ModularSlicer.
+//! Default seam planner for Pinch 'n Print.
 //!
 //! Implements the `PrepassModule` trait for the `PrePass::SeamPlanning` stage.
 //! Analyzes mesh geometry to find and score optimal seam positions for each region.

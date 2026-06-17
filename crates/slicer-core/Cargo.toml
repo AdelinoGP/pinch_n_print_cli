@@ -2,7 +2,7 @@
 name = "slicer-core"
 version = "0.1.0"
 edition = "2021"
-authors = ["ModularSlicer Team"]
+authors = ["Pinch 'n Print Team"]
 
 [features]
 default = []

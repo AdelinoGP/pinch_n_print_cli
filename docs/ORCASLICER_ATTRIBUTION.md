@@ -32,6 +32,6 @@ To ensure continuous compliance and clear attribution as new files are ported, a
 // Original C++ source path: <ORIGINAL_FILE_PATH_PLACEHOLDER>
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 ```

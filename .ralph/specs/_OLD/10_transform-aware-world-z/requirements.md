@@ -50,7 +50,7 @@ TASK-157 closes gap 1. TASK-158 closes gap 2 by promoting world-space Z to a can
 
 ## OrcaSlicer Reference Obligations
 
-None. This is an internal architecture contract task. Transform behavior is defined by ModularSlicer's own coordinate system and is not derived from OrcaSlicer comparison.
+None. This is an internal architecture contract task. Transform behavior is defined by Pinch 'n Print's own coordinate system and is not derived from OrcaSlicer comparison.
 
 ## Acceptance Summary
 

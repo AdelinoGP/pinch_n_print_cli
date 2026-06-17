@@ -2,8 +2,8 @@
 name = "slicer-wasm-host"
 version = "0.1.0"
 edition = "2021"
-authors = ["ModularSlicer Team"]
-description = "WIT/wasmtime marshalling and dispatch for ModularSlicer's WASM module host"
+authors = ["Pinch 'n Print Team"]
+description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM module host"
 
 [dependencies]
 wasmtime = { workspace = true }

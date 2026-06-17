@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 /// Phase 3 driver — intersect painted triangles with layer Z plane.
 use crate::algos::paint_segmentation::colorize::Contour;

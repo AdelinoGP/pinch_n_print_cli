@@ -6,9 +6,9 @@
 // Original C++ source path: src/libslic3r/[Various]
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Core geometry algorithms for ModularSlicer.
+//! Core geometry algorithms for Pinch 'n Print.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]

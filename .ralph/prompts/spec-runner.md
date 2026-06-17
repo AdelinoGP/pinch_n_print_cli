@@ -1,6 +1,6 @@
-# ModularSlicer Spec Runner
+# Pinch 'n Print Spec Runner
 
-Execute one prepared ModularSlicer packet and nothing else.
+Execute one prepared Pinch 'n Print packet and nothing else.
 
 ## Backlog Source
 

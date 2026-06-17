@@ -1,6 +1,6 @@
 # Task Map: 31a_support-geometry-prepass-and-layer-height → docs/07
 
-This packet establishes the architectural foundation for variable-height support planning in ModularSlicer. It does NOT close the algorithmic v1 limitations (avoidance/collision, radius taper, raft, wall-count, config keys) — those ship in packet `31b_support-planner-algorithmic-parity`.
+This packet establishes the architectural foundation for variable-height support planning in Pinch 'n Print. It does NOT close the algorithmic v1 limitations (avoidance/collision, radius taper, raft, wall-count, config keys) — those ship in packet `31b_support-planner-algorithmic-parity`.
 
 ## Task ID Mapping
 
@@ -38,10 +38,10 @@ The original packet 31 (now discarded) introduced `PrePass::SlicePreview` as a n
 
 1. `PrePass::SupportGeometry` is a lightweight host-built-in prepass that computes coarse support outlines at support layer resolution (not model resolution) using `LayerPlanIR` to determine boundaries before any slicing.
 2. `SupportGeometryIR` is a new dedicated IR type (not `SliceIR` reuse) holding coarse support geometry at support layer resolution.
-3. `support_layer_height_mm` enables a genuine ModularSlicer differentiator: support planning at a different (coarser) resolution than the model.
+3. `support_layer_height_mm` enables a genuine Pinch 'n Print differentiator: support planning at a different (coarser) resolution than the model.
 4. `support_top_z_distance_mm` refines the interface near model contact zones.
 
-This makes ModularSlicer strictly better than OrcaSlicer for high-resolution prints: supports can use 3× fewer layers than the model, dramatically reducing compute while maintaining support quality.
+This makes Pinch 'n Print strictly better than OrcaSlicer for high-resolution prints: supports can use 3× fewer layers than the model, dramatically reducing compute while maintaining support quality.
 
 ## docs/07 Reconciliation Note
 

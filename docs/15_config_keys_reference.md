@@ -1,4 +1,4 @@
-# ModularSlicer — Config Keys Reference
+# Pinch 'n Print — Config Keys Reference
 
 This file is the canonical catalog of config keys recognised by the host
 binary, core modules, and the resolved-config pipeline. For the manifest
@@ -239,7 +239,7 @@ Generated keys whose numeric default differs from the matching key in
 upstream or has no upstream equivalent.
 
 <!-- BEGIN GENERATED: orca-deviations (cargo xtask gen-config-docs) -->
-| Key | Owner | ModularSlicer default | OrcaSlicer default |
+| Key | Owner | Pinch 'n Print default | OrcaSlicer default |
 |---|---|---|---|
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
 | `inner_wall_speed` | `arachne-perimeters` | `45.0` | `60.0` |

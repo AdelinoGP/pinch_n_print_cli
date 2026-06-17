@@ -304,7 +304,7 @@ fn render_deviations(all: &[&KeyRow], orca: &BTreeMap<String, f64>) -> String {
         return "_No numeric default deviates from the OrcaSlicer reference._\n".to_string();
     }
     let mut s = String::new();
-    s.push_str("| Key | Owner | ModularSlicer default | OrcaSlicer default |\n");
+    s.push_str("| Key | Owner | Pinch 'n Print default | OrcaSlicer default |\n");
     s.push_str("|---|---|---|---|\n");
     for (k, owner, ours, theirs) in rows {
         s.push_str(&format!("| `{k}` | `{owner}` | `{ours}` | `{theirs}` |\n"));

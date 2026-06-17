@@ -337,7 +337,7 @@ fn benchy_orca_parity_within_tolerance() {
     let regen = std::env::var("SUPPORT_PLANNER_REGEN_GOLDEN").is_ok();
 
     // Header lines for self-captured goldens (skipped when parsing).
-    let header = "# Source: ModularSlicer self-capture (synthetic overhang fixture, packet 31b)\n\
+    let header = "# Source: Pinch 'n Print self-capture (synthetic overhang fixture, packet 31b)\n\
                   # Replace with real OrcaSlicer reference data for regression_wedge.stl before promoting to status: implemented.\n\
                   # Tracked by: docs/07 follow-up to packet 31b_support-planner-algorithmic-parity.\n";
 

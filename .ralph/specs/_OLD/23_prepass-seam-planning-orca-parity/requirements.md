@@ -9,7 +9,7 @@
 
 ## Problem Statement
 
-Packet `22` restores the current layer-stage seam contract, but it does not close the larger Orca parity gap: seam selection still happens too late and with too little global context. OrcaSlicer’s seam initialization logic scores candidate points against global mesh and planning context before the live wall-application phase. ModularSlicer currently has no prepass seam-planning stage, no blackboard slot for planned seams, and no mechanism to inject a precomputed seam choice into `Layer::PerimetersPostProcess`.
+Packet `22` restores the current layer-stage seam contract, but it does not close the larger Orca parity gap: seam selection still happens too late and with too little global context. OrcaSlicer’s seam initialization logic scores candidate points against global mesh and planning context before the live wall-application phase. Pinch 'n Print currently has no prepass seam-planning stage, no blackboard slot for planned seams, and no mechanism to inject a precomputed seam choice into `Layer::PerimetersPostProcess`.
 
 This packet defines that missing architecture slice:
 

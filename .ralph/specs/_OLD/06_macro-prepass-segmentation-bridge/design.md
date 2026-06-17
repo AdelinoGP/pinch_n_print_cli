@@ -8,7 +8,7 @@
   - `modules/core-modules/mesh-segmentation/tests/mesh_segmentation_tdd.rs` — native unit tests (not macro-path)
   - `modules/core-modules/paint-segmentation/tests/paint_segmentation_tdd.rs` — native unit tests (not macro-path)
   - Existing `wit_host.rs` converter functions for prepass stages
-- OrcaSlicer comparison surface: N/A — segmentation is ModularSlicer-native
+- OrcaSlicer comparison surface: N/A — segmentation is Pinch 'n Print-native
 
 ## Architecture Constraints
 

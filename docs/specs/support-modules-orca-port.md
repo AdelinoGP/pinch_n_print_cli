@@ -10,7 +10,7 @@ scaffolding shipped the algorithmic *shape* of OrcaSlicer's
 `TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes` but not its
 numerical output. Packet 31b documented this explicitly:
 
-> *"The goldens are deterministic ModularSlicer self-captures; the test serves
+> *"The goldens are deterministic Pinch 'n Print self-captures; the test serves
 > as a regression anchor against drift in `support-planner`'s own output, not
 > as an external OrcaSlicer parity check. External OrcaSlicer numerical
 > parity is not in scope of this packet."* — `.ralph/specs/_OLD/31b_support-planner-algorithmic-parity/packet.spec.md`

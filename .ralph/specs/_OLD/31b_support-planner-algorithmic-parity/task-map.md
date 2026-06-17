@@ -13,7 +13,7 @@ This packet closes the five algorithmic v1 limitations of `support-planner` (gap
 | `TASK-163` (algo) | Step 5 | `docs/05`, `docs/08` | `modules/core-modules/support-planner/src/lib.rs`, `crates/slicer-helpers/src/geometry.rs` | `TreeSupport.cpp` 720–800, 2625–2860; `TreeModelVolumes.cpp` | Avoidance, collision, wall-count move, radius tapering. Consumes `SupportGeometryView` from 31a. |
 | `TASK-163` (algo) | Step 6 | `docs/02` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-host/src/dispatch.rs`, `modules/core-modules/tree-support/src/lib.rs`, `modules/core-modules/support-planner/src/lib.rs` | `TreeSupport.cpp` 1460–1700, 1913 | Raft + interface densification. |
 | `TASK-163` (algo) | Step 7 | `docs/03` | none (config schema bounds only) | none | Config-validation negatives (bounds in toml). |
-| `TASK-163` (algo) | Step 8 | `docs/02`, `docs/12` | `resources/golden/benchy_tree_support_orca_branch_count.txt` (new), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` | `TreeSupport.cpp` overall | Resolve Q3; capture ModularSlicer self-capture goldens; regression-anchor test against drift. |
+| `TASK-163` (algo) | Step 8 | `docs/02`, `docs/12` | `resources/golden/benchy_tree_support_orca_branch_count.txt` (new), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` | `TreeSupport.cpp` overall | Resolve Q3; capture Pinch 'n Print self-capture goldens; regression-anchor test against drift. |
 | `TASK-163` (algo) | Step 9 | `docs/05` | `modules/core-modules/support-planner/src/lib.rs` | none | Remove v1 module-level doc bullets for limits 3–7. |
 | `TASK-163` (algo) | Step 10 | `docs/03` | `modules/core-modules/support-planner/wit-guest/target/`, `support-planner.wasm` | none | Rebuild support-planner.wasm only (no WIT change — 31a already extended the WIT). |
 | `TASK-163` (algo) | Step 11 | `docs/07` | `docs/07_implementation_status.md` | none | Backlog row. |
@@ -34,10 +34,10 @@ The prior packet 31 design attempted to read `SliceIR` (Tier 2 data) during the 
 
 The revised 31a + 31b structure:
 
-1. **Packet 31a** (architectural foundation): `PrePass::SupportGeometry` is a host-built-in prepass that computes coarse support outlines at support layer resolution using `LayerPlanIR` before any slicing. `SupportGeometryIR` is committed to the blackboard. `support_layer_height_mm` enables variable-height supports (a genuine ModularSlicer differentiator vs OrcaSlicer which ties support resolution to model resolution).
+1. **Packet 31a** (architectural foundation): `PrePass::SupportGeometry` is a host-built-in prepass that computes coarse support outlines at support layer resolution using `LayerPlanIR` before any slicing. `SupportGeometryIR` is committed to the blackboard. `support_layer_height_mm` enables variable-height supports (a genuine Pinch 'n Print differentiator vs OrcaSlicer which ties support resolution to model resolution).
 2. **Packet 31b** (algorithmic): The support-planner reads `SupportGeometryView` (projected from `SupportGeometryIR`) for avoidance/collision at support resolution. Near model contact zones, `SupportGeometryView` carries intermediate model-resolution layers (from 31a's `support_top_z_distance` refinement), so collision is accurate where it matters most.
 
-This makes ModularSlicer strictly better than OrcaSlicer for high-resolution prints: supports use coarse resolution (3× fewer layers for a 0.3mm support layer height vs 0.1mm model), dramatically reducing compute while maintaining support quality.
+This makes Pinch 'n Print strictly better than OrcaSlicer for high-resolution prints: supports use coarse resolution (3× fewer layers for a 0.3mm support layer height vs 0.1mm model), dramatically reducing compute while maintaining support quality.
 
 ## docs/07 Reconciliation Note
 

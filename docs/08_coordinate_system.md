@@ -1,4 +1,4 @@
-# ModularSlicer Coordinate System
+# Pinch 'n Print Coordinate System
 
 > **This file is the single source of truth for coordinate conventions.**
 > All other documentation defers to this file. When in doubt, read this first.
@@ -105,7 +105,7 @@ the loader boundary, never at consumption time.
 
 ## Quick Reference
 
-| Real-world value               | In ModularSlicer units |
+| Real-world value               | In Pinch 'n Print units |
 | ------------------------------ | ---------------------- |
 | 1 mm                           | 10_000                 |
 | 0.4 mm (nozzle diameter)       | 4_000                  |
@@ -131,7 +131,7 @@ Scaling factor: 1_000_000
 **We do not use this.** The reasons:
 
 1. A 20 mm square in OrcaSlicer has corners at `(20_000_000, 20_000_000)`.
-   In ModularSlicer those corners are at `(200_000, 200_000)` — 100× smaller, readable at a glance in test output and debuggers.
+   In Pinch 'n Print those corners are at `(200_000, 200_000)` — 100× smaller, readable at a glance in test output and debuggers.
 
 2. Nanometer precision serves no physical purpose in FDM. The bead width is ~400,000 nm. The hardware step ceiling is ~10,000 nm.
 
@@ -146,13 +146,13 @@ Scaling factor: 1_000_000
 When you port an algorithm from `OrcaSlicer_Documented/` and it contains scaled-integer coordinates or constants, apply this conversion:
 
 ```
-ModularSlicer_units = OrcaSlicer_units / 100
-OrcaSlicer_units = ModularSlicer_units * 100
+Pinch 'n Print_units = OrcaSlicer_units / 100
+OrcaSlicer_units = Pinch 'n Print_units * 100
 ```
 
 ### Common Constants
 
-| OrcaSlicer constant     | OrcaSlicer value | ModularSlicer value        |
+| OrcaSlicer constant     | OrcaSlicer value | Pinch 'n Print value        |
 | ----------------------- | ---------------- | -------------------------- |
 | `SCALED_EPSILON`        | 1                | — (do not port; see below) |
 | `scale_(1.0)` (1mm)     | 1_000_000        | 10_000                     |
@@ -165,9 +165,9 @@ OrcaSlicer_units = ModularSlicer_units * 100
 
 OrcaSlicer's `SCALED_EPSILON = 1` (1 nm) is used throughout its codebase as a near-zero tolerance for polygon operations. **Do not port this value.**
 
-In ModularSlicer, our unit is 100 nm, so a direct port would give `SCALED_EPSILON = 1` meaning 100 nm, which is 100× larger than intended.
+In Pinch 'n Print, our unit is 100 nm, so a direct port would give `SCALED_EPSILON = 1` meaning 100 nm, which is 100× larger than intended.
 
-Use a ModularSlicer constant instead. The convention is:
+Use a Pinch 'n Print constant instead. The convention is:
 
 ```rust
 // SCALED_EPSILON: i64 = 1;  // 1 unit = 100 nm
@@ -188,11 +188,11 @@ you are off by a factor of 100. The correct epsilon is `1`.
 
 ## Constant Conversion Table
 
-Every OrcaSlicer constant divides by 100 when ported to ModularSlicer because
-1 ModularSlicer unit = 100 nm (10⁻⁴ mm), whereas OrcaSlicer uses 1 nm = 1 unit.
+Every OrcaSlicer constant divides by 100 when ported to Pinch 'n Print because
+1 Pinch 'n Print unit = 100 nm (10⁻⁴ mm), whereas OrcaSlicer uses 1 nm = 1 unit.
 The table below is sourced from `docs/specs/orca-paint-segmentation-parity.md` §5.
 
-| Constant | OrcaSlicer value (1 nm units) | ModularSlicer value (100 nm units) | Note |
+| Constant | OrcaSlicer value (1 nm units) | Pinch 'n Print value (100 nm units) | Note |
 |----------|------------------------------|-------------------------------------|------|
 | `SCALED_EPSILON` | ~100 | 1 | Minimum representable offset |
 | EdgeGrid `cell_size` | `scale(10 mm)` ≈ 10,000,000 | 100,000 | 10 mm cell side |
@@ -289,7 +289,7 @@ Code review note: a PR that constructs `Point2 { x: 200_000, y: 200_000 }` witho
 
 ## Clipper2 Integration
 
-Clipper2 accepts 64-bit integers natively. No intermediate scaling is needed when passing ModularSlicer coordinates to Clipper2.
+Clipper2 accepts 64-bit integers natively. No intermediate scaling is needed when passing Pinch 'n Print coordinates to Clipper2.
 
 The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i64). At our scaling factor of 10_000, a 1-meter build plate is 10_000_000 units — well within safe range. No overflow guards are needed for realistic print geometries.
 
@@ -297,9 +297,9 @@ The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i
 
 ## Epsilon Multipliers — The Primary Porting Hazard
 
-`SCALED_EPSILON` itself ports correctly (OrcaSlicer value 1 → ModularSlicer value 1, meaning 1nm → 100nm, still well below hardware resolution). The danger is every place OrcaSlicer writes `SCALED_EPSILON * N`:
+`SCALED_EPSILON` itself ports correctly (OrcaSlicer value 1 → Pinch 'n Print value 1, meaning 1nm → 100nm, still well below hardware resolution). The danger is every place OrcaSlicer writes `SCALED_EPSILON * N`:
 
-| OrcaSlicer expression   | OrcaSlicer meaning | Naive ModularSlicer port           | Correct ModularSlicer value     |
+| OrcaSlicer expression   | OrcaSlicer meaning | Naive Pinch 'n Print port           | Correct Pinch 'n Print value     |
 | ----------------------- | ------------------ | ---------------------------------- | ------------------------------- |
 | `SCALED_EPSILON * 1`    | 1nm                | 100nm ✓                            | `POINT_COINCIDENCE_EPSILON = 1` |
 | `SCALED_EPSILON * 10`   | 10nm               | 1µm ✓                              | `MIN_SEGMENT_LENGTH = 10`       |
@@ -333,15 +333,15 @@ pub const MIN_PRINTABLE_WIDTH:       i64 = 100;     // 10 µm   — Arachne mini
 When porting any file from `OrcaSlicer_Documented/`:
 
 - [ ] Identify every integer coordinate constant in the file
-- [ ] Divide each by 100 to get the ModularSlicer equivalent
+- [ ] Divide each by 100 to get the Pinch 'n Print equivalent
 - [ ] Replace `scale_(x)` calls with `mm_to_units(x)`
 - [ ] Replace `unscale(x)` calls with `units_to_mm(x)`
-- [ ] Do NOT port `SCALED_EPSILON` directly — use ModularSlicer's constant
+- [ ] Do NOT port `SCALED_EPSILON` directly — use Pinch 'n Print's constant
 - [ ] Do NOT port `SCALED_EPSILON * N` for any N > 1 — define or re-use a named constant in the consuming `slicer-core` / `slicer-helpers` module instead
 - [ ] If the ported logic uses Z, verify Z remains in millimeters and is not accidentally scaled like X/Y
 - [ ] Add a porting comment at the top of the new file:
       `// Ported from OrcaSlicer_Documented/src/libslic3r/XYZ.cpp`
-      `// Coordinate constants divided by 100 (OrcaSlicer: 1nm, ModularSlicer: 100nm)`
+      `// Coordinate constants divided by 100 (OrcaSlicer: 1nm, Pinch 'n Print: 100nm)`
 - [ ] Write a unit test that cross-checks a known OrcaSlicer output value against the ported function with coordinates divided by 100
 - [ ] Add a round-trip assertion for representative values:
       `units_to_mm(mm_to_units(v)) ~= v` for each critical constant `v`

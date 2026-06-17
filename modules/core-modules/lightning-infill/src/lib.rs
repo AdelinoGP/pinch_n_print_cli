@@ -7,7 +7,7 @@
 // Original code owner: Ultimaker B.V. (Copyright (c) 2021 Ultimaker B.V.)
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Lightning-style branching sparse infill generator module.
 //!

@@ -7,7 +7,7 @@ use std::env;
 use std::process::ExitCode;
 
 const USAGE: &str = "\
-xtask — workspace build helpers for ModularSlicer
+xtask — workspace build helpers for Pinch 'n Print
 
 USAGE:
     cargo xtask <SUBCOMMAND> [OPTIONS]

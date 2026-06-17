@@ -1,7 +1,7 @@
 # Canonical WIT Contract
 
 This directory (`crates/slicer-schema/wit/`) is the **single canonical WIT contract** for
-the ModularSlicer pipeline. Both the host and the guest macro read these exact files — there
+the Pinch 'n Print pipeline. Both the host and the guest macro read these exact files — there
 are no flattened copies, no inline literals elsewhere.
 
 ## Layout

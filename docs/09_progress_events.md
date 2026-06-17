@@ -1,4 +1,4 @@
-# ModularSlicer — Progress & Error Event Contract
+# Pinch 'n Print — Progress & Error Event Contract
 
 This document is authoritative for structured runtime events emitted by the host during one `slice` command.
 

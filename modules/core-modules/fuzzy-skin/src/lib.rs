@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/GCode/FuzzySkin.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Fuzzy skin module.
 //!

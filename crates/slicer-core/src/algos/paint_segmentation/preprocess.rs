@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 /// Phase 1 preprocess — extracts per-layer paint data from mesh objects.
 use slicer_ir::{IndexedTriangleSet, PaintLayer, PaintSemantic, PaintValue, Point3};

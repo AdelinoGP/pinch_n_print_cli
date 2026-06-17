@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/GCode/WipeTower.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Wipe tower module for multi-material tool change purge/prime paths.
 //!

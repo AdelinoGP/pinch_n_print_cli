@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/Brim.cpp / Skirt.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Skirt and brim module for priming and adhesion paths.
 //!

@@ -6,9 +6,9 @@
 // Original C++ source path: src/libslic3r/[Various]
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Pre-pipeline mesh processing operations for ModularSlicer.
+//! Pre-pipeline mesh processing operations for Pinch 'n Print.
 //!
 //! This crate provides mesh repair, decimation, and STEP import functionality
 //! that runs before the WASM module pipeline. All operations input and output

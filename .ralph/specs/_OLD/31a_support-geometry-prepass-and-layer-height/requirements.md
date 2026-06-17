@@ -11,7 +11,7 @@
 
 OrcaSlicer ties support layer height to model layer height — so a 0.1mm miniature print gets 0.1mm support layers. This is wasteful: support structures don't need that resolution. OrcaSlicer computes `lslices` at model resolution for the whole model, then runs tree support — it can't do otherwise because slice data comes from the layer loop.
 
-ModularSlicer has a structural advantage: `LayerPlanIR` is committed in Tier 1 (before any slicing) and describes the complete layer sequence. This means we can plan support geometry at a different (coarser) resolution than the model — even determining support layer boundaries before a single triangle is intersected.
+Pinch 'n Print has a structural advantage: `LayerPlanIR` is committed in Tier 1 (before any slicing) and describes the complete layer sequence. This means we can plan support geometry at a different (coarser) resolution than the model — even determining support layer boundaries before a single triangle is intersected.
 
 This packet establishes the architectural foundation for this differentiator:
 1. `SupportGeometryIR` — coarse per-layer polygon outlines at support layer resolution

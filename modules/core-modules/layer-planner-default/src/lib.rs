@@ -6,9 +6,9 @@
 // Original C++ source path: src/libslic3r/Layer.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Default uniform layer planner for ModularSlicer.
+//! Default uniform layer planner for Pinch 'n Print.
 //!
 //! Implements the `PrepassModule` trait for the `PrePass::LayerPlanning` stage.
 //! Computes global Z-plane sequences from object heights and layer-height config.

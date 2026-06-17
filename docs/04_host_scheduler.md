@@ -1,4 +1,4 @@
-# ModularSlicer — Host Scheduler
+# Pinch 'n Print — Host Scheduler
 
 > **Reading this doc.** The Rust snippets below illustrate the scheduler's
 > contracts and data flow. They are NOT literal copies of the production

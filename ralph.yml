@@ -13,25 +13,25 @@ features:
 core:
   specs_dir: ./.ralph/specs/
   guardrails:
-  - The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/.
-  - docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run.
-  - 'If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing.'
-  - 'Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs.'
-  - Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run.
-  - 'TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope.'
-  - Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet.
-  - 'Backpressure is law: cargo build --workspace, targeted tests (cargo test -p <crate> --test <file> or cargo check --workspace), and cargo clippy --workspace -- -D warnings must pass during iteration. The full cargo test --workspace suite runs at most once, only at the packet completion ceremony, and only if the packet spec marks it as a closure gate.'
-  - Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger.
-  - Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green.
-  - 'Do not modify or write to files in another packet''s directory. If this packet corrects work from another packet, mark that packet status: superseded in its own packet.spec.md.'
+    - The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/.
+    - docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run.
+    - "If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing."
+    - "Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs."
+    - Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run.
+    - "TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope."
+    - Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet.
+    - "Backpressure is law: cargo build --workspace, targeted tests (cargo test -p <crate> --test <file> or cargo check --workspace), and cargo clippy --workspace -- -D warnings must pass during iteration. The full cargo test --workspace suite runs at most once, only at the packet completion ceremony, and only if the packet spec marks it as a closure gate."
+    - Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger.
+    - Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green.
+    - "Do not modify or write to files in another packet's directory. If this packet corrects work from another packet, mark that packet status: superseded in its own packet.spec.md."
 backpressure:
   gates:
-  - name: build
-    command: cargo build --workspace
-    on_fail: Workspace build failed. Fix all build errors and retry.
-  - name: clippy
-    command: cargo clippy --workspace -- -D warnings
-    on_fail: Clippy warnings found. Fix all lint issues and retry.
+    - name: build
+      command: cargo build --workspace
+      on_fail: Workspace build failed. Fix all build errors and retry.
+    - name: clippy
+      command: cargo clippy --workspace -- -D warnings
+      on_fail: Clippy warnings found. Fix all lint issues and retry.
   # test gate runs at packet-close ceremony only, not during iteration.
   # the >1000-test suite takes ≥11 min; targeted tests (cargo test -p <crate> --test <file>)
   # are the workhorse during implementation. see cargo check for seconds-fast validation.
@@ -40,17 +40,17 @@ hats:
     name: Spec Executor
     model: claude-opus-4-6
     variant: high
-    description: Drives one prepared ModularSlicer packet from scope check to verified completion
+    description: Drives one prepared Pinch 'n Print packet from scope check to verified completion
     triggers:
-    - work.start
-    - implementation.done
-    - implementation.blocked
-    - verification.pass
-    - verification.fail
+      - work.start
+      - implementation.done
+      - implementation.blocked
+      - verification.pass
+      - verification.fail
     publishes:
-    - implementation.ready
-    - verification.ready
-    - SPEC_PACKET_COMPLETE
+      - implementation.ready
+      - verification.ready
+      - SPEC_PACKET_COMPLETE
     instructions: |
       You execute exactly one prepared spec packet at a time. You are not a project-wide planner.
 
@@ -122,10 +122,10 @@ hats:
     variant: high
     description: Implements one active packet step with repo-specific architecture and validation rules
     triggers:
-    - implementation.ready
+      - implementation.ready
     publishes:
-    - implementation.done
-    - implementation.blocked
+      - implementation.done
+      - implementation.blocked
     instructions: |
       You implement exactly the active packet step carried by `implementation.ready`.
 
@@ -139,7 +139,7 @@ hats:
       - Stay inside the packet boundary. Do not work ahead.
       - Follow TDD: add or expose a failing test first, then implement, then rerun the narrowest relevant validation.
       - Prefer small, reviewable edits and narrow commands before workspace-wide gates.
-      - Preserve ModularSlicer contract rules from the cited docs, especially docs/01-05 and docs/08.
+      - Preserve Pinch 'n Print contract rules from the cited docs, especially docs/01-05 and docs/08.
       - Use runtime tasks for execution tracking. Do not use scratchpad files as the task list.
       - **Per-criterion verification binding:** Each Given/When/Then acceptance criterion has a pipe-suffixed verification command. Run that exact command to validate the criterion, not a broader or different one. If the command does not pass, the step is not complete.
       - A step is not complete until its stated precondition, postcondition, and exit condition are all satisfied with explicit evidence.
@@ -170,10 +170,10 @@ hats:
     variant: high
     description: Validates one packet step against the active spec contract and required repo gates
     triggers:
-    - verification.ready
+      - verification.ready
     publishes:
-    - verification.pass
-    - verification.fail
+      - verification.pass
+      - verification.fail
     instructions: |
       You validate one active packet step against the packet contract.
 

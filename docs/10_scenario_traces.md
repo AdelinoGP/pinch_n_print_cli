@@ -1,4 +1,4 @@
-# ModularSlicer — Canonical Scenario Traces
+# Pinch 'n Print — Canonical Scenario Traces
 
 This document is normative for the end-to-end behavior traces used in
 architecture reviews and implementation validation.

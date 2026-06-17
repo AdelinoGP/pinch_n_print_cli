@@ -1,8 +1,8 @@
-# ModularSlicer — Project Overview
+# Pinch 'n Print — Project Overview
 
 ## Vision
 
-ModularSlicer is a high-performance, modular FDM/SLA 3D printer slicing engine where every slicing feature is a first-class, independently compiled, community-extensible module. The core engine acts as a host/runner for these modules. It has zero UI concern.
+Pinch 'n Print is a high-performance, modular FDM/SLA 3D printer slicing engine where every slicing feature is a first-class, independently compiled, community-extensible module. The core engine acts as a host/runner for these modules. It has zero UI concern.
 
 The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this project solves:
 

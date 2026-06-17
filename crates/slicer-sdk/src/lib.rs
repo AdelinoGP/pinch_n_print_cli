@@ -1,4 +1,4 @@
-//! ModularSlicer SDK foundations.
+//! Pinch 'n Print SDK foundations.
 //!
 //! This crate currently provides:
 //! - stable re-exports for shared IR types,

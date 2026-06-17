@@ -97,7 +97,7 @@
   - `docs/03_wit_and_manifest.md`
   - `docs/07_implementation_status.md`
 - OrcaSlicer refs:
-  - none; this is a ModularSlicer-local config contract
+  - none; this is a Pinch 'n Print-local config contract
 - Narrow verification commands:
   - `cargo test -p slicer-host --test dispatch_tdd path_optimization_emit_layer_markers_false_suppresses_output -- --exact --nocapture`
 - Cheapest falsifying check / exit condition:

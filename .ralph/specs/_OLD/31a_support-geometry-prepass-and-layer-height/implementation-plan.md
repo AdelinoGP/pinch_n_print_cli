@@ -21,7 +21,7 @@
   - `docs/01_system_architecture.md` (Tier 1 prepass)
   - `modules/core-modules/support-planner/support-planner.toml`
   - Reading Guidance: Do NOT read docs/02_ir_schemas.md in full. Read ONLY the `LayerPlanIR` subsection (≈50 lines starting at the `LayerPlanIR` struct definition). Similarly, skim docs/01_system_architecture.md — focus on Tier 1 PrePass section only.
-- OrcaSlicer refs: none (this is a ModularSlicer innovation).
+- OrcaSlicer refs: none (this is a Pinch 'n Print innovation).
 - Verification: `git status` clean.
 - Context cost: M
 - Exit condition: Engineer can describe support layer boundary computation from memory.

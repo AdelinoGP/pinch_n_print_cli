@@ -6,13 +6,13 @@
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 /// AC-22b — per-edge bisector ownership tagging for classic-perimeters skip-mask.
 pub mod bisector_ownership;
 /// Paint-segmentation algorithm modules (ported from OrcaSlicer).
 ///
-/// Coordinate constants divided by 100 (OrcaSlicer: 1 nm, ModularSlicer: 100 nm).
+/// Coordinate constants divided by 100 (OrcaSlicer: 1 nm, Pinch 'n Print: 100 nm).
 /// Spatial cell index for 2D line segments.
 pub mod colorize;
 /// Phase 7 — variant-chain composition: compose per-semantic outputs into disjoint chains per layer.

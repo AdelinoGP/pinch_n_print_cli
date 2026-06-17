@@ -1,6 +1,6 @@
 ---
 name: spec-packet-generator
-description: Generates a ModularSlicer Ralph spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, or URL.
+description: Generates a Pinch 'n Print Ralph spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, or URL.
 type: anthropic-skill
 version: "1.2"
 metadata:

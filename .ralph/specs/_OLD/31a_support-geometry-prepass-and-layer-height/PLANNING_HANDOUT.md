@@ -2,7 +2,7 @@
 
 ## Context
 
-Packet `31a_support-geometry-prepass-and-layer-height` adds `SupportGeometryIR` and `PrePass::SupportGeometry` to ModularSlicer. The work was partially implemented by swarm workers. The implementation introduced an **execution order bug** that breaks the prepass pipeline.
+Packet `31a_support-geometry-prepass-and-layer-height` adds `SupportGeometryIR` and `PrePass::SupportGeometry` to Pinch 'n Print. The work was partially implemented by swarm workers. The implementation introduced an **execution order bug** that breaks the prepass pipeline.
 
 **Status before this handout:** Implementation is broken. The prepass pipeline fails for end-to-end tests because `PrePass::RegionMapping` and `PrePass::SupportGeneration` are in the wrong order.
 

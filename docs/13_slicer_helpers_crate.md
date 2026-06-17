@@ -1,4 +1,4 @@
-# ModularSlicer — slicer-helpers Crate
+# Pinch 'n Print — slicer-helpers Crate
 
 > **Status (as of this writing).**
 > - The `repair`, `decimate`, and STEP import Rust APIs in this document are

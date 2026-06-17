@@ -2,7 +2,7 @@
 name = "pnp-cli"
 version = "0.1.0"
 edition = "2021"
-authors = ["ModularSlicer Team"]
+authors = ["Pinch 'n Print Team"]
 
 [[bin]]
 name = "pnp_cli"

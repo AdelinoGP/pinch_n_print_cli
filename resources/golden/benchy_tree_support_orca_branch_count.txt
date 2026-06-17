@@ -1,8 +1,8 @@
-# Official ModularSlicer deterministic regression anchor (packet 31b_support-planner-algorithmic-parity).
+# Official Pinch 'n Print deterministic regression anchor (packet 31b_support-planner-algorithmic-parity).
 # Captured from a clean run of the synthetic single-object overhang fixture used in
 # `prepass_support_generation_orca_parity_tdd.rs::benchy_orca_parity_within_tolerance`.
-# This anchors the algorithmic-parity test against drift in ModularSlicer's own `support-planner`
+# This anchors the algorithmic-parity test against drift in Pinch 'n Print's own `support-planner`
 # output; it is NOT an external OrcaSlicer slice. The filename retains `_orca_` for stability of
-# test paths only — the contents are a ModularSlicer self-capture.
+# test paths only — the contents are a Pinch 'n Print self-capture.
 # Format: lines starting with `#` are comments; the integer below is the baseline branch count.
 5

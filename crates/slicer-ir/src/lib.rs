@@ -1,4 +1,4 @@
-//! Intermediate Representation (IR) Schemas for ModularSlicer
+//! Intermediate Representation (IR) Schemas for Pinch 'n Print
 //!
 //! All IR types are shared contracts between the host and modules.
 //! Every IR struct carries a `schema_version: SemVer`.

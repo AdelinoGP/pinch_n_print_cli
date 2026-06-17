@@ -1,4 +1,4 @@
-# ModularSlicer — Intermediate Representation (IR) Schemas
+# Pinch 'n Print — Intermediate Representation (IR) Schemas
 
 All IRs are defined in `crates/slicer-ir/src/`. They are the shared contract between the host and all modules. IR types are re-exported by the SDK crate for module authors.
 

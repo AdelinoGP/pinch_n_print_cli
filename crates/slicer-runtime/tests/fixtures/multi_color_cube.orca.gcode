@@ -1,6 +1,6 @@
 ; OrcaSlicer 2.2.0 reference output — multi_color_cube (2-color, 10x10x10mm cube)
 ; OrcaSlicer reference flush volumes: (0->1)=70.0 (1->0)=70.0
-; NOTE: This file is a REFERENCE only. It is NOT produced by ModularSlicer.
+; NOTE: This file is a REFERENCE only. It is NOT produced by Pinch 'n Print.
 ;       AC2a/AC2b/AC5/NC2/NC3 run against target/test-output/multi_color_cube.gcode.
 ;       AC3 uses the hardcoded reference value 70.0 mm³ extracted from this header.
 ; Reference: OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower2.cpp:2258-2270

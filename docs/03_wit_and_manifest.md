@@ -1,4 +1,4 @@
-# ModularSlicer — WIT Interfaces & Module Manifest Schema
+# Pinch 'n Print — WIT Interfaces & Module Manifest Schema
 
 > **Source of truth.** `crates/slicer-schema/wit/` is the **single canonical WIT contract**.
 > It is consumed directly by both the host (`wasmtime::component::bindgen!{ path: … }`) and the

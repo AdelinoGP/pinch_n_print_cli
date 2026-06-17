@@ -1,13 +1,13 @@
 ---
 name: review
-description: Performs multi-dimensional code review for the ModularSlicer Rust/WASM codebase. Validates architecture compliance, IR contract integrity, WASM module manifests, backpressure gates, and operational governance rules before code is committed.
+description: Performs multi-dimensional code review for the Pinch 'n Print Rust/WASM codebase. Validates architecture compliance, IR contract integrity, WASM module manifests, backpressure gates, and operational governance rules before code is committed.
 ---
 
 # Review Command
 
 ## Overview
 
-Review code changes against the ModularSlicer architecture contract and operational governance rules. This is the final quality gate before code is committed.
+Review code changes against the Pinch 'n Print architecture contract and operational governance rules. This is the final quality gate before code is committed.
 
 Review is rigorous on critical and high priority dimensions — these catch real bugs. Medium and low priorities are noted but do not block.
 

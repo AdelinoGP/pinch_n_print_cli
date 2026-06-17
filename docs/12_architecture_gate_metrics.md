@@ -1,4 +1,4 @@
-# ModularSlicer — Architecture Gate Metrics
+# Pinch 'n Print — Architecture Gate Metrics
 
 This document defines objective thresholds for the Architecture Acceptance Gate.
 

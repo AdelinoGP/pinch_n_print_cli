@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-Packet `31a_support-geometry-prepass-and-layer-height` (swarm workers, Steps 1–17) added `SupportGeometryIR` and `PrePass::SupportGeometry` to ModularSlicer. The implementation introduced an **execution order bug** in `execute_prepass_with_builtins`:
+Packet `31a_support-geometry-prepass-and-layer-height` (swarm workers, Steps 1–17) added `SupportGeometryIR` and `PrePass::SupportGeometry` to Pinch 'n Print. The implementation introduced an **execution order bug** in `execute_prepass_with_builtins`:
 
 - The 31a implementation moved `RegionMapping` and `SupportGeometry` to run **before** `execute_prepass`.
 - But `LayerPlanIR` is committed **inside** `execute_prepass` (at the very start, before any user stages run).
@@ -38,7 +38,7 @@ This packet (`31a-REV1`) fixes the execution order by restoring the original cor
 
 ## OrcaSlicer Reference Obligations
 
-None — execution ordering is an internal ModularSlicer concern.
+None — execution ordering is an internal Pinch 'n Print concern.
 
 ## Acceptance Summary
 

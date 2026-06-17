@@ -1,4 +1,4 @@
-//! Proc-macros for the ModularSlicer SDK.
+//! Proc-macros for the Pinch 'n Print SDK.
 //!
 //! This crate provides:
 //! - `#[slicer_module]` — promotes `impl LayerModule for T` / `impl PrepassModule for T`

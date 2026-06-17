@@ -6,7 +6,7 @@
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Modifier-volume slicing for paint segmentation (Step 10 / AC-13 / D14).
 //!

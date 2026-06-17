@@ -18,7 +18,7 @@
 - **Neighboring tests or fixtures:**
   - `crates/slicer-host/tests/support_geometry_prepass_tdd.rs` (new).
   - Existing tests from packets 28 and 30 must remain green.
-- **No OrcaSlicer reference for the core differentiator** — variable support layer height is a ModularSlicer innovation, not an OrcaSlicer feature.
+- **No OrcaSlicer reference for the core differentiator** — variable support layer height is a Pinch 'n Print innovation, not an OrcaSlicer feature.
 
 ## Architecture Constraints
 

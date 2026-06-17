@@ -7,7 +7,7 @@
 // Original code owner: Alec Jacobson (libigl) — Copyright (C) 2015 Alec Jacobson <alecjacobson@gmail.com>
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Minimal TASK-014 mesh-query API scaffolding.
 

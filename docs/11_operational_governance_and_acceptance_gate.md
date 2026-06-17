@@ -1,4 +1,4 @@
-# ModularSlicer — Operational Governance & Architecture Acceptance Gate
+# Pinch 'n Print — Operational Governance & Architecture Acceptance Gate
 
 This document is normative for release governance and architecture acceptance decisions.
 

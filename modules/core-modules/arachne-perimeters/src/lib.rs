@@ -7,7 +7,7 @@
 // Original code owner: Ultimaker B.V. (Copyright (c) 2022 Ultimaker B.V.)
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Arachne variable-width perimeter generator module.
 //!

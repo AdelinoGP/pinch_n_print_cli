@@ -6,11 +6,11 @@
 // Original C++ source path: src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the ModularSlicer architecture.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 /// Z-plane intersection for triangles.
 ///
-/// Coordinate constants divided by 100 (OrcaSlicer: 1 nm → ModularSlicer: 100 nm).
+/// Coordinate constants divided by 100 (OrcaSlicer: 1 nm → Pinch 'n Print: 100 nm).
 use slicer_ir::{Point2, Point3};
 
 /// A 2D line segment with scaled-integer endpoints (1 unit = 100 nm).

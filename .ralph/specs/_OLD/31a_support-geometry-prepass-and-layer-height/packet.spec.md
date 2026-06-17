@@ -12,7 +12,7 @@ backlog_source: docs/07_implementation_status.md
 
 ## Goal
 
-Establish the architectural foundation for variable-height support planning in ModularSlicer. Unlike OrcaSlicer, which ties support layer height to model layer height (wasteful for high-resolution prints), ModularSlicer already has `LayerPlanIR` before any slicing begins — enabling support planning at a different (coarser) resolution than the model. This packet introduces:
+Establish the architectural foundation for variable-height support planning in Pinch 'n Print. Unlike OrcaSlicer, which ties support layer height to model layer height (wasteful for high-resolution prints), Pinch 'n Print already has `LayerPlanIR` before any slicing begins — enabling support planning at a different (coarser) resolution than the model. This packet introduces:
 
 1. **`SupportGeometryIR`** — a new Tier-1 IR type holding per-layer 2D polygon outlines at support layer resolution (not model resolution).
 2. **`PrePass::SupportGeometry`** — a lightweight host-built-in prepass stage that computes coarse support outlines via plane-triangle intersection at support layer boundaries only.
@@ -103,7 +103,7 @@ After this packet, support generation can plan at coarse resolution (fast, spars
 
 ## OrcaSlicer Reference Obligations
 
-- OrcaSlicer does NOT have support layer height independent from model layer height — this is a ModularSlicer differentiator. No OrcaSlicer reference required for this architectural feature.
+- OrcaSlicer does NOT have support layer height independent from model layer height — this is a Pinch 'n Print differentiator. No OrcaSlicer reference required for this architectural feature.
 - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.hpp` — `SupportNode` struct (for understanding `dist_mm_to_top` and how it relates to column height).
 - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` lines 720–800 — `generate_contact_points` and how OrcaSlicer handles contact Z (for understanding what `support_top_z_distance` refinement should approximate).
 

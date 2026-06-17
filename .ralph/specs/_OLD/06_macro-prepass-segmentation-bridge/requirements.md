@@ -50,7 +50,7 @@ If this packet reopens or supersedes a prior packet: N/A — no prior packet add
 
 ## OrcaSlicer Reference Obligations
 
-- `OrcaSlicerDocumented/` files are not directly referenced by this packet — segmentation is a ModularSlicer-native behavior with no OrcaSlicer counterpart.
+- `OrcaSlicerDocumented/` files are not directly referenced by this packet — segmentation is a Pinch 'n Print-native behavior with no OrcaSlicer counterpart.
 - The paint segmentation approach (projecting 3D facet paint onto 2D per-layer polygons) is documented in `docs/01_system_architecture.md` and does not require OrcaSlicer reference borrowing.
 
 ## Acceptance Summary

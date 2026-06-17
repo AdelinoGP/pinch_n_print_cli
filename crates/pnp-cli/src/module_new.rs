@@ -297,7 +297,7 @@ fn generate_lib_rs(name: &str, stage: &str) -> String {
     let fn_body = default_body_for_stage(stage);
 
     format!(
-        r#"//! {display} — a ModularSlicer module.
+        r#"//! {display} — a Pinch 'n Print module.
 
 use slicer_sdk::prelude::*;
 

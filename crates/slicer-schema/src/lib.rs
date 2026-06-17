@@ -1,4 +1,4 @@
-//! Single source of truth for the ModularSlicer stage ↔ WIT-world ↔
+//! Single source of truth for the Pinch 'n Print stage ↔ WIT-world ↔
 //! export mapping.
 //!
 //! Both `slicer-macros` (which expands `#[slicer_module]`) and

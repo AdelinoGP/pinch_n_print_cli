@@ -1,4 +1,4 @@
-# ModularSlicer — Module Development SDK
+# Pinch 'n Print — Module Development SDK
 
 ## Overview
 
