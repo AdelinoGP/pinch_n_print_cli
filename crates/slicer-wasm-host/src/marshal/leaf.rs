@@ -12,11 +12,8 @@ use crate::host::{
     BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
-// Type aliases matching the four worlds' geometry remapping (packet 75, Phase 3/ADR-0002).
-// fgeo/ppgeo both alias layer's geometry module — same Rust types.
-use crate::host::finalization::slicer::types::geometry as fgeo;
+// postpass type alias used by convert_postpass_retract_mode.
 use crate::host::postpass as ppm;
-use crate::host::postpass::slicer::types::geometry as ppgeo;
 
 // ── WIT ↔ slicer-ir polygon conversion ────────────────────────────────
 
@@ -438,50 +435,28 @@ pub fn convert_postpass_retract_mode(mode: &ppm::RetractMode) -> slicer_ir::Retr
     }
 }
 
-// ── AC-1b: WIT→IR role converters relocated from finalization_impls / postpass_impls ──
-//
-// These two converters are intentionally asymmetric with respect to
-// PrimeTower / Skirt recovery — that asymmetry is tracked in packet 115, not here.
-// Bodies are byte-for-byte from the original host.rs locations (AC-1b).
-// TODO(packet-115): recover PrimeTower/Skirt from the Custom builtin tags in the
-// two inbound converters below (see ADR-0021 §Amendment).
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Convert a finalization-world `ExtrusionRole` to `slicer_ir::ExtrusionRole`.
-///
-/// Note: no PrimeTower/Skirt recovery — intentional asymmetry (packet 115).
-pub fn finalization_role_wit_to_ir(r: &fgeo::ExtrusionRole) -> slicer_ir::ExtrusionRole {
-    match r {
-        fgeo::ExtrusionRole::OuterWall => slicer_ir::ExtrusionRole::OuterWall,
-        fgeo::ExtrusionRole::InnerWall => slicer_ir::ExtrusionRole::InnerWall,
-        fgeo::ExtrusionRole::ThinWall => slicer_ir::ExtrusionRole::ThinWall,
-        fgeo::ExtrusionRole::TopSolidInfill => slicer_ir::ExtrusionRole::TopSolidInfill,
-        fgeo::ExtrusionRole::BottomSolidInfill => slicer_ir::ExtrusionRole::BottomSolidInfill,
-        fgeo::ExtrusionRole::SparseInfill => slicer_ir::ExtrusionRole::SparseInfill,
-        fgeo::ExtrusionRole::SupportMaterial => slicer_ir::ExtrusionRole::SupportMaterial,
-        fgeo::ExtrusionRole::SupportInterface => slicer_ir::ExtrusionRole::SupportInterface,
-        fgeo::ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
-        fgeo::ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
-        fgeo::ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
-        fgeo::ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
-    }
-}
-
-/// Convert a postpass-world `ExtrusionRole` to the layer-world `ExtrusionRole`.
-///
-/// Note: no PrimeTower/Skirt recovery — intentional asymmetry (packet 115).
-pub fn convert_postpass_role(role: &ppgeo::ExtrusionRole) -> ExtrusionRole {
-    match role {
-        ppgeo::ExtrusionRole::OuterWall => ExtrusionRole::OuterWall,
-        ppgeo::ExtrusionRole::InnerWall => ExtrusionRole::InnerWall,
-        ppgeo::ExtrusionRole::ThinWall => ExtrusionRole::ThinWall,
-        ppgeo::ExtrusionRole::TopSolidInfill => ExtrusionRole::TopSolidInfill,
-        ppgeo::ExtrusionRole::BottomSolidInfill => ExtrusionRole::BottomSolidInfill,
-        ppgeo::ExtrusionRole::SparseInfill => ExtrusionRole::SparseInfill,
-        ppgeo::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
-        ppgeo::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
-        ppgeo::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
-        ppgeo::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
-        ppgeo::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-        ppgeo::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
+    /// Round-trip: IR→WIT→IR must recover PrimeTower and Skirt from their
+    /// Custom builtin tags.  This exercises `ir_to_wit_extrusion_role` (the
+    /// outbound converter) composed with `convert_extrusion_role` (the
+    /// inbound recovering converter).  Expected to PASS even before packet-115
+    /// fixes, because `convert_extrusion_role` already recovers these tags.
+    #[test]
+    fn extrusion_role_round_trip_recovers_builtin_roles() {
+        for role in [
+            slicer_ir::ExtrusionRole::PrimeTower,
+            slicer_ir::ExtrusionRole::Skirt,
+        ] {
+            let wit = ir_to_wit_extrusion_role(&role);
+            let recovered = convert_extrusion_role(&wit);
+            assert_eq!(
+                recovered, role,
+                "round-trip must recover {:?} (via Custom tag), got {:?}",
+                role, recovered
+            );
+        }
     }
 }

@@ -2905,12 +2905,12 @@ mod finalization_impls {
                     overhang_quartile: pt.overhang_quartile,
                 })
                 .collect(),
-            role: crate::marshal::leaf::finalization_role_wit_to_ir(&p.role),
+            role: crate::marshal::leaf::convert_extrusion_role(&p.role),
             speed_factor: p.speed_factor,
         }
     }
 
-    // finalization_role_wit_to_ir moved to marshal/leaf.rs (packet 113, AC-1b).
+    // finalization_role_wit_to_ir removed (packet 115); call site now uses convert_extrusion_role.
 
     impl fm::HostLayerCollectionView for HostExecutionContext {
         fn layer_index(
@@ -3402,7 +3402,7 @@ mod postpass_impls {
                     z: cmd.z,
                     e: cmd.e,
                     f: cmd.f,
-                    role: crate::marshal::leaf::convert_postpass_role(&cmd.role),
+                    role: cmd.role,
                 }));
             Ok(Ok(()))
         }
@@ -3523,7 +3523,8 @@ mod postpass_impls {
 
     impl ppm::PostpassModuleImports for HostExecutionContext {}
 
-    // convert_postpass_retract_mode, convert_postpass_role moved to marshal/leaf.rs (packet 113, AC-1b).
+    // convert_postpass_retract_mode moved to marshal/leaf.rs (packet 113, AC-1b).
+    // convert_postpass_role removed (packet 115); call site now uses convert_extrusion_role.
 }
 
 // ── WIT→IR type conversion and validation — moved to marshal/leaf.rs ──

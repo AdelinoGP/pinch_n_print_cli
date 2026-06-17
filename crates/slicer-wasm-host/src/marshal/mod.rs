@@ -15,9 +15,8 @@ pub use in_::{
 };
 pub use leaf::{
     convert_extrusion_path, convert_extrusion_role, convert_layer_retract_mode,
-    convert_paint_value, convert_point, convert_postpass_retract_mode, convert_postpass_role,
-    convert_wall_feature_flag, convert_wall_loop, convert_wall_loop_type,
-    finalization_role_wit_to_ir, ir_to_wit_expolygon, ir_to_wit_expolygons,
+    convert_paint_value, convert_point, convert_postpass_retract_mode, convert_wall_feature_flag,
+    convert_wall_loop, convert_wall_loop_type, ir_to_wit_expolygon, ir_to_wit_expolygons,
     ir_to_wit_extrusion_path, ir_to_wit_extrusion_role, ir_to_wit_paint_layer_view,
     ir_to_wit_paint_semantic, ir_to_wit_paint_stroke_view, ir_to_wit_paint_value,
     ir_to_wit_paint_value_view, ir_to_wit_wall_feature_flag, ir_to_wit_wall_loop,
