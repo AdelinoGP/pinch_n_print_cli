@@ -77,6 +77,15 @@ Host-owned shared state computed once before any layer is sliced and then
 treated as read-only while layers are processed. Modules read from it during
 layer execution but never write back to it there.
 
+### Marshalling boundary
+The single place where data crossing between the host's internal
+representation (IR) and a module's WIT view is translated, in both directions,
+and where guest-emitted output is re-attributed to the source **region** it
+came from. It owns both the mechanical type translation and the origin-based
+identity reconstruction, so the question "how does a value cross the
+host/module seam" has one answer rather than several scattered across dispatch
+and host-side code.
+
 ### Global layer
 One authoritative horizontal slicing plane spanning the whole build and shared
 by every object. The canonical Z list against which all per-object layers are
