@@ -6,10 +6,9 @@
 
 use crate::common::{ctx_with_mesh, flat_plate_object, identity_transform, mesh_fixture};
 use slicer_wasm_host::host::{
-    finalization::slicer::world_finalization::host_services as fhs,
-    layer::slicer::world_layer::host_services as lhs,
-    postpass::slicer::world_postpass::host_services as pphs,
-    prepass::slicer::world_prepass::host_services as phs,
+    finalization::slicer::common::host_services as fhs,
+    layer::slicer::common::host_services as lhs, postpass::slicer::common::host_services as pphs,
+    prepass::slicer::common::host_services as phs,
 };
 
 fn assert_object_not_found(message: &str, label: &str) {

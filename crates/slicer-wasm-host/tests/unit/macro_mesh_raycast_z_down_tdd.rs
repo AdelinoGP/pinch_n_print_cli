@@ -17,7 +17,7 @@
 #![allow(missing_docs)]
 
 use slicer_wasm_host::host::{
-    layer::slicer::world_layer::host_services as hs, HostExecutionContextBuilder,
+    layer::slicer::common::host_services as hs, HostExecutionContextBuilder,
 };
 
 /// Simple mesh: flat plate at z=0 with one triangle.
@@ -226,7 +226,7 @@ fn raycast_z_down_multi_object_top_surface() {
 /// so that macro-authored modules (using slicer_sdk::host::raycast_z_down) can call it.
 #[test]
 fn raycast_z_down_exposed_via_wit_boundary_for_macro_modules() {
-    use slicer_wasm_host::host::layer::slicer::world_layer::host_services as hs;
+    use slicer_wasm_host::host::layer::slicer::common::host_services as hs;
 
     let mut ctx = HostExecutionContextBuilder::new("macro-module", 0.0, 0.0).build();
 
@@ -316,7 +316,7 @@ fn raycast_z_down_start_at_surface_returns_surface_z() {
 /// Determinism: repeated raycast calls return identical results.
 #[test]
 fn raycast_z_down_is_deterministic() {
-    use slicer_wasm_host::host::layer::slicer::world_layer::host_services as hs;
+    use slicer_wasm_host::host::layer::slicer::common::host_services as hs;
 
     let mut ctx = HostExecutionContextBuilder::new("test-mod", 0.0, 0.0).build();
 

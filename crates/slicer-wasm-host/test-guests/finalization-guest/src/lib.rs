@@ -7,9 +7,13 @@ wit_bindgen::generate!({
 struct Component;
 
 impl Guest for Component {
-    fn run_finalization(_layers: Vec<LayerCollectionView>, _output: FinalizationOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
-        slicer::world_finalization::host_services::log(
-            slicer::world_finalization::host_services::LogLevel::Info,
+    fn run_finalization(
+        _layers: Vec<LayerCollectionView>,
+        _output: FinalizationOutputBuilder,
+        _config: ConfigView,
+    ) -> Result<(), ModuleError> {
+        slicer::common::host_services::log(
+            slicer::common::host_services::LogLevel::Info,
             "run-finalization: ok",
         );
         Ok(())
