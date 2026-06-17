@@ -526,132 +526,15 @@ pub mod postpass {
 
 pub use postpass::PostpassModule;
 
-/// Identity of a perimeter input region as observed by the guest, used to
-/// associate guest-emitted output back to its originating source region for
-/// identity-preserving post-process commit.
-pub type PerimeterRegionOrigin = (String, u64);
-
-/// Identity of a slice input region as observed by the guest, used to associate
-/// guest-emitted support post-process output back to its originating source
-/// region for identity-preserving commit. Reuses the same `(object_id, region_id)`
-/// shape as `PerimeterRegionOrigin`.
-pub type SliceRegionOrigin = (String, u64);
-
-/// Collected output from an infill-output-builder during a call.
-#[derive(Debug, Default)]
-pub struct InfillOutputCollected {
-    /// Sparse infill paths emitted by the guest.
-    pub sparse_paths: Vec<ExtrusionPath3d>,
-    /// Solid infill paths emitted by the guest.
-    pub solid_paths: Vec<ExtrusionPath3d>,
-    /// Ironing paths emitted by the guest.
-    pub ironing_paths: Vec<ExtrusionPath3d>,
-    /// Origin tags parallel to `sparse_paths`. `None` means no perimeter
-    /// region was active when the path was pushed.
-    pub sparse_path_origins: Vec<Option<PerimeterRegionOrigin>>,
-    /// Origin tags parallel to `solid_paths`.
-    pub solid_path_origins: Vec<Option<PerimeterRegionOrigin>>,
-    /// Origin tags parallel to `ironing_paths`.
-    pub ironing_path_origins: Vec<Option<PerimeterRegionOrigin>>,
-}
-
-/// Collected output from a perimeter-output-builder during a call.
-#[derive(Debug, Default)]
-pub struct PerimeterOutputCollected {
-    /// Wall loops emitted by the guest.
-    pub wall_loops: Vec<WallLoopView>,
-    /// Wall loops with the seam at points[0] — rotated by seam-placer.
-    pub rotated_wall_loops: Vec<WallLoopView>,
-    /// Origin tags parallel to `rotated_wall_loops`.
-    pub rotated_wall_loop_origins: Vec<Option<PerimeterRegionOrigin>>,
-    /// Infill areas set by the guest.
-    pub infill_areas: Vec<ExPolygon>,
-    /// Seam candidates emitted by the guest.
-    pub seam_candidates: Vec<(Point3, f32)>,
-    /// Resolved seam position set by the guest (e.g. by seam-placer).
-    pub resolved_seam: Option<(Point3, u32)>,
-    /// Origin tag for the most recent `push_resolved_seam` call.
-    pub resolved_seam_origin: Option<PerimeterRegionOrigin>,
-    /// Origin tags parallel to `wall_loops`.
-    pub wall_loop_origins: Vec<Option<PerimeterRegionOrigin>>,
-    /// Origin tag for the most recent `set_infill_areas` call.
-    pub infill_areas_origin: Option<PerimeterRegionOrigin>,
-    /// Origin tags parallel to `seam_candidates`.
-    pub seam_candidate_origins: Vec<Option<PerimeterRegionOrigin>>,
-}
-
-/// Collected output from a support-output-builder during a call.
-#[derive(Debug, Default)]
-pub struct SupportOutputCollected {
-    /// Support paths.
-    pub support_paths: Vec<ExtrusionPath3d>,
-    /// Interface paths: (path, is_top_interface).
-    pub interface_paths: Vec<(ExtrusionPath3d, bool)>,
-    /// Raft paths.
-    pub raft_paths: Vec<ExtrusionPath3d>,
-    /// Origin tags parallel to `support_paths`. `None` means no slice region
-    /// was active when the path was pushed.
-    pub support_path_origins: Vec<Option<SliceRegionOrigin>>,
-    /// Origin tags parallel to `interface_paths`.
-    pub interface_path_origins: Vec<Option<SliceRegionOrigin>>,
-    /// Origin tags parallel to `raft_paths`.
-    pub raft_path_origins: Vec<Option<SliceRegionOrigin>>,
-}
-
-/// Collected output from a gcode-output-builder during a call.
-#[derive(Debug, Default)]
-pub struct GcodeOutputCollected {
-    /// GCode commands emitted by the guest.
-    pub commands: Vec<GcodeCommandCollected>,
-}
-
-/// A single GCode command collected from the guest.
-#[derive(Debug, Clone)]
-#[allow(missing_docs)]
-pub enum GcodeCommandCollected {
-    /// Move command.
-    Move(GcodeMoveCmd),
-    /// Retract. `mode` carries the WIT retract-mode variant verbatim from the guest.
-    Retract {
-        length: f32,
-        speed: f32,
-        mode: slicer_ir::RetractMode,
-    },
-    /// Unretract. `mode` carries the WIT retract-mode variant verbatim from the guest.
-    Unretract {
-        length: f32,
-        speed: f32,
-        mode: slicer_ir::RetractMode,
-    },
-    /// Fan speed.
-    FanSpeed(u8),
-    /// Temperature.
-    Temperature { tool: u32, celsius: f32, wait: bool },
-    /// Tool change.
-    ToolChange {
-        after_entity_index: u32,
-        from_tool: u32,
-        to_tool: u32,
-    },
-    /// Comment.
-    Comment(String),
-    /// Raw G-code.
-    Raw(String),
-    /// Z-hop request.
-    ZHop {
-        after_entity_index: u32,
-        hop_height: f32,
-    },
-}
-
-/// Collected output from a slice-postprocess-builder during a call.
-#[derive(Debug, Default)]
-pub struct SlicePostprocessCollected {
-    /// Polygon updates: (region_key, polygons).
-    pub polygon_updates: Vec<(RegionKey, Vec<ExPolygon>)>,
-    /// Path Z updates: (region_key, path_idx, vertex_idx, z).
-    pub path_z_updates: Vec<(RegionKey, u32, u32, f32)>,
-}
+pub use crate::marshal::accumulators::{
+    GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected, PerimeterOutputCollected,
+    SlicePostprocessCollected, SupportOutputCollected,
+};
+pub use crate::marshal::out::{
+    collect_postpass_output, convert_infill_output, convert_perimeter_output,
+    convert_support_output, merge_slice_postprocess_into,
+};
+pub use crate::marshal::OriginId;
 
 // ── Per-call execution context ──────────────────────────────────────────
 
@@ -730,12 +613,12 @@ pub struct HostExecutionContext {
     /// guest. Used to tag pushed post-process output so the commit path can
     /// preserve per-region identity instead of flattening into one synthetic
     /// region. Reset to `None` between calls (HostExecutionContext is per-call).
-    pub(crate) current_perimeter_region: Option<PerimeterRegionOrigin>,
+    pub(crate) current_perimeter_region: Option<OriginId>,
     /// Identity of the slice-region-view most recently accessed by the guest.
     /// Used to tag support post-process output pushes so the commit path can
     /// preserve per-region identity (grouping + structured diagnostic on
     /// untagged pushes) rather than silently flattening.
-    pub(crate) current_slice_region: Option<SliceRegionOrigin>,
+    pub(crate) current_slice_region: Option<OriginId>,
 
     /// Layer proposals collected from `push_layer` calls during a prepass
     /// `run-layer-planning` invocation.  Empty for all non-prepass stages.
@@ -990,22 +873,22 @@ impl HostExecutionContext {
     }
 
     /// Identity of the most recently accessed perimeter region (see field doc).
-    pub fn current_perimeter_region(&self) -> Option<&PerimeterRegionOrigin> {
+    pub fn current_perimeter_region(&self) -> Option<&OriginId> {
         self.current_perimeter_region.as_ref()
     }
 
     /// Override the current perimeter region origin (test/dispatch helper).
-    pub fn set_current_perimeter_region(&mut self, origin: Option<PerimeterRegionOrigin>) {
+    pub fn set_current_perimeter_region(&mut self, origin: Option<OriginId>) {
         self.current_perimeter_region = origin;
     }
 
     /// Identity of the most recently accessed slice region (see field doc).
-    pub fn current_slice_region(&self) -> Option<&SliceRegionOrigin> {
+    pub fn current_slice_region(&self) -> Option<&OriginId> {
         self.current_slice_region.as_ref()
     }
 
     /// Override the current slice region origin (test/dispatch helper).
-    pub fn set_current_slice_region(&mut self, origin: Option<SliceRegionOrigin>) {
+    pub fn set_current_slice_region(&mut self, origin: Option<OriginId>) {
         self.current_slice_region = origin;
     }
 
@@ -1026,7 +909,7 @@ impl HostExecutionContext {
     /// At `Layer::PerimetersPostProcess` (e.g. seam-placer) the guest reads
     /// `PerimeterRegionView`, `current_perimeter_region` is set, and the
     /// fallback is a no-op.
-    pub(crate) fn effective_perimeter_origin(&self) -> Option<PerimeterRegionOrigin> {
+    pub(crate) fn effective_perimeter_origin(&self) -> Option<OriginId> {
         self.current_perimeter_region
             .clone()
             .or_else(|| self.current_slice_region.clone())
@@ -1802,108 +1685,21 @@ impl hs::Host for HostExecutionContext {
     }
 }
 
-// ── WIT ↔ slicer-ir polygon conversion ────────────────────────────────
-
-/// Convert WIT ExPolygon to slicer-ir ExPolygon.
-fn wit_to_ir_expolygon(ep: &ExPolygon) -> slicer_ir::ExPolygon {
-    slicer_ir::ExPolygon {
-        contour: slicer_ir::Polygon {
-            points: ep
-                .contour
-                .points
-                .iter()
-                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                .collect(),
-        },
-        holes: ep
-            .holes
-            .iter()
-            .map(|h| slicer_ir::Polygon {
-                points: h
-                    .points
-                    .iter()
-                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            })
-            .collect(),
-    }
-}
-
-/// Convert WIT ExPolygons to slicer-ir ExPolygons.
-fn wit_to_ir_expolygons(eps: &[ExPolygon]) -> Vec<slicer_ir::ExPolygon> {
-    eps.iter().map(wit_to_ir_expolygon).collect()
-}
-
-/// Convert slicer-ir ExPolygon to WIT ExPolygon.
-fn ir_to_wit_expolygon(ep: &slicer_ir::ExPolygon) -> ExPolygon {
-    ExPolygon {
-        contour: Polygon {
-            points: ep
-                .contour
-                .points
-                .iter()
-                .map(|p| Point2 { x: p.x, y: p.y })
-                .collect(),
-        },
-        holes: ep
-            .holes
-            .iter()
-            .map(|h| Polygon {
-                points: h.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect(),
-            })
-            .collect(),
-    }
-}
-
-/// Convert slicer-ir ExPolygons to WIT ExPolygons for the prepass world.
-fn ir_to_wit_expolygons_prepass(eps: &[slicer_ir::ExPolygon]) -> Vec<prepass::ExPolygon> {
-    eps.iter().map(ir_to_wit_expolygon_prepass).collect()
-}
-
-/// Convert slicer-ir ExPolygon to WIT ExPolygon for the prepass world.
-fn ir_to_wit_expolygon_prepass(ep: &slicer_ir::ExPolygon) -> prepass::ExPolygon {
-    use prepass::slicer::types::geometry as pgeo;
-    prepass::ExPolygon {
-        contour: pgeo::Polygon {
-            points: ep
-                .contour
-                .points
-                .iter()
-                .map(|p| pgeo::Point2 { x: p.x, y: p.y })
-                .collect(),
-        },
-        holes: ep
-            .holes
-            .iter()
-            .map(|h| pgeo::Polygon {
-                points: h
-                    .points
-                    .iter()
-                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            })
-            .collect(),
-    }
-}
-
-/// Convert slicer-ir ExPolygons to WIT ExPolygons.
-fn ir_to_wit_expolygons(eps: &[slicer_ir::ExPolygon]) -> Vec<ExPolygon> {
-    eps.iter().map(ir_to_wit_expolygon).collect()
-}
-
-/// Convert slicer-ir PaintValue to WIT PaintValue.
-/// Note: `PaintValue::Custom` has no WIT counterpart in the output type
-/// (`PaintValue` in ir-types.wit has only flag/scalar/tool-index).
-/// Custom values are represented as ToolIndex(0) on the WIT output side;
-/// the lossless form is only available via PaintValueInput on the input path.
-fn ir_to_wit_paint_value(v: &slicer_ir::PaintValue) -> PaintValue {
-    match v {
-        slicer_ir::PaintValue::Flag(b) => PaintValue::Flag(*b),
-        slicer_ir::PaintValue::Scalar(s) => PaintValue::Scalar(*s),
-        slicer_ir::PaintValue::ToolIndex(t) => PaintValue::ToolIndex(*t),
-        slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
-    }
-}
+// ── WIT ↔ slicer-ir polygon conversion — moved to marshal/leaf.rs ─────
+//
+// Re-exported here so callers within this file and inner `mod` blocks that
+// do `use super::*` continue to resolve them without a path change.
+pub(crate) use crate::marshal::leaf::{
+    ir_to_wit_expolygon, ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
+    ir_to_wit_paint_layer_view, ir_to_wit_paint_semantic, ir_to_wit_paint_value,
+    ir_to_wit_wall_loop, wit_to_ir_expolygon, wit_to_ir_expolygons,
+};
+// Public re-exports to maintain the `host::X` path used by dispatch.rs and
+// external callers.
+pub use crate::marshal::leaf::{
+    convert_extrusion_path, convert_extrusion_role, convert_layer_retract_mode,
+    convert_wall_feature_flag, convert_wall_loop, convert_wall_loop_type,
+};
 
 /// Build an empty `PaintRegionLayerData` — paint annotations now live in
 /// SliceIR segment_annotations (AC-16, packet 95 step 12/13).
@@ -1917,318 +1713,24 @@ pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionL
     }
 }
 
-/// Convert a slicer-ir `PaintSemantic` to the WIT `PaintSemantic` enum.
-fn ir_to_wit_paint_semantic(s: &slicer_ir::PaintSemantic) -> PaintSemantic {
-    match s {
-        slicer_ir::PaintSemantic::Material => PaintSemantic::Material,
-        slicer_ir::PaintSemantic::FuzzySkin => PaintSemantic::FuzzySkin,
-        slicer_ir::PaintSemantic::SupportEnforcer => PaintSemantic::SupportEnforcer,
-        slicer_ir::PaintSemantic::SupportBlocker => PaintSemantic::SupportBlocker,
-        slicer_ir::PaintSemantic::Custom(tag) => PaintSemantic::Custom(tag.clone()),
-    }
-}
+// ir_to_wit_paint_semantic, paint_semantic_to_string, ir_to_wit_paint_value_view,
+// ir_to_wit_paint_stroke_view, ir_to_wit_paint_layer_view moved to marshal/leaf.rs (packet 113).
+// Re-exported above via pub(crate) use crate::marshal::leaf::*.
 
-/// Convert a slicer-ir `PaintSemantic` to a string key for paint segmentation views.
-fn paint_semantic_to_string(s: &slicer_ir::PaintSemantic) -> String {
-    match s {
-        slicer_ir::PaintSemantic::Material => "material".to_string(),
-        slicer_ir::PaintSemantic::FuzzySkin => "fuzzy-skin".to_string(),
-        slicer_ir::PaintSemantic::SupportEnforcer => "support-enforcer".to_string(),
-        slicer_ir::PaintSemantic::SupportBlocker => "support-blocker".to_string(),
-        slicer_ir::PaintSemantic::Custom(tag) => tag.clone(),
-    }
-}
+// object_mesh_to_wit_mesh_object_view, project_layer_plan_view,
+// project_region_segmentation_view, project_support_geometry_view moved to
+// marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+// Re-exported here so callers that import via `host::` continue to resolve.
+pub use crate::marshal::in_::{
+    object_mesh_to_wit_mesh_object_view, project_layer_plan_view, project_region_segmentation_view,
+    project_support_geometry_view,
+};
 
-/// Convert a slicer-ir `PaintValue` to a WIT `PaintValueView` variant.
-/// `PaintValue::Custom` has no WIT view counterpart; it is represented as
-/// ToolIndex(0) on the view path (the Custom variant only exists on the input path).
-fn ir_to_wit_paint_value_view(v: &slicer_ir::PaintValue) -> prepass::PaintValueView {
-    match v {
-        slicer_ir::PaintValue::Flag(b) => prepass::PaintValueView::Flag(*b),
-        slicer_ir::PaintValue::Scalar(s) => prepass::PaintValueView::Scalar(*s),
-        slicer_ir::PaintValue::ToolIndex(idx) => prepass::PaintValueView::ToolIndex(*idx),
-        slicer_ir::PaintValue::Custom(_) => prepass::PaintValueView::ToolIndex(0),
-    }
-}
+// sliced_region_to_data moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+pub use crate::marshal::in_::sliced_region_to_data;
 
-/// Convert a slicer-ir `PaintStroke` to a WIT `PaintStrokeView` record.
-fn ir_to_wit_paint_stroke_view(stroke: &slicer_ir::PaintStroke) -> prepass::PaintStrokeView {
-    prepass::PaintStrokeView {
-        triangles: stroke
-            .triangles
-            .iter()
-            .flat_map(|triangle| triangle.iter())
-            .map(|point| prepass::Point3 {
-                x: point.x,
-                y: point.y,
-                z: point.z,
-            })
-            .collect(),
-        semantic: paint_semantic_to_string(&stroke.semantic),
-        value: ir_to_wit_paint_value_view(&stroke.value),
-    }
-}
-
-/// Convert a slicer-ir `PaintLayer` to a WIT `PaintLayerView` record.
-fn ir_to_wit_paint_layer_view(layer: &slicer_ir::PaintLayer) -> prepass::PaintLayerView {
-    prepass::PaintLayerView {
-        semantic: paint_semantic_to_string(&layer.semantic),
-        facet_values: layer
-            .facet_values
-            .iter()
-            .map(|opt| opt.as_ref().map(ir_to_wit_paint_value_view))
-            .collect(),
-        strokes: layer
-            .strokes
-            .iter()
-            .map(ir_to_wit_paint_stroke_view)
-            .collect(),
-    }
-}
-
-/// Convert a slicer-ir `ObjectMesh` to a WIT `MeshObjectView` for prepass modules.
-///
-/// This converter extracts the mesh geometry and paint data from an `ObjectMesh`
-/// and produces a read-only WIT view suitable for passing to prepass modules.
-pub fn object_mesh_to_wit_mesh_object_view(
-    mesh: &slicer_ir::ObjectMesh,
-) -> prepass::MeshObjectView {
-    let vertices: Vec<prepass::Point3> = mesh
-        .mesh
-        .vertices
-        .iter()
-        .map(|v| prepass::Point3 {
-            x: v.x,
-            y: v.y,
-            z: v.z,
-        })
-        .collect();
-
-    // Convert indexed triangles to list of tuples
-    let triangles: Vec<(u32, u32, u32)> = mesh
-        .mesh
-        .indices
-        .chunks(3)
-        .map(|chunk| (chunk[0], chunk[1], chunk[2]))
-        .collect();
-
-    // Convert paint layers if present
-    let paint_layers: Vec<prepass::PaintLayerView> = if let Some(ref paint_data) = mesh.paint_data {
-        paint_data
-            .layers
-            .iter()
-            .map(ir_to_wit_paint_layer_view)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    prepass::MeshObjectView {
-        object_id: mesh.id.clone(),
-        vertices,
-        triangles,
-        paint_layers,
-    }
-}
-
-/// Project `LayerPlanIR` into a deterministic WIT `LayerPlanView`.
-///
-/// Layers are sorted by `global_layer_index ASC`. The effective layer height
-/// per global layer is the maximum across all objects at that layer index
-/// (from `object_participation`).
-pub fn project_layer_plan_view(layer_plan_ir: &slicer_ir::LayerPlanIR) -> prepass::LayerPlanView {
-    let mut entries: Vec<prepass::LayerPlanViewEntry> = layer_plan_ir
-        .global_layers
-        .iter()
-        .map(|gl| {
-            // Derive effective_layer_height: max across all objects at this global layer.
-            let effective_layer_height = layer_plan_ir
-                .object_participation
-                .values()
-                .filter_map(|refs| {
-                    refs.iter()
-                        .find(|r| r.global_layer_index == gl.index)
-                        .map(|r| r.effective_layer_height)
-                })
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .unwrap_or(0.2); // fallback to default if no participation found
-            prepass::LayerPlanViewEntry {
-                global_layer_index: gl.index,
-                z: gl.z,
-                effective_layer_height,
-            }
-        })
-        .collect();
-    // Already sorted by index since global_layers is ordered, but sort to be safe.
-    entries.sort_by_key(|a| a.global_layer_index);
-    prepass::LayerPlanView { layers: entries }
-}
-
-/// Project `RegionMapIR` into a deterministic WIT `RegionSegmentationView`.
-///
-/// Entries are sorted by `(global_layer_index ASC, object_id ASC)` with each
-/// entry's `region_ids` sorted ASC. This ensures byte-identical projections
-/// across consecutive runs.
-pub fn project_region_segmentation_view(
-    region_map_ir: &slicer_ir::RegionMapIR,
-) -> prepass::RegionSegmentationView {
-    // Group by (global_layer_index, object_id).
-    use std::collections::BTreeMap;
-    let mut grouped: BTreeMap<(u32, String), Vec<String>> = BTreeMap::new();
-    for key in region_map_ir.entries.keys() {
-        let entry = grouped
-            .entry((key.global_layer_index, key.object_id.clone()))
-            .or_default();
-        entry.push(key.region_id.to_string());
-    }
-    let mut entries: Vec<prepass::RegionSegmentationViewEntry> = grouped
-        .into_iter()
-        .map(|((layer_index, object_id), mut region_ids)| {
-            region_ids.sort(); // ASC by region_id string
-            prepass::RegionSegmentationViewEntry {
-                object_id,
-                layer_index,
-                region_ids,
-            }
-        })
-        .collect();
-    // Already sorted by BTreeMap key order, but explicit sort for clarity.
-    entries.sort_by(|a, b| {
-        a.layer_index
-            .cmp(&b.layer_index)
-            .then_with(|| a.object_id.cmp(&b.object_id))
-    });
-    prepass::RegionSegmentationView { entries }
-}
-
-/// Project `SupportGeometryIR` into a deterministic WIT `SupportGeometryView`.
-///
-/// Entries are sorted by `(global_support_layer_index ASC, object_id ASC, region_id ASC)`.
-/// This mirrors the RegionSegmentationView ordering pattern.
-pub fn project_support_geometry_view(
-    support_geometry_ir: &slicer_ir::SupportGeometryIR,
-) -> prepass::SupportGeometryView {
-    use std::collections::BTreeMap;
-    let mut sorted_entries: Vec<prepass::SupportGeometryViewEntry> = {
-        let mut btree: BTreeMap<(u32, String, String), prepass::SupportGeometryViewEntry> =
-            BTreeMap::new();
-        for (key, polygons) in &support_geometry_ir.entries {
-            btree.insert(
-                (
-                    key.global_support_layer_index,
-                    key.object_id.clone(),
-                    key.region_id.to_string(),
-                ),
-                prepass::SupportGeometryViewEntry {
-                    global_support_layer_index: key.global_support_layer_index,
-                    object_id: key.object_id.clone(),
-                    region_id: key.region_id.to_string(),
-                    outlines: ir_to_wit_expolygons_prepass(polygons),
-                },
-            );
-        }
-        btree.into_values().collect()
-    };
-    sorted_entries.sort_by(|a, b| {
-        a.global_support_layer_index
-            .cmp(&b.global_support_layer_index)
-            .then_with(|| a.object_id.cmp(&b.object_id))
-            .then_with(|| a.region_id.cmp(&b.region_id))
-    });
-    prepass::SupportGeometryView {
-        entries: sorted_entries,
-    }
-}
-
-/// Convert a `SlicedRegion` from the IR into a `SliceRegionData` for the WIT resource.
-///
-/// `held_claims` is the resolved fill-role claim set for this module on this
-/// region, computed by `validation::resolve_held_claims` against the region's
-/// `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder`. The dispatcher
-/// builds the `(ObjectId, RegionId) -> Vec<String>` map on
-/// `HostExecutionContext.held_claims_per_region` before the WIT call;
-/// `push_slice_regions` looks up each region and passes the slice in here.
-pub fn sliced_region_to_data(
-    region: &slicer_ir::SlicedRegion,
-    z: f32,
-    held_claims: Vec<String>,
-) -> SliceRegionData {
-    let segment_annotations: Vec<SegmentAnnotationsEntry> = region
-        .segment_annotations
-        .iter()
-        .map(|(semantic, poly_values)| SegmentAnnotationsEntry {
-            semantic: ir_to_wit_paint_semantic(semantic),
-            polygons: poly_values
-                .iter()
-                .map(|point_values| SegmentAnnotationsPolygon {
-                    values: point_values
-                        .iter()
-                        .map(|opt| opt.as_ref().map(ir_to_wit_paint_value))
-                        .collect(),
-                })
-                .collect(),
-        })
-        .collect();
-
-    SliceRegionData {
-        object_id: region.object_id.clone(),
-        region_id: region.region_id.to_string(),
-        polygons: ir_to_wit_expolygons(&region.polygons),
-        infill_areas: ir_to_wit_expolygons(&region.infill_areas),
-        effective_layer_height: region.effective_layer_height,
-        z,
-        has_nonplanar: region.nonplanar_surface.is_some(),
-        segment_annotations,
-        needs_support: true,
-        top_shell_index: region.top_shell_index,
-        bottom_shell_index: region.bottom_shell_index,
-        top_solid_fill: ir_to_wit_expolygons(&region.top_solid_fill),
-        bottom_solid_fill: ir_to_wit_expolygons(&region.bottom_solid_fill),
-        is_bridge: region.is_bridge,
-        bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
-        bridge_orientation_deg: region.bridge_orientation_deg,
-        sparse_infill_area: ir_to_wit_expolygons(&region.sparse_infill_area),
-        held_claims,
-        external_contour: region
-            .external_contour
-            .as_ref()
-            .map(|b| ir_to_wit_expolygons(b)),
-    }
-}
-
-/// Convert slicer-ir `LoopType` to WIT `WallLoopType`.
-fn ir_to_wit_wall_loop_type(lt: &slicer_ir::LoopType) -> WallLoopType {
-    match lt {
-        slicer_ir::LoopType::Outer => WallLoopType::Outer,
-        slicer_ir::LoopType::Inner => WallLoopType::Inner,
-        slicer_ir::LoopType::ThinWall => WallLoopType::ThinWall,
-        slicer_ir::LoopType::NonPlanarShell => WallLoopType::NonplanarShell,
-    }
-}
-
-/// Convert slicer-ir `ExtrusionRole` to WIT `ExtrusionRole`.
-fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRole {
-    match role {
-        slicer_ir::ExtrusionRole::OuterWall => ExtrusionRole::OuterWall,
-        slicer_ir::ExtrusionRole::InnerWall => ExtrusionRole::InnerWall,
-        slicer_ir::ExtrusionRole::ThinWall => ExtrusionRole::ThinWall,
-        slicer_ir::ExtrusionRole::TopSolidInfill => ExtrusionRole::TopSolidInfill,
-        slicer_ir::ExtrusionRole::BottomSolidInfill => ExtrusionRole::BottomSolidInfill,
-        slicer_ir::ExtrusionRole::SparseInfill => ExtrusionRole::SparseInfill,
-        slicer_ir::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
-        slicer_ir::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
-        slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
-        slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
-        slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-        slicer_ir::ExtrusionRole::Custom(tag) => ExtrusionRole::Custom(tag.clone()),
-        slicer_ir::ExtrusionRole::PrimeTower => {
-            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
-        }
-        slicer_ir::ExtrusionRole::Skirt => {
-            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
-        }
-    }
-}
+// ir_to_wit_wall_loop_type, ir_to_wit_extrusion_role moved to marshal/leaf.rs (packet 113).
+// Re-exported above via pub(crate) use crate::marshal::leaf::*.
 
 #[cfg(test)]
 mod layer_role_tests {
@@ -2317,87 +1819,11 @@ mod region_origin_tests {
     }
 }
 
-/// Convert slicer-ir `ExtrusionPath3D` to WIT `ExtrusionPath3d`.
-fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionPath3d {
-    ExtrusionPath3d {
-        points: path
-            .points
-            .iter()
-            .map(|p| Point3WithWidth {
-                x: p.x,
-                y: p.y,
-                z: p.z,
-                width: p.width,
-                flow_factor: p.flow_factor,
-                overhang_quartile: p.overhang_quartile,
-            })
-            .collect(),
-        role: ir_to_wit_extrusion_role(&path.role),
-        speed_factor: path.speed_factor,
-    }
-}
+// ir_to_wit_extrusion_path, ir_to_wit_wall_feature_flag, ir_to_wit_wall_loop moved to
+// marshal/leaf.rs (packet 113). Re-exported above via pub(crate) use crate::marshal::leaf::*.
 
-/// Convert slicer-ir `WallFeatureFlags` to WIT `WallFeatureFlag`.
-fn ir_to_wit_wall_feature_flag(f: &slicer_ir::WallFeatureFlags) -> WallFeatureFlag {
-    let mut custom: Vec<(String, PaintValue)> = f
-        .custom
-        .iter()
-        .map(|(k, v)| {
-            let pv = match v {
-                slicer_ir::PaintValue::Flag(b) => PaintValue::Flag(*b),
-                slicer_ir::PaintValue::Scalar(s) => PaintValue::Scalar(*s),
-                slicer_ir::PaintValue::ToolIndex(t) => PaintValue::ToolIndex(*t),
-                slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
-            };
-            (k.clone(), pv)
-        })
-        .collect();
-    custom.sort_by(|a, b| a.0.cmp(&b.0));
-    WallFeatureFlag {
-        tool_index: f.tool_index,
-        fuzzy_skin: f.fuzzy_skin,
-        is_bridge: f.is_bridge,
-        is_thin_wall: f.is_thin_wall,
-        skip_ironing: f.skip_ironing,
-        custom,
-    }
-}
-
-/// Convert slicer-ir `WallLoop` to WIT `WallLoopView`.
-fn ir_to_wit_wall_loop(wl: &slicer_ir::WallLoop) -> WallLoopView {
-    WallLoopView {
-        perimeter_index: wl.perimeter_index,
-        loop_type: ir_to_wit_wall_loop_type(&wl.loop_type),
-        path: ir_to_wit_extrusion_path(&wl.path),
-        feature_flags: wl
-            .feature_flags
-            .iter()
-            .map(ir_to_wit_wall_feature_flag)
-            .collect(),
-    }
-}
-
-/// Convert a `PerimeterRegion` from the IR into a `PerimeterRegionData` WIT resource.
-pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> PerimeterRegionData {
-    PerimeterRegionData {
-        object_id: region.object_id.clone(),
-        region_id: region.region_id.to_string(),
-        wall_loops: region.walls.iter().map(ir_to_wit_wall_loop).collect(),
-        infill_areas: ir_to_wit_expolygons(&region.infill_areas),
-        // Note: width and flow_factor are intentionally discarded here;
-        // SeamPosition.point is used for diagnostics only.
-        resolved_seam: region.resolved_seam.clone().map(|sp| {
-            (
-                Point3 {
-                    x: sp.point.x,
-                    y: sp.point.y,
-                    z: sp.point.z,
-                },
-                sp.wall_index,
-            )
-        }),
-    }
-}
+// perimeter_region_to_data moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+pub use crate::marshal::in_::perimeter_region_to_data;
 
 // ── Shared IR-level geometry helpers for all worlds ────────────────────
 
@@ -2564,7 +1990,10 @@ impl HostExecutionContext {
                 data.object_id, data.region_id
             ))
         })?;
-        self.current_slice_region = Some((data.object_id.clone(), rid));
+        self.current_slice_region = Some(OriginId {
+            object_id: data.object_id.clone(),
+            region_id: rid,
+        });
         Ok(())
     }
 }
@@ -2709,7 +2138,10 @@ impl HostExecutionContext {
                 data.object_id, data.region_id
             ))
         })?;
-        self.current_perimeter_region = Some((data.object_id.clone(), rid));
+        self.current_perimeter_region = Some(OriginId {
+            object_id: data.object_id.clone(),
+            region_id: rid,
+        });
         Ok(())
     }
 }
@@ -3671,69 +3103,12 @@ mod finalization_impls {
                     overhang_quartile: pt.overhang_quartile,
                 })
                 .collect(),
-            role: finalization_role_wit_to_ir(&p.role),
+            role: crate::marshal::leaf::finalization_role_wit_to_ir(&p.role),
             speed_factor: p.speed_factor,
         }
     }
 
-    fn finalization_role_wit_to_ir(r: &fgeo::ExtrusionRole) -> slicer_ir::ExtrusionRole {
-        match r {
-            fgeo::ExtrusionRole::OuterWall => slicer_ir::ExtrusionRole::OuterWall,
-            fgeo::ExtrusionRole::InnerWall => slicer_ir::ExtrusionRole::InnerWall,
-            fgeo::ExtrusionRole::ThinWall => slicer_ir::ExtrusionRole::ThinWall,
-            fgeo::ExtrusionRole::TopSolidInfill => slicer_ir::ExtrusionRole::TopSolidInfill,
-            fgeo::ExtrusionRole::BottomSolidInfill => slicer_ir::ExtrusionRole::BottomSolidInfill,
-            fgeo::ExtrusionRole::SparseInfill => slicer_ir::ExtrusionRole::SparseInfill,
-            fgeo::ExtrusionRole::SupportMaterial => slicer_ir::ExtrusionRole::SupportMaterial,
-            fgeo::ExtrusionRole::SupportInterface => slicer_ir::ExtrusionRole::SupportInterface,
-            fgeo::ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
-            fgeo::ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
-            fgeo::ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
-            fgeo::ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
-        }
-    }
-
-    fn finalization_role_ir_to_wit(r: &slicer_ir::ExtrusionRole) -> fgeo::ExtrusionRole {
-        match r {
-            slicer_ir::ExtrusionRole::OuterWall => fgeo::ExtrusionRole::OuterWall,
-            slicer_ir::ExtrusionRole::InnerWall => fgeo::ExtrusionRole::InnerWall,
-            slicer_ir::ExtrusionRole::ThinWall => fgeo::ExtrusionRole::ThinWall,
-            slicer_ir::ExtrusionRole::TopSolidInfill => fgeo::ExtrusionRole::TopSolidInfill,
-            slicer_ir::ExtrusionRole::BottomSolidInfill => fgeo::ExtrusionRole::BottomSolidInfill,
-            slicer_ir::ExtrusionRole::SparseInfill => fgeo::ExtrusionRole::SparseInfill,
-            slicer_ir::ExtrusionRole::SupportMaterial => fgeo::ExtrusionRole::SupportMaterial,
-            slicer_ir::ExtrusionRole::SupportInterface => fgeo::ExtrusionRole::SupportInterface,
-            slicer_ir::ExtrusionRole::Ironing => fgeo::ExtrusionRole::Ironing,
-            slicer_ir::ExtrusionRole::BridgeInfill => fgeo::ExtrusionRole::BridgeInfill,
-            slicer_ir::ExtrusionRole::WipeTower => fgeo::ExtrusionRole::WipeTower,
-            slicer_ir::ExtrusionRole::Custom(s) => fgeo::ExtrusionRole::Custom(s.clone()),
-            slicer_ir::ExtrusionRole::PrimeTower => {
-                fgeo::ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
-            }
-            slicer_ir::ExtrusionRole::Skirt => {
-                fgeo::ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
-            }
-        }
-    }
-
-    fn finalization_path_ir_to_wit(p: &slicer_ir::ExtrusionPath3D) -> fgeo::ExtrusionPath3d {
-        fgeo::ExtrusionPath3d {
-            points: p
-                .points
-                .iter()
-                .map(|pt| fgeo::Point3WithWidth {
-                    x: pt.x,
-                    y: pt.y,
-                    z: pt.z,
-                    width: pt.width,
-                    flow_factor: pt.flow_factor,
-                    overhang_quartile: pt.overhang_quartile,
-                })
-                .collect(),
-            role: finalization_role_ir_to_wit(&p.role),
-            speed_factor: p.speed_factor,
-        }
-    }
+    // finalization_role_wit_to_ir moved to marshal/leaf.rs (packet 113, AC-1b).
 
     impl fm::HostLayerCollectionView for HostExecutionContext {
         fn layer_index(
@@ -3791,8 +3166,8 @@ mod finalization_impls {
                 .iter()
                 .map(|entity| fm::PrintEntityView {
                     entity_id: entity.entity_id,
-                    path: finalization_path_ir_to_wit(&entity.path),
-                    role: finalization_role_ir_to_wit(&entity.role),
+                    path: ir_to_wit_extrusion_path(&entity.path),
+                    role: ir_to_wit_extrusion_role(&entity.role),
                     region_key: fm::RegionKey {
                         layer_index: entity.region_key.global_layer_index,
                         object_id: entity.region_key.object_id.clone(),
@@ -4115,8 +3490,8 @@ mod finalization_impls {
             let result: Vec<fm::PrintEntityView> = staged
                 .iter()
                 .map(|e| {
-                    let path_wit = finalization_path_ir_to_wit(&e.path);
-                    let role_wit = finalization_role_ir_to_wit(&e.role);
+                    let path_wit = ir_to_wit_extrusion_path(&e.path);
+                    let role_wit = ir_to_wit_extrusion_role(&e.role);
                     fm::PrintEntityView {
                         entity_id: e.entity_id,
                         path: path_wit,
@@ -4151,14 +3526,14 @@ mod finalization_impls {
         use super::*;
 
         #[test]
-        fn finalization_role_ir_to_wit_preserves_reserved_builtin_roles() {
+        fn ir_to_wit_extrusion_role_preserves_reserved_builtin_roles() {
             assert!(matches!(
-                finalization_role_ir_to_wit(&slicer_ir::ExtrusionRole::PrimeTower),
-                fgeo::ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
+                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::PrimeTower),
+                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
             ));
             assert!(matches!(
-                finalization_role_ir_to_wit(&slicer_ir::ExtrusionRole::Skirt),
-                fgeo::ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
+                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
+                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
             ));
         }
 
@@ -4327,7 +3702,7 @@ mod postpass_impls {
                     z: cmd.z,
                     e: cmd.e,
                     f: cmd.f,
-                    role: convert_postpass_role(&cmd.role),
+                    role: crate::marshal::leaf::convert_postpass_role(&cmd.role),
                 }));
             Ok(Ok(()))
         }
@@ -4343,7 +3718,7 @@ mod postpass_impls {
                 .push(GcodeCommandCollected::Retract {
                     length,
                     speed,
-                    mode: convert_postpass_retract_mode(&mode),
+                    mode: crate::marshal::leaf::convert_postpass_retract_mode(&mode),
                 });
             Ok(Ok(()))
         }
@@ -4359,7 +3734,7 @@ mod postpass_impls {
                 .push(GcodeCommandCollected::Unretract {
                     length,
                     speed,
-                    mode: convert_postpass_retract_mode(&mode),
+                    mode: crate::marshal::leaf::convert_postpass_retract_mode(&mode),
                 });
             Ok(Ok(()))
         }
@@ -4448,733 +3823,27 @@ mod postpass_impls {
 
     impl ppm::PostpassModuleImports for HostExecutionContext {}
 
-    fn convert_postpass_retract_mode(mode: &ppm::RetractMode) -> slicer_ir::RetractMode {
-        match mode {
-            ppm::RetractMode::Gcode => slicer_ir::RetractMode::Gcode,
-            ppm::RetractMode::Firmware => slicer_ir::RetractMode::Firmware,
-        }
-    }
-
-    fn convert_postpass_role(role: &ppgeo::ExtrusionRole) -> ExtrusionRole {
-        match role {
-            ppgeo::ExtrusionRole::OuterWall => ExtrusionRole::OuterWall,
-            ppgeo::ExtrusionRole::InnerWall => ExtrusionRole::InnerWall,
-            ppgeo::ExtrusionRole::ThinWall => ExtrusionRole::ThinWall,
-            ppgeo::ExtrusionRole::TopSolidInfill => ExtrusionRole::TopSolidInfill,
-            ppgeo::ExtrusionRole::BottomSolidInfill => ExtrusionRole::BottomSolidInfill,
-            ppgeo::ExtrusionRole::SparseInfill => ExtrusionRole::SparseInfill,
-            ppgeo::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
-            ppgeo::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
-            ppgeo::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
-            ppgeo::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
-            ppgeo::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-            ppgeo::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
-        }
-    }
+    // convert_postpass_retract_mode, convert_postpass_role moved to marshal/leaf.rs (packet 113, AC-1b).
 }
 
-// ── WIT→IR type conversion and validation ──────────────────────────────
+// ── WIT→IR type conversion and validation — moved to marshal/leaf.rs ──
+//
+// validate_finite, convert_point, convert_extrusion_role, convert_layer_retract_mode,
+// convert_extrusion_path, convert_wall_loop_type, convert_paint_value,
+// convert_wall_feature_flag, convert_wall_loop (packet 113, ADR-0021).
+// Re-exported above via pub / pub(crate) use crate::marshal::leaf::*.
 
-/// Validate that a float value is finite (not NaN or Inf).
-fn validate_finite(value: f32, field: &str, index: usize) -> Result<(), String> {
-    if value.is_nan() || value.is_infinite() {
-        Err(format!("point[{index}].{field} is NaN or Inf ({value})"))
-    } else {
-        Ok(())
-    }
-}
+// convert_infill_output moved to crate::marshal::out (packet 113, ADR-0021).
+// Re-exported above via `pub use crate::marshal::out::convert_infill_output`.
 
-/// Validate and convert a WIT `Point3WithWidth` to a slicer-ir `Point3WithWidth`.
-fn convert_point(p: &Point3WithWidth, index: usize) -> Result<slicer_ir::Point3WithWidth, String> {
-    validate_finite(p.x, "x", index)?;
-    validate_finite(p.y, "y", index)?;
-    validate_finite(p.z, "z", index)?;
-    validate_finite(p.width, "width", index)?;
-    validate_finite(p.flow_factor, "flow_factor", index)?;
-    Ok(slicer_ir::Point3WithWidth {
-        x: p.x,
-        y: p.y,
-        z: p.z,
-        width: p.width,
-        flow_factor: p.flow_factor,
-        overhang_quartile: p.overhang_quartile,
-    })
-}
+// convert_support_output moved to crate::marshal::out (packet 113, ADR-0021).
+// Re-exported above via `pub use crate::marshal::out::convert_support_output`.
 
-/// Convert a WIT `ExtrusionRole` to a slicer-ir `ExtrusionRole`.
-pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole {
-    match role {
-        ExtrusionRole::OuterWall => slicer_ir::ExtrusionRole::OuterWall,
-        ExtrusionRole::InnerWall => slicer_ir::ExtrusionRole::InnerWall,
-        ExtrusionRole::ThinWall => slicer_ir::ExtrusionRole::ThinWall,
-        ExtrusionRole::TopSolidInfill => slicer_ir::ExtrusionRole::TopSolidInfill,
-        ExtrusionRole::BottomSolidInfill => slicer_ir::ExtrusionRole::BottomSolidInfill,
-        ExtrusionRole::SparseInfill => slicer_ir::ExtrusionRole::SparseInfill,
-        ExtrusionRole::SupportMaterial => slicer_ir::ExtrusionRole::SupportMaterial,
-        ExtrusionRole::SupportInterface => slicer_ir::ExtrusionRole::SupportInterface,
-        ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
-        ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
-        ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
-        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG => {
-            slicer_ir::ExtrusionRole::PrimeTower
-        }
-        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG => {
-            slicer_ir::ExtrusionRole::Skirt
-        }
-        ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
-    }
-}
+// convert_perimeter_output moved to crate::marshal::out (packet 113, ADR-0021).
+// Re-exported above via `pub use crate::marshal::out::convert_perimeter_output`.
 
-/// Convert the layer-module WIT `retract-mode` variant to `slicer_ir::RetractMode`.
-///
-/// Used by `gcode-output-builder` host handlers to forward the retract emission
-/// mode declared by guest modules (e.g. `path-optimization-default`) into the
-/// host-side `GcodeCommandCollected` queue.
-pub fn convert_layer_retract_mode(mode: &WitRetractMode) -> slicer_ir::RetractMode {
-    match mode {
-        WitRetractMode::Gcode => slicer_ir::RetractMode::Gcode,
-        WitRetractMode::Firmware => slicer_ir::RetractMode::Firmware,
-    }
-}
-
-/// Validate and convert a WIT `ExtrusionPath3d` to a slicer-ir `ExtrusionPath3D`.
-///
-/// Returns an error if any point coordinate is NaN or Inf (per docs/02_ir_schemas.md).
-pub fn convert_extrusion_path(
-    path: &ExtrusionPath3d,
-) -> Result<slicer_ir::ExtrusionPath3D, String> {
-    if path.speed_factor.is_nan() || path.speed_factor.is_infinite() {
-        return Err(format!(
-            "speed_factor is NaN or Inf ({})",
-            path.speed_factor
-        ));
-    }
-    let points: Result<Vec<_>, _> = path
-        .points
-        .iter()
-        .enumerate()
-        .map(|(i, p)| convert_point(p, i))
-        .collect();
-    Ok(slicer_ir::ExtrusionPath3D {
-        points: points?,
-        role: convert_extrusion_role(&path.role),
-        speed_factor: path.speed_factor,
-    })
-}
-
-/// Convert collected infill output into a slicer-ir `InfillIR`.
-///
-/// All paths are validated for NaN/Inf. Any invalid path causes a fatal error.
-///
-/// Identity preservation: if any `*_origins` entry is `Some`, output is
-/// grouped by `(object_id, region_id)`, producing one `InfillRegion` per
-/// distinct origin in stable first-seen order. If origins are mixed Some/None
-/// (a guest pushed without first querying its source region), this is a
-/// contract violation and returns an error.
-///
-/// If all origin tags are `None`/empty (legacy callers and stages that do
-/// not consume perimeter regions, such as `Layer::Infill` itself), all output
-/// is emitted as one synthetic region for backward compatibility.
-pub fn convert_infill_output(
-    collected: &InfillOutputCollected,
-    layer_index: u32,
-) -> Result<slicer_ir::InfillIR, String> {
-    let sparse: Vec<_> = collected
-        .sparse_paths
-        .iter()
-        .map(convert_extrusion_path)
-        .collect::<Result<_, _>>()?;
-    let solid: Vec<_> = collected
-        .solid_paths
-        .iter()
-        .map(convert_extrusion_path)
-        .collect::<Result<_, _>>()?;
-    let ironing: Vec<_> = collected
-        .ironing_paths
-        .iter()
-        .map(convert_extrusion_path)
-        .collect::<Result<_, _>>()?;
-
-    let any_tagged = collected.sparse_path_origins.iter().any(Option::is_some)
-        || collected.solid_path_origins.iter().any(Option::is_some)
-        || collected.ironing_path_origins.iter().any(Option::is_some);
-
-    if !any_tagged {
-        return Ok(slicer_ir::InfillIR {
-            schema_version: slicer_ir::SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layer_index: layer_index,
-            regions: vec![slicer_ir::InfillRegion {
-                object_id: String::new(),
-                region_id: 0,
-                sparse_infill: sparse,
-                solid_infill: solid,
-                ironing,
-            }],
-        });
-    }
-
-    let mut buckets: Vec<(PerimeterRegionOrigin, slicer_ir::InfillRegion)> = Vec::new();
-    let bucket_for = |buckets: &mut Vec<(PerimeterRegionOrigin, slicer_ir::InfillRegion)>,
-                      origin: &PerimeterRegionOrigin|
-     -> usize {
-        if let Some(idx) = buckets.iter().position(|(o, _)| o == origin) {
-            return idx;
-        }
-        buckets.push((
-            origin.clone(),
-            slicer_ir::InfillRegion {
-                object_id: origin.0.clone(),
-                region_id: origin.1,
-                sparse_infill: Vec::new(),
-                solid_infill: Vec::new(),
-                ironing: Vec::new(),
-            },
-        ));
-        buckets.len() - 1
-    };
-
-    fn drain_into<F: FnMut(&mut slicer_ir::InfillRegion, slicer_ir::ExtrusionPath3D)>(
-        paths: Vec<slicer_ir::ExtrusionPath3D>,
-        origins: &[Option<PerimeterRegionOrigin>],
-        kind: &str,
-        buckets: &mut Vec<(PerimeterRegionOrigin, slicer_ir::InfillRegion)>,
-        mut place: F,
-    ) -> Result<(), String> {
-        if !paths.is_empty() && origins.len() != paths.len() {
-            return Err(format!(
-                "{kind}: origin tag count ({}) does not match path count ({})",
-                origins.len(),
-                paths.len()
-            ));
-        }
-        for (i, path) in paths.into_iter().enumerate() {
-            let origin = origins[i].as_ref().ok_or_else(|| format!(
-                "{kind} path[{i}] was emitted without an active perimeter source region; \
-                 guest must access a perimeter-region-view (object-id/region-id/wall-loops/infill-areas) \
-                 before pushing output for identity-preserving commit"
-            ))?;
-            let idx = if let Some(idx) = buckets.iter().position(|(o, _)| o == origin) {
-                idx
-            } else {
-                buckets.push((
-                    origin.clone(),
-                    slicer_ir::InfillRegion {
-                        object_id: origin.0.clone(),
-                        region_id: origin.1,
-                        sparse_infill: Vec::new(),
-                        solid_infill: Vec::new(),
-                        ironing: Vec::new(),
-                    },
-                ));
-                buckets.len() - 1
-            };
-            place(&mut buckets[idx].1, path);
-        }
-        Ok(())
-    }
-
-    let _ = bucket_for; // silence unused (helper defined for symmetry)
-
-    drain_into(
-        sparse,
-        &collected.sparse_path_origins,
-        "sparse_infill",
-        &mut buckets,
-        |r, p| r.sparse_infill.push(p),
-    )?;
-    drain_into(
-        solid,
-        &collected.solid_path_origins,
-        "solid_infill",
-        &mut buckets,
-        |r, p| r.solid_infill.push(p),
-    )?;
-    drain_into(
-        ironing,
-        &collected.ironing_path_origins,
-        "ironing",
-        &mut buckets,
-        |r, p| r.ironing.push(p),
-    )?;
-
-    Ok(slicer_ir::InfillIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layer_index: layer_index,
-        regions: buckets.into_iter().map(|(_, r)| r).collect(),
-    })
-}
-
-/// Convert collected support output into a slicer-ir `SupportIR`.
-///
-/// Identity preservation: if any origin tag is `Some` (i.e. the guest queried
-/// at least one slice-region-view before emitting output), every emitted path
-/// must be tagged — untagged pushes in identity mode are a contract violation
-/// and produce a structured diagnostic. Paths are grouped by
-/// `(object_id, region_id)` in stable first-seen order so successive regions
-/// appear as contiguous path spans. `SupportIR` is flat today, so identity is
-/// preserved through ordering and validated-tag semantics (no silent flattening).
-///
-/// If no origin tags are recorded (legacy callers, or the `Layer::Support`
-/// stage invoked without having touched any slice-region-view), output is
-/// passed through in emission order for backward compatibility.
-pub fn convert_support_output(
-    collected: &SupportOutputCollected,
-    layer_index: u32,
-) -> Result<slicer_ir::SupportIR, String> {
-    let support: Vec<_> = collected
-        .support_paths
-        .iter()
-        .map(convert_extrusion_path)
-        .collect::<Result<_, _>>()?;
-    let interface: Vec<_> = collected
-        .interface_paths
-        .iter()
-        .map(|(p, _)| convert_extrusion_path(p))
-        .collect::<Result<_, _>>()?;
-    let raft: Vec<_> = collected
-        .raft_paths
-        .iter()
-        .map(convert_extrusion_path)
-        .collect::<Result<_, _>>()?;
-
-    let any_tagged = collected.support_path_origins.iter().any(Option::is_some)
-        || collected.interface_path_origins.iter().any(Option::is_some)
-        || collected.raft_path_origins.iter().any(Option::is_some);
-
-    if !any_tagged {
-        return Ok(slicer_ir::SupportIR {
-            schema_version: slicer_ir::SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layer_index: layer_index,
-            support_paths: support,
-            interface_paths: interface,
-            raft_paths: raft,
-            ironing_paths: Vec::new(),
-        });
-    }
-
-    fn group_by_origin<T>(
-        paths: Vec<T>,
-        origins: &[Option<SliceRegionOrigin>],
-        kind: &str,
-        order: &mut Vec<SliceRegionOrigin>,
-    ) -> Result<Vec<T>, String> {
-        if !paths.is_empty() && origins.len() != paths.len() {
-            return Err(format!(
-                "{kind}: origin tag count ({}) does not match path count ({})",
-                origins.len(),
-                paths.len()
-            ));
-        }
-        let mut buckets: Vec<(SliceRegionOrigin, Vec<T>)> = Vec::new();
-        for (i, path) in paths.into_iter().enumerate() {
-            let origin = origins[i].as_ref().ok_or_else(|| {
-                format!(
-                    "{kind} path[{i}] was emitted without an active slice source region; \
-                 guest must access a slice-region-view (object-id/region-id/polygons/\
-                 infill-areas/effective-layer-height/z/has-nonplanar/boundary-paint) \
-                 before pushing support output for identity-preserving commit"
-                )
-            })?;
-            if let Some(idx) = buckets.iter().position(|(o, _)| o == origin) {
-                buckets[idx].1.push(path);
-            } else {
-                if !order.iter().any(|o| o == origin) {
-                    order.push(origin.clone());
-                }
-                buckets.push((origin.clone(), vec![path]));
-            }
-        }
-        // Emit in stable first-seen origin order (matches global `order`).
-        let mut out = Vec::new();
-        for origin in order.iter() {
-            if let Some(pos) = buckets.iter().position(|(o, _)| o == origin) {
-                out.extend(buckets.remove(pos).1);
-            }
-        }
-        // Any buckets not yet in `order` would indicate logic error; fold in.
-        for (_, v) in buckets {
-            out.extend(v);
-        }
-        Ok(out)
-    }
-
-    let mut order: Vec<SliceRegionOrigin> = Vec::new();
-    let support = group_by_origin(
-        support,
-        &collected.support_path_origins,
-        "support",
-        &mut order,
-    )?;
-    let interface = group_by_origin(
-        interface,
-        &collected.interface_path_origins,
-        "interface",
-        &mut order,
-    )?;
-    let raft = group_by_origin(raft, &collected.raft_path_origins, "raft", &mut order)?;
-
-    Ok(slicer_ir::SupportIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layer_index: layer_index,
-        support_paths: support,
-        interface_paths: interface,
-        raft_paths: raft,
-        ironing_paths: Vec::new(),
-    })
-}
-
-/// Convert a WIT `WallLoopType` to a slicer-ir `LoopType`.
-pub fn convert_wall_loop_type(lt: &WallLoopType) -> slicer_ir::LoopType {
-    match lt {
-        WallLoopType::Outer => slicer_ir::LoopType::Outer,
-        WallLoopType::Inner => slicer_ir::LoopType::Inner,
-        WallLoopType::ThinWall => slicer_ir::LoopType::ThinWall,
-        WallLoopType::NonplanarShell => slicer_ir::LoopType::NonPlanarShell,
-    }
-}
-
-/// Convert a WIT `PaintValue` variant to a slicer-ir `PaintValue`.
-fn convert_paint_value(v: &PaintValue) -> slicer_ir::PaintValue {
-    match v {
-        PaintValue::Flag(b) => slicer_ir::PaintValue::Flag(*b),
-        PaintValue::Scalar(s) => slicer_ir::PaintValue::Scalar(*s),
-        PaintValue::ToolIndex(t) => slicer_ir::PaintValue::ToolIndex(*t),
-    }
-}
-
-/// Convert a WIT `WallFeatureFlag` to a slicer-ir `WallFeatureFlags`.
-pub fn convert_wall_feature_flag(flag: &WallFeatureFlag) -> slicer_ir::WallFeatureFlags {
-    slicer_ir::WallFeatureFlags {
-        tool_index: flag.tool_index,
-        fuzzy_skin: flag.fuzzy_skin,
-        is_bridge: flag.is_bridge,
-        is_thin_wall: flag.is_thin_wall,
-        skip_ironing: flag.skip_ironing,
-        custom: HashMap::from_iter(
-            flag.custom
-                .iter()
-                .map(|(k, v)| (k.clone(), convert_paint_value(v))),
-        ),
-    }
-}
-
-/// Validate and convert a WIT `WallLoopView` to a slicer-ir `WallLoop`.
-///
-/// Returns an error if any path coordinate is NaN or Inf, or if feature-flags
-/// cardinality does not match path points (per docs/03 wall loop flag invariant).
-pub fn convert_wall_loop(wl: &WallLoopView) -> Result<slicer_ir::WallLoop, String> {
-    let path = convert_extrusion_path(&wl.path)?;
-    if wl.feature_flags.len() != wl.path.points.len() {
-        return Err(format!(
-            "feature_flags length ({}) != path points length ({}); \
-             per docs/03 wall loop flag invariant these must be parallel",
-            wl.feature_flags.len(),
-            wl.path.points.len()
-        ));
-    }
-    Ok(slicer_ir::WallLoop {
-        perimeter_index: wl.perimeter_index,
-        loop_type: convert_wall_loop_type(&wl.loop_type),
-        path,
-        width_profile: slicer_ir::WidthProfile {
-            widths: wl.path.points.iter().map(|p| p.width).collect(),
-        },
-        feature_flags: wl
-            .feature_flags
-            .iter()
-            .map(convert_wall_feature_flag)
-            .collect(),
-        boundary_type: slicer_ir::WallBoundaryType::Interior,
-    })
-}
-
-/// Convert collected perimeter output into a slicer-ir `PerimeterIR`.
-///
-/// All wall loop paths are validated for NaN/Inf and feature-flag cardinality.
-///
-/// Identity preservation: if any origin tag is `Some` (i.e. the guest queried
-/// at least one perimeter-region-view before emitting output), regions are
-/// grouped by `(object_id, region_id)` in stable first-seen order. Output
-/// pushed without a preceding region access in identity mode is a contract
-/// violation and produces a structured error.
-///
-/// If no origin tags are recorded (legacy callers, or the `Layer::Perimeters`
-/// stage which does not consume perimeter regions), all output is flattened
-/// into one synthetic region for backward compatibility.
-pub fn convert_perimeter_output(
-    collected: &PerimeterOutputCollected,
-    layer_index: u32,
-) -> Result<slicer_ir::PerimeterIR, String> {
-    // When seam-placer has rotated wall loops, those are the canonical geometry.
-    // rotated_wall_loops replaces the original wall_loops in PerimeterIR.
-    let (walls, wall_origins): (Vec<slicer_ir::WallLoop>, Vec<Option<PerimeterRegionOrigin>>) =
-        if !collected.rotated_wall_loops.is_empty() {
-            let rotated: Vec<slicer_ir::WallLoop> = collected
-                .rotated_wall_loops
-                .iter()
-                .map(convert_wall_loop)
-                .collect::<Result<_, _>>()?;
-            (rotated, collected.rotated_wall_loop_origins.clone())
-        } else {
-            let original: Vec<slicer_ir::WallLoop> = collected
-                .wall_loops
-                .iter()
-                .map(convert_wall_loop)
-                .collect::<Result<_, _>>()?;
-            (original, collected.wall_loop_origins.clone())
-        };
-    let infill_areas = wit_to_ir_expolygons(&collected.infill_areas);
-    let seam_candidates: Vec<slicer_ir::SeamCandidate> = collected
-        .seam_candidates
-        .iter()
-        .enumerate()
-        .map(|(i, (pos, score))| {
-            if pos.x.is_nan()
-                || pos.x.is_infinite()
-                || pos.y.is_nan()
-                || pos.y.is_infinite()
-                || pos.z.is_nan()
-                || pos.z.is_infinite()
-            {
-                Err(format!("seam_candidate[{i}] has NaN/Inf coordinate"))
-            } else if score.is_nan() || score.is_infinite() {
-                Err(format!("seam_candidate[{i}] has NaN/Inf score"))
-            } else {
-                Ok(slicer_ir::SeamCandidate {
-                    position: slicer_ir::Point3WithWidth {
-                        x: pos.x,
-                        y: pos.y,
-                        z: pos.z,
-                        width: 0.0,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    },
-                    score: *score,
-                    reason: slicer_ir::SeamReason::Aligned,
-                })
-            }
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Convert collected resolved_seam to IR type.
-    let resolved_seam =
-        collected
-            .resolved_seam
-            .as_ref()
-            .map(|(pos, wall_index)| slicer_ir::SeamPosition {
-                point: slicer_ir::Point3WithWidth {
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
-                    width: 0.0,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-                wall_index: *wall_index,
-            });
-    let resolved_seam_origin = collected.resolved_seam_origin.as_ref();
-
-    let any_tagged = wall_origins.iter().any(Option::is_some)
-        || collected.seam_candidate_origins.iter().any(Option::is_some)
-        || collected.infill_areas_origin.is_some();
-
-    if !any_tagged {
-        return Ok(slicer_ir::PerimeterIR {
-            schema_version: slicer_ir::SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layer_index: layer_index,
-            regions: vec![slicer_ir::PerimeterRegion {
-                object_id: String::new(),
-                region_id: 0,
-                walls,
-                infill_areas,
-                seam_candidates,
-                resolved_seam,
-            }],
-        });
-    }
-
-    let mut buckets: Vec<(PerimeterRegionOrigin, slicer_ir::PerimeterRegion)> = Vec::new();
-    let ensure = |buckets: &mut Vec<(PerimeterRegionOrigin, slicer_ir::PerimeterRegion)>,
-                  origin: &PerimeterRegionOrigin|
-     -> usize {
-        if let Some(idx) = buckets.iter().position(|(o, _)| o == origin) {
-            return idx;
-        }
-        buckets.push((
-            origin.clone(),
-            slicer_ir::PerimeterRegion {
-                object_id: origin.0.clone(),
-                region_id: origin.1,
-                walls: Vec::new(),
-                infill_areas: Vec::new(),
-                seam_candidates: Vec::new(),
-                resolved_seam: None,
-            },
-        ));
-        buckets.len() - 1
-    };
-
-    if !walls.is_empty() && wall_origins.len() != walls.len() {
-        return Err(format!(
-            "wall_loops: origin tag count ({}) does not match wall count ({})",
-            wall_origins.len(),
-            walls.len()
-        ));
-    }
-    for (i, wl) in walls.into_iter().enumerate() {
-        let origin = wall_origins[i].as_ref().ok_or_else(|| {
-            format!(
-                "wall_loop[{i}] was emitted without an active perimeter source region; \
-             guest must access a perimeter-region-view before pushing wall loops"
-            )
-        })?;
-        let idx = ensure(&mut buckets, origin);
-        buckets[idx].1.walls.push(wl);
-    }
-
-    if !seam_candidates.is_empty()
-        && collected.seam_candidate_origins.len() != seam_candidates.len()
-    {
-        return Err(format!(
-            "seam_candidates: origin tag count ({}) does not match candidate count ({})",
-            collected.seam_candidate_origins.len(),
-            seam_candidates.len()
-        ));
-    }
-    for (i, sc) in seam_candidates.into_iter().enumerate() {
-        let origin = collected.seam_candidate_origins[i]
-            .as_ref()
-            .ok_or_else(|| {
-                format!("seam_candidate[{i}] was emitted without an active perimeter source region")
-            })?;
-        let idx = ensure(&mut buckets, origin);
-        buckets[idx].1.seam_candidates.push(sc);
-    }
-
-    if !infill_areas.is_empty() {
-        let origin = collected.infill_areas_origin.as_ref().ok_or_else(|| {
-            "set_infill_areas called without an active perimeter source region".to_string()
-        })?;
-        let idx = ensure(&mut buckets, origin);
-        buckets[idx].1.infill_areas = infill_areas;
-    }
-
-    if let Some(rs) = &resolved_seam {
-        let Some(origin) = resolved_seam_origin else {
-            return Err(
-                "resolved_seam was emitted without an active perimeter source region".to_string(),
-            );
-        };
-        let idx = ensure(&mut buckets, origin);
-        buckets[idx].1.resolved_seam = Some(rs.clone());
-    }
-
-    Ok(slicer_ir::PerimeterIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layer_index: layer_index,
-        regions: buckets.into_iter().map(|(_, r)| r).collect(),
-    })
-}
-
-/// Merge collected slice-postprocess output into an existing `SliceIR`,
-/// preserving per-region identity.
-///
-/// SlicePostProcess modifies already-sliced regions: `set_polygons(key, polys)`
-/// replaces the polygon set of the region matching `key`, and `set_path_z`
-/// adjusts a Z coordinate on a polygon contour point. Regions not mentioned by
-/// the guest pass through unchanged. Unknown `RegionKey` values (no matching
-/// existing region) are a contract violation and produce a structured diagnostic
-/// rather than inventing a synthetic region or silently dropping the update.
-///
-/// If no existing `SliceIR` is staged (identity-mapping failure), an error is
-/// returned so the caller can decide whether to synthesize a fresh IR or fail.
-pub fn merge_slice_postprocess_into(
-    mut existing: slicer_ir::SliceIR,
-    collected: &SlicePostprocessCollected,
-) -> Result<slicer_ir::SliceIR, String> {
-    for (i, (_, _, _, z)) in collected.path_z_updates.iter().enumerate() {
-        if z.is_nan() || z.is_infinite() {
-            return Err(format!("path_z_update[{i}] has NaN/Inf Z value ({z})"));
-        }
-    }
-
-    let find_region = |regions: &[slicer_ir::SlicedRegion], key: &RegionKey| -> Option<usize> {
-        let rid = key.region_id.parse::<u64>().ok()?;
-        regions
-            .iter()
-            .position(|r| r.object_id == key.object_id && r.region_id == rid)
-    };
-
-    for (i, (key, polys)) in collected.polygon_updates.iter().enumerate() {
-        let idx = find_region(&existing.regions, key).ok_or_else(|| {
-            format!(
-                "slice_postprocess polygon_update[{i}] targets unknown region \
-             (object_id='{}', region_id='{}'); guest must reference an existing \
-             slice-region-view identity for identity-preserving commit",
-                key.object_id, key.region_id,
-            )
-        })?;
-        existing.regions[idx].polygons = wit_to_ir_expolygons(polys);
-    }
-
-    for (i, (key, path_idx, vertex_idx, z)) in collected.path_z_updates.iter().enumerate() {
-        let ridx = find_region(&existing.regions, key).ok_or_else(|| {
-            format!(
-                "slice_postprocess path_z_update[{i}] targets unknown region \
-             (object_id='{}', region_id='{}')",
-                key.object_id, key.region_id,
-            )
-        })?;
-        let region = &mut existing.regions[ridx];
-        let poly_count = region.polygons.len();
-        let poly = region.polygons.get_mut(*path_idx as usize).ok_or_else(|| {
-            format!(
-                "slice_postprocess path_z_update[{i}]: polygon index {path_idx} out of range \
-             for region ({}, {}) with {poly_count} polygons",
-                key.object_id, key.region_id,
-            )
-        })?;
-        // Z updates apply to contour points; validate vertex index bound.
-        if (*vertex_idx as usize) >= poly.contour.points.len() {
-            return Err(format!(
-                "slice_postprocess path_z_update[{i}]: vertex index {vertex_idx} out of range \
-                 for contour with {} points",
-                poly.contour.points.len(),
-            ));
-        }
-        // Z lives in ExPolygon contour — the IR expresses 2D contour points
-        // only; path-Z updates are retained per-region as an attribute-less
-        // no-op here since slicer_ir::ExPolygon has no per-point Z. Keeping
-        // validation above guarantees the contract without mutating flat geometry.
-        let _ = z;
-    }
-
-    Ok(existing)
-}
+// merge_slice_postprocess_into moved to crate::marshal::out (packet 113, ADR-0021).
+// Re-exported above via `pub use crate::marshal::out::merge_slice_postprocess_into`.
 
 #[cfg(test)]
 mod tests {
@@ -5189,11 +3858,17 @@ mod tests {
         let mut ctx =
             HostExecutionContextBuilder::new("com.test.effective-perimeter-origin", 0.0, 0.2)
                 .build();
-        ctx.set_current_slice_region(Some(("uuid".to_string(), 7)));
+        ctx.set_current_slice_region(Some(OriginId {
+            object_id: "uuid".to_string(),
+            region_id: 7,
+        }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
-            Some(("uuid".to_string(), 7))
+            Some(OriginId {
+                object_id: "uuid".to_string(),
+                region_id: 7
+            })
         );
     }
 
@@ -5204,12 +3879,21 @@ mod tests {
         let mut ctx =
             HostExecutionContextBuilder::new("com.test.effective-perimeter-origin", 0.0, 0.2)
                 .build();
-        ctx.set_current_slice_region(Some(("slice-uuid".to_string(), 1)));
-        ctx.set_current_perimeter_region(Some(("perimeter-uuid".to_string(), 2)));
+        ctx.set_current_slice_region(Some(OriginId {
+            object_id: "slice-uuid".to_string(),
+            region_id: 1,
+        }));
+        ctx.set_current_perimeter_region(Some(OriginId {
+            object_id: "perimeter-uuid".to_string(),
+            region_id: 2,
+        }));
 
         assert_eq!(
             ctx.effective_perimeter_origin(),
-            Some(("perimeter-uuid".to_string(), 2))
+            Some(OriginId {
+                object_id: "perimeter-uuid".to_string(),
+                region_id: 2
+            })
         );
     }
 

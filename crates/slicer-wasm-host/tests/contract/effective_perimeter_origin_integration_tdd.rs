@@ -23,6 +23,7 @@ use slicer_wasm_host::host::{
     HostExecutionContextBuilder, Point2, Point3WithWidth, Polygon, WallFeatureFlag, WallLoopType,
     WallLoopView,
 };
+use slicer_wasm_host::marshal::OriginId;
 
 fn make_feature_flag() -> WallFeatureFlag {
     WallFeatureFlag {
@@ -88,7 +89,10 @@ fn layer_perimeters_origin_falls_back_to_slice_region_through_host_trait() {
     // region is set, the perimeter region is `None` (no `PerimeterRegionView`
     // exists at this stage).
     let mut ctx = HostExecutionContextBuilder::new("com.test.perimeters-origin", 0.0, 0.2).build();
-    ctx.set_current_slice_region(Some((TEST_UUID.to_string(), TEST_REGION_ID)));
+    ctx.set_current_slice_region(Some(OriginId {
+        object_id: TEST_UUID.to_string(),
+        region_id: TEST_REGION_ID,
+    }));
     assert!(
         ctx.current_perimeter_region().is_none(),
         "test precondition: Layer::Perimeters guests run without a PerimeterRegionView"

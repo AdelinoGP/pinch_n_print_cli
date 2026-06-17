@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId};
+use slicer_ir::{GCodeCommand, GlobalLayer, LayerCollectionIR, RetractMode, StageId};
 use slicer_sdk::traits::{EntityMutation, SortKey};
 
 use crate::binding::{
@@ -90,33 +90,6 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
     Resource::new_own(r.rep())
 }
 
-fn convert_postpass_role_to_wit(
-    role: &slicer_ir::ExtrusionRole,
-) -> host::postpass::slicer::types::geometry::ExtrusionRole {
-    use host::postpass::slicer::types::geometry::ExtrusionRole as WitExtrusionRole;
-
-    match role {
-        slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
-        slicer_ir::ExtrusionRole::InnerWall => WitExtrusionRole::InnerWall,
-        slicer_ir::ExtrusionRole::ThinWall => WitExtrusionRole::ThinWall,
-        slicer_ir::ExtrusionRole::TopSolidInfill => WitExtrusionRole::TopSolidInfill,
-        slicer_ir::ExtrusionRole::BottomSolidInfill => WitExtrusionRole::BottomSolidInfill,
-        slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
-        slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
-        slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
-        slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
-        slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
-        slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
-        slicer_ir::ExtrusionRole::Custom(tag) => WitExtrusionRole::Custom(tag.clone()),
-        slicer_ir::ExtrusionRole::PrimeTower => {
-            WitExtrusionRole::Custom(host::BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
-        }
-        slicer_ir::ExtrusionRole::Skirt => {
-            WitExtrusionRole::Custom(host::BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
-        }
-    }
-}
-
 /// Convert host-side `slicer_ir::RetractMode` to the WIT enum used by the
 /// postpass-module bindings (host→guest direction).
 fn retract_mode_to_postpass_wit(mode: RetractMode) -> host::postpass::RetractMode {
@@ -142,7 +115,7 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
             z: *z,
             e: *e,
             f: *f,
-            role: convert_postpass_role_to_wit(role),
+            role: host::ir_to_wit_extrusion_role(role),
         }),
         GCodeCommand::Retract {
             length,
@@ -199,78 +172,8 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
     }
 }
 
-fn collect_postpass_output(
-    commands: &[host::GcodeCommandCollected],
-) -> Result<Option<Vec<GCodeCommand>>, String> {
-    if commands.is_empty() {
-        return Ok(None);
-    }
-
-    let mut collected = Vec::with_capacity(commands.len());
-    for (index, command) in commands.iter().enumerate() {
-        let converted = match command {
-            host::GcodeCommandCollected::Move(cmd) => GCodeCommand::Move {
-                x: cmd.x,
-                y: cmd.y,
-                z: cmd.z,
-                e: cmd.e,
-                f: cmd.f,
-                role: host::convert_extrusion_role(&cmd.role),
-            },
-            host::GcodeCommandCollected::Retract {
-                length,
-                speed,
-                mode,
-            } => GCodeCommand::Retract {
-                length: *length,
-                speed: *speed,
-                mode: *mode,
-            },
-            host::GcodeCommandCollected::Unretract {
-                length,
-                speed,
-                mode,
-            } => GCodeCommand::Unretract {
-                length: *length,
-                speed: *speed,
-                mode: *mode,
-            },
-            host::GcodeCommandCollected::FanSpeed(value) => {
-                GCodeCommand::FanSpeed { value: *value }
-            }
-            host::GcodeCommandCollected::Temperature {
-                tool,
-                celsius,
-                wait,
-            } => GCodeCommand::Temperature {
-                tool: *tool,
-                celsius: *celsius,
-                wait: *wait,
-            },
-            host::GcodeCommandCollected::ToolChange {
-                after_entity_index,
-                from_tool,
-                to_tool,
-            } => GCodeCommand::ToolChange {
-                after_entity_index: *after_entity_index,
-                from: *from_tool,
-                to: *to_tool,
-            },
-            host::GcodeCommandCollected::Comment(text) => {
-                GCodeCommand::Comment { text: text.clone() }
-            }
-            host::GcodeCommandCollected::Raw(text) => GCodeCommand::Raw { text: text.clone() },
-            host::GcodeCommandCollected::ZHop { .. } => {
-                return Err(format!(
-                    "postpass gcode output command {index} used push-z-hop, but GCodeIR has no z-hop command variant"
-                ));
-            }
-        };
-        collected.push(converted);
-    }
-
-    Ok(Some(collected))
-}
+// collect_postpass_output moved to crate::marshal::out (packet 113, ADR-0021).
+// Used below via crate::marshal::collect_postpass_output.
 
 /// Bundled static configuration for a layer dispatch call.
 struct CallConfig<'a> {
@@ -1154,7 +1057,9 @@ impl WasmRuntimeDispatcher {
 
         match call_result {
             Ok(Ok(())) => {
-                let output = match collect_postpass_output(&store.data().gcode_output.commands) {
+                let output = match crate::marshal::collect_postpass_output(
+                    &store.data().gcode_output.commands,
+                ) {
                     Ok(output) => output,
                     Err(reason) => {
                         return (
@@ -1451,77 +1356,8 @@ fn harvest_layer_plan_ir(
     harvest_layer_plan_ir_from(ctx.layer_plan_proposals)
 }
 
-/// Pure core of [`harvest_layer_plan_ir`]: `LayerProposal`s → `LayerPlanIR`.
-fn harvest_layer_plan_ir_from(
-    proposals: Vec<host::prepass::LayerProposal>,
-) -> Result<slicer_ir::LayerPlanIR, String> {
-    use slicer_ir::{ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig};
-    use std::collections::HashMap;
-
-    const MAX_LAYERS: u32 = 100_000;
-
-    let mut global_layers: Vec<GlobalLayer> = Vec::with_capacity(proposals.len());
-    let mut object_participation: HashMap<String, Vec<ObjectLayerRef>> = HashMap::new();
-
-    for (idx, proposal) in proposals.into_iter().enumerate() {
-        let index = idx as u32;
-        if index >= MAX_LAYERS {
-            return Err(format!(
-                "layer-plan-output: layer count exceeded maximum budget of {MAX_LAYERS}"
-            ));
-        }
-
-        let mut active_regions: Vec<ActiveRegion> = Vec::new();
-
-        for region_prop in proposal.active_regions {
-            let region_id =
-                host::parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
-                    format!(
-                        "layer-plan-output: region '{}'/'{}' has invalid region-id: {reason}",
-                        region_prop.object_id, region_prop.region_id
-                    )
-                })?;
-
-            active_regions.push(ActiveRegion {
-                object_id: region_prop.object_id.clone(),
-                region_id,
-                resolved_config: ResolvedConfig::default(),
-                effective_layer_height: region_prop.effective_layer_height,
-                nonplanar_shell: None,
-                is_catchup_layer: region_prop.is_catchup,
-                catchup_z_bottom: region_prop.catchup_z_bottom,
-                tool_index: 0,
-            });
-
-            let obj_refs = object_participation
-                .entry(region_prop.object_id.clone())
-                .or_default();
-            let already_referenced = obj_refs.iter().any(|r| r.global_layer_index == index);
-
-            if !already_referenced {
-                obj_refs.push(ObjectLayerRef {
-                    local_layer_index: obj_refs.len() as u32,
-                    global_layer_index: index,
-                    effective_layer_height: region_prop.effective_layer_height,
-                });
-            }
-        }
-
-        global_layers.push(GlobalLayer {
-            index,
-            z: proposal.z,
-            active_regions,
-            has_nonplanar: false,
-            is_sync_layer: false,
-        });
-    }
-
-    Ok(LayerPlanIR {
-        global_layers,
-        object_participation,
-        ..Default::default()
-    })
-}
+// Pure core of harvest_layer_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+use crate::marshal::in_::harvest_layer_plan_ir_from;
 
 // ── Seam-plan harvest ──────────────────────────────────────────────────────
 
@@ -1534,83 +1370,8 @@ fn harvest_seam_plan_ir(
     harvest_seam_plan_ir_from(ctx.seam_plan_entries)
 }
 
-/// Pure core of [`harvest_seam_plan_ir`]: WIT `SeamPlanEntry`s → `SeamPlanIR`.
-fn harvest_seam_plan_ir_from(
-    seam_plan_entries: Vec<host::prepass::SeamPlanEntry>,
-) -> Result<slicer_ir::SeamPlanIR, String> {
-    use slicer_ir::{RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR};
-    use std::collections::HashMap;
-
-    let mut seen: HashMap<RegionKey, ()> = HashMap::new();
-    let mut entries: Vec<SeamPlanEntry> = Vec::with_capacity(seam_plan_entries.len());
-
-    for entry in seam_plan_entries.into_iter() {
-        let region_id = host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
-            format!(
-                "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
-                entry.object_id, entry.region_id
-            )
-        })?;
-
-        let region_key = RegionKey {
-            global_layer_index: entry.global_layer_index,
-            object_id: entry.object_id.clone(),
-            region_id,
-            variant_chain: Vec::new(),
-        };
-
-        let is_duplicate = seen.contains_key(&region_key);
-        seen.insert(region_key.clone(), ());
-        if is_duplicate {
-            continue;
-        }
-
-        let scored_candidates: Vec<ScoredSeamCandidate> = entry
-            .scored_candidates
-            .iter()
-            .map(|sc| ScoredSeamCandidate {
-                position: slicer_ir::Point3WithWidth {
-                    x: sc.position.x,
-                    y: sc.position.y,
-                    z: sc.position.z,
-                    width: sc.position.width,
-                    flow_factor: sc.position.flow_factor,
-                    overhang_quartile: sc.position.overhang_quartile,
-                },
-                score: sc.score,
-                reason: match sc.reason.tag.as_str() {
-                    "concave" => slicer_ir::SeamReason::Concave,
-                    "sharp" => slicer_ir::SeamReason::Sharp,
-                    "user_forced" => slicer_ir::SeamReason::UserForced,
-                    _ => slicer_ir::SeamReason::Aligned,
-                },
-            })
-            .collect();
-
-        let chosen_candidate = SeamPosition {
-            point: slicer_ir::Point3WithWidth {
-                x: entry.chosen_position.x,
-                y: entry.chosen_position.y,
-                z: entry.chosen_position.z,
-                width: entry.chosen_position.width,
-                flow_factor: entry.chosen_position.flow_factor,
-                overhang_quartile: entry.chosen_position.overhang_quartile,
-            },
-            wall_index: entry.chosen_wall_index,
-        };
-
-        entries.push(SeamPlanEntry {
-            region_key,
-            chosen_candidate,
-            scored_candidates,
-        });
-    }
-
-    Ok(SeamPlanIR {
-        entries,
-        ..Default::default()
-    })
-}
+// Pure core of harvest_seam_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+use crate::marshal::in_::harvest_seam_plan_ir_from;
 
 // ── Support-plan harvest ───────────────────────────────────────────────────
 
@@ -1623,58 +1384,8 @@ fn harvest_support_plan_ir(
     harvest_support_plan_ir_from(ctx.support_plan_entries)
 }
 
-/// Pure core of [`harvest_support_plan_ir`]: WIT `SupportPlanEntry`s → `SupportPlanIR`.
-fn harvest_support_plan_ir_from(
-    support_plan_entries: Vec<host::prepass::SupportPlanEntry>,
-) -> Result<slicer_ir::SupportPlanIR, String> {
-    use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SupportPlanEntry, SupportPlanIR,
-    };
-
-    let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
-
-    for entry in support_plan_entries.into_iter() {
-        let region_id = host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
-            format!(
-                "support-generation-output: region '{}'/'{}' has invalid region-id: {reason}",
-                entry.object_id, entry.region_id
-            )
-        })?;
-
-        let mut branch_segments: Vec<ExtrusionPath3D> =
-            Vec::with_capacity(entry.branch_segments.len());
-        for segment in entry.branch_segments.into_iter() {
-            let points: Vec<Point3WithWidth> = segment
-                .into_iter()
-                .map(|p| Point3WithWidth {
-                    x: p.x,
-                    y: p.y,
-                    z: p.z,
-                    width: p.width,
-                    flow_factor: p.flow_factor,
-                    overhang_quartile: p.overhang_quartile,
-                })
-                .collect();
-            branch_segments.push(ExtrusionPath3D {
-                points,
-                role: ExtrusionRole::SupportMaterial,
-                speed_factor: 1.0,
-            });
-        }
-
-        entries.push(SupportPlanEntry {
-            global_layer_index: entry.global_layer_index,
-            object_id: entry.object_id,
-            region_id,
-            branch_segments,
-        });
-    }
-
-    Ok(SupportPlanIR {
-        entries,
-        ..Default::default()
-    })
-}
+// Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+use crate::marshal::in_::harvest_support_plan_ir_from;
 
 /// Convert the `(object_id, FacetAnnotation)` / `(object_id, SurfaceGroupProposal)`
 /// pushes into a `MeshAnalysisAuxiliary` record.
@@ -1687,58 +1398,8 @@ fn harvest_mesh_analysis_auxiliary(
     )
 }
 
-/// Pure core of [`harvest_mesh_analysis_auxiliary`].
-fn harvest_mesh_analysis_auxiliary_from(
-    mesh_analysis_annotations: Vec<(String, host::prepass::FacetAnnotation)>,
-    mesh_analysis_surface_groups: Vec<(String, host::prepass::SurfaceGroupProposal)>,
-) -> slicer_core::MeshAnalysisAuxiliary {
-    use host::prepass as pm;
-    use slicer_core::{
-        FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, SurfaceGroupRecord,
-    };
-
-    let facet_annotations = mesh_analysis_annotations
-        .into_iter()
-        .map(|(obj, ann)| {
-            let classification = match ann.classification {
-                pm::FacetClass::Normal => FacetClassRecord::Normal,
-                pm::FacetClass::NearHorizontal => FacetClassRecord::NearHorizontal,
-                pm::FacetClass::Overhang => FacetClassRecord::Overhang,
-                pm::FacetClass::Bridge => FacetClassRecord::Bridge,
-                pm::FacetClass::TopSurface => FacetClassRecord::TopSurface,
-                pm::FacetClass::BottomSurface => FacetClassRecord::BottomSurface,
-            };
-            (
-                obj,
-                FacetAnnotationRecord {
-                    facet_index: ann.facet_index,
-                    slope_angle_deg: ann.slope_angle_deg,
-                    classification,
-                },
-            )
-        })
-        .collect();
-
-    let surface_groups = mesh_analysis_surface_groups
-        .into_iter()
-        .map(|(obj, grp)| {
-            (
-                obj,
-                SurfaceGroupRecord {
-                    facet_indices: grp.facet_indices,
-                    z_min: grp.z_min,
-                    z_max: grp.z_max,
-                    shell_count: grp.shell_count,
-                },
-            )
-        })
-        .collect();
-
-    MeshAnalysisAuxiliary {
-        facet_annotations,
-        surface_groups,
-    }
-}
+// Pure core of harvest_mesh_analysis_auxiliary moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
+use crate::marshal::in_::harvest_mesh_analysis_auxiliary_from;
 
 // ── Host-local OrderedEntityView projection (used by Layer::PathOptimization) ──
 
@@ -2235,7 +1896,7 @@ fn deconstruct_layer_ctx(
             {
                 return Ok(None);
             }
-            let ir = host::convert_infill_output(infill, layer_index)
+            let ir = crate::marshal::convert_infill_output(infill, layer_index)
                 .map_err(|r| mk_fatal("infill", r))?;
             Ok(Some(if stage_id == "Layer::InfillPostProcess" {
                 LayerStageCommit::InfillPostProcess(ir)
@@ -2251,7 +1912,7 @@ fn deconstruct_layer_ctx(
             {
                 return Ok(None);
             }
-            let ir = host::convert_support_output(support, layer_index)
+            let ir = crate::marshal::convert_support_output(support, layer_index)
                 .map_err(|r| mk_fatal("support", r))?;
             Ok(Some(if stage_id == "Layer::SupportPostProcess" {
                 LayerStageCommit::SupportPostProcess(ir)
@@ -2267,7 +1928,7 @@ fn deconstruct_layer_ctx(
             if !has_any_output {
                 return Ok(None);
             }
-            let ir = host::convert_perimeter_output(perimeter, layer_index)
+            let ir = crate::marshal::convert_perimeter_output(perimeter, layer_index)
                 .map_err(|r| mk_fatal("perimeter", r))?;
             Ok(Some(LayerStageCommit::Perimeters(ir)))
         }
@@ -2281,7 +1942,7 @@ fn deconstruct_layer_ctx(
                 || !perimeter.seam_candidates.is_empty();
             let ir = if has_any_output {
                 Some(
-                    host::convert_perimeter_output(perimeter, layer_index)
+                    crate::marshal::convert_perimeter_output(perimeter, layer_index)
                         .map_err(|r| mk_fatal("perimeter", r))?,
                 )
             } else {

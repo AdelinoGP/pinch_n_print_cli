@@ -10,15 +10,15 @@
 ## Steps
 
 ### Step 1 — Delete stale per-world converter duplicates
-- Task ids: ADR-0021 (B-step-1). Objective: remove byte-identical per-world copies; repoint callers to the unified converter.
-- Precondition: delegated diff (design §Expected Dispatches) confirms each target is byte-identical to its layer counterpart.
+- Task ids: ADR-0021 (B-step-1). Objective: delete the per-world copies confirmed byte-identical to layer in **both** directions (outbound role, path, expolygon); repoint callers to the unified converter. The two **inbound** role converters (`finalization_role_wit_to_ir`, `convert_postpass_role`) are NOT deleted here — they diverge (latent `PrimeTower`/`Skirt` loss) and are relocated unchanged in Step 6, fixed in packet 115.
+- Precondition: the byte-identity diff is already done — outbound role / path / geometry copies confirmed identical; the inbound role pair confirmed divergent. Delete only the confirmed-identical set.
 - Postcondition: AC-1 grep is empty; `cargo check --workspace --all-targets` passes.
-- Read: `host.rs:1859–1888, 3679–3719, 4458–4472`; `dispatch.rs:92–117`.
+- Read: `host.rs:1859–1888` (expolygon_prepass), `:3696–3719` (finalization_role_ir_to_wit, finalization_path_ir_to_wit); `dispatch.rs:92–117` (convert_postpass_role_to_wit).
 - Edit (≤3): `host.rs`, `dispatch.rs`.
-- Dispatches: byte-identity confirm (FACT per pair); then `cargo check` (FACT pass/fail + first error).
+- Dispatches: `cargo check` (FACT pass/fail + first error).
 - Context cost: **S**.
-- Authoritative docs: ADR-0002 "Deferred"; ADR-0021. OrcaSlicer refs: none.
-- Verify: `! rg -nE 'fn (finalization_role_(ir_to_wit|wit_to_ir)|finalization_path_ir_to_wit|convert_postpass_role|ir_to_wit_expolygons?_prepass)\b' crates/slicer-wasm-host/src`
+- Authoritative docs: ADR-0002 "Deferred"; ADR-0021 §Amendment. OrcaSlicer refs: none.
+- Verify: `! rg -n 'fn (finalization_role_ir_to_wit|finalization_path_ir_to_wit|convert_postpass_role_to_wit|ir_to_wit_expolygons?_prepass)\b' crates/slicer-wasm-host/src`
 - Cheapest falsifier: AC-1 grep returns any match → fail.
 
 ### Step 2 — `marshal` skeleton: `OriginId` + `MarshalError`
@@ -51,7 +51,7 @@
 - Edit (≤3): `host.rs`, `marshal/accumulators.rs`, `marshal/mod.rs`.
 - Dispatches: `cargo check` (FACT).
 - Context cost: **M**.
-- Verify: `! rg -nE 'type (PerimeterRegionOrigin|SliceRegionOrigin)\b' crates/slicer-wasm-host/src`
+- Verify: `! rg -n 'type (PerimeterRegionOrigin|SliceRegionOrigin)\b' crates/slicer-wasm-host/src`
 - Exit condition: crate compiles; aliases gone; accumulators in `marshal`.
 
 ### Step 5 — Move marshal-out converters; rewrite on `OriginBucket`
@@ -66,7 +66,7 @@
 - Cheapest falsifier: any contract test regresses (output change) → behaviour broke.
 
 ### Step 6 — Move leaf maps into `marshal/leaf.rs`
-- Objective: move the surviving single leaf converters (`*extrusion_role*`, `*expolygon*`, `*paint*`, `*wall*`, `*gcode*`, `*retract*`, `*extrusion_path*`) into `marshal/leaf.rs`; repoint `host.rs` Host impls and `dispatch.rs` callers.
+- Objective: move the surviving single leaf converters (`*extrusion_role*`, `*expolygon*`, `*paint*`, `*wall*`, `*gcode*`, `*retract*`, `*extrusion_path*`) into `marshal/leaf.rs`; repoint `host.rs` Host impls and `dispatch.rs` callers. Additionally relocate the two divergent **inbound** role converters (`finalization_role_wit_to_ir`, `convert_postpass_role`) into `marshal/leaf.rs` **verbatim** as a clearly-named lossy variant (e.g. `extrusion_role_from_wit_keep_custom`) carrying `// TODO(packet-115): collapse to recovering form; latent PrimeTower/Skirt loss`, and keep the finalization/postpass call sites pointed at it. Do **NOT** unify it with the recovering `extrusion_role_from_wit` — that behaviour change is packet 115.
 - Precondition: Step 5 done.
 - Postcondition: leaf converters have one home; crate compiles; contract bucket green.
 - Read: `host.rs:1667–2400` (IR→WIT leaves), `host.rs:4505–4917` (WIT→IR leaves).

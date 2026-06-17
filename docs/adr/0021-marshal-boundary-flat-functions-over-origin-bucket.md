@@ -147,3 +147,31 @@ relocation into `marshal`.
   beneath the four runner traits, which keep their IR-typed seams.
 - ADR-0006 (export-for-stage-id sole lookup) — the reason per-stage harvest
   routing stays beside export routing in `dispatch.rs`.
+
+## Amendment (2026-06-16): the inbound role converter's per-world divergence was a latent bug, not legitimate variation
+
+Implementing packet 113 surfaced a case that looks like a counterexample to
+"one converter per concept": the WIT→IR `extrusion-role` converter is **not**
+identical across worlds. The layer-world `convert_extrusion_role` recovers the
+reserved builtin roles from their tags (`Custom(prime_tower_tag) => PrimeTower`,
+`Custom(skirt_tag) => Skirt`), but the finalization (`finalization_role_wit_to_ir`)
+and postpass (`convert_postpass_role`) copies do **not** — they keep
+`Custom(s) => Custom(s)`. (The *outbound* IR→WIT converters are identical across
+all worlds; only the inbound recovery diverges.)
+
+This divergence is a **latent bug, not a real seam.** A `PrimeTower`/`Skirt`
+entity that round-trips through a finalization guest returns as
+`Custom("…/skirt@1")`; the immediately following `GCODE_EMIT` stage then
+misclassifies it (feedrate falls back to `outer_wall_speed`, `;TYPE` becomes
+`Custom`, the skirt-travel filter misses it). The postpass copy is currently
+inert (its output feeds `GCodeIR`, which no later stage matches on by typed
+role). The pre-existing tests pin only the outbound encoding, so the lossy
+round-trip was undetected.
+
+The flat-function decision therefore **stands**: the correct end-state is a
+single recovering `extrusion_role_from_wit`. The fix is **packet 115**, which
+collapses the inbound converters to the recovering form and adds round-trip
+regression tests. **Packet 113 (the behaviour-preserving extraction) does not
+touch the divergence**: it relocates the two inbound converters into `marshal`
+verbatim and excludes them from its dead-duplicate deletion set, so no
+behaviour changes inside the refactor.

@@ -11,6 +11,8 @@ pub mod dispatch;
 pub mod execution_plan_live;
 pub mod host;
 pub mod instance;
+/// IR-to-WIT and WIT-to-IR marshalling helpers for the WASM stage boundary.
+pub mod marshal;
 pub mod pool;
 pub mod traits;
 

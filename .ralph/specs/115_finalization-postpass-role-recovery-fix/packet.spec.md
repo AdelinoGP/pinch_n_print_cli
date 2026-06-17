@@ -1,0 +1,63 @@
+---
+status: draft
+packet: 115_finalization-postpass-role-recovery-fix
+task_ids: []
+backlog_source: docs/adr/0021-marshal-boundary-flat-functions-over-origin-bucket.md
+context_cost_estimate: S
+---
+
+# Packet Contract: 115_finalization-postpass-role-recovery-fix
+
+## Goal
+
+Collapse the inbound (WIT→IR) `extrusion-role` converter in `marshal` to the single recovering form so finalization and postpass recover the reserved builtin roles `PrimeTower`/`Skirt` from their `Custom` tags — fixing the latent finalization misclassification — and pin it with round-trip and dispatch regression tests.
+
+## Scope Boundaries
+
+This is a behaviour-changing bugfix, deliberately separated from the behaviour-preserving extraction in packet 113. Packet 113 relocated the divergent inbound role converters into `marshal` verbatim (preserving today's lossy behaviour); this packet deletes the lossy variant and points finalization and postpass at the recovering converter, then adds the regression tests the bug never had. It touches only the inbound role conversion path and its tests — no marshal restructuring, no WIT change, no guest rebuild.
+
+## Acceptance Criteria
+
+Origin/backlog note: latent bug surfaced while implementing packet 113; root cause and pipeline analysis recorded in ADR-0021's 2026-06-16 amendment. No open `docs/07` TASK id.
+
+- **AC-1** — Given the divergence is a bug not a seam, When this packet lands, Then `marshal` exposes one inbound WIT→IR extrusion-role converter — the recovering `convert_extrusion_role` (marshal/leaf.rs) — the two lossy variants `finalization_role_wit_to_ir` and `convert_postpass_role` are deleted, and the finalization and postpass call sites use the recovering one. | `! rg -n 'fn (finalization_role_wit_to_ir|convert_postpass_role)\b' crates/slicer-wasm-host/src/marshal/` and `rg -c 'fn convert_extrusion_role\b' crates/slicer-wasm-host/src/marshal/leaf.rs` (expect `1`)
+
+- **AC-2** — Given the recovering converter, When `convert_extrusion_role(&ir_to_wit_extrusion_role(&r))` runs for `r ∈ {PrimeTower, Skirt}`, Then the result is the original typed variant (round-trip identity restored), not `Custom`. | `mkdir -p target && cargo test -p slicer-wasm-host --lib marshal::leaf::tests::extrusion_role_round_trip_recovers_builtin_roles 2>&1 | tee target/test-output.log; rg 'test result:.*1 passed' target/test-output.log`
+
+- **AC-3** — Given a finalization guest that re-emits a `Skirt` (and a `PrimeTower`) entity, When the finalization stage commits the result back to IR, Then the committed `PrintEntity.role` is `ExtrusionRole::Skirt` / `ExtrusionRole::PrimeTower` (the typed variant), not `Custom("…/skirt@1")`. | `mkdir -p target && cargo test -p slicer-wasm-host --test contract finalization_role_round_trip 2>&1 | tee target/test-output.log; rg 'test result:.*0 failed' target/test-output.log`
+
+### Negative Test Cases
+
+- **AC-N1** — Given the test from AC-2/AC-3 written first (TDD red), When run against the pre-115 (packet-113) code, Then it FAILS (the round-trip yields `Custom`), proving the test actually exercises the bug. Document the red run in the step note; the green run after the fix is AC-2/AC-3. | (manual gate — record the red-then-green transition; no standing command)
+
+## Verification (gate subset)
+
+- `cargo check --workspace --all-targets`
+- `mkdir -p target && cargo test -p slicer-wasm-host --lib marshal::leaf 2>&1 | tee target/test-output.log; rg '^test result' target/test-output.log`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+
+## Authoritative Docs
+
+- `docs/adr/0021-…origin-bucket.md` §"Amendment (2026-06-16)" — the root-cause analysis and the decision that the divergence is a bug.
+- `docs/04_host_scheduler.md` — STAGE_ORDER confirming `PostPassLayerFinalization` runs before `PostPassGCodeEmit` (why the finalization loss is consequential).
+- The builtin role tags `BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG` / `..._SKIRT_TAG` and the layer-world recovery in `convert_extrusion_role` (the correct reference behaviour).
+
+## Doc Impact Statement (Required)
+
+None beyond this packet. ADR-0021's amendment (authored when 113 was refined) already records the decision; on close, optionally note the fix landed.
+
+## Prerequisites / Blockers
+
+- **Blocked by packet 113.** The inbound role converters must already live in `marshal` (113 relocates them). Do not start 115 until 113 closes.
+
+<!-- snippet: context-discipline -->
+## Context Discipline Note
+
+This packet was generated against the context_discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`. Downstream agents implementing or reviewing this packet must:
+
+- treat `design.md`'s code change surface as the authoritative files-in-scope list
+- honor `design.md`'s out-of-bounds list — those files must not be loaded directly
+- delegate every cargo run and authoritative-doc fact-check
+- stop reading at 60% context and hand off at 85%
+
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.

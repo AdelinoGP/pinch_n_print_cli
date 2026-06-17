@@ -22,7 +22,7 @@
 
 use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
 use slicer_runtime::wit_host::{
-    ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth, WallFeatureFlag,
+    ExtrusionRole, HostExecutionContextBuilder, OriginId, Point3, Point3WithWidth, WallFeatureFlag,
     WallLoopType, WallLoopView,
 };
 
@@ -156,7 +156,10 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
     ctx.perimeter_output_mut()
         .wall_loop_origins
-        .push(Some((String::new(), 0)));
+        .push(Some(OriginId {
+            object_id: String::new(),
+            region_id: 0,
+        }));
 
     // Seam candidates (pos, score).
     let candidate_pos = Point3 {
@@ -169,9 +172,15 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .push((candidate_pos, 1.0));
     ctx.perimeter_output_mut()
         .seam_candidate_origins
-        .push(Some((String::new(), 0)));
+        .push(Some(OriginId {
+            object_id: String::new(),
+            region_id: 0,
+        }));
 
-    ctx.set_current_perimeter_region(Some((String::new(), 0)));
+    ctx.set_current_perimeter_region(Some(OriginId {
+        object_id: String::new(),
+        region_id: 0,
+    }));
     ctx.push_resolved_seam(Resource::new_own(0), candidate_pos, 0)
         .expect("host push_resolved_seam call must succeed")
         .expect("guest push_resolved_seam call must succeed");
@@ -271,15 +280,24 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         .push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
     ctx.perimeter_output_mut()
         .wall_loop_origins
-        .push(Some(("obj-a".to_string(), 0)));
+        .push(Some(OriginId {
+            object_id: "obj-a".to_string(),
+            region_id: 0,
+        }));
     ctx.perimeter_output_mut()
         .wall_loops
         .push(make_wall_loop(layer_z, 0.0, 1.0, 10.0, 1.0, 0.4));
     ctx.perimeter_output_mut()
         .wall_loop_origins
-        .push(Some(("obj-b".to_string(), 1)));
+        .push(Some(OriginId {
+            object_id: "obj-b".to_string(),
+            region_id: 1,
+        }));
 
-    ctx.set_current_perimeter_region(Some(("obj-a".to_string(), 0)));
+    ctx.set_current_perimeter_region(Some(OriginId {
+        object_id: "obj-a".to_string(),
+        region_id: 0,
+    }));
     ctx.push_resolved_seam(
         Resource::new_own(0),
         Point3 {
@@ -677,7 +695,10 @@ fn rotated_points_cardinality_mismatch_rejected() {
         .push(bad_wall_loop);
     ctx.perimeter_output_mut()
         .rotated_wall_loop_origins
-        .push(Some((String::new(), 0)));
+        .push(Some(OriginId {
+            object_id: String::new(),
+            region_id: 0,
+        }));
 
     // convert_perimeter_output should reject the mismatched cardinality.
     let result =

@@ -7,8 +7,8 @@ All in `crates/slicer-wasm-host/src/` (line ranges approximate; locate with `rg`
 - `host.rs:542–654` — the `*Collected` accumulator structs (move to `marshal/accumulators.rs`).
 - `host.rs:1667–2400` — IR→WIT leaf maps + marshal-in projections (`ir_to_wit_*`, `sliced_region_to_data`, `project_*_view`, `object_mesh_to_wit_mesh_object_view`).
 - `host.rs:1859–1888` — `ir_to_wit_expolygon(s)_prepass` (dead dup; delete).
-- `host.rs:3679–3719` — `finalization_role_wit_to_ir`, `finalization_role_ir_to_wit`, `finalization_path_ir_to_wit` (dead dups; delete after confirm).
-- `host.rs:4458–4472` — `convert_postpass_role` (dead dup; delete after confirm).
+- `host.rs:3696–3719` — `finalization_role_ir_to_wit`, `finalization_path_ir_to_wit` (outbound dead dups; delete). `host.rs:3679` — `finalization_role_wit_to_ir` (**inbound; diverges** — keeps `Custom`, no `PrimeTower`/`Skirt` recovery; relocate unchanged, packet 115 fixes; do NOT delete).
+- `host.rs:4458–4472` — `convert_postpass_role` (**inbound; diverges** — keeps `Custom`; relocate unchanged, packet 115 fixes; do NOT delete). The outbound `convert_postpass_role_to_wit` lives in `dispatch.rs:92–117` and IS a dead dup (delete).
 - `host.rs:4505–5177` — WIT→IR converters incl. the three bucketing converters `convert_infill_output` (4578), `convert_support_output` (4728), `convert_perimeter_output` (4920) and `merge_slice_postprocess_into` (5115).
 - `dispatch.rs:92–272` — postpass WIT converters (`convert_postpass_role_to_wit`, `collect_postpass_output`); `convert_postpass_role_to_wit` is also a dead dup of `ir_to_wit_extrusion_role`.
 - `dispatch.rs:1331–1807` — marshal-in helpers (`push_slice_regions`, `push_perimeter_regions`, harvest `*_from`) and `deconstruct_layer_ctx:2216` — the per-stage router that calls the bucketing converters (stays in `dispatch.rs`; repointed to `marshal::convert_*`).
@@ -89,6 +89,7 @@ impl<R> OriginBucket<R> {
 - Converter output for valid input is unchanged (AC-6). First-seen bucket ordering must match the existing `Vec::position`-based loop exactly.
 - `MarshalError` Display reproduces today's error strings closely enough that any test asserting on message substrings still passes; tests should prefer asserting on the variant.
 - `OriginId` equality/hash semantics equal the old `(String, u64)` tuple semantics.
+- The inbound finalization/postpass role converters are relocated with **identical (Custom-preserving) behaviour**; this packet does NOT recover `PrimeTower`/`Skirt` (packet 115 does). Folding that fix in here would violate the behaviour-preserving guarantee above.
 
 ## Risks and Tradeoffs
 
@@ -104,4 +105,4 @@ impl<R> OriginBucket<R> {
 
 ## Open Questions
 
-- `[FWD]` If Step 1's diff shows `convert_postpass_role_to_wit` or `finalization_path_ir_to_wit` is *not* byte-identical (e.g. divergent custom-tag handling), keep it and drop it from AC-1's deletion set, recording the divergence in the step note. The implementer resolves this mid-flight from the diff result; it does not block activation.
+- `None (resolved).` The Step-1 diff was run during implementation. The **outbound** role converters (`finalization_role_ir_to_wit`, `convert_postpass_role_to_wit`), the path converter (`finalization_path_ir_to_wit`), and the expolygon converters are byte-identical to layer → deleted (AC-1). The **inbound** role converters (`finalization_role_wit_to_ir`, `convert_postpass_role`) are NOT identical — they keep `Custom(s) => Custom(s)` instead of recovering `PrimeTower`/`Skirt`, a latent bug (ADR-0021 §Amendment). They are excluded from AC-1, relocated into `marshal` unchanged (AC-1b), and fixed in packet 115. No blocker remains.

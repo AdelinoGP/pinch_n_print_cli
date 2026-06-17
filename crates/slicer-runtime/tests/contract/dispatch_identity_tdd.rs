@@ -302,7 +302,7 @@ fn support_postprocess_identity_isolation_across_dispatches() {
 #[test]
 fn support_output_rejects_untagged_push_in_identity_mode() {
     use slicer_runtime::wit_host::{
-        convert_support_output, ExtrusionPath3d, ExtrusionRole, Point3WithWidth,
+        convert_support_output, ExtrusionPath3d, ExtrusionRole, OriginId, Point3WithWidth,
         SupportOutputCollected,
     };
     let mk_path = || ExtrusionPath3d {
@@ -321,7 +321,13 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         support_paths: vec![mk_path(), mk_path()],
         interface_paths: Vec::new(),
         raft_paths: Vec::new(),
-        support_path_origins: vec![Some(("obj-0".into(), 0)), None],
+        support_path_origins: vec![
+            Some(OriginId {
+                object_id: "obj-0".into(),
+                region_id: 0,
+            }),
+            None,
+        ],
         interface_path_origins: Vec::new(),
         raft_path_origins: Vec::new(),
     };
@@ -437,8 +443,8 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
     // identity-preservation contract is violated. Verify convert_perimeter_output
     // surfaces a structured diagnostic in this case.
     use slicer_runtime::wit_host::{
-        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
-        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, OriginId,
+        PerimeterOutputCollected, Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
     };
     // One untagged wall_loop and one tagged seam_candidate => mixed mode.
     let output = PerimeterOutputCollected {
@@ -479,7 +485,10 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
     // Force "any_tagged" by setting a dummy infill_areas_origin so the
     // identity-preserving path is taken; then the untagged wall_loop fails.
     let mut output = output;
-    output.infill_areas_origin = Some(("dummy".into(), 0));
+    output.infill_areas_origin = Some(OriginId {
+        object_id: "dummy".into(),
+        region_id: 0,
+    });
     let result = convert_perimeter_output(&output, 0);
     assert!(result.is_err(), "untagged push in identity mode must fail");
     let msg = result.unwrap_err();
