@@ -321,6 +321,8 @@ pub mod prepass {
             // four worlds share one set of Rust types (packet 75, Phase 3 / ADR-0002).
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
+            "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
         },
     });
 }
@@ -497,6 +499,8 @@ pub mod finalization {
             // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
+            "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
         },
     });
 }
@@ -520,6 +524,8 @@ pub mod postpass {
             // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
+            "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
         },
     });
 }
@@ -1532,18 +1538,15 @@ fn object_bounds_mesh_query(
 
 // ── Host trait implementations ──────────────────────────────────────────
 
+use layer::slicer::common::host_services as hs;
 use layer::slicer::config::config_types as ct;
 use layer::slicer::ir_handles::ir_handles as ir;
 use layer::slicer::types::geometry as geo;
-use layer::slicer::world_layer::host_services as hs;
 
 // `module-errors` only contains a record (no functions/resources),
 // so the generated Host trait is empty and requires a trivial impl.
 // Now sourced from canonical slicer:common/module-errors package.
 impl layer::slicer::common::module_errors::Host for HostExecutionContext {}
-impl prepass::slicer::common::module_errors::Host for HostExecutionContext {}
-impl finalization::slicer::common::module_errors::Host for HostExecutionContext {}
-impl postpass::slicer::common::module_errors::Host for HostExecutionContext {}
 
 impl geo::Host for HostExecutionContext {}
 
@@ -1690,9 +1693,9 @@ impl hs::Host for HostExecutionContext {
 // Re-exported here so callers within this file and inner `mod` blocks that
 // do `use super::*` continue to resolve them without a path change.
 pub(crate) use crate::marshal::leaf::{
-    ir_to_wit_expolygon, ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
+    ir_to_wit_expolygons, ir_to_wit_extrusion_path, ir_to_wit_extrusion_role,
     ir_to_wit_paint_layer_view, ir_to_wit_paint_semantic, ir_to_wit_paint_value,
-    ir_to_wit_wall_loop, wit_to_ir_expolygon, wit_to_ir_expolygons,
+    ir_to_wit_wall_loop, wit_to_ir_expolygons,
 };
 // Public re-exports to maintain the `host::X` path used by dispatch.rs and
 // external callers.
@@ -2703,113 +2706,11 @@ impl ir::Host for HostExecutionContext {}
 
 mod prepass_impls {
     use super::*;
-    use prepass::slicer::types::geometry as pgeo;
-    use prepass::slicer::world_prepass::host_services as phs;
 
-    // `pgeo` now aliases the layer world's geometry module (Phase 3 remap), so
-    // its `Host` impl and IR↔WIT converters are the layer world's — reused here
-    // (`wit_to_ir_expolygon`, `ir_to_wit_expolygon`, `ir_point3_to_layer`,
-    // `ir_bounds_to_layer`) via `use super::*` instead of regenerated copies.
-
-    impl phs::Host for HostExecutionContext {
-        fn log(&mut self, level: phs::LogLevel, message: String) -> wasmtime::Result<()> {
-            let level_str = match level {
-                phs::LogLevel::Trace => "trace",
-                phs::LogLevel::Debug => "debug",
-                phs::LogLevel::Info => "info",
-                phs::LogLevel::Warn => "warn",
-                phs::LogLevel::Error => "error",
-            };
-            self.log_messages.push((level_str.to_string(), message));
-            Ok(())
-        }
-        fn raycast_z_down(
-            &mut self,
-            object_id: phs::ObjectId,
-            x: f32,
-            y: f32,
-            start_z: f32,
-        ) -> wasmtime::Result<Option<f32>> {
-            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
-        }
-        fn surface_normal_at(
-            &mut self,
-            object_id: phs::ObjectId,
-            x: f32,
-            y: f32,
-            z: f32,
-        ) -> wasmtime::Result<Option<pgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
-        }
-        fn object_bounds(
-            &mut self,
-            object_id: phs::ObjectId,
-        ) -> wasmtime::Result<pgeo::BoundingBox3> {
-            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
-                self, &object_id,
-            )?))
-        }
-        fn clip_polygons(
-            &mut self,
-            subject: Vec<pgeo::ExPolygon>,
-            clip: Vec<pgeo::ExPolygon>,
-            op: phs::ClipOperation,
-        ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
-            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
-            let ir_op = match op {
-                phs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
-                phs::ClipOperation::Intersection => {
-                    slicer_core::polygon_ops::ClipOperation::Intersection
-                }
-                phs::ClipOperation::Difference => {
-                    slicer_core::polygon_ops::ClipOperation::Difference
-                }
-                phs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
-            };
-            Ok(ir_clip_polygons(&s, &c, ir_op)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn offset_polygons(
-            &mut self,
-            polygons: Vec<pgeo::ExPolygon>,
-            delta_mm: f32,
-            join: phs::OffsetJoinType,
-        ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
-            let j = match join {
-                phs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
-                phs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
-                phs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
-            };
-            Ok(ir_offset_polygons(&ir, delta_mm, j)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn simplify_polygon(
-            &mut self,
-            polygon: pgeo::Polygon,
-            _: f32,
-        ) -> wasmtime::Result<pgeo::Polygon> {
-            let pts: Vec<_> = polygon
-                .points
-                .iter()
-                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                .collect();
-            Ok(pgeo::Polygon {
-                points: ir_simplify_polygon(pts)
-                    .into_iter()
-                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            })
-        }
-        fn now_us(&mut self) -> wasmtime::Result<u64> {
-            Ok(self.start_time.elapsed().as_micros() as u64)
-        }
-    }
+    // Geometry, host-services, and module-errors types are all remapped onto
+    // the layer world's types via `with:` in the bindgen! block (packet 114).
+    // IR↔WIT converters (`wit_to_ir_expolygon`, `ir_to_wit_expolygon`,
+    // `ir_point3_to_layer`, `ir_bounds_to_layer`) are reused via `use super::*`.
 
     // `pct` config-types `Host`/`HostConfigView` impls are the layer
     // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
@@ -2978,111 +2879,12 @@ mod finalization_impls {
     use super::finalization as fm;
     use super::*;
     use finalization::slicer::types::geometry as fgeo;
-    use finalization::slicer::world_finalization::host_services as fhs;
 
     // `fgeo` now aliases the layer world's geometry module (Phase 3 remap); its
     // `Host` impl and IR↔WIT geometry converters are the layer world's — reused
     // here via `use super::*` instead of regenerated copies.
-
-    impl fhs::Host for HostExecutionContext {
-        fn log(&mut self, level: fhs::LogLevel, message: String) -> wasmtime::Result<()> {
-            let level_str = match level {
-                fhs::LogLevel::Trace => "trace",
-                fhs::LogLevel::Debug => "debug",
-                fhs::LogLevel::Info => "info",
-                fhs::LogLevel::Warn => "warn",
-                fhs::LogLevel::Error => "error",
-            };
-            self.log_messages.push((level_str.to_string(), message));
-            Ok(())
-        }
-        fn raycast_z_down(
-            &mut self,
-            object_id: fhs::ObjectId,
-            x: f32,
-            y: f32,
-            start_z: f32,
-        ) -> wasmtime::Result<Option<f32>> {
-            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
-        }
-        fn surface_normal_at(
-            &mut self,
-            object_id: fhs::ObjectId,
-            x: f32,
-            y: f32,
-            z: f32,
-        ) -> wasmtime::Result<Option<fgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
-        }
-        fn object_bounds(
-            &mut self,
-            object_id: fhs::ObjectId,
-        ) -> wasmtime::Result<fgeo::BoundingBox3> {
-            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
-                self, &object_id,
-            )?))
-        }
-        fn clip_polygons(
-            &mut self,
-            subject: Vec<fgeo::ExPolygon>,
-            clip: Vec<fgeo::ExPolygon>,
-            op: fhs::ClipOperation,
-        ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
-            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
-            let ir_op = match op {
-                fhs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
-                fhs::ClipOperation::Intersection => {
-                    slicer_core::polygon_ops::ClipOperation::Intersection
-                }
-                fhs::ClipOperation::Difference => {
-                    slicer_core::polygon_ops::ClipOperation::Difference
-                }
-                fhs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
-            };
-            Ok(ir_clip_polygons(&s, &c, ir_op)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn offset_polygons(
-            &mut self,
-            polygons: Vec<fgeo::ExPolygon>,
-            delta_mm: f32,
-            join: fhs::OffsetJoinType,
-        ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
-            let j = match join {
-                fhs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
-                fhs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
-                fhs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
-            };
-            Ok(ir_offset_polygons(&ir, delta_mm, j)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn simplify_polygon(
-            &mut self,
-            polygon: fgeo::Polygon,
-            _: f32,
-        ) -> wasmtime::Result<fgeo::Polygon> {
-            let pts: Vec<_> = polygon
-                .points
-                .iter()
-                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                .collect();
-            Ok(fgeo::Polygon {
-                points: ir_simplify_polygon(pts)
-                    .into_iter()
-                    .map(|p| fgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            })
-        }
-        fn now_us(&mut self) -> wasmtime::Result<u64> {
-            Ok(self.start_time.elapsed().as_micros() as u64)
-        }
-    }
+    // `host-services` and `module-errors` are also remapped onto the layer
+    // world's types via `with:` in the bindgen! block (packet 114).
 
     // `fct` config-types `Host`/`HostConfigView` impls are the layer
     // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
@@ -3578,112 +3380,10 @@ mod finalization_impls {
 mod postpass_impls {
     use super::postpass as ppm;
     use super::*;
-    use postpass::slicer::types::geometry as ppgeo;
-    use postpass::slicer::world_postpass::host_services as pphs;
 
-    // `ppgeo` now aliases the layer world's geometry module (Phase 3 remap); its
-    // `Host` impl and IR↔WIT converters are the layer world's — reused here via
-    // `use super::*` instead of regenerated copies.
-
-    impl pphs::Host for HostExecutionContext {
-        fn log(&mut self, level: pphs::LogLevel, message: String) -> wasmtime::Result<()> {
-            let level_str = match level {
-                pphs::LogLevel::Trace => "trace",
-                pphs::LogLevel::Debug => "debug",
-                pphs::LogLevel::Info => "info",
-                pphs::LogLevel::Warn => "warn",
-                pphs::LogLevel::Error => "error",
-            };
-            self.log_messages.push((level_str.to_string(), message));
-            Ok(())
-        }
-        fn raycast_z_down(
-            &mut self,
-            object_id: pphs::ObjectId,
-            x: f32,
-            y: f32,
-            start_z: f32,
-        ) -> wasmtime::Result<Option<f32>> {
-            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
-        }
-        fn surface_normal_at(
-            &mut self,
-            object_id: pphs::ObjectId,
-            x: f32,
-            y: f32,
-            z: f32,
-        ) -> wasmtime::Result<Option<ppgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
-        }
-        fn object_bounds(
-            &mut self,
-            object_id: pphs::ObjectId,
-        ) -> wasmtime::Result<ppgeo::BoundingBox3> {
-            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
-                self, &object_id,
-            )?))
-        }
-        fn clip_polygons(
-            &mut self,
-            subject: Vec<ppgeo::ExPolygon>,
-            clip: Vec<ppgeo::ExPolygon>,
-            op: pphs::ClipOperation,
-        ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
-            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
-            let ir_op = match op {
-                pphs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
-                pphs::ClipOperation::Intersection => {
-                    slicer_core::polygon_ops::ClipOperation::Intersection
-                }
-                pphs::ClipOperation::Difference => {
-                    slicer_core::polygon_ops::ClipOperation::Difference
-                }
-                pphs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
-            };
-            Ok(ir_clip_polygons(&s, &c, ir_op)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn offset_polygons(
-            &mut self,
-            polygons: Vec<ppgeo::ExPolygon>,
-            delta_mm: f32,
-            join: pphs::OffsetJoinType,
-        ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
-            let j = match join {
-                pphs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
-                pphs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
-                pphs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
-            };
-            Ok(ir_offset_polygons(&ir, delta_mm, j)
-                .iter()
-                .map(ir_to_wit_expolygon)
-                .collect())
-        }
-        fn simplify_polygon(
-            &mut self,
-            polygon: ppgeo::Polygon,
-            _: f32,
-        ) -> wasmtime::Result<ppgeo::Polygon> {
-            let pts: Vec<_> = polygon
-                .points
-                .iter()
-                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                .collect();
-            Ok(ppgeo::Polygon {
-                points: ir_simplify_polygon(pts)
-                    .into_iter()
-                    .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            })
-        }
-        fn now_us(&mut self) -> wasmtime::Result<u64> {
-            Ok(self.start_time.elapsed().as_micros() as u64)
-        }
-    }
+    // Geometry, host-services, and module-errors types are all remapped onto
+    // the layer world's types via `with:` in the bindgen! block (packet 114).
+    // IR↔WIT converters are reused via `use super::*`.
 
     // `ppct` config-types `Host`/`HostConfigView` impls are the layer
     // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
