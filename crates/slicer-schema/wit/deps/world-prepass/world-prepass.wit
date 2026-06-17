@@ -1,23 +1,7 @@
 package slicer:world-prepass@1.0.0;
 
-interface host-services {
-    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
-    type object-id = string;
-    enum log-level { trace, debug, info, warn, error }
-    log: func(level: log-level, message: string);
-    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-    object-bounds:      func(object-id: object-id) -> bounding-box3;
-    enum clip-operation   { union, intersection, difference, xor }
-    enum offset-join-type { miter, round, square }
-    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-    now-us: func() -> u64;
-}
-
 world prepass-module {
-    import host-services;
+    import slicer:common/host-services;
     import slicer:config/config-types;
 
     use slicer:config/config-types.{config-view};
