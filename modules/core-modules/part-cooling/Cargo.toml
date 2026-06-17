@@ -11,6 +11,8 @@ slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
 
 [dev-dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+toml = "0.8"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen.workspace = true

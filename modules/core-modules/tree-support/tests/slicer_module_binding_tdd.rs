@@ -1,0 +1,18 @@
+//! Regression guard: the `#[slicer_module]`-emitted binding surface for
+//! tree-support matches its manifest's declared layer world/stage.
+
+#![allow(missing_docs)]
+
+use tree_support::TreeSupport;
+
+#[test]
+fn binding_surface_matches_manifest() {
+    assert_eq!(TreeSupport::__slicer_world_id(), "slicer:world-layer@1.0.0");
+    assert_eq!(TreeSupport::__slicer_trait_name(), "LayerModule");
+    assert_eq!(TreeSupport::__slicer_stage_name(), "Layer::Support");
+    assert_eq!(TreeSupport::__slicer_stage_export_name(), "run-support");
+    let exports = TreeSupport::__slicer_wit_exports();
+    assert!(exports.contains(&"on-print-start"));
+    assert!(exports.contains(&"on-print-end"));
+    assert!(exports.contains(&"run-support"));
+}

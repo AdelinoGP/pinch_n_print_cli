@@ -947,3 +947,72 @@ impl LayerCollectionFixtureBuilder {
         }
     }
 }
+
+/// Build a [`ConfigView`] from a slice of `(key, value)` pairs.
+///
+/// Convenience over [`ConfigViewBuilder`] for the common case of a flat,
+/// pre-typed key set. Replaces the per-module `config_with` / `config_view`
+/// helpers that were duplicated across module test files.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::ConfigValue;
+/// use slicer_sdk::test_support::fixtures::config_with;
+///
+/// let cfg = config_with(&[
+///     ("fan_speed_max", ConfigValue::Int(255)),
+///     ("enable_overhang_fan", ConfigValue::Bool(false)),
+/// ]);
+/// assert_eq!(cfg.len(), 2);
+/// ```
+#[must_use]
+pub fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
+    let mut fields = HashMap::new();
+    for (k, v) in pairs {
+        fields.insert((*k).to_string(), v.clone());
+    }
+    ConfigView::from_map(fields)
+}
+
+/// Build a minimal [`SliceRegionView`] carrying only `object_id` and
+/// `region_id`, with all geometry empty.
+///
+/// Removes the repeated 5–7 setter boilerplate when a test needs a region that
+/// is present but carries no polygons (e.g. negative / gating assertions). Use
+/// [`SliceRegionViewBuilder`] directly when geometry is needed.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_sdk::test_support::fixtures::empty_region;
+///
+/// let region = empty_region("obj-1", 0);
+/// assert!(region.top_solid_fill().is_empty());
+/// ```
+#[must_use]
+pub fn empty_region(object_id: &str, region_id: u64) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id(object_id)
+        .region_id(region_id)
+        .build()
+}
+
+/// Build a minimal [`PerimeterRegionView`] carrying only `object_id` and
+/// `region_id`, with no walls, infill areas, or seam candidates.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_sdk::test_support::fixtures::empty_perimeter_region;
+///
+/// let region = empty_perimeter_region("obj-1", 0);
+/// assert!(region.wall_loops().is_empty());
+/// ```
+#[must_use]
+pub fn empty_perimeter_region(object_id: &str, region_id: u64) -> PerimeterRegionView {
+    PerimeterRegionViewBuilder::new()
+        .object_id(object_id)
+        .region_id(region_id)
+        .build()
+}

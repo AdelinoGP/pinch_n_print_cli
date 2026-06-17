@@ -1,20 +1,19 @@
-//! End-to-end regression smoke for the slicing-promotion refactor.
+//! End-to-end regression smoke for the slicing-promotion refactor (host prepass).
 //!
-//! Drives a 3-step staircase fixture through:
-//!   1. `PrePass::Slice` (host built-in) â€” produces `Vec<SliceIR>`
-//!   2. `PrePass::ShellClassification` (host built-in) â€” populates
+//! Drives a 3-step staircase fixture through the two host built-ins:
+//!   1. `PrePass::Slice` (host built-in) — produces `Vec<SliceIR>`
+//!   2. `PrePass::ShellClassification` (host built-in) — populates
 //!      `top_shell_index`, `bottom_shell_index`, and polygon-precise
 //!      `top_solid_fill` / `bottom_solid_fill`
-//!   3. The `TopSurfaceIroning` `LayerModule` â€” emits ironing strokes
-//!      clipped to `top_solid_fill`
 //!
-//! Verifies that the three commits work together: the prepass correctly
-//! classifies the staircase's exposed top surfaces; the ironing module
-//! self-gates on `top_shell_index == Some(0)` and produces non-empty
-//! `ironing_paths` with `ExtrusionRole::Ironing`.
+//! Verifies that the two commits work together: the prepass correctly
+//! classifies the staircase's exposed top surfaces, and the pipeline is
+//! deterministic across runs. The downstream `TopSurfaceIroning` consumption of
+//! `top_solid_fill` is tested in the module's own crate
+//! (`modules/core-modules/top-surface-ironing/tests/`) — this file links no
+//! module crate.
 
-// NOT RELOCATABLE — SUT is commit_shell_classification_builtin / commit_slice_builtin / Blackboard; module top-surface-ironing is fixture input.
-// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+// SUT is commit_shell_classification_builtin / commit_slice_builtin / Blackboard.
 
 #![allow(missing_docs)]
 
@@ -22,15 +21,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExtrusionRole, GlobalLayer,
-    IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh, Point3, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, Transform3d,
+    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh,
+    Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, Transform3d,
 };
 use slicer_runtime::{commit_shell_classification_builtin, commit_slice_builtin, Blackboard};
-use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::traits::LayerModule;
-use slicer_sdk::views::SliceRegionView;
-use top_surface_ironing::TopSurfaceIroning;
 
 // ============================================================================
 // Fixture
@@ -176,19 +170,6 @@ fn region_map_with_shell_counts(plan: &LayerPlanIR, top: u32, bot: u32) -> Regio
     region_map
 }
 
-fn ironing_default_config() -> ConfigView {
-    let mut m = HashMap::new();
-    m.insert("ironing_enabled".to_string(), ConfigValue::Bool(true));
-    m.insert("ironing_speed".to_string(), ConfigValue::Float(20.0));
-    m.insert("ironing_flow".to_string(), ConfigValue::Float(0.10));
-    m.insert("ironing_spacing_mm".to_string(), ConfigValue::Float(0.1));
-    m.insert(
-        "ironing_pattern".to_string(),
-        ConfigValue::String("rectilinear".to_string()),
-    );
-    ConfigView::from_map(m)
-}
-
 // ============================================================================
 // E2E smoke
 // ============================================================================
@@ -228,72 +209,11 @@ fn staircase_prepass_classifies_each_step_top_as_exposed() {
     );
 }
 
-#[test]
-fn staircase_topsurface_ironing_emits_for_exposed_layers() {
-    let mesh = staircase_mesh();
-    let plan = layer_plan();
-    let region_map = region_map_with_shell_counts(&plan, 2, 2);
-    let mut bb = Blackboard::new(Arc::new(mesh), plan.global_layers.len());
-    bb.commit_layer_plan(Arc::new(plan)).unwrap();
-    bb.commit_region_map(Arc::new(region_map)).unwrap();
-    commit_slice_builtin(&mut bb).expect("PrePass::Slice");
-    commit_shell_classification_builtin(&mut bb).expect("PrePass::ShellClassification");
-    let slices = bb.slice_ir().expect("slice_ir committed");
-
-    let module = TopSurfaceIroning::on_print_start(&ironing_default_config()).unwrap();
-    let cfg = ironing_default_config();
-
-    // Drive each layer through run_infill with a SliceRegionView projected
-    // from the prepass-committed SliceIR. Accumulate total ironing paths.
-    let mut total_paths = 0usize;
-    let mut total_points = 0usize;
-    for slice in slices.iter() {
-        let mut views: Vec<SliceRegionView> = Vec::new();
-        for region in &slice.regions {
-            let mut view = SliceRegionView::default();
-            view.set_object_id(region.object_id.clone());
-            view.set_region_id(region.region_id);
-            view.set_polygons(region.polygons.clone());
-            view.set_infill_areas(region.infill_areas.clone());
-            view.set_effective_layer_height(region.effective_layer_height);
-            view.set_z(slice.z);
-            view.set_top_shell_index(region.top_shell_index);
-            view.set_bottom_shell_index(region.bottom_shell_index);
-            view.set_top_solid_fill(region.top_solid_fill.clone());
-            view.set_bottom_solid_fill(region.bottom_solid_fill.clone());
-            views.push(view);
-        }
-        let mut output = InfillOutputBuilder::new();
-        module
-            .run_infill(slice.global_layer_index, &views, &mut output, &cfg)
-            .unwrap();
-        for path in output.ironing_paths() {
-            assert_eq!(
-                path.role,
-                ExtrusionRole::Ironing,
-                "ironing path must use ExtrusionRole::Ironing"
-            );
-        }
-        total_paths += output.ironing_paths().len();
-        total_points += output
-            .ironing_paths()
-            .iter()
-            .map(|p| p.points.len())
-            .sum::<usize>();
-    }
-
-    // We expect at least one ironing path emitted across the staircase, with
-    // a meaningful point count (â‰¥ 30 â€” staircase is small but each exposed
-    // top should produce a snake at 0.1mm spacing).
-    assert!(
-        total_paths >= 1,
-        "expected â‰¥ 1 ironing path across staircase; got {total_paths}"
-    );
-    assert!(
-        total_points >= 30,
-        "expected â‰¥ 30 ironing points across staircase; got {total_points}"
-    );
-}
+// NOTE: `staircase_topsurface_ironing_emits_for_exposed_layers` moved to
+// `modules/core-modules/top-surface-ironing/tests/top_surface_ironing_emission_tdd.rs`
+// when slicer-runtime was decoupled from module crates — it tested the
+// TopSurfaceIroning module's `run_infill`, which belongs to the module's crate.
+// The host prepass classification it depended on is covered above.
 
 #[test]
 fn staircase_pipeline_is_deterministic_across_runs() {

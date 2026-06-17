@@ -148,7 +148,17 @@ impl PrepassModule for SeamPlannerDefault {
             }
 
             // Sort corners by curvature (highest first = best seam candidates).
-            corner_candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            // Break ties on vertex index so selection is deterministic: the
+            // candidate set is built by iterating a HashMap (random order), and
+            // symmetric meshes (e.g. a cube) produce many equal-curvature
+            // corners — without a stable tie-break, `candidates.first()` would
+            // pick a different corner per process, yielding non-reproducible
+            // G-code. `unwrap_or(Equal)` also avoids a NaN-curvature panic.
+            corner_candidates.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(a.0.cmp(&b.0))
+            });
 
             // Build scored candidates from corner vertices.
             let candidates: Vec<ScoredSeamCandidate> = corner_candidates
@@ -254,79 +264,6 @@ impl PrepassModule for SeamPlannerDefault {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn no_objects_emits_nothing() {
-        let planner = SeamPlannerDefault {
-            mode: "nearest".to_string(),
-        };
-        let objects: Vec<MeshObjectView> = vec![];
-        let mut output = SeamPlanningOutput::new();
-        let result = planner.run_seam_planning(&objects, &mut output, &ConfigView::default());
-        assert!(result.is_ok());
-        assert!(output.entries().is_empty());
-    }
-
-    #[test]
-    fn cube_generates_corner_candidates() {
-        let planner = SeamPlannerDefault {
-            mode: "nearest".to_string(),
-        };
-
-        // Simple cube: 8 vertices, 12 triangles.
-        let vertices = vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0], // bottom face
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [0.0, 1.0, 1.0], // top face
-        ];
-        let triangles = vec![
-            [0, 1, 2],
-            [0, 2, 3], // bottom
-            [4, 6, 5],
-            [4, 7, 6], // top
-            [0, 4, 5],
-            [0, 5, 1], // front
-            [2, 6, 7],
-            [2, 7, 3], // back
-            [0, 3, 7],
-            [0, 7, 4], // left
-            [1, 5, 6],
-            [1, 6, 2], // right
-        ];
-
-        let objects = vec![MeshObjectView {
-            object_id: "cube".to_string(),
-            vertices,
-            triangles,
-            paint_layers: vec![],
-        }];
-
-        let mut output = SeamPlanningOutput::new();
-        let result = planner.run_seam_planning(&objects, &mut output, &ConfigView::default());
-        assert!(result.is_ok(), "seam planning should succeed");
-        let entries = output.entries();
-        assert!(
-            !entries.is_empty(),
-            "cube should generate seam plan entries"
-        );
-
-        // Check that entries have valid fields.
-        for entry in entries {
-            assert!(!entry.object_id.is_empty());
-            assert!(!entry.region_id.is_empty());
-            assert!(entry.scored_candidates.len() <= 10);
-            // Verify chosen_position has valid coordinates.
-            assert!(entry.chosen_position.x.is_finite());
-            assert!(entry.chosen_position.y.is_finite());
-            assert!(entry.chosen_position.z.is_finite());
-        }
-    }
-}
+// Unit tests for this module live in `tests/seam_planner_tdd.rs` (external test
+// crate), built via the public `on_print_start` constructor rather than the
+// private `mode` field.

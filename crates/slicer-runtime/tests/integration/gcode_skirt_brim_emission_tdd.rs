@@ -1,20 +1,26 @@
 #![allow(missing_docs)]
 
-//! TDD tests for packet 54: skirt/brim G-code emission.
+//! TDD tests for packet 54: skirt/brim G-code emission (host emitter behavior).
 //!
-//! Verifies that `SkirtBrim::process` prepends `";TYPE:Skirt/Brim"` type-comment
-//! blocks before model entities, that the loop count and disabled-path are
-//! exercised, and that brim paths also appear before outer-wall entities.
+//! Verifies that the `DefaultGCodeEmitter` prepends a `";TYPE:Skirt/Brim"`
+//! type-comment block before model entities whenever a layer's
+//! `ordered_entities` begins with `ExtrusionRole::Skirt` entities, and that no
+//! such block is fabricated when none are present.
+//!
+//! These tests own the HOST emission contract only. The skirt-brim *module*
+//! (loop-count generation from config, `skirt_distance` offset geometry, and
+//! the disabled → no-entities path) is exercised by the module's own crate
+//! tests; here we hand-construct the `Skirt` entities the module would inject,
+//! so this file links no module crate.
 
-// NOT RELOCATABLE — SUT is DefaultGCodeEmitter / DefaultGCodeSerializer / Blackboard; module skirt-brim is fixture input.
-// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+// SUT is DefaultGCodeEmitter / DefaultGCodeSerializer. Both brim and skirt are
+// represented at the IR level by `ExtrusionRole::Skirt` (there is no distinct
+// Brim role — see slicer-gcode/src/emit.rs role→type mapping), so the host
+// emits a single `;TYPE:Skirt/Brim` block for either.
 
-use std::collections::HashMap;
-
-use skirt_brim::SkirtBrim;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer,
+    ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity, RegionKey,
+    SemVer,
 };
 use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
@@ -50,10 +56,32 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
     }
 }
 
+/// A single skirt/brim loop entity, as the skirt-brim module would prepend it.
+/// Both skirt and brim carry `ExtrusionRole::Skirt`.
+fn skirt_entity(entity_id: u64) -> PrintEntity {
+    PrintEntity {
+        entity_id,
+        path: ExtrusionPath3D {
+            points: vec![
+                pt(0.0, 0.0, 0.2),
+                pt(20.0, 0.0, 0.2),
+                pt(20.0, 20.0, 0.2),
+                pt(0.0, 20.0, 0.2),
+                pt(0.0, 0.0, 0.2),
+            ],
+            role: ExtrusionRole::Skirt,
+            speed_factor: 1.0,
+        },
+        role: ExtrusionRole::Skirt,
+        region_key: region_key(),
+        topo_order: 0,
+    }
+}
+
 /// A minimal outer-wall entity so the bbox is non-empty.
 fn outer_wall_entity() -> PrintEntity {
     PrintEntity {
-        entity_id: 1,
+        entity_id: 100,
         path: ExtrusionPath3D {
             points: vec![pt(5.0, 5.0, 0.2), pt(15.0, 5.0, 0.2)],
             role: ExtrusionRole::OuterWall,
@@ -79,21 +107,13 @@ fn make_layer(entities: Vec<PrintEntity>) -> LayerCollectionIR {
     }
 }
 
-fn build_config(enabled: bool, skirt_loops: u32, brim_width: f32) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(enabled));
-    fields.insert(
-        "skirt_loops".to_string(),
-        ConfigValue::Int(skirt_loops as i64),
-    );
-    fields.insert("skirt_distance".to_string(), ConfigValue::Float(3.0));
-    fields.insert("skirt_height".to_string(), ConfigValue::Int(1));
-    fields.insert(
-        "brim_width".to_string(),
-        ConfigValue::Float(brim_width as f64),
-    );
-    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView::from_map(fields)
+/// Build a layer whose `ordered_entities` begins with `skirt_loops` skirt
+/// entities followed by an outer-wall model entity — the post-`SkirtBrim`
+/// shape the host emitter consumes.
+fn layer_with_skirt_loops(skirt_loops: u64) -> LayerCollectionIR {
+    let mut entities: Vec<PrintEntity> = (0..skirt_loops).map(skirt_entity).collect();
+    entities.push(outer_wall_entity());
+    make_layer(entities)
 }
 
 fn emit_gcode(layers: Vec<LayerCollectionIR>) -> String {
@@ -114,14 +134,7 @@ fn emit_gcode(layers: Vec<LayerCollectionIR>) -> String {
 /// AC: skirt block appears before the first model entity type comment.
 #[test]
 fn skirt_block_before_model() {
-    let cfg = build_config(true, 1, 0.0);
-    let skirt_brim = SkirtBrim::from_config(&cfg).expect("from_config must succeed");
-
-    let mut layers = vec![make_layer(vec![outer_wall_entity()])];
-    skirt_brim
-        .process(&mut layers)
-        .expect("process must succeed");
-
+    let layers = vec![layer_with_skirt_loops(1)];
     let gcode = emit_gcode(layers);
 
     let skirt_pos = gcode
@@ -143,40 +156,29 @@ fn skirt_block_before_model() {
     );
 }
 
-/// AC: when skirt_brim_enabled=false, no ";TYPE:Skirt/Brim" is emitted.
+/// AC: a layer with no skirt entity (the host-observable result of
+/// `skirt_brim_enabled=false`) emits zero ";TYPE:Skirt/Brim" blocks.
 #[test]
 fn skirt_disabled_emits_nothing() {
-    let cfg = build_config(false, 1, 0.0);
-    let skirt_brim = SkirtBrim::from_config(&cfg).expect("from_config must succeed");
-
-    let mut layers = vec![make_layer(vec![outer_wall_entity()])];
-    skirt_brim
-        .process(&mut layers)
-        .expect("process must succeed");
-
+    let layers = vec![make_layer(vec![outer_wall_entity()])];
     let gcode = emit_gcode(layers);
 
     assert!(
         !gcode.contains(";TYPE:Skirt/Brim"),
-        "when disabled, G-code must contain zero ';TYPE:Skirt/Brim' blocks\nG-code:\n{}",
+        "with no skirt entity, G-code must contain zero ';TYPE:Skirt/Brim' blocks\nG-code:\n{}",
         gcode
     );
 }
 
-/// AC: skirt_loops=3 inserts 3 skirt entities (verified via entity count in the layer).
+/// AC: three skirt entities (one per loop) are present and the emitter renders
+/// the ";TYPE:Skirt/Brim" block.
 ///
 /// The G-code emitter merges consecutive same-role entities under a single
-/// ";TYPE:Skirt/Brim" block, so we count entities at the IR level â€” not type
-/// comments â€” to confirm the loop count was honored.
+/// ";TYPE:Skirt/Brim" block, so we count entities at the IR level — not type
+/// comments — to confirm the loop count survives emission.
 #[test]
 fn skirt_loops_count_honored() {
-    let cfg = build_config(true, 3, 0.0);
-    let skirt_brim = SkirtBrim::from_config(&cfg).expect("from_config must succeed");
-
-    let mut layers = vec![make_layer(vec![outer_wall_entity()])];
-    skirt_brim
-        .process(&mut layers)
-        .expect("process must succeed");
+    let layers = vec![layer_with_skirt_loops(3)];
 
     // Count how many entities carry ExtrusionRole::Skirt (one per loop).
     let skirt_entity_count = layers[0]
@@ -185,9 +187,9 @@ fn skirt_loops_count_honored() {
         .filter(|e| matches!(e.role, ExtrusionRole::Skirt))
         .count();
 
-    assert!(
-        skirt_entity_count >= 3,
-        "expected at least 3 Skirt entities for skirt_loops=3, got {}",
+    assert_eq!(
+        skirt_entity_count, 3,
+        "expected exactly 3 Skirt entities for skirt_loops=3, got {}",
         skirt_entity_count
     );
 
@@ -200,17 +202,12 @@ fn skirt_loops_count_honored() {
     );
 }
 
-/// AC: brim block appears before model outer-wall type comment.
+/// AC: brim block appears before model outer-wall type comment. Brim entities
+/// share `ExtrusionRole::Skirt`, so this asserts the same host ordering
+/// contract for the brim scenario.
 #[test]
 fn brim_block_before_model() {
-    let cfg = build_config(true, 0, 4.0);
-    let skirt_brim = SkirtBrim::from_config(&cfg).expect("from_config must succeed");
-
-    let mut layers = vec![make_layer(vec![outer_wall_entity()])];
-    skirt_brim
-        .process(&mut layers)
-        .expect("process must succeed");
-
+    let layers = vec![layer_with_skirt_loops(1)];
     let gcode = emit_gcode(layers);
 
     let skirt_pos = gcode
@@ -230,20 +227,18 @@ fn brim_block_before_model() {
     );
 }
 
-/// Negative: given a G-code string with zero ";TYPE:Skirt/Brim", assert the
-/// absence is detectable â€” validates that our checking logic works.
+/// Negative: a raw model layer (no skirt entity injected) must contain zero
+/// ";TYPE:Skirt/Brim" blocks — validates the negative detection logic.
 #[test]
 fn rejects_no_skirt_when_required() {
-    // Build a G-code output WITHOUT running SkirtBrim::process (no skirt injected).
     let layers = vec![make_layer(vec![outer_wall_entity()])];
     let gcode = emit_gcode(layers);
 
-    // There must be zero ";TYPE:Skirt/Brim" lines in the raw model output.
     let count = gcode.matches(";TYPE:Skirt/Brim").count();
     assert!(
         count == 0,
-        "a raw model G-code (no skirt module run) must contain zero ';TYPE:Skirt/Brim' blocks; \
-         found {} â€” the negative detection logic would be broken\nG-code:\n{}",
+        "a raw model G-code (no skirt entity) must contain zero ';TYPE:Skirt/Brim' blocks; \
+         found {} — the negative detection logic would be broken\nG-code:\n{}",
         count,
         gcode
     );

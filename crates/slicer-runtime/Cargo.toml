@@ -43,24 +43,15 @@ toml = "0.8"
 assert_cmd = "2"
 predicates = "3"
 
-[dev-dependencies.part-cooling]
-path = "../../modules/core-modules/part-cooling"
-
-[dev-dependencies.skirt-brim]
-path = "../../modules/core-modules/skirt-brim"
-
-[dev-dependencies.support-planner]
-path = "../../modules/core-modules/support-planner"
-
-[dev-dependencies.wipe-tower]
-path = "../../modules/core-modules/wipe-tower"
-
-[dev-dependencies.top-surface-ironing]
-path = "../../modules/core-modules/top-surface-ironing"
-
-# Fill-claim modules — used by `infill_partitioned_input_tdd` to assert that
-# the host-side fill partition (Layer::Perimeters commit hook) presents each
-# module with disjoint canonical polygons per fill role.
+# Fill-claim modules — the ONLY remaining module crate dev-dependencies.
+# `infill_partitioned_input_tdd` is a cross-module contract test: a single
+# fixture asserts that all three fill modules confine each role's paths to the
+# host-partitioned polygon for that role. It is intentionally kept here (rather
+# than split per-module) because the contract is shared across the three.
+#
+# Single-module SDK trait tests belong in the module's own `tests/` directory;
+# host plumbing tests (blackboard, dispatch routing, claim dedup) load the
+# module's `.wasm` and dispatch through wasmtime — neither needs a crate dep.
 [dev-dependencies.rectilinear-infill]
 path = "../../modules/core-modules/rectilinear-infill"
 
@@ -69,12 +60,6 @@ path = "../../modules/core-modules/gyroid-infill"
 
 [dev-dependencies.lightning-infill]
 path = "../../modules/core-modules/lightning-infill"
-# NOTE: module crate dev-dependencies cover cross-module integration tests
-# (e.g. fill-claim partition assertions, finalization mutation routing).
-# SDK-level trait tests for a single module's run_* method belong in the
-# module's own `tests/` directory; module-internal host plumbing tests
-# (blackboard, dispatch routing, claim dedup) load the module's `.wasm`
-# and dispatch through wasmtime.
 
 [[bench]]
 name = "pipeline"

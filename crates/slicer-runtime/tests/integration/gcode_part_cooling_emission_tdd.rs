@@ -1,22 +1,28 @@
 #![allow(missing_docs)]
 
-//! TDD tests for packet 53 (TASK-154): part-cooling fan G-code emission config keys.
+//! TDD tests for packet 53 (TASK-154): fan-command G-code emission (host emitter).
+//!
+//! Verifies that the `DefaultGCodeEmitter` renders `LayerCollectionIR`
+//! `annotations` carrying raw fan commands (`M106 S{n}` / `M107`) into the
+//! correct per-layer G-code section and position.
+//!
+//! These tests own the HOST emission contract only. The part-cooling *module*
+//! (which layer gets which fan speed, first-layers disable, overhang bump,
+//! `fan_speed_max=0`) is exercised by the module's own crate tests
+//! (`modules/core-modules/part-cooling/tests/`). Here we hand-construct the
+//! `LayerAnnotation`s the module would emit via `FinalizationOutputBuilder`, so
+//! this file links no module crate.
 
-// NOT RELOCATABLE — SUT is DefaultGCodeEmitter / DefaultGCodeSerializer / Blackboard; module part-cooling is fixture input.
-// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+// SUT is DefaultGCodeEmitter / DefaultGCodeSerializer. Fan commands reach the
+// emitter as `LayerAnnotationKind::Raw` annotations — `push_fan_speed(layer, v)`
+// in the SDK produces exactly `Raw("M106 S{v}")` (or `Raw("M107")` for v==0)
+// at `after_entity_index: 0` (see slicer-sdk/src/traits.rs).
 
-use std::collections::HashMap;
-
-use part_cooling::PartCooling;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer,
+    ExtrusionPath3D, ExtrusionRole, LayerAnnotation, LayerAnnotationKind, LayerCollectionIR,
+    Point3WithWidth, PrintEntity, RegionKey, SemVer,
 };
-use slicer_runtime::{
-    load_module_from_paths, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter,
-    GCodeSerializer,
-};
-use slicer_sdk::traits::FinalizationModule;
+use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // ============================================================================
 // Test fixtures
@@ -50,69 +56,72 @@ fn region_key_fixture(layer_index: u32) -> RegionKey {
     }
 }
 
-fn print_entity_fixture(points: Vec<Point3WithWidth>, role: ExtrusionRole) -> PrintEntity {
+fn wall_entity() -> PrintEntity {
     PrintEntity {
         entity_id: 1,
         path: ExtrusionPath3D {
-            points,
-            role: role.clone(),
+            points: vec![
+                point3_with_width(0.0, 0.0, 0.2),
+                point3_with_width(1.0, 0.0, 0.2),
+            ],
+            role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        role,
+        role: ExtrusionRole::OuterWall,
         region_key: region_key_fixture(0),
         topo_order: 0,
     }
 }
 
-fn layer_with_entity(index: u32, z: f32, entity: PrintEntity) -> LayerCollectionIR {
+/// Raw fan annotation as `push_fan_speed` would record it: `after_entity_index`
+/// 0, body `M106 S{value}` (or `M107` when value is 0).
+fn fan_annotation(value: u8) -> LayerAnnotation {
+    let text = if value == 0 {
+        "M107".to_string()
+    } else {
+        format!("M106 S{}", value)
+    };
+    LayerAnnotation {
+        after_entity_index: 0,
+        kind: LayerAnnotationKind::Raw(text),
+    }
+}
+
+/// A trailing `M107` after the final entity (`after_entity_index: u32::MAX`),
+/// matching the part-cooling module's fan-off annotation.
+fn trailing_fan_off() -> LayerAnnotation {
+    LayerAnnotation {
+        after_entity_index: u32::MAX,
+        kind: LayerAnnotationKind::Raw("M107".to_string()),
+    }
+}
+
+fn layer(index: u32, z: f32, annotations: Vec<LayerAnnotation>) -> LayerCollectionIR {
     LayerCollectionIR {
         schema_version: semver_fixture(),
         global_layer_index: index,
         z,
-        ordered_entities: vec![entity],
+        ordered_entities: vec![wall_entity()],
         tool_changes: vec![],
         z_hops: vec![],
-        annotations: vec![],
+        annotations,
         retracts: vec![],
         travel_moves: vec![],
     }
 }
 
-fn config_view(entries: &[(&str, ConfigValue)]) -> ConfigView {
-    let mut m = HashMap::new();
-    for (k, v) in entries {
-        m.insert(k.to_string(), v.clone());
-    }
-    ConfigView::from_map(m)
-}
-
-/// Run the cooling module on the given layers and return the serialized GCode text.
-fn run_cooling_and_serialize(config: &ConfigView, layers: &mut Vec<LayerCollectionIR>) -> String {
-    let module = PartCooling::from_config(config).expect("config must be valid");
-    let sdk_layers: Vec<slicer_sdk::traits::LayerCollectionView> = layers
-        .iter()
-        .map(|l| slicer_sdk::traits::LayerCollectionView::new(l.clone()))
-        .collect();
-    let mut output = slicer_sdk::traits::FinalizationOutputBuilder::new();
-    module
-        .run_finalization(&sdk_layers, &mut output, config)
-        .expect("run_finalization must succeed");
-    output.apply_to(layers).expect("apply_to must succeed");
-
+fn emit(layers: &[LayerCollectionIR]) -> String {
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
-    let gcode_ir = emitter
-        .emit_gcode(layers.as_slice())
-        .expect("emit_gcode must succeed");
+    let gcode_ir = emitter.emit_gcode(layers).expect("emit_gcode must succeed");
     let serializer = DefaultGCodeSerializer::new();
     serializer
         .serialize_gcode(&gcode_ir)
         .expect("serialize_gcode must succeed")
 }
 
-/// Split serialized GCode text into per-layer sections using `;LAYER_CHANGE` as the delimiter.
-///
-/// Drops anything before the first `;LAYER_CHANGE` (the emitter writes a
-/// header preamble there), so `sections[i]` corresponds to layer `i`.
+/// Split serialized GCode text into per-layer sections using `;LAYER_CHANGE` as
+/// the delimiter. Drops anything before the first `;LAYER_CHANGE` (the emitter
+/// writes a header preamble there), so `sections[i]` corresponds to layer `i`.
 fn layer_sections(text: &str) -> Vec<&str> {
     let mut sections = Vec::new();
     let mut positions: Vec<usize> = text
@@ -130,127 +139,19 @@ fn layer_sections(text: &str) -> Vec<&str> {
 }
 
 // ============================================================================
-// Config schema tests
-// ============================================================================
-
-/// Loads the part-cooling module manifest from `modules/core-modules/` and
-/// asserts that the eight cooling-related config keys are declared with the
-/// expected types and defaults. The previous version of this test asserted
-/// against a host-side `FullConfigSchema::default()` registry that was a
-/// hand-maintained duplicate of this TOML; the registry was removed and the
-/// assertions are now TOML-backed.
-#[test]
-fn cooling_keys_registered() {
-    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("modules")
-        .join("core-modules")
-        .join("part-cooling");
-    let manifest_path = manifest_dir.join("part-cooling.toml");
-    let wasm_path = manifest_dir.join("part-cooling.wasm");
-    let module = load_module_from_paths(&manifest_path, &wasm_path)
-        .expect("part-cooling.toml must ingest cleanly");
-    let entries = &module.config_schema().entries;
-
-    // (key, expected field_type, expected default-as-TOML-literal)
-    let expected_int_keys = [
-        ("fan_speed_min", "51"),
-        ("fan_speed_max", "255"),
-        ("disable_fan_first_layers", "1"),
-        ("overhang_fan_speed", "100"),
-    ];
-    for (key, default_literal) in expected_int_keys {
-        let entry = entries
-            .get(key)
-            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
-        assert_eq!(entry.field_type, "int", "expected int type for {key}");
-        assert_eq!(
-            entry.default.as_deref(),
-            Some(default_literal),
-            "incorrect default for {key}"
-        );
-        assert_eq!(
-            entry.group.as_deref(),
-            Some("Cooling"),
-            "expected Cooling group for {key}"
-        );
-    }
-
-    let expected_bool_keys = [
-        ("enable_overhang_fan", "true"),
-        ("slow_down_for_layer_cooling", "true"),
-    ];
-    for (key, default_literal) in expected_bool_keys {
-        let entry = entries
-            .get(key)
-            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
-        assert_eq!(entry.field_type, "bool", "expected bool type for {key}");
-        assert_eq!(
-            entry.default.as_deref(),
-            Some(default_literal),
-            "incorrect default for {key}"
-        );
-        assert_eq!(
-            entry.group.as_deref(),
-            Some("Cooling"),
-            "expected Cooling group for {key}"
-        );
-    }
-
-    // Floats: compare numerically because the TOML crate may serialize 10.0
-    // back as "10.0" or "10" depending on version.
-    let expected_float_keys = [
-        ("slow_down_min_speed", 10.0_f64),
-        ("slow_down_layer_time", 5.0),
-    ];
-    for (key, expected_default) in expected_float_keys {
-        let entry = entries
-            .get(key)
-            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
-        assert_eq!(entry.field_type, "float", "expected float type for {key}");
-        let raw = entry
-            .default
-            .as_deref()
-            .unwrap_or_else(|| panic!("missing default for {key}"));
-        let parsed: f64 = raw
-            .parse()
-            .unwrap_or_else(|_| panic!("non-numeric default '{raw}' for {key}"));
-        assert!(
-            (parsed - expected_default).abs() < f64::EPSILON,
-            "incorrect default for {key}: expected {expected_default}, got {parsed}"
-        );
-        assert_eq!(
-            entry.group.as_deref(),
-            Some("Cooling"),
-            "expected Cooling group for {key}"
-        );
-    }
-}
-
-// ============================================================================
-// Positive acceptance criteria
+// Positive: fan annotations render into the right per-layer section
 // ============================================================================
 
 #[test]
-fn m106_present_after_layer_2() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(255)),
-        ("disable_fan_first_layers", ConfigValue::Int(1)),
-        ("enable_overhang_fan", ConfigValue::Bool(false)),
-    ]);
-
-    let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let mut layers = vec![
-        layer_with_entity(0, 0.2, entity.clone()),
-        layer_with_entity(1, 0.4, entity.clone()),
-        layer_with_entity(2, 0.6, entity.clone()),
+fn m106_annotation_renders_in_its_layer_section() {
+    // layer 0: fan off (M107); layer 2: fan on (M106 S255).
+    let layers = vec![
+        layer(0, 0.2, vec![fan_annotation(0)]),
+        layer(1, 0.4, vec![fan_annotation(255)]),
+        layer(2, 0.6, vec![fan_annotation(255)]),
     ];
 
-    let text = run_cooling_and_serialize(&config, &mut layers);
+    let text = emit(&layers);
     let sections = layer_sections(&text);
 
     assert!(
@@ -258,187 +159,71 @@ fn m106_present_after_layer_2() {
         "expected at least 3 layer sections, got {}",
         sections.len()
     );
-    // layer 0: M107 only
     assert!(
         sections[0].contains("M107"),
-        "layer 0 should have M107 (fan off)"
+        "layer 0 annotation (M107) must render in its section"
     );
-    // layer 2: M106 S255 present
     assert!(
         sections[2].contains("M106 S255"),
-        "layer 2 should have M106 S255"
+        "layer 2 annotation (M106 S255) must render in its section"
     );
 }
 
 #[test]
-fn fan_off_before_end_gcode() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(255)),
-        ("disable_fan_first_layers", ConfigValue::Int(1)),
-        ("enable_overhang_fan", ConfigValue::Bool(false)),
-    ]);
-
-    let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let mut layers = vec![
-        layer_with_entity(0, 0.2, entity.clone()),
-        layer_with_entity(1, 0.4, entity.clone()),
+fn trailing_m107_renders_after_last_layer() {
+    let layers = vec![
+        layer(0, 0.2, vec![fan_annotation(0)]),
+        layer(1, 0.4, vec![fan_annotation(255), trailing_fan_off()]),
     ];
 
-    let text = run_cooling_and_serialize(&config, &mut layers);
+    let text = emit(&layers);
 
-    // The trailing M107 should be present after the last layer.
     assert!(
         text.contains("M107"),
         "M107 must be present to turn fan off after last layer"
     );
-    // Count M107 occurrences: one for layer 0 + one trailing = 2
+    // One M107 for layer 0 + one trailing fan-off on the last layer = 2.
     let m107_count = text.matches("M107").count();
     assert_eq!(m107_count, 2, "expected exactly 2 M107 commands");
 }
 
 #[test]
-fn fan_disabled_on_first_layers() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(255)),
-        ("disable_fan_first_layers", ConfigValue::Int(2)),
-        ("enable_overhang_fan", ConfigValue::Bool(false)),
-    ]);
+fn multiple_annotations_on_one_layer_all_render() {
+    // Overhang bump pattern: base M106 then a bumped M106 then a restore.
+    let layers = vec![layer(
+        0,
+        0.2,
+        vec![
+            fan_annotation(255),
+            fan_annotation(100),
+            fan_annotation(255),
+        ],
+    )];
 
-    let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let mut layers = vec![
-        layer_with_entity(0, 0.2, entity.clone()),
-        layer_with_entity(1, 0.4, entity.clone()),
-        layer_with_entity(2, 0.6, entity.clone()),
-        layer_with_entity(3, 0.8, entity.clone()),
-    ];
-
-    let text = run_cooling_and_serialize(&config, &mut layers);
-    let sections = layer_sections(&text);
-
-    assert!(sections.len() >= 4);
-    // layers 0,1 must have no M106 S>0
-    for (idx, section) in sections.iter().take(2).enumerate() {
-        assert!(
-            !section.contains("M106 S"),
-            "layer {} must not contain any M106 command",
-            idx
-        );
-    }
-    // layers 2,3 must have M106 S255
+    let text = emit(&layers);
+    assert!(text.contains("M106 S255"), "base/restore M106 must render");
+    assert!(text.contains("M106 S100"), "bumped M106 must render");
     assert!(
-        sections[2].contains("M106 S255"),
-        "layer 2 should have M106 S255"
-    );
-    assert!(
-        sections[3].contains("M106 S255"),
-        "layer 3 should have M106 S255"
-    );
-}
-
-#[test]
-fn overhang_fan_bumped() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(255)),
-        ("disable_fan_first_layers", ConfigValue::Int(0)),
-        ("enable_overhang_fan", ConfigValue::Bool(true)),
-        ("overhang_fan_speed", ConfigValue::Int(100)),
-    ]);
-
-    let wall = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let bridge = print_entity_fixture(
-        vec![point3_with_width(1.0, 1.0, 0.2)],
-        ExtrusionRole::BridgeInfill,
-    );
-    let mut layers = vec![LayerCollectionIR {
-        schema_version: semver_fixture(),
-        global_layer_index: 0,
-        z: 0.2,
-        ordered_entities: vec![wall.clone(), bridge.clone(), wall.clone()],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }];
-
-    let text = run_cooling_and_serialize(&config, &mut layers);
-
-    // There should be an M106 S255 for the overhang bump.
-    let m106_count = text.matches("M106 S255").count();
-    // base layer + overhang bump + restore = 3
-    assert!(
-        m106_count >= 3,
-        "expected at least 3 M106 S255 commands (base + bump + restore), got {}",
-        m106_count
-    );
-}
-
-#[test]
-fn cooling_module_invoked_in_finalization() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(255)),
-        ("disable_fan_first_layers", ConfigValue::Int(0)),
-        ("enable_overhang_fan", ConfigValue::Bool(false)),
-    ]);
-
-    let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let mut layers = vec![layer_with_entity(0, 0.2, entity)];
-
-    let text = run_cooling_and_serialize(&config, &mut layers);
-
-    assert!(
-        text.contains("M106 S255"),
-        "cooling module must emit M106 S255 when enabled"
+        text.matches("M106 S255").count() >= 2,
+        "both base and restore M106 S255 must render"
     );
 }
 
 // ============================================================================
-// Negative cases
+// Negative
 // ============================================================================
 
 #[test]
-fn rejects_phantom_fan_when_disabled() {
-    let config = config_view(&[
-        ("fan_speed_max", ConfigValue::Int(0)),
-        ("disable_fan_first_layers", ConfigValue::Int(1)),
-        ("enable_overhang_fan", ConfigValue::Bool(false)),
-    ]);
+fn no_fan_annotation_emits_no_fan_command() {
+    let layers = vec![layer(0, 0.2, vec![]), layer(1, 0.4, vec![])];
 
-    let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2)],
-        ExtrusionRole::OuterWall,
-    );
-    let mut layers = vec![
-        layer_with_entity(0, 0.2, entity.clone()),
-        layer_with_entity(1, 0.4, entity.clone()),
-    ];
-
-    let text = run_cooling_and_serialize(&config, &mut layers);
-
-    // Zero M106 S>0
+    let text = emit(&layers);
     assert!(
         !text.contains("M106 S"),
-        "fan disabled: must contain no M106 commands"
+        "layers without fan annotations must emit no M106"
     );
-    // Exactly one M107
-    let m107_count = text.matches("M107").count();
-    assert_eq!(m107_count, 1, "fan disabled: expected exactly one M107");
+    assert!(
+        !text.contains("M107"),
+        "layers without fan annotations must emit no M107"
+    );
 }
-
-// Note: `rejects_cooling_missing_when_required` was moved to
-// `tests/e2e/benchy_end_to_end_tdd.rs` (it runs the real pnp_cli binary
-// end-to-end and was structurally an e2e test). The cache machinery for
-// the no-part-cooling module directory lives in
-// `tests/common/slicer_cache.rs` as `ModuleDirKind::PartCoolingFiltered`.
