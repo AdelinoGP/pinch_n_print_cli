@@ -42,6 +42,10 @@ jobs:
             exit 1
           fi
           echo "OK: no stale crate/WIT paths in numbered reference docs."
+      - name: Type Check
+        run: cargo check --workspace
+      - name: Deviation status + config docs in sync
+        run: cargo run -q -p xtask -- check-deviations --check
 
   clippy:
     name: Clippy
@@ -60,44 +64,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - name: Type Check
-        run: cargo check --workspace
       - name: Build
         run: cargo build --workspace
-      - name: Deviation status + config docs in sync
-        run: cargo run -q -p xtask -- check-deviations --check
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
+      - name: Check guest freshness
+        run: cargo xtask build-guests --check
       - name: Test Core (narrow)
         run: cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
         run: cargo test -p slicer-runtime && cargo test -p pnp-cli && cargo test -p slicer-helpers
-
-  wasm:
-    name: WASM Modules
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - name: Install wasm-tools
-        run: cargo install wasm-tools
-      - name: Build guest WASMs
-        run: cargo xtask build-guests
-      - name: Check freshness
-        run: cargo xtask build-guests --check
-
-  test-guests:
-    name: Test Guests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
-      - name: Install wasm-tools
-        run: cargo install wasm-tools
-      - name: Build guest WASMs
-        run: cargo xtask build-guests
