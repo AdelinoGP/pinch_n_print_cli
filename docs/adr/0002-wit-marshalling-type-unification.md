@@ -49,6 +49,11 @@ A future fifth world must **remap its geometry/config onto the layer world**, no
 regenerate them — otherwise its types won't be identical to the others' and the
 shared converters/impls won't apply.
 
+Packet 114 extended the remap set: the `slicer:common` interfaces (`host-services`,
+`module-errors`) are now also remapped onto the layer world via `bindgen!` `with:`,
+alongside the existing geometry/config remaps. Any future world (fifth world) MUST
+also remap these `slicer:common` interfaces onto the layer world.
+
 ## Deferred
 
 The per-world extrusion-role / extrusion-path / retract-mode converters
