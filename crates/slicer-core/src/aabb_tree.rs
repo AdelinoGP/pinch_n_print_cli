@@ -3,7 +3,8 @@
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
 //
-// Original C++ source path: src/libslic3r/AABBTreeLines.cpp / AABBTreeIndirect.hpp
+// Original C++ source path: src/libslic3r/AABBTreeIndirect.hpp
+// Original code owner: Alec Jacobson (libigl) — Copyright (C) 2015 Alec Jacobson <alecjacobson@gmail.com>
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the ModularSlicer architecture.

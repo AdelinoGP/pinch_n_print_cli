@@ -3,7 +3,8 @@
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
 //
-// Original C++ source path: src/libslic3r/Arachne/.*
+// Original C++ source path: src/libslic3r/Arachne/WallToolPaths.cpp
+// Original code owner: Ultimaker B.V. (Copyright (c) 2022 Ultimaker B.V.)
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the ModularSlicer architecture.
