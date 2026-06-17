@@ -69,6 +69,13 @@ is the authoritative catalog of their defaults and ranges.
 | `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
+| `inner_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
+| `outer_wall_speed` | float | `60.0` | — | `overhang-classifier-default` |
+| `overhang_1_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
+| `overhang_2_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
+| `overhang_3_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
+| `overhang_4_4_speed` | float | `0.0` | — | `overhang-classifier-default` |
+| `thin_wall_speed` | float | `30.0` | — | `overhang-classifier-default` |
 | `disable_fan_first_layers` | int | `1` | >= 0.0 | `part-cooling` |
 | `enable_overhang_fan` | bool | `true` | — | `part-cooling` |
 | `fan_speed_max` | int | `255` | [0.0, 255.0] | `part-cooling` |
@@ -87,8 +94,8 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `rectilinear-infill` |
-| `seam_mode` | string | `"nearest"` | — | `seam-placer` |
-| `seam_mode` | string | `"nearest"` | — | `seam-planner-default` |
+| `seam_mode` | enum | `"nearest"` | — | `seam-placer` |
+| `seam_mode` | enum | `"nearest"` | — | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
@@ -114,7 +121,7 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
 | `ironing_enabled` | bool | `true` | — | `top-surface-ironing` |
 | `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
-| `ironing_pattern` | string | `"rectilinear"` | — | `top-surface-ironing` |
+| `ironing_pattern` | enum | `"rectilinear"` | — | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |

@@ -16,8 +16,8 @@ SUBCOMMANDS:
     build-guests          Build every core-module and test-guest WASM component.
     build-guests --check  Exit 1 if any guest artifact is stale.
     build-guests --list   Print every discovered guest (crate name, manifest, expected artifact path).
-    check-deviations          Regenerate the Open Deviation Map in docs/07 from docs/DEVIATION_LOG.md.
-    check-deviations --check  Exit 1 if doc 07's Open Deviation Map is out of sync with the log.
+    check-deviations          Regenerate doc 07 Open Deviation Map + doc 15 config tables.
+    check-deviations --check  Exit 1 if doc 07 or doc 15 generated sections are stale.
     gen-config-docs           Regenerate the generated tables in docs/15 from manifests + host-keys.toml.
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
@@ -64,21 +64,20 @@ fn main() -> ExitCode {
         }
         Some("check-deviations") => {
             let flag = args.get(1).map(String::as_str);
-            match flag {
-                None => {
-                    let ws = build_guests::workspace_root();
-                    ExitCode::from(check_deviations::run(&ws, false) as u8)
-                }
-                Some("--check") => {
-                    let ws = build_guests::workspace_root();
-                    ExitCode::from(check_deviations::run(&ws, true) as u8)
-                }
-                Some(other) => {
-                    eprintln!("xtask: unknown flag '{other}' for check-deviations\n");
+            let ws = build_guests::workspace_root();
+            let check_only = matches!(flag, Some("--check"));
+            if let Some(f) = flag {
+                if f != "--check" {
+                    eprintln!("xtask: unknown flag '{f}' for check-deviations\n");
                     eprintln!("{USAGE}");
-                    ExitCode::from(2)
+                    return ExitCode::from(2);
                 }
             }
+            let mut code = check_deviations::run(&ws, check_only);
+            if code == 0 {
+                code = gen_config_docs::run(&ws, check_only);
+            }
+            ExitCode::from(code as u8)
         }
         Some("dist") => {
             let flag = args.get(1).map(String::as_str);

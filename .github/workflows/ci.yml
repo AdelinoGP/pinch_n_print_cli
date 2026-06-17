@@ -15,7 +15,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -25,7 +25,7 @@ jobs:
     name: Docs staleness guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Numbered reference docs must not cite crate paths the project removed in
       # Packet 69 (slicer-host -> slicer-runtime, slicer-cli deleted) or the
       # top-level wit/ deleted in Packet 72. History/status docs are excluded:
@@ -47,7 +47,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -58,17 +58,15 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Type Check
         run: cargo check --workspace
       - name: Build
         run: cargo build --workspace
-      - name: Deviation status in sync (docs/07 vs DEVIATION_LOG)
+      - name: Deviation status + config docs in sync
         run: cargo run -q -p xtask -- check-deviations --check
-      - name: Config docs in sync (docs/15 vs manifests + host-keys.toml)
-        run: cargo run -q -p xtask -- gen-config-docs --check
       - name: Test Core (narrow)
         run: cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
@@ -78,7 +76,7 @@ jobs:
     name: WASM Modules
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -94,7 +92,7 @@ jobs:
     name: Test Guests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
