@@ -1,22 +1,29 @@
-//! Red-first TDD: each fill-claim infill module (rectilinear, gyroid, lightning)
-//! must emit each role over its dedicated host-partitioned polygon and ONLY that
-//! polygon — never over the wall-inset outline, never over sibling roles.
+//! Regression guard: each fill-claim infill module (rectilinear, gyroid,
+//! lightning) must emit each role over its dedicated host-partitioned polygon
+//! and ONLY that polygon — never over the wall-inset outline, never over a
+//! sibling role's polygon.
 //!
-//! Contract (per `docs/specs/infill-fill-partition-plan.md` Q3 + Q7):
+//! Contract (per `docs/specs/_OLD/infill-fill-partition-plan.md` Q3 + Q7):
 //! - SparseInfill paths confined to `region.sparse_infill_area()`.
 //! - TopSolidInfill confined to `region.top_solid_fill()`.
 //! - BottomSolidInfill confined to `region.bottom_solid_fill()`.
 //! - BridgeInfill confined to `region.bridge_areas()`.
 //! - When a claim's source polygon is empty, zero paths of that role emit.
+//! - `should_emit()` gates each role by held claim independent of polygon state.
 //!
-//! The current per-region role-pick (top_shell_index.is_some() ladder) in each
-//! module IS the bug under fix — every test here is red until Phase 2.2 lands.
+//! History: these started red-first against the per-region role-pick
+//! (`top_shell_index.is_some()` ladder) bug. Phase 2.2 landed the per-role,
+//! per-polygon emit and the ladder is gone, so this file now serves as a
+//! regression guard. Each confinement check is paired with a positive
+//! "≥1 path emitted" assertion so a module that silently emits *nothing*
+//! cannot pass vacuously.
 
 use gyroid_infill::GyroidInfill;
 use lightning_infill::LightningInfill;
 use rectilinear_infill::RectilinearInfill;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
+    point_in_polygon_winding, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
+    Point2, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
@@ -39,6 +46,26 @@ fn square(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ExPolygon {
     }
 }
 
+/// Concave L-shape: the left column + bottom row of a 10×10 area. The top-right
+/// 6×6 quadrant (the "notch") is OUTSIDE the polygon but INSIDE its bounding
+/// box — so an AABB check accepts a path leaking into the notch while the
+/// winding check rejects it. This is what makes the winding upgrade load-bearing.
+fn l_shape() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 4.0),
+                Point2::from_mm(4.0, 4.0),
+                Point2::from_mm(4.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
 fn min_density_config() -> ConfigView {
     let mut map = std::collections::HashMap::new();
     map.insert("infill_density".into(), ConfigValue::Float(0.5));
@@ -46,47 +73,43 @@ fn min_density_config() -> ConfigView {
     ConfigView::from_map(map)
 }
 
-/// AABB containment test in mm space. Returns true if every point of `path`
-/// lies inside the AABB of any polygon in `containers` (with epsilon).
+/// True polygon containment in mm space (winding number + boundary tolerance),
+/// not AABB. Returns true when every point of `path` lies inside (or within
+/// `CONTAIN_EPS_MM` of) the contour of any polygon in `containers`. Path points
+/// are already mm (`Point3WithWidth`); container points are integer units and
+/// `point_in_polygon_winding` converts them internally.
 fn path_inside_any(path: &ExtrusionPath3D, containers: &[ExPolygon]) -> bool {
     if containers.is_empty() {
         return false;
     }
-    for pt in &path.points {
-        if !point_in_any_aabb_mm(pt.x, pt.y, containers) {
-            return false;
-        }
-    }
-    true
+    path.points.iter().all(|pt| {
+        containers
+            .iter()
+            .any(|c| point_in_polygon_winding(c, pt.x as f64, pt.y as f64, CONTAIN_EPS_MM))
+    })
 }
 
-fn point_in_any_aabb_mm(x_mm: f32, y_mm: f32, polys: &[ExPolygon]) -> bool {
-    const EPS: f32 = 0.001; // 1 µm tolerance
-    for ep in polys {
-        let (mut min_x, mut min_y) = (f32::INFINITY, f32::INFINITY);
-        let (mut max_x, mut max_y) = (f32::NEG_INFINITY, f32::NEG_INFINITY);
-        for p in &ep.contour.points {
-            let px = p.x as f32 / 10_000.0; // unit→mm
-            let py = p.y as f32 / 10_000.0;
-            if px < min_x {
-                min_x = px;
-            }
-            if py < min_y {
-                min_y = py;
-            }
-            if px > max_x {
-                max_x = px;
-            }
-            if py > max_y {
-                max_y = py;
-            }
-        }
-        if x_mm >= min_x - EPS && x_mm <= max_x + EPS && y_mm >= min_y - EPS && y_mm <= max_y + EPS
-        {
-            return true;
-        }
+/// 10 µm boundary tolerance: fill strokes whose terminators land exactly on the
+/// source-polygon contour count as inside, while a leak into the (≥6 mm wide)
+/// notch is far outside tolerance and still fails.
+const CONTAIN_EPS_MM: f64 = 0.01;
+
+/// Mirror of `SliceRegionView::should_emit`'s role→claim mapping
+/// (`crates/slicer-sdk/src/views.rs`). Kept in lockstep so `held_claims`
+/// fixtures gate exactly the way production dispatch does. The SDK exposes no
+/// public constant for these strings, so this is the single source in the test.
+fn claim_for_role(role: ExtrusionRole) -> &'static str {
+    match role {
+        ExtrusionRole::SparseInfill => "claim:sparse-fill",
+        ExtrusionRole::TopSolidInfill => "claim:top-fill",
+        ExtrusionRole::BottomSolidInfill => "claim:bottom-fill",
+        ExtrusionRole::BridgeInfill => "claim:bridge-fill",
+        other => panic!("claim_for_role: non-fill role {other:?}"),
     }
-    false
+}
+
+fn role_in(roles: &[ExtrusionRole], role: &ExtrusionRole) -> bool {
+    roles.iter().any(|r| r == role)
 }
 
 /// Build a region with the four canonical polygons placed in disjoint quadrants
@@ -117,6 +140,28 @@ fn region_with_disjoint_quadrants() -> SliceRegionView {
         .build()
 }
 
+/// `(role, source-polygon)` pairs matching `region_with_disjoint_quadrants`.
+fn role_quadrants() -> Vec<(ExtrusionRole, Vec<ExPolygon>)> {
+    vec![
+        (
+            ExtrusionRole::SparseInfill,
+            vec![square(0.0, 0.0, 5.0, 5.0)],
+        ),
+        (
+            ExtrusionRole::TopSolidInfill,
+            vec![square(0.0, 5.0, 5.0, 10.0)],
+        ),
+        (
+            ExtrusionRole::BottomSolidInfill,
+            vec![square(5.0, 0.0, 10.0, 5.0)],
+        ),
+        (
+            ExtrusionRole::BridgeInfill,
+            vec![square(5.0, 5.0, 10.0, 10.0)],
+        ),
+    ]
+}
+
 /// All collected paths (sparse + solid + ironing) for assertion.
 fn collect_all_paths(output: &InfillOutputBuilder) -> Vec<ExtrusionPath3D> {
     output
@@ -137,6 +182,14 @@ fn paths_with_role(paths: &[ExtrusionPath3D], role: ExtrusionRole) -> Vec<Extrus
 
 // ── module dispatch table ────────────────────────────────────────────────────
 
+const ALL_FILL_ROLES: [ExtrusionRole; 4] = [
+    ExtrusionRole::SparseInfill,
+    ExtrusionRole::TopSolidInfill,
+    ExtrusionRole::BottomSolidInfill,
+    ExtrusionRole::BridgeInfill,
+];
+const SPARSE_ONLY: [ExtrusionRole; 1] = [ExtrusionRole::SparseInfill];
+
 enum FillModule {
     Rectilinear(RectilinearInfill),
     Gyroid(GyroidInfill),
@@ -151,11 +204,12 @@ impl FillModule {
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) {
-        match self {
-            Self::Rectilinear(m) => m.run_infill(layer_index, regions, output, config).unwrap(),
-            Self::Gyroid(m) => m.run_infill(layer_index, regions, output, config).unwrap(),
-            Self::Lightning(m) => m.run_infill(layer_index, regions, output, config).unwrap(),
-        }
+        let result = match self {
+            Self::Rectilinear(m) => m.run_infill(layer_index, regions, output, config),
+            Self::Gyroid(m) => m.run_infill(layer_index, regions, output, config),
+            Self::Lightning(m) => m.run_infill(layer_index, regions, output, config),
+        };
+        result.unwrap_or_else(|e| panic!("[{}] run_infill failed: {e:?}", self.name()));
     }
 
     fn name(&self) -> &'static str {
@@ -163,6 +217,17 @@ impl FillModule {
             Self::Rectilinear(_) => "rectilinear-infill",
             Self::Gyroid(_) => "gyroid-infill",
             Self::Lightning(_) => "lightning-infill",
+        }
+    }
+
+    /// Roles this module is expected to populate given a non-empty source
+    /// polygon. Lightning declares only `claim:sparse-fill` (packet 37);
+    /// solid/bridge are delegated to sibling modules, so it must emit sparse
+    /// ONLY. Rectilinear and gyroid hold all four fill claims.
+    fn expected_roles(&self) -> &'static [ExtrusionRole] {
+        match self {
+            Self::Rectilinear(_) | Self::Gyroid(_) => &ALL_FILL_ROLES,
+            Self::Lightning(_) => &SPARSE_ONLY,
         }
     }
 }
@@ -182,11 +247,6 @@ fn all_three_modules() -> Vec<FillModule> {
 fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
     let region = region_with_disjoint_quadrants();
 
-    let bottom_left = vec![square(0.0, 0.0, 5.0, 5.0)];
-    let bottom_right = vec![square(5.0, 0.0, 10.0, 5.0)];
-    let top_left = vec![square(0.0, 5.0, 5.0, 10.0)];
-    let top_right = vec![square(5.0, 5.0, 10.0, 10.0)];
-
     for module in all_three_modules() {
         let mut output = InfillOutputBuilder::new();
         module.run(
@@ -196,37 +256,79 @@ fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
             &min_density_config(),
         );
         let all = collect_all_paths(&output);
+        let expected = module.expected_roles();
 
-        let sparse = paths_with_role(&all, ExtrusionRole::SparseInfill);
-        let top = paths_with_role(&all, ExtrusionRole::TopSolidInfill);
-        let bot = paths_with_role(&all, ExtrusionRole::BottomSolidInfill);
-        let br = paths_with_role(&all, ExtrusionRole::BridgeInfill);
+        for (role, source) in role_quadrants() {
+            let paths = paths_with_role(&all, role.clone());
 
+            if role_in(expected, &role) {
+                // Positive: a module that holds this claim MUST emit at least
+                // one path. Without this, the confinement loop below is vacuous
+                // — a module emitting nothing would pass silently.
+                assert!(
+                    !paths.is_empty(),
+                    "[{}] expected ≥1 {:?} path over its source polygon; got 0 \
+                     (vacuous-confinement regression)",
+                    module.name(),
+                    role
+                );
+                for p in &paths {
+                    assert!(
+                        path_inside_any(p, &source),
+                        "[{}] {:?} path escaped its source polygon",
+                        module.name(),
+                        role
+                    );
+                }
+            } else {
+                // Negative: lightning delegates solid/bridge to sibling modules,
+                // so it must emit nothing for those roles.
+                assert!(
+                    paths.is_empty(),
+                    "[{}] {:?} is delegated to sibling modules; expected 0 paths, got {}",
+                    module.name(),
+                    role,
+                    paths.len()
+                );
+            }
+        }
+    }
+}
+
+// ── AC-7b: concave source polygon — confinement via winding, not AABB ────────
+
+#[test]
+fn ac7b_concave_sparse_area_confined_via_winding_not_just_aabb() {
+    let area = l_shape();
+    let region = SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(0)
+        .z(0.2)
+        .effective_layer_height(0.2)
+        .add_polygon(square(0.0, 0.0, 10.0, 10.0))
+        .sparse_infill_area(vec![area.clone()])
+        .build();
+
+    let containers = [area];
+    for module in all_three_modules() {
+        let mut output = InfillOutputBuilder::new();
+        module.run(
+            0,
+            std::slice::from_ref(&region),
+            &mut output,
+            &min_density_config(),
+        );
+        let sparse = paths_with_role(&collect_all_paths(&output), ExtrusionRole::SparseInfill);
+        assert!(
+            !sparse.is_empty(),
+            "[{}] expected ≥1 SparseInfill path over the L-shaped area; got 0",
+            module.name()
+        );
         for p in &sparse {
             assert!(
-                path_inside_any(p, &bottom_left),
-                "[{}] SparseInfill path escaped sparse_infill_area (bottom_left quadrant)",
-                module.name()
-            );
-        }
-        for p in &top {
-            assert!(
-                path_inside_any(p, &top_left),
-                "[{}] TopSolidInfill path escaped top_solid_fill (top_left quadrant)",
-                module.name()
-            );
-        }
-        for p in &bot {
-            assert!(
-                path_inside_any(p, &bottom_right),
-                "[{}] BottomSolidInfill path escaped bottom_solid_fill (bottom_right quadrant)",
-                module.name()
-            );
-        }
-        for p in &br {
-            assert!(
-                path_inside_any(p, &top_right),
-                "[{}] BridgeInfill path escaped bridge_areas (top_right quadrant)",
+                path_inside_any(p, &containers),
+                "[{}] SparseInfill path leaked outside the concave L-shape \
+                 (into the notch an AABB check would miss)",
                 module.name()
             );
         }
@@ -258,13 +360,28 @@ fn ac8_empty_sparse_infill_area_yields_zero_sparse_paths_even_with_top_flag_set(
             &mut output,
             &min_density_config(),
         );
-        let sparse = paths_with_role(&collect_all_paths(&output), ExtrusionRole::SparseInfill);
+        let all = collect_all_paths(&output);
+
+        let sparse = paths_with_role(&all, ExtrusionRole::SparseInfill);
         assert!(
             sparse.is_empty(),
             "[{}] expected 0 SparseInfill paths when sparse_infill_area is empty; got {}",
             module.name(),
             sparse.len()
         );
+
+        // Positive guard: for modules that produce solid fill, top MUST emit —
+        // proving the zero-sparse result is the partition working, not the
+        // module no-op'ing on this fixture.
+        if role_in(module.expected_roles(), &ExtrusionRole::TopSolidInfill) {
+            let top = paths_with_role(&all, ExtrusionRole::TopSolidInfill);
+            assert!(
+                !top.is_empty(),
+                "[{}] top_solid_fill is populated; expected ≥1 TopSolidInfill path \
+                 (zero would mean the module did nothing, not that sparse was empty)",
+                module.name()
+            );
+        }
     }
 }
 
@@ -302,11 +419,15 @@ fn ac9_all_four_polygons_empty_yields_zero_paths_no_panic() {
     }
 }
 
-// ── NEG-1: should_emit gating still works under the new structure ────────────
+// ── NEG-1: should_emit gating filters roles by held_claims ───────────────────
 
 #[test]
-fn neg1_top_solid_fill_populated_but_top_claim_not_held_yields_zero_top_paths() {
-    let region = SliceRegionViewBuilder::new()
+fn neg1_should_emit_gating_filters_top_role_by_held_claims() {
+    // Region with a populated top_solid_fill (the whole 10×10 square) and the
+    // top-shell flag set. Whether TopSolidInfill paths appear must depend ONLY
+    // on whether `claim:top-fill` is held — not on the flag, not on the polygon
+    // being non-empty.
+    let base = SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(0)
         .z(0.2)
@@ -314,29 +435,60 @@ fn neg1_top_solid_fill_populated_but_top_claim_not_held_yields_zero_top_paths() 
         .add_polygon(square(0.0, 0.0, 10.0, 10.0))
         .top_shell_index(Some(0))
         .top_solid_fill(vec![square(0.0, 0.0, 10.0, 10.0)])
-        // sparse + bottom + bridge empty
         .build();
 
-    // Force should_emit to gate out claim:top-fill by populating held_claims
-    // with only the sparse-fill claim. The (now non-empty) sparse_infill_area
-    // stays empty → zero sparse paths too.
-    let mut held_only_sparse = region.clone();
-    held_only_sparse.set_held_claims(vec!["claim:sparse-fill".into()]);
+    // Case A — claim:top-fill NOT held (only sparse) → zero TopSolidInfill paths.
+    let mut gated_out = base.clone();
+    gated_out.set_held_claims(vec![claim_for_role(ExtrusionRole::SparseInfill).into()]);
+
+    // Case B — claim:top-fill held → TopSolidInfill paths DO emit. This positive
+    // counterpart is what distinguishes "gating works" from "the module never
+    // emits top at all" — Case A alone cannot tell those apart.
+    let mut gated_in = base.clone();
+    gated_in.set_held_claims(vec![claim_for_role(ExtrusionRole::TopSolidInfill).into()]);
 
     for module in all_three_modules() {
-        let mut output = InfillOutputBuilder::new();
+        let emits_top = role_in(module.expected_roles(), &ExtrusionRole::TopSolidInfill);
+
+        let mut out_a = InfillOutputBuilder::new();
         module.run(
             0,
-            std::slice::from_ref(&held_only_sparse),
-            &mut output,
+            std::slice::from_ref(&gated_out),
+            &mut out_a,
             &min_density_config(),
         );
-        let top_paths = paths_with_role(&collect_all_paths(&output), ExtrusionRole::TopSolidInfill);
+        let top_a = paths_with_role(&collect_all_paths(&out_a), ExtrusionRole::TopSolidInfill);
         assert!(
-            top_paths.is_empty(),
-            "[{}] held_claims excludes claim:top-fill → no TopSolidInfill paths; got {}",
+            top_a.is_empty(),
+            "[{}] claim:top-fill not held → expected 0 TopSolidInfill paths; got {}",
             module.name(),
-            top_paths.len()
+            top_a.len()
         );
+
+        let mut out_b = InfillOutputBuilder::new();
+        module.run(
+            0,
+            std::slice::from_ref(&gated_in),
+            &mut out_b,
+            &min_density_config(),
+        );
+        let top_b = paths_with_role(&collect_all_paths(&out_b), ExtrusionRole::TopSolidInfill);
+        if emits_top {
+            assert!(
+                !top_b.is_empty(),
+                "[{}] claim:top-fill held + top_solid_fill populated → \
+                 expected ≥1 TopSolidInfill path; got 0",
+                module.name()
+            );
+        } else {
+            // Lightning produces no solid fill regardless of the held claim.
+            assert!(
+                top_b.is_empty(),
+                "[{}] produces no solid fill; expected 0 TopSolidInfill paths even when \
+                 claim:top-fill held; got {}",
+                module.name(),
+                top_b.len()
+            );
+        }
     }
 }

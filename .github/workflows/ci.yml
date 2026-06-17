@@ -69,6 +69,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --workspace
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-tools
       - name: Build guest WASMs
         run: cargo xtask build-guests
       - name: Check guest freshness
