@@ -101,9 +101,9 @@ Module manifest TOML section headers (`[config.schema.apply_to_all]`) already us
 
 ## Guest WASM Staleness (MUST follow)
 
-Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-runtime/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not.
+Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-wasm-host/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not.
 
-The test-guests all build into a single shared target directory at `crates/slicer-runtime/test-guests/target/` (one `CARGO_TARGET_DIR`, not one `target/` per guest); per-guest `[workspace]` sentinels are retained.
+The test-guests all build into a single shared target directory at `crates/slicer-wasm-host/test-guests/target/` (one `CARGO_TARGET_DIR`, not one `target/` per guest); per-guest `[workspace]` sentinels are retained.
 
 **You MUST run the freshness check before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
 
@@ -119,7 +119,7 @@ If it reports `STALE:`, you MUST rebuild (drop the `--check` flag) and re-run th
 - `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**` — universal guest deps baked into every guest `.wasm`
 - `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — the `#[slicer_module]` impl bodies
 - `modules/core-modules/*/wit-guest/**` — the per-module guest shim
-- `crates/slicer-runtime/test-guests/*/src/**` and `crates/slicer-runtime/test-guests/*/Cargo.toml` — test guest sources
+- `crates/slicer-wasm-host/test-guests/*/src/**` and `crates/slicer-wasm-host/test-guests/*/Cargo.toml` — test guest sources
 
 **Prohibited claims unless `--check` was just run and returned clean:** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise.
 

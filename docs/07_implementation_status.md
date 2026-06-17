@@ -250,6 +250,7 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-033** (Open — pre-existing TDD-red gates; not regressions from 31a-REV2; tracked under DEV-009) — Packet 31a-REV2 closure — pre-existing benchy TDD-red tests.
 - **DEV-039** (Open — packet-local fallback; future packets 36/37 inherit the same XY-containment guard) — Packet 35 — bounding-box fallback for empty slice polygons.
 - **DEV-049** (In Progress) — Cooling subset of DEV-009 (Benchy Phase H output partially correct) is now resolved via packet 53.
+- **DEV-070** (Open — remediation deferred to Packet 105 (T-054/T-054b/T-054c), per 2026-06-17 review (option A confirmed; ADR-0011 stands and is not superseded). Packet 105 will deregister `wall_sequence` from `path-optimization-default` (manifest + `src/lib.rs` enum/parse/`role_group`) and move the reorder control into the perimeter modules via `slicer-perimeter-utils`. Old roadmap task T-076 was superseded by T-054b/T-054c. Packet 61's spec carries a deviation note pointing here.) — Packet 61 — wall_sequence config registered in path-optimization-default despite ADR-0011 mandating perimeter-module ownership.
 <!-- END GENERATED: open-deviations -->
 
 ## Known parity gaps (post-roadmap work)

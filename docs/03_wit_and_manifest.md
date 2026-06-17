@@ -1301,27 +1301,41 @@ Per-object overrides use the namespace `object_config:<id>:<key>`. These flow th
 
 ### Machine start / end G-code emission (packet 59)
 
-Module-owned machine start/end G-code is emitted by a designated module running at `PostPass::LayerFinalization`. The bundled implementation is `machine-gcode-default`; the audit boundary is the contract, not the module ID.
+Module-owned machine start/end G-code is emitted by a designated module running at `PostPass::GCodePostProcess`. The bundled implementation is `machine-gcode-emit` (`modules/core-modules/machine-gcode-emit/`); the audit boundary is the contract, not the module ID. The stage is `GCodePostProcess` (not `LayerFinalization`) because the module operates on the typed `GCodeIR` command stream before serialization — it prepends a Raw start block before the first command and appends a Raw end block after the last, so ordering is natural and type-safe.
 
-The module reads two config keys:
+The module reads four config keys:
 
 ```toml
 [config.schema.machine_start_gcode]
 type    = "string"
-default = ""
-display = "Machine start G-code"
-group   = "Machine"
+default = """M190 S[bed_temperature_initial_layer_single]
+M109 S[nozzle_temperature_initial_layer]
+PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single]"""
+display = "Machine Start G-code"
+group   = "Machine G-code"
 
 [config.schema.machine_end_gcode]
 type    = "string"
-default = ""
-display = "Machine end G-code"
-group   = "Machine"
+default = "PRINT_END"
+display = "Machine End G-code"
+group   = "Machine G-code"
+
+[config.schema.bed_temperature_initial_layer_single]
+type    = "int"
+default = 60
+display = "Bed Temperature (Initial Layer)"
+group   = "Machine G-code"
+
+[config.schema.nozzle_temperature_initial_layer]
+type    = "int"
+default = 215
+display = "Nozzle Temperature (Initial Layer)"
+group   = "Machine G-code"
 ```
 
-Both strings support macro expansion. Documented macros: `{first_layer_temperature}`, `{bed_temperature}`, `{filament_type}`, `{nozzle_diameter}`, `{tool_count}`, `{layer_count}`, `{print_time_estimate_s}`, `{x_max}`, `{y_max}`, `{z_max}`. Unknown macros are left as-is with a warning logged to the host diagnostics stream.
+The defaults are Klipper-flavoured (`PRINT_START` / `PRINT_END` macros). Both G-code strings support `[key]` placeholder substitution: each `[snake_case_key]` is replaced with the effective value of that config key resolved from the `ConfigView` (e.g. the default `machine_start_gcode` references `[bed_temperature_initial_layer_single]` and `[nozzle_temperature_initial_layer]`). Substitution runs against the effective config before the Raw commands are emitted.
 
-The module emits start-gcode before any layer entity and end-gcode after the last layer.
+The module emits the start block before the first `GCodeIR` command and the end block after the last.
 
 ## Path Optimization Output Contract (Normative)
 
