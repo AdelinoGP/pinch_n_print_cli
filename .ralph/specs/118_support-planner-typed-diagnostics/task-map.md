@@ -1,0 +1,8 @@
+# Task Map: support-planner-typed-diagnostics
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-253` | Step 7, Step 8, Step 10 | `docs/specs/support-modules-orca-port.md` §B4, §D10 | `modules/core-modules/support-planner/src/lib.rs` lines 326, 341, 434 — replace silent `continue`/`truncate` with per-layer drop counter; new `crates/slicer-runtime/tests/integration/support_planner_diagnostic_emission_tdd.rs` (AC-5, AC-N1 portion). | none | M | Step 7 RED tests; Step 8 implementation + cap counter; Step 10 verification. |
+| `TASK-163b-diagnostic` | Step 1, Step 2, Step 3, Step 4, Step 5, Step 6, Step 8, Step 9, Step 10 | `docs/specs/support-modules-orca-port.md` §B7, §D11 + `docs/adr/0010-typed-diagnostic-channel.md` | `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` (record + enum + method); `crates/slicer-sdk/src/lib.rs` (Diagnostic struct + push_diagnostic impl); `crates/slicer-runtime/src/prepass.rs` (audit field + drain); `modules/core-modules/support-planner/src/lib.rs` lines 633 (`node-clamped-out`) + the `interface_bottom_layers` warning insertion site from sibling packet 1. New: `prepass_diagnostic_roundtrip_tdd.rs` + `support_planner_diagnostic_emission_tdd.rs`. Doc edits: `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md`. | none | M | WIT-changing packet; full 20-guest rebuild required. Steps 1-6 establish the channel; Step 8 migrates the three planner call sites; Step 9 lands Doc Impact entries; Step 10 verification. |
+
+Aggregate context cost across rows: `M`. No row is L. The WIT change in Step 2 is the load-bearing event; nothing downstream proceeds until the guest rebuild is clean.

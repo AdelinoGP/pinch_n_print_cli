@@ -1,0 +1,8 @@
+# Task Map: support-plan-raft-plan-and-raftinfill-role
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-265` | Step 1, Step 2, Step 3, Step 4, Step 5, Step 7, Step 8 | `docs/specs/support-modules-orca-port.md` §C6, §D5, §D6 + `docs/adr/0009-raft-as-layer-infill-role.md` + `docs/specs/raft-default-module.md` | `crates/slicer-ir/src/slice_ir.rs` (`SupportPlanIR.raft_plan`, `RaftPlan`, `RaftLayerSpec`, `ExtrusionRole::RaftInfill`, schema_version minor bump); `crates/slicer-sdk/src/views.rs::should_emit` (`claim:raft-fill` arm); `crates/slicer-schema/wit/deps/ir-types.wit` (if mirror exists); `modules/core-modules/support-planner/src/lib.rs` (placeholder removal + RaftPlan emission); new tests in `crates/slicer-ir`, `crates/slicer-sdk`, `crates/slicer-runtime`; `docs/02_ir_schemas.md` IR 9b extended. | `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.cpp::generate_raft_base` (delegate) | M | The load-bearing item. Step 1 discovery confirms post-74710fa dispatcher location. Step 3 WIT change triggers 20-guest rebuild. |
+| `TASK-266` | Step 6, Step 8 | `docs/specs/support-modules-orca-port.md` §C7, §D5 | `modules/core-modules/traditional-support/src/lib.rs` lead `//!` block (extend with one sentence); `modules/core-modules/traditional-support/traditional-support.toml [ir-access].reads` (verify no `SupportPlanIR`) | none | S | Doc-only + manifest verification. Light slice. |
+
+Aggregate context cost across rows: `M`. No row is L. `TASK-265` is the majority of the work; `TASK-266` is a small bundled doc fix that fits the same review surface (both are "support spec C-block completion").
