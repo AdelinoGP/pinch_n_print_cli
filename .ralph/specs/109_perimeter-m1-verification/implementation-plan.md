@@ -14,7 +14,7 @@
 - Task IDs:
   - `T-100` — Build reference-fixture parity harness
 - Objective: implement `crates/slicer-runtime/tests/integration/perimeter_parity.rs` containing the harness + per-field tolerance comparator + a self-test that constructs a synthetic mismatch and asserts the comparator detects it.
-- Precondition: P102..P108 implementations landed (status: implemented); workspace builds clean.
+- Precondition: P102..P108 implementations landed (status: implemented — NOTE: as of 2026-06-19 P104–P108 are all `status: draft`; this packet cannot activate until the chain ships); workspace builds clean.
 - Postcondition: AC-1 + AC-N1 pass.
 - Files allowed to read:
   - `crates/slicer-ir/src/slice_ir.rs` — range-read `PerimeterIR` + `PerimeterRegion` + `WallLoop` definitions for the comparator.
@@ -99,20 +99,23 @@
 ### Step 5: T-P96-D — Delete `external_contour` IR field
 
 - Task IDs:
-  - `T-P96-D` — Delete unused `external_contour` field across ~5 files; schema bump 4.3.0 → 4.4.0
-- Objective: remove `external_contour` from `SlicedRegion` IR, WIT, host populator, SDK view, and the paint-segmentation `union_ex` computation call site; bump schema; keep `#[serde(default)]` on the now-absent field to parse old fixtures.
-- Precondition: Step 4 exit condition met; LOCATIONS dispatch confirms zero remaining callers.
+  - `T-P96-D` — Delete `external_contour` field across 8 files (NOT ~5 as originally estimated); schema bump from live `4.3.0` (exact target determined at activation — P105 may bump first)
+- **FORWARD-DEP BLOCKER**: P105 must be `status: implemented` before this step runs. P105 ships `bisector_edge_skip_mask: Vec<bool>` (flat per-edge, ADR-0013 LOCKED) and `edge_offset_for_polygon(region, poly_idx) -> usize` in `perimeter_utils`; without them, `external_contour` cannot be removed (it still carries functional data).
+- Objective: remove `external_contour` from all 8 live sites: `SlicedRegion` IR, WIT, host populator, SDK getter + setter, `bisector_ownership.rs` (function + 3 tests + assignments), `mod.rs` (call site), `prepass_slice.rs` (initializer); bump schema; keep `#[serde(default)]` on the now-absent field to parse old fixtures.
+- Precondition: Step 4 exit condition met; P105 `status: implemented`; LOCATIONS dispatch confirms all remaining callers enumerated.
 - Postcondition: AC-5 passes; `cargo build --tests --workspace` clean; no STALE guests.
 - Files allowed to read:
   - `crates/slicer-ir/src/slice_ir.rs` — range-read by `rg -n 'external_contour'`.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — full.
   - `crates/slicer-wasm-host/src/host.rs` — range-read.
-  - `crates/slicer-sdk/src/views.rs` — range-read.
-  - `crates/slicer-core/src/algos/paint_segmentation/<file>.rs` — range-read by `rg -n 'external_contour|union_ex'`.
+  - `crates/slicer-sdk/src/views.rs` — range-read lines 385-402 (setter + getter).
+  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — range-read by `rg -n 'external_contour|populate_external_contours'`.
+  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — range-read line 840 context.
+  - `crates/slicer-core/src/algos/prepass_slice.rs` — range-read line ~356 context.
 - Files allowed to edit (≤ 3 per sub-step):
   - 5a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`.
   - 5b (host + view): `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-sdk/src/views.rs`.
-  - 5c (paint-seg): `crates/slicer-core/src/algos/paint_segmentation/<file>.rs`.
+  - 5c (paint-seg core): `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, `crates/slicer-core/src/algos/prepass_slice.rs`.
 - Files explicitly out-of-bounds: perimeter modules (P105's revert is canonical; no further edits).
 - Expected sub-agent dispatches:
   - "Find all callers of `region.external_contour()` or field reads `SlicedRegion.external_contour` across the workspace; LOCATIONS ≤ 10 entries (expected zero)."
@@ -124,9 +127,11 @@
 - Verification:
   - `! rg -q 'external_contour' crates/slicer-ir/src/slice_ir.rs` — exit 0.
   - `! rg -q 'external-contour' crates/slicer-schema/wit/deps/ir-types.wit` — exit 0.
+  - `! rg -q 'populate_external_contours\|external_contour' crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — exit 0.
+  - `! rg -q 'external_contour' crates/slicer-sdk/src/views.rs` — exit 0.
   - `cargo build --tests --workspace 2>&1 | tee target/test-output.log` — FACT.
   - `cargo xtask build-guests --check` — no STALE.
-- Exit condition: AC-5 green; cascade complete; guests not stale.
+- Exit condition: AC-5 green; all 8 sites removed; guests not stale.
 
 ### Step 6: T-103/T-104/T-P96-F — Closure pass + M1 marker
 
@@ -138,11 +143,13 @@
 - Precondition: Step 5 exit condition met.
 - Postcondition: AC-6 passes; all Doc Impact Statement greps pass.
 - Files allowed to read:
-  - `docs/DEVIATION_LOG.md` — range-read recent M1 entries.
+  - `docs/DEVIATION_LOG.md` — range-read M1 entries; confirm `D-104-OVERHANG-QUARTILE-NONE` is present (registered by P104), not `D-OVERHANG-QUARTILE-NONE`.
   - `docs/07_implementation_status.md` — range-read current state.
-  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read Milestone Summary.
+  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read Milestone Summary AND the D-10/D-12 decision rows (both live here, not in DEVIATION_LOG.md).
 - Files allowed to edit (≤ 3):
-  - `docs/DEVIATION_LOG.md`, `docs/07_implementation_status.md`, `docs/specs/perimeter-modules-orca-parity-roadmap.md`.
+  - `docs/DEVIATION_LOG.md` (close `D-104-OVERHANG-QUARTILE-NONE`; add `D-109-AC22-PARITY-RESHAPE`).
+  - `docs/07_implementation_status.md`.
+  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` (close D-10 + D-12 rows + flip M1 marker).
 - Files explicitly out-of-bounds: `docs/02_ir_schemas.md` schema entry — handled with Step 5's edit; if a final ratification edit is needed it goes here in sub-step 6b.
 - Expected sub-agent dispatches:
   - "Capture the SHA of the current `cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes` test output (e.g., via `cargo test … && sha256sum target/...`); FACT (SHA string)."
@@ -151,8 +158,12 @@
 - Authoritative docs: the three docs being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - All four Doc Impact Statement greps return hits.
-  - `rg -q 'D-96-AC22-EXTERNAL-CONTOUR.*superseded' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q 'D-104-OVERHANG-QUARTILE-NONE' docs/DEVIATION_LOG.md` — closure note present.
+  - `rg -q 'D-109-AC22-PARITY-RESHAPE' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q 'P109_CUBE_4COLOR_PARITY_SHA' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q 'D-10.*CLOSED\|CLOSED.*D-10' docs/specs/perimeter-modules-orca-parity-roadmap.md` — D-10 closed in roadmap.
+  - `rg -q 'D-12.*CLOSED\|CLOSED.*D-12' docs/specs/perimeter-modules-orca-parity-roadmap.md` — D-12 closed in roadmap.
+  - NOTE: `rg -q 'D-96-AC22-EXTERNAL-CONTOUR.*superseded' docs/DEVIATION_LOG.md` may return no match if this ID was never registered in DEVIATION_LOG.md (it's referenced in the roadmap as superseded by ADR-0013); confirm actual ID presence in DEVIATION_LOG before relying on this grep.
 - Exit condition: AC-6 green; status doc + roadmap reflect M1 close.
 
 ### Step 7: T-105 — Workspace test ceremony

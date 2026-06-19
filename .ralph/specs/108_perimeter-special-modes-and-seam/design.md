@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- Primary code path: in `run_perimeters` (both modules), three early-stage branches read upstream data and adjust the wall-emission loop — `extra_perimeters` bumps `loop_number`, narrow-island detection swaps in `smaller_perimeter_line_width`, non-planar detection short-circuits the loop entirely (emit `shell_count` `NonPlanarShell` walls, skip thin/gap/infill). After wall emission, `slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates` produces the sparse candidate list using the angle threshold; `apply_seam_paint_bias` biases enforcer-enclosed entries and removes blocker-enclosed entries; the result lands in `PerimeterRegion.seam_candidates`. `seam-placer` reads from there as it does today (no architectural change), but now scores over a sparser list whose enforcer/blocker semantics are pre-applied.
+- Primary code path: in `run_perimeters` (both modules), three early-stage branches read upstream data and adjust the wall-emission loop — `extra_perimeters` bumps `loop_number`, narrow-island detection swaps in `smaller_perimeter_line_width`, non-planar detection short-circuits the loop entirely (emit `shell_count` `NonPlanarShell` walls, skip thin/gap/infill). After wall emission, `slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates` produces the sparse candidate list using the angle threshold; `apply_seam_paint_bias` biases enforcer-enclosed entries (matching `PaintSemantic::Custom(s)` where `s == "seam_enforcer"`) and removes blocker-enclosed entries (matching `Custom(s)` where `s == "seam_blocker"`); the result lands in `PerimeterRegion.seam_candidates`. `seam-placer` reads from there as it does today (no architectural change), but now scores over a sparser list whose enforcer/blocker semantics are pre-applied. **`PaintSemantic::SeamEnforcer` and `SeamBlocker` are NOT named variants — do not match on them.**
 - Neighboring tests / fixtures: 6 new TDD files. Existing regression tests from P102/P103/P104/P105 must stay green.
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
@@ -15,18 +15,18 @@
 - Per-layer config rule: all 6 new config keys are read via `_config.get*` per `run_perimeters` call.
 - Non-planar branch invariant (per D-11 closure): when `region.nonplanar_surface.is_some()`, the perimeter module emits `shell_count` walls of `LoopType::NonPlanarShell` and produces empty `infill_areas`; the downstream `non-planar-walls` module (sibling roadmap, not in this packet's scope) does the Z modulation. The perimeter module does NOT compute or write per-vertex non-planar Z here.
 - `LoopType::NonPlanarShell` already exists in the IR (no schema bump in this packet). The variant is used for the first time by emission code in this packet.
-- T-077 real-consumer invariant: when `region.overhang_areas()` returns non-empty (post-P106+P107 data flow), the `extra_perimeters_on_overhangs` consumer adds one extra wall inside the overhang polygons; outside, wall count is unaffected. The code path also handles empty input gracefully (e.g., layers with no overhang) — zero extras, no panic.
-- Seam-candidate sparseness invariant: `seam-placer` MUST tolerate `seam_candidates.len() == 0` (returns `Err(SeamPlacerError::NoCandidates)` per AC-N2). If T-082 audit finds the current `seam-placer` panics or silently produces a degenerate seam on empty input, that's a Step 4 fix.
+- T-077 real-consumer invariant: when `region.overhang_areas()` returns non-empty (post-P106+P107 data flow), the `extra_perimeters_on_overhangs` consumer adds one extra wall inside the overhang polygons; outside, wall count is unaffected. The code path also handles empty input gracefully (e.g., layers with no overhang) — zero extras, no panic. **FORWARD-DEP:** `SliceRegionView::overhang_areas()` does NOT yet exist (verified: `crates/slicer-sdk/src/views.rs` only has `has_nonplanar()`); it is produced by draft P104. This AC is blocked until P104 is `status: implemented`. Additionally, the spec's reference to `OverhangRegion.xy_footprint` (populated by P106) is a FORWARD-DEP conflict: the tree shows `xy_footprint: Vec<ExPolygon>` on `BridgeRegion` (slice_ir.rs:581), NOT on `OverhangRegion`; `OverhangRegion` has no such field. Reconcile with P106 before activation.
+- Seam-candidate sparseness invariant: `seam-placer` MUST tolerate `seam_candidates.len() == 0` (returns `Err(ModuleError::fatal(…))` with a recognisable message per AC-N2 — `SeamPlacerError::NoCandidates` does NOT currently exist; it may be defined as net-new or the module can inline the error via `ModuleError::fatal`). If T-082 audit finds the current `seam-placer` panics or silently produces a degenerate seam on empty input, that's a Step 4 fix.
 
 ## Code Change Surface
 
 - Selected approach: each Phase 7 override is a discrete branch at the head of `run_perimeters`'s wall-emission loop; the three overrides are mutually exclusive (a region is non-planar, OR narrow, OR neither — non-planar takes precedence). Seam-candidate quality is two helper additions in `slicer-core::perimeter_utils` plus a `seam-placer` integration point for paint-bias application. T-077 is the narrowest of the seven changes — a one-branch addition that reads `overhang_areas()` and adds extras only inside those areas; post-P106+P107 the upstream data flow is live, so the consumer's non-empty path is exercised by AC-6.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `modules/core-modules/classic-perimeters/src/lib.rs` — Phase 7 + Phase 8 consumer additions (~120 LOC delta).
-  - `modules/core-modules/arachne-perimeters/src/lib.rs` — mirror.
-  - `crates/slicer-core/src/perimeter_utils.rs` — add `pub fn generate_sharp_corner_seam_candidates(contour, z, angle_threshold_deg, output)`; add `pub fn apply_seam_paint_bias(candidates, &PaintRegionLayerView)`; keep the existing `generate_seam_candidates` for back-compat (deprecated; callers migrate).
-  - `modules/core-modules/seam-placer/src/lib.rs` — call `apply_seam_paint_bias` before scoring; return `Err(SeamPlacerError::NoCandidates)` on empty input (AC-N2 fix if audit finds a regression).
-  - Both perimeter `.toml` manifests — register 6 config keys.
+  - **DELETION (T-090/T-091/T-092):** `modules/core-modules/arachne-perimeters/` — entire directory deleted. Root `Cargo.toml` member entry removed. Stale doc/spec refs scrubbed.
+  - `modules/core-modules/classic-perimeters/src/lib.rs` — Phase 7 + Phase 8 consumer additions (~120 LOC delta). NOTE: `arachne-perimeters/` is DELETED in Step 0; all consumer additions land in classic-perimeters only.
+  - `crates/slicer-core/src/perimeter_utils.rs` — add `pub fn generate_sharp_corner_seam_candidates(contour, z, angle_threshold_deg) -> Vec<SeamCandidate>`; add `pub fn apply_seam_paint_bias(candidates: &mut Vec<SeamCandidate>, paint: &PaintRegionLayerView)` — consume via `paint.semantics_on_layer()` + match on `PaintSemantic::Custom(s)` strings `"seam_enforcer"`/`"seam_blocker"` (NOT named variants); keep the existing `generate_seam_candidates` for back-compat (deprecated; callers migrate). Note: `SeamCandidate` here is the **local** type (`position: Point3, score: f32`), not `slicer_ir::SeamCandidate` (`position: Point3WithWidth, score, reason: SeamReason`). The bridge to `push_seam_candidate(pos: Point3, score)` (SDK builder) is type-compatible; callers convert to IR type when needed.
+  - `modules/core-modules/seam-placer/src/lib.rs` — call `apply_seam_paint_bias` before scoring; return `Err(ModuleError::fatal(…))` on empty input (AC-N2 fix if audit finds a regression). If a typed `SeamPlacerError` is defined as net-new, wire it through `ModuleError::fatal`.
+  - `modules/core-modules/classic-perimeters/classic-perimeters.toml` — register 6 config keys. (arachne-perimeters manifest is gone.)
   - `docs/15_config_keys_reference.md` — register the 6 keys.
   - `docs/05_module_sdk.md` — document seam-candidate generation convention.
   - `docs/DEVIATION_LOG.md` — supersede + register two deviations.
@@ -38,11 +38,13 @@
 
 ## Files in Scope (read + edit)
 
-- `modules/core-modules/classic-perimeters/src/lib.rs` — primary consumer.
-- `modules/core-modules/arachne-perimeters/src/lib.rs` — mirror.
-- `crates/slicer-core/src/perimeter_utils.rs` — two new helpers.
+- `modules/core-modules/classic-perimeters/src/lib.rs` — primary consumer (seam + special-modes work).
+- **DELETION (T-090): `modules/core-modules/arachne-perimeters/`** — entire directory deleted (src/, manifest, Cargo.toml, wit-guest/, tests/). Do NOT read or edit individual files; the operation is `rm -rf modules/core-modules/arachne-perimeters/`.
+- **DELETION (T-091): root `Cargo.toml`** — remove the `"modules/core-modules/arachne-perimeters"` workspace member line.
+- **DELETION (T-092): doc/spec stale refs** — `rg -rn 'arachne-perimeters\|com\.core\.arachne-perimeters' docs/ .ralph/specs/` to enumerate then scrub. Leave historical/decision context lines intact.
+- `crates/slicer-core/src/perimeter_utils.rs` — two new helpers (seam work).
 - `modules/core-modules/seam-placer/src/lib.rs` — integration + AC-N2 robustness.
-- `modules/core-modules/{classic,arachne}-perimeters/*.toml` — 6 config keys each.
+- `modules/core-modules/classic-perimeters/classic-perimeters.toml` — 6 config keys (only classic; arachne-perimeters is deleted this packet).
 - `docs/15_config_keys_reference.md`, `docs/05_module_sdk.md`, `docs/DEVIATION_LOG.md` — per Doc Impact Statement.
 - 6 new TDD files.
 
@@ -50,9 +52,9 @@
 
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read Phase 7 + Phase 8 sub-tables + "Inherited from P98" section.
 - `docs/specs/overhang-pipeline-restructuring.md` — read full — purpose: understand the now-shipped upstream data flow T-077 consumes.
-- `docs/02_ir_schemas.md` — delegate SUMMARY for `LoopType`, `SurfaceGroup`, `PaintSemantic::SeamEnforcer`/`SeamBlocker`.
-- `docs/05_module_sdk.md` — delegate SUMMARY for `SliceRegionView::surface_group()` and `PaintRegionLayerView::get_regions`.
-- `docs/DEVIATION_LOG.md` — read `D-98-SEAM-NO-CONSUMER` and any recent OVERHANG-related entries.
+- `docs/02_ir_schemas.md` — delegate SUMMARY for `LoopType`, `SurfaceGroup`, `PaintSemantic` (no `SeamEnforcer`/`SeamBlocker` variants; seam paint uses `Custom("seam_enforcer")`/`Custom("seam_blocker")`), `SeamCandidate` (IR: `Point3WithWidth`; local perimeter_utils: `Point3`).
+- `docs/05_module_sdk.md` — delegate SUMMARY for `SliceRegionView::surface_group()` (FORWARD-DEP on draft P104 — does NOT yet exist on `SliceRegionView`) and `PaintRegionLayerView` real API (`semantics_on_layer()` + `paint_policy_for()` — `get_regions` does NOT exist).
+- `docs/07_implementation_status.md` — read the `D-98-SEAM-NO-CONSUMER` note (it lives here, NOT in `docs/DEVIATION_LOG.md`) and any recent OVERHANG-related entries.
 
 ## Out-of-Bounds Files
 
@@ -77,7 +79,7 @@
 - IR or manifest contracts touched: 6 new config keys in two manifests + central registry. No IR change. `LoopType::NonPlanarShell` first-use (already in IR per P102's existing variant).
 - WIT boundary considerations: no WIT change in this packet.
 - Determinism or scheduler constraints: sharp-corner threshold is a fixed numeric comparison; `apply_seam_paint_bias` operates on a Vec and is deterministic over the same `PaintRegionLayerView`. No scheduler change.
-- T-082 audit deliverable: a paragraph in `docs/05_module_sdk.md` documenting `seam-placer`'s tolerance for sparse candidate lists; if the audit finds a regression on empty input, AC-N2's `NoCandidates` error path is the fix.
+- T-082 audit deliverable: a paragraph in `docs/05_module_sdk.md` documenting `seam-placer`'s tolerance for sparse candidate lists; if the audit finds a regression on empty input, AC-N2's empty-candidate error path is the fix — return `Err(ModuleError::fatal(…))` with a recognisable message, or define `SeamPlacerError` as net-new and wire it through `ModuleError`.
 - T-083 documentation deliverable: a paragraph in `docs/05_module_sdk.md` confirming that `seam-planner-default` (PrePass) and the perimeter modules + `seam-placer` (per-layer) operate independently — the PrePass output does NOT directly feed perimeter-time candidate generation.
 
 ## Locked Assumptions and Invariants

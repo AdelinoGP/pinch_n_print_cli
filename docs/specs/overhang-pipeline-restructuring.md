@@ -34,7 +34,7 @@ This roadmap moves classification to PrePass, separates it from speed-factor app
 
 | ID | Decision | Default if unanswered |
 |---|---|---|
-| O-1 | ADR shape — write a new `0012-overhang-classification-at-prepass.md` that supersedes ADR-0008's "unnecessary scope" caveat, or amend ADR-0008 in place? | New ADR-0012. ADR-0008 stays accurate for "speed-factor application is a finalization concern"; the superseded part is just the "unnecessary scope" of a dedicated stage. |
+| O-1 | ADR shape — write a new `0022-overhang-classification-at-prepass.md` that supersedes ADR-0008's "unnecessary scope" caveat, or amend ADR-0008 in place? | New ADR-0022. ADR-0008 stays accurate for "speed-factor application is a finalization concern"; the superseded part is just the "unnecessary scope" of a dedicated stage. |
 | O-2 | New `OverhangAnnotationIR` vs extension of `SurfaceClassificationIR`? | Extension of `SurfaceClassificationIR`. Overhang classification is a sub-aspect of surface classification; a parallel IR would duplicate the per-object indexing. |
 | O-3 | Mesh cross-section infrastructure — reuse `PrePass::SupportGeometry`'s plane-triangle intersection helpers, or implement independently? | Reuse via promotion to `slicer-core/src/algos/mesh_cross_section.rs` (extract from `support_geometry.rs`). Two callers means it earns its keep as a shared primitive. |
 | O-4 | Quartile thresholds — OrcaSlicer's hardcoded constants (`detect_steep_overhang` uses `0.5 * extrusion_width` per band), or derive from `line_width` config? | Derive from config (`line_width * { 0.5, 1.0, 1.5, 2.0 }` for quartile band boundaries). Matches Orca's intent without baking in nozzle assumptions. |
@@ -51,7 +51,7 @@ This roadmap moves classification to PrePass, separates it from speed-factor app
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| O-T001 | Author `docs/adr/0012-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause (per O-1) | `docs/adr/0012-overhang-classification-at-prepass.md` | ADR documents: changed algorithm (mesh cross-sections vs walls), changed use case (multiple Tier 2 consumers), what stays from ADR-0008 (speed-factor application at finalization). |
+| O-T001 | Author `docs/adr/0022-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause (per O-1) | `docs/adr/0022-overhang-classification-at-prepass.md` | ADR documents: changed algorithm (mesh cross-sections vs walls), changed use case (multiple Tier 2 consumers), what stays from ADR-0008 (speed-factor application at finalization). |
 | O-T002 | Resolve O-2 through O-8 (grill or decide at packet-generation time); update this roadmap | this file | All `[blocked: O-N]` tags removed. |
 
 ### Phase 1 — IR additions

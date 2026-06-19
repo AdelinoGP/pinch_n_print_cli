@@ -16,11 +16,16 @@
   - `T-082` — Audit seam-placer for dependency on dense candidate lists
   - `T-083` — Confirm/document interaction with seam-planner-default
   - `T-P98-SEAM` — Consume painted `seam_enforcer`/`seam_blocker` in seam-candidate generation + seam-placer selection
+  - `T-090` — Delete `modules/core-modules/arachne-perimeters/` (directory + src/ + manifest + all contents)
+  - `T-091` — Remove `arachne-perimeters` workspace member entry from root `Cargo.toml`
+  - `T-092` — Remove all doc/spec references to the fake `com.core.arachne-perimeters` M1 module; leave only historical/decision context where appropriate
 - Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
 
 ## Problem Statement
+
+**Deletion (T-090/T-091/T-092):** The existing `modules/core-modules/arachne-perimeters/` is a 512-line iterative-inset approximation that is NOT real Arachne. The decision is to DROP it outright (it is dead code; no successor module named after it will ship). P108 deletes the directory, removes the workspace member entry, and scrubs stale references. P110 will CREATE a fresh `arachne-perimeters/` skeleton for real Arachne in a later packet. Between P108 and P110 activation, `classic-perimeters` is the sole perimeter generator — by design.
 
 After P105 lands the wall-emission geometry stack, three wall-count override mechanisms and the seam-candidate quality work remain. The override mechanisms are:
 
@@ -42,10 +47,12 @@ T-077 (`extra_perimeters_on_overhangs`) is a real consumer in this packet — it
 - `crates/slicer-core/src/perimeter_utils.rs`:
   - Extend `generate_seam_candidates` with `angle_threshold_deg: f32` parameter; emit only corners exceeding the threshold; rename to `generate_sharp_corner_seam_candidates` or version-2 alongside the existing (which both modules then call with the new threshold).
   - Add `apply_seam_paint_bias(&mut Vec<SeamCandidate>, &PaintRegionLayerView)` helper that biases enforcer-enclosed candidates and removes blocker-enclosed candidates.
-- `modules/core-modules/seam-placer/src/lib.rs`: confirm candidate-list-density assumptions are robust to sparser input (T-082 audit); document or fix; call `apply_seam_paint_bias` before scoring.
+  - **SeamCandidate type bridge (fix-list item 4):** `perimeter_utils::SeamCandidate` (local type: `position: Point3, score: f32`) differs from `slicer_ir::SeamCandidate` (`position: Point3WithWidth, score: f32, reason: SeamReason`). `push_seam_candidate(pos: Point3, score)` in `slicer-sdk` builders uses the local type. The new `generate_sharp_corner_seam_candidates` returns `Vec<perimeter_utils::SeamCandidate>` (local type). The implementer MUST document the bridge: before calling `push_seam_candidate`, callers convert `Point3` to `Point3WithWidth` (z field carries the layer z, width field set to outer_wall_line_width). `apply_seam_paint_bias` operates on `Vec<perimeter_utils::SeamCandidate>` only.
+  - **`PaintRegionLayerView` consumption (fix-list item 2):** The method `PaintRegionLayerView::get_regions(semantic)` does NOT exist. The real API (verified in `crates/slicer-sdk/src/traits.rs`) is: `semantics_on_layer() -> Vec<PaintSemantic>` and `paint_policy_for(expoly: &ExPolygon) -> SupportPaintPolicy`. `apply_seam_paint_bias` MUST consume `semantics_on_layer()` to enumerate active semantics, then match on `PaintSemantic::Custom(s)` where `s == "seam_enforcer"` or `s == "seam_blocker"` — NOT on named variants `PaintSemantic::SeamEnforcer` / `PaintSemantic::SeamBlocker` (these do not exist, verified in `crates/slicer-ir/src/slice_ir.rs:303`).
+- `modules/core-modules/seam-placer/src/lib.rs`: confirm candidate-list-density assumptions are robust to sparser input (T-082 audit); document or fix; call `apply_seam_paint_bias` before scoring. **Error type (fix-list item 3):** `SeamPlacerError::NoCandidates` does NOT exist in the tree — the module returns `Result<(), ModuleError>` only. If the implementer needs a typed error, define `SeamPlacerError` as **net-new** and propagate via `ModuleError::fatal`; otherwise assert via `ModuleError` message. AC-N2 must assert the real return path.
 - Both perimeter manifests + `docs/15_config_keys_reference.md`: register 6 new config keys (`extra_perimeters`, `smaller_perimeter_line_width`, `smaller_perimeter_threshold_mm`, `narrow_loop_length_threshold_mm`, `seam_candidate_angle_threshold_deg`, `extra_perimeters_on_overhangs`).
 - `docs/05_module_sdk.md` §"Seam-candidate generation" — document the new convention.
-- `docs/DEVIATION_LOG.md` — supersede `D-98-SEAM-NO-CONSUMER` only. T-077's deferred-no-op deviation is **not** registered because the upstream data is available before this packet runs (P106 + P107 are predecessors).
+- `docs/DEVIATION_LOG.md` — register new entry `D-108-SEAM-CONSUMED` (closes the seam-consumer gap noted as `D-98-SEAM-NO-CONSUMER` in `docs/07_implementation_status.md` — that ID lives only in the status doc, not in `DEVIATION_LOG.md`; the log has never carried it). T-077's deferred-no-op deviation is **not** registered because the upstream data is available before this packet runs (P106 + P107 are predecessors).
 - 6 new TDD files covering ACs.
 
 ## Out of Scope
@@ -57,17 +64,18 @@ T-077 (`extra_perimeters_on_overhangs`) is a real consumer in this packet — it
 - M1 verification harness, fixture recording, M1 close ceremony — P107.
 - Real Arachne (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack) — M2.
 - The overhang-pipeline-restructuring sibling roadmap implementation that T-077 ultimately depends on — separate workstream.
-- Rename of `arachne-perimeters` → `variable-width-perimeters` — separate workstream.
+- Creating the NEW `arachne-perimeters/` skeleton for real Arachne — that is P110/T-205. P108 only DELETES the fake. No successor module for the deleted fake will ship.
 
 ## Authoritative Docs
 
 | Doc | Size | Read strategy |
 | --- | --- | --- |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | ~700 lines | Range-read Phase 7 + Phase 8 sub-tables + "Inherited from P98" section. |
-| `docs/02_ir_schemas.md` | ~900 lines | Delegate SUMMARY for `LoopType::NonPlanarShell`, `SurfaceGroup`, `PaintSemantic`, `SeamCandidate`. |
-| `docs/05_module_sdk.md` | ~500 lines | Delegate SUMMARY for `SliceRegionView::surface_group()`, `PaintRegionLayerView::get_regions`, `seam-placer` consumer contract. |
+| `docs/02_ir_schemas.md` | ~900 lines | Delegate SUMMARY for `LoopType::NonPlanarShell`, `SurfaceGroup`, `PaintSemantic` (note: no `SeamEnforcer`/`SeamBlocker` variants — use `Custom("seam_enforcer")`/`Custom("seam_blocker")`), `SeamCandidate` (IR type uses `Point3WithWidth`; local perimeter_utils type uses `Point3`). |
+| `docs/05_module_sdk.md` | ~500 lines | Delegate SUMMARY for `SliceRegionView::surface_group()` (FORWARD-DEP on draft P104), `PaintRegionLayerView` real API (`semantics_on_layer()` + `paint_policy_for()` — NOT `get_regions`), `seam-placer` consumer contract. |
 | `docs/15_config_keys_reference.md` | ~300 lines | Range-read §"Walls" + §"Seam". |
-| `docs/DEVIATION_LOG.md` | varies | Range-read `D-98-SEAM-NO-CONSUMER` entry. |
+| `docs/07_implementation_status.md` | ~300 lines | Range-read `D-98-SEAM-NO-CONSUMER` note (tracked here, NOT in `DEVIATION_LOG.md`). |
+| `docs/DEVIATION_LOG.md` | varies | Read ID format; register net-new `D-108-SEAM-CONSUMED` entry at packet close. |
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -101,7 +109,7 @@ Files to inspect for this packet:
 | `cargo test -p slicer-core --test sharp_corner_seam_threshold_tdd` | AC-4 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration painted_seam_enforcer_blocker_tdd` | AC-5 + AC-N2 | FACT pass/fail per case |
 | `cargo test -p slicer-runtime --test integration extra_perimeters_on_overhangs_tdd` | AC-6 (N+1 in overhang, N elsewhere) | FACT pass/fail per case |
-| `rg -q 'D-.*-SEAM-CONSUMED' docs/DEVIATION_LOG.md` | T-P98-SEAM deviation supersession | FACT pass/fail |
+| `rg -q 'D-108-SEAM-CONSUMED' docs/DEVIATION_LOG.md` | T-P98-SEAM deviation registration | FACT pass/fail |
 | `cargo xtask build-guests --check` | Guest WASM coherence | FACT clean / STALE list |
 
 ## Step Completion Expectations

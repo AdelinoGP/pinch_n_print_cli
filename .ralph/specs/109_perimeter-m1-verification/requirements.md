@@ -11,7 +11,7 @@
   - `T-105` — Run `cargo test --workspace` at M1 close (CLAUDE.md exception for closure ceremony)
   - `T-P96-A` — Reshape AC-22b assertion in `cube_4color_gcode_output_tdd.rs`; rename test to `cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes`
   - `T-P96-C3` — Golden-file parity check for cube_4color G-code output vs OrcaSlicer reference
-  - `T-P96-D` — Delete unused `SlicedRegion.external_contour` IR field (cascade through ~5 files); schema bump 4.3.0 → 4.4.0
+  - `T-P96-D` — Delete unused `SlicedRegion.external_contour` IR field (cascade through 8 sites — see design.md); schema bump from live 4.3.0 by one minor, computed at activation (NOT hardcoded; P105 may bump first)
   - `T-P96-F` — Capture `P<packet>_CUBE_4COLOR_PARITY_SHA`; add `D-<packet>-AC22-PARITY-RESHAPE` superseding `D-96-AC22-EXTERNAL-CONTOUR`
 - Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md`
 - Packet status: `draft`
@@ -19,7 +19,7 @@
 
 ## Problem Statement
 
-M1 of the perimeter parity roadmap has shipped 7 implementation packets (P102 foundations, P103 polygon ops, P104 propagation + surface rules, P105 spacing + fill + MMU, P106 overhang PrePass foundation, P107 overhang consumers + refactor, P108 special modes + seam) but has no end-to-end parity verification. Without recorded OrcaSlicer reference outputs and a parity harness, regressions during M2 work (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack) will land undetected. The audit also enumerated 7 edge cases that lack regression coverage (3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override) — each represents a class of silent-failure mode in the per-vertex flag propagation or per-region wall-count override logic. Finally, the P96 inherited reshape obligation (T-P96-A) leaves the 4-color cube TDD in a divergent state (the test assertion was reshaped to match OrcaSlicer fragmentation by P105, but the test name and recorded SHA still reflect the pre-reshape baseline) and the `external_contour` IR field remains in `SlicedRegion` as dead weight after P105's revert.
+M1 of the perimeter parity roadmap is PLANNED but not yet shipped: P104–P108 are all `status: draft` as of 2026-06-19 (verified by grep). This packet is the M1 closure gate — it cannot activate until P102–P108 are implemented. Once the chain ships, this packet builds the end-to-end verification layer: without recorded OrcaSlicer reference outputs and a parity harness, regressions during M2 work (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack) will land undetected. The audit also enumerated 7 edge cases that lack regression coverage (3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override). Finally, the P96 inherited reshape obligation (T-P96-A) leaves the 4-color cube TDD in a divergent state; `external_contour` remains live in `SlicedRegion` (populated by `populate_external_contours` in `bisector_ownership.rs`, with tests at lines ~178-247 and accessed via `views.rs:391/399`) and must be removed as part of T-P96-D once P105's `bisector_edge_skip_mask: Vec<bool>` (flat per-edge, ADR-0013 LOCKED) ships.
 
 This packet closes all four concerns. The parity harness + 6 recorded fixtures give M2 a regression bed; the 7 edge-case TDDs lock down propagation correctness; the cube_4color test gets its final renamed-and-rebased state with a new SHA captured under the packet's deviation entry; `external_contour` is removed end-to-end (IR + WIT + host populator + view accessor — ~5 files); and `docs/07_implementation_status.md` records M1 as shipped.
 
@@ -29,11 +29,13 @@ This packet closes all four concerns. The parity harness + 6 recorded fixtures g
 - `crates/slicer-runtime/tests/fixtures/perimeter_parity/{solid_square,holed_square,multi_tool_triangle,overhang_ramp,bridge,spiral_vase_cone}/` (NEW) — each contains `mesh.stl` (or analogous), `config.toml`, `expected_perimeter_ir.json`.
 - `crates/slicer-runtime/tests/integration/perimeter_edge_cases.rs` (NEW) — 7 edge-case TDDs.
 - `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` — rename + reshape per T-P96-A; assertion logic per ADR-0013.
-- `crates/slicer-ir/src/slice_ir.rs` — delete `external_contour` field; bump `CURRENT_SLICE_IR_SCHEMA_VERSION` to `4.4.0`; serde compat for old fixtures via `#[serde(default)]` on the now-absent field (via `#[serde(skip_deserializing)]` pattern or similar — confirm in implementation).
+- `crates/slicer-ir/src/slice_ir.rs` — delete `external_contour` field (live value: `Option<Vec<ExPolygon>>`); bump `CURRENT_SLICE_IR_SCHEMA_VERSION` by one minor above the live base (currently `4.3.0`; exact value computed at activation — do NOT hardcode); serde compat via `#[serde(default)]` on a phantom skip-deserialize helper, or clean removal if no committed fixture relies on the old shape. **FORWARD-DEP on P105**: `bisector_edge_skip_mask: Vec<bool>` (flat per-edge per ADR-0013) must exist in P105 before this deletion is justified.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — remove `external-contour` accessor from `slice-region-view` + `external-contour` field from `sliced-region` record.
 - `crates/slicer-wasm-host/src/host.rs` — remove `external_contour` populator.
-- `crates/slicer-sdk/src/views.rs` — remove `external_contour()` accessor.
-- `crates/slicer-core/src/algos/paint_segmentation/` — remove the `external_contour` computation call site (the `union_ex` that produces it).
+- `crates/slicer-sdk/src/views.rs` — remove `external_contour()` accessor (line ~399) and `set_external_contour()` setter (line ~391). Both are live as of 2026-06-19.
+- `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — remove `populate_external_contours` function (line 64), its 3 tests (lines ~178-247), and the `external_contour` field assignments (lines 69, 101). Also remove the call site in `paint_segmentation/mod.rs:840`.
+- `crates/slicer-core/src/algos/prepass_slice.rs` — remove `external_contour: None` field initializer (line ~356).
+- `bisector_edge_skip_mask` consumption: this packet consumes the flat mask via `edge_offset_for_polygon(region: &SlicedRegion, poly_idx: usize) -> usize` produced by P105 in `perimeter_utils`. Both symbols are **FORWARD-DEP on P105** (not present in tree as of 2026-06-19). Any reference to nested `Vec<Vec<bool>>` is non-conformant with ADR-0013 — use flat `Vec<bool>` only.
 - `docs/07_implementation_status.md` — Classic parity complete entry.
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — M1 milestone marker flipped to DONE.
 - `docs/DEVIATION_LOG.md` — closure pass + supersession + new entry.
@@ -69,10 +71,13 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` (harness self-test), `AC-2` (6 reference fixtures pass), `AC-3` (7 edge-case TDDs pass), `AC-4` (cube_4color reshape green), `AC-5` (external_contour deletion clean), `AC-6` (M1 deviations closed + cube SHA captured), `AC-7` (workspace test ceremony green).
+- Positive cases: `AC-1` (harness self-test), `AC-2` (6 reference fixtures pass), `AC-3` (7 edge-case TDDs pass), `AC-4` (cube_4color reshape green), `AC-5` (external_contour deletion clean + cascade complete), `AC-6` (M1 deviations closed per corrected file targets + cube SHA captured), `AC-7` (workspace test ceremony green).
 - Negative cases: `AC-N1` (deliberate-mismatch detected by harness).
 - Refinements not captured in Given/When/Then:
-  - Schema bump 4.3.0 → 4.4.0 is **additive removal** — old fixtures must still parse via `#[serde(default)]`. If the implementer chooses `#[serde(skip_deserializing)]` instead, document in closure log.
+  - Schema bump from live `4.3.0` base is **additive removal** — exact minor version computed at activation (P105 may bump first). Old fixtures must still parse via `#[serde(default)]`. If the implementer chooses `#[serde(skip_deserializing)]` instead, document in closure log. Do NOT hardcode a SemVer literal in any AC.
+  - `perimeter_parity.rs` and all 6 fixture subdirectories are net-new work in this packet (not pre-existing).
+  - `D-10` and `D-12` live in `docs/specs/perimeter-modules-orca-parity-roadmap.md`, not in `docs/DEVIATION_LOG.md`. T-103 closure pass must update the roadmap for these IDs.
+  - `D-104-OVERHANG-QUARTILE-NONE` (correct ID per P104 task-map) is the ID to close in `docs/DEVIATION_LOG.md` (registered there by P104). `D-OVERHANG-QUARTILE-NONE` is not the correct format.
   - The "expected_perimeter_ir.json" reference files are committed to the repo so test runs are deterministic; do NOT regenerate them from OrcaSlicer at test time.
   - `docs/specs/perimeter-modules-orca-parity-roadmap.md`'s M1 marker may be in a §"Milestone Summary" block; if absent, the implementer adds it.
 

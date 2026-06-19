@@ -5,12 +5,13 @@
 - **Trait + base struct.** `crates/slicer-core/src/beading/mod.rs` (NEW) declares `pub trait BeadingStrategy: Send + Sync` with the four AC-1 methods (`compute`, `optimal_bead_count`, `get_transition_thickness`, `optimal_thickness`) plus `type_label` for AC-8 composition verification, and the `Beading` struct (`total_thickness`, `bead_widths`, `toolpath_locations`, `left_over`, all `f64` in slicer units). Trait is object-safe — methods don't return `Self`, don't have generic parameters, no `Sized` bound.
 - **Base strategy.** `beading/distributed.rs` carries `DistributedBeadingStrategy { optimal_width: f64, default_transition_length: f64, transition_filter_dist: f64, distribution_count: usize }`. `compute` runs the Gaussian decay against `bead_count`, producing the widths Vec.
 - **Decorators.** `redistribute.rs`, `widening.rs`, `outer_wall_inset.rs`, `limited.rs` each carry a `parent: Box<dyn BeadingStrategy>` field plus their own params. Their `compute` delegates to the inner strategy, then transforms.
-- **Strip-pass (T-215b).** `LimitedBeadingStrategy::compute_and_strip(thickness, bead_count) -> Beading` calls `self.compute(thickness, bead_count)` and then walks `bead_widths` removing zero entries (along with the matched `toolpath_locations`). The raw `compute` MUST retain sentinels (asserted by AC-N2). Downstream P112 wire-up calls `compute_and_strip` for production output.
+- **Strip-pass (T-215b).** `LimitedBeadingStrategy::compute_and_strip(thickness, bead_count) -> Beading` calls `self.compute(thickness, bead_count)` and then walks `bead_widths` removing zero entries (along with the matched `toolpath_locations`). The raw `compute` MUST retain sentinels (asserted by AC-N2). Downstream P112 wire-up calls `compute_and_strip` for production output. This implements the D-9 roadmap decision; the deviation rationale is logged as `D-111-ARACHNE-SENTINEL-STRIP` in `docs/DEVIATION_LOG.md` (D-9 is a roadmap-level ID, not a log entry).
 - **Factory.** `beading/factory.rs` exposes `BeadingStrategyFactory::create_stack(params: &BeadingFactoryParams) -> Box<dyn BeadingStrategy>` returning `Box::new(LimitedBeadingStrategy::new(Box::new(OuterWallInsetBeadingStrategy::new(Box::new(WideningBeadingStrategy::new(Box::new(RedistributeBeadingStrategy::new(Box::new(DistributedBeadingStrategy::new(...))))))))))`. The composition order is verified by AC-8 via either `std::any::type_name_of_val` reflection OR by a layer-by-layer `downcast_ref` walk — pick whichever the trait surface allows; if neither works (object-safe trait can't be downcast without `Any`), introduce a `fn debug_layer_name(&self) -> &'static str` method on the trait that each impl returns its own type name.
 
 ## Neighboring Tests & Fixtures
 
-- `crates/slicer-core/tests/` already carries the post-P110 pattern (`voronoi_stress.rs`, `skt_graph_golden.rs`, `preprocess_golden.rs`). The new files (`beading/distributed.rs`, `beading/redistribute.rs`, etc.) match that pattern. Fixtures live under `tests/fixtures/beading/`.
+- `crates/slicer-core/tests/` will carry the post-P110 pattern (`voronoi_stress.rs`, `skt_graph_golden.rs`, `preprocess_golden.rs`) once P110 ships — those files are FORWARD-DEPs on draft P110 and do NOT currently exist in the tree. The new beading test files (`beading/distributed.rs`, `beading/redistribute.rs`, etc.) follow the same per-file-per-test pattern. Fixtures live under `tests/fixtures/beading/`.
+- **Test registration:** `slicer-core` uses explicit `[[test]]` entries in `crates/slicer-core/Cargo.toml`; each new `tests/beading/*.rs` file requires a corresponding `[[test]] name = "<name>"` entry. See Step 7b in the implementation plan — `Cargo.toml` is in the edit list.
 - The 10-thickness reference table for `Distributed` is the heaviest fixture (10 expected `Beading` outputs in JSON). The implementer authors it during Step 2 by running the OrcaSlicer reference once off-tree (or by transcribing values from a published OrcaSlicer test); the goldens are committed and treated as authoritative — never regenerated during this packet.
 
 ## Architecture Constraints
@@ -38,6 +39,7 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 | File | Status | Step | Notes |
 | --- | --- | --- | --- |
 | `crates/slicer-core/src/lib.rs` | EDIT | Step 1 | `pub mod beading;` |
+| `crates/slicer-core/Cargo.toml` | EDIT | Step 1 | Add `[[test]]` entries for all 6 new test files (register upfront to keep Steps 2–7 within edit cap) |
 | `crates/slicer-core/src/beading/mod.rs` | NEW | Step 1 | Trait + `Beading` struct + re-exports |
 | `crates/slicer-core/src/beading/distributed.rs` | NEW | Step 2 | `DistributedBeadingStrategy` |
 | `crates/slicer-core/tests/beading/distributed.rs` | NEW | Step 2 | AC-2 + AC-N1 |
@@ -71,14 +73,14 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 | `docs/03_wit_and_manifest.md` | §"Module Manifest TOML" | `[config.schema.*]` block format |
 | `docs/01_system_architecture.md` | full | Sub-module registration pattern |
 | `crates/slicer-core/src/lib.rs` | full | Existing `pub mod` set (extended from P110) |
-| `crates/slicer-core/src/voronoi.rs` | header + module structure | P110 pattern for `mod.rs` shape |
+| `crates/slicer-core/src/voronoi.rs` | header + module structure | FORWARD-DEP on draft P110 — does not exist yet; read only after P110 lands |
 | `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` | full | Current state (skeleton from P110) |
 
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/src/libslic3r/Arachne/BeadingStrategy/*.cpp` — delegate per file via SUMMARY/LOCATIONS only.
 - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (~10000 LOC) — LOCATIONS dispatch only for the 11 `m_params.*` defaults.
-- All other M2 packets (P110, P112) — closed or not yet shipped.
+- All other M2 packets (P110, P112) — both draft; P110 not yet shipped.
 - M1 packet directories — closed.
 - `target/`, lockfiles, generated bindgen output.
 - `crates/slicer-ir/src/slice_ir.rs` — no IR changes in this packet.
@@ -127,7 +129,7 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 - **Float comparison fragility.** The 10-thickness `Distributed` golden uses 0.0001 mm (1 unit) tolerance. If boostvoronoi's primitives or the Gaussian decay constant differ by even 1 ULP between platforms, tests may flake on x86 vs aarch64. Mitigation: assert `(a - b).abs() < 1e-4` (slicer units) rather than `assert_eq!` on raw f64.
 - **Trait object overhead.** Box<dyn> dispatch adds vtable cost per call. Acceptable for now; M2 perf budget is not in scope for this packet.
 - **OrcaSlicer SUMMARY drift.** A SUMMARY ≤ 150 words may omit edge cases (e.g., what `LimitedBeadingStrategy` does when `bead_count == 0`). Mitigation: the goldens are the source of truth; if a strategy can't make the golden green, re-dispatch a tighter SUMMARY for that edge case.
-- **D-9 closure rationale.** The strip-pass is a deliberate divergence from OrcaSlicer (which carries zero-width sentinels into the toolpath output and relies on infill modules to skip them). The closure entry MUST explain WHY this codebase strips instead — namely, the WIT-boundary `WallLoop` type's invariant that `bead_widths.iter().all(|&w| w > 0.0)` (avoiding a contract change at the boundary).
+- **`D-111-ARACHNE-SENTINEL-STRIP` rationale.** The strip-pass is a deliberate divergence from OrcaSlicer (which carries zero-width sentinels into the toolpath output and relies on infill modules to skip them). The `DEVIATION_LOG.md` entry MUST explain WHY this codebase strips instead — namely, the WIT-boundary `WallLoop` type's invariant that `bead_widths.iter().all(|&w| w > 0.0)` (avoiding a contract change at the boundary). D-9 in the roadmap already records the decision; `D-111-ARACHNE-SENTINEL-STRIP` records the implementation log entry using the log's `D-<pkt>-<SLUG>` convention.
 
 ## Context Cost Estimate
 
@@ -137,6 +139,6 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 
 ## Open Questions
 
-- **[FWD]** Does the existing `slicer_core::flow` module (from P105/T-050) carry a `to_slicer_units(mm: f64) -> f64` helper? Resolve in Step 8 — used for translating the 11 `m_params.*` defaults. If absent, add it inline in `beading/factory.rs::BeadingFactoryParams::default`.
+- **[FWD — RESOLVED]** `slicer_core::flow` module (from P105/T-050) does NOT exist yet — P105 is `draft`. `flow_correction` currently lives in `crates/slicer-core/src/lib.rs` (not a `flow` sub-module). `slicer_core::flow::to_slicer_units` is a FORWARD-DEP on draft P105. **Action for Step 8:** do NOT call `slicer_core::flow::to_slicer_units` — implement the default translation inline in `beading/factory.rs::BeadingFactoryParams::default` using the `/100` rule from `docs/08_coordinate_system.md`. If P105 later ships `flow::to_slicer_units`, a follow-on can migrate the call.
 - **Resolved.** `BeadingFactoryParams` derives `serde::{Deserialize, Serialize}` to support the `factory_orca_reference.json` golden, matching the `BeadingForTest` test-helper pattern.
 - **None [BLOCK].** D-9 is closed (T-215b implements the closed decision); no other gates.

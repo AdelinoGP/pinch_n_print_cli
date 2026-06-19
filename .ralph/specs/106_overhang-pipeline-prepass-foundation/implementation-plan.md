@@ -9,11 +9,11 @@
 
 ## Steps
 
-### Step 1: O-T001/O-T002 — ADR-0012 + close roadmap open decisions
+### Step 1: O-T001/O-T002 — ADR-0022 + close roadmap open decisions
 
 - Task IDs:
-  - `O-T001` — Author ADR-0012
-  - `O-T002` — Close O-1..O-8 inline in overhang roadmap
+  - `O-T001` — Author ADR-0022 (slot 0022; next free after 0021; 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`)
+  - `O-T002` — Close O-1..O-8 inline in overhang roadmap (O-1 resolves to ADR-0022)
 - Objective: write the ADR; mark O-1..O-8 CLOSED with the documented defaults.
 - Precondition: workspace builds clean.
 - Postcondition: AC-1 + AC-2 verification commands pass.
@@ -21,15 +21,15 @@
   - `docs/adr/0008-overhang-as-finalization-module.md` — read full.
   - `docs/specs/overhang-pipeline-restructuring.md` — read full.
 - Files allowed to edit (≤ 3):
-  - `docs/adr/0012-overhang-classification-at-prepass.md` (NEW)
+  - `docs/adr/0022-overhang-classification-at-prepass.md` (NEW)
   - `docs/specs/overhang-pipeline-restructuring.md` (close O-1..O-8)
 - Files explicitly out-of-bounds: all source files.
 - Expected sub-agent dispatches: none.
 - Context cost: `S`
 - Authoritative docs: `docs/adr/0008-overhang-as-finalization-module.md`, `docs/specs/overhang-pipeline-restructuring.md`.
 - OrcaSlicer refs: none.
-- Verification: AC-1 + AC-2 greps.
-- Exit condition: ADR exists with supersession language; all 8 O-decisions show CLOSED.
+- Verification: `rg -q 'changed algorithm.*mesh cross-section' docs/adr/0022-overhang-classification-at-prepass.md` + `rg -q 'supersedes.*ADR-0008.*unnecessary scope' docs/adr/0022-overhang-classification-at-prepass.md`; AC-2 grep.
+- Exit condition: ADR-0022 exists with supersession language; all 8 O-decisions show CLOSED.
 
 ### Step 2: O-T010/O-T011 — IR additions
 
@@ -40,12 +40,12 @@
 - Precondition: Step 1 exit condition met.
 - Postcondition: AC-3 verification grep passes; `cargo xtask build-guests --check` no STALE.
 - Files allowed to read:
-  - `crates/slicer-ir/src/slice_ir.rs` — range-read by `rg -n 'OverhangRegion|SurfaceClassificationIR|CURRENT_SLICE_IR_SCHEMA_VERSION|BridgeRegion'`.
+  - `crates/slicer-ir/src/slice_ir.rs` — range-read by `rg -n 'OverhangRegion|SurfaceClassificationIR|CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION|BridgeRegion'`.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — full.
   - `crates/slicer-core/src/algos/mesh_analysis.rs` — range-read around line 206 (existing `OverhangRegion` construction).
 - Files allowed to edit (≤ 3 per sub-step):
   - 2a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`.
-  - 2b (populator): `crates/slicer-core/src/algos/mesh_analysis.rs`, `crates/slicer-runtime/tests/unit/mesh_analysis_overhang_xy_footprint_tdd.rs` (NEW).
+  - 2b (populator): `crates/slicer-core/src/algos/mesh_analysis.rs`, `crates/slicer-runtime/tests/unit/mesh_analysis_overhang_xy_footprint_tdd.rs` (NEW — alongside `mesh_analysis_tdd.rs`), `crates/slicer-runtime/tests/unit/main.rs` (add `mod mesh_analysis_overhang_xy_footprint_tdd;` to unit aggregator).
 - Files explicitly out-of-bounds: `slicer-core/algos/overhang_annotation.rs` (Step 4 — does not exist yet).
 - Expected sub-agent dispatches:
   - "Find the existing OverhangRegion construction site at `crates/slicer-core/src/algos/mesh_analysis.rs` around line 206; confirm field set + facet-cluster pattern; return FACT (field list + line range)."
@@ -56,36 +56,36 @@
 - Authoritative docs: `docs/02_ir_schemas.md` (delegate SUMMARY), `docs/03_wit_and_manifest.md` §"WIT/Type Changes Checklist".
 - OrcaSlicer refs: none for Step 2.
 - Verification:
-  - `rg -q 'pub xy_footprint: Vec<ExPolygon>' crates/slicer-ir/src/slice_ir.rs` — exit 0.
+  - `rg -q 'pub xy_footprint: Vec<ExPolygon>' crates/slicer-ir/src/slice_ir.rs` — exit 0 (OverhangRegion now has this field; BridgeRegion already has it at line ~581).
   - `rg -q 'pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>' crates/slicer-ir/src/slice_ir.rs` — exit 0.
+  - `rg -q 'CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs` — bumped from 1.1.0 (NOT CURRENT_SLICE_IR_SCHEMA_VERSION).
   - `cargo build --tests --workspace 2>&1 | tee target/test-output.log` — FACT.
   - `cargo xtask build-guests --check` — no STALE.
 - Exit condition: AC-3 grep passes; build clean; no STALE guests.
 
-### Step 3: O-T012 — Promote mesh cross-section helper
+### Step 3: O-T012 — Create mesh_cross_section.rs wrapper
 
 - Task IDs:
-  - `O-T012` — Extract plane-triangle intersection to `crates/slicer-core/src/algos/mesh_cross_section.rs`
-- Objective: extract the plane-triangle intersection helper from `support_geometry.rs` to a new shared module; verify `support_geometry` consumes the promoted helper and its existing tests stay green.
+  - `O-T012` — Create `crates/slicer-core/src/algos/mesh_cross_section.rs` wrapping `triangle_mesh_slicer::slice_mesh_ex`
+- Objective: author net-new `mesh_cross_section.rs` that exposes `pub fn cross_section_at_z(mesh: &MeshIR, z: f32) -> Vec<ExPolygon>` by wrapping the existing `slice_mesh_ex` from `crates/slicer-core/src/triangle_mesh_slicer.rs`. NOTE: `support_geometry.rs` is NOT edited in this step — it has no plane-triangle intersection to remove (it operates on polygon-level SliceIR data).
 - Precondition: Step 2 exit condition met.
 - Postcondition: AC-4 verification passes.
 - Files allowed to read:
-  - `crates/slicer-core/src/algos/support_geometry.rs` — range-read by `rg -n 'plane_triangle|cross_section|slice_at_z'`.
+  - `crates/slicer-core/src/triangle_mesh_slicer.rs` — range-read `slice_mesh_ex` signature and return type.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-core/src/algos/mesh_cross_section.rs` (NEW)
-  - `crates/slicer-core/src/algos/support_geometry.rs` (consume the promoted helper)
   - `crates/slicer-core/src/algos/mod.rs` (declare `pub mod mesh_cross_section`)
-- Files explicitly out-of-bounds: `overhang_annotation.rs` (Step 4).
+- Files explicitly out-of-bounds: `support_geometry.rs` (no changes needed), `overhang_annotation.rs` (Step 4).
 - Expected sub-agent dispatches:
-  - "Find the plane-triangle intersection function in `crates/slicer-core/src/algos/support_geometry.rs`; return LOCATIONS (function name + line range)."
-  - "Run `cargo test -p slicer-core --test prepass_support_geometry_tdd`; return FACT pass/fail."
-- Context cost: `M`
-- Authoritative docs: align with `slicer-core/src/algos/` existing conventions (this is `slicer-core`, not `slicer-helpers` — `docs/13_slicer_helpers_crate.md` does not apply).
+  - "Read `crates/slicer-core/src/triangle_mesh_slicer.rs` lines 55-100 to get `slice_mesh_ex` signature; return FACT (signature)."
+  - "Run `cargo check --workspace --all-targets`; return FACT pass/fail."
+- Context cost: `S` (net-new file wrapping an existing function)
+- Authoritative docs: align with `slicer-core/src/algos/` existing conventions.
 - OrcaSlicer refs: none for Step 3.
 - Verification:
   - `rg -q 'pub fn cross_section_at_z' crates/slicer-core/src/algos/mesh_cross_section.rs` — exit 0.
-  - `cargo test -p slicer-core --test prepass_support_geometry_tdd 2>&1 | tee target/test-output.log` — FACT pass.
-- Exit condition: AC-4 green; existing `support_geometry` test passes after promotion.
+  - `cargo check --workspace --all-targets 2>&1 | tee target/test-output.log` — FACT pass.
+- Exit condition: AC-4 green; workspace compiles.
 
 ### Step 4: O-T021/O-T022 — Implement classifier algorithm
 
@@ -123,11 +123,11 @@
 - Precondition: Step 4 exit condition met.
 - Postcondition: AC-6 + AC-N2 verification commands pass.
 - Files allowed to read:
-  - `crates/slicer-scheduler/src/execution_plan.rs` — range-read by `rg -n 'PrePass|MeshAnalysis|LayerPlanning'`.
+  - `crates/slicer-scheduler/src/execution_plan.rs` — range-read by `rg -n 'PrePass|MeshAnalysis|LayerPlanning'` (this file contains the `STAGE_ORDER` array — canonical stage list; `stage_order.rs` only imports from it).
   - `crates/slicer-runtime/src/prepass.rs` — range-read by `rg -n 'MeshAnalysis|LayerPlanning|commit'`.
   - `crates/slicer-runtime/src/builtins/region_mapping_producer.rs` — full (pattern reference).
 - Files allowed to edit (≤ 3 per sub-step):
-  - 5a (scheduler): `crates/slicer-scheduler/src/execution_plan.rs`.
+  - 5a (scheduler): `crates/slicer-scheduler/src/execution_plan.rs` (add `"PrePass::OverhangAnnotation"` to `STAGE_ORDER` after `"PrePass::LayerPlanning"`).
   - 5b (runtime): `crates/slicer-runtime/src/prepass.rs`, `crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs` (NEW; if pattern mandates; else inline).
   - 5c (test): `crates/slicer-runtime/tests/executor/prepass_overhang_annotation_stage_order_tdd.rs` (NEW; covers AC-6 positive + AC-N2 violation case).
 - Files explicitly out-of-bounds: any other source file.

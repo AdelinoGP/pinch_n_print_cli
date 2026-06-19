@@ -20,7 +20,7 @@
   - `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md` — read full.
   - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read "Inherited from P96" section.
 - Files allowed to edit (≤ 3):
-  - `docs/specs/orca-mmu-perimeter-investigation.md` (NEW)
+  - `docs/specs/orca-mmu-perimeter-investigation.md` (NET-NEW — does not exist pre-packet; created by this step; all ACs/greps referencing it are sequenced after this step's exit condition)
 - Files explicitly out-of-bounds for this step:
   - All source files.
 - Expected sub-agent dispatches:
@@ -37,7 +37,7 @@
 - Task IDs:
   - `T-062b` — Add `LoopType::GapFill` + `ExtrusionRole::GapFill` variants
   - `T-P96-C0` — Resurrect `SlicedRegion.bisector_edge_skip_mask` (IR field only — host populator in Step 3)
-- Objective: extend `LoopType` and `ExtrusionRole` with `GapFill` arm, mark both `#[non_exhaustive]`, add `pub bisector_edge_skip_mask: Vec<Vec<bool>>` on `SlicedRegion`, bump schema 4.2.0 → 4.3.0; mirror in WIT + host populator + view accessor. Update every exhaustive match site in the workspace to add the new arm.
+- Objective: extend `LoopType` and `ExtrusionRole` with `GapFill` arm, mark both `#[non_exhaustive]`, add `pub bisector_edge_skip_mask: Vec<bool>` on `SlicedRegion` (flat per-edge, ADR-0013 conformant), bump schema from live `4.3.0` to `4.4.0`; mirror in WIT (`wall-loop-type` in `ir-types.wit`, `extrusion-role` in `types.wit`, `bisector-edge-skip-mask: list<bool>` on `sliced-region`) + host populator + view accessor. Update every exhaustive match site in the workspace to add the new arm. NOTE: `ir_to_wit_extrusion_role` in `leaf.rs:183` is an exhaustive match — the WIT `gap-fill` arm on `extrusion-role` and the `leaf.rs` match arm MUST land in the same sub-step 2a to avoid a mid-step build break.
 - Precondition: Step 1 exit condition met; `cargo check --workspace --all-targets` clean.
 - Postcondition: AC-5 IR-field grep passes; `cargo xtask build-guests --check` no STALE; all exhaustive matches compile.
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -46,12 +46,12 @@
   - `crates/slicer-wasm-host/src/host.rs` — range-read by `rg -n 'SliceRegionData|sliced_region_to_data'`.
   - `crates/slicer-sdk/src/views.rs` — range-read by `rg -n 'fn bridge_areas\|fn nonplanar_surface'`.
 - Files allowed to edit (≤ 3 per sub-step):
-  - 2a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`, `crates/slicer-core/src/algos/prepass_slice.rs` (one-line `Vec::new()` initializer in struct-literal).
+  - 2a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit` + `crates/slicer-schema/wit/deps/types.wit` (both WIT files need edits: `wall-loop-type` in ir-types.wit, `extrusion-role` in types.wit), `crates/slicer-wasm-host/src/marshal/leaf.rs` (add `ExtrusionRole::GapFill` arm to the exhaustive `ir_to_wit_extrusion_role` match at line 183 — MUST be atomic with the WIT and IR additions). ALSO add `bisector_edge_skip_mask: Vec::new()` initializer to the `SlicedRegion` struct-literal in `crates/slicer-core/src/algos/prepass_slice.rs` (only the one-line struct-literal site; full file is out-of-bounds).
   - 2b (host + view): `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-sdk/src/views.rs`.
   - 2c (downstream match arms): the LOCATIONS dispatch reports specific files; expect `modules/core-modules/part-cooling/src/lib.rs`, GCodeEmit role priority table, possibly `path-optimization-default`. Each consumer gets a 1-3 line arm addition.
 - Files explicitly out-of-bounds for this step:
   - Any perimeter module `lib.rs` (Step 4+ work).
-  - `slicer-core` (Step 3+ work).
+  - `slicer-core` perimeter_utils / flow modules (Step 3+ work). EXCEPTION: `crates/slicer-core/src/algos/prepass_slice.rs` is touched in sub-step 2a (one-line `bisector_edge_skip_mask: Vec::new()` struct-literal addition only; full file is NOT read).
   - `paint_segmentation/` (Step 3 work).
 - Expected sub-agent dispatches:
   - "Find all exhaustive `match` blocks on `LoopType` across the workspace; return LOCATIONS ≤ 20 entries."
@@ -65,8 +65,10 @@
   - `CLAUDE.md` — §"WIT/Type Changes Checklist" + §"Guest WASM Staleness".
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'pub bisector_edge_skip_mask: Vec<Vec<bool>>' crates/slicer-ir/src/slice_ir.rs` — exit 0.
-  - `rg -q 'pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer \{ major: 4, minor: 3, patch: 0' crates/slicer-ir/src/slice_ir.rs` — exit 0.
+  - `rg -q 'pub bisector_edge_skip_mask: Vec<bool>' crates/slicer-ir/src/slice_ir.rs` — exit 0 (flat Vec<bool>, ADR-0013 conformant).
+  - `rg -q 'LoopType::GapFill' crates/slicer-ir/src/slice_ir.rs && rg -q 'ExtrusionRole::GapFill' crates/slicer-ir/src/slice_ir.rs` — exit 0.
+  - `rg -q 'gap-fill' crates/slicer-schema/wit/deps/ir-types.wit && rg -q 'gap-fill' crates/slicer-schema/wit/deps/types.wit` — exit 0 (both WIT files updated).
+  - `rg -q 'GapFill' crates/slicer-wasm-host/src/marshal/leaf.rs` — exit 0 (leaf.rs match arm added atomically).
   - `cargo build --tests --workspace 2>&1 | tee target/test-output.log` — FACT.
   - `cargo xtask build-guests --check` — no STALE.
 - Exit condition: IR additions present, workspace compiles end-to-end, no STALE guests.
@@ -79,12 +81,13 @@
 - Precondition: Step 2 exit condition met.
 - Postcondition: AC-5 host-populator test passes; AC-N3 (single-color all-false) passes.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-core/src/algos/paint_segmentation/` — `wc -l` each file; range-read by `rg -n 'voronoi|cell_neighbor|bisector' crates/slicer-core/src/algos/paint_segmentation/`.
-  - `docs/specs/orca-mmu-perimeter-investigation.md` (just authored in Step 1).
+  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — full (this is the file that already populates `external_contour` via `populate_external_contours`; add `compute_bisector_edge_skip_mask` here).
+  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — range-read call site for `populate_external_contours` to find where to add the new call.
+  - `docs/specs/orca-mmu-perimeter-investigation.md` (NET-NEW, authored in Step 1 — verify it exists before reading).
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-core/src/algos/paint_segmentation/<chosen>.rs` (the file where cell construction happens; likely `voronoi_graph.rs` or `mod.rs`).
-  - `crates/slicer-core/tests/paint_segmentation_bisector_mask_tdd.rs` (NEW).
-  - Possibly one other file in the same directory for the call site if separation is needed.
+  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` (add `compute_bisector_edge_skip_mask` function).
+  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (add call site after cell construction).
+  - `crates/slicer-core/tests/paint_segmentation_bisector_mask_tdd.rs` (NEW). NOTE: also add `[[test]] name = "paint_segmentation_bisector_mask_tdd" required-features = ["host-algos"]` to `crates/slicer-core/Cargo.toml` (can be batched with Step 5a's Cargo.toml edit if not already done).
 - Files explicitly out-of-bounds for this step:
   - Perimeter modules.
   - `slicer-core` (perimeter_utils / flow modules).
@@ -115,9 +118,9 @@
   - Both perimeter modules' `lib.rs` — range-read the `run_perimeters` body and the wall-inset loop.
   - `docs/01_system_architecture.md` — §"Crate Boundaries" full.
 - Files allowed to edit (≤ 3 per sub-step):
-  - 4a (helpers): `crates/slicer-core/src/flow.rs` (NEW), `crates/slicer-core/src/lib.rs` (mod declaration), `crates/slicer-core/tests/flow_tdd.rs` (NEW; spacing-formula unit test).
-  - 4b (manifests): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `docs/15_config_keys_reference.md`.
-  - 4c (consumers): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/outer_inner_width_and_spacing_tdd.rs` (NEW).
+  - 4a (helpers): `crates/slicer-core/src/flow.rs` (NEW), `crates/slicer-core/src/lib.rs` (mod declaration), `crates/slicer-core/Cargo.toml` (add `[[test]] name = "flow_tdd"` entry).
+  - 4b (manifests + flow test): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `crates/slicer-core/tests/flow_tdd.rs` (NEW; spacing-formula unit test).
+  - 4c (consumers + integration test): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/outer_inner_width_and_spacing_tdd.rs` (NEW). ALSO register in `crates/slicer-runtime/tests/integration/main.rs`: add `mod outer_inner_width_and_spacing_tdd;` and update `docs/15_config_keys_reference.md`.
 - Files explicitly out-of-bounds for this step:
   - `slicer-ir` (Step 2 closed the IR work).
   - Thin-wall / gap-fill code paths (Step 6).
@@ -149,11 +152,12 @@
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-core/src/perimeter_utils.rs` — full (post-P102).
   - `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
+  - `modules/core-modules/path-optimization-default/src/lib.rs` — range-read lines 46-51 (existing `WallSequence` enum), 143-165 (struct field + match), 276-295 (config-read parse); these call sites must migrate to `slicer_core::perimeter_utils::WallSequence`.
   - Both perimeter modules' `lib.rs` (`run_perimeters` body).
 - Files allowed to edit (≤ 3 per sub-step):
-  - 5a (helper): `crates/slicer-core/src/perimeter_utils.rs`, `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` (NEW).
-  - 5b (config migration): `modules/core-modules/classic-perimeters/classic-perimeters.toml`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
-  - 5c (consumers): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`.
+  - 5a (helper): `crates/slicer-core/src/perimeter_utils.rs` (add `WallSequence` enum with all 3 variants + `wall_sequence_reorder` + `edge_offset_for_polygon`), `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` (NEW), `crates/slicer-core/Cargo.toml` (add `[[test]] name = "wall_sequence_reorder_tdd"` entry).
+  - 5b (config migration + WallSequence migration): `modules/core-modules/path-optimization-default/path-optimization-default.toml` (deregister key), `modules/core-modules/path-optimization-default/src/lib.rs` (remove local `WallSequence` def; use `slicer_core::perimeter_utils::WallSequence`; update import and match to add `InnerOuterInner` arm), `modules/core-modules/classic-perimeters/classic-perimeters.toml` (register `wall_sequence`).
+  - 5c (remaining manifests + consumers): `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (register `wall_sequence`), `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`.
 - Files explicitly out-of-bounds for this step:
   - `slicer-ir` (no IR change in this step).
   - Thin-wall / gap-fill / MMU code paths.
@@ -187,8 +191,9 @@
   - `crates/slicer-core/src/medial_axis.rs` (from P103) — confirm signature.
 - Files allowed to edit (≤ 3 per sub-step):
   - 6a (manifests): both perimeter `.toml`, `docs/15_config_keys_reference.md`.
-  - 6b (thin-wall consumer): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/thin_wall_emission_tdd.rs` (NEW).
-  - 6c (gap-fill consumer): same two `lib.rs` (re-edit), `crates/slicer-runtime/tests/integration/gap_fill_emission_tdd.rs` (NEW).
+  - 6b (thin-wall consumer): `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`, `crates/slicer-runtime/tests/integration/thin_wall_emission_tdd.rs` (NEW). Register `mod thin_wall_emission_tdd;` in `crates/slicer-runtime/tests/integration/main.rs` (counts as 4th file — split to separate sub-step if it busts the ≤3 cap; see note below).
+  - 6c (gap-fill consumer): same two `lib.rs` (re-edit), `crates/slicer-runtime/tests/integration/gap_fill_emission_tdd.rs` (NEW). Register `mod gap_fill_emission_tdd;` in `main.rs`.
+  - NOTE: `main.rs` aggregator registration (adding two `mod` lines) can be batched into a single edit across 6b+6c since both target the same file; count as 1 file-edit within the sub-step that last touches it.
 - Files explicitly out-of-bounds for this step:
   - `slicer-core` (medial_axis / offset2_ex already exist from P103; no new additions in this step).
   - MMU code paths (Step 7).
@@ -218,7 +223,7 @@
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/classic-perimeters/src/lib.rs`
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
-  - `crates/slicer-runtime/tests/integration/mmu_bisector_dedup_tdd.rs` (NEW)
+  - `crates/slicer-runtime/tests/integration/mmu_bisector_dedup_tdd.rs` (NEW). Register `mod mmu_bisector_dedup_tdd;` in `crates/slicer-runtime/tests/integration/main.rs` — batch this edit with one of the two `lib.rs` edits (counts as 1 of the 3 files).
 - Files explicitly out-of-bounds for this step:
   - `slicer-ir` (field present from Step 2; not edited).
   - `slicer-core/paint_segmentation/` (populator present from Step 3; not edited).
@@ -288,7 +293,7 @@ Aggregate context cost: `M` (risk-flagged — 19 tasks; implementer should consi
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and confirm each returns PASS.
 - Confirm the three gate commands in `packet.spec.md` §Verification are green.
-- Record the actual schema-bump version chosen (4.3.0 vs 4.2.0 depending on P104 sequencing) in the closure log.
+- Record the actual schema-bump version chosen (targeting `4.4.0` from live `4.3.0`) in the closure log, along with any concurrent-bump races resolved.
 - Record any T-P96-A0 investigation findings that deviated from the "lower color-ID owns" default in the closure log.
 - Note in the closure log that `external_contour` IR field remains in `SlicedRegion` until P107 T-P96-D — this is by design per ADR-0013.
 - Confirm the implementer's peak context usage stayed under 70%. If exceeded, log it as a packet-authoring lesson for future spec-packet-generator runs (likely indicates Step 4 needs further subdivision in similar future packets).

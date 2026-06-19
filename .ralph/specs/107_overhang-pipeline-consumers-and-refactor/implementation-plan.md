@@ -12,11 +12,11 @@
 ### Step 1: O-T030/O-T031/O-T032 — View accessors + WIT + populator
 
 - Task IDs:
-  - `O-T030` — Confirm `overhang_areas()` (P104 stub) now returns non-empty post-P106
-  - `O-T031` — Add `SliceRegionView::overhang_quartile_polygons() -> &[QuartileBand]`
+  - `O-T030` — Add `SliceRegionView::overhang_areas(&self) -> &[ExPolygon]` (FORWARD-DEP on draft P104; add here if P104 hasn't shipped it yet; grounded in tree: absent from `crates/slicer-sdk/src/views.rs`); confirm it returns non-empty once P106 is implemented
+  - `O-T031` — Add `SliceRegionView::overhang_quartile_polygons() -> &[QuartileBand]` (FORWARD-DEP on draft P106; `QuartileBand` not yet in tree)
   - `O-T032` — Decide on `PaintRegionLayerView` / `SurfaceClassificationView` mirror (default: skip unless consumer named)
-- Objective: add the new view accessor, mirror in WIT, fill in host populator; write contract TDD that asserts P104's `overhang_areas()` stub now returns non-empty.
-- Precondition: P106 is `status: implemented`; workspace builds clean.
+- Objective: add both new view accessors, mirror in WIT, fill in host populator; write contract TDD that asserts `overhang_areas()` returns non-empty once P106 ships. **AC-2 is gated behind P104 + P106 shipping.**
+- Precondition: FORWARD-DEP blockers — P106 must be `status: implemented` for `QuartileBand` and `SurfaceClassificationIR.overhang_quartile_polygons` to exist; P104 must be `status: implemented` for `overhang_areas()` and `surface_group()` to be present. Workspace builds clean.
 - Postcondition: AC-1 + AC-2 verification commands pass; `cargo xtask build-guests --check` no STALE.
 - Files allowed to read:
   - `crates/slicer-sdk/src/views.rs` — range-read by `rg -n 'fn (bridge_areas|overhang_areas|surface_group)'`.
@@ -25,13 +25,13 @@
 - Files allowed to edit (≤ 3 per sub-step):
   - 1a (SDK + WIT): `crates/slicer-sdk/src/views.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`.
   - 1b (host populator): `crates/slicer-wasm-host/src/host.rs`.
-  - 1c (contract test): `crates/slicer-runtime/tests/contract/slice_region_view_overhang_areas_non_empty_tdd.rs` (NEW) + `crates/slicer-runtime/tests/contract/main.rs` (register `mod slice_region_view_overhang_areas_non_empty_tdd;`).
+  - 1c (contract test): `crates/slicer-runtime/tests/contract/slice_region_view_overhang_areas_non_empty_tdd.rs` (NEW) + `crates/slicer-runtime/tests/contract/main.rs` (register `mod slice_region_view_overhang_areas_non_empty_tdd;` — **must be added to the aggregator or the test binary silently skips it**).
 - Files explicitly out-of-bounds:
   - Module source (Step 2).
   - IR (P106 owns; no IR change here).
 - Expected sub-agent dispatches:
   - "Find the `bridge_areas` populator pattern in `crates/slicer-wasm-host/src/host.rs`; return SNIPPETS ≤ 30 lines."
-  - "FACT: confirm `QuartileBand` shape from P106 — return field list."
+  - "FACT: confirm `QuartileBand` shape from P106 — return field list. Expected: `pub struct QuartileBand { quartile: u8, polygons: Vec<ExPolygon> }`. NOTE: this type does not exist in the tree yet — it is a FORWARD-DEP on draft P106."
   - "Run `cargo check --workspace --all-targets`; FACT pass/fail."
   - "Run `cargo xtask build-guests --check`; FACT (clean / STALE list)."
 - Context cost: `M`
@@ -84,7 +84,7 @@
 - Files allowed to read:
   - `modules/core-modules/overhang-classifier-default/src/lib.rs` (post-refactor).
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-runtime/tests/integration/overhang_pipeline_e2e_tdd.rs` (NEW; both AC-5 positive + AC-N1 negative) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_pipeline_e2e_tdd;`)
+  - `crates/slicer-runtime/tests/integration/overhang_pipeline_e2e_tdd.rs` (NEW; both AC-5 positive + AC-N1 negative) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_pipeline_e2e_tdd;` — **aggregator edit is mandatory; omitting it means the test compiles but `cargo test --test integration <name>` returns 0 tests run**)
   - `crates/slicer-runtime/tests/fixtures/overhang_ramp.stl` (NEW; or analogous synthetic fixture; see open question)
 - Files explicitly out-of-bounds: any source.
 - Expected sub-agent dispatches:
@@ -106,7 +106,7 @@
 - Files allowed to read:
   - `modules/core-modules/overhang-classifier-default/src/lib.rs` (post-refactor) — confirm behaviour.
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-runtime/tests/integration/overhang_classifier_refactor_regression_tdd.rs` (NEW) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_classifier_refactor_regression_tdd;`)
+  - `crates/slicer-runtime/tests/integration/overhang_classifier_refactor_regression_tdd.rs` (NEW) + `crates/slicer-runtime/tests/integration/main.rs` (register `mod overhang_classifier_refactor_regression_tdd;` — **aggregator edit required; counts against the ≤3-edit cap for this step**).
   - `crates/slicer-runtime/tests/fixtures/overhang_classifier_baseline_speeds.json` (NEW; recorded baseline)
 - Files explicitly out-of-bounds: any source.
 - Expected sub-agent dispatches:
@@ -122,15 +122,15 @@
 
 - Task IDs:
   - `O-T053` — Close D-10, D-12, D-OVERHANG-QUARTILE-NONE; mark T-024 / T-077 unblocked
-- Objective: walk the three deviation entries and add closure notes referencing this packet + P106; update the perimeter roadmap to mark T-024 and T-077 as unblocked (preconditions met).
+- Objective: (a) register new `D-104-OVERHANG-QUARTILE-NONE` entry in `docs/DEVIATION_LOG.md` and mark it closed; (b) update D-10 and D-12 closure rows in `docs/specs/perimeter-modules-orca-parity-roadmap.md` to reference P107 (these IDs live only in the roadmap — **do NOT grep `DEVIATION_LOG.md` for D-10 or D-12**); (c) mark T-024 and T-077 as unblocked (preconditions met).
 - Precondition: Step 4 exit condition met.
 - Postcondition: AC-7 passes; all Doc Impact Statement greps pass.
 - Files allowed to read:
-  - `docs/DEVIATION_LOG.md` — range-read the three target entries.
-  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read T-024 + T-077 rows.
+  - `docs/DEVIATION_LOG.md` — range-read recent entries to confirm ID convention (`D-<pkt>-<SLUG>`).
+  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — range-read D-10, D-12, T-024 + T-077 rows.
 - Files allowed to edit (≤ 3):
-  - `docs/DEVIATION_LOG.md`
-  - `docs/specs/perimeter-modules-orca-parity-roadmap.md`
+  - `docs/DEVIATION_LOG.md` (add `D-104-OVERHANG-QUARTILE-NONE` entry)
+  - `docs/specs/perimeter-modules-orca-parity-roadmap.md` (update D-10, D-12 closure notes; mark T-024, T-077 unblocked)
 - Files explicitly out-of-bounds: source files.
 - Expected sub-agent dispatches:
   - "For each Doc Impact grep, run `rg -q`; FACT pass/fail per grep."
@@ -138,10 +138,11 @@
 - Authoritative docs: the two files being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'D-10.*(closed|resolved)' docs/DEVIATION_LOG.md` — exit 0.
-  - `rg -q 'OVERHANG-QUARTILE-NONE.*(closed|resolved)' docs/DEVIATION_LOG.md` — exit 0.
+  - `rg -q 'D-10.*(P107|closed|resolved)' docs/specs/perimeter-modules-orca-parity-roadmap.md` — exit 0.
+  - `rg -q 'D-12.*(P107|closed|resolved)' docs/specs/perimeter-modules-orca-parity-roadmap.md` — exit 0.
+  - `rg -q 'D-104-OVERHANG-QUARTILE-NONE.*(closed|resolved)' docs/DEVIATION_LOG.md` — exit 0.
   - `rg -q '(T-024|T-077).*unblocked' docs/specs/perimeter-modules-orca-parity-roadmap.md` — exit 0.
-- Exit condition: AC-7 green; deviation log + roadmap markers updated.
+- Exit condition: AC-7 green; deviation log entry added; roadmap markers updated.
 
 ### Step 6: O-T052 — Architecture doc updates
 

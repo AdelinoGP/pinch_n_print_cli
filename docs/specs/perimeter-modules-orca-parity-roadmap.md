@@ -2,7 +2,7 @@
 
 **Status:** Active — drafted from audit of `classic-perimeters` and `arachne-perimeters` against `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp` and `OrcaSlicerDocumented/src/libslic3r/Arachne/`.
 **Scope:** Bring both perimeter modules to full OrcaSlicer feature parity, within this project's split-module architecture.
-**Sequencing:** Two milestones (M1, M2). M1 ships Classic at parity plus a truthful rename of the current Arachne module to `variable-width-perimeters`. M2 implements real Arachne (Voronoi + skeletal trapezoidation + BeadingStrategy stack) under a re-introduced `arachne-perimeters` module.
+**Sequencing:** Two milestones (M1, M2). M1 ships Classic at parity and deletes the iterative-inset fake-Arachne module (`variable-width-perimeters` never ships — see D-110-DROP-VARIABLE-WIDTH). M2 creates real Arachne (Voronoi + skeletal trapezoidation + BeadingStrategy stack) fresh under `arachne-perimeters` via P110+P112.
 **Task granularity.** Each `T-NNN` is a single discrete unit of work. Packets will be assembled from contiguous tasks later — not in this document.
 
 ---
@@ -10,8 +10,8 @@
 ## Related plans
 
 - [`docs/specs/infill-fill-partition-plan.md`](./infill-fill-partition-plan.md) — host-side fill-polygon partition at `Layer::Perimeters` commit. **Must land before this roadmap's Phase 1** (T-013 specifically) to avoid `SlicedRegion` schema-bump collision.
-- [`docs/specs/overhang-pipeline-restructuring.md`](./overhang-pipeline-restructuring.md) — moves overhang classification to PrePass via mesh cross-sections; adds `OverhangRegion.xy_footprint` (was D-12 here) and per-layer quartile polygons; refactors `overhang-classifier-default` to read-from-IR. **Precondition for T-024 (per-vertex overhang_quartile propagation) and T-077 (`extra_perimeters_on_overhangs`).** Authored by [ADR-0012](../adr/0012-overhang-classification-at-prepass.md) (to be written).
-- [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. Partially superseded by ADR-0012 (classification moves to PrePass; speed-factor application stays at finalization).
+- [`docs/specs/overhang-pipeline-restructuring.md`](./overhang-pipeline-restructuring.md) — moves overhang classification to PrePass via mesh cross-sections; adds `OverhangRegion.xy_footprint` (was D-12 here) and per-layer quartile polygons; refactors `overhang-classifier-default` to read-from-IR. **Precondition for T-024 (per-vertex overhang_quartile propagation) and T-077 (`extra_perimeters_on_overhangs`).** Authored by [ADR-0022](../adr/0022-overhang-classification-at-prepass.md) (to be written).
+- [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. Partially superseded by ADR-0022 (classification moves to PrePass; speed-factor application stays at finalization).
 - [ADR-0011](../adr/0011-perimeter-module-owns-wall-sequencing.md) — perimeter module owns wall-sequence reordering.
 - [ADR-0013](../adr/0013-mmu-per-color-outer-wall-fragmentation.md) — MMU multi-color perimeters fragment per-color with bisector ownership (supersedes `D-96-AC22-EXTERNAL-CONTOUR`). Drives the T-P96-A0 through T-P96-F task block below.
 - [`docs/specs/paint-pipeline-orca-parity-roadmap.md`](./paint-pipeline-orca-parity-roadmap.md) — **Inherited obligation:** P96 closed AC-22b via a non-parity `SlicedRegion.external_contour` simplification (D-96-AC22-EXTERNAL-CONTOUR). This roadmap supersedes that mechanism with per-color outer-wall fragmentation + deterministic per-edge bisector ownership. See "Inherited from P96 — AC-22b reshape obligation" section below.
@@ -43,10 +43,10 @@ Tasks that look like "implement overhang detection" therefore become "propagate 
 
 ## Milestone summary
 
-### M1 — Classic parity + truthful rename
+### M1 — Classic parity + delete iterative-inset fake-Arachne
 Outcomes:
 - `classic-perimeters` reaches feature parity with OrcaSlicer `process_classic()`.
-- `arachne-perimeters` is renamed `variable-width-perimeters` with truthful documentation; algorithm unchanged from current state.
+- The fake-Arachne `arachne-perimeters` module (iterative-inset, not real Arachne) is **deleted** under P108 (dir+tests+manifest removed; workspace member removed; doc refs removed). `variable-width-perimeters` never ships (D-110-DROP-VARIABLE-WIDTH). Rename tasks T-090/T-091/T-092 are cancelled and re-scoped to deletion.
 - Cross-cutting fixes (shared util crate, IR widening, builder Result propagation, per-layer config).
 - Reference-fixture parity harness up and running.
 
@@ -113,7 +113,7 @@ Tasks fold into existing M1 phases (cross-references in `Phase`):
 | T-P96-B | Revert `external_contour` consumption in classic-perimeters and arachne-perimeters | Phase 1 / Phase 2 | `modules/core-modules/classic-perimeters/src/lib.rs:111`, `modules/core-modules/arachne-perimeters/src/lib.rs:136` | Both modules trace outer walls per-cell again for painted SlicedRegions. `SlicedRegion.external_contour` IR field remains in place (harmless plumbing) but is unused; T-P96-D deletes it after green. Test (T-P96-A) stays RED with a different failure mode — bisectors traced twice. |
 | T-P96-C0 | `[blocked: D-14]` Resurrect `bisector_edge_skip_mask: Vec<bool>` on `SlicedRegion`; host computes the mask at paint-segmentation commit using D-13's tie-break rule. Per-edge mask aligned to `polygons[*].contour.points` (each edge between `points[i]` and `points[(i+1)%len]`). | Phase 1 | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-core/src/algos/paint_segmentation/`, WIT schema, `crates/slicer-sdk/src/views.rs` (read accessor) | Field present; host populates deterministically; view exposes read-only `bisector_edge_skip_mask() -> &[bool]`. Unit test: for a 4-color cube fixture, masks of adjacent-color cells are inverse-symmetric on the shared edge (exactly one side has `true`, exactly one has `false`). |
 | T-P96-C1 | Classic-perimeters consumes `bisector_edge_skip_mask`: when tracing outer wall per cell, skip edges whose mask is `true`. Connected non-skipped runs become wall fragments. | Phase 4 / Phase 5 | `modules/core-modules/classic-perimeters/src/lib.rs` | T-P96-A goes GREEN for classic-perimeters. Single-color (unpainted) fixture unchanged. |
-| T-P96-C2 | Variable-width-perimeters consumes `bisector_edge_skip_mask` using the same per-cell trace logic as classic (algorithmic equivalence — variable-width's iterative-inset construction maps the same way). | Phase 4 / Phase 5 | `modules/core-modules/variable-width-perimeters/src/lib.rs` (post-rename) | T-P96-A also GREEN for variable-width-perimeters. |
+| ~~T-P96-C2~~ | **DROPPED** — `variable-width-perimeters` is deleted (not renamed) under P108 per D-110-DROP-VARIABLE-WIDTH. The fake-Arachne module never ships and never consumes the mask. T-P96-A coverage for real Arachne is handled by T-P96-E in M2. | — | — |
 | T-P96-C3 | Parity verification: golden-file check of full `cube_4color` G-code output against a recorded OrcaSlicer reference (tolerances per parity-harness pattern in T-100). | Phase 9 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_orca.gcode` (recorded), `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (harness extension) | Per-color fragment counts, tool-change positions, and wall-coverage union match Orca within tolerance. Investigation citation from T-P96-A0 referenced in test comment. |
 | T-P96-D | Delete unused `external_contour` IR field after T-P96-A through T-P96-C3 land GREEN | Phase 1 | `crates/slicer-ir/src/slice_ir.rs:1282`, WIT, host populator, ~5 files | Field removed; `cargo check --workspace --all-targets` clean. SliceIR schema version bump. Cleanup task — strictly after C3. |
 | T-P96-E | `[blocked: D-15]` Arachne MMU dedup at boundary level (NOT per-edge wall mask). Preprocessing of per-color input contour before SkeletalTrapezoidation: each color's input cell has bisector edges with neighboring different-color cells contracted/removed per the tie-break rule. The result is per-color preprocessed input cells that Arachne ingests normally. | Phase 10–12 (M2) | `modules/core-modules/arachne-perimeters/` (M2 real-Arachne module), `crates/slicer-core/src/arachne/preprocess.rs` | Per OrcaSlicer Arachne MMU citation from T-P96-A0. Cube_4color parity test (T-P96-C3) passes for Arachne. |
@@ -124,7 +124,7 @@ Ordering:
 2. **T-P96-A** lands the test RED.
 3. **T-P96-B** reverts `external_contour` consumption (test stays RED — bisectors now traced twice).
 4. **T-P96-C0** adds the mask field + host computation.
-5. **T-P96-C1**, **T-P96-C2** consume the mask in each perimeter module (test goes GREEN for each).
+5. **T-P96-C1** consumes the mask in `classic-perimeters` (test goes GREEN). **T-P96-C2 is dropped** — `variable-width-perimeters` deleted per D-110-DROP-VARIABLE-WIDTH; real-Arachne coverage deferred to T-P96-E in M2.
 6. **T-P96-C3** parity verification against recorded OrcaSlicer output.
 7. **T-P96-D** cleanup (delete `external_contour`).
 8. **T-P96-E** in M2 alongside real Arachne.
@@ -259,13 +259,15 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 | T-082 | Audit `seam-placer/src/lib.rs` for any dependency on dense candidate lists; document in roadmap if downstream contract requires changes | `modules/core-modules/seam-placer/src/lib.rs` (read-only) | Either confirms no change needed, or files a task in this roadmap to update seam-placer in tandem. |
 | T-083 | Confirm/document interaction with `seam-planner-default`: does its `PrePass::SeamPlanning` output feed perimeter-side candidate generation? | `modules/core-modules/seam-planner-default/src/lib.rs` (read), `docs/01_system_architecture.md` (update if needed) | Documented decision: either perimeter consumes seam-planner output, or the two are independent. |
 
-## Variable-width-perimeters rename (parallel to Phase 0)
+## ~~Variable-width-perimeters rename~~ → DELETE fake-Arachne under P108 (D-110-DROP-VARIABLE-WIDTH)
+
+Tasks T-090/T-091/T-092 are **cancelled** (rename never happens). Re-scoped to deletion, owned by **P108**:
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-090 | Rename `arachne-perimeters` directory + crate name + module id to `variable-width-perimeters` | `modules/core-modules/arachne-perimeters/` → `modules/core-modules/variable-width-perimeters/`, all references | Build green; module loads at runtime under new ID. |
-| T-091 | Update manifest `display-name`, `description`, `module.id` | `variable-width-perimeters.toml` | Display name says "Variable-Width Perimeters"; description honestly states algorithm. |
-| T-092 | Update all docs / specs / roadmaps referencing `com.core.arachne-perimeters` | `docs/**/*.md`, `.ralph/specs/**/*.md` | grep returns no stale references. |
+| T-090 | ~~Rename `arachne-perimeters` directory~~  **→ DELETE** `arachne-perimeters` directory, crate, workspace member, and `.wasm` artifact | `modules/core-modules/arachne-perimeters/` (entire dir removed); `Cargo.toml` workspace member entry removed; `modules/core-modules/` manifest dir | `cargo build --workspace` green; `cargo xtask build-guests` no longer discovers `arachne-perimeters`. |
+| T-091 | ~~Update manifest~~ **→ Remove** all `arachne-perimeters` manifest and module-dir references from `docs/`, `.ralph/specs/`, config-key reference | `modules/core-modules/arachne-perimeters/` (deleted above); `docs/**/*.md`, `.ralph/specs/**/*.md` | No remaining reference to the deleted module id `com.core.arachne-perimeters` outside of deletion-noting entries. |
+| T-092 | Remove all doc and spec stale forward-refs to `variable-width-perimeters` | `docs/**/*.md`, `.ralph/specs/**/*.md` | `rg variable-width-perimeters docs/ .ralph/specs/` returns zero hits outside of D-110-DROP-VARIABLE-WIDTH and deletion-noting entries. |
 
 ## Phase 9 — Verification
 
@@ -273,7 +275,7 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 |---|---|---|---|
 | T-100 | Build reference-fixture parity harness under `crates/slicer-runtime/tests/integration/perimeter_parity.rs` | new test file | Harness loads a `(mesh, config, expected-`PerimeterIR`)` triple and runs the perimeter module. |
 | T-101 | Record OrcaSlicer reference outputs for 6 M1 fixtures: solid square, holed square, multi-tool triangle, overhang ramp, bridge fixture, spiral-vase cone | `crates/slicer-runtime/tests/fixtures/perimeter_parity/` | Reference files committed; tolerances calibrated. |
-| T-102 | TDD sweep for edge cases called out in audit: 3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override | `modules/core-modules/classic-perimeters/tests/`, `modules/core-modules/variable-width-perimeters/tests/` | ≥20 new TDDs green. |
+| T-102 | TDD sweep for edge cases called out in audit: 3-tool polygon, inner-wall material boundary, 0/2-vertex polygon, hole-with-thin-wall, gap-fill-in-overhang, top-flagged region, first-layer override | `modules/core-modules/classic-perimeters/tests/` | ≥20 new TDDs green. (`variable-width-perimeters/tests/` dropped — module deleted under P108 per D-110-DROP-VARIABLE-WIDTH.) |
 | T-103 | Walk every M1 deviation entry from T-003; close each with implementing task ID, or document residual deviation | `docs/DEVIATION_LOG.md` | All M1 deviations closed or justified. |
 | T-104 | Update `docs/07_implementation_status.md` to mark Classic parity complete | `docs/07_implementation_status.md` | Status entry added. |
 | T-105 | Run `cargo test --workspace` once at M1 close (per CLAUDE.md test-discipline closure ceremony rule) | n/a (test run) | Green. |
@@ -286,12 +288,12 @@ Note: T-082/T-083 already audit seam-placer's candidate-list contract and the se
 
 | ID | Title | Files | Acceptance |
 |---|---|---|---|
-| T-200 | ADR `0010-arachne-port-strategy.md`: document Voronoi crate selection (D-7), pure-Rust constraints, degeneracy handling expectations | `docs/adr/0010-arachne-port-strategy.md` | ADR merged; D-7 closed. |
+| T-200 | ADR `0023-arachne-port-strategy.md`: document Voronoi crate selection (D-7), pure-Rust constraints, degeneracy handling expectations | `docs/adr/0023-arachne-port-strategy.md` | ADR merged; D-7 closed. |
 | T-201 | Vendor / depend on chosen Voronoi crate; wrap in `slicer-core::voronoi` with Orca-shaped API surface | `crates/slicer-core/src/voronoi.rs`, `Cargo.toml` | API surface: `voronoi_from_segments(Vec<Segment>) -> HalfEdgeGraph`. Collinear/T-junction stress fixtures pass. |
 | T-202 | Port `SkeletalTrapezoidationGraph` (half-edge graph storing R-values per edge) | `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` | Graph reproduces Orca's graph for square + wedge golden fixtures. |
 | T-203 | Discretize parabolic VD edges to line segments | `crates/slicer-core/src/skeletal_trapezoidation/discretize.rs` | Output matches OrcaSlicer discretized graph within tolerance. |
 | T-204 | Port the 9-stage pre-processing pipeline from `WallToolPaths.cpp:590-604` (triple-offset, simplify, fixSelfIntersections, removeSmallAreas, etc.) | `crates/slicer-core/src/arachne/preprocess.rs` | Output matches Orca's pre-processed-outline fixture. Hazard ("destroys features < epsilon_offset ~11.5 µm") documented in doc-comment. |
-| T-205 | Create new `modules/core-modules/arachne-perimeters/` skeleton with manifest + empty `LayerModule` impl | `modules/core-modules/arachne-perimeters/` | Module loads under `com.core.arachne-perimeters`; `incompatible-with` declares `com.core.classic-perimeters` and `com.core.variable-width-perimeters`. |
+| T-205 | Create new `modules/core-modules/arachne-perimeters/` skeleton with manifest + empty `LayerModule` impl | `modules/core-modules/arachne-perimeters/` | Module loads under `com.core.arachne-perimeters`; `incompatible-with` declares `com.core.classic-perimeters` only (`variable-width-perimeters` is deleted by P108, per D-110-DROP-VARIABLE-WIDTH). |
 
 ## Phase 11 — BeadingStrategy stack
 
@@ -357,8 +359,8 @@ Packets will bundle 3-6 contiguous tasks (per Phase or sub-phase boundary) when 
 **`modules/core-modules/classic-perimeters/`**
 T-001, T-005, T-011, T-015, T-016, T-018, T-019, T-020, T-024, T-025, T-031, T-033, T-051, T-052, T-053, T-061, T-062, T-063, T-064, T-071, T-073, T-074, T-076, T-102
 
-**`modules/core-modules/variable-width-perimeters/` (post-T-090 rename)**
-T-002, T-005, T-012, T-015, T-016, T-018, T-019, T-020, T-024, T-025, T-031, T-033, T-090, T-091, T-092, T-102
+**`modules/core-modules/arachne-perimeters/` (current fake; deleted by T-090 under P108 — D-110-DROP-VARIABLE-WIDTH)**
+T-002, T-005, T-012, T-015, T-016, T-018, T-019, T-020, T-024, T-025, T-031, T-033, T-090, T-091, T-092
 
 **`modules/core-modules/arachne-perimeters/` (new in M2)**
 T-205, T-218, T-230, T-231, T-233

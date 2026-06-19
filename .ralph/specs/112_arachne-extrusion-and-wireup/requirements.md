@@ -22,15 +22,21 @@
 
 ## Problem Statement
 
-P110 shipped the foundations (Voronoi wrapper, SkeletalTrapezoidationGraph, parabolic discretization, 9-stage preprocess, per-color MMU dedup, arachne-perimeters module skeleton with placeholder `run_perimeters`). P111 shipped the BeadingStrategy stack (trait, 5 strategies, factory, 11 config keys, D-9 strip-pass). Neither produces walls — the placeholder `run_perimeters` from P110 still returns `Ok(())` and traces a `warn!`. P112 closes the loop: extrusion generation reads the SKT graph's centrality marks + per-edge bead counts + propagated transitions and emits `Vec<VariableWidthLines>`; stitch + simplify + removeSmall clean the output; `arachne-perimeters::run_perimeters` calls the whole pipeline end-to-end (preprocess → voronoi → SKT graph → centrality → bead counts → propagation → generate_toolpaths → stitch → simplify → removeSmall → emit WallLoops with variable widths).
+**FORWARD-DEP BLOCKERS (P109, P110, P111 — all `status: draft` at packet authoring):**
+- **FORWARD-DEP on P110 (draft):** `SkeletalTrapezoidationGraph`, `voronoi_from_segments`, `arachne/preprocess.rs` (`preprocess_input_outline`, `preprocess_per_color_inputs`), and the NEW `arachne-perimeters` skeleton (empty `LayerModule` impl + `warn!`) do NOT exist in the tree yet. Steps 1–9 assume these symbols will be produced by P110. If P110 is not `status: implemented` at activation time, this packet cannot activate. NOTE: the old 512-line iterative-inset fake was DELETED by P108; P110 creates the fresh skeleton.
+- **FORWARD-DEP on P111 (draft):** `BeadingStrategy` trait, `BeadingStrategyFactory`, `BeadingFactoryParams`, and `crates/slicer-core/src/beading/` do NOT exist in the tree yet. Step 2 (bead-count assignment) and Step 9 (wire-up) assume these symbols. If P111 is not `status: implemented` at activation time, this packet cannot activate.
+- **FORWARD-DEP on P109 (draft):** The `perimeter_parity.rs` harness (`crates/slicer-runtime/tests/integration/perimeter_parity.rs`) and the `cube_4color` fixtures produced by P109's T-100 do NOT exist in the tree yet. Step 10 (T-231 fixtures) extends this harness. If P109 is not `status: implemented` at activation time, Step 10 is blocked.
+- **FORWARD-DEP on P105 (draft):** `LoopType::GapFill` does NOT exist in the current `LoopType` enum (which has `Outer`, `Inner`, `ThinWall`, `NonPlanarShell`). If any step produces gap-fill loops, the `GapFill` variant must be introduced by P105 before it can be referenced here.
 
-T-224 adds `ExtrusionLine` + `ExtrusionJunction` IR types. These are NEW additions (additive schema change); the bump is minor-version (e.g., 4.4.0 → 4.5.0 depending on M1 close state). Both types use `#[serde(default)]` on any new optional fields for round-trip safety with pre-bump fixtures.
+P110 will ship the foundations (Voronoi wrapper, SkeletalTrapezoidationGraph, parabolic discretization, 9-stage preprocess, per-color MMU dedup, NEW `arachne-perimeters` skeleton with empty `run_perimeters` returning `Ok(())` + `warn!`). P111 will ship the BeadingStrategy stack (trait, 5 strategies, factory, 11 config keys, D-9 strip-pass). P112 closes the loop: extrusion generation reads the SKT graph's centrality marks + per-edge bead counts + propagated transitions and emits `Vec<VariableWidthLines>`; stitch + simplify + removeSmall clean the output; `arachne-perimeters::run_perimeters` is IMPLEMENTED in the P110-created empty skeleton with the real Voronoi/beading-based path. NOTE: the old 512-line iterative-inset fake was DELETED by P108/T-090. At P112 activation the skeleton contains only the `warn!` stub — filling it is T-230's job.
+
+T-224 adds `ExtrusionLine` + `ExtrusionJunction` IR types. These are NEW additions (additive schema change); the bump is minor-version. **Schema version computed at activation:** live `CURRENT_SLICE_IR_SCHEMA_VERSION` = `4.3.0` (as of P112 authoring); intervening bumps from P105/P106/P109 are unshipped (all draft). At activation, the implementer MUST read the actual constant value and increment the minor version by 1. Do NOT hardcode `4.7.0` or any other future-reservation value. Both types use `#[serde(default)]` on any new optional fields for round-trip safety with pre-bump fixtures.
 
 T-231 extends P109's parity harness with 4 Arachne-specific fixtures (tapered wedge tests variable widths; narrow strip with widening tests the Widening strategy; max-bead-count cap tests the Limited strategy; complex multi-feature polygon tests the whole SKT graph end-to-end). It also extends the cube_4color test from P109 to assert Arachne produces per-color fragmented walls — this is the M2 half of T-P96-E (M1 half landed in P105 via Classic; the per-color preprocessing from P110 + this packet's wire-up makes Arachne ship the same parity behavior).
 
-T-232 (deviation walk) closes D-7 (boostvoronoi selection — via ADR-0010 in P110), D-9 (sentinel strip — via T-215b in P111), and D-15 (Arachne MMU path — via investigation in P102). Any new deviations registered during M2 work get closure entries or justified-residual status.
+T-232 (deviation walk) closes D-7 (boostvoronoi selection — via ADR-0010 in P110), D-9 (sentinel strip — via T-215b in P111), and D-15 (Arachne MMU path — via investigation in P105). **IMPORTANT:** D-7, D-9, and D-15 live in `docs/specs/perimeter-modules-orca-parity-roadmap.md` (the roadmap), NOT in `docs/DEVIATION_LOG.md`. AC-11's closure grep MUST target the roadmap file for these three IDs. Any new deviations registered during M2 work that are added to `docs/DEVIATION_LOG.md` must use the live `D-<pkt>-<SLUG>` format observed in that file. Any new deviations registered during M2 work get closure entries or justified-residual status.
 
-T-233 (architecture doc) flips the Tier-2 box: the old "iterative-inset width approximation" caveat documented the variable-width-perimeters placeholder; with real Arachne shipping, the caveat is replaced by "real Arachne (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack)" citing P112.
+T-233 (architecture doc) flips the Tier-2 box: the old "iterative-inset width approximation" caveat documented the old fake arachne-perimeters module (deleted by P108); with real Arachne shipping, the caveat is replaced by "real Arachne (Voronoi + SkeletalTrapezoidation + BeadingStrategy stack)" citing P112.
 
 T-234 (closure ceremony) runs the full `cargo test --workspace`. This is the workspace-test exception per CLAUDE.md — every prior verification in P112 was narrow (per-crate or per-test); the closure ceremony is the gate that catches cross-cutting regressions in M1 modules that M2 wire-up might have introduced.
 
@@ -48,7 +54,7 @@ T-234 (closure ceremony) runs the full `cargo test --workspace`. This is the wor
 - `crates/slicer-schema/wit/deps/ir-types.wit` (EDIT) — declare `extrusion-line` and `extrusion-junction` records.
 - `crates/slicer-wasm-host/src/host.rs` (EDIT) — populate new fields for guest reads if needed.
 - `crates/slicer-sdk/src/views.rs` (EDIT) — expose `extrusion_line` accessor if used by other modules (likely deferred to a follow-on; this packet's `arachne-perimeters` builds the lines internally and converts to `Point3WithWidth` for the existing WallLoop surface).
-- `modules/core-modules/arachne-perimeters/src/lib.rs` (EDIT) — replace placeholder `run_perimeters` with real wire-up.
+- `modules/core-modules/arachne-perimeters/src/lib.rs` (EDIT) — implement `run_perimeters` in the P110-created empty skeleton with the real SKT/beading-based wire-up. The old 512-line iterative-inset fake (`generate_arachne_walls`) was DELETED by P108; the skeleton from P110 contains only a `warn!` stub at P112 activation.
 - `crates/slicer-runtime/tests/fixtures/perimeter_parity/{tapered_wedge,narrow_strip_widening,max_bead_count_cap,complex_multi_feature,cube_4color_arachne}/` (NEW) — 4 Arachne fixtures + cube_4color Arachne reference.
 - `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (EDIT) — extend harness if comparators need Arachne-specific tolerances; add Arachne suite entry.
 - `crates/slicer-runtime/tests/executor/arachne_perimeters_simple_square.rs` (NEW) — AC-9 standalone test.
@@ -101,14 +107,14 @@ Files to inspect for this packet — ONE dispatch per function/file:
 
 For T-231's 4 Arachne fixtures: ONE SUMMARY per fixture (≤ 100 words each) — describe expected `PerimeterIR` shape (wall count, role distribution, per-junction width). 4 dispatches total. The recorded fixtures are JSON files derived from these expectations.
 
-For T-231's cube_4color Arachne extension: NO direct OrcaSlicer read needed. Use `docs/specs/orca-mmu-perimeter-investigation.md` (P102/T-P96-A0 one-pager) as the authoritative source.
+For T-231's cube_4color Arachne extension: NO direct OrcaSlicer read needed. Use `docs/specs/orca-mmu-perimeter-investigation.md` (P105/T-P96-A0 one-pager) as the authoritative source.
 
 ## Acceptance Summary
 
 - Positive cases: `AC-1` (centrality 3 fixtures), `AC-2` (bead_count tapered_wedge), `AC-3` (propagation 3 fixtures), `AC-4` (generateToolpaths tapered_wedge), `AC-5` (ExtrusionLine round-trip + schema bump), `AC-6` (stitch primary preservation), `AC-7` (simplify vertex count), `AC-8` (removeSmall primary preservation), `AC-9` (arachne-perimeters real wire-up simple-square), `AC-10` (4 Arachne parity fixtures green), `AC-11` (M2 deviations closed), `AC-12` (architecture doc updated), `AC-13` (workspace test ceremony green).
 - Negative cases: `AC-N1` (bead_count requires centrality), `AC-N2` (ExtrusionLine pre-bump JSON deserializes), `AC-N3` (removeSmall all-primary invariant).
 - Refinements not captured in Given/When/Then:
-  - The schema-version bump in AC-5 is additive (`#[serde(default)]` on new optional fields). Likely path: 4.4.0 → 4.5.0 if P109 closed at 4.4.0; verify the post-P109 value at packet activation.
+  - The schema-version bump in AC-5 is additive (`#[serde(default)]` on new optional fields). Live value at authoring = `4.3.0` (P105/P106/P109 unshipped). Implementer reads actual constant at activation and bumps minor by 1.
   - The cube_4color Arachne extension fixture under T-231 reuses `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_orca.gcode` (recorded by P109 / T-P96-C3) — Arachne wired against this fixture MUST produce the same parity result, validating the per-color preprocessing chain from P110 + this packet's wire-up.
   - T-234 (workspace ceremony) is dispatched to a sub-agent per CLAUDE.md (`FACT pass/fail` return). The implementer does NOT absorb the full output.
 
@@ -129,7 +135,7 @@ For T-231's cube_4color Arachne extension: NO direct OrcaSlicer read needed. Use
 | `cargo xtask build-guests --check` | Guest WASM coherence after IR + arachne-perimeters edits | FACT clean / STALE list |
 | `cargo test -p slicer-runtime --test executor arachne_perimeters_simple_square_produces_walls 2>&1 \| tee target/test-output.log` | AC-9 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration arachne_perimeter_parity 2>&1 \| tee target/test-output.log` | AC-10 (4 fixtures + cube_4color Arachne) | FACT pass/fail per fixture |
-| `for d in D-7 D-9 D-15; do rg -q "$d.*CLOSED\|$d.*closed" docs/DEVIATION_LOG.md \|\| { echo "MISSING $d"; exit 1; }; done` | AC-11 | FACT pass per deviation |
+| `for d in D-7 D-9 D-15; do rg -q "$d.*CLOSED\|$d.*closed" docs/specs/perimeter-modules-orca-parity-roadmap.md \|\| { echo "MISSING $d in roadmap"; exit 1; }; done` | AC-11 | FACT pass per deviation — NOTE: D-7/D-9/D-15 are in the roadmap, NOT DEVIATION_LOG.md |
 | `! rg -q 'iterative-inset width approximation' docs/01_system_architecture.md && rg -q 'Voronoi.*SkeletalTrapezoidation.*BeadingStrategy' docs/01_system_architecture.md` | AC-12 | FACT pass/fail |
 | `cargo test --workspace 2>&1 \| tee target/test-output.log \| tail -5` | T-234 / AC-13 closure ceremony | FACT (summary line + count) |
 

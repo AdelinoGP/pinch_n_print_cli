@@ -14,11 +14,12 @@ The packet does not touch IR, WIT, host, or any other crate. All work is `slicer
 - **Objective:** Define `BeadingStrategy` trait and `Beading` struct in `crates/slicer-core/src/beading/mod.rs`. Register the module in `lib.rs`. Write a trait-surface compile-time test (AC-1).
 - **Precondition:** None.
 - **Postcondition:** `cargo check -p slicer-core` green; AC-1 falsifiable via `rg` checks.
-- **Files allowed to read:** `crates/slicer-core/src/lib.rs` (current `pub mod` set, post-P110).
-- **Files allowed to edit:** `crates/slicer-core/src/lib.rs`, `crates/slicer-core/src/beading/mod.rs` (NEW).
+- **Files allowed to read:** `crates/slicer-core/src/lib.rs` (current `pub mod` set), `crates/slicer-core/Cargo.toml` (existing `[[test]]` entries — to know how to append new ones).
+- **Files allowed to edit:** `crates/slicer-core/src/lib.rs`, `crates/slicer-core/src/beading/mod.rs` (NEW), `crates/slicer-core/Cargo.toml` (add `[[test]] name = "beading_*"` entries — one entry per test file created across Steps 2–7; add all upfront in Step 1 to avoid re-opening the file 6 times).
 - **Expected sub-agent dispatches:** ONE OrcaSlicer LOCATIONS dispatch for `BeadingStrategy.h` — return ≤ 10 entries listing virtual method signatures + `Beading` struct fields.
 - **Context cost:** S.
 - **Authoritative docs:** OrcaSlicer base interface (via dispatch).
+- **Test registration note:** `slicer-core` uses explicit `[[test]] name = "..."` entries per file. The 6 new test files (`beading/distributed.rs`, `beading/redistribute.rs`, `beading/widening.rs`, `beading/outer_wall_inset.rs`, `beading/limited.rs`, `beading/factory.rs`) must each have a `[[test]]` entry added in `Cargo.toml`. Registering upfront in Step 1 keeps subsequent steps within their 3-edit cap.
 - **Narrow verification:** `cargo check -p slicer-core 2>&1 | tee target/test-output.log && rg -q 'fn compute' crates/slicer-core/src/beading/mod.rs && rg -q 'struct Beading' crates/slicer-core/src/beading/mod.rs`.
 - **Cheapest falsifying check:** AC-1 commands — three `rg -q` predicates on the trait file.
 
@@ -29,7 +30,7 @@ The packet does not touch IR, WIT, host, or any other crate. All work is `slicer
 - **Precondition:** Step 1 done (trait exists).
 - **Postcondition:** `cargo test -p slicer-core distributed_beading_strategy_orca_table` green; AC-2 + AC-N1 falsifiable.
 - **Files allowed to read:** `crates/slicer-core/src/beading/mod.rs` (Step 1 output).
-- **Files allowed to edit:** `crates/slicer-core/src/beading/distributed.rs` (NEW), `crates/slicer-core/src/beading/mod.rs` (add `pub mod distributed;`), `crates/slicer-core/tests/beading/distributed.rs` (NEW), `crates/slicer-core/tests/fixtures/beading/distributed_10_thickness.json` (NEW).
+- **Files allowed to edit:** `crates/slicer-core/src/beading/distributed.rs` (NEW), `crates/slicer-core/src/beading/mod.rs` (add `pub mod distributed;`), `crates/slicer-core/tests/beading/distributed.rs` (NEW — `[[test]]` entry already added in Step 1), `crates/slicer-core/tests/fixtures/beading/distributed_10_thickness.json` (NEW).
 - **Expected sub-agent dispatches:** ONE OrcaSlicer SUMMARY for `DistributedBeadingStrategy.cpp` — return ≤ 150 words: `compute` body + Gaussian decay constant. ONE `cargo test -p slicer-core distributed_beading_strategy_orca_table` — return FACT pass/fail per thickness.
 - **Context cost:** M.
 - **Authoritative docs:** OrcaSlicer DistributedBeadingStrategy.cpp (via SUMMARY).
@@ -106,18 +107,18 @@ The packet does not touch IR, WIT, host, or any other crate. All work is `slicer
 - **Narrow verification:** `cargo test -p slicer-core factory_ 2>&1 | tee target/test-output.log`.
 - **Cheapest falsifying check:** `factory_stack_composition_order` reads `type_label` recursively and asserts the path `Limited → OuterWallInset → Widening → Redistribute → Distributed`.
 
-## Step 8 — Config Keys + Docs (T-218 + D-9 closure)
+## Step 8 — Config Keys + Docs (T-218 + strip-pass deviation entry)
 
-- **Tasks:** T-218 + AC-9 + D-9 closure entry + Doc Impact Statement.
-- **Objective:** Register the 11 `m_params.*` config keys in `docs/15_config_keys_reference.md` and `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`. Register the `beading` sub-module in `docs/01_system_architecture.md` (slicer-core tier-2 pipeline modules). Add D-9 closure entry in `docs/DEVIATION_LOG.md`. Flip Phase 11 rows to DONE in the roadmap.
+- **Tasks:** T-218 + AC-9 + `D-111-ARACHNE-SENTINEL-STRIP` log entry + Doc Impact Statement.
+- **Objective:** Register the 11 `m_params.*` config keys in `docs/15_config_keys_reference.md` and `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`. Register the `beading` sub-module in `docs/01_system_architecture.md` (slicer-core tier-2 pipeline modules). Add a new `D-111-ARACHNE-SENTINEL-STRIP` entry in `docs/DEVIATION_LOG.md` (note: D-9 is a roadmap ID in `docs/specs/perimeter-modules-orca-parity-roadmap.md`, NOT an entry in `DEVIATION_LOG.md` — do not grep the log for D-9). Flip Phase 11 rows to DONE in the roadmap.
 - **Precondition:** Step 7 done.
 - **Postcondition:** AC-9 + Doc Impact Statement all green.
-- **Files allowed to read:** `docs/15_config_keys_reference.md` (existing entry format), `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (P110 skeleton), `docs/03_wit_and_manifest.md` (§"Module Manifest TOML"), `docs/01_system_architecture.md`, `docs/DEVIATION_LOG.md` (D-9 location).
+- **Files allowed to read:** `docs/15_config_keys_reference.md` (existing entry format), `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (current state — 5 existing keys: `wall_count`, `line_width`, `outer_wall_speed`, `inner_wall_speed`, `perimeter_arc_tolerance`; none of the 11 new keys exist yet — no collision), `docs/03_wit_and_manifest.md` (§"Module Manifest TOML"), `docs/01_system_architecture.md`, `docs/DEVIATION_LOG.md` (read to learn entry format + confirm `D-111-ARACHNE-SENTINEL-STRIP` absent before adding).
 - **Files allowed to edit:** `docs/15_config_keys_reference.md`, `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`, `docs/01_system_architecture.md`, `docs/DEVIATION_LOG.md`, `docs/specs/perimeter-modules-orca-parity-roadmap.md`.
 - **Expected sub-agent dispatches:** ONE OrcaSlicer LOCATIONS for `PrintConfig.cpp` — return ≤ 20 entries naming each of the 11 `m_params.*` defaults + units + descriptions.
 - **Context cost:** S.
 - **Authoritative docs:** OrcaSlicer PrintConfig.cpp (via LOCATIONS).
-- **Narrow verification:** The AC-9 loop from `packet.spec.md` § Acceptance Criteria. Then `rg -q 'D-9.*closed' docs/DEVIATION_LOG.md && rg -q 'T-210.*DONE' docs/specs/perimeter-modules-orca-parity-roadmap.md && rg -q 'beading' docs/01_system_architecture.md`.
+- **Narrow verification:** The AC-9 loop from `packet.spec.md` § Acceptance Criteria. Then `rg -q 'D-111-ARACHNE-SENTINEL-STRIP' docs/DEVIATION_LOG.md && rg -q 'T-210.*DONE' docs/specs/perimeter-modules-orca-parity-roadmap.md && rg -q 'beading' docs/01_system_architecture.md`.
 - **Cheapest falsifying check:** The AC-9 shell loop falsifies any missing key in either docs or manifest in O(11) lookups.
 
 ## Packet Completion Gate

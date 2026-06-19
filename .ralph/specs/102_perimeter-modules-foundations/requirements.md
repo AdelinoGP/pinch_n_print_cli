@@ -42,7 +42,7 @@ This packet closes the four defects together with the duplication extraction bec
 - Inner-wall `tool_index` propagation (drop hardcoded `Interior`) — Phase 2 (packet 104, depends on T-013 from this packet).
 - Wall-sequence reordering (`OuterInner` / `InnerOuter` / `InnerOuterInner`) — Phase 5 (later packet).
 - Polygon-op primitives (`medial_axis`, `offset2_ex`, hole-tree, `keep_largest_contour_only`, ray ops) — Phase 4 (packet 103, fully parallel).
-- Rename of `arachne-perimeters` → `variable-width-perimeters` — separate packet (precedes M2).
+- ~~Rename of `arachne-perimeters` → `variable-width-perimeters`~~ — **cancelled** (D-110-DROP-VARIABLE-WIDTH): fake-Arachne module is deleted under P108; `variable-width-perimeters` never ships.
 - `infill-fill-partition` host-side hook — already landed in `slicer-runtime`.
 - Any change to wall-emission geometry. This packet is purely infrastructural; same input regions → same wall loops.
 

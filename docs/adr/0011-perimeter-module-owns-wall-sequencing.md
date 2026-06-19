@@ -23,7 +23,7 @@ The grilling weighed:
 **The perimeter module owns wall-sequence reordering.**
 
 - `PerimeterRegion.walls: Vec<WallLoop>` is committed in **final print order**. Downstream consumers (seam-placer, path-optimization-default, GCodeEmit) may treat the sequence as authoritative; they do not reorder walls within a region.
-- The `wall_sequence` config key is owned by `classic-perimeters`, `variable-width-perimeters`, and the future `arachne-perimeters`. The config-key registration migrates from `path-optimization-default` accordingly.
+- The `wall_sequence` config key is owned by `classic-perimeters` and `arachne-perimeters`. The config-key registration migrates from `path-optimization-default` accordingly. **Amendment (2026-06-19, D-110-DROP-VARIABLE-WIDTH):** `variable-width-perimeters` was never shipped; the iterative-inset module is deleted under P108 and real Arachne is introduced fresh under P110+P112. The module list is now `classic-perimeters` and `arachne-perimeters` only.
 - Reordering logic — including `InnerOuterInner` sandwich grouping — lives in the shared `slicer-perimeter-utils` (the new shared crate from roadmap T-010), so every perimeter module calls one implementation.
 - The wall tree (hole/contour nesting) is in-module scaffolding only. It is built during generation, used for sandwich-mode grouping, and discarded before commit. The tree never crosses the module boundary; no `parent_loop_index` field is added to `WallLoop`.
 - `path-optimization-default` deregisters `wall_sequence` from its config schema. Its scope remains travel/retract/Z-hop and nearest-neighbour ordering of entities; intra-region wall sequencing is out of its mandate.

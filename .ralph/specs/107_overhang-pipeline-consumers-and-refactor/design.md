@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- Primary code path: `SliceRegionView` gains an `overhang_quartile_polygons()` accessor (host pre-filters per-region by intersecting `SurfaceClassificationIR.overhang_quartile_polygons[layer_index]` with the region's polygon). `overhang-classifier-default::run_finalization` is rewritten to read `Point3WithWidth.overhang_quartile` per-vertex from `LayerCollectionView` entities and emit `EntityMutation::SetSpeedFactor` based on the read quartile + `overhang_X_4_speed` config. `classify.rs` and `lines_distancer.rs` are deleted (their wall-distance algorithm is superseded by P106's classifier). End-to-end TDD validates the full path; regression TDD captures pre-vs-post behavioural delta.
+- Primary code path: `SliceRegionView` gains an `overhang_quartile_polygons()` accessor (host pre-filters per-region by intersecting `SurfaceClassificationIR.overhang_quartile_polygons[layer_index]` with the region's polygon). `overhang-classifier-default::run_finalization` is rewritten to read `Point3WithWidth.overhang_quartile` per-vertex from `LayerCollectionView` entities and emit `EntityMutation::SetSpeedFactor` based on the read quartile + the real config keys `overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed` (as declared in `overhang-classifier-default.toml`). `classify.rs` and `lines_distancer.rs` are deleted (their wall-distance algorithm is superseded by P106's classifier). End-to-end TDD validates the full path; regression TDD captures pre-vs-post behavioural delta.
 - Neighboring tests / fixtures: 3 new TDD files. Existing P106 tests (mesh_analysis_overhang_xy_footprint, overhang_annotation_ramp, prepass_overhang_annotation_stage_order) stay green.
 - OrcaSlicer comparison surface: none new (workspace-internal consumer side).
 
@@ -12,7 +12,7 @@
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
 - ADR-0008 invariant preserved: speed-factor application stays at `PostPass::LayerFinalization`. This packet's refactor narrows what the module does (consumer only) but keeps it in the finalization tier per the original ADR.
-- ADR-0012 invariant: classification reads come from `SurfaceClassificationIR.overhang_quartile_polygons` (P106's output); the module never recomputes from wall geometry.
+- ADR-0022 invariant (FORWARD-DEP on draft P106 — ADR-0022 is the correct slot; 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`): classification reads come from `SurfaceClassificationIR.overhang_quartile_polygons` (P106's output); the module never recomputes from wall geometry.
 - View pre-filtering pattern: the host pre-filters per-region quartile bands at view-construction (cheap point-in-polygon prefilter); the guest receives only data relevant to the current region. Mirrors `bridge_areas()` pre-filter pattern.
 - Schema-version contract: no IR bump in this packet (the IR was bumped in P106). WIT mirror is additive.
 - Module-shrink invariant: the post-refactor `overhang-classifier-default/src/lib.rs` MUST be a single file ≤ 80 LOC with no other source files in the directory (per AC-3).
@@ -49,7 +49,7 @@
 ## Read-Only Context
 
 - `docs/adr/0008-overhang-as-finalization-module.md` — read full — purpose: confirm speed-factor stays at finalization.
-- `docs/adr/0012-overhang-classification-at-prepass.md` — read full — purpose: confirm classification reads from IR.
+- `docs/adr/0022-overhang-classification-at-prepass.md` — read full once P106 ships — purpose: confirm classification reads from IR. FORWARD-DEP: this ADR does not exist yet; it is authored by P106 at slot 0022 (next free after 0021).
 - `docs/specs/overhang-pipeline-restructuring.md` — range-read Phase 3/4/5.
 - `docs/05_module_sdk.md` — delegate SUMMARY for `SliceRegionView` accessor convention.
 - `modules/core-modules/overhang-classifier-default/src/lib.rs` — read full (≤ 200 LOC pre-refactor; actual ~106 LOC).
@@ -81,14 +81,26 @@
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: no IR change (P106 did it). Manifest narrowing: `overhang-classifier-default.toml` drops broad `LayerCollectionIR` reads; declares narrow `overhang_quartile` read on per-vertex `Point3WithWidth`.
+- IR or manifest contracts touched: no IR change (P106 did it). Manifest narrowing: `overhang-classifier-default.toml` pre-refactor has `reads = ["LayerCollectionIR"]` (confirmed in tree). Post-refactor drops this broad entry and declares a narrower `overhang_quartile`-annotated read on per-vertex `Point3WithWidth`. The `writes = ["LayerCollectionIR"]` entry stays (needed for `SetSpeedFactor` mutations).
+- FORWARD-DEP symbols consumed from upstream drafts:
+  - `SurfaceClassificationIR.overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` ← produced by draft P106 (`status: draft`; not yet in tree).
+  - `QuartileBand { quartile: u8, polygons: Vec<ExPolygon> }` ← produced by draft P106.
+  - `SliceRegionView::overhang_areas(&self) -> &[ExPolygon]` ← produced by draft P104 (`status: draft`; not yet in `crates/slicer-sdk/src/views.rs`).
+  - `SliceRegionView::surface_group(&self) -> Option<&SurfaceGroup>` ← produced by draft P104.
+  - `docs/adr/0022-overhang-classification-at-prepass.md` ← authored by draft P106 at ADR slot 0022.
+- Already-in-tree symbols (no forward-dep needed):
+  - `OverhangRegion.xy_footprint: Vec<ExPolygon>` — present at `crates/slicer-ir/src/slice_ir.rs:581` (P106 populates it at runtime, but the field definition is already there).
+  - `Point3WithWidth.overhang_quartile: Option<u8>` — present at `crates/slicer-ir/src/slice_ir.rs:1516`.
+  - `LayerCollectionIR.ordered_entities: Vec<PrintEntity>` — present at `crates/slicer-ir/src/slice_ir.rs:1946`.
+  - `SurfaceClassificationIR` struct itself — present at `crates/slicer-ir/src/slice_ir.rs:612` (without the quartile-polygons field yet).
 - WIT boundary considerations: new `slice-region-view::overhang-quartile-polygons` accessor. Additive — backward-compatible.
 - Determinism or scheduler constraints: the refactored `overhang-classifier-default` is deterministic over its inputs (per-vertex quartile + config). No scheduler change.
 - View pre-filtering: per-region quartile polygons = intersection of `SurfaceClassificationIR.overhang_quartile_polygons[layer_index]` with the region's polygon, computed at view-construction (Tier 2 view-builder). The full HashMap stays on the Blackboard; only the per-region projection crosses the guest boundary.
 
 ## Locked Assumptions and Invariants
 
-- `Point3WithWidth.overhang_quartile` is the per-vertex source of truth for downstream consumers (overhang-classifier-default's refactor reads it). P104's perimeter modules write this field; this packet does not change that contract.
+- `Point3WithWidth.overhang_quartile: Option<u8>` is the per-vertex source of truth for downstream consumers (confirmed in tree at `crates/slicer-ir/src/slice_ir.rs:1516`). P104's perimeter modules will write this field once P104 ships; this packet does not change that contract.
+- `SliceRegionView::overhang_areas()` and `SliceRegionView::surface_group()` are FORWARD-DEPs on draft P104 — neither exists in `crates/slicer-sdk/src/views.rs` yet. This packet adds `overhang_areas()` as part of its own scope (O-T030 confirms the stub; if P104 has not yet added it, this packet adds it).
 - `SliceRegionView::overhang_quartile_polygons()` returns polygons (not per-vertex values); it's a different consumer surface used by T-077 (P108) and future overhang-aware modules.
 - `overhang-classifier-default/src/lib.rs` is the only source file in the module directory post-refactor. Auxiliary files are forbidden.
 - D-10, D-12, D-OVERHANG-QUARTILE-NONE all close in this packet. If a closure cannot land (e.g., P104's `None` shipping path isn't rewired and AC-5 documents the gap), the deviation transitions to "partially closed — perimeter-side wiring tracked as T-024-WIRE-VIEW-CONSUMER follow-up" rather than fully closed.

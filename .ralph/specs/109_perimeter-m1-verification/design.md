@@ -11,7 +11,7 @@
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
-- Schema-bump contract for additive removal: bump 4.3.0 → 4.4.0; old fixtures must still deserialize. Pattern: `#[serde(default, skip_serializing)]` on whatever vestigial sniff still acknowledges the field name during parse, OR clean removal if the implementer confirms no committed fixture relies on the old shape (delegated FACT).
+- Schema-bump contract for additive removal: bump from live `4.3.0` by one minor (exact value computed at activation — do NOT hardcode a literal; P105 may bump first, making the target `4.5.0` instead of `4.4.0`); old fixtures must still deserialize. Pattern: `#[serde(default, skip_serializing)]` on whatever vestigial sniff still acknowledges the field name during parse, OR clean removal if the implementer confirms no committed fixture relies on the old shape (delegated FACT).
 - T-105 workspace test ceremony is the ONE allowed `cargo test --workspace` invocation per CLAUDE.md exception. All other ACs use targeted per-test invocations.
 - The harness's tolerance comparator is the only place that decides "fixture passes" — it MUST be self-tested (AC-1 + AC-N1) before recorded references are considered authoritative.
 - Recorded reference fixtures (`expected_perimeter_ir.json`) are committed artifacts. Regenerating them in-test is forbidden; if a recorded fixture must change, the implementer halts and documents the regression cause in the closure log.
@@ -28,7 +28,9 @@
   - `crates/slicer-schema/wit/deps/ir-types.wit` — remove WIT.
   - `crates/slicer-wasm-host/src/host.rs` — remove populator path.
   - `crates/slicer-sdk/src/views.rs` — remove view accessor.
-  - `crates/slicer-core/src/algos/paint_segmentation/<file>.rs` — remove `union_ex` computation call site.
+  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — remove `populate_external_contours` (line 64) + 3 tests (lines ~178-247) + field assignments (lines 69, 101).
+  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — remove call to `populate_external_contours` (line 840).
+  - `crates/slicer-core/src/algos/prepass_slice.rs` — remove `external_contour: None` initializer (line ~356).
   - `docs/07_implementation_status.md` — Classic parity complete entry.
   - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — M1 marker DONE.
   - `docs/DEVIATION_LOG.md` — closure pass.
@@ -40,16 +42,18 @@
 
 ## Files in Scope (read + edit)
 
-- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (NEW)
-- `crates/slicer-runtime/tests/integration/perimeter_edge_cases.rs` (NEW)
-- `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` (rename + reshape)
-- `crates/slicer-runtime/tests/fixtures/perimeter_parity/` (6 subdirectories with 3 files each)
-- `crates/slicer-ir/src/slice_ir.rs` (`external_contour` removal + schema bump)
-- `crates/slicer-schema/wit/deps/ir-types.wit` (WIT removal)
-- `crates/slicer-wasm-host/src/host.rs` (populator removal)
-- `crates/slicer-sdk/src/views.rs` (accessor removal)
-- `crates/slicer-core/src/algos/paint_segmentation/<file>.rs` (compute call site removal)
-- `docs/07_implementation_status.md`, `docs/specs/perimeter-modules-orca-parity-roadmap.md`, `docs/DEVIATION_LOG.md`, `docs/02_ir_schemas.md`
+- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (NET-NEW — does not exist in tree as of 2026-06-19)
+- `crates/slicer-runtime/tests/integration/perimeter_edge_cases.rs` (NET-NEW)
+- `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` (rename + reshape; pre-existing)
+- `crates/slicer-runtime/tests/fixtures/perimeter_parity/` (6 subdirectories with 3 files each; NET-NEW — none exist in tree)
+- `crates/slicer-ir/src/slice_ir.rs` (`external_contour` removal + schema version bump — FORWARD-DEP on P105)
+- `crates/slicer-schema/wit/deps/ir-types.wit` (WIT removal — FORWARD-DEP on P105)
+- `crates/slicer-wasm-host/src/host.rs` (populator removal — FORWARD-DEP on P105)
+- `crates/slicer-sdk/src/views.rs` (remove `external_contour()` getter line ~399 + `set_external_contour()` setter line ~391 — FORWARD-DEP on P105)
+- `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` (remove `populate_external_contours` fn + 3 tests + field assignments — FORWARD-DEP on P105)
+- `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (remove `populate_external_contours` call at line 840 — FORWARD-DEP on P105)
+- `crates/slicer-core/src/algos/prepass_slice.rs` (remove `external_contour: None` initializer at line ~356 — FORWARD-DEP on P105)
+- `docs/07_implementation_status.md`, `docs/specs/perimeter-modules-orca-parity-roadmap.md` (D-10 + D-12 closure in roadmap + M1 marker), `docs/DEVIATION_LOG.md` (D-104-OVERHANG-QUARTILE-NONE closure + D-109-AC22-PARITY-RESHAPE), `docs/02_ir_schemas.md`
 
 ## Read-Only Context
 
@@ -79,7 +83,7 @@
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: `SlicedRegion.external_contour` removed; schema bump 4.3.0 → 4.4.0 (additive removal). WIT mirror removed.
+- IR or manifest contracts touched: `SlicedRegion.external_contour` removed; schema bump from live 4.3.0 by one minor, computed at activation (NOT hardcoded — P105 also bumps `SliceIR`, so the target is 4.4.0 or 4.5.0 depending on landing order; additive removal). WIT mirror removed.
 - WIT boundary considerations: per CLAUDE.md WIT/Type Changes Checklist, `cargo build --tests --workspace` must pass after the WIT edit before Step 5 closes.
 - Determinism or scheduler constraints: parity harness comparator must be deterministic (sorted iteration over walls + edges); recorded fixtures must be byte-stable (no timestamps in JSON, no random IDs).
 - cube_4color test rename: the renamed function MUST be the only `#[test]` in the executor file with the new name; the old function name is deleted, not deprecated.
@@ -87,7 +91,8 @@
 ## Locked Assumptions and Invariants
 
 - Recorded `expected_perimeter_ir.json` fixtures are authoritative until M2 ships a parity-changing update. Edits to recorded fixtures require closure-log justification per fixture.
-- `external_contour` removal is one-way — once schema 4.4.0 ships, the field cannot be re-added without a new ADR. The field's data is fully obviated by `bisector_edge_skip_mask` (P105) per ADR-0013.
+- `external_contour` is CURRENTLY LIVE in the tree (as of 2026-06-19): populated by `populate_external_contours` in `bisector_ownership.rs:64`, with tests at lines ~178-247, and accessed via `views.rs:391/399`. It is NOT yet obsolete. Its removal requires P105's `bisector_edge_skip_mask: Vec<bool>` (flat per-edge, ADR-0013 LOCKED shape — NOT `Vec<Vec<bool>>`) to ship first. Once P105 ships, `external_contour` deletion is justified and one-way — the field cannot be re-added without a new ADR. The cascade covers: `bisector_ownership.rs` (function + 3 tests + field assignments), `mod.rs:840` (call site), `prepass_slice.rs:356` (initializer), `views.rs:391+399` (getter + setter), `host.rs` (populator), `ir-types.wit` (WIT record + accessor), `slice_ir.rs` (field + schema version bump).
+- `bisector_edge_skip_mask` consumption uses `edge_offset_for_polygon(region, poly_idx) -> usize` (FORWARD-DEP on P105, LOCKED signature). No nested `Vec<Vec<bool>>` — only flat `Vec<bool>`.
 - T-105 workspace test ceremony is the M1 close gate. If it fails for reasons unrelated to this packet's edits (pre-existing in-flight work), the implementer documents in the closure log and gates Step 7 specifically on M1-related-test passes.
 - The parity harness's per-field tolerances (XYZ ±0.005 mm, width ±0.01 mm) are calibrated for the 6 reference fixtures. Tighter tolerances may surface false positives; looser may mask regressions. Document calibration choice in the harness doc-comment.
 

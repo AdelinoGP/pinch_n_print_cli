@@ -19,13 +19,13 @@
 
 ## Problem Statement
 
-P106 lands the PrePass-side foundation of the overhang pipeline restructuring — `OverhangRegion.xy_footprint` is populated at `MeshAnalysis`, `SurfaceClassificationIR.overhang_quartile_polygons` is populated at the new `PrePass::OverhangAnnotation` stage. Without this consumer-side packet, that data is stranded on the Blackboard: no view accessor exposes the quartile polygons to Tier 2 modules; `overhang-classifier-default` still runs its old per-entity wall-distance computation (the algorithm ADR-0012 just superseded for classification purposes); and the perimeter-roadmap deviations D-10 / D-12 / D-OVERHANG-QUARTILE-NONE registered against the previous-state design stay open. T-077 (`extra_perimeters_on_overhangs`) in the renamed P108 cannot transition from its previously-planned no-op pattern to a real consumer until this packet ships the view accessor on top of P106's data.
+P106 (draft) will land the PrePass-side foundation of the overhang pipeline restructuring — `OverhangRegion.xy_footprint` field already exists in `slice_ir.rs:581` (P106 populates it at runtime), `SurfaceClassificationIR.overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` and `QuartileBand` are P106 FORWARD-DEPs not yet in the tree. Without this consumer-side packet, that data is stranded on the Blackboard: no view accessor exposes the quartile polygons to Tier 2 modules; `overhang-classifier-default` still runs its old per-entity wall-distance computation (the algorithm ADR-0022 — authored by P106 at the next free ADR slot, 0022 — supersedes for classification purposes); and the perimeter-roadmap decisions D-10 / D-12 (in the roadmap) plus the to-be-registered deviation `D-104-OVERHANG-QUARTILE-NONE` stay open. T-077 (`extra_perimeters_on_overhangs`) in P108 cannot transition from its previously-planned no-op pattern to a real consumer until this packet ships the view accessor on top of P106's data.
 
 This packet closes all four concerns. The view accessor + WIT mirror + host populator are mechanical extensions of the patterns established by `bridge_areas()`. The `overhang-classifier-default` refactor shrinks the module from ~100 LOC + 2 helper files to ~50 LOC of pure consumer logic that reads `Point3WithWidth.overhang_quartile` and emits `EntityMutation::SetSpeedFactor`. The end-to-end TDD validates the full data path from mesh through gcode. The regression check confirms the refactor preserves observable behaviour within calibrated tolerances. The closure pass turns three open deviations into resolved/superseded entries and unblocks two perimeter-roadmap tasks.
 
 ## In Scope
 
-- `crates/slicer-sdk/src/views.rs`: add `pub fn overhang_quartile_polygons(&self) -> &[QuartileBand]` accessor; verify `overhang_areas()` (added by P104 as stub) now consumes the populated `xy_footprint` from P106.
+- `crates/slicer-sdk/src/views.rs`: add `pub fn overhang_quartile_polygons(&self) -> &[QuartileBand]` accessor (consumes `QuartileBand` — FORWARD-DEP on draft P106); add `pub fn overhang_areas(&self) -> &[ExPolygon]` and `pub fn surface_group(&self) -> Option<&SurfaceGroup>` if P104 has not yet shipped them (both are FORWARD-DEPs on draft P104 — neither exists in tree yet).
 - `crates/slicer-schema/wit/deps/ir-types.wit`: WIT mirror for the new accessor.
 - `crates/slicer-wasm-host/src/host.rs`: `SliceRegionData` field + populator fills the new field at view-construction (pre-filters per-region quartile polygons from `SurfaceClassificationIR.overhang_quartile_polygons` by intersecting with the region's polygon).
 - Possibly `PaintRegionLayerView` / `SurfaceClassificationView` mirror per O-T032 — implementer evaluates based on actual consumer needs; default to no mirror unless a downstream consumer is named.
@@ -33,8 +33,8 @@ This packet closes all four concerns. The view accessor + WIT mirror + host popu
 - `modules/core-modules/overhang-classifier-default/src/classify.rs` and `lines_distancer.rs`: delete.
 - `modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml`: drop broad `LayerCollectionIR` reads; declare narrow `overhang_quartile` read.
 - 3 new TDD files: contract test for view accessor non-empty (AC-2), end-to-end pipeline test (AC-5 + AC-N1), regression check (AC-6).
-- `docs/DEVIATION_LOG.md`: close D-10, D-12, D-OVERHANG-QUARTILE-NONE entries.
-- `docs/specs/perimeter-modules-orca-parity-roadmap.md`: mark T-024 + T-077 unblocked.
+- `docs/DEVIATION_LOG.md`: register new entry `D-104-OVERHANG-QUARTILE-NONE` (ID-conformant with `D-<pkt>-<SLUG>` convention) and mark it closed. **D-10 and D-12 live only in `docs/specs/perimeter-modules-orca-parity-roadmap.md` — not in DEVIATION_LOG.md; do not grep DEVIATION_LOG.md for them.**
+- `docs/specs/perimeter-modules-orca-parity-roadmap.md`: update D-10 and D-12 closure notes to reference P107; mark T-024 + T-077 as unblocked.
 - `docs/01_system_architecture.md`, `docs/05_module_sdk.md`, `docs/02_ir_schemas.md` per Doc Impact Statement.
 
 ## Out of Scope
@@ -51,7 +51,7 @@ This packet closes all four concerns. The view accessor + WIT mirror + host popu
 | --- | --- | --- |
 | `docs/specs/overhang-pipeline-restructuring.md` | ~150 lines | Range-read Phase 3/4/5. |
 | `docs/adr/0008-overhang-as-finalization-module.md` | ~30 lines | Read full. |
-| `docs/adr/0012-overhang-classification-at-prepass.md` | ~40 lines (from P106) | Read full. |
+| `docs/adr/0022-overhang-classification-at-prepass.md` | ~40 lines (from P106 — FORWARD-DEP; does not exist yet; ADR slot 0022 is next free after 0021) | Read full once P106 ships. |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | ~700 lines | Range-read D-10/D-12 + T-024/T-077 entries. |
 | `docs/05_module_sdk.md` | ~500 lines | Delegate SUMMARY for `SliceRegionView` accessor convention. |
 | `docs/DEVIATION_LOG.md` | varies | Range-read the three target entries. |
@@ -86,7 +86,8 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test integration overhang_classifier_refactor_regression_tdd` | AC-6 regression | FACT pass/fail |
 | `cargo xtask build-guests --check` | Guest WASM coherence after WIT change | FACT clean / STALE list |
 | `[ $(wc -l < modules/core-modules/overhang-classifier-default/src/lib.rs) -le 80 ]` | AC-3 LOC bound | FACT pass/fail |
-| `rg -q 'D-10.*closed\|D-10.*resolved' docs/DEVIATION_LOG.md` | AC-7 D-10 closure | FACT pass/fail |
+| `rg -q 'D-10.*(P107\|closed\|resolved)' docs/specs/perimeter-modules-orca-parity-roadmap.md` | AC-7 D-10 closure (in roadmap, not DEVIATION_LOG.md) | FACT pass/fail |
+| `rg -q 'D-104-OVERHANG-QUARTILE-NONE.*(closed\|resolved)' docs/DEVIATION_LOG.md` | AC-7 new deviation log entry | FACT pass/fail |
 | `rg -q 'T-024.*unblocked\|T-024.*preconditions met' docs/specs/perimeter-modules-orca-parity-roadmap.md` | AC-7 unblock marker | FACT pass/fail |
 
 ## Step Completion Expectations

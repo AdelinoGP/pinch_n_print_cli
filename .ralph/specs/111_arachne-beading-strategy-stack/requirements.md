@@ -9,7 +9,7 @@
   - `T-213` — Port `WideningBeadingStrategy` (thin-feature single-wall regime — decorator).
   - `T-214` — Port `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset — decorator).
   - `T-215` — Port `LimitedBeadingStrategy` (max-bead-count cap; 0-width sentinel insertion). Sentinels stay internal — see T-215b for strip-pass.
-  - `T-215b` — Implement strip-pass: drop zero-width beads from BeadingStrategy output before `WallLoop` assembly per D-9. Register the deviation closure in `docs/DEVIATION_LOG.md` with rationale.
+  - `T-215b` — Implement strip-pass: drop zero-width beads from BeadingStrategy output before `WallLoop` assembly per the D-9 decision in the roadmap. Register the implementation rationale as a new `D-111-ARACHNE-SENTINEL-STRIP` entry in `docs/DEVIATION_LOG.md` (D-9 is a roadmap ID, not a log ID; the log entry uses the `D-<pkt>-<SLUG>` convention).
   - `T-216` — Port `BeadingStrategyFactory` stack composition (`Distributed → Redistribute → Widening → OuterWallInset → Limited`).
   - `T-218` — Register all 11 Arachne `m_params.*` config keys in `docs/15_config_keys_reference.md` and in `arachne-perimeters.toml`.
 - Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md`
@@ -22,7 +22,7 @@ OrcaSlicer's Arachne wall generator selects per-segment bead widths through a st
 
 The zero-width sentinels from `Limited` are an internal book-keeping mechanism: downstream centrality propagation reads them to keep bead-index alignment, but the wall-loop output should never carry zero-width entries. P96 originally surfaced this as D-9 (Arachne zero-width-sentinel handling) with two options: (a) coordinate with infill modules to recognize and skip sentinels, (b) strip sentinels before external output. D-9 closed via option (b) — T-215b implements the strip-pass at `LimitedBeadingStrategy::compute_and_strip`, and the deviation closure entry records the rationale.
 
-T-218 registers the 11 `m_params.*` config keys both in `docs/15_config_keys_reference.md` (descriptions + defaults + units) and in `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (manifest schema blocks). The `arachne-perimeters` module skeleton from P110 / T-205 receives these keys; their values are passed into `BeadingStrategyFactory::create_stack` at P112's T-230 wire-up time.
+T-218 registers the 11 `m_params.*` config keys both in `docs/15_config_keys_reference.md` (descriptions + defaults + units) and in `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (manifest schema blocks). The `arachne-perimeters` manifest (`arachne-perimeters.toml`) already exists and carries 5 keys (`wall_count`, `line_width`, `outer_wall_speed`, `inner_wall_speed`, `perimeter_arc_tolerance`). The 11 new keys are disjoint from those 5 — no collision. The module's 512-line `run_perimeters` impl is NOT a stub and is NOT modified; only the manifest receives the 11 new schema blocks. Their values are passed into `BeadingStrategyFactory::create_stack` at P112's T-230 wire-up time.
 
 This is a pure-data packet — no IR changes, no WIT changes, no host changes. Every test runs as a `slicer-core` unit test against recorded OrcaSlicer reference outputs.
 
@@ -36,23 +36,36 @@ This is a pure-data packet — no IR changes, no WIT changes, no host changes. E
 - `crates/slicer-core/src/beading/limited.rs` (NEW) — `LimitedBeadingStrategy` + `compute_and_strip` (T-215 + T-215b).
 - `crates/slicer-core/src/beading/factory.rs` (NEW) — `BeadingStrategyFactory`.
 - `crates/slicer-core/src/lib.rs` (EDIT) — `pub mod beading;`.
-- `crates/slicer-core/tests/beading/*.rs` (NEW) — unit suites per strategy + factory composition + strip-pass.
+- `crates/slicer-core/tests/beading/*.rs` (NEW) — unit suites per strategy + factory composition + strip-pass. Each file requires a `[[test]]` entry in `crates/slicer-core/Cargo.toml`.
+- `crates/slicer-core/Cargo.toml` (EDIT) — add 6 `[[test]]` entries (one per test file in Steps 2–7).
 - `crates/slicer-core/tests/fixtures/beading/` (NEW) — recorded OrcaSlicer reference Beading outputs in JSON.
-- `docs/15_config_keys_reference.md` (EDIT) — 11 new key entries.
-- `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (EDIT) — 11 new `[config.schema.*]` blocks.
+- `docs/15_config_keys_reference.md` (EDIT) — 11 new key entries (no collision with existing 5 arachne-perimeters keys).
+- `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (EDIT) — 11 new `[config.schema.*]` blocks (5 existing keys unchanged).
 - `docs/01_system_architecture.md` (EDIT) — register `beading` sub-module.
-- `docs/DEVIATION_LOG.md` (EDIT) — D-9 closure with rationale.
+- `docs/DEVIATION_LOG.md` (EDIT) — add `D-111-ARACHNE-SENTINEL-STRIP` entry (not `D-9` — D-9 is a roadmap ID).
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` (EDIT) — flip T-210..T-218 to DONE.
 
 ## Out of Scope
 
-- SkeletalTrapezoidationGraph (P110 / T-202) — already shipped.
+- SkeletalTrapezoidationGraph — FORWARD-DEP on draft P110 (`crates/slicer-core/src/skeletal_trapezoidation/`); not consumed by this packet (pure-data stack, no SKT graph dependency).
 - Centrality filtering and bead-count assignment (P112 / T-220, T-221) — these will read the trait/factory built here but live in a separate sub-module.
 - Wire-up of `BeadingStrategyFactory::create_stack` into `arachne-perimeters::run_perimeters` (P112 / T-230).
 - `ExtrusionLine` / `ExtrusionJunction` IR types (P112 / T-224) — this packet produces `Beading` data; IR conversion is downstream.
-- Real `arachne-perimeters` slicing (still placeholder from P110 / T-205).
+- Real `arachne-perimeters` run_perimeters logic — the 512-line working impl in `modules/core-modules/arachne-perimeters/src/lib.rs` is NOT a stub; this packet adds 11 config schema keys to the manifest only, not to the run path.
 - Non-Arachne config keys.
 - M1 packets.
+
+## Forward Dependencies (explicit — S1/S5)
+
+These symbols do NOT exist in the tree; they are produced by still-draft packets. Do NOT read or import them — use inline equivalents where needed.
+
+| Symbol | Producing packet | Status | Action if needed |
+| --- | --- | --- | --- |
+| `crates/slicer-core/src/voronoi.rs` (`voronoi_from_segments`, `HalfEdgeGraph`, `VoronoiError`, `Segment`) | P110 | `draft` | Not consumed by P111; reference only for pattern |
+| `crates/slicer-core/src/skeletal_trapezoidation/` (`SkeletalTrapezoidationGraph`) | P110 | `draft` | Not consumed by P111 |
+| `crates/slicer-core/src/arachne/preprocess.rs` (`preprocess_input_outline`) | P110 | `draft` | Not consumed by P111 |
+| `crates/slicer-core/src/flow.rs` (`to_slicer_units`) | P105 | `draft` | Not consumed — use inline `/100` division per `docs/08_coordinate_system.md` |
+| `crates/slicer-core/tests/voronoi_stress.rs`, `skt_graph_golden.rs`, `preprocess_golden.rs` | P110 | `draft` | Not pre-existing; test pattern described only for reference |
 
 ## Authoritative Docs
 
@@ -63,6 +76,7 @@ This is a pure-data packet — no IR changes, no WIT changes, no host changes. E
 | `docs/03_wit_and_manifest.md` | ~600 lines | Range-read `[config.schema.*]` block format. |
 | `docs/01_system_architecture.md` | ~150 lines | Read full — where new sub-module lands. |
 | `crates/slicer-core/src/lib.rs` | small | Read full — extend `pub mod` set. |
+| `crates/slicer-core/Cargo.toml` | small | Read for existing `[[test]]` entry format before adding 6 new entries. |
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -117,7 +131,7 @@ Recorded OrcaSlicer reference Beading outputs (for the 10-thickness Distributed 
 - Cross-step invariant: each strategy's tests must go GREEN before adding it to the factory composition (Step 7). The factory test (AC-8) MUST fail before Step 7 starts and pass after.
 - Step ordering rationale: trait (Step 1) → Distributed base (Step 2) → 4 decorators (Steps 3–6, can be parallel but plan as serial to keep context clean) → factory + composition test (Step 7) → docs + config-key registration (Step 8). Each decorator depends on the trait but NOT on the other decorators; serializing is for context hygiene, not data dependency.
 - Shared scratch state: golden JSON files under `crates/slicer-core/tests/fixtures/beading/` are recorded once during Step 2 (Distributed 10-thickness table) and Steps 3–6 (per-strategy fixtures). Step 7's factory test uses a multi-stage fixture composed from the per-stage fixtures via a JSON pre-merge — the implementer records it ONCE and never regenerates.
-- D-9 closure entry in `docs/DEVIATION_LOG.md` (Step 8) MUST cite ADR-numbered rationale; if no ADR exists for the strip-pass decision, write a one-paragraph rationale inline.
+- `D-111-ARACHNE-SENTINEL-STRIP` entry in `docs/DEVIATION_LOG.md` (Step 8) should cite the WallLoop invariant as the rationale. No ADR is required — the D-9 roadmap entry already records the decision; the log entry documents the implementation-level detail.
 
 ## Context Discipline Notes
 

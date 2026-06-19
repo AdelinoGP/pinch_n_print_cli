@@ -16,9 +16,9 @@
 
 - ADR-0011 invariant: `PerimeterRegion.walls` is committed in final print order; wall tree is in-module scaffolding only and never crosses the module boundary. `wall_sequence_reorder` operates on the tree IN-process and discards it after producing the final flat `Vec<WallLoop>`.
 - ADR-0013 invariant: `external_contour` consumption is removed; `bisector_edge_skip_mask` is the canonical carrier; tie-break rule is deterministic and host-computed.
-- Schema-version contract: bump 4.2.0 → 4.3.0 (additive — new IR field + new enum variants). Existing fixtures stay parseable via `#[non_exhaustive]` on enums and `#[serde(default)]` on the new field.
-- WIT type identity: `loop-type` and `extrusion-role` variants both gain a `gap-fill` arm; `sliced-region` record gains `bisector-edge-skip-mask: list<list<bool>>` field. Per CLAUDE.md WIT/Type Changes Checklist, `cargo build --tests` must pass after WIT edit.
-- `LoopType::GapFill` and `ExtrusionRole::GapFill` add match arms in every consumer that exhaustively matches the enum. The implementer enumerates these via a delegated LOCATIONS dispatch (Step 2 in implementation plan).
+- Schema-version contract: bump from the live `CURRENT_SLICE_IR_SCHEMA_VERSION` value (`4.3.0` as of branch head) to `4.4.0` (additive — new IR field + new enum variants). Computed at activation; do not hardcode. Existing fixtures stay parseable via `#[non_exhaustive]` on enums and `#[serde(default)]` on the new field.
+- WIT type identity: `wall-loop-type` (in `ir-types.wit`) and `extrusion-role` (in `types.wit`) both gain a `gap-fill` arm; `slice-region-view` resource (in `ir-types.wit`) gains a `bisector-edge-skip-mask: func() -> list<bool>` accessor (flat, per ADR-0013 WIT-boundary perf rationale). Per CLAUDE.md WIT/Type Changes Checklist, `cargo build --tests` must pass after WIT edit.
+- `LoopType::GapFill` and `ExtrusionRole::GapFill` add match arms in every consumer that exhaustively matches the enum. The `ir_to_wit_extrusion_role` function in `crates/slicer-wasm-host/src/marshal/leaf.rs:183` is an EXHAUSTIVE match — adding `ExtrusionRole::GapFill` to the IR enum breaks the build unless the WIT `extrusion-role` variant (`gap-fill`) AND the `leaf.rs` match arm land in the SAME atomic sub-step (Step 2a). The implementer enumerates ALL exhaustive-match consumers via a delegated LOCATIONS dispatch (Step 2 in implementation plan) and adds them in 2c.
 - Per-layer config rule (carries from P102): all new config keys (`outer_wall_line_width`, `inner_wall_line_width`, `precise_outer_wall`, `wall_sequence`, `detect_thin_wall`, `gap_infill_speed`, `filter_out_gap_fill`) MUST be read via `_config.get*` per `run_perimeters` invocation, not cached at `on_print_start`.
 
 ## Code Change Surface
@@ -26,17 +26,18 @@
 - Selected approach: bundle the four workstreams in one packet because they share the same `lib.rs` editing surface in both perimeter modules; splitting forces three sequential touches of the same file with inter-packet AC churn. Pipeline within each module's `run_perimeters` becomes: read configs → compute outer/inner widths → build wall geometry (with new spacing) → run thin-wall detection (medial_axis) → run gap collection + gap-fill emission → apply per-cell bisector mask → reorder via wall_sequence → commit. Each phase is a discrete pure-function call to `slicer-core`; the module orchestrates. T-P96-A0 produces the doc one-pager that grounds the bisector tie-break rule used in T-P96-C0's host populator.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `crates/slicer-core/src/flow.rs` (NEW) — `pub fn line_width_to_spacing(width, layer_height, nozzle_diameter) -> f32`; `pub fn flow_to_width(spacing, layer_height, nozzle_diameter) -> f32`.
-  - `crates/slicer-core/src/perimeter_utils.rs` — extend with `pub fn wall_sequence_reorder(&mut Vec<WallLoop>, WallSequence, &[PolygonTreeNode])`; add `pub enum WallSequence { OuterInner, InnerOuter, InnerOuterInner }`.
+  - `crates/slicer-core/src/perimeter_utils.rs` — extend with `pub fn wall_sequence_reorder(&mut Vec<WallLoop>, WallSequence, &[PolygonTreeNode])`; add `pub enum WallSequence { OuterInner, InnerOuter, InnerOuterInner }` (NET-NEW in `slicer-core`; the existing `WallSequence` in `modules/core-modules/path-optimization-default/src/lib.rs:46` has only `InnerOuter`/`OuterInner` — no `InnerOuterInner`, and is local to that module; the ADR-0011-compliant home is `slicer-core::perimeter_utils`). Also add NET-NEW `pub fn edge_offset_for_polygon(region: &SlicedRegion, poly_idx: usize) -> usize` (maps `poly_idx` to the start of its edge range in the flat `bisector_edge_skip_mask`; pinned signature consumed by P109).
   - `crates/slicer-core/src/lib.rs` — `pub mod flow;` declaration.
-  - `crates/slicer-ir/src/slice_ir.rs` — add `LoopType::GapFill`; add `ExtrusionRole::GapFill`; mark both `#[non_exhaustive]`; add `pub bisector_edge_skip_mask: Vec<Vec<bool>>` on `SlicedRegion` with `#[serde(default)]`; bump `CURRENT_SLICE_IR_SCHEMA_VERSION` to `4.3.0`.
-  - `crates/slicer-schema/wit/deps/ir-types.wit` — `loop-type` and `extrusion-role` variants gain `gap-fill`; `sliced-region` record gains `bisector-edge-skip-mask` field; `slice-region-view` gains accessor.
+  - `crates/slicer-ir/src/slice_ir.rs` — add `LoopType::GapFill`; add `ExtrusionRole::GapFill`; mark both `#[non_exhaustive]`; add `pub bisector_edge_skip_mask: Vec<bool>` on `SlicedRegion` with `#[serde(default)]` (flat per-edge, ADR-0013 conformant); bump `CURRENT_SLICE_IR_SCHEMA_VERSION` from live `4.3.0` to `4.4.0`. NOTE: `variable_width` is defined here at `slice_ir.rs:1627` and re-exported from `crates/slicer-ir/src/lib.rs:160` — it is a `slicer-ir` function, NOT `slicer-core`.
+  - `crates/slicer-schema/wit/deps/ir-types.wit` — `wall-loop-type` enum gains `gap-fill` arm; `slice-region-view` resource gains `bisector-edge-skip-mask: func() -> list<bool>` accessor. `crates/slicer-schema/wit/deps/types.wit` — `extrusion-role` variant gains `gap-fill` arm. (Two files, separate WIT locations — keep as two edits in sub-step 2a.)
   - `crates/slicer-wasm-host/src/host.rs` — `SliceRegionData` field; populator fills from `SlicedRegion`.
   - `crates/slicer-sdk/src/views.rs` — accessor `bisector_edge_skip_mask(&self) -> &[Vec<bool>]` on `SliceRegionView`.
-  - `crates/slicer-core/src/algos/paint_segmentation/{mod,voronoi_graph}.rs` (or analogous) — `compute_bisector_edge_skip_mask` host-side function; call site after cell construction.
+  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — `compute_bisector_edge_skip_mask` host-side function (NET-NEW); call site after cell construction. This is the file that already populates `external_contour`; it is the canonical home for bisector-edge work. NOT `voronoi_graph.rs` (which handles graph traversal, not contour ownership).
   - `modules/core-modules/classic-perimeters/src/lib.rs` — full `run_perimeters` rewrite per the pipeline above.
   - `modules/core-modules/arachne-perimeters/src/lib.rs` — mirror.
   - `modules/core-modules/{classic,arachne}-perimeters/*.toml` — register 7 config keys.
   - `modules/core-modules/path-optimization-default/path-optimization-default.toml` — deregister `wall_sequence`.
+  - `modules/core-modules/path-optimization-default/src/lib.rs` — migrate `WallSequence` usages: the module-local `WallSequence` enum (lines 46-51, variants `InnerOuter`/`OuterInner`) and its config read (lines ~276-295) are replaced by consuming `slicer_core::perimeter_utils::WallSequence` which adds `InnerOuterInner`. All call sites (struct field line 143, match lines 161-163, config-read parse lines 278-279) migrate. The local enum definition is removed.
   - `modules/core-modules/part-cooling/src/lib.rs` — `ExtrusionRole::GapFill` match arm (fan dispatch).
   - `modules/core-modules/machine-gcode-emit/src/lib.rs` or host GCodeEmit role priority table — `ExtrusionRole::GapFill` match arm.
   - 6 new TDD files.
@@ -58,7 +59,7 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 - `crates/slicer-core/src/flow.rs` (NEW) — role: Flow math; expected change: ~80 LOC.
 - `crates/slicer-ir/src/slice_ir.rs` — role: enum variants + field + schema bump; expected change: ~30 LOC.
 - `crates/slicer-schema/wit/deps/ir-types.wit` — role: WIT mirrors; expected change: ~15 LOC.
-- `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs` (or analogous) — role: bisector mask computation; expected change: ~100 LOC.
+- `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — role: bisector mask computation (already owns `populate_external_contours`; add `compute_bisector_edge_skip_mask` here); expected change: ~100 LOC.
 - `crates/slicer-wasm-host/src/host.rs` + `crates/slicer-sdk/src/views.rs` — role: WIT/view plumbing; expected change: ~20 LOC each.
 - `modules/core-modules/{classic,arachne}-perimeters/*.toml` — 7 config keys each; ~30 LOC each.
 - `modules/core-modules/path-optimization-default/path-optimization-default.toml` — deregister 1 key.
@@ -101,7 +102,7 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: `LoopType` + `ExtrusionRole` enums gain a variant; `SlicedRegion` gains a field; both via additive bumps. WIT mirrors track. `CURRENT_SLICE_IR_SCHEMA_VERSION` → `4.3.0`.
+- IR or manifest contracts touched: `LoopType` + `ExtrusionRole` enums gain a `GapFill` variant; `SlicedRegion` gains `bisector_edge_skip_mask: Vec<bool>` (flat, ADR-0013); both via additive bumps. WIT mirrors: `wall-loop-type` in `ir-types.wit` + `extrusion-role` in `types.wit` gain `gap-fill`; `slice-region-view` resource gains `bisector-edge-skip-mask: func() -> list<bool>` accessor. `CURRENT_SLICE_IR_SCHEMA_VERSION` → `4.4.0` (live value as of branch head: `4.3.0`; bump computed at activation).
 - WIT boundary considerations: enum variant additions are backward-compatible only if downstream code is exhaustive-match-tolerant. The `#[non_exhaustive]` attribute on both enums is the contractual guarantee. Per CLAUDE.md, after WIT edit run `cargo build --tests --workspace` to catch type identity break.
 - Determinism or scheduler constraints: `compute_bisector_edge_skip_mask` MUST be deterministic. Tie-break by ascending color-ID (default per ADR-0013 if T-P96-A0 doesn't surface a more specific OrcaSlicer rule). Stable across runs for the same input.
 - `external_contour` IR field stays in `SlicedRegion` after this packet — only the **consumption** in both perimeter modules is removed. Field deletion is T-P96-D in P107 after the new mechanism is green in production.
@@ -111,7 +112,7 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 
 - `WallSequence::OuterInner` reverses the canonical `[Outer, Inner_0, Inner_1, …]` order to `[…, Inner_1, Inner_0, Outer]`. `InnerOuter` is canonical. `InnerOuterInner` (per outer contour): `[Inner_0, Outer, Inner_1, …]` — first inner, then outer, then remaining inner walls.
 - Bisector tie-break: lower color-ID owns the edge (default unless T-P96-A0 surfaces a different OrcaSlicer rule). The owning side has `false` in its mask at that edge; the non-owning side has `true` (skip).
-- The bisector mask is indexed strictly by `polygons[i].contour.points` edge index `j`: edge `j` connects `points[j]` and `points[(j+1) % len]`. Inner contour edges (holes) are NOT covered by the mask in this packet — only the outer contour. (Holes are handled in T-P96-E for M2 Arachne; not in scope here.)
+- The bisector mask is a flat `Vec<bool>` per ADR-0013. Edge `(poly_idx, edge_j)` maps to `bisector_edge_skip_mask[edge_offset_for_polygon(region, poly_idx) + edge_j]`, where `edge_j` connects `polygons[poly_idx].contour.points[edge_j]` and `polygons[poly_idx].contour.points[(edge_j+1) % len]`. Inner contour edges (holes) are NOT covered by the mask in this packet — only the outer contour. (Holes are handled in T-P96-E for M2 Arachne; not in scope here.)
 - `ext_perimeter_spacing2 = (outer_wall_line_width + inner_wall_line_width) / 2` (the OrcaSlicer formula). Documented in `flow.rs` doc-comment.
 - `wall_sequence_reorder` is a pure function: same `Vec<WallLoop>` + same `mode` + same tree → same output. No randomness, no global state.
 - `1 unit = 100 nm` invariant preserved in all new spacing arithmetic. Every mm↔unit boundary uses `from_mm` / `units_to_mm` helpers; raw `* 10_000.0` is forbidden.
@@ -123,7 +124,7 @@ Primary edit surface lists ~15 files because the packet bundles 19 tasks per the
 - `wall_sequence` deregistration from `path-optimization-default` is a small mechanical change but touches a module not otherwise in scope. Verified: the key is consumed-nowhere in path-optimization (it was registered there as a vestige per ADR-0011); deregistration is a manifest-only edit, no source changes.
 - Bisector tie-break correctness depends on T-P96-A0's investigation finding a specific OrcaSlicer rule. If A0 finds none (Orca's rule is opaque or non-deterministic), the default "lower color-ID owns" rule is applied. Either way the system is deterministic; the question is just whether outputs match OrcaSlicer per fixture.
 - Adding `#[non_exhaustive]` to `LoopType` and `ExtrusionRole` is a one-time backward-compat improvement but forces every exhaustive `match` on these enums to add a wildcard or new arm. The Step 2 LOCATIONS dispatch enumerates these for the implementer.
-- Schema bump 4.2.0 → 4.3.0 races with P104's potential schema bump (if P104 hasn't shipped yet, it's queued at 4.2.0). The doc-impact greps allow either ordering; document the actual bump in the closure log.
+- Schema bump (live `4.3.0` → `4.4.0`) races with any other in-flight packet that might bump to `4.4.0` first. The actual target version is computed at activation from the live constant; the implementer records the actual bump chosen in the closure log. No hardcoded version in ACs — the AC asserts field/variant presence, not a literal version string.
 
 ## Context Cost Estimate
 

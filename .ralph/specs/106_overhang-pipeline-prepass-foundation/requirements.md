@@ -3,7 +3,7 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `O-T001` — Author `docs/adr/0012-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause
+  - `O-T001` — Author `docs/adr/0022-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause
   - `O-T002` — Resolve O-1 through O-8 decisions inline in the overhang roadmap with documented defaults
   - `O-T010` — Add `xy_footprint: Vec<ExPolygon>` to `OverhangRegion`; populate at `MeshAnalysis`
   - `O-T011` — Add per-layer overhang quartile polygons to `SurfaceClassificationIR` via `overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>`
@@ -22,24 +22,24 @@ The current `overhang-classifier-default` at `PostPass::LayerFinalization` (per 
 
 The architecturally correct version uses **mesh cross-sections** — a 2D slice of the mesh at each layer Z plane, derived purely from `MeshIR` + `LayerPlanIR`. This runs at PrePass time with full mesh access and no cross-layer constraint. The classifier produces per-layer quartile polygon partitions that downstream Tier 2 modules consume by point-in-polygon. ADR-0008's finalization-tier reasoning remains valid for **speed-factor application** (the action `overhang-classifier-default` takes is still a finalization mutation); only the classification step moves.
 
-This packet lands the PrePass foundation: ADR-0012 (supersedes ADR-0008's "unnecessary scope" caveat — not the whole ADR), the IR additions (xy_footprint + quartile polygons), the promoted mesh cross-section helper (reused by `SupportGeometry` and the new `OverhangAnnotation`), the classifier algorithm itself, and the stage wiring. View accessors and the `overhang-classifier-default` refactor are deferred to P107 so each packet stays a coherent vertical slice.
+This packet lands the PrePass foundation: ADR-0022 (supersedes ADR-0008's "unnecessary scope" caveat — not the whole ADR), the IR additions (xy_footprint + quartile polygons), the new `mesh_cross_section.rs` wrapper around `triangle_mesh_slicer::slice_mesh_ex` (used by `OverhangAnnotation`; `support_geometry.rs` is unchanged), the classifier algorithm itself, and the stage wiring. View accessors and the `overhang-classifier-default` refactor are deferred to P107 so each packet stays a coherent vertical slice.
 
 ## In Scope
 
-- New ADR `docs/adr/0012-overhang-classification-at-prepass.md`. Supersedes ADR-0008's "unnecessary scope" caveat specifically; preserves ADR-0008's "speed-factor application is a finalization concern" decision.
-- Closure of overhang roadmap open decisions O-1 through O-8 inline in `docs/specs/overhang-pipeline-restructuring.md` (per the roadmap's default-if-unanswered column; investigation findings recorded if implementer escalates).
+- New ADR `docs/adr/0022-overhang-classification-at-prepass.md`. Supersedes ADR-0008's "unnecessary scope" caveat specifically; preserves ADR-0008's "speed-factor application is a finalization concern" decision.
+- Closure of overhang roadmap open decisions O-1 through O-8 inline in `docs/specs/overhang-pipeline-restructuring.md` (per the roadmap's default-if-unanswered column; O-1 resolves to ADR-0022; investigation findings recorded if implementer escalates).
 - IR additions in `crates/slicer-ir/src/slice_ir.rs`:
   - `OverhangRegion.xy_footprint: Vec<ExPolygon>` field (mirrors `BridgeRegion.xy_footprint`).
   - New type `QuartileBand { quartile: u8, polygons: Vec<ExPolygon> }`.
   - Extension on `SurfaceClassificationIR`: `pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` (key = layer index).
-- Additive schema-version bump (4.3.0 → 4.4.0 or current+1) with `#[serde(default)]` migration adapter.
+- Additive schema-version bump of `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION` (currently `1.1.0` → next minor) with `#[serde(default)]` migration adapter. `CURRENT_SLICE_IR_SCHEMA_VERSION` (currently `4.3.0`) is NOT bumped — it governs `SliceIR`, not `SurfaceClassificationIR`.
 - WIT mirrors in `crates/slicer-schema/wit/deps/ir-types.wit` for the new IR additions.
-- `crates/slicer-core/src/algos/mesh_cross_section.rs` (NEW) exporting `pub fn cross_section_at_z(mesh: &MeshIR, z: f32) -> Vec<ExPolygon>` (signature TBD by implementer based on existing plane-triangle intersection shape in `support_geometry.rs`).
-- `crates/slicer-core/src/algos/support_geometry.rs` consumes the promoted helper; inline plane-triangle intersection removed; existing `prepass_support_geometry_tdd` stays green.
+- `crates/slicer-core/src/algos/mesh_cross_section.rs` (NEW) exporting `pub fn cross_section_at_z(mesh: &MeshIR, z: f32) -> Vec<ExPolygon>` (wraps `slice_mesh_ex` from `crates/slicer-core/src/triangle_mesh_slicer.rs`; `support_geometry.rs` contains no plane-triangle intersection to promote — it operates on SliceIR/LayerPlanIR polygon data).
+- `crates/slicer-core/src/algos/support_geometry.rs` is NOT changed by this packet (it has no plane-triangle intersection to remove).
 - `crates/slicer-core/src/algos/mesh_analysis.rs` populates `xy_footprint` for the existing `OverhangRegion` construction site (line ~206 per packet metadata).
 - `crates/slicer-core/src/algos/overhang_annotation.rs` (NEW) — the classifier producing `overhang_quartile_polygons` for the Blackboard.
-- Stage declaration + scheduling: `PrePass::OverhangAnnotation` added to `crates/slicer-scheduler/src/execution_plan.rs` (or analogous) in stage order strictly after `MeshAnalysis` + `LayerPlanning`; host stage runner in `crates/slicer-runtime/src/prepass.rs` (or analogous) invokes the classifier and writes to Blackboard.
-- 4 new TDD files covering AC-3 through AC-6 + AC-N1 + AC-N2.
+- Stage declaration + scheduling: `PrePass::OverhangAnnotation` added to the `STAGE_ORDER` array in `crates/slicer-scheduler/src/execution_plan.rs` (the canonical stage order location; `stage_order.rs` only imports from `execution_plan.rs`) strictly after `MeshAnalysis` + `LayerPlanning`; host stage runner in `crates/slicer-runtime/src/prepass.rs` (or analogous) invokes the classifier and writes to Blackboard.
+- 4 new TDD files covering AC-3 through AC-6 + AC-N1 + AC-N2. `mesh_analysis_overhang_xy_footprint_tdd.rs` goes alongside `crates/slicer-runtime/tests/unit/mesh_analysis_tdd.rs` and MUST be registered with a `mod mesh_analysis_overhang_xy_footprint_tdd;` line in `crates/slicer-runtime/tests/unit/main.rs` (the unit binary aggregator).
 - Doc updates per the Doc Impact Statement:
   - `docs/04_host_scheduler.md` (EDIT — register `PrePass::OverhangAnnotation` in STAGE_ORDER, add stage description paragraph and Stage Prerequisites table entry)
   - `docs/01_system_architecture.md` (EDIT — register `PrePass::OverhangAnnotation` in PrePass Stage Order list, prose block, and Stage I/O Contract table)
@@ -59,6 +59,7 @@ This packet lands the PrePass foundation: ADR-0012 (supersedes ADR-0008's "unnec
 | --- | --- | --- |
 | `docs/specs/overhang-pipeline-restructuring.md` | ~150 lines | Read full. |
 | `docs/adr/0008-overhang-as-finalization-module.md` | ~30 lines | Read full. |
+| `docs/adr/0022-overhang-classification-at-prepass.md` | NEW | Author in Step 1. ADR slot 0022 is the next free slot (0021 is highest existing). |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | ~700 lines | Range-read D-10 + D-12 entries only. |
 | `docs/01_system_architecture.md` | varies | Range-read §"Tier 1 — PrePass" (~30 lines). |
 | `docs/02_ir_schemas.md` | ~900 lines | Delegate SUMMARY for `OverhangRegion`, `BridgeRegion`, `SurfaceClassificationIR`. |
@@ -76,10 +77,10 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` (ADR-0012 authored + supersedes correctly), `AC-2` (open decisions closed), `AC-3` (IR field present + schema bump), `AC-4` (mesh cross-section helper promoted; support_geometry tests green), `AC-5` (overhang ramp classifier produces expected band partition), `AC-6` (stage runs after MeshAnalysis+LayerPlanning; Blackboard carries non-empty data).
+- Positive cases: `AC-1` (ADR-0022 authored + supersedes correctly), `AC-2` (open decisions closed), `AC-3` (IR field present + schema bump on CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION), `AC-4` (mesh_cross_section.rs created wrapping slice_mesh_ex), `AC-5` (overhang ramp classifier produces expected band partition), `AC-6` (stage runs after MeshAnalysis+LayerPlanning; Blackboard carries non-empty data).
 - Negative cases: `AC-N1` (no overhang → empty Vec, no panic), `AC-N2` (stage scheduled before LayerPlanning → validation rejects).
 - Refinements not captured in Given/When/Then:
-  - Mesh cross-section signature: the implementer picks the exact signature based on `support_geometry.rs`'s existing plane-triangle intersection function. AC-4's grep matches `pub fn cross_section_at_z` — if a different name (`cross_section`, `slice_at_z`) emerges from refactoring, the AC grep is updated.
+  - Mesh cross-section signature: the implementer picks the exact signature based on the existing `slice_mesh_ex` slicer in `crates/slicer-core/src/triangle_mesh_slicer.rs` (NOT `support_geometry.rs`, which has no plane-triangle intersection code). AC-4's grep matches `pub fn cross_section_at_z` — if a different name (`cross_section`, `slice_at_z`) emerges from refactoring, the AC grep is updated.
   - Quartile threshold formula: `line_width × {0.5, 1.0, 1.5, 2.0}` is the documented default per O-4. If T-P96-A0 (in P105) or this packet's OrcaSlicer SUMMARY surfaces a different formula, the implementer records the deviation in the closure log.
 - Cross-packet impact: depends on P102. Unblocks P107, P108, and any future overhang-aware module.
 
