@@ -2,7 +2,7 @@
 name: spec-review
 description: Review a spec packet under `.ralph/specs/` against its packet docs and implementation; identify gaps, deviations, and unmet acceptance criteria. Use when reviewing, verifying, or auditing a packet, or before packet closure.
 type: anthropic-skill
-version: "1.3"
+version: "1.6"
 metadata:
   internal: true
 ---
@@ -78,6 +78,7 @@ When you must read directly:
 - **Full** — entire packet contract, code surface, verification set, task-map impact. Default. Only mode that may authorize closure.
 - **Delta** — focused on `changed_steps` / `changed_files` and directly affected ACs, requirements, constraints, commands. For Swarm intermediate loops, or when full review will not fit budget. Never substitutes for final closure review.
 - **Delegated** — when Swarm offloads review, use exactly **one** sequential review subagent after all code workers finish. Do **not** shard review by step or dimension.
+- **Preflight** (`--preflight`) — authoring-time gate for a **draft** packet. Runs the S1–S7 symbol-existence gate (`references/preflight-gate.md`) plus the existing AC-runnable-command and Doc-Impact checks, and **nothing else** — no AC tracing, no verification-command runs, no closure verdict. Output is a structured FACT pass/fail report; verdict is `PREFLIGHT PASS` / `PREFLIGHT BLOCKED`. **The authoring agent must clear this gate before the packet's files are committed or the packet is activated.** This is the mechanism that stops fictional-symbol defects (extending a function/field/variant/ADR/schema/WIT/test-binary that doesn't exist or has a different shape) from reaching a packet's files — prose review does not catch them.
 
 A full review that does not fit budget must split across sessions, **not** silently approve.
 
@@ -118,6 +119,30 @@ Packet-quality preflight:
 - Open questions that would change scope are resolved, or the packet is still `draft` with explicit blocker.
 
 If any AC lacks a runnable command → **HIGH** finding (not MED), mark `PARTIAL/INCOMPLETE` in the report, and do not proceed until logged. If packet-quality fails, log a **HIGH** per missing element and clearly separate packet-authoring defects from implementation defects.
+
+#### Symbol-existence gate (S1–S7, Required)
+
+Before tracing any AC, run the seven-check symbol-existence gate defined in
+`references/preflight-gate.md`. It resolves every symbol the packet treats as
+**pre-existing** (functions, struct/enum fields, trait methods, modules, ADR
+slots, schema constants, WIT types, IR variants, test binaries) against the
+actual tree — the class of defect prose-quality review cannot see. The checks:
+**S0** packet structure (all five contract files present, incl. `task-map.md`);
+**S1** prerequisite-status truth, **S2** deviation-ID conformance, **S3**
+schema-version computed-not-hardcoded, **S4** ADR slot allocation, **S5**
+shipped-symbol existence/shape, **S6** WIT/IR identifier drift, **S7**
+test-target wiring, **S8** ADR conformance (no silent ADR-content rewrites). The
+gate operator is itself bound by the **re-verify-on-disagreement protocol** in
+`references/preflight-gate.md`: ground every PASS/FAIL in a real-tree grep, and
+when a re-check contradicts an earlier claim, openly retract and propagate the
+verified result.
+
+A packet that fails the gate **cannot be `APPROVED`**. Report S4/S5/S6 failures
+as **Critical** (fictional/wrong-shape refs, ADR collisions) and S1/S2/S3/S7/S8
+as **High**, then stop dispatching AC traces until the failures are acknowledged —
+tracing an AC whose symbols are fictional wastes budget. In `--preflight` mode
+this gate *is* the review; see `references/preflight-gate.md` for the report
+format and the FORWARD-DEP acceptance rule.
 
 #### Doc Impact Statement gate (Required)
 
