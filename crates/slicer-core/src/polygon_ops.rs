@@ -215,8 +215,7 @@ pub fn offset(
     let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
 
     // Convert delta from mm to scaled units (1 unit = 100nm = 10^-4mm)
-    // Scaling factor is 10_000
-    let delta_units = (delta_mm * 10_000.0) as f64;
+    let delta_units = (delta_mm as f64) * slicer_ir::UNITS_PER_MM;
 
     // Map OffsetJoinType to clipper2_rust JoinType
     let join_type = match join {
@@ -235,7 +234,7 @@ pub fn offset(
         join_type,
         EndType::Polygon,
         2.0,
-        (arc_tolerance_mm * 10_000.0) as f64,
+        (arc_tolerance_mm as f64) * slicer_ir::UNITS_PER_MM,
     );
 
     // Convert result paths back to ExPolygon
@@ -291,6 +290,114 @@ pub fn opening(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
 pub fn closing_ex(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
     let dilated = offset(subject, distance as f32, OffsetJoinType::Round, 0.05);
     offset(&dilated, -distance as f32, OffsetJoinType::Round, 0.05)
+}
+
+/// Two-pass offset: apply `delta1_mm` first (negative = erode), then `delta2_mm` (positive = dilate).
+///
+/// Mirrors OrcaSlicer `ClipperUtils::offset2_ex(input, delta1, delta2, JoinType, miterLimit)`.
+/// Argument order (negative-first, positive-second) is a contract: callers must pass deltas
+/// in that semantic order.
+///
+/// `miter_limit` is forwarded to the underlying Clipper2 inflate call.  The existing `offset`
+/// wrapper uses a hard-coded miter limit of 2.0; here we accept an explicit value and pass it
+/// through by delegating to the low-level `inflate_paths_64` directly for both passes so that
+/// the caller-supplied miter limit is respected.
+pub fn offset2_ex(
+    polys: &[ExPolygon],
+    delta1_mm: f64,
+    delta2_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> Vec<ExPolygon> {
+    use clipper2_rust::inflate_paths_64;
+    use clipper2_rust::{EndType, JoinType};
+
+    let join_type = match join {
+        OffsetJoinType::Miter => JoinType::Miter,
+        OffsetJoinType::Round => JoinType::Round,
+        OffsetJoinType::Square => JoinType::Square,
+    };
+
+    // Pass 1: delta1 (typically negative / erode)
+    let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
+    let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
+    let intermediate = inflate_paths_64(
+        &paths1,
+        delta1_units,
+        join_type,
+        EndType::Polygon,
+        miter_limit,
+        0.0,
+    );
+
+    if intermediate.is_empty() {
+        return Vec::new();
+    }
+
+    // Pass 2: delta2 (typically positive / dilate)
+    let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
+    let result_paths = inflate_paths_64(
+        &intermediate,
+        delta2_units,
+        join_type,
+        EndType::Polygon,
+        miter_limit,
+        0.0,
+    );
+
+    result_paths
+        .into_iter()
+        .map(|path| {
+            let points: Vec<Point2> = path
+                .into_iter()
+                .map(|p| Point2 { x: p.x, y: p.y })
+                .collect();
+            ExPolygon {
+                contour: Polygon { points },
+                holes: Vec::new(),
+            }
+        })
+        .collect()
+}
+
+/// Morphological open using configurable join type and miter limit.
+///
+/// `opening_ex(polys, d, join, miter)` = `offset2_ex(polys, -d, +d, join, miter)`.
+/// Removes thin protrusions and bridges smaller than `delta_mm`.
+pub fn opening_ex(
+    polys: &[ExPolygon],
+    delta_mm: f64,
+    join: OffsetJoinType,
+    miter_limit: f64,
+) -> Vec<ExPolygon> {
+    offset2_ex(polys, -delta_mm, delta_mm, join, miter_limit)
+}
+
+/// Keeps only the single [`ExPolygon`] with the greatest contour area (CCW shoelace area).
+///
+/// On ties (equal area within float equality), the lower-indexed polygon is kept.
+/// If `polys` is empty the call is a no-op.
+pub fn keep_largest_contour_only(polys: &mut Vec<ExPolygon>) {
+    if polys.is_empty() {
+        return;
+    }
+    let best = polys
+        .iter()
+        .enumerate()
+        .max_by(|(i, a), (j, b)| {
+            let area_a = signed_area(&a.contour).abs();
+            let area_b = signed_area(&b.contour).abs();
+            // On float tie, lower index wins (so compare reversed for max_by)
+            area_a
+                .partial_cmp(&area_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(j.cmp(i)) // higher j loses → lower index is kept
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let winner = polys.swap_remove(best);
+    polys.clear();
+    polys.push(winner);
 }
 
 /// Signed area of a polygon ring (contour) using the shoelace formula.

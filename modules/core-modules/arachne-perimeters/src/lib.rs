@@ -29,6 +29,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use slicer_core::geometry::*;
 use slicer_core::perimeter_utils::{
     build_outer_wall_flags, default_feature_flags, generate_seam_candidates, BASE_SPEED,
 };
@@ -443,7 +444,13 @@ impl ArachnePerimeters {
 /// opposite direction to find the distance to the far side of the boundary.
 /// Returns the total width (near distance + far distance) in scaled units.
 fn compute_local_region_width(point: &slicer_ir::Point2, polygons: &[ExPolygon]) -> f64 {
-    let (near_dist, near_x, near_y) = nearest_point_on_polygons(point, polygons);
+    let cp = closest_point_on_polygons(*point, polygons).unwrap_or(ClosestPoint {
+        point: *point,
+        distance_sq: 0.0,
+    });
+    let near_dist = cp.distance_sq.sqrt();
+    let near_x = cp.point.x as f64;
+    let near_y = cp.point.y as f64;
 
     if near_dist < 1.0 {
         // Point is essentially on the boundary
@@ -459,129 +466,18 @@ fn compute_local_region_width(point: &slicer_ir::Point2, polygons: &[ExPolygon])
 
     // Cast a ray from the point in the same direction (continuing away from
     // the nearest boundary) to find the opposite boundary
-    let far_dist = ray_to_polygons(point.x as f64, point.y as f64, dir_x, dir_y, polygons);
+    // legacy: when far boundary not found, width is just near_dist — documented intent preserved during promotion.
+    let far_dist = ray_to_polygons(
+        &Ray {
+            origin: *point,
+            direction: Vec2 { x: dir_x, y: dir_y },
+        },
+        polygons,
+    )
+    .map(|hit| hit.distance)
+    .unwrap_or(0.0);
 
     near_dist + far_dist
-}
-
-/// Find the nearest point on any polygon contour edge to the given point.
-///
-/// Returns (distance, nearest_x, nearest_y) in scaled integer units.
-fn nearest_point_on_polygons(point: &slicer_ir::Point2, polygons: &[ExPolygon]) -> (f64, f64, f64) {
-    let mut min_dist = f64::MAX;
-    let mut best_x = 0.0;
-    let mut best_y = 0.0;
-
-    for poly in polygons {
-        let pts = &poly.contour.points;
-        let n = pts.len();
-        for i in 0..n {
-            let j = (i + 1) % n;
-            let (d, px, py) = point_to_segment_nearest(point, &pts[i], &pts[j]);
-            if d < min_dist {
-                min_dist = d;
-                best_x = px;
-                best_y = py;
-            }
-        }
-    }
-
-    (min_dist, best_x, best_y)
-}
-
-/// Cast a ray from (ox, oy) in direction (dx, dy) and find the nearest intersection
-/// with any polygon contour edge. Returns the distance in scaled units, or a large
-/// value if no intersection is found.
-fn ray_to_polygons(ox: f64, oy: f64, dx: f64, dy: f64, polygons: &[ExPolygon]) -> f64 {
-    let mut min_t = f64::MAX;
-    let ray = Ray { ox, oy, dx, dy };
-
-    for poly in polygons {
-        let pts = &poly.contour.points;
-        let n = pts.len();
-        for i in 0..n {
-            let j = (i + 1) % n;
-            if let Some(t) = ray_segment_intersect(
-                &ray,
-                pts[i].x as f64,
-                pts[i].y as f64,
-                pts[j].x as f64,
-                pts[j].y as f64,
-            ) {
-                if t > 1.0 && t < min_t {
-                    // t > 1.0 to skip the near boundary we came from
-                    min_t = t;
-                }
-            }
-        }
-    }
-
-    if min_t == f64::MAX {
-        0.0 // No far boundary found; width is just near_dist
-    } else {
-        min_t
-    }
-}
-
-/// Ray origin and direction for intersection tests.
-struct Ray {
-    ox: f64,
-    oy: f64,
-    dx: f64,
-    dy: f64,
-}
-
-/// Compute ray-segment intersection.
-///
-/// Ray: P = ray.o + t * ray.d, t >= 0
-/// Segment: from (ax, ay) to (bx, by)
-///
-/// Returns Some(t) if the ray intersects the segment, None otherwise.
-fn ray_segment_intersect(ray: &Ray, ax: f64, ay: f64, bx: f64, by: f64) -> Option<f64> {
-    let sx = bx - ax;
-    let sy = by - ay;
-
-    let denom = ray.dx * sy - ray.dy * sx;
-    if denom.abs() < 1e-10 {
-        return None; // Parallel
-    }
-
-    let t = ((ax - ray.ox) * sy - (ay - ray.oy) * sx) / denom;
-    let u = ((ax - ray.ox) * ray.dy - (ay - ray.oy) * ray.dx) / denom;
-
-    if t >= 0.0 && (0.0..=1.0).contains(&u) {
-        Some(t)
-    } else {
-        None
-    }
-}
-
-/// Compute the nearest point on a line segment to a given point.
-///
-/// Returns (distance, nearest_x, nearest_y) in scaled units.
-fn point_to_segment_nearest(
-    p: &slicer_ir::Point2,
-    a: &slicer_ir::Point2,
-    b: &slicer_ir::Point2,
-) -> (f64, f64, f64) {
-    let dx = (b.x - a.x) as f64;
-    let dy = (b.y - a.y) as f64;
-    let len_sq = dx * dx + dy * dy;
-
-    if len_sq == 0.0 {
-        let dpx = (p.x - a.x) as f64;
-        let dpy = (p.y - a.y) as f64;
-        return ((dpx * dpx + dpy * dpy).sqrt(), a.x as f64, a.y as f64);
-    }
-
-    let t = (((p.x - a.x) as f64 * dx + (p.y - a.y) as f64 * dy) / len_sq).clamp(0.0, 1.0);
-
-    let proj_x = a.x as f64 + t * dx;
-    let proj_y = a.y as f64 + t * dy;
-
-    let dpx = p.x as f64 - proj_x;
-    let dpy = p.y as f64 - proj_y;
-    ((dpx * dpx + dpy * dpy).sqrt(), proj_x, proj_y)
 }
 
 #[cfg(test)]
@@ -602,7 +498,10 @@ mod tests {
         let a = Point2 { x: 0, y: 0 };
         let b = Point2 { x: 10_000, y: 0 }; // 1mm along X
         let p = Point2 { x: 5_000, y: 5_000 }; // 0.5mm above midpoint
-        let (d, nx, ny) = point_to_segment_nearest(&p, &a, &b);
+        let cp = closest_point_on_segment(p, a, b);
+        let d = cp.distance_sq.sqrt();
+        let nx = cp.point.x as f64;
+        let ny = cp.point.y as f64;
         assert!(
             (d - 5_000.0).abs() < 1.0,
             "Distance should be 5000 units (0.5mm)"

@@ -1017,7 +1017,27 @@ pub enum LoopType { Outer, Inner, ThinWall, NonPlanarShell }
 pub struct WidthProfile {
     pub widths: Vec<f32>,         // one per vertex in path.points
 }
+```
 
+#### Variable-width geometry (Packet 103 — additive, schema 4.3.0)
+
+`ThickPolyline` and `Point2WithWidth` are the 2-D input types consumed by Arachne
+perimeter generation before conversion to `ExtrusionPath3D`.
+
+```rust
+/// 2-D point with an associated extrusion width (Arachne input).
+pub struct Point2WithWidth { pub x: f32, pub y: f32, pub width: f32 }
+
+/// Ordered sequence of variable-width 2-D points (Arachne polyline).
+pub struct ThickPolyline { pub points: Vec<Point2WithWidth> }
+```
+
+`variable_width(thick: ThickPolyline, role: ExtrusionRole) -> ExtrusionPath3D`
+maps each `Point2WithWidth` to a `Point3WithWidth` with `z = 0.0`,
+`flow_factor = 1.0`, `overhang_quartile = None`, `speed_factor = 1.0`, and the
+supplied `role` passed through unchanged.
+
+```rust
 /// 3D extrusion path. For purely planar layers all z values equal layer z.
 /// Non-planar and smoothificator modules write non-uniform z values.
 pub struct ExtrusionPath3D {

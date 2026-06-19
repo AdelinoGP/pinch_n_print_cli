@@ -42,6 +42,12 @@ pub type StageId = String;
 // Coordinate System and Basic Types
 // ============================================================================
 
+/// Scaling factor: 1 mm = 10 000 units (1 unit = 100 nm = 10⁻⁴ mm).
+///
+/// Use this constant anywhere an f64 mm→unit conversion is needed so that
+/// the factor has a single authoritative source.
+pub const UNITS_PER_MM: f64 = 10_000.0;
+
 /// Convert millimeters to scaled integer units
 ///
 /// # Arguments
@@ -188,7 +194,7 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// backward compatibility with serialized 4.0.0 fixtures.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -1585,6 +1591,55 @@ impl ExtrusionRole {
             self,
             Self::OuterWall | Self::InnerWall | Self::ThinWall | Self::Skirt
         )
+    }
+}
+
+/// 2D point with an associated local extrusion width (in millimeters).
+///
+/// Used by `ThickPolyline` to represent variable-width centerline paths before
+/// they are lifted to 3D via `variable_width()`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Point2WithWidth {
+    /// X coordinate in millimeters
+    pub x: f32,
+    /// Y coordinate in millimeters
+    pub y: f32,
+    /// Local extrusion width in millimeters
+    pub width: f32,
+}
+
+/// A variable-width 2D centerline polyline.
+///
+/// Produced by `medial_axis` (simplified long-axis-spine approximation in M1;
+/// full Voronoi-based medial axis deferred to M2).  Converted to a 3D
+/// `ExtrusionPath3D` via `variable_width()` once the caller knows the layer Z.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ThickPolyline {
+    /// Ordered centerline points with per-vertex width
+    pub points: Vec<Point2WithWidth>,
+}
+
+/// Convert a variable-width centerline polyline into a 3D extrusion path.
+///
+/// Canonical construction defaults (mirrors skirt-brim helper):
+/// `z = 0.0` (caller supplies layer Z later), `flow_factor = 1.0`,
+/// `overhang_quartile = None`, `speed_factor = 1.0`.
+pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: thick
+            .points
+            .iter()
+            .map(|p| Point3WithWidth {
+                x: p.x,
+                y: p.y,
+                z: 0.0,
+                width: p.width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            })
+            .collect(),
+        role,
+        speed_factor: 1.0,
     }
 }
 

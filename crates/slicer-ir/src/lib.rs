@@ -97,10 +97,10 @@ pub use slice_ir::{
     PerimeterRegion,
     // Basic types
     Point2,
+    Point2WithWidth,
     Point3,
     Point3WithWidth,
     Polygon,
-
     PrintEntity,
     PrintMetadata,
 
@@ -134,6 +134,8 @@ pub use slice_ir::{
     SurfaceClassificationIR,
     SurfaceGroup,
     SurfaceGroupId,
+    ThickPolyline,
+
     ToolChange,
     Transform3d,
     TravelMove,
@@ -154,6 +156,8 @@ pub use slice_ir::{
     // Helper functions for Point2 coordinate conversion
     mm_to_units,
     units_to_mm,
+    // Variable-width centerline helper
+    variable_width,
     // Schema-version constants
     CURRENT_GCODE_IR_SCHEMA_VERSION,
     CURRENT_INFILL_IR_SCHEMA_VERSION,
@@ -168,4 +172,6 @@ pub use slice_ir::{
     CURRENT_SUPPORT_IR_SCHEMA_VERSION,
     CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
     CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
+    // Canonical mm→unit scaling factor (f64); use instead of raw 10_000.0 literals
+    UNITS_PER_MM,
 };

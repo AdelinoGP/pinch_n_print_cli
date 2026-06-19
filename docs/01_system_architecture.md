@@ -826,6 +826,17 @@ Setting `SLICER_DEBUG_PATHS=1` causes the host to print the assembled
 roots on stderr in priority order before module discovery begins.
 
 
+## Crate Responsibilities — `slicer-core`
+
+`slicer-core` owns per-layer polygon-op primitives used across the pipeline.
+Packet 103 added the following to `crates/slicer-core/src/geometry/`:
+`offset2_ex` (two-step inset/outset for robust contour shrinkage), `medial_axis`
+(skeleton extraction for thin-wall detection), `polygon_tree` (nested contour
+hierarchy builder), and `keep_largest_contour_only` (post-clip island filter).
+These are the canonical host-side implementations; guests must not duplicate them.
+
+---
+
 ## `PostPass::LayerFinalization` Module Constraint
 
 Modules declaring `stage = "PostPass::LayerFinalization"` must set:

@@ -270,7 +270,7 @@ Packets implementing the [`docs/specs/perimeter-modules-orca-parity-roadmap.md`]
 ### M1 — Classic parity
 
 - [x] **P102 — Perimeter foundations** (T-010..T-019). Shared `slicer-core::perimeter_utils` module; `WallBoundaryType::MaterialBoundary` widened to `Vec<MaterialBoundarySegment>`; per-layer config plumbing; `?` propagation; manifest-vs-code default reconcile; `_paint` disuse documented. Schema 4.1.0 → 4.2.0.
-- [ ] **P103 — Polygon ops** (T-040..T-045). `offset2_ex`, `medial_axis`, `ThickPolyline`, hole-tree, `keep_largest_contour_only`, ray ops promotion.
+- [x] **P103 — Polygon ops** (T-040..T-045). `offset2_ex`/`opening_ex` in `slicer-core::polygon_ops` (T-040); `medial_axis` via boostvoronoi VD + EP.cpp behind `host-algos` feature (T-041); `ThickPolyline`/`Point2WithWidth`/`variable_width` IR types in `slicer-ir` (T-042); `build_polygon_tree` hole/contour containment in `slicer-core::polygon_tree` (T-043); `keep_largest_contour_only` in `slicer-core::polygon_ops` (T-044); ray-ops promoted to `slicer-core::geometry` with typed API, arachne-perimeters migrated (T-045). Closed 2026-06-19.
 - [ ] **P104 — Propagation + surface rules** (T-020..T-025, T-030..T-033). Per-vertex `is_bridge`, inner-wall material boundary, `only_one_wall_top`, `only_one_wall_first_layer`.
 - [ ] **P105 — Spacing + fill + MMU** (T-050..T-065, T-P96-A..T-P96-C2). Classic spacing model, thin-walls, gap-fill, per-color outer-wall fragmentation.
 - [ ] **P106 — Overhang PrePass foundation** (O-T010..O-T012, O-T030..O-T031). Mesh cross-section overhang classification.

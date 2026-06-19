@@ -1,0 +1,178 @@
+// metric.rs.txt — standalone metric helpers for medial-axis golden tests.
+//
+// USAGE: `include!` this file inside a test module.
+// It has NO dependency on the medial_axis implementation under test.
+//
+// Thresholds (verified against the golden derivation tolerances):
+//   per_vertex_to_reference  ≤ 0.005 mm   — no spurious / off-axis output geometry
+//   coverage_ref_to_polylines ≤ 0.005 mm  — full true axis is covered by output
+//   max_width_error           ≤ 0.01  mm
+//
+// WHY THESE METRICS (not symmetric Hausdorff):
+//   Symmetric point-set Hausdorff computes max(H(out→ref), H(ref→out)).
+//   The H(ref→out) half measures each REFERENCE point against OUTPUT *points*.
+//   When the output is a geometrically-exact but sparse polyline (e.g. a 2-point
+//   straight spine) and the reference is a dense point cloud, most reference
+//   points land far from any output point even though they are trivially close
+//   to the output *segment*.  The result is a falsely-large metric that rejects a
+//   correct implementation.  `coverage_ref_to_polylines` fixes this by measuring
+//   reference points against output *segments* (point-to-segment distance), making
+//   it friendly to sparse-but-exact output.  `per_vertex_to_reference` keeps the
+//   output→reference direction (which is correct as-is) and renames it clearly.
+
+// ─── POINT-TO-SEGMENT DISTANCE (private helper) ─────────────────────────────
+
+/// Minimum distance from point `p` to the finite segment `(a, b)`.
+fn point_to_segment_dist(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (px, py) = p;
+    let (ax, ay) = a;
+    let (bx, by) = b;
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len_sq = dx * dx + dy * dy;
+    if len_sq == 0.0 {
+        // Degenerate segment — treat as point
+        let ex = px - ax;
+        let ey = py - ay;
+        return (ex * ex + ey * ey).sqrt();
+    }
+    // Project p onto the line through a–b, clamped to [0, 1]
+    let t = ((px - ax) * dx + (py - ay) * dy) / len_sq;
+    let t = t.clamp(0.0, 1.0);
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    let ex = px - cx;
+    let ey = py - cy;
+    (ex * ex + ey * ey).sqrt()
+}
+
+// ─── METRIC 1: per-vertex output → reference ────────────────────────────────
+
+/// Max over each OUTPUT vertex of its min Euclidean distance to the nearest
+/// REFERENCE point.  The reference is typically a dense point cloud that
+/// approximates the true medial axis, so this ≈ distance from output geometry
+/// to the true axis.
+///
+/// Checks: "no spurious or off-axis output geometry."
+///
+/// Intended pass threshold: ≤ 0.005 mm (see `PER_VERTEX_PASS_MM`).
+pub fn per_vertex_to_reference(out_pts: &[(f64, f64)], reference: &[(f64, f64)]) -> f64 {
+    if out_pts.is_empty() || reference.is_empty() {
+        return f64::INFINITY;
+    }
+    let mut max_min = 0.0_f64;
+    for &(ox, oy) in out_pts {
+        let min_d = reference
+            .iter()
+            .map(|&(rx, ry)| {
+                let dx = ox - rx;
+                let dy = oy - ry;
+                (dx * dx + dy * dy).sqrt()
+            })
+            .fold(f64::INFINITY, f64::min);
+        if min_d > max_min {
+            max_min = min_d;
+        }
+    }
+    max_min
+}
+
+// ─── METRIC 2: coverage reference → output polylines ────────────────────────
+
+/// Max over each REFERENCE point of its min distance to the nearest OUTPUT
+/// SEGMENT (point-to-segment distance over every consecutive vertex pair within
+/// each output polyline).
+///
+/// Checks: "the whole true axis is covered by the output" while being
+/// friendly to sparse-but-exact output (e.g. a 2-point straight spine whose
+/// intermediate reference points are close to the *segment* but far from either
+/// endpoint).
+///
+/// Intended pass threshold: ≤ 0.005 mm (see `COVERAGE_PASS_MM`).
+pub fn coverage_ref_to_polylines(
+    reference: &[(f64, f64)],
+    polylines: &[Vec<(f64, f64)>],
+) -> f64 {
+    if reference.is_empty() || polylines.is_empty() {
+        return f64::INFINITY;
+    }
+    let mut max_min = 0.0_f64;
+    for &rp in reference {
+        let min_d = polylines
+            .iter()
+            .flat_map(|pl| {
+                // Iterate over consecutive segment pairs; also handle singleton polylines.
+                if pl.len() < 2 {
+                    // Single-point polyline — distance to that point.
+                    let dist = if let Some(&pt) = pl.first() {
+                        let dx = rp.0 - pt.0;
+                        let dy = rp.1 - pt.1;
+                        (dx * dx + dy * dy).sqrt()
+                    } else {
+                        f64::INFINITY
+                    };
+                    vec![dist]
+                } else {
+                    pl.windows(2)
+                        .map(|w| point_to_segment_dist(rp, w[0], w[1]))
+                        .collect()
+                }
+            })
+            .fold(f64::INFINITY, f64::min);
+        if min_d > max_min {
+            max_min = min_d;
+        }
+    }
+    max_min
+}
+
+// ─── METRIC 3: width error ───────────────────────────────────────────────────
+
+/// For each output vertex `(x, y, width)`, find the nearest reference point by
+/// xy distance and return the maximum `|out_width − ref_width|` across all
+/// output vertices.
+///
+/// Inputs: slices of `(x, y, width)` tuples, all in mm.
+/// Intended pass threshold: ≤ 0.01 mm (see `WIDTH_PASS_MM`).
+pub fn max_width_error(out: &[(f64, f64, f64)], reference: &[(f64, f64, f64)]) -> f64 {
+    if out.is_empty() || reference.is_empty() {
+        return f64::INFINITY;
+    }
+    let mut max_err = 0.0_f64;
+    for &(ox, oy, ow) in out {
+        let (_, _, ref_w) = reference
+            .iter()
+            .copied()
+            .min_by(|&(ax, ay, _), &(bx, by, _)| {
+                let da = (ox - ax) * (ox - ax) + (oy - ay) * (oy - ay);
+                let db = (ox - bx) * (ox - bx) + (oy - by) * (oy - by);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap();
+        let err = (ow - ref_w).abs();
+        if err > max_err {
+            max_err = err;
+        }
+    }
+    max_err
+}
+
+// ─── PASS THRESHOLDS ────────────────────────────────────────────────────────
+//
+// PER_VERTEX_PASS_MM: per-vertex output→reference ≤ 0.005 mm
+//   Rationale: the grid-derived goldens have resolution 0.002 mm; the closed-form
+//   goldens are exact to floating-point precision. The implementation works in f32
+//   (precision ~0.0001 mm at typical values). 0.005 mm gives 2.5× grid-resolution
+//   headroom and ~50× floating-point headroom.
+//
+// COVERAGE_PASS_MM: coverage reference→polylines ≤ 0.005 mm
+//   Rationale: same grid resolution; measured against output *segments* so
+//   sparse-but-exact output is not penalised.
+//
+// WIDTH_PASS_MM: max width error ≤ 0.01 mm
+//   Rationale: f32 width values at 1 mm scale have ~0.0001 mm precision; the golden
+//   grid distance field has ~0.002 mm resolution; 0.01 mm is 5× the grid resolution.
+//
+pub const PER_VERTEX_PASS_MM: f64 = 0.005;
+pub const COVERAGE_PASS_MM: f64 = 0.005;
+pub const WIDTH_PASS_MM: f64 = 0.01;

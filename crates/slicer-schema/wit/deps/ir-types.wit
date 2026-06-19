@@ -111,6 +111,9 @@ interface ir-handles {
 
     record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }
 
+    record point2-with-width { x: f32, y: f32, width: f32 }
+    record thick-polyline { points: list<point2-with-width> }
+
     resource paint-region-layer-view {
         get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
         get-custom-regions: func(module-id: string) -> list<semantic-region>;
