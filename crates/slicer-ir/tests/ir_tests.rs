@@ -573,7 +573,13 @@ mod tests {
     #[test]
     fn test_wall_boundary_type() {
         test_serde_roundtrip!(WallBoundaryType::ExteriorSurface);
-        test_serde_roundtrip!(WallBoundaryType::MaterialBoundary { adjacent_tool: 1 });
+        test_serde_roundtrip!(WallBoundaryType::MaterialBoundary {
+            segments: vec![MaterialBoundarySegment {
+                point_range: 0..1,
+                near_tool: None,
+                far_tool: Some(1),
+            }]
+        });
         test_serde_roundtrip!(WallBoundaryType::Interior);
     }
 
@@ -651,7 +657,7 @@ fn slice_ir_schema_version_is_one_one_zero() {
 ///
 /// Asserts that:
 ///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 1, 0 }
-///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 1, 0 }
+///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 2, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
 #[test]
@@ -670,14 +676,17 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding);
     //       minor bump to 4.1.0 by `docs/specs/infill-fill-partition-plan.md`
     //       added the additive `SlicedRegion.sparse_infill_area` field.
+    //       minor bump to 4.2.0 by packet 102 step 2 — widened
+    //       `WallBoundaryType::MaterialBoundary` from single `adjacent_tool: u32`
+    //       to `segments: Vec<MaterialBoundarySegment>`.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 1,
+            minor: 2,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 1, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 2, 0)"
     );
 
     // (c)

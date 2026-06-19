@@ -61,6 +61,12 @@ path = "../../modules/core-modules/gyroid-infill"
 [dev-dependencies.lightning-infill]
 path = "../../modules/core-modules/lightning-infill"
 
+[dev-dependencies.classic-perimeters]
+path = "../../modules/core-modules/classic-perimeters"
+
+[dev-dependencies.arachne-perimeters]
+path = "../../modules/core-modules/arachne-perimeters"
+
 [[bench]]
 name = "pipeline"
 harness = false

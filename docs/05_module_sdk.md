@@ -538,6 +538,57 @@ return Err(ModuleError::non_fatal(code, "message"));
 .map_err(ModuleError::from_str)?
 ```
 
+## PerimeterOutputBuilder failure modes
+
+The `PerimeterOutputBuilder` (see `crates/slicer-sdk/src/builders.rs`) is the
+output sink for `Layer::Perimeters` and `Layer::PerimetersPostProcess` modules.
+Every write method returns `Result<(), String>`. Module authors **MUST**
+propagate these errors via `?` — silently ignoring a failed write produces an
+incomplete perimeter IR that the host will reject at commit time.
+
+| Failure mode | Condition | Error |
+|---|---|---|
+| Wall-loop capacity exceeded | `push_wall_loop` called after the builder's internal wall-loop buffer is full | `"wall loop capacity exceeded"` |
+| Infill areas already set | `set_infill_areas` called more than once per builder instance | `"infill areas already set"` |
+| Seam candidate capacity exceeded | `push_seam_candidate` called after the builder's seam-candidate buffer is full | `"seam candidate capacity exceeded"` |
+| Wall-loop path empty | `push_wall_loop` called with a `WallLoop` whose `path.points` is empty | `"wall loop path is empty"` |
+
+### Capacity limit
+
+The builder supports optional per-collection capacity limits via
+`PerimeterOutputBuilder::with_capacity(max_wall_loops, max_infill_areas,
+max_seam_candidates, max_rotated_wall_loops)`. When a push exceeds its limit
+the method returns `Err("builder at capacity: <collection> (limit=N)")`.
+The default constructor `PerimeterOutputBuilder::new()` sets no limits
+(unbounded).
+
+Modules that encounter a capacity error **MUST** return it as a
+`ModuleError` — typically via `map_err(|e| ModuleError::fatal(code, e))?`:
+
+```rust
+output.push_wall_loop(wall.clone())
+    .map_err(|e| ModuleError::fatal(1, e))?;
+```
+
+### Contract violation
+
+The host validates structural invariants at commit time (feature-flag
+cardinality, NaN rejection, seam-candidate validity — see
+`docs/03_wit_and_manifest.md`). A module that emits structurally invalid
+data will receive a host-side rejection, not a builder-side error.
+Builders are a first line of defence for capacity; the host is the
+second line for structural correctness.
+
+### Result propagation expectation
+
+The `run_perimeters` and `run_wall_postprocess` trait methods return
+`Result<(), ModuleError>`. Every builder write that returns `Result` must
+be propagated. The TDD contract test
+`crates/slicer-runtime/tests/contract/perimeter_builder_capacity_error_tdd.rs`
+asserts that a capacity-rejecting builder causes the module to return
+`Err(ModuleError)` whose message contains `"builder at capacity"` — not
+silently `Ok(())`.
+
 ### Module State Lifecycle (Normative)
 
 - `on_print_start()` creates one logical module state per WASM instance.

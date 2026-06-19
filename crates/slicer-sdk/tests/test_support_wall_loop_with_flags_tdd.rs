@@ -3,7 +3,7 @@
 //! Exercises the seam-placer's `wall_at_z` shape: a non-empty
 //! `feature_flags` vector and `WallBoundaryType::ExteriorSurface`.
 
-use slicer_ir::{LoopType, WallBoundaryType, WallFeatureFlags};
+use slicer_ir::{LoopType, MaterialBoundarySegment, WallBoundaryType, WallFeatureFlags};
 use slicer_sdk::test_prelude::*;
 
 #[test]
@@ -69,15 +69,22 @@ fn add_outer_wall_with_flags_keeps_uniform_width_profile_from_path() {
 #[test]
 fn add_outer_wall_with_flags_supports_material_boundary() {
     let path = rect_path(0.0, 0.0, 10.0, 0.4);
+    let segments = vec![MaterialBoundarySegment {
+        point_range: 0..1,
+        near_tool: None,
+        far_tool: Some(2),
+    }];
     let view = PerimeterRegionViewBuilder::new()
         .add_outer_wall_with_flags(
             path,
             Vec::new(),
-            WallBoundaryType::MaterialBoundary { adjacent_tool: 2 },
+            WallBoundaryType::MaterialBoundary {
+                segments: segments.clone(),
+            },
         )
         .build();
     assert_eq!(
         view.wall_loops()[0].boundary_type,
-        WallBoundaryType::MaterialBoundary { adjacent_tool: 2 }
+        WallBoundaryType::MaterialBoundary { segments }
     );
 }

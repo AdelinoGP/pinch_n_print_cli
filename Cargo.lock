@@ -2533,9 +2533,11 @@ dependencies = [
 name = "slicer-runtime"
 version = "0.1.0"
 dependencies = [
+ "arachne-perimeters",
  "assert_cmd",
  "base64 0.22.1",
  "clap",
+ "classic-perimeters",
  "criterion",
  "directories",
  "gyroid-infill",

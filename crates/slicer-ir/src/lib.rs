@@ -67,6 +67,7 @@ pub use slice_ir::{
     // Layer planning types
     LayerPlanIR,
     LoopType,
+    MaterialBoundarySegment,
     MeshIR,
     ModifierId,
     ModifierScope,

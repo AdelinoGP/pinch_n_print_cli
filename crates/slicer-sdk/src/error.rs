@@ -59,3 +59,23 @@ impl std::fmt::Display for ModuleError {
 }
 
 impl std::error::Error for ModuleError {}
+
+impl From<String> for ModuleError {
+    fn from(message: String) -> Self {
+        Self {
+            code: 0,
+            message,
+            fatal: false,
+        }
+    }
+}
+
+impl From<&str> for ModuleError {
+    fn from(message: &str) -> Self {
+        Self {
+            code: 0,
+            message: message.to_string(),
+            fatal: false,
+        }
+    }
+}

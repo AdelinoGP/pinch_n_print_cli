@@ -987,10 +987,28 @@ pub enum WallBoundaryType {
     /// Outer wall facing air or a gap.
     ExteriorSurface,
     /// Wall adjacent to a different material region.
-    /// `adjacent_tool` is the tool index of the neighboring region.
-    MaterialBoundary { adjacent_tool: u32 },
+    /// `segments` lists each contiguous boundary transition along the wall
+    /// polygon, recording the point range and the tool indices on each side.
+    MaterialBoundary { segments: Vec<MaterialBoundarySegment> },
     /// Inner wall — no special boundary handling.
     Interior,
+}
+
+/// A segment of a material boundary transition on a wall polygon.
+///
+/// Each segment records the point range (half-open `[start, end)`) on the
+/// polygon contour where two different tool indices are adjacent. `near_tool`
+/// is the tool on the inside of the wall; `far_tool` is the tool on the
+/// outside. Either may be `None` when the polygon edge is adjacent to air or
+/// a gap.
+pub struct MaterialBoundarySegment {
+    /// Half-open range `[start, end)` of point indices on the polygon contour
+    /// where this boundary transition occurs.
+    pub point_range: std::ops::Range<u32>,
+    /// Tool index on the near side of the boundary (inside the wall).
+    pub near_tool: Option<u32>,
+    /// Tool index on the far side of the boundary (outside the wall).
+    pub far_tool: Option<u32>,
 }
 
 pub enum LoopType { Outer, Inner, ThinWall, NonPlanarShell }
@@ -1609,8 +1627,8 @@ The `extensions: HashMap<String, ConfigValue>` field on `ResolvedConfig` is the 
 
 | Version | Packet | Rationale |
 |---------|--------|-----------|
-| 4.1.0 | (current) | — |
-| 4.2.0 | P102 | `WallBoundaryType::MaterialBoundary` widening (T-013) |
+| 4.1.0 | P102 | (prior) — `SlicedRegion.sparse_infill_area` additive field |
+| 4.2.0 | P102 | `WallBoundaryType::MaterialBoundary` widening to `Vec<MaterialBoundarySegment>` (T-013). The old single-`adjacent_tool` wire format is deserialized via `WallBoundaryTypeWire` migration adapter; new code writes `segments`. |
 | 4.3.0 | P103 | `ThickPolyline` + `Point2WithWidth` additive types (T-042) |
 | 4.4.0 | P105 | `LoopType::GapFill` + `ExtrusionRole::GapFill` additive variants (T-062b) |
 | 4.5.0 | P106 | `SurfaceClassificationIR.overhang_quartile_polygons` additive field (O-T010..O-T012) |

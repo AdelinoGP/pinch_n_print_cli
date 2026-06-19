@@ -118,7 +118,7 @@ impl LayerModule for FuzzySkinModule {
                     },
                     width_profile: WidthProfile { widths: new_widths },
                     feature_flags: new_flags,
-                    boundary_type: wall.boundary_type,
+                    boundary_type: wall.boundary_type.clone(),
                 };
 
                 output

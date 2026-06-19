@@ -91,6 +91,29 @@ impl std::fmt::Debug for InfillOutputBuilder {
 ///
 /// Matches WIT `resource perimeter-output-builder` from ir-types.wit.
 /// Methods return Result<(), String> to match WIT error handling.
+///
+/// ## Failure Modes
+///
+/// Every write method returns `Result<(), String>`. Callers **MUST** propagate
+/// errors via `?` — silently ignoring a failed write produces an incomplete
+/// perimeter IR that the host will reject at commit time.
+///
+/// ### Capacity limit
+///
+/// The builder enforces optional per-collection capacity limits set at
+/// construction time via [`PerimeterOutputBuilder::with_capacity`]. When a
+/// push exceeds its limit the method returns
+/// `Err("builder at capacity: <collection> (limit=N)")`. The default
+/// constructor ([`PerimeterOutputBuilder::new`]) sets no limits (unbounded).
+///
+/// ### Contract violation
+///
+/// The host validates structural invariants at commit time (feature-flag
+/// cardinality, NaN rejection, seam-candidate validity — see
+/// `docs/03_wit_and_manifest.md`). A module that emits structurally invalid
+/// data will receive a host-side rejection, not a builder-side error.
+/// Builders are a first line of defence for capacity; the host is the
+/// second line for structural correctness.
 pub struct PerimeterOutputBuilder {
     wall_loops: Vec<WallLoop>,
     infill_areas: Vec<ExPolygon>,
@@ -98,10 +121,14 @@ pub struct PerimeterOutputBuilder {
     resolved_seam: Option<SeamPosition>,
     /// Rotated wall loops with seam at points[0], set by seam-placer.
     rotated_wall_loops: Vec<(Point3WithWidth, u32, WallLoop)>,
+    max_wall_loops: Option<usize>,
+    max_infill_areas: Option<usize>,
+    max_seam_candidates: Option<usize>,
+    max_rotated_wall_loops: Option<usize>,
 }
 
 impl PerimeterOutputBuilder {
-    /// Create a new PerimeterOutputBuilder.
+    /// Create a new PerimeterOutputBuilder with no capacity limits.
     pub fn new() -> Self {
         Self {
             wall_loops: Vec::new(),
@@ -109,23 +136,68 @@ impl PerimeterOutputBuilder {
             seam_candidates: Vec::new(),
             resolved_seam: None,
             rotated_wall_loops: Vec::new(),
+            max_wall_loops: None,
+            max_infill_areas: None,
+            max_seam_candidates: None,
+            max_rotated_wall_loops: None,
+        }
+    }
+
+    /// Create a builder with per-collection capacity limits.
+    ///
+    /// When a push exceeds its limit the method returns
+    /// `Err("builder at capacity: <collection> (limit=N)")`.
+    /// Pass `None` for any collection to leave it unbounded.
+    pub fn with_capacity(
+        max_wall_loops: Option<usize>,
+        max_infill_areas: Option<usize>,
+        max_seam_candidates: Option<usize>,
+        max_rotated_wall_loops: Option<usize>,
+    ) -> Self {
+        Self {
+            wall_loops: Vec::new(),
+            infill_areas: Vec::new(),
+            seam_candidates: Vec::new(),
+            resolved_seam: None,
+            rotated_wall_loops: Vec::new(),
+            max_wall_loops,
+            max_infill_areas,
+            max_seam_candidates,
+            max_rotated_wall_loops,
         }
     }
 
     /// Push a wall loop.
     pub fn push_wall_loop(&mut self, loop_: WallLoop) -> Result<(), String> {
+        if let Some(limit) = self.max_wall_loops {
+            if self.wall_loops.len() >= limit {
+                return Err(format!("builder at capacity: wall_loops (limit={limit})"));
+            }
+        }
         self.wall_loops.push(loop_);
         Ok(())
     }
 
     /// Set the infill areas.
     pub fn set_infill_areas(&mut self, areas: Vec<ExPolygon>) -> Result<(), String> {
+        if let Some(limit) = self.max_infill_areas {
+            if areas.len() > limit {
+                return Err(format!("builder at capacity: infill_areas (limit={limit})"));
+            }
+        }
         self.infill_areas = areas;
         Ok(())
     }
 
     /// Push a seam candidate.
     pub fn push_seam_candidate(&mut self, pos: Point3, score: f32) -> Result<(), String> {
+        if let Some(limit) = self.max_seam_candidates {
+            if self.seam_candidates.len() >= limit {
+                return Err(format!(
+                    "builder at capacity: seam_candidates (limit={limit})"
+                ));
+            }
+        }
         self.seam_candidates.push((pos, score));
         Ok(())
     }
@@ -155,6 +227,13 @@ impl PerimeterOutputBuilder {
         wall_index: u32,
         loop_: WallLoop,
     ) -> Result<(), String> {
+        if let Some(limit) = self.max_rotated_wall_loops {
+            if self.rotated_wall_loops.len() >= limit {
+                return Err(format!(
+                    "builder at capacity: rotated_wall_loops (limit={limit})"
+                ));
+            }
+        }
         self.rotated_wall_loops.push((pos, wall_index, loop_));
         Ok(())
     }

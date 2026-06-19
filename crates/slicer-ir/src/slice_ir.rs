@@ -188,7 +188,7 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// backward compatibility with serialized 4.0.0 fixtures.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -1350,18 +1350,109 @@ pub enum SupportType {
     Tree,
 }
 
+/// A segment of a material boundary transition on a wall polygon.
+///
+/// Each segment records the point range (half-open `[start, end)`) on the
+/// polygon contour where two different tool indices are adjacent. `near_tool`
+/// is the tool on the inside of the wall; `far_tool` is the tool on the
+/// outside. Either may be `None` when the polygon edge is adjacent to air or
+/// a gap.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MaterialBoundarySegment {
+    /// Half-open range `[start, end)` of point indices on the polygon contour
+    /// where this boundary transition occurs.
+    pub point_range: std::ops::Range<u32>,
+    /// Tool index on the near side of the boundary (inside the wall).
+    pub near_tool: Option<u32>,
+    /// Tool index on the far side of the boundary (outside the wall).
+    pub far_tool: Option<u32>,
+}
+
 /// Wall boundary type
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(into = "WallBoundaryTypeWire")]
 pub enum WallBoundaryType {
     /// Outer wall facing air or a gap
     ExteriorSurface,
     /// Wall adjacent to a different material region
     MaterialBoundary {
-        /// Tool index of the neighboring region
-        adjacent_tool: u32,
+        /// List of boundary segments describing each material transition
+        segments: Vec<MaterialBoundarySegment>,
     },
     /// Inner wall — no special boundary handling
     Interior,
+}
+
+/// Wire format for `WallBoundaryType` that supports deserializing the
+/// pre-4.2.0 `{ adjacent_tool: u32 }` shape via `#[serde(default)]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+enum WallBoundaryTypeWire {
+    ExteriorSurface,
+    MaterialBoundary {
+        #[serde(default)]
+        segments: Vec<MaterialBoundarySegment>,
+        #[serde(default)]
+        adjacent_tool: Option<u32>,
+    },
+    Interior,
+}
+
+impl From<WallBoundaryTypeWire> for WallBoundaryType {
+    fn from(wire: WallBoundaryTypeWire) -> Self {
+        match wire {
+            WallBoundaryTypeWire::ExteriorSurface => WallBoundaryType::ExteriorSurface,
+            WallBoundaryTypeWire::Interior => WallBoundaryType::Interior,
+            WallBoundaryTypeWire::MaterialBoundary {
+                segments,
+                adjacent_tool,
+            } => {
+                // Precedence: a non-empty `segments` list always wins. The
+                // legacy `adjacent_tool` field is consulted ONLY to migrate the
+                // pre-4.2.0 single-tool shape (which had no `segments`); if a
+                // payload somehow carries both, the richer `segments` list is
+                // authoritative and `adjacent_tool` is dropped.
+                let segments = if let Some(tool) = adjacent_tool {
+                    if segments.is_empty() {
+                        vec![MaterialBoundarySegment {
+                            point_range: 0..1,
+                            near_tool: None,
+                            far_tool: Some(tool),
+                        }]
+                    } else {
+                        segments
+                    }
+                } else {
+                    segments
+                };
+                WallBoundaryType::MaterialBoundary { segments }
+            }
+        }
+    }
+}
+
+impl From<WallBoundaryType> for WallBoundaryTypeWire {
+    fn from(value: WallBoundaryType) -> Self {
+        match value {
+            WallBoundaryType::ExteriorSurface => WallBoundaryTypeWire::ExteriorSurface,
+            WallBoundaryType::Interior => WallBoundaryTypeWire::Interior,
+            WallBoundaryType::MaterialBoundary { segments } => {
+                WallBoundaryTypeWire::MaterialBoundary {
+                    segments,
+                    adjacent_tool: None,
+                }
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WallBoundaryType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = WallBoundaryTypeWire::deserialize(deserializer)?;
+        Ok(WallBoundaryType::from(wire))
+    }
 }
 
 /// Loop type

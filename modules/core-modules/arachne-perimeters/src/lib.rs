@@ -29,20 +29,19 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use slicer_core::perimeter_utils::{
+    build_outer_wall_flags, default_feature_flags, generate_seam_candidates, BASE_SPEED,
+};
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, Point3, Point3WithWidth, WallBoundaryType, WallFeatureFlags, WallLoop,
-    WidthProfile,
+    PaintValue, Point3WithWidth, WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
-
-/// Default base speed used for normalizing speed factors (mm/s).
-const BASE_SPEED: f32 = 50.0;
 
 /// Minimum extrusion width as a fraction of nominal line_width.
 /// Below this, walls are too thin to extrude reliably.
@@ -59,10 +58,6 @@ pub struct ArachnePerimeters {
     wall_count: u32,
     /// Nominal extrusion line width in millimeters.
     line_width: f32,
-    /// Speed factor for outer walls (outer_wall_speed / BASE_SPEED).
-    outer_speed_factor: f32,
-    /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
-    inner_speed_factor: f32,
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
 }
@@ -84,24 +79,12 @@ impl LayerModule for ArachnePerimeters {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         let wall_count = match config.get("wall_count") {
             Some(ConfigValue::Int(n)) => *n as u32,
-            _ => 2,
+            _ => 3,
         };
 
         let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
-        };
-
-        let outer_wall_speed = match config.get("outer_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
-        };
-
-        let inner_wall_speed = match config.get("inner_wall_speed") {
-            Some(ConfigValue::Float(s)) => *s as f32,
-            Some(ConfigValue::Int(s)) => *s as f32,
-            _ => BASE_SPEED,
         };
 
         let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
@@ -112,12 +95,12 @@ impl LayerModule for ArachnePerimeters {
         Ok(Self {
             wall_count,
             line_width,
-            outer_speed_factor: outer_wall_speed / BASE_SPEED,
-            inner_speed_factor: inner_wall_speed / BASE_SPEED,
             perimeter_arc_tolerance,
         })
     }
 
+    /// `_paint` is intentionally unread in this module — consumed by Phase 2
+    /// follow-up packet 102.
     fn run_perimeters(
         &self,
         _layer_index: u32,
@@ -126,6 +109,23 @@ impl LayerModule for ArachnePerimeters {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        let wall_count = _config
+            .get_int("wall_count")
+            .map(|n| n as u32)
+            .unwrap_or(self.wall_count);
+        let outer_wall_speed = _config
+            .get_float("outer_wall_speed")
+            .map(|s| s as f32)
+            .or_else(|| _config.get_int("outer_wall_speed").map(|s| s as f32))
+            .unwrap_or(30.0);
+        let inner_wall_speed = _config
+            .get_float("inner_wall_speed")
+            .map(|s| s as f32)
+            .or_else(|| _config.get_int("inner_wall_speed").map(|s| s as f32))
+            .unwrap_or(45.0);
+        let outer_speed_factor = outer_wall_speed / BASE_SPEED;
+        let inner_speed_factor = inner_wall_speed / BASE_SPEED;
+
         // Group regions by object so each painted object's model perimeter is
         // traced exactly once (AC-22b bisector-edge dedup).
         let mut by_object: BTreeMap<String, Vec<usize>> = BTreeMap::new();
@@ -150,7 +150,7 @@ impl LayerModule for ArachnePerimeters {
                 // Trace the model perimeter ONCE as the outer wall — a single loop,
                 // so the painted object's outer-wall count matches the unpainted
                 // baseline instead of fragmenting across colour cells.
-                if self.wall_count > 0 {
+                if wall_count > 0 {
                     let z = regions[indices[0]].z();
                     self.generate_arachne_walls(
                         boundary,
@@ -159,7 +159,10 @@ impl LayerModule for ArachnePerimeters {
                         true,
                         false,
                         output,
-                    );
+                        wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                    )?;
                 }
                 // Each cell contributes only inner walls + infill from its own
                 // polygon (no per-cell outer wall).
@@ -167,8 +170,8 @@ impl LayerModule for ArachnePerimeters {
                     let region = &regions[i];
                     let polygons = region.polygons();
                     let z = region.z();
-                    if self.wall_count == 0 {
-                        let _ = output.set_infill_areas(polygons.to_vec());
+                    if wall_count == 0 {
+                        output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
                     self.generate_arachne_walls(
@@ -178,7 +181,10 @@ impl LayerModule for ArachnePerimeters {
                         false,
                         true,
                         output,
-                    );
+                        wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                    )?;
                 }
             } else {
                 // Unpainted object: full per-region emission (unchanged).
@@ -186,8 +192,8 @@ impl LayerModule for ArachnePerimeters {
                     let region = &regions[i];
                     let polygons = region.polygons();
                     let z = region.z();
-                    if self.wall_count == 0 {
-                        let _ = output.set_infill_areas(polygons.to_vec());
+                    if wall_count == 0 {
+                        output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
                     self.generate_arachne_walls(
@@ -197,7 +203,10 @@ impl LayerModule for ArachnePerimeters {
                         true,
                         true,
                         output,
-                    );
+                        wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                    )?;
                 }
             }
         }
@@ -231,13 +240,16 @@ impl ArachnePerimeters {
         emit_outer: bool,
         emit_inner: bool,
         output: &mut PerimeterOutputBuilder,
-    ) {
+        wall_count: u32,
+        outer_speed_factor: f32,
+        inner_speed_factor: f32,
+    ) -> Result<(), ModuleError> {
         // Build the boundary rings: boundary[0] = original, boundary[i] = i-th inset
         let mut boundaries: Vec<Vec<ExPolygon>> = Vec::new();
         boundaries.push(polygons.to_vec());
 
         let mut current = polygons.to_vec();
-        for i in 0..self.wall_count {
+        for i in 0..wall_count {
             let delta = if i == 0 {
                 -(self.line_width / 2.0)
             } else {
@@ -262,9 +274,9 @@ impl ArachnePerimeters {
             // Region too thin for even one wall — make it all infill (only the
             // inner/infill pass owns infill; the shared outer-wall pass does not).
             if emit_inner {
-                let _ = output.set_infill_areas(polygons.to_vec());
+                output.set_infill_areas(polygons.to_vec())?;
             }
-            return;
+            return Ok(());
         }
 
         let num_walls = boundaries.len() - 1;
@@ -290,9 +302,9 @@ impl ArachnePerimeters {
                 ExtrusionRole::InnerWall
             };
             let speed_factor = if is_outer {
-                self.outer_speed_factor
+                outer_speed_factor
             } else {
-                self.inner_speed_factor
+                inner_speed_factor
             };
 
             // Generate wall paths from the inner boundary of each band
@@ -345,14 +357,16 @@ impl ArachnePerimeters {
                     feature_flags,
                     boundary_type: wall_boundary_type,
                 };
-                let _ = output.push_wall_loop(wall);
+                output.push_wall_loop(wall)?;
             }
         }
 
         // Seam candidates belong to the outer wall (the shared-perimeter pass).
         if emit_outer && boundaries.len() >= 2 {
             for poly in &boundaries[1] {
-                generate_seam_candidates(&poly.contour, z, output);
+                for candidate in generate_seam_candidates(&poly.contour, z) {
+                    output.push_seam_candidate(candidate.position, candidate.score)?;
+                }
             }
         }
 
@@ -369,10 +383,12 @@ impl ArachnePerimeters {
                     self.perimeter_arc_tolerance,
                 );
                 if !infill.is_empty() {
-                    let _ = output.set_infill_areas(infill);
+                    output.set_infill_areas(infill)?;
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Compute a variable-width path for one wall loop.
@@ -568,178 +584,6 @@ fn point_to_segment_nearest(
     ((dpx * dpx + dpy * dpy).sqrt(), proj_x, proj_y)
 }
 
-/// Build feature flags for outer wall points by propagating segment_annotations.
-///
-/// Reads Material and FuzzySkin semantics from `segment_annotations` for the given
-/// polygon index. Sets `tool_index` from Material ToolIndex values, `fuzzy_skin`
-/// from FuzzySkin Flag values. Detects adjacent material changes and returns
-/// `WallBoundaryType::MaterialBoundary` when different tool indices are adjacent.
-fn build_outer_wall_flags(
-    num_points: usize,
-    poly_idx: usize,
-    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
-) -> (Vec<WallFeatureFlags>, WallBoundaryType) {
-    let mut flags = vec![default_feature_flags(); num_points];
-
-    // Extract per-point Material paint values for this polygon
-    let material_values: Option<&Vec<Option<PaintValue>>> = segment_annotations
-        .get(&PaintSemantic::Material)
-        .and_then(|per_poly| per_poly.get(poly_idx));
-
-    // Extract per-point FuzzySkin paint values for this polygon
-    let fuzzy_values: Option<&Vec<Option<PaintValue>>> = segment_annotations
-        .get(&PaintSemantic::FuzzySkin)
-        .and_then(|per_poly| per_poly.get(poly_idx));
-
-    // Propagate Material -> tool_index
-    if let Some(mat_vals) = material_values {
-        for (i, flag) in flags.iter_mut().enumerate() {
-            if let Some(Some(PaintValue::ToolIndex(tool))) = mat_vals.get(i) {
-                flag.tool_index = Some(*tool);
-            }
-        }
-    }
-
-    // Propagate FuzzySkin -> fuzzy_skin
-    if let Some(fuzzy_vals) = fuzzy_values {
-        for (i, flag) in flags.iter_mut().enumerate() {
-            if let Some(Some(PaintValue::Flag(true))) = fuzzy_vals.get(i) {
-                flag.fuzzy_skin = true;
-            }
-        }
-    }
-
-    // Detect material boundary: adjacent points with different tool_index
-    let has_material_boundary = if let Some(mat_vals) = material_values {
-        has_adjacent_material_change(mat_vals)
-    } else {
-        false
-    };
-
-    let boundary_type = if has_material_boundary {
-        let adjacent_tool = find_adjacent_tool(material_values.unwrap());
-        WallBoundaryType::MaterialBoundary { adjacent_tool }
-    } else {
-        WallBoundaryType::ExteriorSurface
-    };
-
-    (flags, boundary_type)
-}
-
-/// Check if adjacent points in a material paint list have different tool indices.
-fn has_adjacent_material_change(mat_vals: &[Option<PaintValue>]) -> bool {
-    let n = mat_vals.len();
-    if n < 2 {
-        return false;
-    }
-    for i in 0..n {
-        let next = (i + 1) % n;
-        let tool_a = extract_tool_index(&mat_vals[i]);
-        let tool_b = extract_tool_index(&mat_vals[next]);
-        if tool_a != tool_b {
-            return true;
-        }
-    }
-    false
-}
-
-/// Find the adjacent tool index from the first material boundary transition.
-fn find_adjacent_tool(mat_vals: &[Option<PaintValue>]) -> u32 {
-    let n = mat_vals.len();
-    for i in 0..n {
-        let next = (i + 1) % n;
-        let tool_a = extract_tool_index(&mat_vals[i]);
-        let tool_b = extract_tool_index(&mat_vals[next]);
-        if tool_a != tool_b {
-            return tool_b.or(tool_a).unwrap_or(0);
-        }
-    }
-    0
-}
-
-/// Extract tool index from a PaintValue, if it is a ToolIndex variant.
-fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
-    match val {
-        Some(PaintValue::ToolIndex(t)) => Some(*t),
-        _ => None,
-    }
-}
-
-/// Create default WallFeatureFlags (no paint, no bridge, no thin wall).
-fn default_feature_flags() -> WallFeatureFlags {
-    WallFeatureFlags {
-        tool_index: None,
-        fuzzy_skin: false,
-        is_bridge: false,
-        is_thin_wall: false,
-        skip_ironing: false,
-        custom: HashMap::new(),
-    }
-}
-
-/// Generate seam candidates at sharp corners of the outer wall path.
-///
-/// All corners with a non-trivial turn angle are candidates. Concave corners
-/// receive a higher score (seam is less visible there), convex corners get a
-/// lower but positive score.
-fn generate_seam_candidates(
-    contour: &slicer_ir::Polygon,
-    z: f32,
-    output: &mut PerimeterOutputBuilder,
-) {
-    let pts = &contour.points;
-    let n = pts.len();
-    if n < 3 {
-        return;
-    }
-
-    // Determine winding via signed area
-    let mut signed_area: i128 = 0;
-    for i in 0..n {
-        let j = (i + 1) % n;
-        signed_area += (pts[i].x as i128) * (pts[j].y as i128);
-        signed_area -= (pts[j].x as i128) * (pts[i].y as i128);
-    }
-    let is_ccw = signed_area > 0;
-
-    for i in 0..n {
-        let prev = if i == 0 { n - 1 } else { i - 1 };
-        let next = (i + 1) % n;
-
-        let dx1 = pts[i].x - pts[prev].x;
-        let dy1 = pts[i].y - pts[prev].y;
-        let dx2 = pts[next].x - pts[i].x;
-        let dy2 = pts[next].y - pts[i].y;
-
-        let cross = dx1 * dy2 - dy1 * dx2;
-        if cross == 0 {
-            continue;
-        }
-
-        let len1 = ((dx1 * dx1 + dy1 * dy1) as f64).sqrt();
-        let len2 = ((dx2 * dx2 + dy2 * dy2) as f64).sqrt();
-        let denom = len1 * len2;
-        if denom == 0.0 {
-            continue;
-        }
-
-        let sin_angle = (cross.unsigned_abs() as f64 / denom) as f32;
-        let is_concave = if is_ccw { cross < 0 } else { cross > 0 };
-        let score = if is_concave {
-            sin_angle + 1.0
-        } else {
-            sin_angle * 0.5
-        };
-
-        let pos = Point3 {
-            x: slicer_ir::units_to_mm(pts[i].x),
-            y: slicer_ir::units_to_mm(pts[i].y),
-            z,
-        };
-        let _ = output.push_seam_candidate(pos, score);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -748,7 +592,7 @@ mod tests {
     fn on_print_start_defaults() {
         let config = ConfigView::from_map(HashMap::new());
         let module = ArachnePerimeters::on_print_start(&config).unwrap();
-        assert_eq!(module.wall_count, 2);
+        assert_eq!(module.wall_count, 3);
         assert!((module.line_width - 0.4).abs() < 0.001);
     }
 

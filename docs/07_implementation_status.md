@@ -263,6 +263,27 @@ Forward-looking parity obligations that survive a completed packet's `status: im
 - **`PaintValue::Vector(Vec<f32>)` IR addition for multi-channel paints (post-roadmap follow-up).** The current `PaintValue` enum supports scalar/flag variants. A `PaintValue::Vector(Vec<f32>)` variant for multi-channel paints (CMYK / RGB) is deferred to a future IR-breaking change. Production impact: multi-channel paint data cannot be represented in the IR today; single-channel paints are unaffected.
 - **Promoting paint-segmentation's internal slicing to `host:raw_slice` (post-roadmap follow-up).** If profiling reveals that paint-segmentation's internal slice-plane intersection loop is a bottleneck, the internal slicing logic should be promoted to a `host:raw_slice` producer so it can be reused by other stages. Currently the logic is private to the paint-segmentation kernel. Production impact: no functional change; this is a performance/reusability refactor deferred until profiling data justifies it.
 
+## Perimeter Modules — OrcaSlicer Parity Roadmap
+
+Packets implementing the [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md).
+
+### M1 — Classic parity
+
+- [x] **P102 — Perimeter foundations** (T-010..T-019). Shared `slicer-core::perimeter_utils` module; `WallBoundaryType::MaterialBoundary` widened to `Vec<MaterialBoundarySegment>`; per-layer config plumbing; `?` propagation; manifest-vs-code default reconcile; `_paint` disuse documented. Schema 4.1.0 → 4.2.0.
+- [ ] **P103 — Polygon ops** (T-040..T-045). `offset2_ex`, `medial_axis`, `ThickPolyline`, hole-tree, `keep_largest_contour_only`, ray ops promotion.
+- [ ] **P104 — Propagation + surface rules** (T-020..T-025, T-030..T-033). Per-vertex `is_bridge`, inner-wall material boundary, `only_one_wall_top`, `only_one_wall_first_layer`.
+- [ ] **P105 — Spacing + fill + MMU** (T-050..T-065, T-P96-A..T-P96-C2). Classic spacing model, thin-walls, gap-fill, per-color outer-wall fragmentation.
+- [ ] **P106 — Overhang PrePass foundation** (O-T010..O-T012, O-T030..O-T031). Mesh cross-section overhang classification.
+- [ ] **P107 — Overhang consumers + refactor** (T-024, T-077, O-T040..O-T053). `overhang_quartile` propagation, `extra_perimeters_on_overhangs`, overhang-classifier refactor.
+- [ ] **P108 — Special modes + seam** (T-070..T-074d, T-080..T-083, T-P98-SEAM). `extra_perimeters`, narrow-island handling, non-planar shell, seam-candidate quality, paint_seam consumer.
+- [ ] **P109 — M1 verification** (T-100..T-105, T-P96-D, T-P96-F). Parity harness, reference fixtures, deviation walk, `cargo test --workspace` ceremony.
+
+### M2 — Real Arachne
+
+- [ ] **P110 — Voronoi + SKT foundations** (T-200..T-205). `boostvoronoi` integration, SkeletalTrapezoidation graph, discretization, pre-processing.
+- [ ] **P111 — BeadingStrategy stack** (T-210..T-218). 5-strategy beading, junction width assignment, bead-count propagation.
+- [ ] **P112 — Extrusion + wire-up** (T-220..T-233). ExtrusionLine/Junction types, variable-width wall emission, MMU dedup, parity harness extension.
+
 ## Tests Added as Gap Locks
 
 - [x] `crates/slicer-runtime/tests/contract/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
