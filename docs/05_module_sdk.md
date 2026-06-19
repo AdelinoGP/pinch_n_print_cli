@@ -753,6 +753,13 @@ Packet 79 added a batch of additive fixture surfaces — all re-exported through
 - `PerimeterRegionViewBuilder::add_outer_wall_with_flags(...)` — method overload of `add_outer_wall` that lets tests stamp seam/overhang/bridge flag bits onto the outer-wall path being added.
 - `SliceRegionViewBuilder` gains seven new top/bottom/bridge setters — `top_shell_index`, `top_solid_fill`, `bottom_shell_index`, `bottom_solid_fill`, `is_bridge`, `bridge_areas`, and `bridge_orientation_deg` — covering the shell-classification and bridge-detection fields that top/bottom infill and bridging modules consume.
 
+### SliceRegionView accessors (packet 104)
+
+Two new read-only accessors are available on `SliceRegionView` from packet 104 onward:
+
+- `overhang_areas(&self) -> &[ExPolygon]` — returns the per-region overhang footprint polygons. **Currently returns an empty slice**; the field is forward-dependent on packet P106's `OverhangRegion.xy_footprint` net-new IR field. Callers that need overhang geometry before P106 lands must fall back to the full-region polygon + overhang-quartile stamps on `Point3WithWidth`.
+- `surface_group(&self) -> Option<&SurfaceGroup>` — resolves the region's `nonplanar_surface` reference to a `SurfaceGroup`. Returns `None` when the region has no nonplanar surface assignment (the common case for planar layers).
+
 ---
 
 ## `slicer-macros` Crate

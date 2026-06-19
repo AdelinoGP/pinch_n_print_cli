@@ -181,10 +181,15 @@ pub fn project_support_geometry_view(
 /// builds the `(ObjectId, RegionId) -> Vec<String>` map on
 /// `HostExecutionContext.held_claims_per_region` before the WIT call;
 /// `push_slice_regions` looks up each region and passes the slice in here.
+///
+/// `surface_classification` is used to resolve `region.nonplanar_surface` to a
+/// `SurfaceGroup` record. Pass `None` when the IR is unavailable (e.g. in tests
+/// that construct regions directly); the `surface_group` field will be `None`.
 pub fn sliced_region_to_data(
     region: &slicer_ir::SlicedRegion,
     z: f32,
     held_claims: Vec<String>,
+    surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
 ) -> SliceRegionData {
     let segment_annotations: Vec<SegmentAnnotationsEntry> = region
         .segment_annotations
@@ -202,6 +207,25 @@ pub fn sliced_region_to_data(
                 .collect(),
         })
         .collect();
+
+    // Resolve the surface group from SurfaceClassificationIR if available.
+    let surface_group: Option<crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup> =
+        region.nonplanar_surface.and_then(|sg_id| {
+            surface_classification
+                .and_then(|sc| sc.per_object.get(&region.object_id))
+                .and_then(|obj| obj.surface_groups.iter().find(|g| g.id == sg_id))
+                .map(
+                    |g| crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup {
+                        id: g.id,
+                        facet_indices: g.facet_indices.clone(),
+                        z_min: g.z_min,
+                        z_max: g.z_max,
+                        area_mm2: g.area_mm2,
+                        printable: g.printable,
+                        shell_count: g.shell_count,
+                    },
+                )
+        });
 
     SliceRegionData {
         object_id: region.object_id.clone(),
@@ -226,6 +250,8 @@ pub fn sliced_region_to_data(
             .external_contour
             .as_ref()
             .map(|b| ir_to_wit_expolygons(b)),
+        overhang_areas: Vec::new(),
+        surface_group,
     }
 }
 

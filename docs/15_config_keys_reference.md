@@ -415,6 +415,21 @@ global < object_config:<id>:<key> < paint_config:<semantic>:<key>
 
 ---
 
+## Walls (packet 104)
+
+Keys consumed by `classic-perimeters` and `arachne-perimeters` to gate single-wall reduction on specific layer types. Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
+
+| Key | Type | Default | Range | Module(s) |
+|---|---|---|---|---|
+| `only_one_wall_top` | bool | `default: false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `only_one_wall_first_layer` | bool | `default: false` | — | `classic-perimeters`, `arachne-perimeters` |
+
+**`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
+
+**`only_one_wall_first_layer`** — when `true`, the perimeter generator emits a single outer wall on the first layer of the print (layer index 0).
+
+---
+
 ## Maintenance Notes
 
 - When adding a new config key:

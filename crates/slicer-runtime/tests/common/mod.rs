@@ -374,7 +374,7 @@ pub fn commit_hec_for_test(
 // Construct *StageInput borrow structs from the legacy Blackboard/LayerArena
 // so existing test call sites can use the new trait boundary with minimal churn.
 
-pub fn layer_input<'a>(blackboard: &Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
+pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
     LayerStageInput {
         mesh: blackboard.mesh().clone(),
         paint_regions: None,
@@ -384,6 +384,7 @@ pub fn layer_input<'a>(blackboard: &Blackboard, arena: &'a LayerArena) -> LayerS
         slice: arena.slice(),
         perimeter: arena.perimeter(),
         layer_collection: arena.layer_collection(),
+        surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
     }
 }
 

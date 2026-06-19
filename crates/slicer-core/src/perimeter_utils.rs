@@ -14,25 +14,131 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    MaterialBoundarySegment, PaintSemantic, PaintValue, Point3, Point3WithWidth, WallBoundaryType,
-    WallFeatureFlags,
+    ExPolygon, MaterialBoundarySegment, PaintSemantic, PaintValue, Point2, Point3, Point3WithWidth,
+    WallBoundaryType, WallFeatureFlags,
 };
+
+use crate::geometry::closest_point_on_segment;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 pub const BASE_SPEED: f32 = 50.0;
 
-/// Build feature flags for outer wall points by propagating segment_annotations.
+/// Build feature flags for wall points by propagating segment_annotations.
 ///
 /// Reads Material and FuzzySkin semantics from `segment_annotations` for the given
 /// polygon index. Sets `tool_index` from Material ToolIndex values, `fuzzy_skin`
 /// from FuzzySkin Flag values. Detects adjacent material changes and returns
 /// `WallBoundaryType::MaterialBoundary` with a segment for each transition.
-pub fn build_outer_wall_flags(
+///
+/// The `is_outer` flag controls the fallback boundary type when no Material
+/// annotations are present (or annotations are present but have no transitions):
+/// - Outer walls (`is_outer = true`): return `WallBoundaryType::ExteriorSurface`.
+/// - Inner walls (`is_outer = false`): return `WallBoundaryType::Interior`.
+///
+/// When Material annotations are present with transitions, both outer and inner walls
+/// return `WallBoundaryType::MaterialBoundary` regardless of `is_outer`.
+///
+/// # Inner-wall paint sampling — geometric reprojection
+///
+/// Inner walls are produced by iterative polygon offsetting. The offset operation
+/// does NOT carry paint data forward — `segment_annotations` remain keyed to the
+/// ORIGINAL region polygons, not the inset polygons. On convex shapes the vertex
+/// counts and ordering happen to match, but on concave shapes the inset ring has
+/// different vertex counts and ordering, so naive index-based sampling assigns the
+/// wrong tool/material color to inner-wall vertices near concave features.
+///
+/// When `inset_ring_points` and `original_polygons` are both `Some` and
+/// `is_outer = false`, this function uses **geometric reprojection**: for each
+/// inner-wall vertex, the nearest edge across all original contours is found, then
+/// the nearest endpoint vertex of that edge is selected, and its annotation is used.
+/// This is deterministic (pure function of inputs) and correct for all polygon
+/// shapes including concave ones.
+///
+/// Outer walls (`is_outer = true`) always use index-based lookup (the outer wall IS
+/// the original contour's first inset, so vertex ordering is preserved). When
+/// `inset_ring_points` or `original_polygons` is `None`, index-based lookup is used
+/// as a fallback (backward-compatible path for callers that do not supply geometry).
+pub fn build_wall_flags(
     num_points: usize,
     poly_idx: usize,
     segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    is_outer: bool,
+    inset_ring_points: Option<&[Point2]>,
+    original_polygons: Option<&[ExPolygon]>,
 ) -> (Vec<WallFeatureFlags>, WallBoundaryType) {
     let mut flags = vec![default_feature_flags(); num_points];
+
+    // Determine which annotation source to use for each flag slot.
+    // For inner walls with geometry available, use reprojection; otherwise fall back
+    // to the legacy index-based path (outer walls, or callers that pass None).
+    let use_reprojection = !is_outer && inset_ring_points.is_some() && original_polygons.is_some();
+
+    if use_reprojection {
+        let ring_pts = inset_ring_points.unwrap();
+        let orig_polys = original_polygons.unwrap();
+
+        // For each flag slot, find the annotation values via reprojection.
+        for (i, flag) in flags.iter_mut().enumerate() {
+            // For the closing-repeat vertex (index == num_points - 1 when it duplicates
+            // index 0), use the same annotation as vertex 0. ring_pts has N entries
+            // (no closing repeat), so clamp to ring_pts.len() - 1.
+            let pt = ring_pts[i.min(ring_pts.len().saturating_sub(1))];
+
+            if let Some((orig_poly_idx, orig_vert_idx)) = nearest_original_vertex(pt, orig_polys) {
+                // Material annotation
+                if let Some(Some(PaintValue::ToolIndex(tool))) = segment_annotations
+                    .get(&PaintSemantic::Material)
+                    .and_then(|pp| pp.get(orig_poly_idx))
+                    .and_then(|vv| vv.get(orig_vert_idx))
+                {
+                    flag.tool_index = Some(*tool);
+                }
+                // FuzzySkin annotation
+                if let Some(Some(PaintValue::Flag(true))) = segment_annotations
+                    .get(&PaintSemantic::FuzzySkin)
+                    .and_then(|pp| pp.get(orig_poly_idx))
+                    .and_then(|vv| vv.get(orig_vert_idx))
+                {
+                    flag.fuzzy_skin = true;
+                }
+            }
+        }
+
+        // Build the effective annotation sequence for boundary-type detection by
+        // reprojecting each ring vertex to its nearest original annotation.
+        let projected_mat_vals: Vec<Option<PaintValue>> = (0..num_points)
+            .map(|i| {
+                let pt = ring_pts[i.min(ring_pts.len().saturating_sub(1))];
+                nearest_original_vertex(pt, orig_polys)
+                    .and_then(|(opi, ovi)| {
+                        segment_annotations
+                            .get(&PaintSemantic::Material)
+                            .and_then(|pp| pp.get(opi))
+                            .and_then(|vv| vv.get(ovi))
+                            .cloned()
+                    })
+                    .flatten()
+            })
+            .collect();
+
+        let has_any_material = projected_mat_vals.iter().any(|v| v.is_some());
+        let boundary_type = if has_any_material {
+            let transitions = find_all_transitions(&projected_mat_vals);
+            if transitions.is_empty() {
+                WallBoundaryType::Interior
+            } else {
+                WallBoundaryType::MaterialBoundary {
+                    segments: transitions,
+                }
+            }
+        } else {
+            WallBoundaryType::Interior
+        };
+
+        return (flags, boundary_type);
+    }
+
+    // ── Legacy index-based path (outer walls and callers without geometry) ────
 
     let material_values: Option<&Vec<Option<PaintValue>>> = segment_annotations
         .get(&PaintSemantic::Material)
@@ -62,17 +168,70 @@ pub fn build_outer_wall_flags(
         Some(mat_vals) => {
             let transitions = find_all_transitions(mat_vals);
             if transitions.is_empty() {
-                WallBoundaryType::ExteriorSurface
+                if is_outer {
+                    WallBoundaryType::ExteriorSurface
+                } else {
+                    WallBoundaryType::Interior
+                }
             } else {
                 WallBoundaryType::MaterialBoundary {
                     segments: transitions,
                 }
             }
         }
-        None => WallBoundaryType::ExteriorSurface,
+        None => {
+            if is_outer {
+                WallBoundaryType::ExteriorSurface
+            } else {
+                WallBoundaryType::Interior
+            }
+        }
     };
 
     (flags, boundary_type)
+}
+
+/// Find the nearest original contour vertex to `p` across all `original_polygons`.
+///
+/// Returns `(polygon_index, vertex_index)` into `original_polygons`. The search
+/// finds the closest edge endpoint along the nearest segment, which gives a stable
+/// nearest-vertex that respects polygon topology rather than raw Euclidean vertex
+/// proximity across disconnected polygons.
+///
+/// Returns `None` if `original_polygons` is empty or all contours have no vertices.
+fn nearest_original_vertex(p: Point2, original_polygons: &[ExPolygon]) -> Option<(usize, usize)> {
+    let mut best_dist_sq = f64::MAX;
+    let mut best: Option<(usize, usize)> = None;
+
+    for (poly_idx, ep) in original_polygons.iter().enumerate() {
+        let pts = &ep.contour.points;
+        let n = pts.len();
+        if n == 0 {
+            continue;
+        }
+        for edge_i in 0..n {
+            let edge_j = (edge_i + 1) % n;
+            let cp = closest_point_on_segment(p, pts[edge_i], pts[edge_j]);
+            if cp.distance_sq < best_dist_sq {
+                best_dist_sq = cp.distance_sq;
+                // Pick the endpoint of this edge that is nearer to the projected point.
+                let da_sq = {
+                    let dx = pts[edge_i].x as f64 - cp.point.x as f64;
+                    let dy = pts[edge_i].y as f64 - cp.point.y as f64;
+                    dx * dx + dy * dy
+                };
+                let db_sq = {
+                    let dx = pts[edge_j].x as f64 - cp.point.x as f64;
+                    let dy = pts[edge_j].y as f64 - cp.point.y as f64;
+                    dx * dx + dy * dy
+                };
+                let vert_idx = if da_sq <= db_sq { edge_i } else { edge_j };
+                best = Some((poly_idx, vert_idx));
+            }
+        }
+    }
+
+    best
 }
 
 /// Find all material boundary transitions on a polygon contour.
@@ -136,6 +295,8 @@ pub fn expolygon_to_path3d(
             z,
             width,
             flow_factor: 1.0,
+            // overhang_quartile: None — placeholder; sibling roadmap item O-T031 in
+            // docs/specs/overhang-pipeline-restructuring.md is the future producer.
             overhang_quartile: None,
         })
         .collect();
@@ -223,6 +384,74 @@ pub fn generate_seam_candidates(contour: &slicer_ir::Polygon, z: f32) -> Vec<Sea
     }
 
     candidates
+}
+
+/// Test whether a point lies strictly inside any polygon in the given slice.
+///
+/// Returns `true` iff `pt` is strictly inside at least one `ExPolygon` contour
+/// (i.e. the standard ray-casting winding test resolves to inside). A point
+/// exactly ON a boundary edge returns `false` (strict-inside semantics).
+///
+/// Used for per-vertex `is_bridge` derivation against `region.bridge_areas()`.
+pub fn point_in_any_polygon(pt: &Point2, polys: &[ExPolygon]) -> bool {
+    polys
+        .iter()
+        .any(|ep| point_in_polygon_strict(pt, &ep.contour.points))
+}
+
+/// Ray-casting point-in-polygon test. Returns `true` iff `pt` is strictly inside
+/// the polygon defined by `verts` (closed implicitly). Returns `false` for a point
+/// exactly on a boundary edge.
+fn point_in_polygon_strict(pt: &Point2, verts: &[Point2]) -> bool {
+    let n = verts.len();
+    if n < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let vi = &verts[i];
+        let vj = &verts[j];
+        // Check exact boundary — return false for on-edge points.
+        // The cross product of (vj→vi) × (vj→pt) == 0 and t in [0,1] means on-edge.
+        let dx = vi.x - vj.x;
+        let dy = vi.y - vj.y;
+        let ex = pt.x - vj.x;
+        let ey = pt.y - vj.y;
+        let cross = dx * ey - dy * ex;
+        if cross == 0 {
+            // Collinear — check if pt is between vj and vi.
+            let t_num_x = ex;
+            let t_num_y = ey;
+            let in_x = if dx != 0 {
+                (t_num_x >= 0) == (dx > 0) && t_num_x.unsigned_abs() <= dx.unsigned_abs()
+            } else {
+                ex == 0
+            };
+            let in_y = if dy != 0 {
+                (t_num_y >= 0) == (dy > 0) && t_num_y.unsigned_abs() <= dy.unsigned_abs()
+            } else {
+                ey == 0
+            };
+            if in_x && in_y {
+                return false; // on the boundary
+            }
+        }
+        // Standard ray-casting from pt in +X direction.
+        // Cross-multiply to avoid integer division:
+        //   pt.x < vj.x + (vi.x - vj.x) * (pt.y - vj.y) / (vi.y - vj.y)
+        // ⟺ (pt.x - vj.x) * (vi.y - vj.y) < (vi.x - vj.x) * (pt.y - vj.y)  [when vi.y > vj.y]
+        // ⟺ (pt.x - vj.x) * (vi.y - vj.y) > (vi.x - vj.x) * (pt.y - vj.y)  [when vi.y < vj.y]
+        if (vi.y > pt.y) != (vj.y > pt.y) {
+            let lhs = (pt.x - vj.x) as i128 * (vi.y - vj.y) as i128;
+            let rhs = (vi.x - vj.x) as i128 * (pt.y - vj.y) as i128;
+            if (vi.y > vj.y) == (lhs < rhs) {
+                inside = !inside;
+            }
+        }
+        j = i;
+    }
+    inside
 }
 
 fn close_loop<T: Clone>(items: &mut Vec<T>) {

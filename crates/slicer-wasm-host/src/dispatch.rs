@@ -258,6 +258,7 @@ impl WasmRuntimeDispatcher {
         slice_ir: Option<&slicer_ir::SliceIR>,
         perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
+        surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).ok_or_else(|| DispatchError {
@@ -354,6 +355,7 @@ impl WasmRuntimeDispatcher {
             slice_ir,
             perimeter_ir,
             layer_collection,
+            surface_classification,
         )?;
 
         // Handle module-returned error (inner Result).
@@ -382,6 +384,7 @@ impl WasmRuntimeDispatcher {
         slice_ir: Option<&slicer_ir::SliceIR>,
         perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
+        surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
     ) -> Result<Result<(), host::ModuleError>, DispatchError> {
         let mk_call_err = |e: wasmtime::Error| DispatchError {
             module_id: config.module_id.to_string(),
@@ -400,8 +403,13 @@ impl WasmRuntimeDispatcher {
 
         match config.stage_id {
             "Layer::Infill" => {
-                let region_handles = push_slice_regions(config.store, slice_ir, params.layer_z)
-                    .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    config.store,
+                    slice_ir,
+                    params.layer_z,
+                    surface_classification,
+                )
+                .map_err(mk_ctx_err)?;
                 let output = config
                     .store
                     .data_mut()
@@ -439,8 +447,13 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::SlicePostProcess" => {
-                let region_handles = push_slice_regions(config.store, slice_ir, params.layer_z)
-                    .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    config.store,
+                    slice_ir,
+                    params.layer_z,
+                    surface_classification,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
                 let paint = config
                     .store
@@ -465,8 +478,13 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::Perimeters" => {
-                let region_handles = push_slice_regions(config.store, slice_ir, params.layer_z)
-                    .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    config.store,
+                    slice_ir,
+                    params.layer_z,
+                    surface_classification,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
                 let paint = config
                     .store
@@ -515,8 +533,13 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::Support" => {
-                let region_handles = push_slice_regions(config.store, slice_ir, params.layer_z)
-                    .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    config.store,
+                    slice_ir,
+                    params.layer_z,
+                    surface_classification,
+                )
+                .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
                     params.paint_ir,
                     params.layer_index,
@@ -545,8 +568,13 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::SupportPostProcess" => {
-                let region_handles = push_slice_regions(config.store, slice_ir, params.layer_z)
-                    .map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(
+                    config.store,
+                    slice_ir,
+                    params.layer_z,
+                    surface_classification,
+                )
+                .map_err(mk_ctx_err)?;
                 let output = config
                     .store
                     .data_mut()
@@ -1285,6 +1313,7 @@ fn push_slice_regions(
     store: &mut wasmtime::Store<HostExecutionContext>,
     slice_ir: Option<&slicer_ir::SliceIR>,
     layer_z: f32,
+    surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
 ) -> Result<Vec<Resource<host::SliceRegionData>>, wasmtime::Error> {
     let slice_ir = match slice_ir {
         Some(ir) => ir,
@@ -1297,7 +1326,8 @@ fn push_slice_regions(
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())
             .to_vec();
-        let data = host::sliced_region_to_data(region, layer_z, held_claims);
+        let data =
+            host::sliced_region_to_data(region, layer_z, held_claims, surface_classification);
         let handle = store.data_mut().push_slice_region(data)?;
         handles.push(handle);
     }
@@ -1676,6 +1706,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.slice,
             input.perimeter,
             input.layer_collection,
+            input.surface_classification,
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {

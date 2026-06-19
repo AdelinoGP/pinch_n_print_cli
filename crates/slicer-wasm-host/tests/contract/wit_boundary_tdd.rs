@@ -80,6 +80,8 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
             external_contour: None,
+            overhang_areas: Vec::new(),
+            surface_group: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -175,6 +177,8 @@ fn guest_reads_region_z_from_ir_view() {
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
             external_contour: None,
+            overhang_areas: Vec::new(),
+            surface_group: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -248,6 +252,8 @@ fn guest_emits_output_via_infill_builder() {
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
             external_contour: None,
+            overhang_areas: Vec::new(),
+            surface_group: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -329,6 +335,8 @@ fn guest_logs_via_host_services() {
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
             external_contour: None,
+            overhang_areas: Vec::new(),
+            surface_group: None,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -407,6 +415,8 @@ fn repeated_calls_produce_independent_outputs() {
                 sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
                 external_contour: None,
+                overhang_areas: Vec::new(),
+                surface_group: None,
             })
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();

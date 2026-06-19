@@ -24,6 +24,7 @@ pub mod perimeter_utils;
 pub mod polygon_ops;
 pub mod polygon_tree;
 pub mod stage_io;
+pub mod top_surface_split;
 pub mod triangle_mesh_slicer;
 
 use slicer_ir::{Point2, Point3, Point3WithWidth};

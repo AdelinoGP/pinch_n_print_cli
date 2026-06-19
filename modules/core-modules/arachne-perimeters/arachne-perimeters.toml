@@ -66,6 +66,18 @@ max     = 1.0
 display = "Perimeter arc tolerance (mm)"
 group   = "Quality"
 
+[config.schema.only_one_wall_top]
+type    = "bool"
+default = false
+display = "Only one wall on top surfaces"
+group   = "Walls"
+
+[config.schema.only_one_wall_first_layer]
+type    = "bool"
+default = false
+display = "Only one wall on first layer"
+group   = "Walls"
+
 [config.overridable-per-region]
 keys = []
 

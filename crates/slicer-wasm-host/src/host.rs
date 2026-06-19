@@ -161,6 +161,10 @@ pub struct SliceRegionData {
     /// Clean model boundary for the painted cell group (AC-22b bisector dedup).
     /// `Some(boundary)` for painted regions; `None` for unpainted regions.
     pub external_contour: Option<Vec<layer::slicer::types::geometry::ExPolygon>>,
+    /// Overhang area polygons. Empty until packet 106 wires OverhangRegion.xy_footprint.
+    pub overhang_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Surface group resolved from SurfaceClassificationIR. None when no group applies.
+    pub surface_group: Option<layer::slicer::ir_handles::ir_handles::SurfaceGroup>,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -1781,6 +1785,8 @@ mod region_origin_tests {
                 sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
                 external_contour: None,
+                overhang_areas: Vec::new(),
+                surface_group: None,
             })
             .expect("push slice region");
 
@@ -2118,6 +2124,22 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     ) -> wasmtime::Result<Option<Vec<ExPolygon>>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.external_contour.clone())
+    }
+    fn overhang_areas(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.overhang-areas"));
+        Ok(self.table.get(&self_)?.overhang_areas.clone())
+    }
+    fn surface_group(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Option<layer::slicer::ir_handles::ir_handles::SurfaceGroup>> {
+        self.runtime_reads
+            .push(String::from("SurfaceClassificationIR.surface-group"));
+        Ok(self.table.get(&self_)?.surface_group.clone())
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

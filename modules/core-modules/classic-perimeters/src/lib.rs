@@ -22,13 +22,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use slicer_core::perimeter_utils::{
-    build_outer_wall_flags, default_feature_flags, expolygon_to_path3d, generate_seam_candidates,
+    build_wall_flags, expolygon_to_path3d, generate_seam_candidates, point_in_any_polygon,
     BASE_SPEED,
 };
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
+use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, WallBoundaryType, WallLoop, WidthProfile,
+    PaintValue, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -96,16 +97,26 @@ impl LayerModule for ClassicPerimeters {
     /// follow-up packet 102.
     fn run_perimeters(
         &self,
-        _layer_index: u32,
+        layer_index: u32,
         regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let wall_count = _config
+        let base_wall_count = _config
             .get_int("wall_count")
             .map(|n| n as u32)
             .unwrap_or(self.wall_count);
+        let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
+        let only_one_wall_first_layer = _config
+            .get_bool("only_one_wall_first_layer")
+            .unwrap_or(false);
+        // Apply first-layer clamp at the layer level (all regions share the same layer).
+        let layer_wall_count = if only_one_wall_first_layer && layer_index == 0 {
+            1
+        } else {
+            base_wall_count
+        };
         let outer_wall_speed = _config
             .get_float("outer_wall_speed")
             .map(|s| s as f32)
@@ -140,9 +151,21 @@ impl LayerModule for ClassicPerimeters {
             let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
 
             if let Some(boundary) = shared_boundary {
+                // Effective wall count for the shared boundary uses the first region's top-shell.
+                // Some(0) → blanket 1-wall clamp; Some(N>0) → carve handled per-cell below;
+                // None → full wall_count.
+                let wall_count = {
+                    let top_shell = regions[indices[0]].top_shell_index();
+                    if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    }
+                };
                 // Trace the model perimeter ONCE as the outer wall (single loop).
                 if wall_count > 0 {
                     let z = regions[indices[0]].z();
+                    let bridge = regions[indices[0]].bridge_areas();
                     self.emit_walls(
                         boundary,
                         z,
@@ -153,50 +176,137 @@ impl LayerModule for ClassicPerimeters {
                         wall_count,
                         outer_speed_factor,
                         inner_speed_factor,
+                        bridge,
                     )?;
                 }
                 // Each cell adds only inner walls + infill from its own polygon.
                 for &i in indices {
                     let region = &regions[i];
+                    let top_shell = region.top_shell_index();
+                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    };
                     let polygons = region.polygons();
                     let z = region.z();
                     if wall_count == 0 {
                         output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
-                    self.emit_walls(
-                        polygons,
-                        z,
-                        region.segment_annotations(),
-                        false,
-                        true,
-                        output,
-                        wall_count,
-                        outer_speed_factor,
-                        inner_speed_factor,
-                    )?;
+                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
+                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
+                    // so that build_wall_flags paint reprojection samples annotations
+                    // correctly even on the carved sub-regions.
+                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                        let split = split_top_surfaces(polygons, region.top_solid_fill());
+                        if !split.top_portion.is_empty() {
+                            self.emit_walls(
+                                &split.top_portion,
+                                z,
+                                region.segment_annotations(),
+                                false,
+                                true,
+                                output,
+                                1,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                        if !split.non_top_portion.is_empty() {
+                            self.emit_walls(
+                                &split.non_top_portion,
+                                z,
+                                region.segment_annotations(),
+                                false,
+                                true,
+                                output,
+                                layer_wall_count,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                    } else {
+                        self.emit_walls(
+                            polygons,
+                            z,
+                            region.segment_annotations(),
+                            false,
+                            true,
+                            output,
+                            wall_count,
+                            outer_speed_factor,
+                            inner_speed_factor,
+                            region.bridge_areas(),
+                        )?;
+                    }
                 }
             } else {
-                // Unpainted object: full per-region emission (unchanged).
+                // Unpainted object: full per-region emission.
                 for &i in indices {
                     let region = &regions[i];
+                    let top_shell = region.top_shell_index();
+                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    };
                     let polygons = region.polygons();
                     let z = region.z();
                     if wall_count == 0 {
                         output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
-                    self.emit_walls(
-                        polygons,
-                        z,
-                        region.segment_annotations(),
-                        true,
-                        true,
-                        output,
-                        wall_count,
-                        outer_speed_factor,
-                        inner_speed_factor,
-                    )?;
+                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
+                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
+                    // to build_wall_flags so paint reprojection stays correct on carved
+                    // sub-regions. (Ref: OrcaSlicer PerimeterGenerator.cpp split_top_surfaces ~L775)
+                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                        let split = split_top_surfaces(polygons, region.top_solid_fill());
+                        if !split.top_portion.is_empty() {
+                            self.emit_walls(
+                                &split.top_portion,
+                                z,
+                                region.segment_annotations(),
+                                true,
+                                true,
+                                output,
+                                1,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                        if !split.non_top_portion.is_empty() {
+                            self.emit_walls(
+                                &split.non_top_portion,
+                                z,
+                                region.segment_annotations(),
+                                true,
+                                true,
+                                output,
+                                layer_wall_count,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                    } else {
+                        self.emit_walls(
+                            polygons,
+                            z,
+                            region.segment_annotations(),
+                            true,
+                            true,
+                            output,
+                            wall_count,
+                            outer_speed_factor,
+                            inner_speed_factor,
+                            region.bridge_areas(),
+                        )?;
+                    }
                 }
             }
         }
@@ -230,6 +340,7 @@ impl ClassicPerimeters {
         wall_count: u32,
         outer_speed_factor: f32,
         inner_speed_factor: f32,
+        bridge_areas: &[ExPolygon],
     ) -> Result<(), ModuleError> {
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
@@ -283,14 +394,29 @@ impl ClassicPerimeters {
                 }
                 let num_points = points.len();
 
-                let (mut feature_flags, boundary_type) = if is_outer {
-                    build_outer_wall_flags(num_points, poly_idx, segment_annotations)
+                let ring_pts: Option<&[slicer_ir::Point2]> = if is_outer {
+                    None
                 } else {
-                    (
-                        vec![default_feature_flags(); num_points],
-                        WallBoundaryType::Interior,
-                    )
+                    Some(&poly.contour.points)
                 };
+                let orig_polys: Option<&[ExPolygon]> = if is_outer { None } else { Some(polygons) };
+                let (mut feature_flags, boundary_type) = build_wall_flags(
+                    num_points,
+                    poly_idx,
+                    segment_annotations,
+                    is_outer,
+                    ring_pts,
+                    orig_polys,
+                );
+                // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
+                // poly.contour.points has N entries (integer units); feature_flags has N+1
+                // (closing repeat appended by expolygon_to_path3d). The closing repeat is
+                // handled by mirror_first_to_last below.
+                for (i, pt) in poly.contour.points.iter().enumerate() {
+                    if i < feature_flags.len() {
+                        feature_flags[i].is_bridge = point_in_any_polygon(pt, bridge_areas);
+                    }
+                }
                 slicer_sdk::mirror_first_to_last(&mut feature_flags);
 
                 let wall = WallLoop {

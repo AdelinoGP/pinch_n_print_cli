@@ -23,6 +23,22 @@ interface ir-handles {
     record segment-annotations-polygon { values: list<option<paint-value>> }
     record segment-annotations-entry { semantic: paint-semantic, polygons: list<segment-annotations-polygon> }
 
+    /// Unique identifier for a surface group (matches `SurfaceGroupId` in the IR).
+    type surface-group-id = u64;
+
+    /// Read-side surface group record (populated from `SurfaceClassificationIR`).
+    /// Distinct from `surface-group-proposal` in `world-prepass.wit`, which is the
+    /// smaller PrePass write type.
+    record surface-group {
+        id: surface-group-id,
+        facet-indices: list<u32>,
+        z-min: f32,
+        z-max: f32,
+        area-mm2: f32,
+        printable: bool,
+        shell-count: u32,
+    }
+
     resource slice-region-view {
         object-id: func() -> object-id;
         region-id: func() -> region-id;
@@ -43,6 +59,8 @@ interface ir-handles {
         sparse-infill-area: func() -> list<ex-polygon>;
         held-claims: func() -> list<string>;
         external-contour: func() -> option<list<ex-polygon>>;
+        overhang-areas: func() -> list<ex-polygon>;
+        surface-group: func() -> option<surface-group>;
     }
 
     record seam-position { point: point3-with-width, wall-index: u32 }

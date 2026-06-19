@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, LayerCollectionIR, LayerPlanIR, MeshIR, ModuleId, PerimeterIR, RegionMapIR,
-    SeamPlanIR, SliceIR, SupportGeometryIR, SupportPlanIR,
+    SeamPlanIR, SliceIR, SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::instance::WasmComponent;
@@ -82,6 +82,9 @@ pub struct LayerStageInput<'a> {
     pub perimeter: Option<&'a PerimeterIR>,
     /// Pre-call read from `arena.layer_collection()`.
     pub layer_collection: Option<&'a LayerCollectionIR>,
+    /// Committed-once global IR from `blackboard.surface_classification()`.
+    /// Threaded into `push_slice_regions` so the WIT `surface-group` accessor resolves.
+    pub surface_classification: Option<&'a SurfaceClassificationIR>,
 }
 
 /// Input borrow struct for `PrepassStageRunner::run_stage`. Mesh + optional IR slots

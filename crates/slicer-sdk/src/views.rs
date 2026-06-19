@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth, RegionId,
-    RegionKey, SeamCandidate, SeamPosition, WallLoop,
+    RegionKey, SeamCandidate, SeamPosition, SurfaceGroup, WallLoop,
 };
 
 /// Read-only view of a slice region.
@@ -60,6 +60,11 @@ pub struct SliceRegionView {
     /// (AC-22b). `Some(boundary)` for painted regions; `None` for unpainted regions
     /// (the perimeter generator then traces the region's own polygon in full).
     external_contour: Option<Vec<ExPolygon>>,
+    /// Overhang area polygons for this region (packet 106 populates; empty until then).
+    overhang_areas: Vec<ExPolygon>,
+    /// Surface group resolved from `SurfaceClassificationIR` for this region's
+    /// `nonplanar_surface` ID. `None` when no surface group applies.
+    surface_group: Option<SurfaceGroup>,
 }
 
 impl Default for SliceRegionView {
@@ -88,6 +93,8 @@ impl Default for SliceRegionView {
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
             external_contour: None,
+            overhang_areas: Vec::new(),
+            surface_group: None,
         }
     }
 }
@@ -398,6 +405,24 @@ impl SliceRegionView {
     /// `None` means no dedup: trace the region's own polygon in full.
     pub fn external_contour(&self) -> Option<&Vec<ExPolygon>> {
         self.external_contour.as_ref()
+    }
+
+    /// Returns the overhang area polygons for this region.
+    ///
+    /// Empty until packet 106 wires `OverhangRegion.xy_footprint` into the
+    /// host populator. Safe to call at any stage; callers must handle the
+    /// empty case.
+    pub fn overhang_areas(&self) -> &[ExPolygon] {
+        &self.overhang_areas
+    }
+
+    /// Returns the surface group resolved from `SurfaceClassificationIR` for
+    /// this region's `nonplanar_surface` ID.
+    ///
+    /// `None` when this region has no associated surface group (the region is
+    /// planar or the PrePass has not yet emitted surface classification data).
+    pub fn surface_group(&self) -> Option<&SurfaceGroup> {
+        self.surface_group.as_ref()
     }
 
     /// Returns true if this module is allowed to emit `role` for this region.

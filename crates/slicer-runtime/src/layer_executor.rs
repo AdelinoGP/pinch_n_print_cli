@@ -353,6 +353,7 @@ fn execute_single_layer_inner(
                 slice: arena.slice(),
                 perimeter: arena.perimeter(),
                 layer_collection: arena.layer_collection(),
+                surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
             };
             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());

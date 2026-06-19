@@ -31,12 +31,13 @@ use std::collections::{BTreeMap, HashMap};
 
 use slicer_core::geometry::*;
 use slicer_core::perimeter_utils::{
-    build_outer_wall_flags, default_feature_flags, generate_seam_candidates, BASE_SPEED,
+    build_wall_flags, generate_seam_candidates, point_in_any_polygon, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
+use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, Point3WithWidth, WallBoundaryType, WallLoop, WidthProfile,
+    PaintValue, Point3WithWidth, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -104,16 +105,26 @@ impl LayerModule for ArachnePerimeters {
     /// follow-up packet 102.
     fn run_perimeters(
         &self,
-        _layer_index: u32,
+        layer_index: u32,
         regions: &[SliceRegionView],
         _paint: &PaintRegionLayerView,
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let wall_count = _config
+        let base_wall_count = _config
             .get_int("wall_count")
             .map(|n| n as u32)
             .unwrap_or(self.wall_count);
+        let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
+        let only_one_wall_first_layer = _config
+            .get_bool("only_one_wall_first_layer")
+            .unwrap_or(false);
+        // Apply first-layer clamp at the layer level (all regions share the same layer).
+        let layer_wall_count = if only_one_wall_first_layer && layer_index == 0 {
+            1
+        } else {
+            base_wall_count
+        };
         let outer_wall_speed = _config
             .get_float("outer_wall_speed")
             .map(|s| s as f32)
@@ -148,11 +159,23 @@ impl LayerModule for ArachnePerimeters {
             let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
 
             if let Some(boundary) = shared_boundary {
+                // Effective wall count for the shared boundary uses the first region's top-shell.
+                // Some(0) → blanket 1-wall clamp; Some(N>0) → carve handled per-cell below;
+                // None → full wall_count.
+                let wall_count = {
+                    let top_shell = regions[indices[0]].top_shell_index();
+                    if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    }
+                };
                 // Trace the model perimeter ONCE as the outer wall — a single loop,
                 // so the painted object's outer-wall count matches the unpainted
                 // baseline instead of fragmenting across colour cells.
                 if wall_count > 0 {
                     let z = regions[indices[0]].z();
+                    let bridge = regions[indices[0]].bridge_areas();
                     self.generate_arachne_walls(
                         boundary,
                         z,
@@ -163,51 +186,139 @@ impl LayerModule for ArachnePerimeters {
                         wall_count,
                         outer_speed_factor,
                         inner_speed_factor,
+                        bridge,
                     )?;
                 }
                 // Each cell contributes only inner walls + infill from its own
                 // polygon (no per-cell outer wall).
                 for &i in indices {
                     let region = &regions[i];
+                    let top_shell = region.top_shell_index();
+                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    };
                     let polygons = region.polygons();
                     let z = region.z();
                     if wall_count == 0 {
                         output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
-                    self.generate_arachne_walls(
-                        polygons,
-                        z,
-                        region.segment_annotations(),
-                        false,
-                        true,
-                        output,
-                        wall_count,
-                        outer_speed_factor,
-                        inner_speed_factor,
-                    )?;
+                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
+                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
+                    // to generate_arachne_walls so build_wall_flags paint reprojection
+                    // samples annotations correctly even on carved sub-regions.
+                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                        let split = split_top_surfaces(polygons, region.top_solid_fill());
+                        if !split.top_portion.is_empty() {
+                            self.generate_arachne_walls(
+                                &split.top_portion,
+                                z,
+                                region.segment_annotations(),
+                                false,
+                                true,
+                                output,
+                                1,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                        if !split.non_top_portion.is_empty() {
+                            self.generate_arachne_walls(
+                                &split.non_top_portion,
+                                z,
+                                region.segment_annotations(),
+                                false,
+                                true,
+                                output,
+                                layer_wall_count,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                    } else {
+                        self.generate_arachne_walls(
+                            polygons,
+                            z,
+                            region.segment_annotations(),
+                            false,
+                            true,
+                            output,
+                            wall_count,
+                            outer_speed_factor,
+                            inner_speed_factor,
+                            region.bridge_areas(),
+                        )?;
+                    }
                 }
             } else {
-                // Unpainted object: full per-region emission (unchanged).
+                // Unpainted object: full per-region emission.
                 for &i in indices {
                     let region = &regions[i];
+                    let top_shell = region.top_shell_index();
+                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                        1
+                    } else {
+                        layer_wall_count
+                    };
                     let polygons = region.polygons();
                     let z = region.z();
                     if wall_count == 0 {
                         output.set_infill_areas(polygons.to_vec())?;
                         continue;
                     }
-                    self.generate_arachne_walls(
-                        polygons,
-                        z,
-                        region.segment_annotations(),
-                        true,
-                        true,
-                        output,
-                        wall_count,
-                        outer_speed_factor,
-                        inner_speed_factor,
-                    )?;
+                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
+                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
+                    // to generate_arachne_walls so build_wall_flags paint reprojection
+                    // stays correct on carved sub-regions.
+                    // (Ref: OrcaSlicer PerimeterGenerator.cpp split_top_surfaces ~L775)
+                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                        let split = split_top_surfaces(polygons, region.top_solid_fill());
+                        if !split.top_portion.is_empty() {
+                            self.generate_arachne_walls(
+                                &split.top_portion,
+                                z,
+                                region.segment_annotations(),
+                                true,
+                                true,
+                                output,
+                                1,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                        if !split.non_top_portion.is_empty() {
+                            self.generate_arachne_walls(
+                                &split.non_top_portion,
+                                z,
+                                region.segment_annotations(),
+                                true,
+                                true,
+                                output,
+                                layer_wall_count,
+                                outer_speed_factor,
+                                inner_speed_factor,
+                                region.bridge_areas(),
+                            )?;
+                        }
+                    } else {
+                        self.generate_arachne_walls(
+                            polygons,
+                            z,
+                            region.segment_annotations(),
+                            true,
+                            true,
+                            output,
+                            wall_count,
+                            outer_speed_factor,
+                            inner_speed_factor,
+                            region.bridge_areas(),
+                        )?;
+                    }
                 }
             }
         }
@@ -244,6 +355,7 @@ impl ArachnePerimeters {
         wall_count: u32,
         outer_speed_factor: f32,
         inner_speed_factor: f32,
+        bridge_areas: &[ExPolygon],
     ) -> Result<(), ModuleError> {
         // Build the boundary rings: boundary[0] = original, boundary[i] = i-th inset
         let mut boundaries: Vec<Vec<ExPolygon>> = Vec::new();
@@ -334,15 +446,33 @@ impl ArachnePerimeters {
                 let widths: Vec<f32> = points_with_widths.iter().map(|p| p.width).collect();
                 let num_points = points_with_widths.len();
 
-                // Propagate segment_annotations into feature flags for outer walls only
-                let (mut feature_flags, wall_boundary_type) = if is_outer {
-                    build_outer_wall_flags(num_points, poly_idx, segment_annotations)
+                // Propagate segment_annotations into feature flags for outer and inner walls.
+                // For inner walls, pass the inset ring's vertex positions and the original
+                // polygons so build_wall_flags can use geometric reprojection to correctly
+                // sample annotations near concave features.
+                let ring_pts: Option<&[slicer_ir::Point2]> = if is_outer {
+                    None
                 } else {
-                    (
-                        vec![default_feature_flags(); num_points],
-                        WallBoundaryType::Interior,
-                    )
+                    Some(&inner_poly.contour.points)
                 };
+                let orig_polys: Option<&[ExPolygon]> = if is_outer { None } else { Some(polygons) };
+                let (mut feature_flags, wall_boundary_type) = build_wall_flags(
+                    num_points,
+                    poly_idx,
+                    segment_annotations,
+                    is_outer,
+                    ring_pts,
+                    orig_polys,
+                );
+                // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
+                // inner_poly.contour.points has N entries (integer units); feature_flags has
+                // N+1 (closing repeat appended by close_loop). The closing repeat is handled
+                // by mirror_first_to_last below.
+                for (i, pt) in inner_poly.contour.points.iter().enumerate() {
+                    if i < feature_flags.len() {
+                        feature_flags[i].is_bridge = point_in_any_polygon(pt, bridge_areas);
+                    }
+                }
                 // Closing-repeat carries the same flag as its identical first vertex.
                 slicer_sdk::mirror_first_to_last(&mut feature_flags);
 
@@ -431,6 +561,8 @@ impl ArachnePerimeters {
                     z,
                     width: local_width,
                     flow_factor: 1.0,
+                    // overhang_quartile: None — placeholder; sibling roadmap item O-T031 in
+                    // docs/specs/overhang-pipeline-restructuring.md is the future producer.
                     overhang_quartile: None,
                 }
             })

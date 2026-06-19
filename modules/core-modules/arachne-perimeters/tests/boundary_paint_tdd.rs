@@ -181,9 +181,10 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
 }
 
 #[test]
-fn inner_walls_get_no_paint_propagation() {
-    // Inner walls (perimeter_index > 0) should NOT get paint propagation,
-    // even when segment_annotations is present. Only outer walls get it.
+fn inner_walls_get_paint_propagation() {
+    // Packet 104: inner walls (perimeter_index > 0) now share the same
+    // paint-propagation logic as outer walls. `segment_annotations` from the
+    // original region polygons are propagated to inner walls via build_wall_flags.
     let config = config_2_walls();
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
@@ -213,15 +214,14 @@ fn inner_walls_get_no_paint_propagation() {
     let walls = output.wall_loops();
     let inner_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index > 0).collect();
 
+    // Inner walls receive paint propagation from the original region annotations
+    // (same map passed in, sampled by inner polygon's vertex indexing).
     for wall in &inner_walls {
         for flags in &wall.feature_flags {
             assert_eq!(
-                flags.tool_index, None,
-                "inner walls should not get paint propagation"
-            );
-            assert!(
-                !flags.fuzzy_skin,
-                "inner walls should not get fuzzy_skin from paint"
+                flags.tool_index,
+                Some(3),
+                "inner walls now receive paint propagation (packet 104): expected tool 3"
             );
         }
     }
