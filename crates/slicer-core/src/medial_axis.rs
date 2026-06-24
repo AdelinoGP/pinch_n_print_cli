@@ -355,8 +355,17 @@ mod impl_ {
 
         let mut out: Vec<BvLine<i32>> = Vec::with_capacity(segments.len());
 
-        for ((cdx, cdy), _offset) in buckets.keys().cloned().collect::<Vec<_>>() {
-            let mut segs = buckets.remove(&((cdx, cdy), _offset)).unwrap();
+        // Deterministic iteration order. Rust randomizes HashMap key order per
+        // process; the resulting segment input order changes boostvoronoi's
+        // edge/cell indexing, which changes the surviving-edge order and hence
+        // the emitted medial-axis polyline order — producing non-deterministic
+        // gcode (~1/3 of runs differed before this sort). Sorting the bucket keys
+        // makes the segment list fed to the Voronoi builder stable across runs.
+        let mut bucket_keys: Vec<((i64, i64), i64)> = buckets.keys().cloned().collect();
+        bucket_keys.sort();
+        for key in bucket_keys {
+            let ((cdx, cdy), _offset) = key;
+            let mut segs = buckets.remove(&key).unwrap();
             if segs.is_empty() {
                 continue;
             }

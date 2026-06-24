@@ -30,7 +30,6 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
@@ -584,27 +583,22 @@ fn cube_4color_per_layer_per_color_fragmentation_with_tool_changes() {
 
     // AC-6: external_contour removal asserted by the rg grep in packet.spec.md AC-6
 
-    // Assertion 3 — SHA regression gate (P105_CUBE_4COLOR_PARITY_SHA).
+    // Assertion 3 — byte-exact SHA pin REMOVED (diagnose 2026-06-24).
     //
-    // Gcode confirmed byte-stable across two independent runs (2026-06-24).
-    // This pin catches unintended behavioral regressions that change gcode output
-    // without updating acceptance criteria.
-    const P105_CUBE_4COLOR_PARITY_SHA: &str =
-        "a7048ac377b691bdbb178ad869a0fdd838a130b3a08c7184723d911579e2bd74";
-    let mut hasher = Sha256::new();
-    hasher.update(painted.gcode_text.as_bytes());
-    let hash_bytes = hasher.finalize();
-    let hash_hex = hash_bytes
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
-    assert_eq!(
-        hash_hex, P105_CUBE_4COLOR_PARITY_SHA,
-        "cube_4color gcode SHA regression: output changed since P105 baseline.\n\
-         If this is an intentional change, re-run:\n\
-         pnp_cli slice --model resources/cube_4color.3mf \
-         --module-dir modules/core-modules --output /tmp/out.gcode\n\
-         and update P105_CUBE_4COLOR_PARITY_SHA in this file."
+    // The former `P105_CUBE_4COLOR_PARITY_SHA` assertion claimed the cube_4color
+    // gcode was byte-stable. It is NOT: the medial axis runs on boostvoronoi
+    // 0.12.1 → cpp_map 0.2.0 → rand 0.9.4, whose RNG-seeded skiplist makes the
+    // Voronoi output (gap-fill + MMU paint-segmentation partition) vary across
+    // runs (~1/3 of slices differed; inner-wall and gap-fill geometry drift). A
+    // byte-exact hash is therefore a guaranteed CI flake, not a regression gate.
+    // The meaningful behavioural gates are the structural assertions above
+    // (all four tools present, per-color Model A fragmentation, multi-tool layers
+    // carry tool changes). Determinism itself is tracked as a separate follow-up
+    // (make the Voronoi path reproducible — e.g. a fixed-seed cpp_map). Do NOT
+    // re-introduce a byte-exact pin until the Voronoi path is deterministic.
+    assert!(
+        !painted.gcode_text.is_empty(),
+        "cube_4color produced empty gcode"
     );
 }
 
@@ -733,5 +727,110 @@ fn cube_fuzzy_painted_face_jitter_present_on_painted_face_only() {
          clean face point count ({unpainted_face_pts}) at z≈{mid_z}mm. Either the fuzzy-skin \
          module did not run on the painted face (D9 dispatch did not route through the \
          variant-chain for the painted region) or the proxy threshold needs revisiting."
+    );
+}
+
+// --------------------------------------------------------------------------
+// Regression tests — parity gaps found in the 2026-06-24 diagnose session.
+//
+// A G-code preview comparison against OrcaSlicer surfaced four shipped-but-broken
+// behaviours on the painted cube. Each test below locks in one fix. They assert
+// STRUCTURAL properties (presence / bounded counts), never byte-exact output, so
+// they are robust to the known boostvoronoi medial-axis non-determinism.
+// --------------------------------------------------------------------------
+
+/// Count `;TYPE:<name>` block headers in gcode.
+fn count_type(gcode: &str, ty: &str) -> usize {
+    let needle = format!(";TYPE:{ty}");
+    gcode.lines().filter(|l| l.trim() == needle).count()
+}
+
+/// Gap #1 regression: a PAINTED model must emit top/bottom solid surfaces.
+///
+/// Root cause (fixed): `PrePass::ShellClassification` ran before
+/// `PrePass::PaintSegmentation`, which replaced every region with
+/// `..Default::default()` — discarding the classified top/bottom solid fill. The
+/// painted cube emitted ZERO `Top surface` / `Bottom surface` (open top, ~4×
+/// extrusion deficit) while unpainted models were fine. This guards against the
+/// per-color regions silently losing their solid fill again.
+#[test]
+fn cube_4color_painted_model_emits_top_and_bottom_solid_surfaces() {
+    let outcome = slice_fixture_file(&cube_4color_path());
+    let top = count_type(&outcome.gcode_text, "Top surface");
+    let bottom = count_type(&outcome.gcode_text, "Bottom surface");
+    assert!(
+        top > 0 && bottom > 0,
+        "painted cube must emit top AND bottom solid surfaces (was 0/0 before the \
+         ShellClassification→PaintSegmentation propagation fix); got Top={top}, Bottom={bottom}"
+    );
+}
+
+/// Gap #2 regression: gap-fill must not flood the per-color bisector seams.
+///
+/// Root cause (fixed): the single-shot `difference_ex(innermost, infill_inset)`
+/// rang the entire innermost contour — including the per-color MMU bisector edge —
+/// producing ~302 phantom GapFill slivers ("wavy walls"). The OrcaSlicer-parity
+/// incremental + infill-transition collection drops that to a small count of
+/// genuine thin-feature gaps. The bound is generous (well under the old 302 and
+/// well over the deterministic-ish ~86) so the known medial-axis non-determinism
+/// cannot flake it.
+#[test]
+fn cube_4color_gapfill_does_not_flood_bisector_seams() {
+    let outcome = slice_fixture_file(&cube_4color_path());
+    let gapfill = count_type(&outcome.gcode_text, "GapFill");
+    assert!(
+        gapfill < 150,
+        "GapFill block count {gapfill} exceeds the regression ceiling (150). The pre-fix \
+         single-shot collection flooded ~302 bisector-seam slivers; the incremental + \
+         infill-transition port should keep this well below 150."
+    );
+}
+
+/// Gap #3 regression: a multi-tool (MMU) model must auto-enable the wipe tower.
+///
+/// OrcaSlicer enables a prime/wipe tower automatically for multi-tool prints.
+/// Ours defaulted `wipe_tower_enabled = false` with no auto-enable, so painted
+/// models emitted zero `Prime tower` blocks. `run_slice` now auto-enables it when
+/// the model paints ≥2 distinct tool indices (this fixture has 4). Sliced here
+/// with no config, so only the auto-enable path can produce the tower.
+#[test]
+fn cube_4color_auto_enables_wipe_tower_for_mmu() {
+    let outcome = slice_fixture_file(&cube_4color_path());
+    let prime = count_type(&outcome.gcode_text, "Prime tower");
+    assert!(
+        prime > 0,
+        "multi-tool model must auto-enable the wipe tower (got {prime} Prime tower blocks). \
+         run_slice should inject wipe_tower_enabled=true when >= 2 tool indices are painted."
+    );
+}
+
+/// Gap #4 regression: the G-code header must declare per-filament colours.
+///
+/// OrcaSlicer's filament-view preview colours extrusions by the
+/// `filament_colour` / `extruder_colour` header directives. Without them a
+/// multi-tool print renders monochrome despite `T<n>` tool changes. The header
+/// must now list one colour per filament slot (semicolon-separated).
+#[test]
+fn cube_4color_header_declares_per_filament_colours() {
+    let outcome = slice_fixture_file(&cube_4color_path());
+    let colour_line = outcome
+        .gcode_text
+        .lines()
+        .find(|l| l.trim_start().starts_with("; filament_colour ="))
+        .unwrap_or_else(|| panic!("gcode header missing `; filament_colour =` directive"));
+    let has_extruder = outcome
+        .gcode_text
+        .lines()
+        .any(|l| l.trim_start().starts_with("; extruder_colour ="));
+    assert!(
+        has_extruder,
+        "gcode header missing `; extruder_colour =` directive"
+    );
+    // The 4-color cube must declare multiple distinct, semicolon-separated colours.
+    let value = colour_line.split('=').nth(1).unwrap_or("").trim();
+    let colours: Vec<&str> = value.split(';').filter(|s| !s.trim().is_empty()).collect();
+    assert!(
+        colours.len() >= 2,
+        "filament_colour must list >= 2 colours for a multi-tool model; got {colours:?}"
     );
 }

@@ -133,7 +133,11 @@ impl WipeTower {
 
         let purge_volume = match config.get("wipe_tower_purge_volume") {
             Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 70.0,
+            // Match the manifest default (wipe-tower.toml: default 10.0, max 50.0).
+            // The previous 70.0 fallback exceeded the schema max and is reachable
+            // now that multi-tool prints auto-enable the wipe tower without
+            // necessarily supplying an explicit purge volume.
+            _ => 10.0,
         };
 
         let line_width = match config.get("line_width") {

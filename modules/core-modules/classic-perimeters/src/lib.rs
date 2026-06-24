@@ -25,7 +25,7 @@ use slicer_core::perimeter_utils::{
     build_wall_flags, expolygon_to_path3d, generate_seam_candidates, point_in_any_polygon,
     wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
-use slicer_core::polygon_ops::{difference_ex, offset, opening_ex, OffsetJoinType};
+use slicer_core::polygon_ops::{difference_ex, offset, offset2_ex, opening_ex, OffsetJoinType};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
     variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
@@ -325,6 +325,16 @@ impl ClassicPerimeters {
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
         let mut all_wall_polygons: Vec<(u32, Vec<ExPolygon>)> = Vec::new();
+        // Gap-fill (T-063/T-064): collect gaps BETWEEN consecutive perimeter
+        // insets, matching OrcaSlicer PerimeterGenerator.cpp:1665-1670. Gaps are
+        // only collected for INNER transitions (i >= 1): the region-boundary →
+        // first-wall transition (i == 0) is NEVER a gap source, so the per-color
+        // MMU bisector edge (ADR-0013 Model A — adjacent colors offset half a
+        // line-width inward from the shared bisector) does NOT spawn phantom
+        // gap-fill slivers along every color boundary. The previous single-shot
+        // `difference_ex(current_polygons, infill_inset)` rang the entire
+        // innermost contour (bisector included), flooding 300+ slivers per cube.
+        let mut gaps: Vec<ExPolygon> = Vec::new();
 
         for i in 0..wall_count {
             let inset_delta = if i == 0 {
@@ -350,8 +360,56 @@ impl ClassicPerimeters {
             if inset_result.is_empty() {
                 break;
             }
+            // OrcaSlicer gap collection between perimeter (i-1) and perimeter i:
+            // diff(offset(prev, -0.5d), offset(cur, +0.5d)) captures the region
+            // where the actual spacing exceeds `d` (a true gap). Skipped at i==0.
+            if i >= 1 {
+                let distance = inset_delta.abs();
+                let shrunk_prev = offset(
+                    &current_polygons,
+                    -(0.5 * distance),
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                let grown_cur = offset(
+                    &inset_result,
+                    0.5 * distance,
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                gaps.extend(difference_ex(&shrunk_prev, &grown_cur));
+            }
             all_wall_polygons.push((i, inset_result.clone()));
             current_polygons = inset_result;
+        }
+
+        // Final infill-transition gap (OrcaSlicer parity). The gap between the
+        // innermost wall and where infill begins is ~empty for WIDE regions (the
+        // infill fills the center, so shrunk-innermost and grown-infill meet) but
+        // equals the whole leftover core for THIN features where no infill fits.
+        // This captures thin arms/ribs as gap-fill without re-introducing the
+        // per-color MMU bisector ring slivers — wide cells produce ~zero here.
+        if !current_polygons.is_empty() {
+            let distance = inner_wall_line_width;
+            let infill_area = offset(
+                &current_polygons,
+                -distance,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            let shrunk_inner = offset(
+                &current_polygons,
+                -(0.5 * distance),
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            let grown_infill = offset(
+                &infill_area,
+                0.5 * distance,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            gaps.extend(difference_ex(&shrunk_inner, &grown_infill));
         }
 
         let mut walls: Vec<slicer_ir::WallLoop> = Vec::new();
@@ -533,22 +591,39 @@ impl ClassicPerimeters {
         }
 
         // ── Gap-fill emission (T-063/T-064) ────────────────────────────
-        if emit_inner && !current_polygons.is_empty() {
-            let infill_inset = offset(
-                &current_polygons,
-                -(inner_wall_line_width / 2.0),
+        // Gaps were collected incrementally between consecutive insets above
+        // (OrcaSlicer PerimeterGenerator.cpp:1665-1670). Apply the morphological
+        // width-band pre-filter (PerimeterGenerator.cpp:1924-1928) before feeding
+        // the medial axis: keep only gaps whose width is in [min, max]. This both
+        // matches Orca parity AND removes the sub-/super-threshold slivers that
+        // were driving the RNG medial-axis (and thus non-deterministic gcode).
+        if emit_inner && !gaps.is_empty() {
+            // R4 (P105): OrcaSlicer parity gap-fill min_width.
+            // OrcaSlicer PerimeterGenerator.cpp:1924:
+            // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
+            // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
+            let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
+            // OrcaSlicer max = 2 * perimeter_spacing (PerimeterGenerator.cpp:1947).
+            let perimeter_spacing = (outer_wall_line_width + inner_wall_line_width) / 2.0;
+            let max_gap_fill_width = 2.0 * perimeter_spacing;
+            // diff(open(gaps, min/2), open(gaps, max/2)) = gaps in width band [min, max].
+            let opened_min = opening_ex(
+                &gaps,
+                (min_gap_fill_width / 2.0) as f64,
                 OffsetJoinType::Miter,
-                self.perimeter_arc_tolerance,
+                self.perimeter_arc_tolerance as f64,
             );
-            let gaps = difference_ex(&current_polygons, &infill_inset);
-            for gap in &gaps {
-                // R4 (P105): OrcaSlicer parity gap-fill min_width.
-                // OrcaSlicer PerimeterGenerator.cpp:1924:
-                // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
-                // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
-                let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
+            let opened_max = offset2_ex(
+                &gaps,
+                -((max_gap_fill_width / 2.0) as f64),
+                (max_gap_fill_width / 2.0) as f64,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance as f64,
+            );
+            let filtered_gaps = difference_ex(&opened_min, &opened_max);
+            for gap in &filtered_gaps {
                 let axes =
-                    slicer_sdk::host::medial_axis(gap, min_gap_fill_width, inner_wall_line_width);
+                    slicer_sdk::host::medial_axis(gap, min_gap_fill_width, max_gap_fill_width);
                 if let Err(e) = &axes {
                     slicer_sdk::host::log_warn(&format!(
                         "medial-axis-failed region={region_id} fixture=gap_fill error={e}"
@@ -608,12 +683,16 @@ impl ClassicPerimeters {
             }
         }
 
-        // Only the inner/infill pass owns the infill region.
+        // Only the inner/infill pass owns the infill region. Inset the innermost
+        // wall by a FULL `inner_wall_line_width` (not half) so the infill region
+        // is consistent with the gap-fill infill-transition collection above:
+        // wide regions keep a non-empty infill center, thin features inset to
+        // empty and are owned entirely by gap-fill. Using half-width here left a
+        // thin residual strip that was double-counted as BOTH infill and gap.
         if emit_inner && !current_polygons.is_empty() {
-            // Use the inner-wall line width for the final inset to infill.
             let infill = offset(
                 &current_polygons,
-                -(inner_wall_line_width / 2.0),
+                -inner_wall_line_width,
                 OffsetJoinType::Miter,
                 self.perimeter_arc_tolerance,
             );

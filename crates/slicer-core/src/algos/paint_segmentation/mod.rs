@@ -822,6 +822,49 @@ pub fn execute_paint_segmentation(
                 }
             }
 
+            // Fix (diagnose 2026-06-24, gap #1): `PrePass::ShellClassification`
+            // runs BEFORE `PrePass::PaintSegmentation` and writes top/bottom solid
+            // fill into the pre-segmentation BASE region. The wholesale
+            // `working[i].regions = new_regions` replacement below discards it, and
+            // every new per-color region is built with `..Default::default()`
+            // (empty `top_solid_fill`/`bottom_solid_fill`). The net effect was that
+            // PAINTED models emitted ZERO top/bottom/internal-solid infill (open
+            // tops, 4x extrusion deficit vs OrcaSlicer) while unpainted models were
+            // fine. Propagate the classified fill into each new region, clipped to
+            // that region's own polygon area so each per-color cell gets exactly
+            // its share (mirrors region_partition::sync_perimeter_infill_areas_into_slice,
+            // which re-clips to perimeter.infill_areas downstream).
+            {
+                use crate::polygon_ops::intersection_ex;
+                let mut saved_top: Vec<slicer_ir::ExPolygon> = Vec::new();
+                let mut saved_bottom: Vec<slicer_ir::ExPolygon> = Vec::new();
+                let mut saved_bridge: Vec<slicer_ir::ExPolygon> = Vec::new();
+                let mut saved_top_idx: Option<u8> = None;
+                let mut saved_bottom_idx: Option<u8> = None;
+                for r in &working[i].regions {
+                    saved_top.extend(r.top_solid_fill.iter().cloned());
+                    saved_bottom.extend(r.bottom_solid_fill.iter().cloned());
+                    saved_bridge.extend(r.bridge_areas.iter().cloned());
+                    saved_top_idx = saved_top_idx.or(r.top_shell_index);
+                    saved_bottom_idx = saved_bottom_idx.or(r.bottom_shell_index);
+                }
+                if !saved_top.is_empty() || !saved_bottom.is_empty() || !saved_bridge.is_empty() {
+                    for r in &mut new_regions {
+                        if !saved_top.is_empty() {
+                            r.top_solid_fill = intersection_ex(&saved_top, &r.polygons);
+                        }
+                        if !saved_bottom.is_empty() {
+                            r.bottom_solid_fill = intersection_ex(&saved_bottom, &r.polygons);
+                        }
+                        if !saved_bridge.is_empty() {
+                            r.bridge_areas = intersection_ex(&saved_bridge, &r.polygons);
+                        }
+                        r.top_shell_index = saved_top_idx;
+                        r.bottom_shell_index = saved_bottom_idx;
+                    }
+                }
+            }
+
             if !new_regions.is_empty() {
                 working[i].regions = new_regions;
             }

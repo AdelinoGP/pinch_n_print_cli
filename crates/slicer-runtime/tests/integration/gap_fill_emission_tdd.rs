@@ -1,32 +1,29 @@
 //! AC-4: gap-fill emission contract (T-063/T-064/T-065, packet 105).
 //!
-//! The gap-fill cascade triggers when the innermost wall inset leaves a narrow
-//! residual polygon whose width is too small to survive a further inset by
-//! `inner_wall_line_width / 2 = 0.2 mm`.  Specifically, the impl computes:
+//! Gap-fill is collected as an OrcaSlicer-parity port (diagnose 2026-06-24):
+//! gaps are gathered INCREMENTALLY between consecutive perimeter insets and at
+//! the final innermost-wall→infill transition. The final-transition gap is
+//! `diff(offset(innermost, -0.5d), offset(infill_area, +0.5d))` where
+//! `infill_area = offset(innermost, -inner_wall_line_width)`. This is ~empty for
+//! WIDE regions (the infill fills the center, so the two offsets meet) and equals
+//! the whole leftover core for THIN features where no infill line fits — exactly
+//! the discriminator OrcaSlicer uses. It does NOT ring the outer region boundary,
+//! so per-color MMU bisector edges produce no phantom slivers.
 //!
-//!   gaps = difference_ex(current_polygons, offset(current_polygons, -inner_wall_line_width/2))
+//! Positive fixture: a 1.9 mm × 8 mm thin rectangle. With `wall_count = 2`,
+//! `outer_wall_line_width = inner_wall_line_width = 0.4 mm`:
 //!
-//! where `current_polygons` is the polygon remaining after all wall insets.
+//! - After inset i=0 (delta = -0.2 mm): 1.5 mm wide.
+//! - After inset i=1 (delta = -0.4 mm): 0.7 mm wide core.
 //!
-//! Fixture geometry for the positive test: a 1.5 mm × 8 mm thin rectangle.
-//! With `wall_count = 2`, `outer_wall_line_width = 0.4 mm`, and
-//! `inner_wall_line_width = 0.4 mm`:
+//! The 0.7 mm core is below the full 0.4 mm infill inset (0.7 < 0.8), so the
+//! infill region empties and the infill-transition gap yields a ≈0.3 mm × 6.4 mm
+//! strip whose medial-axis spine (≈6 mm) passes the 0.5 mm length filter and is
+//! emitted as GapFill. The infill emission uses the SAME full-width inset, so the
+//! core is owned by gap-fill alone (not double-counted as infill).
 //!
-//! - After inset i=0 (delta = -0.2 mm): 1.1 mm × 7.6 mm.
-//! - After inset i=1 (delta = -0.4 mm from the i=0 result): 0.3 mm × 6.8 mm.
-//!
-//! The 0.3 mm wide arm in `current_polygons` is entirely consumed by the gap
-//! detection inset (0.3 mm < 2 × 0.2 mm = 0.4 mm), so the whole arm becomes
-//! the gap polygon.  The medial axis of the 0.3 mm × 6.8 mm rectangle is a
-//! spine ≈ 6.5 mm long.  After the corner spurs are pruned by the step-3
-//! length filter (each spur ≈ 0.21 mm < 2 × 0.3 mm = 0.6 mm), only the
-//! junction-to-junction central spine survives (≈ 6.5 mm >> 0.6 mm).
-//!
-//! The gap-fill medial axis call uses a width floor of `inner_wall_line_width * 0.25`
-//! (~0.1 mm) as `min_width`, ensuring the OR-gate `(w >= min_width) && (w <= max_width)`
-//! passes for realistic gap widths (≈ 0.2–0.4 mm).  `filter_out_gap_fill` is applied
-//! as a post-medial-axis segment-length filter (AC-4 contract: 0.5 mm), not as a width
-//! threshold.  The `no_gaps_case` test uses a clean square and must not panic.
+//! The `no_gaps_case` test uses a clean 10 mm square: the infill fills the center,
+//! the infill-transition gap is empty, and zero GapFill loops are emitted.
 
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{mm_to_units, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon};
@@ -35,21 +32,25 @@ use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
-/// Build a 1.5 mm × 8 mm thin rectangle centered at the origin.
+/// Build a 1.9 mm × 8 mm thin rectangle centered at the origin.
 ///
 /// With `wall_count = 2` and `outer/inner_wall_line_width = 0.4 mm`:
-/// after two wall insets (total 0.6 mm per side in x, 0.6 mm per side in y)
-/// `current_polygons` is a 0.3 mm × 6.8 mm arm — too narrow to survive
-/// the 0.2 mm infill inset, so the whole arm becomes the gap polygon.
+/// after two wall insets (0.6 mm per side: outer at 0.2, inner at 0.6)
+/// `current_polygons` is a 0.7 mm × 6.8 mm core. The infill inset
+/// (`offset(-0.4)`) empties it (0.7 < 0.8), so no infill fits — the
+/// infill-transition gap collection yields a ~0.3 mm × 6.4 mm strip
+/// (`offset(core, -0.2)`) that becomes the gap polygon. A WIDE region
+/// instead keeps a non-empty infill area and produces no gap (see
+/// `no_gaps_case`), which is the OrcaSlicer-parity discriminator.
 fn make_thin_arm_region(z: f32) -> SliceRegionView {
     // CCW winding: BL → BR → TR → TL
     let poly = ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2::from_mm(-0.75, -4.0),
-                Point2::from_mm(0.75, -4.0),
-                Point2::from_mm(0.75, 4.0),
-                Point2::from_mm(-0.75, 4.0),
+                Point2::from_mm(-0.95, -4.0),
+                Point2::from_mm(0.95, -4.0),
+                Point2::from_mm(0.95, 4.0),
+                Point2::from_mm(-0.95, 4.0),
             ],
         },
         holes: Vec::new(),
@@ -112,7 +113,7 @@ fn gap_fill_emitted_for_narrow_gap() {
 
     assert!(
         !gap_loops.is_empty(),
-        "Expected ≥1 WallLoop with LoopType::GapFill for 1.5 mm × 8 mm arm fixture, got walls: {:?}",
+        "Expected ≥1 WallLoop with LoopType::GapFill for 1.9 mm × 8 mm arm fixture, got walls: {:?}",
         walls.iter().map(|w| w.loop_type).collect::<Vec<_>>()
     );
 
@@ -161,9 +162,10 @@ fn gap_fill_emitted_for_narrow_gap() {
     }
 
     // The gap must be consumed by gap-fill, not left as residual infill area.
-    // For the 1.5 mm × 8 mm arm fixture: the 0.3 mm × 6.8 mm residual arm is
-    // entirely below the 0.4 mm infill-inset threshold, so infill_areas must be
-    // empty.  We verify no centroid falls inside the arm footprint.
+    // For the 1.9 mm × 8 mm arm fixture: the 0.7 mm core is below the full
+    // inner_wall_line_width (0.4 mm) infill inset, so the infill region empties
+    // and infill_areas must be empty over the arm.  We verify no centroid falls
+    // inside the arm footprint.
     let arm_x_min = mm_to_units(-0.8);
     let arm_x_max = mm_to_units(0.8);
     let arm_y_min = mm_to_units(-4.1);

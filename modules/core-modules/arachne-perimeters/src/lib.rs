@@ -34,7 +34,7 @@ use slicer_core::perimeter_utils::{
     build_wall_flags, generate_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
     WallSequence, BASE_SPEED,
 };
-use slicer_core::polygon_ops::{difference_ex, offset, opening_ex, OffsetJoinType};
+use slicer_core::polygon_ops::{difference_ex, offset, offset2_ex, opening_ex, OffsetJoinType};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
     variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
@@ -324,6 +324,12 @@ impl ArachnePerimeters {
         let mut boundaries: Vec<Vec<ExPolygon>> = Vec::new();
         boundaries.push(polygons.to_vec());
 
+        // Gap-fill (T-063/T-064): collect gaps BETWEEN consecutive perimeter
+        // insets (OrcaSlicer PerimeterGenerator.cpp:1665-1670), inner transitions
+        // only (i >= 1). The region-boundary → first-wall transition (i == 0) is
+        // never a gap source, so the per-color MMU bisector edge (ADR-0013 Model A)
+        // does not spawn phantom gap-fill slivers along every color boundary.
+        let mut gaps: Vec<ExPolygon> = Vec::new();
         let mut current = polygons.to_vec();
         for i in 0..wall_count {
             let delta = if i == 0 {
@@ -350,8 +356,52 @@ impl ArachnePerimeters {
             if inset.is_empty() {
                 break;
             }
+            // OrcaSlicer gap collection between perimeter (i-1) and perimeter i.
+            if i >= 1 {
+                let distance = delta.abs();
+                let shrunk_prev = offset(
+                    &current,
+                    -(0.5 * distance),
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                let grown_cur = offset(
+                    &inset,
+                    0.5 * distance,
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                gaps.extend(difference_ex(&shrunk_prev, &grown_cur));
+            }
             boundaries.push(inset.clone());
             current = inset;
+        }
+
+        // Final infill-transition gap (OrcaSlicer parity — see classic-perimeters).
+        // ~empty for WIDE regions (infill fills the center) but equals the whole
+        // leftover core for THIN features where no infill fits, so thin arms/ribs
+        // become gap-fill without re-introducing per-color bisector ring slivers.
+        if !current.is_empty() {
+            let distance = inner_wall_line_width;
+            let infill_area = offset(
+                &current,
+                -distance,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            let shrunk_inner = offset(
+                &current,
+                -(0.5 * distance),
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            let grown_infill = offset(
+                &infill_area,
+                0.5 * distance,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            gaps.extend(difference_ex(&shrunk_inner, &grown_infill));
         }
 
         // We need at least 2 boundaries to form a wall band (outer + inner boundary)
@@ -554,27 +604,35 @@ impl ArachnePerimeters {
         }
 
         // ── Gap-fill emission (T-063/T-064) ────────────────────────────
+        // Gaps collected incrementally between consecutive insets above. Apply the
+        // OrcaSlicer width-band pre-filter (PerimeterGenerator.cpp:1924-1928) before
+        // the medial axis: keep only gaps in [min, max] width. Removes the sub-/
+        // super-threshold slivers that drove the RNG medial-axis (non-determinism).
         if emit_inner {
-            let innermost = &boundaries[boundaries.len() - 1];
-            if !innermost.is_empty() {
-                let infill_inset = offset(
-                    innermost,
-                    -(inner_wall_line_width / 2.0),
-                    OffsetJoinType::Miter,
-                    self.perimeter_arc_tolerance,
-                );
-                let gaps = difference_ex(innermost, &infill_inset);
-                for gap in &gaps {
-                    // R4 (P105): OrcaSlicer parity gap-fill min_width.
-                    // OrcaSlicer PerimeterGenerator.cpp:1924:
-                    // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
-                    // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
-                    let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
-                    let axes = slicer_sdk::host::medial_axis(
-                        gap,
-                        min_gap_fill_width,
-                        inner_wall_line_width,
-                    );
+            // R4 (P105): OrcaSlicer parity gap-fill min_width.
+            // OrcaSlicer PerimeterGenerator.cpp:1924.
+            let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
+            // OrcaSlicer max = 2 * perimeter_spacing (PerimeterGenerator.cpp:1947).
+            let perimeter_spacing = (outer_wall_line_width + inner_wall_line_width) / 2.0;
+            let max_gap_fill_width = 2.0 * perimeter_spacing;
+            let opened_min = opening_ex(
+                &gaps,
+                (min_gap_fill_width / 2.0) as f64,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance as f64,
+            );
+            let opened_max = offset2_ex(
+                &gaps,
+                -((max_gap_fill_width / 2.0) as f64),
+                (max_gap_fill_width / 2.0) as f64,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance as f64,
+            );
+            let filtered_gaps = difference_ex(&opened_min, &opened_max);
+            if !filtered_gaps.is_empty() {
+                for gap in &filtered_gaps {
+                    let axes =
+                        slicer_sdk::host::medial_axis(gap, min_gap_fill_width, max_gap_fill_width);
                     if let Err(e) = &axes {
                         slicer_sdk::host::log_warn(&format!(
                             "medial-axis-failed region={region_id} fixture=gap_fill error={e}"
@@ -641,10 +699,13 @@ impl ArachnePerimeters {
         if emit_inner {
             let innermost = &boundaries[boundaries.len() - 1];
             if !innermost.is_empty() {
-                // Use inner-wall width for the final inset to infill (T-051/T-052).
+                // Inset by a FULL inner-wall width (not half) so the infill region
+                // is consistent with the gap-fill infill-transition collection:
+                // wide regions keep a non-empty infill center, thin features inset
+                // to empty and are owned entirely by gap-fill (no double-count).
                 let infill = offset(
                     innermost,
-                    -(inner_wall_line_width / 2.0),
+                    -inner_wall_line_width,
                     OffsetJoinType::Miter,
                     self.perimeter_arc_tolerance,
                 );

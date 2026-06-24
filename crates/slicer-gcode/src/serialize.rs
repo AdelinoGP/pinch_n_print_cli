@@ -162,9 +162,37 @@ fn serialize_header_block(
         used_indices.join(",")
     };
     writeln!(out, "; filament: {}", filament_value).unwrap();
+    // filament_colour / extruder_colour: OrcaSlicer's G-code preview colours each
+    // extrusion by these header directives in filament view. Without them a
+    // multi-tool (MMU) print renders monochrome even though T<n> tool changes are
+    // present. We emit one distinct colour per filament slot from a default
+    // palette so the preview is usable; a future config-driven override can
+    // replace this once filament colours are plumbed through ResolvedConfig.
+    let slot_count = filament_used_mm.len().max(1);
+    let colours: Vec<&str> = (0..slot_count)
+        .map(|i| DEFAULT_FILAMENT_PALETTE[i % DEFAULT_FILAMENT_PALETTE.len()])
+        .collect();
+    let colour_list = colours.join(";");
+    writeln!(out, "; filament_colour = {}", colour_list).unwrap();
+    writeln!(out, "; extruder_colour = {}", colour_list).unwrap();
     writeln!(out, "; HEADER_BLOCK_END").unwrap();
     out
 }
+
+/// Default distinct per-filament colour palette (hex), used to populate the
+/// `filament_colour` / `extruder_colour` G-code header directives so OrcaSlicer's
+/// filament-view preview renders each tool in a different colour. Cycles for
+/// prints with more filament slots than palette entries.
+const DEFAULT_FILAMENT_PALETTE: [&str; 8] = [
+    "#EC0006", // red
+    "#02BF06", // green
+    "#1800F2", // blue
+    "#FF9B00", // orange
+    "#00C0C0", // cyan
+    "#C000C0", // magenta
+    "#C0C000", // yellow
+    "#808080", // grey
+];
 
 /// Produce the extrusion-width comment block (packet 55 Step 4 / AC-7).
 ///

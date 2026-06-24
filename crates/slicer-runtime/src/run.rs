@@ -296,6 +296,33 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         }
     }
 
+    // MMU wipe-tower auto-enable (diagnose 2026-06-24, gap #3). OrcaSlicer turns
+    // on a prime/wipe tower automatically for multi-tool prints so colour
+    // transitions are purged off-part. Mirror that: if the model paints >= 2
+    // distinct tool indices and the user did NOT explicitly set
+    // `wipe_tower_enabled`, enable it. Single-colour / unpainted prints keep the
+    // default (false) and are unaffected. (The wipe-tower module is fully
+    // implemented and wired; it was simply gated off by the resolved-config
+    // default of `false` with no auto-enable signal.)
+    if !config_source.contains_key("wipe_tower_enabled") {
+        use std::collections::BTreeSet;
+        let mut tools: BTreeSet<u32> = BTreeSet::new();
+        for object in &mesh_ir.objects {
+            if let Some(pd) = &object.paint_data {
+                for layer in &pd.layers {
+                    for fv in layer.facet_values.iter().flatten() {
+                        if let slicer_ir::PaintValue::ToolIndex(n) = fv {
+                            tools.insert(*n);
+                        }
+                    }
+                }
+            }
+        }
+        if tools.len() >= 2 {
+            config_source.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+        }
+    }
+
     // Discover and plan every module under --module-dir.
     let search_roots = assemble_search_roots(&opts.module_dirs, opts.no_default_module_paths);
     let mut loaded = load_live_modules_for_plan(&search_roots, num_cpus_guess()).map_err(|e| {
