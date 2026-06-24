@@ -192,9 +192,12 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// Minor bump to 4.1.0 adds the additive `SlicedRegion.sparse_infill_area`
 /// field (host-side fill partition output); `#[serde(default)]` preserves
 /// backward compatibility with serialized 4.0.0 fixtures.
+/// Minor bump to 4.4.0 (packet 105) adds the additive `LoopType::GapFill` and
+/// `ExtrusionRole::GapFill` enums (T-062b). `#[non_exhaustive]` on both enums
+/// preserves backward compatibility.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 3,
+    minor: 4,
     patch: 0,
 };
 
@@ -1462,6 +1465,7 @@ impl<'de> Deserialize<'de> for WallBoundaryType {
 }
 
 /// Loop type
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoopType {
     /// Outer loop
@@ -1472,6 +1476,8 @@ pub enum LoopType {
     ThinWall,
     /// Non-planar shell loop
     NonPlanarShell,
+    /// Gap-fill loop (T-062b)
+    GapFill,
 }
 
 /// Wall feature flags
@@ -1517,6 +1523,7 @@ pub struct Point3WithWidth {
 }
 
 /// Extrusion role
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExtrusionRole {
     /// Outer wall
@@ -1547,6 +1554,8 @@ pub enum ExtrusionRole {
     Skirt,
     /// Custom role
     Custom(String),
+    /// Gap-fill extrusion (T-062b)
+    GapFill,
 }
 
 impl ExtrusionRole {
@@ -1570,6 +1579,7 @@ impl ExtrusionRole {
             Self::WipeTower => 8000,
             Self::PrimeTower => 8500,
             Self::Custom(_) => 9000,
+            Self::GapFill => 2000,
         }
     }
 

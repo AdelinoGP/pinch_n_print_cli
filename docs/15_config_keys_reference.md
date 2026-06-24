@@ -421,12 +421,33 @@ Keys consumed by `classic-perimeters` and `arachne-perimeters` to gate single-wa
 
 | Key | Type | Default | Range | Module(s) |
 |---|---|---|---|---|
-| `only_one_wall_top` | bool | `default: false` | — | `classic-perimeters`, `arachne-perimeters` |
-| `only_one_wall_first_layer` | bool | `default: false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters`, `arachne-perimeters` |
+| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters`, `arachne-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `detect_thin_wall` | bool | `true` | — | `classic-perimeters`, `arachne-perimeters` |
+| `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters`, `arachne-perimeters` |
+| `wall_sequence` | enum | `"inner_outer"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `path-optimization-default` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 
 **`only_one_wall_first_layer`** — when `true`, the perimeter generator emits a single outer wall on the first layer of the print (layer index 0).
+
+**`outer_wall_line_width`** — extrusion width for the outermost wall loop (mm). Overrides the module-level `line_width` for outer walls only; allows a narrower outer wall for surface detail without affecting inner walls.
+
+**`inner_wall_line_width`** — extrusion width for all inner wall loops (mm). Overrides `line_width` for inner walls only.
+
+**`precise_outer_wall`** — when `true`, the perimeter generator compensates outer-wall width to hit the model boundary precisely. Gated on `wall_sequence == InnerOuter` because inner walls must be committed first for the compensation math to work.
+
+**`detect_thin_wall`** — when `true`, the perimeter generator inserts `LoopType::ThinWall` extrusion paths in regions too narrow for a full wall pair. Disable to suppress thin-wall fill in favour of gap-fill only.
+
+**`filter_out_gap_fill`** — minimum gap width (mm) below which `LoopType::GapFill` paths are suppressed. `0.0` means emit all gap-fill. Values larger than `line_width` suppress most gap-fill paths. Emitted as `ExtrusionRole::GapFill` in G-code.
+
+**`wall_sequence`** — controls the print order of outer and inner walls per layer. Enum variants:
+- `OuterInner` — outer wall prints first; better surface quality on slow machines.
+- `InnerOuter` — inner walls print first; better dimensional accuracy (default).
+- `InnerOuterInner` — inner walls first, outer wall next, remaining inner walls last; balances both goals by bracketing the outer wall.
 
 ---
 

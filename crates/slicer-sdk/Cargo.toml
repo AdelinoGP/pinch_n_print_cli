@@ -11,6 +11,12 @@ slicer-core = { path = "../slicer-core" }
 slicer-macros = { path = "../slicer-macros" }
 slicer-schema = { path = "../slicer-schema" }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+slicer-core = { path = "../slicer-core", features = ["host-algos"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen.workspace = true
+
 [features]
 test = []
 

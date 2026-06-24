@@ -42,7 +42,7 @@
 
 ### Step 4: Add wedge symmetry invariant (AC-4) + regenerate goldens
 
-- Files allowed to edit (≤ 3):
+- Files allowed to edit (3, at the ceiling — the two goldens are mechanically rewritten by the xtask regen recipe and arrive paired):
   - `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs`
   - `resources/golden/support_regression_wedge_branch_count.txt`
   - `resources/golden/support_regression_wedge_endpoints.txt`

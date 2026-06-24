@@ -30,6 +30,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
@@ -302,6 +303,114 @@ fn outer_wall_counts_per_layer(gcode: &str) -> Vec<usize> {
     counts
 }
 
+/// Count the number of `;TYPE:Outer wall` header occurrences per layer bucket
+/// (separated by `;LAYER_CHANGE` markers). Each per-color outer-wall fragment
+/// begins a fresh `;TYPE:Outer wall` block (after a travel move or tool change),
+/// so this directly measures per-color fragmentation — NOT G1 segment count.
+///
+/// An unpainted cube should have exactly 1 fragment per mid-body layer.
+/// A 4-color painted cube should have >= 2 fragments on painted layers.
+fn outer_wall_fragments_per_layer(gcode: &str) -> Vec<usize> {
+    let marker = ";LAYER_CHANGE";
+    let outer = ";TYPE:Outer wall";
+    let mut counts = Vec::new();
+    let mut current = 0usize;
+    let mut layer_started = false;
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(marker) {
+            if layer_started {
+                counts.push(current);
+            }
+            current = 0;
+            layer_started = true;
+            continue;
+        }
+        if !layer_started {
+            continue;
+        }
+        // Each `;TYPE:Outer wall` header starts a new per-color outer-wall fragment.
+        if trimmed == outer {
+            current += 1;
+        }
+    }
+    if layer_started {
+        counts.push(current);
+    }
+    counts
+}
+
+/// Count the number of distinct `T<digits>` tool indices appearing per layer
+/// (separated by `;LAYER_CHANGE` markers). Returns one entry per layer.
+fn distinct_tool_indices_per_layer(gcode: &str) -> Vec<usize> {
+    use std::collections::HashSet;
+    let marker = ";LAYER_CHANGE";
+    let mut result: Vec<usize> = Vec::new();
+    let mut current: HashSet<u32> = HashSet::new();
+    let mut layer_started = false;
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(marker) {
+            if layer_started {
+                result.push(current.len());
+            }
+            current.clear();
+            layer_started = true;
+            continue;
+        }
+        if !layer_started {
+            continue;
+        }
+        // Detect bare `T<digits>` lines.
+        if trimmed.len() >= 2 {
+            let bytes = trimmed.as_bytes();
+            if bytes[0] == b'T' && bytes[1..].iter().all(|c| c.is_ascii_digit()) {
+                if let Ok(n) = trimmed[1..].parse::<u32>() {
+                    current.insert(n);
+                }
+            }
+        }
+    }
+    if layer_started {
+        result.push(current.len());
+    }
+    result
+}
+
+/// Count the number of `T<digits>` tool-change lines per layer. Returns one
+/// entry per layer (same index convention as `outer_wall_counts_per_layer`).
+fn tool_changes_per_layer(gcode: &str) -> Vec<usize> {
+    let marker = ";LAYER_CHANGE";
+    let mut counts: Vec<usize> = Vec::new();
+    let mut current = 0usize;
+    let mut layer_started = false;
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(marker) {
+            if layer_started {
+                counts.push(current);
+            }
+            current = 0;
+            layer_started = true;
+            continue;
+        }
+        if !layer_started {
+            continue;
+        }
+        // Detect bare `T<digits>` lines (same logic as parse_tool_index_lines).
+        if trimmed.len() >= 2 {
+            let bytes = trimmed.as_bytes();
+            if bytes[0] == b'T' && bytes[1..].iter().all(|c| c.is_ascii_digit()) {
+                current += 1;
+            }
+        }
+    }
+    if layer_started {
+        counts.push(current);
+    }
+    counts
+}
+
 /// Format a per-layer count diff for the assertion message (first N layers).
 fn fmt_per_layer_diff(painted: &[usize], unpainted: &[usize], n: usize) -> String {
     let len = painted.len().min(unpainted.len()).min(n);
@@ -338,59 +447,164 @@ fn cube_4color_gcode_emits_all_four_tool_indices() {
 }
 
 // --------------------------------------------------------------------------
-// Test 2 — per-layer outer-wall count matches unpainted baseline within 1
+// Test 2 — Model A: per-color outer-wall fragmentation on painted layers
 // --------------------------------------------------------------------------
-
-// AC-22b: bisector-edge dedup. The host attaches each painted cell's clean model
-// boundary (`SlicedRegion::external_contour`, a per-object `union_ex` computed
-// host-side); the perimeter guest keeps only outer-wall edges on that boundary and
-// skips paint-cell interfaces, so each interface is traced by no cell and the
-// painted cube's per-layer outer-wall count matches the unpainted baseline.
+//
+// ADR-0013 (P105 rewrite): under the confirmed OrcaSlicer "Model A" behavior,
+// a painted 4-color cube emits PER-COLOR outer-wall fragments on every painted
+// layer — one distinct ;TYPE:Outer wall sequence per paint cell encountered on
+// that layer. The old "within ±1 of unpainted baseline" contract (union-trace
+// behavior) is RETIRED. This test asserts the new Model A contract.
+//
+// AC-6: external_contour removal asserted by the rg grep in packet.spec.md AC-6
+//
+// P105_CUBE_4COLOR_PARITY_SHA: gcode is byte-stable across runs (confirmed by
+// test run post-FIX2 (boostvoronoi panic hardening) on 2026-06-24).  SHA-256 pinned below.
+// Previous SHA d4b4a3fad... was set before the catch_unwind hardening; new SHA reflects
+// correct medial-axis output now that panics are caught and regions are processed.
+// If this assertion fails after a legitimate impl change, re-baseline by running
+// `pnp_cli slice --model resources/cube_4color.3mf --module-dir modules/core-modules
+// --output /tmp/out.gcode && sha256sum /tmp/out.gcode` and updating the const.
+// Do NOT remove the assertion; treat a hash mismatch as a regression gate.
+//
+// Note: the EXACT per-layer fragment count is covered by the controlled fixture
+// in `mmu_per_color_fragmentation_tdd::per_color_regions_each_trace_own_outer_wall`
+// (AC-6 exact-count, 2 per-color regions → exactly 2 outer-wall loops).  This
+// E2E test covers the full cube fixture at a coarser level (total/max fragments,
+// all 4 tools present, per-layer tool-change invariant) plus the SHA regression gate.
 #[test]
-fn cube_4color_per_layer_outer_wall_count_matches_unpainted_baseline_within_one() {
+fn cube_4color_per_layer_per_color_fragmentation_with_tool_changes() {
     let painted = slice_fixture_file(&cube_4color_path());
     let unpainted = slice_synthetic_mesh("unpainted_25mm_cube", unpainted_25mm_cube());
 
-    let painted_counts = outer_wall_counts_per_layer(&painted.gcode_text);
-    let unpainted_counts = outer_wall_counts_per_layer(&unpainted.gcode_text);
+    // Use ;TYPE:Outer wall header count (fragments), NOT G1 segment count.
+    let painted_frags = outer_wall_fragments_per_layer(&painted.gcode_text);
+    let unpainted_frags = outer_wall_fragments_per_layer(&unpainted.gcode_text);
+    let tc_per_layer = tool_changes_per_layer(&painted.gcode_text);
+    let distinct_tools_per_layer = distinct_tool_indices_per_layer(&painted.gcode_text);
 
-    // Layer alignment guard: if the two outputs disagree on layer count by
-    // more than a couple of layers, the unpainted fixture is not a like-for-like
-    // baseline — surface that as a skip rather than a meaningless failure.
-    // (Acceptable difference accounts for leading/trailing priming/skirt
-    // layers that may produce or not produce ;LAYER_CHANGE markers.)
-    let layer_diff = painted_counts.len() as i64 - unpainted_counts.len() as i64;
-    if layer_diff.abs() > 2 {
+    let painted_total: usize = painted_frags.iter().sum();
+    let unpainted_total: usize = unpainted_frags.iter().sum();
+    let painted_max = painted_frags.iter().copied().max().unwrap_or(0);
+
+    // Print per-layer diagnostics for post-Model-A capture.
+    eprintln!(
+        "cube_4color Model A diagnostics (FRAGMENTS): painted_layers={}, unpainted_ref_layers={}, \
+         painted_total_frags={}, unpainted_total_frags={}, painted_max_frags_per_layer={}",
+        painted_frags.len(),
+        unpainted_frags.len(),
+        painted_total,
+        unpainted_total,
+        painted_max,
+    );
+    for i in 0..painted_frags.len().min(10) {
+        let ref_count = unpainted_frags.get(i).copied().unwrap_or(0);
+        let tc = tc_per_layer.get(i).copied().unwrap_or(0);
+        let dt = distinct_tools_per_layer.get(i).copied().unwrap_or(0);
         eprintln!(
-            "skipping AC-22 outer-wall count assertion: painted={} layers, unpainted={} layers — \
-             configure an exact-match baseline before tightening this gate",
-            painted_counts.len(),
-            unpainted_counts.len()
+            "  layer {:>3}: painted_frags={}, unpainted_frags={}, tool_changes={}, distinct_tools={}",
+            i, painted_frags[i], ref_count, tc, dt
         );
-        return;
     }
 
-    // Compare layer-by-layer up to the shorter of the two.
-    let common = painted_counts.len().min(unpainted_counts.len());
-    let mut violations: Vec<(usize, usize, usize)> = Vec::new();
-    for i in 0..common {
-        let p = painted_counts[i];
-        let u = unpainted_counts[i];
-        let diff = (p as i64 - u as i64).abs();
-        if diff > 1 {
-            violations.push((i, p, u));
+    // Layer alignment guard: if the pipeline emits zero layers (stale guests),
+    // fail loudly — do NOT silently skip assertions.
+    assert!(
+        !painted_frags.is_empty(),
+        "Model A fragmentation assertion: painted gcode has 0 ;LAYER_CHANGE markers. \
+         Rebuild guests (cargo xtask build-guests) and re-run."
+    );
+
+    // -----------------------------------------------------------------------
+    // Assertion 1 — Model A fragmentation.
+    //
+    // (a) The painted cube's TOTAL outer-wall-fragment count across all layers
+    //     must be strictly greater than the unpainted baseline's total.
+    //     An unpainted cube has ~1 fragment per layer; a 4-color painted cube
+    //     must produce additional per-color fragments, raising the total.
+    //
+    // (b) At least some painted layers must have >= 2 outer-wall fragments,
+    //     proving that at least one layer split into multiple per-color outer
+    //     walls. We require at least 1 such layer as the minimal meaningful
+    //     bound that distinguishes Model A from single-fragment monochrome output.
+    // -----------------------------------------------------------------------
+    assert!(
+        painted_total > unpainted_total,
+        "cube_4color Model A Assertion 1(a): painted total outer-wall fragments ({painted_total}) \
+         must exceed unpainted baseline total ({unpainted_total}). \
+         Per-color fragmentation must raise the total fragment count across all layers."
+    );
+
+    let layers_with_multi_frags = painted_frags.iter().filter(|&&f| f >= 2).count();
+    assert!(
+        layers_with_multi_frags >= 1,
+        "cube_4color Model A Assertion 1(b): at least 1 painted layer must have >= 2 outer-wall \
+         fragments (proving per-color split occurred), but found {layers_with_multi_frags} such layers. \
+         painted_frags (first 10): {:?}",
+        painted_frags.iter().take(10).collect::<Vec<_>>()
+    );
+
+    // -----------------------------------------------------------------------
+    // Assertion 2 — Tool changes.
+    //
+    // (a) All four tool indices T0, T1, T2, T3 must appear somewhere in the
+    //     full gcode (already asserted by Test 1, but we re-verify here for
+    //     completeness within this test).
+    //
+    // (b) For every layer whose gcode block contains >= 2 DISTINCT tool indices,
+    //     that layer must contain at least 1 tool-change line. A layer that
+    //     uses two or more tools must switch between them at least once.
+    // -----------------------------------------------------------------------
+    let all_tools = parse_tool_index_lines(&painted.gcode_text);
+    let expected_tools: BTreeSet<u32> = [0u32, 1, 2, 3].iter().copied().collect();
+    assert_eq!(
+        all_tools, expected_tools,
+        "cube_4color Model A Assertion 2(a): not all four tool indices appear in the gcode. \
+         Found: {all_tools:?}, expected: {expected_tools:?}"
+    );
+
+    let mut multi_tool_no_change: Vec<(usize, usize, usize)> = Vec::new();
+    let n = distinct_tools_per_layer.len().min(tc_per_layer.len());
+    for i in 0..n {
+        let distinct = distinct_tools_per_layer[i];
+        let tcs = tc_per_layer[i];
+        if distinct >= 2 && tcs == 0 {
+            multi_tool_no_change.push((i, distinct, tcs));
         }
     }
 
     assert!(
-        violations.is_empty(),
-        "cube_4color per-layer outer-wall count diverges from unpainted baseline (>1) on {} layers; \
-         current behavior emits phantom perimeters along Voronoi cell boundaries.\n\
-         First 5 layer counts side-by-side:\n{}\
-         First 5 violations (layer_idx, painted, unpainted): {:?}",
-        violations.len(),
-        fmt_per_layer_diff(&painted_counts, &unpainted_counts, 5),
-        violations.iter().take(5).collect::<Vec<_>>()
+        multi_tool_no_change.is_empty(),
+        "cube_4color Model A Assertion 2(b): {} layer(s) have >= 2 distinct tool indices but \
+         zero tool-change lines. Every multi-tool layer must contain at least one T<N> switch.\n\
+         Failures (layer_idx, distinct_tools, tool_changes): {:?}",
+        multi_tool_no_change.len(),
+        multi_tool_no_change.iter().take(5).collect::<Vec<_>>()
+    );
+
+    // AC-6: external_contour removal asserted by the rg grep in packet.spec.md AC-6
+
+    // Assertion 3 — SHA regression gate (P105_CUBE_4COLOR_PARITY_SHA).
+    //
+    // Gcode confirmed byte-stable across two independent runs (2026-06-24).
+    // This pin catches unintended behavioral regressions that change gcode output
+    // without updating acceptance criteria.
+    const P105_CUBE_4COLOR_PARITY_SHA: &str =
+        "a7048ac377b691bdbb178ad869a0fdd838a130b3a08c7184723d911579e2bd74";
+    let mut hasher = Sha256::new();
+    hasher.update(painted.gcode_text.as_bytes());
+    let hash_bytes = hasher.finalize();
+    let hash_hex = hash_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    assert_eq!(
+        hash_hex, P105_CUBE_4COLOR_PARITY_SHA,
+        "cube_4color gcode SHA regression: output changed since P105 baseline.\n\
+         If this is an intentional change, re-run:\n\
+         pnp_cli slice --model resources/cube_4color.3mf \
+         --module-dir modules/core-modules --output /tmp/out.gcode\n\
+         and update P105_CUBE_4COLOR_PARITY_SHA in this file."
     );
 }
 

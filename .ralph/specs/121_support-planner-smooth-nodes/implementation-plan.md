@@ -53,11 +53,12 @@
 
 - Task IDs: `TASK-262`
 - Files allowed to read: `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` (current state).
-- Files allowed to edit (≤ 3):
+- Files allowed to edit (4 — exceeds soft `≤ 3` ceiling; justified inline below):
   - `modules/core-modules/support-planner/src/lib.rs` (integration call only — implementation already in Step 3)
   - `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` (add AC-5 test)
   - `resources/golden/support_regression_wedge_branch_count.txt` (regenerated)
   - `resources/golden/support_regression_wedge_endpoints.txt` (regenerated)
+- Ceiling exception: the two golden files are mechanically rewritten by the xtask regen recipe (the implementer does not hand-edit them). Splitting "integrate smoothing" and "regen goldens" across two steps would put the goldens out of sync with the new emission for the duration of one step — exactly the wrong-baseline failure mode the packet is designed to prevent. Treat the two .txt regen as a single byproduct of the integration commit.
 - Files out-of-bounds: other test files.
 - Sub-agent dispatches:
   - "Run the xtask golden-regen for support; return FACT (file sizes + line counts)."

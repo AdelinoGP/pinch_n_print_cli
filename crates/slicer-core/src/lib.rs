@@ -18,7 +18,9 @@ pub mod aabb_tree;
 /// Pure algorithm modules (available only with the `host-algos` feature).
 #[cfg(feature = "host-algos")]
 pub mod algos;
+pub mod flow;
 pub mod geometry;
+#[cfg(feature = "host-algos")]
 pub mod medial_axis;
 pub mod perimeter_utils;
 pub mod polygon_ops;

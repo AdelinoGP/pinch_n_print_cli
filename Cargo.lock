@@ -1758,6 +1758,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 name = "path-optimization-default"
 version = "0.1.0"
 dependencies = [
+ "slicer-core",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
@@ -2551,6 +2552,7 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
+ "sha2",
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
@@ -2597,6 +2599,7 @@ dependencies = [
  "slicer-ir",
  "slicer-macros",
  "slicer-schema",
+ "wit-bindgen 0.57.1",
 ]
 
 [[package]]

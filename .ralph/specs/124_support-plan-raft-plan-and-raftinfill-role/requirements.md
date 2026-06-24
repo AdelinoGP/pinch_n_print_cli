@@ -82,7 +82,7 @@ Files to inspect for this packet:
 | `rg -q 'pub raft_plan: Vec<RaftPlan>' crates/slicer-ir/src/slice_ir.rs` | AC-1 IR field. | FACT pass/fail |
 | `rg -A20 'pub enum ExtrusionRole' crates/slicer-ir/src/slice_ir.rs \| rg -q 'RaftInfill'` | AC-2 role variant. | FACT pass/fail |
 | `rg -q 'ExtrusionRole::RaftInfill => "claim:raft-fill"' crates/slicer-sdk/src/views.rs` | AC-3 claim arm. | FACT pass/fail |
-| `! rg -q 'Point3WithWidth.*x: 0\.0.*y: 0\.0.*z: raft_z' modules/core-modules/support-planner/src/lib.rs` | AC-6 placeholder gone. | FACT pass/fail |
+| `! rg -U --multiline-dotall -q 'Point3WithWidth \{[\s\S]{0,80}x: 0\.0,[\s\S]{0,80}y: 0\.0,[\s\S]{0,80}z: raft_z' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'z: raft_z,' modules/core-modules/support-planner/src/lib.rs` | AC-6 placeholder gone (uses `rg -U` for multi-line literal; the single-line `z: raft_z,` guard catches the simple case). | FACT pass/fail |
 | `rg -q 'Does NOT consume SupportPlanIR by design' modules/core-modules/traditional-support/src/lib.rs` | AC-8 doc. | FACT pass/fail |
 | `! rg -A5 '\[ir-access\]' modules/core-modules/traditional-support/traditional-support.toml \| rg -q 'SupportPlanIR'` | AC-9 manifest. | FACT pass/fail |
 | `rg -q 'raft_plan: Vec<RaftPlan>' docs/02_ir_schemas.md && rg -q 'pub struct RaftLayerSpec' docs/02_ir_schemas.md` | AC-10 docs. | FACT pass/fail |

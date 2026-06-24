@@ -74,17 +74,18 @@ fn polygon_area_mm(poly: &Polygon) -> f64 {
 fn on_print_start_defaults() {
     let config = ConfigView::from_map(HashMap::new());
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    // Default: wall_count=3, line_width=0.4mm
+    // Default: wall_count=3
+    // R2 (P105): inner/outer wall widths are now read per-invocation in run_perimeters,
+    // not cached as struct fields. Wall count remains cached (can't change mid-layer).
     assert_eq!(module.wall_count(), 3);
-    assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
 #[test]
 fn on_print_start_custom() {
     let config = make_config_full(4, 0.5, 40.0, 80.0);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    // R2 (P105): wall_count is cached; line widths are per-invocation.
     assert_eq!(module.wall_count(), 4);
-    assert!((module.line_width() - 0.5).abs() < 0.001);
 }
 
 #[test]

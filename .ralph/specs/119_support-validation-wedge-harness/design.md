@@ -14,6 +14,11 @@
 
 ## Architecture Constraints
 
+<!-- snippet: wasm-staleness -->
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
+
+- This packet does NOT edit any guest-input path itself, but it RUNS guest WASM through `cargo test -p slicer-runtime` (the integration tests bootstrap the runtime which dispatches `support-planner` and its peers). If sibling packets (`117`, `118`, `120`) land between this packet's test-author step and its golden-capture step, the guests may be stale. Run `cargo xtask build-guests --check` immediately before Step 5 (golden capture) and Step 7 (final verification).
+
 - The harness asserts against `SupportPlanIR` contract surfaces (`entries[*].branch_segments[*]` shape) — NOT against `support-planner` internals. The packet must NOT introspect `crates/slicer-runtime/...` or `modules/core-modules/support-planner/src/lib.rs` to assert behavior; that couples the test to implementation details.
 - Goldens are CAPTURED, not authored. The implementer writes a small capture recipe (xtask or shell script — confirm convention via dispatch) that runs the planner once on the wedge fixture and emits the two files. Hand-editing the golden values is a sign the test is wrong.
 - Tolerance numbers (`±10%` branch count, `0.5 mm` Hausdorff) come from `docs/specs/support-modules-orca-port.md` §Validation Strategy. The implementer MUST NOT widen them without an explicit packet review.

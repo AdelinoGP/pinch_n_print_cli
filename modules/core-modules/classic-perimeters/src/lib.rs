@@ -19,17 +19,17 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use slicer_core::perimeter_utils::{
     build_wall_flags, expolygon_to_path3d, generate_seam_candidates, point_in_any_polygon,
-    BASE_SPEED,
+    wall_sequence_reorder, WallSequence, BASE_SPEED,
 };
-use slicer_core::polygon_ops::{offset, OffsetJoinType};
+use slicer_core::polygon_ops::{difference_ex, offset, opening_ex, OffsetJoinType};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, WallLoop, WidthProfile,
+    variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
+    PaintSemantic, PaintValue, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -41,11 +41,15 @@ use slicer_sdk::views::SliceRegionView;
 ///
 /// Produces wall loops via iterative constant-width polygon insets.
 /// Outer wall first, then inner walls, with remaining area as infill.
+///
+/// NOTE (P105 R2): Per-object/per-layer overridable config keys
+/// (outer_wall_line_width, inner_wall_line_width, wall_sequence,
+/// detect_thin_wall, gap_infill_speed, filter_out_gap_fill, precise_outer_wall)
+/// are read per-invocation from `_config` in `run_perimeters`, NOT cached here.
+/// Only machine constants that cannot change mid-print are cached.
 pub struct ClassicPerimeters {
     /// Number of wall loops to generate.
     wall_count: u32,
-    /// Extrusion line width in millimeters.
-    line_width: f32,
     /// Speed factor for outer walls (outer_wall_speed / BASE_SPEED).
     outer_speed_factor: f32,
     /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
@@ -60,11 +64,6 @@ impl LayerModule for ClassicPerimeters {
         let wall_count = match config.get("wall_count") {
             Some(ConfigValue::Int(n)) => *n as u32,
             _ => 3, // default
-        };
-
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4, // default
         };
 
         let outer_wall_speed = match config.get("outer_wall_speed") {
@@ -86,7 +85,6 @@ impl LayerModule for ClassicPerimeters {
 
         Ok(Self {
             wall_count,
-            line_width,
             outer_speed_factor: outer_wall_speed / BASE_SPEED,
             inner_speed_factor: inner_wall_speed / BASE_SPEED,
             perimeter_arc_tolerance,
@@ -103,6 +101,52 @@ impl LayerModule for ClassicPerimeters {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        // ── R2: Per-invocation config reads (P105) ───────────────────────
+        // These 7 keys support per-object/per-layer overrides and MUST be read
+        // from _config here, not cached at on_print_start.
+        let legacy_line_width = match _config.get("line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => 0.4,
+        };
+        let outer_wall_line_width = match _config.get("outer_wall_line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => legacy_line_width,
+        };
+        let inner_wall_line_width = match _config.get("inner_wall_line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => legacy_line_width,
+        };
+        let wall_sequence = match _config.get("wall_sequence") {
+            Some(ConfigValue::String(s)) => match s.as_str() {
+                "InnerOuter" => WallSequence::InnerOuter,
+                "OuterInner" => WallSequence::OuterInner,
+                "InnerOuterInner" => WallSequence::InnerOuterInner,
+                _ => WallSequence::InnerOuter,
+            },
+            _ => WallSequence::InnerOuter,
+        };
+        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(true);
+        let gap_infill_speed = _config
+            .get_float("gap_infill_speed")
+            .map(|s| s as f32)
+            .unwrap_or(30.0);
+        let filter_out_gap_fill = _config
+            .get_float("filter_out_gap_fill")
+            .map(|s| s as f32)
+            .unwrap_or(0.5);
+        // R1: precise_outer_wall — gated on wall_sequence==InnerOuter (AC-7, P105).
+        // OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
+        let precise_outer_wall_raw = _config.get_bool("precise_outer_wall").unwrap_or(false);
+        let precise_outer_wall =
+            precise_outer_wall_raw && matches!(wall_sequence, WallSequence::InnerOuter);
+
+        // ── Nozzle diameter for R4 threshold (falls back to inner_wall_line_width
+        //    if not provided — preserves behaviour on older profiles). ───────────
+        let nozzle_diameter = _config
+            .get_float("nozzle_diameter")
+            .map(|v| v as f32)
+            .unwrap_or(inner_wall_line_width);
+
         let base_wall_count = _config
             .get_int("wall_count")
             .map(|n| n as u32)
@@ -111,7 +155,6 @@ impl LayerModule for ClassicPerimeters {
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
-        // Apply first-layer clamp at the layer level (all regions share the same layer).
         let layer_wall_count = if only_one_wall_first_layer && layer_index == 0 {
             1
         } else {
@@ -130,184 +173,93 @@ impl LayerModule for ClassicPerimeters {
         let outer_speed_factor = outer_wall_speed / BASE_SPEED;
         let inner_speed_factor = inner_wall_speed / BASE_SPEED;
 
-        // Group regions by object so each painted object's model perimeter is
-        // traced exactly once (AC-22b bisector-edge dedup).
-        let mut by_object: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (i, region) in regions.iter().enumerate() {
+        for region in regions {
             if region.polygons().is_empty() {
                 continue;
             }
-            by_object
-                .entry(region.object_id().clone())
-                .or_default()
-                .push(i);
-        }
-
-        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
-            HashMap::new();
-
-        for indices in by_object.values() {
-            // A painted object exposes a shared external contour on its cells.
-            let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
-
-            if let Some(boundary) = shared_boundary {
-                // Effective wall count for the shared boundary uses the first region's top-shell.
-                // Some(0) → blanket 1-wall clamp; Some(N>0) → carve handled per-cell below;
-                // None → full wall_count.
-                let wall_count = {
-                    let top_shell = regions[indices[0]].top_shell_index();
-                    if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    }
-                };
-                // Trace the model perimeter ONCE as the outer wall (single loop).
-                if wall_count > 0 {
-                    let z = regions[indices[0]].z();
-                    let bridge = regions[indices[0]].bridge_areas();
+            let top_shell = region.top_shell_index();
+            let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                1
+            } else {
+                layer_wall_count
+            };
+            let polygons = region.polygons();
+            let z = region.z();
+            if wall_count == 0 {
+                output.set_infill_areas(polygons.to_vec())?;
+                continue;
+            }
+            let rid = *region.region_id();
+            if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                let split = split_top_surfaces(polygons, region.top_solid_fill());
+                if !split.top_portion.is_empty() {
                     self.emit_walls(
-                        boundary,
+                        &split.top_portion,
                         z,
-                        &empty_annotations,
+                        region.segment_annotations(),
                         true,
-                        false,
+                        true,
                         output,
-                        wall_count,
+                        1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        bridge,
+                        region.bridge_areas(),
+                        outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
                     )?;
                 }
-                // Each cell adds only inner walls + infill from its own polygon.
-                for &i in indices {
-                    let region = &regions[i];
-                    let top_shell = region.top_shell_index();
-                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    };
-                    let polygons = region.polygons();
-                    let z = region.z();
-                    if wall_count == 0 {
-                        output.set_infill_areas(polygons.to_vec())?;
-                        continue;
-                    }
-                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
-                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
-                    // so that build_wall_flags paint reprojection samples annotations
-                    // correctly even on the carved sub-regions.
-                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
-                        let split = split_top_surfaces(polygons, region.top_solid_fill());
-                        if !split.top_portion.is_empty() {
-                            self.emit_walls(
-                                &split.top_portion,
-                                z,
-                                region.segment_annotations(),
-                                false,
-                                true,
-                                output,
-                                1,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                        if !split.non_top_portion.is_empty() {
-                            self.emit_walls(
-                                &split.non_top_portion,
-                                z,
-                                region.segment_annotations(),
-                                false,
-                                true,
-                                output,
-                                layer_wall_count,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                    } else {
-                        self.emit_walls(
-                            polygons,
-                            z,
-                            region.segment_annotations(),
-                            false,
-                            true,
-                            output,
-                            wall_count,
-                            outer_speed_factor,
-                            inner_speed_factor,
-                            region.bridge_areas(),
-                        )?;
-                    }
+                if !split.non_top_portion.is_empty() {
+                    self.emit_walls(
+                        &split.non_top_portion,
+                        z,
+                        region.segment_annotations(),
+                        true,
+                        true,
+                        output,
+                        layer_wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                        region.bridge_areas(),
+                        outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
+                    )?;
                 }
             } else {
-                // Unpainted object: full per-region emission.
-                for &i in indices {
-                    let region = &regions[i];
-                    let top_shell = region.top_shell_index();
-                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    };
-                    let polygons = region.polygons();
-                    let z = region.z();
-                    if wall_count == 0 {
-                        output.set_infill_areas(polygons.to_vec())?;
-                        continue;
-                    }
-                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
-                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
-                    // to build_wall_flags so paint reprojection stays correct on carved
-                    // sub-regions. (Ref: OrcaSlicer PerimeterGenerator.cpp split_top_surfaces ~L775)
-                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
-                        let split = split_top_surfaces(polygons, region.top_solid_fill());
-                        if !split.top_portion.is_empty() {
-                            self.emit_walls(
-                                &split.top_portion,
-                                z,
-                                region.segment_annotations(),
-                                true,
-                                true,
-                                output,
-                                1,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                        if !split.non_top_portion.is_empty() {
-                            self.emit_walls(
-                                &split.non_top_portion,
-                                z,
-                                region.segment_annotations(),
-                                true,
-                                true,
-                                output,
-                                layer_wall_count,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                    } else {
-                        self.emit_walls(
-                            polygons,
-                            z,
-                            region.segment_annotations(),
-                            true,
-                            true,
-                            output,
-                            wall_count,
-                            outer_speed_factor,
-                            inner_speed_factor,
-                            region.bridge_areas(),
-                        )?;
-                    }
-                }
+                self.emit_walls(
+                    polygons,
+                    z,
+                    region.segment_annotations(),
+                    true,
+                    true,
+                    output,
+                    wall_count,
+                    outer_speed_factor,
+                    inner_speed_factor,
+                    region.bridge_areas(),
+                    outer_wall_line_width,
+                    inner_wall_line_width,
+                    wall_sequence,
+                    precise_outer_wall,
+                    detect_thin_wall,
+                    nozzle_diameter,
+                    gap_infill_speed,
+                    filter_out_gap_fill,
+                    rid,
+                )?;
             }
         }
 
@@ -323,11 +275,30 @@ impl ClassicPerimeters {
 
     /// Emit wall loops (plus seam candidates and infill) for `polygons`.
     ///
-    /// `emit_outer` / `emit_inner` gate which bands and the infill are produced
-    /// (AC-22b): a painted object's perimeter is traced ONCE from the shared
-    /// external contour (`true, false`) so the outer-wall count matches the
-    /// unpainted baseline, and each colour cell adds only its inner walls + infill
-    /// (`false, true`). Unpainted regions pass `true, true`.
+    /// T-051/T-052: outer (i==0) uses `outer_wall_line_width`; inner (i>=1) uses
+    /// `inner_wall_line_width`. The first inset is by `outer_wall_line_width / 2`;
+    /// subsequent insets are by `inner_wall_line_width` (canonical OrcaSlicer
+    /// ext_perimeter_spacing2 perimeter_spacing arithmetic).
+    ///
+    /// R1 (P105 AC-7): when `precise_outer_wall` is active (precise_outer_wall=true
+    /// AND wall_sequence=InnerOuter), the first inset uses `ext_perimeter_spacing2`
+    /// = (outer_wall_line_width + inner_wall_line_width)/2 and inner walls are
+    /// emitted before the outer wall.
+    /// OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
+    #[allow(clippy::too_many_arguments)]
+    fn line_width_for(
+        &self,
+        perimeter_index: u32,
+        outer_wall_line_width: f32,
+        inner_wall_line_width: f32,
+    ) -> f32 {
+        if perimeter_index == 0 {
+            outer_wall_line_width
+        } else {
+            inner_wall_line_width
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn emit_walls(
         &self,
@@ -341,6 +312,15 @@ impl ClassicPerimeters {
         outer_speed_factor: f32,
         inner_speed_factor: f32,
         bridge_areas: &[ExPolygon],
+        outer_wall_line_width: f32,
+        inner_wall_line_width: f32,
+        wall_sequence: WallSequence,
+        precise_outer_wall: bool,
+        detect_thin_wall: bool,
+        nozzle_diameter: f32,
+        gap_infill_speed: f32,
+        filter_out_gap_fill: f32,
+        region_id: u64,
     ) -> Result<(), ModuleError> {
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
@@ -348,9 +328,18 @@ impl ClassicPerimeters {
 
         for i in 0..wall_count {
             let inset_delta = if i == 0 {
-                -(self.line_width / 2.0)
+                // R1 (P105 AC-7): precise mode uses ext_perimeter_spacing2 for the
+                // outer wall inset (same as the gap between outer and first inner).
+                // OrcaSlicer PerimeterGenerator.cpp:1501-1506
+                if precise_outer_wall {
+                    -((outer_wall_line_width + inner_wall_line_width) / 2.0)
+                } else {
+                    -(outer_wall_line_width / 2.0)
+                }
+            } else if i == 1 {
+                -((outer_wall_line_width + inner_wall_line_width) / 2.0)
             } else {
-                -self.line_width
+                -inner_wall_line_width
             };
             let inset_result = offset(
                 &current_polygons,
@@ -364,6 +353,8 @@ impl ClassicPerimeters {
             all_wall_polygons.push((i, inset_result.clone()));
             current_polygons = inset_result;
         }
+
+        let mut walls: Vec<slicer_ir::WallLoop> = Vec::new();
 
         for (perimeter_index, wall_polys) in &all_wall_polygons {
             let is_outer = *perimeter_index == 0;
@@ -388,7 +379,15 @@ impl ClassicPerimeters {
             };
 
             for (poly_idx, poly) in wall_polys.iter().enumerate() {
-                let points = expolygon_to_path3d(&poly.contour, z, self.line_width);
+                let points = expolygon_to_path3d(
+                    &poly.contour,
+                    z,
+                    self.line_width_for(
+                        *perimeter_index,
+                        outer_wall_line_width,
+                        inner_wall_line_width,
+                    ),
+                );
                 if points.is_empty() {
                     continue;
                 }
@@ -428,12 +427,173 @@ impl ClassicPerimeters {
                         speed_factor,
                     },
                     width_profile: WidthProfile {
-                        widths: vec![self.line_width; num_points],
+                        widths: vec![
+                            self.line_width_for(
+                                *perimeter_index,
+                                outer_wall_line_width,
+                                inner_wall_line_width
+                            );
+                            num_points
+                        ],
                     },
                     feature_flags,
                     boundary_type,
                 };
+                walls.push(wall);
+            }
+        }
+
+        // R1 (P105 AC-7): precise mode reorders inner walls before outer.
+        // When precise_outer_wall is active (gated on InnerOuter), emit inner
+        // walls first, then outer wall — overrides the standard InnerOuter
+        // canonical order (which is outer-first).
+        // OrcaSlicer PerimeterGenerator.cpp:1644
+        if precise_outer_wall {
+            // Split into outer and inner, emit inner first then outer.
+            let mut outer_walls: Vec<slicer_ir::WallLoop> = walls
+                .iter()
+                .filter(|w| w.loop_type == LoopType::Outer)
+                .cloned()
+                .collect();
+            let mut inner_walls: Vec<slicer_ir::WallLoop> = walls
+                .iter()
+                .filter(|w| w.loop_type != LoopType::Outer)
+                .cloned()
+                .collect();
+            // Inner first, then outer (precise mode inner-first ordering).
+            inner_walls.append(&mut outer_walls);
+            for wall in inner_walls {
                 output.push_wall_loop(wall)?;
+            }
+        } else {
+            wall_sequence_reorder(&mut walls, wall_sequence, &[]);
+            for wall in walls {
+                output.push_wall_loop(wall)?;
+            }
+        }
+
+        // ── Thin-wall detection (T-061/T-062) ──────────────────────────
+        if detect_thin_wall && emit_outer {
+            // R4 (P105): OrcaSlicer parity thin-wall min_width.
+            // OrcaSlicer PerimeterGenerator.cpp:1603: min_width = nozzle_diameter()/3
+            let min_width = nozzle_diameter / 3.0;
+            let thick_core = opening_ex(
+                polygons,
+                min_width as f64,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance as f64,
+            );
+            let thin_protrusions = difference_ex(polygons, &thick_core);
+            for protrusion in &thin_protrusions {
+                let axes = slicer_sdk::host::medial_axis(
+                    protrusion,
+                    min_width,
+                    inner_wall_line_width * 2.0,
+                );
+                if let Err(e) = &axes {
+                    slicer_sdk::host::log_warn(&format!(
+                        "medial-axis-failed region={region_id} fixture=thin_wall error={e}"
+                    ));
+                }
+                if let Ok(axes) = axes {
+                    for axis in &axes {
+                        if axis.points.len() < 2 {
+                            continue;
+                        }
+                        let num_pts = axis.points.len();
+                        let mut path = variable_width(axis, ExtrusionRole::ThinWall);
+                        for pt in &mut path.points {
+                            pt.z = z;
+                        }
+                        let mut flags =
+                            vec![slicer_core::perimeter_utils::default_feature_flags(); num_pts];
+                        for flag in &mut flags {
+                            flag.is_thin_wall = true;
+                        }
+                        // ThinWall paths are closed loops (ExtrusionRole::is_closed_loop
+                        // returns true for ThinWall).  Both the path points and the
+                        // parallel feature_flags must carry the N+1 closing repeat so
+                        // that feature_flags.len() == path.points.len() (docs/03 invariant).
+                        slicer_sdk::close_loop(&mut path.points);
+                        slicer_sdk::close_loop(&mut flags);
+                        // Build widths from the (now closed) path.points to keep
+                        // width_profile.widths parallel with path.points.
+                        let widths = path.points.iter().map(|p| p.width).collect();
+                        output.push_wall_loop(WallLoop {
+                            perimeter_index: 0,
+                            loop_type: LoopType::ThinWall,
+                            path,
+                            width_profile: WidthProfile { widths },
+                            feature_flags: flags,
+                            boundary_type: slicer_ir::WallBoundaryType::Interior,
+                        })?;
+                    }
+                }
+            }
+        }
+
+        // ── Gap-fill emission (T-063/T-064) ────────────────────────────
+        if emit_inner && !current_polygons.is_empty() {
+            let infill_inset = offset(
+                &current_polygons,
+                -(inner_wall_line_width / 2.0),
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            let gaps = difference_ex(&current_polygons, &infill_inset);
+            for gap in &gaps {
+                // R4 (P105): OrcaSlicer parity gap-fill min_width.
+                // OrcaSlicer PerimeterGenerator.cpp:1924:
+                // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
+                // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
+                let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
+                let axes =
+                    slicer_sdk::host::medial_axis(gap, min_gap_fill_width, inner_wall_line_width);
+                if let Err(e) = &axes {
+                    slicer_sdk::host::log_warn(&format!(
+                        "medial-axis-failed region={region_id} fixture=gap_fill error={e}"
+                    ));
+                }
+                if let Ok(axes) = axes {
+                    for axis in &axes {
+                        if axis.points.len() < 2 {
+                            continue;
+                        }
+                        // AC-4 segment-length filter: drop gap-fill polylines whose
+                        // total length is below filter_out_gap_fill (e.g. 0.5 mm).
+                        // This is a LENGTH filter, not a width threshold.
+                        let total_len: f32 = axis
+                            .points
+                            .windows(2)
+                            .map(|w| {
+                                let dx = w[1].x - w[0].x;
+                                let dy = w[1].y - w[0].y;
+                                (dx * dx + dy * dy).sqrt()
+                            })
+                            .sum();
+                        if total_len < filter_out_gap_fill {
+                            continue;
+                        }
+                        let num_pts = axis.points.len();
+                        let mut path = variable_width(axis, ExtrusionRole::GapFill);
+                        for pt in &mut path.points {
+                            pt.z = z;
+                        }
+                        path.speed_factor = gap_infill_speed / BASE_SPEED;
+                        let flags =
+                            vec![slicer_core::perimeter_utils::default_feature_flags(); num_pts];
+                        output.push_wall_loop(WallLoop {
+                            perimeter_index: 0,
+                            loop_type: LoopType::GapFill,
+                            path,
+                            width_profile: WidthProfile {
+                                widths: axis.points.iter().map(|p| p.width).collect(),
+                            },
+                            feature_flags: flags,
+                            boundary_type: slicer_ir::WallBoundaryType::Interior,
+                        })?;
+                    }
+                }
             }
         }
 
@@ -450,9 +610,10 @@ impl ClassicPerimeters {
 
         // Only the inner/infill pass owns the infill region.
         if emit_inner && !current_polygons.is_empty() {
+            // Use the inner-wall line width for the final inset to infill.
             let infill = offset(
                 &current_polygons,
-                -(self.line_width / 2.0),
+                -(inner_wall_line_width / 2.0),
                 OffsetJoinType::Miter,
                 self.perimeter_arc_tolerance,
             );
@@ -474,6 +635,8 @@ mod tests {
         let config = ConfigView::from_map(HashMap::new());
         let module = ClassicPerimeters::on_print_start(&config).unwrap();
         assert_eq!(module.wall_count, 3);
-        assert!((module.line_width - 0.4).abs() < 0.001);
+        // R2: inner_wall_line_width is now read per-invocation, not cached.
+        // Verify the module still initialises without error (struct fields reduced).
+        let _ = module.wall_count();
     }
 }

@@ -176,6 +176,8 @@ pub fn ir_to_wit_wall_loop_type(lt: &slicer_ir::LoopType) -> WallLoopType {
         slicer_ir::LoopType::Inner => WallLoopType::Inner,
         slicer_ir::LoopType::ThinWall => WallLoopType::ThinWall,
         slicer_ir::LoopType::NonPlanarShell => WallLoopType::NonplanarShell,
+        slicer_ir::LoopType::GapFill => WallLoopType::GapFill,
+        _ => WallLoopType::Outer,
     }
 }
 
@@ -200,6 +202,8 @@ pub fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRol
         slicer_ir::ExtrusionRole::Skirt => {
             ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
         }
+        slicer_ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
+        _ => ExtrusionRole::OuterWall,
     }
 }
 
@@ -315,6 +319,7 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
             slicer_ir::ExtrusionRole::Skirt
         }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
+        ExtrusionRole::GapFill => slicer_ir::ExtrusionRole::GapFill,
     }
 }
 
@@ -362,6 +367,7 @@ pub fn convert_wall_loop_type(lt: &WallLoopType) -> slicer_ir::LoopType {
         WallLoopType::Inner => slicer_ir::LoopType::Inner,
         WallLoopType::ThinWall => slicer_ir::LoopType::ThinWall,
         WallLoopType::NonplanarShell => slicer_ir::LoopType::NonPlanarShell,
+        WallLoopType::GapFill => slicer_ir::LoopType::GapFill,
     }
 }
 

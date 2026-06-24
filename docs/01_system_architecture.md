@@ -835,6 +835,15 @@ Packet 103 added the following to `crates/slicer-core/src/geometry/`:
 hierarchy builder), and `keep_largest_contour_only` (post-clip island filter).
 These are the canonical host-side implementations; guests must not duplicate them.
 
+Packet 105 added two further modules to `crates/slicer-core/src/`:
+`flow` (`line_width_to_spacing` — converts a nominal line width to the OrcaSlicer-parity
+centre-to-centre wall spacing used during classic perimeter generation) and
+`perimeter_utils` (`wall_sequence_reorder` — reorders a `Vec<WallLoop>` from
+generation order into the configured `wall_sequence` print order:
+`OuterInner`, `InnerOuter`, or `InnerOuterInner`). Per ADR-0011, perimeter modules
+own wall sequencing; the in-module wall tree is discarded after `wall_sequence_reorder`
+returns and the ordered `Vec<WallLoop>` is committed to `PerimeterIR`.
+
 ---
 
 ## `PostPass::LayerFinalization` Module Constraint

@@ -131,6 +131,8 @@ impl DefaultGCodeEmitter {
                 "InternalBridge" => self.feedrate_config.internal_bridge_speed,
                 _ => self.feedrate_config.outer_wall_speed,
             },
+            ExtrusionRole::GapFill => self.feedrate_config.gap_infill_speed,
+            _ => self.feedrate_config.outer_wall_speed,
         };
 
         let clamped_factor = speed_factor.clamp(0.05, 5.0);
@@ -183,6 +185,8 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::PrimeTower => ";TYPE:Prime tower",
         ExtrusionRole::Ironing => ";TYPE:Ironing",
         ExtrusionRole::Custom(_) => ";TYPE:Custom",
+        ExtrusionRole::GapFill => ";TYPE:GapFill",
+        _ => ";TYPE:Custom",
     }
 }
 

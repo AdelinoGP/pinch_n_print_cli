@@ -13,7 +13,7 @@
 
 - Task IDs:
   - `T-P96-A0` — Produce `docs/specs/orca-mmu-perimeter-investigation.md`
-- Objective: dispatch the OrcaSlicer SUMMARY for the MMU per-color outer-wall fragmentation + bisector tie-break rule; author a one-pager that cites file:line references and states the tie-break rule used by Step 3.
+- Objective: dispatch the OrcaSlicer SUMMARY for the MMU per-color outer-wall fragmentation; author a one-pager that cites file:line references and confirms that OrcaSlicer uses partition/both-trace (Model A) — each per-color region traces its own outer wall independently — with no shared-bisector skip mask.
 - Precondition: workspace builds clean.
 - Postcondition: T-P96-A0 deliverable grep passes; one-pager committed.
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -24,35 +24,33 @@
 - Files explicitly out-of-bounds for this step:
   - All source files.
 - Expected sub-agent dispatches:
-  - "Summarize OrcaSlicerDocumented/src/libslic3r/MultiMaterialSegmentation.cpp + PerimeterGenerator.cpp per-color branches for the MMU outer-wall fragmentation + bisector tie-break rule; return SUMMARY ≤ 200 words. No code. Specifically: which side owns the shared bisector edge when two adjacent cells of different colors share it? If the rule is deterministic, name it (e.g. lower color-ID, paint-order ID, polygon-index ordering). If non-deterministic or opaque, say so."
+  - "Summarize OrcaSlicerDocumented/src/libslic3r/MultiMaterialSegmentation.cpp + PerimeterGenerator.cpp per-color branches for the MMU outer-wall fragmentation; return SUMMARY ≤ 200 words. No code. Specifically: does each per-color region trace its own independent outer wall (partition/both-trace, Model A), or is there a shared-bisector skip-mask mechanism (Model B)? Cite file:line references."
 - Context cost: `S` (one new doc; SUMMARY-only dispatch)
 - Authoritative docs: see Files allowed to read.
 - OrcaSlicer refs: `MultiMaterialSegmentation.cpp`, `PerimeterGenerator.cpp` per-color branches (delegate SUMMARY).
 - Verification:
-  - `rg -q 'tie-break' docs/specs/orca-mmu-perimeter-investigation.md` — exit 0.
-- Exit condition: one-pager exists with file:line citations + stated tie-break rule.
+  - `rg -q 'Model A\|per-color\|independent' docs/specs/orca-mmu-perimeter-investigation.md` — exit 0.
+- Exit condition: one-pager exists with file:line citations confirming Model A (independent per-color tracing; no skip mask).
 
-### Step 2: T-062b — IR enum additions + `bisector_edge_skip_mask` field
+### Step 2: T-062b — IR enum additions
 
 - Task IDs:
   - `T-062b` — Add `LoopType::GapFill` + `ExtrusionRole::GapFill` variants
-  - `T-P96-C0` — Resurrect `SlicedRegion.bisector_edge_skip_mask` (IR field only — host populator in Step 3)
-- Objective: extend `LoopType` and `ExtrusionRole` with `GapFill` arm, mark both `#[non_exhaustive]`, add `pub bisector_edge_skip_mask: Vec<bool>` on `SlicedRegion` (flat per-edge, ADR-0013 conformant), bump schema from live `4.3.0` to `4.4.0`; mirror in WIT (`wall-loop-type` in `ir-types.wit`, `extrusion-role` in `types.wit`, `bisector-edge-skip-mask: list<bool>` on `sliced-region`) + host populator + view accessor. Update every exhaustive match site in the workspace to add the new arm. NOTE: `ir_to_wit_extrusion_role` in `leaf.rs:183` is an exhaustive match — the WIT `gap-fill` arm on `extrusion-role` and the `leaf.rs` match arm MUST land in the same sub-step 2a to avoid a mid-step build break.
+- Objective: extend `LoopType` and `ExtrusionRole` with `GapFill` arm, mark both `#[non_exhaustive]`, bump schema from live `4.3.0` to `4.4.0`; mirror in WIT (`wall-loop-type` in `ir-types.wit`, `extrusion-role` in `types.wit`). Update every exhaustive match site in the workspace to add the new arm. NOTE: `ir_to_wit_extrusion_role` in `leaf.rs:183` is an exhaustive match — the WIT `gap-fill` arm on `extrusion-role` and the `leaf.rs` match arm MUST land in the same sub-step 2a to avoid a mid-step build break.
 - Precondition: Step 1 exit condition met; `cargo check --workspace --all-targets` clean.
-- Postcondition: AC-5 IR-field grep passes; `cargo xtask build-guests --check` no STALE; all exhaustive matches compile.
+- Postcondition: `cargo xtask build-guests --check` no STALE; all exhaustive matches compile.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-ir/src/slice_ir.rs` — range-read by `rg -n 'LoopType|ExtrusionRole|SlicedRegion|CURRENT_SLICE_IR_SCHEMA_VERSION'`.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — full file.
   - `crates/slicer-wasm-host/src/host.rs` — range-read by `rg -n 'SliceRegionData|sliced_region_to_data'`.
   - `crates/slicer-sdk/src/views.rs` — range-read by `rg -n 'fn bridge_areas\|fn nonplanar_surface'`.
 - Files allowed to edit (≤ 3 per sub-step):
-  - 2a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit` + `crates/slicer-schema/wit/deps/types.wit` (both WIT files need edits: `wall-loop-type` in ir-types.wit, `extrusion-role` in types.wit), `crates/slicer-wasm-host/src/marshal/leaf.rs` (add `ExtrusionRole::GapFill` arm to the exhaustive `ir_to_wit_extrusion_role` match at line 183 — MUST be atomic with the WIT and IR additions). ALSO add `bisector_edge_skip_mask: Vec::new()` initializer to the `SlicedRegion` struct-literal in `crates/slicer-core/src/algos/prepass_slice.rs` (only the one-line struct-literal site; full file is out-of-bounds).
-  - 2b (host + view): `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-sdk/src/views.rs`.
-  - 2c (downstream match arms): the LOCATIONS dispatch reports specific files; expect `modules/core-modules/part-cooling/src/lib.rs`, GCodeEmit role priority table, possibly `path-optimization-default`. Each consumer gets a 1-3 line arm addition.
+  - 2a (IR + WIT): `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit` + `crates/slicer-schema/wit/deps/types.wit` (both WIT files need edits: `wall-loop-type` in ir-types.wit, `extrusion-role` in types.wit), `crates/slicer-wasm-host/src/marshal/leaf.rs` (add `ExtrusionRole::GapFill` arm to the exhaustive `ir_to_wit_extrusion_role` match at line 183 — MUST be atomic with the WIT and IR additions).
+  - 2b (downstream match arms): the LOCATIONS dispatch reports specific files; expect `modules/core-modules/part-cooling/src/lib.rs`, GCodeEmit role priority table, possibly `path-optimization-default`. Each consumer gets a 1-3 line arm addition.
 - Files explicitly out-of-bounds for this step:
   - Any perimeter module `lib.rs` (Step 4+ work).
-  - `slicer-core` perimeter_utils / flow modules (Step 3+ work). EXCEPTION: `crates/slicer-core/src/algos/prepass_slice.rs` is touched in sub-step 2a (one-line `bisector_edge_skip_mask: Vec::new()` struct-literal addition only; full file is NOT read).
-  - `paint_segmentation/` (Step 3 work).
+  - `slicer-core` perimeter_utils / flow modules (Step 3+ work).
+  - `paint_segmentation/` (unchanged by this packet beyond Step 7).
 - Expected sub-agent dispatches:
   - "Find all exhaustive `match` blocks on `LoopType` across the workspace; return LOCATIONS ≤ 20 entries."
   - "Find all exhaustive `match` blocks on `ExtrusionRole` across the workspace; return LOCATIONS ≤ 20 entries."
@@ -65,7 +63,6 @@
   - `CLAUDE.md` — §"WIT/Type Changes Checklist" + §"Guest WASM Staleness".
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q 'pub bisector_edge_skip_mask: Vec<bool>' crates/slicer-ir/src/slice_ir.rs` — exit 0 (flat Vec<bool>, ADR-0013 conformant).
   - `rg -q 'LoopType::GapFill' crates/slicer-ir/src/slice_ir.rs && rg -q 'ExtrusionRole::GapFill' crates/slicer-ir/src/slice_ir.rs` — exit 0.
   - `rg -q 'gap-fill' crates/slicer-schema/wit/deps/ir-types.wit && rg -q 'gap-fill' crates/slicer-schema/wit/deps/types.wit` — exit 0 (both WIT files updated).
   - `rg -q 'GapFill' crates/slicer-wasm-host/src/marshal/leaf.rs` — exit 0 (leaf.rs match arm added atomically).
@@ -73,36 +70,9 @@
   - `cargo xtask build-guests --check` — no STALE.
 - Exit condition: IR additions present, workspace compiles end-to-end, no STALE guests.
 
-### Step 3: T-P96-C0 host populator — `compute_bisector_edge_skip_mask`
+### Step 3: DROPPED (Model A)
 
-- Task IDs:
-  - `T-P96-C0` (host populator half; IR half landed in Step 2)
-- Objective: implement `compute_bisector_edge_skip_mask` in `crates/slicer-core/src/algos/paint_segmentation/` and call it at paint-segmentation commit; mask uses tie-break rule from Step 1 one-pager (default "lower color-ID owns" if Step 1 didn't surface a more specific rule).
-- Precondition: Step 2 exit condition met.
-- Postcondition: AC-5 host-populator test passes; AC-N3 (single-color all-false) passes.
-- Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` — full (this is the file that already populates `external_contour` via `populate_external_contours`; add `compute_bisector_edge_skip_mask` here).
-  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — range-read call site for `populate_external_contours` to find where to add the new call.
-  - `docs/specs/orca-mmu-perimeter-investigation.md` (NET-NEW, authored in Step 1 — verify it exists before reading).
-- Files allowed to edit (≤ 3):
-  - `crates/slicer-core/src/algos/paint_segmentation/bisector_ownership.rs` (add `compute_bisector_edge_skip_mask` function).
-  - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (add call site after cell construction).
-  - `crates/slicer-core/tests/paint_segmentation_bisector_mask_tdd.rs` (NEW). NOTE: also add `[[test]] name = "paint_segmentation_bisector_mask_tdd" required-features = ["host-algos"]` to `crates/slicer-core/Cargo.toml` (can be batched with Step 5a's Cargo.toml edit if not already done).
-- Files explicitly out-of-bounds for this step:
-  - Perimeter modules.
-  - `slicer-core` (perimeter_utils / flow modules).
-  - Other `slicer-core` algos.
-- Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-core --test paint_segmentation_bisector_mask_tdd`; return FACT pass/fail + assertion text on fail."
-  - "Find the call site in paint_segmentation that constructs the final per-cell SlicedRegion polygons; return LOCATIONS ≤ 5 entries."
-- Context cost: `M` (algorithm port; new test)
-- Authoritative docs:
-  - `docs/specs/orca-mmu-perimeter-investigation.md` (Step 1 output).
-  - `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md`.
-- OrcaSlicer refs: cited in Step 1; no new dispatch.
-- Verification:
-  - `cargo test -p slicer-core --test paint_segmentation_bisector_mask_tdd 2>&1 | tee target/test-output.log` — FACT.
-- Exit condition: AC-5 + AC-N3 host-populator portion green; mask outer Vec aligns with `polygons` Vec; inner Vec[j] aligns with `points[j]..points[(j+1)%len]` edge.
+**DROPPED (Model A).** T-P96-C0 retired — Model A needs no host-side bisector mask. See rewritten ADR-0013 and D-105-BISECTOR-MASK-DROPPED. The prior draft of `compute_bisector_edge_skip_mask`, the `bisector_edge_skip_mask` field, WIT/view accessors (`bisector-edge-skip-mask`), `prepass_slice.rs` initializer, and `paint_segmentation_bisector_mask_tdd.rs` are all removed in this packet — no new code is added in this former step. This heading is retained so steps 4–8 numbering is unchanged.
 
 ### Step 4: T-050/T-051/T-052/T-053 — Spacing model + outer/inner widths
 
@@ -112,7 +82,7 @@
   - `T-052` — `ext_perimeter_spacing2` + `perimeter_spacing` arithmetic
   - `T-053` — `precise_outer_wall` mode (gated)
 - Objective: add `slicer_core::flow` module; register the four config keys; rewrite the wall-inset computation in both perimeter modules to use distinct outer/inner widths and the canonical spacing formula.
-- Precondition: Step 3 exit condition met; `cargo check --workspace --all-targets` clean.
+- Precondition: Step 2 exit condition met; `cargo check --workspace --all-targets` clean.
 - Postcondition: AC-1 verification command passes.
 - Files allowed to read (with line-range hints when > 300 lines):
   - Both perimeter modules' `lib.rs` — range-read the `run_perimeters` body and the wall-inset loop.
@@ -155,7 +125,7 @@
   - `modules/core-modules/path-optimization-default/src/lib.rs` — range-read lines 46-51 (existing `WallSequence` enum), 143-165 (struct field + match), 276-295 (config-read parse); these call sites must migrate to `slicer_core::perimeter_utils::WallSequence`.
   - Both perimeter modules' `lib.rs` (`run_perimeters` body).
 - Files allowed to edit (≤ 3 per sub-step):
-  - 5a (helper): `crates/slicer-core/src/perimeter_utils.rs` (add `WallSequence` enum with all 3 variants + `wall_sequence_reorder` + `edge_offset_for_polygon`), `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` (NEW), `crates/slicer-core/Cargo.toml` (add `[[test]] name = "wall_sequence_reorder_tdd"` entry).
+  - 5a (helper): `crates/slicer-core/src/perimeter_utils.rs` (add `WallSequence` enum with all 3 variants + `wall_sequence_reorder`), `crates/slicer-core/tests/wall_sequence_reorder_tdd.rs` (NEW), `crates/slicer-core/Cargo.toml` (add `[[test]] name = "wall_sequence_reorder_tdd"` entry).
   - 5b (config migration + WallSequence migration): `modules/core-modules/path-optimization-default/path-optimization-default.toml` (deregister key), `modules/core-modules/path-optimization-default/src/lib.rs` (remove local `WallSequence` def; use `slicer_core::perimeter_utils::WallSequence`; update import and match to add `InnerOuterInner` arm), `modules/core-modules/classic-perimeters/classic-perimeters.toml` (register `wall_sequence`).
   - 5c (remaining manifests + consumers): `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (register `wall_sequence`), `modules/core-modules/classic-perimeters/src/lib.rs`, `modules/core-modules/arachne-perimeters/src/lib.rs`.
 - Files explicitly out-of-bounds for this step:
@@ -209,41 +179,45 @@
   - `cargo test -p slicer-runtime --test integration gap_fill_emission_tdd 2>&1 | tee target/test-output.log` — FACT.
 - Exit condition: AC-3 + AC-N1 + AC-4 + AC-N2 green.
 
-### Step 7: T-P96-B/C1/C2 — Revert external_contour + consume bisector mask
+### Step 7: T-P96-B — Remove external_contour union-trace consumption (Model A)
 
 - Task IDs:
-  - `T-P96-B` — Revert `external_contour` consumption in both perimeter modules
-  - `T-P96-C1` — Classic consumes mask per-cell
-  - `T-P96-C2` — Variable-width consumes mask per-cell
-- Objective: remove the `external_contour` call sites; implement per-cell outer-wall trace that skips edges where `bisector_edge_skip_mask[i][j] == true`; mask consumption layer goes outermost (after wall_sequence reorder); single-color baseline unchanged.
-- Precondition: Step 6 exit condition met; AC-5 host populator passes (Step 3); IR field exists (Step 2).
-- Postcondition: AC-6 + AC-N3 verification commands pass.
+  - `T-P96-B` — Remove `external_contour` union-trace consumption in BOTH perimeter modules → per-color fragmentation (Model A)
+- Objective: remove `external_contour` call sites from both perimeter modules. For arachne: delete the `by_object` shared-boundary branch so arachne also uses per-cell `emit_outer=true` (per-color independent outer-wall tracing). For classic: verify already correct (no union trace), confirm only. No mask consumption — Model A needs none. Single-color baseline unchanged.
+- Precondition: Step 6 exit condition met.
+- Postcondition: AC-6 + AC-N1/N2 verification commands pass; `external_contour()` call sites absent from both modules.
 - Files allowed to read (with line-range hints when > 300 lines):
   - Both perimeter modules' `lib.rs` — range-read the per-cell trace loop.
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/classic-perimeters/src/lib.rs`
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
-  - `crates/slicer-runtime/tests/integration/mmu_bisector_dedup_tdd.rs` (NEW). Register `mod mmu_bisector_dedup_tdd;` in `crates/slicer-runtime/tests/integration/main.rs` — batch this edit with one of the two `lib.rs` edits (counts as 1 of the 3 files).
+  - `crates/slicer-runtime/tests/integration/mmu_per_color_fragmentation_tdd.rs` (NEW). Register `mod mmu_per_color_fragmentation_tdd;` in `crates/slicer-runtime/tests/integration/main.rs` — batch this edit with one of the two `lib.rs` edits (counts as 1 of the 3 files).
 - Files explicitly out-of-bounds for this step:
-  - `slicer-ir` (field present from Step 2; not edited).
-  - `slicer-core/paint_segmentation/` (populator present from Step 3; not edited).
+  - `slicer-ir` (no mask field to add; `external_contour` IR field stays until P107 T-P96-D — only consumption removed).
+  - `slicer-core/paint_segmentation/` (no mask computation in this packet; see D-105-BISECTOR-MASK-DROPPED).
   - `slicer-core` flow/perimeter_utils modules (no change in this step).
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-runtime --test integration mmu_bisector_dedup_tdd`; return FACT pass/fail per case (4-color cube test + single-color baseline test)."
-  - "Find call sites of `region.external_contour()` in the perimeter modules; return LOCATIONS ≤ 5 entries (expected zero after revert)."
-- Context cost: `M` (two-module rewrite + new integration test with 4-color fixture)
+  - "Run `cargo test -p slicer-runtime --test integration mmu_per_color_fragmentation_tdd`; return FACT pass/fail per case (4-color cube test + single-color baseline test)."
+  - "Find call sites of `region.external_contour()` in the perimeter modules; return LOCATIONS ≤ 5 entries (expected zero after removal)."
+- Context cost: `M` (two-module edit + new integration test with 4-color fixture)
 - Authoritative docs:
-  - `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md`.
+  - `docs/adr/0013-mmu-per-color-outer-wall-fragmentation.md` (rewritten — confirms Model A).
 - OrcaSlicer refs: cited in Step 1's one-pager.
 - Verification:
-  - `cargo test -p slicer-runtime --test integration mmu_bisector_dedup_tdd 2>&1 | tee target/test-output.log` — FACT.
-  - `! rg -q '\.external_contour\(\)' modules/core-modules/classic-perimeters/src/lib.rs modules/core-modules/arachne-perimeters/src/lib.rs` — exit 0 (revert complete).
-- Exit condition: AC-6 + AC-N3 green; no external_contour calls remaining in module code.
+  - `cargo test -p slicer-runtime --test integration mmu_per_color_fragmentation_tdd 2>&1 | tee target/test-output.log` — FACT.
+  - `! rg -q '\.external_contour\(\)' modules/core-modules/classic-perimeters/src/lib.rs modules/core-modules/arachne-perimeters/src/lib.rs` — exit 0 (removal complete).
+- New test assertions (`mmu_per_color_fragmentation_tdd`):
+  - Per-color outer-wall extrusion-sequence count per layer equals the number of distinct colors present in that layer.
+  - Each color fragment is preceded by a `T<N>` tool-change command in the emitted G-code sequence.
+  - Neither module contains a call to `external_contour()` after this step.
+  - Single-color baseline: extrusion count unchanged from pre-P105 baseline.
+- Protected executor test reshape: `cube_4color_per_layer_per_color_fragmentation_with_tool_changes` (reshaped in P105, not deferred). G-code SHA re-baselined as `P105_CUBE_4COLOR_PARITY_SHA`.
+- Exit condition: AC-6 green; no external_contour calls remaining in module code; 4-color fixture per-color fragmentation count confirmed.
 
 ### Step 8: Doc impact landing
 
 - Task IDs:
-  - Doc impact for the whole packet (covers T-062b, T-P96-C0, T-050..T-065, T-054*).
+  - Doc impact for the whole packet (covers T-062b, T-P96-A0/B, T-050..T-065, T-054*).
 - Objective: land doc impact statement edits.
 - Precondition: Step 7 exit condition met.
 - Postcondition: all five Doc Impact Statement greps return hits.
@@ -270,30 +244,30 @@
 | --- | --- | --- |
 | Step 1 | S | One new doc; SUMMARY dispatch. |
 | Step 2 | M | Three crates; LOCATIONS for downstream arms; guest-WASM gate. |
-| Step 3 | M | Algorithm port + new TDD; one LOCATIONS dispatch. |
+| Step 3 | — | **DROPPED** — T-P96-C0 retired (Model A; no mask). |
 | Step 4 | M | Three sub-steps; two OrcaSlicer SUMMARYs; two new tests. |
 | Step 5 | M | Helper + manifest migration + two-module consumer; one SUMMARY. |
 | Step 6 | M | Two-module rewrites + two new integration tests; one SUMMARY. |
-| Step 7 | M | Two-module rewrite + 4-color fixture integration test. |
+| Step 7 | M | Two-module edit + 4-color fixture integration test (Model A fragmentation). |
 | Step 8 | S | Three doc edits. |
 
-Aggregate context cost: `M` (risk-flagged — 19 tasks; implementer should consider re-spawning a fresh agent after Step 4 if context exceeds 65%). No single step is `L`. Per-step file edit count never exceeds 3 (sub-step structure preserved throughout).
+Aggregate context cost: `M` (risk-flagged — 17 tasks; implementer should consider re-spawning a fresh agent after Step 4 if context exceeds 65%). No single step is `L`. Per-step file edit count never exceeds 3 (sub-step structure preserved throughout).
 
 ## Packet Completion Gate
 
-- All eight steps complete; each step's exit condition met.
-- AC-1 through AC-6 + AC-N1/N2/N3 all return PASS via worker dispatch.
+- All eight steps complete (Step 3 DROPPED — no work needed); each active step's exit condition met.
+- AC-1 through AC-6 + AC-N1/N2 all return PASS via worker dispatch.
 - `cargo check --workspace --all-targets` clean.
 - `cargo clippy --workspace --all-targets -- -D warnings` clean.
 - `cargo xtask build-guests --check` reports no STALE guests.
-- `docs/07_implementation_status.md` updated for each T-050..T-P96-C2 entry — via worker dispatch.
+- `docs/07_implementation_status.md` updated for each T-050..T-P96-B entry — via worker dispatch.
 - `packet.spec.md` ready to move from `status: draft` → `status: implemented`.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and confirm each returns PASS.
 - Confirm the three gate commands in `packet.spec.md` §Verification are green.
-- Record the actual schema-bump version chosen (targeting `4.4.0` from live `4.3.0`) in the closure log, along with any concurrent-bump races resolved.
-- Record any T-P96-A0 investigation findings that deviated from the "lower color-ID owns" default in the closure log.
-- Note in the closure log that `external_contour` IR field remains in `SlicedRegion` until P107 T-P96-D — this is by design per ADR-0013.
+- Record the actual schema-bump version chosen (targeting `4.4.0` from live `4.3.0` — additive for GapFill variants only) in the closure log, along with any concurrent-bump races resolved.
+- Note in the closure log that the `external_contour` IR field remains in `SlicedRegion` until P107 T-P96-D — this is by design per ADR-0013 (rewritten). Only consumption is removed in P105.
+- Note in the closure log that `bisector_edge_skip_mask`, `compute_bisector_edge_skip_mask`, WIT accessor `bisector-edge-skip-mask`, view accessor, and `paint_segmentation_bisector_mask_tdd.rs` are all removed in this packet per D-105-BISECTOR-MASK-DROPPED (Model A pivot).
 - Confirm the implementer's peak context usage stayed under 70%. If exceeded, log it as a packet-authoring lesson for future spec-packet-generator runs (likely indicates Step 4 needs further subdivision in similar future packets).

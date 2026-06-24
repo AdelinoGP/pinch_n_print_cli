@@ -41,6 +41,9 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
         ExtrusionRole::SupportMaterial | ExtrusionRole::SupportInterface => cfg.support_resolution,
         // Travel and other custom moves: no simplification.
         ExtrusionRole::Custom(_) => 0.0,
+        // Gap-fill uses perimeter tolerance (it's wall-adjacent).
+        ExtrusionRole::GapFill => cfg.gcode_resolution,
+        _ => 0.0,
     }
 }
 

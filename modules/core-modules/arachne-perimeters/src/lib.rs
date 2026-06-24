@@ -27,17 +27,18 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use slicer_core::geometry::*;
 use slicer_core::perimeter_utils::{
-    build_wall_flags, generate_seam_candidates, point_in_any_polygon, BASE_SPEED,
+    build_wall_flags, generate_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
+    WallSequence, BASE_SPEED,
 };
-use slicer_core::polygon_ops::{offset, OffsetJoinType};
+use slicer_core::polygon_ops::{difference_ex, offset, opening_ex, OffsetJoinType};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, Point3WithWidth, WallLoop, WidthProfile,
+    variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
+    PaintSemantic, PaintValue, Point3WithWidth, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -55,11 +56,15 @@ const MIN_WIDTH_FRACTION: f32 = 0.5;
 /// Thin regions receive fewer and/or narrower walls rather than being skipped entirely.
 /// Width profiles vary per-vertex based on the local distance between adjacent wall
 /// boundaries.
+///
+/// NOTE (P105 R2): Per-object/per-layer overridable config keys
+/// (outer_wall_line_width, inner_wall_line_width, wall_sequence,
+/// detect_thin_wall, gap_infill_speed, filter_out_gap_fill, precise_outer_wall)
+/// are read per-invocation from `_config` in `run_perimeters`, NOT cached here.
+/// Only machine constants that cannot change mid-print are cached.
 pub struct ArachnePerimeters {
     /// Number of wall loops to generate (target, may be fewer in thin regions).
     wall_count: u32,
-    /// Nominal extrusion line width in millimeters.
-    line_width: f32,
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
 }
@@ -68,11 +73,6 @@ impl ArachnePerimeters {
     /// Returns the configured wall count.
     pub fn wall_count(&self) -> u32 {
         self.wall_count
-    }
-
-    /// Returns the configured nominal line width in millimeters.
-    pub fn line_width(&self) -> f32 {
-        self.line_width
     }
 }
 
@@ -84,11 +84,6 @@ impl LayerModule for ArachnePerimeters {
             _ => 3,
         };
 
-        let line_width = match config.get("line_width") {
-            Some(ConfigValue::Float(w)) => *w as f32,
-            _ => 0.4,
-        };
-
         let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.0125,
@@ -96,7 +91,6 @@ impl LayerModule for ArachnePerimeters {
 
         Ok(Self {
             wall_count,
-            line_width,
             perimeter_arc_tolerance,
         })
     }
@@ -111,6 +105,52 @@ impl LayerModule for ArachnePerimeters {
         output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        // ── R2: Per-invocation config reads (P105) ───────────────────────
+        // These 7 keys support per-object/per-layer overrides and MUST be read
+        // from _config here, not cached at on_print_start.
+        let legacy_line_width = match _config.get("line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => 0.4,
+        };
+        let outer_wall_line_width = match _config.get("outer_wall_line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => legacy_line_width,
+        };
+        let inner_wall_line_width = match _config.get("inner_wall_line_width") {
+            Some(ConfigValue::Float(w)) => *w as f32,
+            _ => legacy_line_width,
+        };
+        let wall_sequence = match _config.get("wall_sequence") {
+            Some(ConfigValue::String(s)) => match s.as_str() {
+                "InnerOuter" => WallSequence::InnerOuter,
+                "OuterInner" => WallSequence::OuterInner,
+                "InnerOuterInner" => WallSequence::InnerOuterInner,
+                _ => WallSequence::InnerOuter,
+            },
+            _ => WallSequence::InnerOuter,
+        };
+        let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(true);
+        let gap_infill_speed = _config
+            .get_float("gap_infill_speed")
+            .map(|s| s as f32)
+            .unwrap_or(30.0);
+        let filter_out_gap_fill = _config
+            .get_float("filter_out_gap_fill")
+            .map(|s| s as f32)
+            .unwrap_or(0.5);
+        // R1: precise_outer_wall — gated on wall_sequence==InnerOuter (AC-7, P105).
+        // OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
+        let precise_outer_wall_raw = _config.get_bool("precise_outer_wall").unwrap_or(false);
+        let precise_outer_wall =
+            precise_outer_wall_raw && matches!(wall_sequence, WallSequence::InnerOuter);
+
+        // ── Nozzle diameter for R4 threshold (falls back to inner_wall_line_width
+        //    if not provided — preserves behaviour on older profiles). ───────────
+        let nozzle_diameter = _config
+            .get_float("nozzle_diameter")
+            .map(|v| v as f32)
+            .unwrap_or(inner_wall_line_width);
+
         let base_wall_count = _config
             .get_int("wall_count")
             .map(|n| n as u32)
@@ -138,188 +178,101 @@ impl LayerModule for ArachnePerimeters {
         let outer_speed_factor = outer_wall_speed / BASE_SPEED;
         let inner_speed_factor = inner_wall_speed / BASE_SPEED;
 
-        // Group regions by object so each painted object's model perimeter is
-        // traced exactly once (AC-22b bisector-edge dedup).
-        let mut by_object: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        for (i, region) in regions.iter().enumerate() {
+        // Per-color fragmentation (Model A / OrcaSlicer MMU parity): each SlicedRegion
+        // traces its own outer+inner walls independently. No union-trace over a shared
+        // external contour — that was the old AC-22b approach and is now removed.
+        for region in regions {
             if region.polygons().is_empty() {
                 continue;
             }
-            by_object
-                .entry(region.object_id().clone())
-                .or_default()
-                .push(i);
-        }
-
-        let empty_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> =
-            HashMap::new();
-
-        for indices in by_object.values() {
-            // A painted object exposes a shared external contour on its cells.
-            let shared_boundary = indices.iter().find_map(|&i| regions[i].external_contour());
-
-            if let Some(boundary) = shared_boundary {
-                // Effective wall count for the shared boundary uses the first region's top-shell.
-                // Some(0) → blanket 1-wall clamp; Some(N>0) → carve handled per-cell below;
-                // None → full wall_count.
-                let wall_count = {
-                    let top_shell = regions[indices[0]].top_shell_index();
-                    if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    }
-                };
-                // Trace the model perimeter ONCE as the outer wall — a single loop,
-                // so the painted object's outer-wall count matches the unpainted
-                // baseline instead of fragmenting across colour cells.
-                if wall_count > 0 {
-                    let z = regions[indices[0]].z();
-                    let bridge = regions[indices[0]].bridge_areas();
+            let top_shell = region.top_shell_index();
+            let wall_count = if only_one_wall_top && top_shell == Some(0) {
+                1
+            } else {
+                layer_wall_count
+            };
+            let polygons = region.polygons();
+            let z = region.z();
+            if wall_count == 0 {
+                output.set_infill_areas(polygons.to_vec())?;
+                continue;
+            }
+            let rid = *region.region_id();
+            // Some(N>0) carve: split into top portion (1 wall) and non-top portion
+            // (full wall_count). Pass ORIGINAL region polygons as original_polygons
+            // to generate_arachne_walls so build_wall_flags paint reprojection
+            // stays correct on carved sub-regions.
+            // (Ref: OrcaSlicer PerimeterGenerator.cpp split_top_surfaces ~L775)
+            if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+                let split = split_top_surfaces(polygons, region.top_solid_fill());
+                if !split.top_portion.is_empty() {
                     self.generate_arachne_walls(
-                        boundary,
+                        &split.top_portion,
                         z,
-                        &empty_annotations,
+                        region.segment_annotations(),
                         true,
-                        false,
+                        true,
                         output,
-                        wall_count,
+                        1,
                         outer_speed_factor,
                         inner_speed_factor,
-                        bridge,
+                        region.bridge_areas(),
+                        outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
                     )?;
                 }
-                // Each cell contributes only inner walls + infill from its own
-                // polygon (no per-cell outer wall).
-                for &i in indices {
-                    let region = &regions[i];
-                    let top_shell = region.top_shell_index();
-                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    };
-                    let polygons = region.polygons();
-                    let z = region.z();
-                    if wall_count == 0 {
-                        output.set_infill_areas(polygons.to_vec())?;
-                        continue;
-                    }
-                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
-                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
-                    // to generate_arachne_walls so build_wall_flags paint reprojection
-                    // samples annotations correctly even on carved sub-regions.
-                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
-                        let split = split_top_surfaces(polygons, region.top_solid_fill());
-                        if !split.top_portion.is_empty() {
-                            self.generate_arachne_walls(
-                                &split.top_portion,
-                                z,
-                                region.segment_annotations(),
-                                false,
-                                true,
-                                output,
-                                1,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                        if !split.non_top_portion.is_empty() {
-                            self.generate_arachne_walls(
-                                &split.non_top_portion,
-                                z,
-                                region.segment_annotations(),
-                                false,
-                                true,
-                                output,
-                                layer_wall_count,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                    } else {
-                        self.generate_arachne_walls(
-                            polygons,
-                            z,
-                            region.segment_annotations(),
-                            false,
-                            true,
-                            output,
-                            wall_count,
-                            outer_speed_factor,
-                            inner_speed_factor,
-                            region.bridge_areas(),
-                        )?;
-                    }
+                if !split.non_top_portion.is_empty() {
+                    self.generate_arachne_walls(
+                        &split.non_top_portion,
+                        z,
+                        region.segment_annotations(),
+                        true,
+                        true,
+                        output,
+                        layer_wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                        region.bridge_areas(),
+                        outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
+                    )?;
                 }
             } else {
-                // Unpainted object: full per-region emission.
-                for &i in indices {
-                    let region = &regions[i];
-                    let top_shell = region.top_shell_index();
-                    let wall_count = if only_one_wall_top && top_shell == Some(0) {
-                        1
-                    } else {
-                        layer_wall_count
-                    };
-                    let polygons = region.polygons();
-                    let z = region.z();
-                    if wall_count == 0 {
-                        output.set_infill_areas(polygons.to_vec())?;
-                        continue;
-                    }
-                    // Some(N>0) carve: split into top portion (1 wall) and non-top portion
-                    // (full wall_count). Pass ORIGINAL region polygons as original_polygons
-                    // to generate_arachne_walls so build_wall_flags paint reprojection
-                    // stays correct on carved sub-regions.
-                    // (Ref: OrcaSlicer PerimeterGenerator.cpp split_top_surfaces ~L775)
-                    if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
-                        let split = split_top_surfaces(polygons, region.top_solid_fill());
-                        if !split.top_portion.is_empty() {
-                            self.generate_arachne_walls(
-                                &split.top_portion,
-                                z,
-                                region.segment_annotations(),
-                                true,
-                                true,
-                                output,
-                                1,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                        if !split.non_top_portion.is_empty() {
-                            self.generate_arachne_walls(
-                                &split.non_top_portion,
-                                z,
-                                region.segment_annotations(),
-                                true,
-                                true,
-                                output,
-                                layer_wall_count,
-                                outer_speed_factor,
-                                inner_speed_factor,
-                                region.bridge_areas(),
-                            )?;
-                        }
-                    } else {
-                        self.generate_arachne_walls(
-                            polygons,
-                            z,
-                            region.segment_annotations(),
-                            true,
-                            true,
-                            output,
-                            wall_count,
-                            outer_speed_factor,
-                            inner_speed_factor,
-                            region.bridge_areas(),
-                        )?;
-                    }
-                }
+                self.generate_arachne_walls(
+                    polygons,
+                    z,
+                    region.segment_annotations(),
+                    true,
+                    true,
+                    output,
+                    wall_count,
+                    outer_speed_factor,
+                    inner_speed_factor,
+                    region.bridge_areas(),
+                    outer_wall_line_width,
+                    inner_wall_line_width,
+                    wall_sequence,
+                    precise_outer_wall,
+                    detect_thin_wall,
+                    nozzle_diameter,
+                    gap_infill_speed,
+                    filter_out_gap_fill,
+                    rid,
+                )?;
             }
         }
 
@@ -337,12 +290,13 @@ impl ArachnePerimeters {
     /// 3. If a region is too thin for the requested wall count, reduce walls and adapt widths.
     ///
     /// `emit_outer` / `emit_inner` gate which wall bands (and the infill) are
-    /// produced (AC-22b). For a painted cell group the model perimeter is traced
-    /// ONCE from the shared external contour (`emit_outer=true, emit_inner=false`),
-    /// and each cell contributes only its inner walls + infill
-    /// (`emit_outer=false, emit_inner=true`) — so the perimeter is a single loop
-    /// (matching the unpainted baseline count) while infill stays per-colour.
-    /// Unpainted regions pass `true, true` (unchanged full emission).
+    /// produced. All callers now pass `true, true` — each per-color region traces
+    /// its own outer+inner walls independently (Model A / OrcaSlicer MMU parity).
+    ///
+    /// R1 (P105 AC-7): when `precise_outer_wall` is active (precise_outer_wall=true
+    /// AND wall_sequence=InnerOuter), the outer inset uses `ext_perimeter_spacing2`
+    /// and inner walls are emitted before the outer wall.
+    /// OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
     #[allow(clippy::too_many_arguments)]
     fn generate_arachne_walls(
         &self,
@@ -356,6 +310,15 @@ impl ArachnePerimeters {
         outer_speed_factor: f32,
         inner_speed_factor: f32,
         bridge_areas: &[ExPolygon],
+        outer_wall_line_width: f32,
+        inner_wall_line_width: f32,
+        wall_sequence: WallSequence,
+        precise_outer_wall: bool,
+        detect_thin_wall: bool,
+        nozzle_diameter: f32,
+        gap_infill_speed: f32,
+        filter_out_gap_fill: f32,
+        region_id: u64,
     ) -> Result<(), ModuleError> {
         // Build the boundary rings: boundary[0] = original, boundary[i] = i-th inset
         let mut boundaries: Vec<Vec<ExPolygon>> = Vec::new();
@@ -364,9 +327,18 @@ impl ArachnePerimeters {
         let mut current = polygons.to_vec();
         for i in 0..wall_count {
             let delta = if i == 0 {
-                -(self.line_width / 2.0)
+                // R1 (P105 AC-7): precise mode uses ext_perimeter_spacing2 for the
+                // outer wall inset.
+                // OrcaSlicer PerimeterGenerator.cpp:1501-1506
+                if precise_outer_wall {
+                    -((outer_wall_line_width + inner_wall_line_width) / 2.0)
+                } else {
+                    -(outer_wall_line_width / 2.0)
+                }
+            } else if i == 1 {
+                -((outer_wall_line_width + inner_wall_line_width) / 2.0)
             } else {
-                -self.line_width
+                -inner_wall_line_width
             };
 
             let inset = offset(
@@ -393,6 +365,8 @@ impl ArachnePerimeters {
         }
 
         let num_walls = boundaries.len() - 1;
+
+        let mut walls: Vec<slicer_ir::WallLoop> = Vec::new();
 
         // For each wall band, generate wall loops with variable-width profiles
         for wall_idx in 0..num_walls {
@@ -429,6 +403,7 @@ impl ArachnePerimeters {
                     num_walls,
                     wall_idx,
                     z,
+                    outer_wall_line_width,
                 );
 
                 if points_with_widths.is_empty() {
@@ -488,7 +463,166 @@ impl ArachnePerimeters {
                     feature_flags,
                     boundary_type: wall_boundary_type,
                 };
+                walls.push(wall);
+            }
+        }
+
+        // R1 (P105 AC-7): precise mode reorders inner walls before outer.
+        // When precise_outer_wall is active (gated on InnerOuter), emit inner
+        // walls first, then outer wall.
+        // OrcaSlicer PerimeterGenerator.cpp:1644
+        if precise_outer_wall {
+            let mut outer_walls: Vec<slicer_ir::WallLoop> = walls
+                .iter()
+                .filter(|w| w.loop_type == LoopType::Outer)
+                .cloned()
+                .collect();
+            let mut inner_walls: Vec<slicer_ir::WallLoop> = walls
+                .iter()
+                .filter(|w| w.loop_type != LoopType::Outer)
+                .cloned()
+                .collect();
+            inner_walls.append(&mut outer_walls);
+            for wall in inner_walls {
                 output.push_wall_loop(wall)?;
+            }
+        } else {
+            wall_sequence_reorder(&mut walls, wall_sequence, &[]);
+            for wall in walls {
+                output.push_wall_loop(wall)?;
+            }
+        }
+
+        // ── Thin-wall detection (T-061/T-062) ──────────────────────────
+        if detect_thin_wall && emit_outer {
+            // R4 (P105): OrcaSlicer parity thin-wall min_width.
+            // OrcaSlicer PerimeterGenerator.cpp:1603: min_width = nozzle_diameter()/3
+            let min_width = nozzle_diameter / 3.0;
+            let thick_core = opening_ex(
+                polygons,
+                min_width as f64,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance as f64,
+            );
+            let thin_protrusions = difference_ex(polygons, &thick_core);
+            for protrusion in &thin_protrusions {
+                let axes = slicer_sdk::host::medial_axis(
+                    protrusion,
+                    min_width,
+                    inner_wall_line_width * 2.0,
+                );
+                if let Err(e) = &axes {
+                    slicer_sdk::host::log_warn(&format!(
+                        "medial-axis-failed region={region_id} fixture=thin_wall error={e}"
+                    ));
+                }
+                if let Ok(axes) = axes {
+                    for axis in &axes {
+                        if axis.points.len() < 2 {
+                            continue;
+                        }
+                        let num_pts = axis.points.len();
+                        let mut path = variable_width(axis, ExtrusionRole::ThinWall);
+                        for pt in &mut path.points {
+                            pt.z = z;
+                        }
+                        let mut flags =
+                            vec![slicer_core::perimeter_utils::default_feature_flags(); num_pts];
+                        for flag in &mut flags {
+                            flag.is_thin_wall = true;
+                        }
+                        // ThinWall paths are closed loops (ExtrusionRole::is_closed_loop
+                        // returns true for ThinWall).  Both the path points and the
+                        // parallel feature_flags must carry the N+1 closing repeat so
+                        // that feature_flags.len() == path.points.len() (docs/03 invariant).
+                        slicer_sdk::close_loop(&mut path.points);
+                        slicer_sdk::close_loop(&mut flags);
+                        // Build widths from the (now closed) path.points to keep
+                        // width_profile.widths parallel with path.points.
+                        let widths = path.points.iter().map(|p| p.width).collect();
+                        output.push_wall_loop(WallLoop {
+                            perimeter_index: 0,
+                            loop_type: LoopType::ThinWall,
+                            path,
+                            width_profile: WidthProfile { widths },
+                            feature_flags: flags,
+                            boundary_type: slicer_ir::WallBoundaryType::Interior,
+                        })?;
+                    }
+                }
+            }
+        }
+
+        // ── Gap-fill emission (T-063/T-064) ────────────────────────────
+        if emit_inner {
+            let innermost = &boundaries[boundaries.len() - 1];
+            if !innermost.is_empty() {
+                let infill_inset = offset(
+                    innermost,
+                    -(inner_wall_line_width / 2.0),
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
+                let gaps = difference_ex(innermost, &infill_inset);
+                for gap in &gaps {
+                    // R4 (P105): OrcaSlicer parity gap-fill min_width.
+                    // OrcaSlicer PerimeterGenerator.cpp:1924:
+                    // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)
+                    // INSET_OVERLAP_TOLERANCE = 0.2 (OrcaSlicer default; no matching const in repo).
+                    let min_gap_fill_width = 0.2 * inner_wall_line_width * (1.0 - 0.2_f32);
+                    let axes = slicer_sdk::host::medial_axis(
+                        gap,
+                        min_gap_fill_width,
+                        inner_wall_line_width,
+                    );
+                    if let Err(e) = &axes {
+                        slicer_sdk::host::log_warn(&format!(
+                            "medial-axis-failed region={region_id} fixture=gap_fill error={e}"
+                        ));
+                    }
+                    if let Ok(axes) = axes {
+                        for axis in &axes {
+                            if axis.points.len() < 2 {
+                                continue;
+                            }
+                            // AC-4 segment-length filter: drop gap-fill polylines whose
+                            // total length is below filter_out_gap_fill (e.g. 0.5 mm).
+                            // This is a LENGTH filter, not a width threshold.
+                            let total_len: f32 = axis
+                                .points
+                                .windows(2)
+                                .map(|w| {
+                                    let dx = w[1].x - w[0].x;
+                                    let dy = w[1].y - w[0].y;
+                                    (dx * dx + dy * dy).sqrt()
+                                })
+                                .sum();
+                            if total_len < filter_out_gap_fill {
+                                continue;
+                            }
+                            let num_pts = axis.points.len();
+                            let mut path = variable_width(axis, ExtrusionRole::GapFill);
+                            for pt in &mut path.points {
+                                pt.z = z;
+                            }
+                            path.speed_factor = gap_infill_speed / BASE_SPEED;
+                            let flags = vec![
+                                slicer_core::perimeter_utils::default_feature_flags();
+                                num_pts
+                            ];
+                            output.push_wall_loop(WallLoop {
+                                perimeter_index: 0,
+                                loop_type: LoopType::GapFill,
+                                path,
+                                width_profile: WidthProfile {
+                                    widths: axis.points.iter().map(|p| p.width).collect(),
+                                },
+                                feature_flags: flags,
+                                boundary_type: slicer_ir::WallBoundaryType::Interior,
+                            })?;
+                        }
+                    }
+                }
             }
         }
 
@@ -507,9 +641,10 @@ impl ArachnePerimeters {
         if emit_inner {
             let innermost = &boundaries[boundaries.len() - 1];
             if !innermost.is_empty() {
+                // Use inner-wall width for the final inset to infill (T-051/T-052).
                 let infill = offset(
                     innermost,
-                    -(self.line_width / 2.0),
+                    -(inner_wall_line_width / 2.0),
                     OffsetJoinType::Miter,
                     self.perimeter_arc_tolerance,
                 );
@@ -536,9 +671,10 @@ impl ArachnePerimeters {
         num_walls: usize,
         _wall_idx: usize,
         z: f32,
+        outer_wall_line_width: f32,
     ) -> Vec<Point3WithWidth> {
-        let min_width = self.line_width * MIN_WIDTH_FRACTION;
-        let max_width = self.line_width * 2.0;
+        let min_width = outer_wall_line_width * MIN_WIDTH_FRACTION;
+        let max_width = outer_wall_line_width * 2.0;
 
         contour
             .points
@@ -621,7 +757,9 @@ mod tests {
         let config = ConfigView::from_map(HashMap::new());
         let module = ArachnePerimeters::on_print_start(&config).unwrap();
         assert_eq!(module.wall_count, 3);
-        assert!((module.line_width - 0.4).abs() < 0.001);
+        // R2: inner/outer wall widths and wall_sequence are now read per-invocation.
+        // Verify the module still initialises without error.
+        let _ = module.wall_count();
     }
 
     #[test]

@@ -42,13 +42,8 @@ const DEFAULT_RETRACT_SPEED: f32 = 25.0;
 const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
 
 /// Controls the order in which wall perimeters are printed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WallSequence {
-    /// Walls printed from innermost to outermost (default).
-    InnerOuter,
-    /// Walls printed from outermost to innermost.
-    OuterInner,
-}
+/// Re-exported from `slicer_core::perimeter_utils::WallSequence` per ADR-0011.
+pub use slicer_core::perimeter_utils::WallSequence;
 
 /// Deterministically permutes `entities` using a greedy nearest-neighbor
 /// heuristic starting from position (0.0, 0.0).
@@ -161,6 +156,7 @@ impl PathOptimizationDefault {
         let (inner_group, outer_group) = match self.wall_sequence {
             WallSequence::InnerOuter => (1, 2),
             WallSequence::OuterInner => (2, 1),
+            WallSequence::InnerOuterInner => (1, 2),
         };
         match role {
             ExtrusionRole::Skirt => 0,
@@ -176,6 +172,8 @@ impl PathOptimizationDefault {
             ExtrusionRole::SupportInterface => 7,
             ExtrusionRole::WipeTower | ExtrusionRole::PrimeTower => 8,
             ExtrusionRole::Custom(_) => 9,
+            ExtrusionRole::GapFill => 4,
+            _ => 9,
         }
     }
 
@@ -277,6 +275,7 @@ impl LayerModule for PathOptimizationDefault {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "inner_outer" => WallSequence::InnerOuter,
                 "outer_inner" => WallSequence::OuterInner,
+                "inner_outer_inner" => WallSequence::InnerOuterInner,
                 other => {
                     return Err(ModuleError::fatal(
                         9,

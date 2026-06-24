@@ -8,7 +8,7 @@ description = "WIT/wasmtime marshalling and dispatch for Pinch 'n Print's WASM m
 [dependencies]
 wasmtime = { workspace = true }
 log = "0.4"
-slicer-core = { path = "../slicer-core" }
+slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-ir = { path = "../slicer-ir" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-schema = { path = "../slicer-schema" }

@@ -5,7 +5,7 @@ interface module-errors {
 }
 
 interface host-services {
-    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon, thick-polyline};
     type object-id = string;
     enum log-level { trace, debug, info, warn, error }
     log: func(level: log-level, message: string);
@@ -17,5 +17,6 @@ interface host-services {
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+    medial-axis:      func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
     now-us: func() -> u64;
 }

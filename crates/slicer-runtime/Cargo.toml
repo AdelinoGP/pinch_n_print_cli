@@ -42,6 +42,7 @@ criterion = { workspace = true }
 toml = "0.8"
 assert_cmd = "2"
 predicates = "3"
+sha2 = "0.10"
 
 # Fill-claim modules — the ONLY remaining module crate dev-dependencies.
 # `infill_partitioned_input_tdd` is a cross-module contract test: a single

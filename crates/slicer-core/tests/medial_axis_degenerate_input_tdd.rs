@@ -139,3 +139,57 @@ fn i64_min_coordinate_returns_error_without_panic() {
         ),
     }
 }
+
+/// Case 6: fully-collinear contour (3 points all on the same horizontal line).
+/// This has zero signed area and triggered `assertion failed: fpv.is_finite()`
+/// inside boostvoronoi before the zero-area guard was added.  Must return
+/// Ok(empty) without panicking.
+#[test]
+fn collinear_contour_returns_empty_without_panic() {
+    // Three collinear points (all y=0): zero-area "triangle".
+    let collinear = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(5.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+            ],
+        },
+        holes: vec![],
+    };
+    // Must not panic.
+    let result = medial_axis(&collinear, 0.0, f32::MAX);
+    match result {
+        Ok(_) => {}                                 // empty or non-empty — any Ok is acceptable
+        Err(MedialAxisError::DegenerateInput) => {} // also acceptable
+        Err(e) => panic!("unexpected error for collinear contour: {:?}", e),
+    }
+}
+
+/// Case 7: axis-aligned rectangle with large coordinates (~25 mm cube footprint).
+/// 25 mm = 250_000 units (1 unit = 100 nm). This shape is representative of the
+/// painted 4-color cube cells that previously triggered the boostvoronoi panic.
+/// Must complete without panicking and return a result.
+#[test]
+fn large_coordinate_rectangle_does_not_panic() {
+    // 25 mm side at a typical build-plate position (125, 105) mm.
+    // These coordinates fit comfortably in i32 (250_000 << 2_147_483_647).
+    let rect = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(112.5, 92.5),
+                Point2::from_mm(137.5, 92.5),
+                Point2::from_mm(137.5, 117.5),
+                Point2::from_mm(112.5, 117.5),
+            ],
+        },
+        holes: vec![],
+    };
+    // Must not panic.  Result may be Ok(polylines) or Ok(empty) — both are fine.
+    let result = medial_axis(&rect, 0.0, f32::MAX);
+    assert!(
+        result.is_ok(),
+        "large-coord rectangle must not error: {:?}",
+        result
+    );
+}

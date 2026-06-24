@@ -172,6 +172,25 @@ mod impl_ {
         ex * ex + ey * ey
     }
 
+    /// Compute twice the signed area of a polygon ring (Shoelace formula, integer arithmetic).
+    ///
+    /// Returns the sum `Σ (x_i * y_{i+1} - x_{i+1} * y_i)` as `i128` to avoid overflow for
+    /// i32-range coordinates (maximum product per term ≈ 2 × (2^31)^2 ≈ 9.2e18, which fits
+    /// in i128).  A zero result means the ring is collinear or has zero area.
+    fn ring_twice_area(pts: &[Point2]) -> i128 {
+        let n = pts.len();
+        if n < 3 {
+            return 0;
+        }
+        let mut sum: i128 = 0;
+        for i in 0..n {
+            let j = (i + 1) % n;
+            sum +=
+                (pts[i].x as i128) * (pts[j].y as i128) - (pts[j].x as i128) * (pts[i].y as i128);
+        }
+        sum
+    }
+
     /// Deduplicates consecutive (and wrap-around) equal points from a polygon's point list.
     fn distinct_points(pts: &[Point2]) -> Vec<Point2> {
         let mut out: Vec<Point2> = Vec::with_capacity(pts.len());
@@ -499,6 +518,18 @@ mod impl_ {
             }
         };
 
+        // 1d. Zero-area / collinear guard: a ring where all points are collinear has
+        // zero signed area and produces degenerate Voronoi input that triggers the
+        // `fpv.is_finite()` assertion inside boostvoronoi.  Minimum area threshold =
+        // 1 unit² (= 1 × (100 nm)^2 = 10^-14 m²) — effectively zero compared to any
+        // real geometry but nonzero enough to catch pure collinear point sets.
+        {
+            let twice_area = ring_twice_area(&contour_pts);
+            if twice_area == 0 {
+                return Ok(vec![]);
+            }
+        }
+
         // Collect hole rings after DP.
         let hole_pts_list: Vec<Vec<Point2>> = input
             .holes
@@ -552,24 +583,28 @@ mod impl_ {
             return Ok(vec![]);
         }
 
-        // 4. Build the Voronoi diagram.
+        // 4. Build the Voronoi diagram and collect surviving interior edges.
+        //
         // boostvoronoi 0.12.1 emits a bounded VD (no semi-infinite edges for
         // segment sites). All primary edges have two finite endpoints.
-        let diagram = match Builder::<i32>::default()
-            .with_segments(bv_segs.iter())
-            .and_then(|b| b.build())
-        {
-            Ok(d) => d,
-            Err(_) => return Ok(vec![]),
-        };
-
-        // 5. Collect surviving interior edges.
-        // An edge survives if: primary, both endpoints finite, at least one endpoint interior.
-        // For curved edges: discretize via VoronoiVisualUtils::discretize.
-        // For linear edges: use the two vertex positions directly.
         //
-        // width at each vertex = 2 × distance to its generating site.
-        // Width filter (OR-gate): keep iff (w0 >= min_width || w1 >= min_width) && (w0 <= max_width || w1 <= max_width).
+        // Backstop: wrap the ENTIRE boostvoronoi interaction (input construction,
+        // build, AND diagram traversal / medial-axis extraction) in a single
+        // `catch_unwind` so that any numerical panic at ANY stage — including
+        // `assertion failed: fpv.is_finite()` at robust_fpt.rs:398 during build,
+        // or NaN/Inf vertex coordinate access during traversal, or panic inside
+        // VoronoiVisualUtils::discretize — is converted to an empty result rather
+        // than unwinding through the host pipeline.
+        //
+        // The guard layers above (zero-area, coordinate overflow, DP decimation)
+        // prevent the most common bad inputs; this `catch_unwind` is a final
+        // safety net for edge cases that slip through (e.g. painted-cube geometry
+        // with degenerate thin-wall/gap-fill candidates introduced by the R4
+        // threshold change in packet 105).
+        //
+        // `AssertUnwindSafe` is required because `Builder` does not implement
+        // `UnwindSafe`; this is safe here because we discard ALL boostvoronoi
+        // state on panic and never observe partially-constructed state.
 
         let min_width_units = (min_width as f64) * 10_000.0;
         let max_width_units = (max_width as f64) * 10_000.0;
@@ -583,216 +618,269 @@ mod impl_ {
             v1_id: usize,
         }
 
-        let mut surviving: Vec<SurvivingEdge> = Vec::new();
-
-        // We need to avoid processing both an edge and its twin.
-        // boostvoronoi: for primary edges, one of the pair is primary; iterate all and
-        // check is_primary(), skip twin.
-        let mut seen_edge_pairs: std::collections::HashSet<(usize, usize)> =
-            std::collections::HashSet::new();
-
-        for edge in diagram.edges().iter() {
-            if !edge.is_primary() {
-                continue;
-            }
-
-            let twin_idx = match diagram.edge_get_twin(edge.id()) {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            let twin_edge = match diagram.edge(twin_idx) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let v0_opt = edge.vertex0();
-            let v1_opt = twin_edge.vertex0();
-
-            // Skip semi-infinite edges (one endpoint missing).
-            // boostvoronoi 0.12.1 with segment sites emits bounded VDs, so these
-            // should not appear in practice; drop them rather than fabricating a clip.
-            if v0_opt.is_none() || v1_opt.is_none() {
-                continue;
-            }
-
-            let v0_vi = v0_opt.unwrap();
-            let v1_vi = v1_opt.unwrap();
-
-            let v0_id = v0_vi.usize();
-            let v1_id = v1_vi.usize();
-
-            // Dedup by canonical pair.
-            let pair = if v0_id <= v1_id {
-                (v0_id, v1_id)
-            } else {
-                (v1_id, v0_id)
-            };
-            if !seen_edge_pairs.insert(pair) {
-                continue;
-            }
-
-            let v0 = match diagram.vertices().get(v0_id) {
-                Some(v) => v,
-                None => continue,
-            };
-            let v1 = match diagram.vertices().get(v1_id) {
-                Some(v) => v,
-                None => continue,
-            };
-
-            let (vx0, vy0) = (v0.x(), v0.y());
-            let (vx1, vy1) = (v1.x(), v1.y());
-
-            // Interior filter: at least one endpoint must be interior.
-            let in0 = is_interior(input, vx0, vy0);
-            let in1 = is_interior(input, vx1, vy1);
-            if !in0 && !in1 {
-                continue;
-            }
-
-            // Resolve cells for width computation.
-            let cell0_id = match diagram.edge_get_cell(edge.id()) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let cell0 = match diagram.cell(cell0_id) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            // Determine site for width computation.
-            // Prefer segment cell for accuracy; fall back to point cell.
-            let seg_for_width: Option<&BvLine<i32>>;
-            let pt_for_width: Option<[f64; 2]>;
-
-            if cell0.contains_segment() {
-                let si = cell0.source_index().usize();
-                seg_for_width = bv_segs.get(si);
-                pt_for_width = None;
-            } else {
-                seg_for_width = None;
-                pt_for_width = retrieve_point_for_cell(cell0, &bv_segs);
-            }
-
-            let w0 = vertex_width(vx0, vy0, seg_for_width, pt_for_width);
-            let w1 = vertex_width(vx1, vy1, seg_for_width, pt_for_width);
-
-            // OR-gate width filter.
-            if !((w0 >= min_width_units || w1 >= min_width_units)
-                && (w0 <= max_width_units || w1 <= max_width_units))
-            {
-                continue;
-            }
-
-            // Build the point list for this edge.
-            let pts: Vec<[f64; 2]>;
-            let widths: Vec<f64>;
-
-            if edge.is_curved() {
-                // Curved edge: discretize the parabola.
-                // Identify which cell is point and which is segment.
-                let cell1_id = match diagram.edge_get_cell(twin_idx) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let cell1 = match diagram.cell(cell1_id) {
-                    Ok(c) => c,
-                    Err(_) => continue,
+        let surviving_result: Result<Vec<SurvivingEdge>, ()> = {
+            let segs = bv_segs;
+            let catch_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // --- 4a. Build the Voronoi diagram. ---
+                let (diagram, bv_segs) = match Builder::<i32>::default()
+                    .with_segments(segs.iter())
+                    .and_then(|b| b.build())
+                    .map(|d| (d, segs))
+                {
+                    Ok(pair) => pair,
+                    Err(_) => return Ok(vec![]),
                 };
 
-                let (point_focus, segment_directrix): (BvPoint<i32>, BvLine<i32>) =
-                    if cell0.contains_point() && cell1.contains_segment() {
-                        let pt = retrieve_point_for_cell(cell0, &bv_segs).unwrap_or([vx0, vy0]);
-                        let si = cell1.source_index().usize();
-                        let seg = bv_segs.get(si).cloned().unwrap_or(BvLine::new(
-                            BvPoint {
-                                x: vx0 as i32,
-                                y: vy0 as i32,
-                            },
-                            BvPoint {
-                                x: vx1 as i32,
-                                y: vy1 as i32,
-                            },
-                        ));
-                        (
-                            BvPoint {
-                                x: pt[0] as i32,
-                                y: pt[1] as i32,
-                            },
-                            seg,
-                        )
-                    } else if cell1.contains_point() && cell0.contains_segment() {
-                        let pt = retrieve_point_for_cell(cell1, &bv_segs).unwrap_or([vx1, vy1]);
-                        let si = cell0.source_index().usize();
-                        let seg = bv_segs.get(si).cloned().unwrap_or(BvLine::new(
-                            BvPoint {
-                                x: vx0 as i32,
-                                y: vy0 as i32,
-                            },
-                            BvPoint {
-                                x: vx1 as i32,
-                                y: vy1 as i32,
-                            },
-                        ));
-                        (
-                            BvPoint {
-                                x: pt[0] as i32,
-                                y: pt[1] as i32,
-                            },
-                            seg,
-                        )
-                    } else {
-                        // Fallback: treat as linear.
-                        let linear_pts = vec![[vx0, vy0], [vx1, vy1]];
-                        let linear_widths = vec![w0, w1];
-                        pts = linear_pts;
-                        widths = linear_widths;
-                        surviving.push(SurvivingEdge {
-                            pts,
-                            widths,
-                            v0_id,
-                            v1_id,
-                        });
+                // --- 4b. Collect surviving interior edges. ---
+                // An edge survives if: primary, both endpoints finite, at least one endpoint interior.
+                // For curved edges: discretize via VoronoiVisualUtils::discretize.
+                // For linear edges: use the two vertex positions directly.
+                //
+                // width at each vertex = 2 × distance to its generating site.
+                // Width filter (OR-gate): keep iff (w0 >= min_width || w1 >= min_width) && (w0 <= max_width || w1 <= max_width).
+
+                let mut surviving: Vec<SurvivingEdge> = Vec::new();
+
+                // We need to avoid processing both an edge and its twin.
+                // boostvoronoi: for primary edges, one of the pair is primary; iterate all and
+                // check is_primary(), skip twin.
+                let mut seen_edge_pairs: std::collections::HashSet<(usize, usize)> =
+                    std::collections::HashSet::new();
+
+                for edge in diagram.edges().iter() {
+                    if !edge.is_primary() {
                         continue;
+                    }
+
+                    let twin_idx = match diagram.edge_get_twin(edge.id()) {
+                        Ok(t) => t,
+                        Err(_) => continue,
+                    };
+                    let twin_edge = match diagram.edge(twin_idx) {
+                        Ok(e) => e,
+                        Err(_) => continue,
                     };
 
-                // Pre-fill with the two f64 endpoints, then let discretize refine.
-                let max_dist = 0.1 * 10_000.0; // 0.1 mm in units
-                let affine = SimpleAffine::default();
-                let mut disc: Vec<[f64; 2]> = vec![[vx0, vy0], [vx1, vy1]];
-                VoronoiVisualUtils::discretize::<i32>(
-                    &point_focus,
-                    &segment_directrix,
-                    max_dist,
-                    &affine,
-                    &mut disc,
-                );
-                // Compute widths at each discretized point using the segment directrix.
-                let disc_widths: Vec<f64> = disc
-                    .iter()
-                    .map(|&[px, py]| 2.0 * dist_sq_to_bv_segment(px, py, &segment_directrix).sqrt())
-                    .collect();
-                pts = disc;
-                widths = disc_widths;
-            } else {
-                // Linear edge.
-                pts = vec![[vx0, vy0], [vx1, vy1]];
-                widths = vec![w0, w1];
-            }
+                    let v0_opt = edge.vertex0();
+                    let v1_opt = twin_edge.vertex0();
 
-            surviving.push(SurvivingEdge {
-                pts,
-                widths,
-                v0_id,
-                v1_id,
-            });
-        }
+                    // Skip semi-infinite edges (one endpoint missing).
+                    // boostvoronoi 0.12.1 with segment sites emits bounded VDs, so these
+                    // should not appear in practice; drop them rather than fabricating a clip.
+                    if v0_opt.is_none() || v1_opt.is_none() {
+                        continue;
+                    }
+
+                    let v0_vi = v0_opt.unwrap();
+                    let v1_vi = v1_opt.unwrap();
+
+                    let v0_id = v0_vi.usize();
+                    let v1_id = v1_vi.usize();
+
+                    // Dedup by canonical pair.
+                    let pair = if v0_id <= v1_id {
+                        (v0_id, v1_id)
+                    } else {
+                        (v1_id, v0_id)
+                    };
+                    if !seen_edge_pairs.insert(pair) {
+                        continue;
+                    }
+
+                    let v0 = match diagram.vertices().get(v0_id) {
+                        Some(v) => v,
+                        None => continue,
+                    };
+                    let v1 = match diagram.vertices().get(v1_id) {
+                        Some(v) => v,
+                        None => continue,
+                    };
+
+                    let (vx0, vy0) = (v0.x(), v0.y());
+                    let (vx1, vy1) = (v1.x(), v1.y());
+
+                    // Non-finite vertex guard: boostvoronoi can produce NaN/Inf vertex
+                    // coordinates for degenerate inputs that slip through earlier guards
+                    // (e.g. painted-cube thin-wall candidates).  Drop these edges rather
+                    // than propagating non-finite values into width computation or
+                    // discretization, where they would cause a subsequent panic.
+                    if !vx0.is_finite() || !vy0.is_finite() || !vx1.is_finite() || !vy1.is_finite()
+                    {
+                        continue;
+                    }
+
+                    // Interior filter: at least one endpoint must be interior.
+                    let in0 = is_interior(input, vx0, vy0);
+                    let in1 = is_interior(input, vx1, vy1);
+                    if !in0 && !in1 {
+                        continue;
+                    }
+
+                    // Resolve cells for width computation.
+                    let cell0_id = match diagram.edge_get_cell(edge.id()) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    let cell0 = match diagram.cell(cell0_id) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+
+                    // Determine site for width computation.
+                    // Prefer segment cell for accuracy; fall back to point cell.
+                    let seg_for_width: Option<&BvLine<i32>>;
+                    let pt_for_width: Option<[f64; 2]>;
+
+                    if cell0.contains_segment() {
+                        let si = cell0.source_index().usize();
+                        seg_for_width = bv_segs.get(si);
+                        pt_for_width = None;
+                    } else {
+                        seg_for_width = None;
+                        pt_for_width = retrieve_point_for_cell(cell0, &bv_segs);
+                    }
+
+                    let w0 = vertex_width(vx0, vy0, seg_for_width, pt_for_width);
+                    let w1 = vertex_width(vx1, vy1, seg_for_width, pt_for_width);
+
+                    // OR-gate width filter.
+                    if !((w0 >= min_width_units || w1 >= min_width_units)
+                        && (w0 <= max_width_units || w1 <= max_width_units))
+                    {
+                        continue;
+                    }
+
+                    // Build the point list for this edge.
+                    let pts: Vec<[f64; 2]>;
+                    let widths: Vec<f64>;
+
+                    if edge.is_curved() {
+                        // Curved edge: discretize the parabola.
+                        // Identify which cell is point and which is segment.
+                        let cell1_id = match diagram.edge_get_cell(twin_idx) {
+                            Ok(c) => c,
+                            Err(_) => continue,
+                        };
+                        let cell1 = match diagram.cell(cell1_id) {
+                            Ok(c) => c,
+                            Err(_) => continue,
+                        };
+
+                        let (point_focus, segment_directrix): (BvPoint<i32>, BvLine<i32>) = if cell0
+                            .contains_point()
+                            && cell1.contains_segment()
+                        {
+                            let pt = retrieve_point_for_cell(cell0, &bv_segs).unwrap_or([vx0, vy0]);
+                            let si = cell1.source_index().usize();
+                            let seg = bv_segs.get(si).cloned().unwrap_or(BvLine::new(
+                                BvPoint {
+                                    x: vx0 as i32,
+                                    y: vy0 as i32,
+                                },
+                                BvPoint {
+                                    x: vx1 as i32,
+                                    y: vy1 as i32,
+                                },
+                            ));
+                            (
+                                BvPoint {
+                                    x: pt[0] as i32,
+                                    y: pt[1] as i32,
+                                },
+                                seg,
+                            )
+                        } else if cell1.contains_point() && cell0.contains_segment() {
+                            let pt = retrieve_point_for_cell(cell1, &bv_segs).unwrap_or([vx1, vy1]);
+                            let si = cell0.source_index().usize();
+                            let seg = bv_segs.get(si).cloned().unwrap_or(BvLine::new(
+                                BvPoint {
+                                    x: vx0 as i32,
+                                    y: vy0 as i32,
+                                },
+                                BvPoint {
+                                    x: vx1 as i32,
+                                    y: vy1 as i32,
+                                },
+                            ));
+                            (
+                                BvPoint {
+                                    x: pt[0] as i32,
+                                    y: pt[1] as i32,
+                                },
+                                seg,
+                            )
+                        } else {
+                            // Fallback: treat as linear.
+                            let linear_pts = vec![[vx0, vy0], [vx1, vy1]];
+                            let linear_widths = vec![w0, w1];
+                            pts = linear_pts;
+                            widths = linear_widths;
+                            surviving.push(SurvivingEdge {
+                                pts,
+                                widths,
+                                v0_id,
+                                v1_id,
+                            });
+                            continue;
+                        };
+
+                        // Pre-fill with the two f64 endpoints, then let discretize refine.
+                        let max_dist = 0.1 * 10_000.0; // 0.1 mm in units
+                        let affine = SimpleAffine::default();
+                        let mut disc: Vec<[f64; 2]> = vec![[vx0, vy0], [vx1, vy1]];
+                        VoronoiVisualUtils::discretize::<i32>(
+                            &point_focus,
+                            &segment_directrix,
+                            max_dist,
+                            &affine,
+                            &mut disc,
+                        );
+                        // Compute widths at each discretized point using the segment directrix.
+                        let disc_widths: Vec<f64> = disc
+                            .iter()
+                            .map(|&[px, py]| {
+                                2.0 * dist_sq_to_bv_segment(px, py, &segment_directrix).sqrt()
+                            })
+                            .collect();
+                        pts = disc;
+                        widths = disc_widths;
+                    } else {
+                        // Linear edge.
+                        pts = vec![[vx0, vy0], [vx1, vy1]];
+                        widths = vec![w0, w1];
+                    }
+
+                    surviving.push(SurvivingEdge {
+                        pts,
+                        widths,
+                        v0_id,
+                        v1_id,
+                    });
+                }
+
+                Ok(surviving)
+            }));
+            match catch_result {
+                Ok(r) => r,
+                Err(_panic) => {
+                    // boostvoronoi panicked internally (numerical precision failure at any
+                    // stage: build, vertex access, or discretize).  Treat as degenerate
+                    // input: no medial axis for this region.
+                    Err(())
+                }
+            }
+        };
+
+        let surviving = match surviving_result {
+            Ok(v) => v,
+            Err(()) => return Ok(vec![]),
+        };
 
         if surviving.is_empty() {
             return Ok(vec![]);
         }
 
-        // 6. Stitch edges into ThickPolylines via medial-graph traversal.
+        // 5. Stitch edges into ThickPolylines via medial-graph traversal.
         //
         // Strategy (three-pass, topology-aware):
         //   a) Build adjacency: vertex_id -> list of incident kept-edge indices.
@@ -1330,14 +1418,11 @@ mod impl_ {
     }
 }
 
-// Public re-exports (feature-gated).
+#[cfg(feature = "host-algos")]
+pub use impl_::medial_axis;
 #[cfg(feature = "host-algos")]
 pub use impl_::MedialAxisError;
 
-#[cfg(feature = "host-algos")]
-pub use impl_::medial_axis;
-
-// Inline smoke tests — compiled only with host-algos feature.
 #[cfg(all(test, feature = "host-algos"))]
 mod smoke {
     use super::{medial_axis, MedialAxisError};

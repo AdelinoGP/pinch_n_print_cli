@@ -60,6 +60,8 @@ pub struct SliceRegionView {
     /// (AC-22b). `Some(boundary)` for painted regions; `None` for unpainted regions
     /// (the perimeter generator then traces the region's own polygon in full).
     external_contour: Option<Vec<ExPolygon>>,
+    /// Flat per-edge structural metadata for MMU per-color outer-wall fragmentation.
+    /// `true` = shared bisector (this edge is the boundary between two per-color
     /// Overhang area polygons for this region (packet 106 populates; empty until then).
     overhang_areas: Vec<ExPolygon>,
     /// Surface group resolved from `SurfaceClassificationIR` for this region's

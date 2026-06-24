@@ -742,6 +742,7 @@ fn extrusion_role_custom_payload_roundtrip() {
         slicer_ir::ExtrusionRole::Skirt => {
             WitExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
         }
+        _ => WitExtrusionRole::OuterWall,
     };
 
     // Step 3: Convert WIT â†’ IR using public convert_extrusion_role

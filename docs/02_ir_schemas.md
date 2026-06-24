@@ -855,9 +855,6 @@ pub struct SlicedRegion {
     /// Populated host-side via per-object `union_ex` of the pre-segmentation slice.
     /// Consumed by perimeter generators (arachne + classic) to trace the model perimeter once
     /// per painted object, so painted outer-wall count matches the unpainted baseline.
-    /// Replaces the originally-drafted per-edge `bisector_edge_skip_mask` bool mask
-    /// (unworkable: WASM guest boolean ops are no-ops; Arachne medial-axis walls don't
-    /// map 1:1 to original edges; per-cell tracing fragments the perimeter).
     pub external_contour: Option<Vec<ExPolygon>>,
 }
 
@@ -1011,7 +1008,7 @@ pub struct MaterialBoundarySegment {
     pub far_tool: Option<u32>,
 }
 
-pub enum LoopType { Outer, Inner, ThinWall, NonPlanarShell }
+pub enum LoopType { Outer, Inner, ThinWall, NonPlanarShell, GapFill }
 
 /// Variable-width profile (Arachne). Constant-width = all values equal.
 pub struct WidthProfile {
@@ -1355,6 +1352,7 @@ pub enum ExtrusionRole {
     SupportMaterial, SupportInterface,
     WipeTower, PrimeTower,
     Ironing, BridgeInfill,
+    GapFill,           // thin-gap fill paths (added P105, schema 4.4.0)
     Custom(String),    // community modules may register new roles
 }
 ```

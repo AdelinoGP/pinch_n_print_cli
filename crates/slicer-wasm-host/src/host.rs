@@ -161,6 +161,7 @@ pub struct SliceRegionData {
     /// Clean model boundary for the painted cell group (AC-22b bisector dedup).
     /// `Some(boundary)` for painted regions; `None` for unpainted regions.
     pub external_contour: Option<Vec<layer::slicer::types::geometry::ExPolygon>>,
+    /// Flat per-edge structural metadata for MMU per-color outer-wall fragmentation.
     /// Overhang area polygons. Empty until packet 106 wires OverhangRegion.xy_footprint.
     pub overhang_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Surface group resolved from SurfaceClassificationIR. None when no group applies.
@@ -1682,6 +1683,35 @@ impl hs::Host for HostExecutionContext {
                 .collect();
         }
         Ok(Polygon { points })
+    }
+
+    fn medial_axis(
+        &mut self,
+        input: ExPolygon,
+        min_width: f32,
+        max_width: f32,
+    ) -> wasmtime::Result<Result<Vec<geo::ThickPolyline>, String>> {
+        let ir_input = crate::marshal::leaf::wit_to_ir_expolygon(&input);
+        match slicer_core::medial_axis::medial_axis(&ir_input, min_width, max_width) {
+            Ok(polylines) => {
+                let wit_polylines: Vec<geo::ThickPolyline> = polylines
+                    .into_iter()
+                    .map(|tp| geo::ThickPolyline {
+                        points: tp
+                            .points
+                            .into_iter()
+                            .map(|p| geo::Point2WithWidth {
+                                x: p.x,
+                                y: p.y,
+                                width: p.width,
+                            })
+                            .collect(),
+                    })
+                    .collect();
+                Ok(Ok(wit_polylines))
+            }
+            Err(e) => Ok(Err(format!("{:?}", e))),
+        }
     }
 
     fn now_us(&mut self) -> wasmtime::Result<u64> {

@@ -459,3 +459,154 @@ fn close_loop<T: Clone>(items: &mut Vec<T>) {
         items.push(first);
     }
 }
+
+// ── Wall sequence reorder (T-054, T-054b, T-054c) ────────────────────────
+
+/// Wall emission sequence. Per OrcaSlicer `PerimeterGenerator::process`
+/// (PerimeterGenerator.cpp:1801-1913).
+///
+/// - `InnerOuter` (canonical): `[Outer, Inner_0, Inner_1, ...]`. Most common.
+/// - `OuterInner` (reversed): `[..., Inner_1, Inner_0, Outer]`. The first wall
+///   emitted is the innermost; the outer is emitted last. Stronger outer corners.
+/// - `InnerOuterInner` (sandwich): per-outer-contour grouping `[Inner_0, Outer,
+///   Inner_1, ...]`. The first inner is emitted first, then the outer, then
+///   the remaining inner walls. Improves outer-corner strength while keeping
+///   inner walls first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WallSequence {
+    /// Outer wall first, then inner walls (canonical).
+    InnerOuter,
+    /// Inner walls first, then outer wall last (reversed).
+    OuterInner,
+    /// Sandwich: first inner, then outer, then remaining inners.
+    InnerOuterInner,
+}
+
+/// Reorder the generated `Vec<WallLoop>` per the configured `WallSequence`.
+/// Per ADR-0011, the in-module wall tree is built during generation and
+/// discarded after this call — the IR stays flat.
+///
+/// This is a pure function: same input → same output. No randomness, no global
+/// state.
+///
+/// `tree` is a parallel slice of `PolygonTreeNode` (one per input polygon)
+/// used to group outer-contour children for the sandwich mode. When `tree` is
+/// empty or the mode is `InnerOuter` / `OuterInner`, the function falls back
+/// to flat reordering (no per-outer-contour grouping).
+pub fn wall_sequence_reorder(
+    walls: &mut Vec<slicer_ir::WallLoop>,
+    mode: WallSequence,
+    tree: &[crate::polygon_tree::PolygonTreeNode],
+) {
+    if walls.is_empty() {
+        return;
+    }
+    match mode {
+        WallSequence::InnerOuter => {
+            // Canonical order: outer (index 0) first, then inner (indices 1..N).
+            // No reordering needed — generation already produces this order.
+        }
+        WallSequence::OuterInner => {
+            // Reversed: outer (index 0) last, then inner (indices 1..N).
+            walls.reverse();
+        }
+        WallSequence::InnerOuterInner => {
+            // Sandwich: first inner, then outer, then remaining inners.
+            // The walls Vec has shape `[Outer, Inner_0, Inner_1, ..., Inner_{N-1}]`.
+            // After reorder: `[Inner_0, Outer, Inner_1, ..., Inner_{N-1}]`.
+            let n = walls.len();
+            if n == 2 {
+                walls.swap(0, 1);
+            } else if n >= 3 {
+                let outer = walls[0].clone();
+                let inners: Vec<_> = walls[1..].to_vec();
+                walls.clear();
+                walls.push(inners[0].clone());
+                walls.push(outer);
+                for inner in inners.iter().skip(1) {
+                    walls.push(inner.clone());
+                }
+            }
+        }
+    }
+    // `tree` is the in-module scaffold from ADR-0011; documented but unused in
+    // the M1 implementation (per-outer-contour grouping happens in the caller
+    // by passing per-contour wall subsets to this function for the sandwich
+    // mode in M2). Suppress the unused warning without dropping the parameter.
+    let _ = tree;
+}
+
+#[cfg(test)]
+mod wall_sequence_reorder_tests {
+    use super::*;
+    use slicer_ir::{ExtrusionPath3D, ExtrusionRole, LoopType, WallLoop};
+
+    fn make_wall(perimeter_index: u32, loop_type: LoopType, role: ExtrusionRole) -> WallLoop {
+        WallLoop {
+            perimeter_index,
+            loop_type,
+            path: ExtrusionPath3D {
+                points: vec![],
+                role,
+                speed_factor: 1.0,
+            },
+            width_profile: Default::default(),
+            feature_flags: Default::default(),
+            boundary_type: WallBoundaryType::ExteriorSurface,
+        }
+    }
+
+    #[test]
+    fn inner_outer_is_canonical_no_reorder() {
+        let mut walls = vec![
+            make_wall(0, LoopType::Outer, ExtrusionRole::OuterWall),
+            make_wall(1, LoopType::Inner, ExtrusionRole::InnerWall),
+            make_wall(2, LoopType::Inner, ExtrusionRole::InnerWall),
+        ];
+        wall_sequence_reorder(&mut walls, WallSequence::InnerOuter, &[]);
+        // Order unchanged: [Outer, Inner, Inner].
+        assert_eq!(walls[0].perimeter_index, 0);
+        assert_eq!(walls[1].perimeter_index, 1);
+        assert_eq!(walls[2].perimeter_index, 2);
+    }
+
+    #[test]
+    fn outer_inner_reverses() {
+        let mut walls = vec![
+            make_wall(0, LoopType::Outer, ExtrusionRole::OuterWall),
+            make_wall(1, LoopType::Inner, ExtrusionRole::InnerWall),
+            make_wall(2, LoopType::Inner, ExtrusionRole::InnerWall),
+        ];
+        wall_sequence_reorder(&mut walls, WallSequence::OuterInner, &[]);
+        // Reversed: [Inner, Inner, Outer].
+        assert_eq!(walls[0].perimeter_index, 2);
+        assert_eq!(walls[1].perimeter_index, 1);
+        assert_eq!(walls[2].perimeter_index, 0);
+    }
+
+    #[test]
+    fn inner_outer_inner_sandwich() {
+        let mut walls = vec![
+            make_wall(0, LoopType::Outer, ExtrusionRole::OuterWall),
+            make_wall(1, LoopType::Inner, ExtrusionRole::InnerWall),
+            make_wall(2, LoopType::Inner, ExtrusionRole::InnerWall),
+        ];
+        wall_sequence_reorder(&mut walls, WallSequence::InnerOuterInner, &[]);
+        // Sandwich: [Inner_0, Outer, Inner_1].
+        assert_eq!(walls[0].perimeter_index, 1);
+        assert_eq!(walls[1].perimeter_index, 0);
+        assert_eq!(walls[2].perimeter_index, 2);
+    }
+
+    #[test]
+    fn inner_outer_inner_with_two_walls_swaps_outer_and_first_inner() {
+        let mut walls = vec![
+            make_wall(0, LoopType::Outer, ExtrusionRole::OuterWall),
+            make_wall(1, LoopType::Inner, ExtrusionRole::InnerWall),
+        ];
+        wall_sequence_reorder(&mut walls, WallSequence::InnerOuterInner, &[]);
+        // For N == 2: [Inner_0, Outer].
+        assert_eq!(walls[0].perimeter_index, 1);
+        assert_eq!(walls[1].perimeter_index, 0);
+    }
+}

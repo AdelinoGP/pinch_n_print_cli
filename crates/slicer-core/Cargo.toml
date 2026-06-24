@@ -50,5 +50,11 @@ required-features = ["host-algos"]
 name = "medial_axis_degenerate_input_tdd"
 required-features = ["host-algos"]
 
+[[test]]
+name = "flow_tdd"
+
+[[test]]
+name = "wall_sequence_reorder_tdd"
+
 [lints]
 workspace = true

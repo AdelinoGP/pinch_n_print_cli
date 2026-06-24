@@ -691,6 +691,8 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
                     ExtrusionRole::Custom(s) => ::slicer_sdk::ir::ExtrusionRole::Custom(s.clone()),
+                    ExtrusionRole::GapFill => ::slicer_sdk::ir::ExtrusionRole::GapFill,
+                    _ => ::slicer_sdk::ir::ExtrusionRole::OuterWall,
                 }
             }
 
@@ -714,6 +716,8 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     ::slicer_sdk::ir::ExtrusionRole::Skirt => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
                     }
+                    ::slicer_sdk::ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
+                    _ => ExtrusionRole::OuterWall,
                 }
             }
 
@@ -919,6 +923,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
                     ExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
+                    ExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
                 }
             }
 
@@ -942,6 +947,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
                     }
                     ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
+                    ::slicer_ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
+                    _ => ExtrusionRole::OuterWall,
                 }
             }
 
@@ -1961,6 +1968,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
                     WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s.clone()),
+                    WitExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
                 }
             }
             fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
@@ -1982,6 +1990,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitWallLoopType::Inner => ::slicer_ir::LoopType::Inner,
                     WitWallLoopType::ThinWall => ::slicer_ir::LoopType::ThinWall,
                     WitWallLoopType::NonplanarShell => ::slicer_ir::LoopType::NonPlanarShell,
+                    WitWallLoopType::GapFill => ::slicer_ir::LoopType::GapFill,
                 }
             }
             fn __slicer_wit_feature_to_ir(f: &WitWallFeatureFlag) -> ::slicer_ir::WallFeatureFlags {
@@ -2248,6 +2257,8 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::ExtrusionRole::Skirt => {
                         WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
                     }
+                    ::slicer_ir::ExtrusionRole::GapFill => WitExtrusionRole::GapFill,
+                    _ => WitExtrusionRole::OuterWall,
                 }
             }
             fn __slicer_retract_mode_ir_to_wit_layer(mode: &::slicer_ir::RetractMode) -> WitRetractMode {
@@ -2284,6 +2295,8 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::LoopType::Inner => WitWallLoopType::Inner,
                     ::slicer_ir::LoopType::ThinWall => WitWallLoopType::ThinWall,
                     ::slicer_ir::LoopType::NonPlanarShell => WitWallLoopType::NonplanarShell,
+                    ::slicer_ir::LoopType::GapFill => WitWallLoopType::GapFill,
+                    _ => WitWallLoopType::Outer,
                 }
             }
             fn __slicer_ir_feature_to_wit(f: &::slicer_ir::WallFeatureFlags) -> WitWallFeatureFlag {
