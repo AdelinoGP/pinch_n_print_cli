@@ -112,7 +112,10 @@ impl SkirtBrim {
                         entity_id: 0,
                         path,
                         role,
-                        tool_index: region_key.region_id as u32,
+                        // Skirt/brim print with the base tool (T0). region_id is a
+                        // pure region identity post region_id↔tool split — never the
+                        // tool selector (D-125-TOOL-IDENTITY-SPLIT invariant).
+                        tool_index: 0,
                         region_key,
                         topo_order: 0,
                     }
@@ -138,7 +141,10 @@ impl SkirtBrim {
                         entity_id: 0,
                         path,
                         role,
-                        tool_index: region_key.region_id as u32,
+                        // Skirt/brim print with the base tool (T0). region_id is a
+                        // pure region identity post region_id↔tool split — never the
+                        // tool selector (D-125-TOOL-IDENTITY-SPLIT invariant).
+                        tool_index: 0,
                         region_key,
                         topo_order: 0,
                     }
@@ -377,8 +383,9 @@ impl FinalizationModule for SkirtBrim {
             let layer_index = view.layer_index();
             let z = view.z();
             for (path, region_key) in self.generate_skirt_entities(&bbox, z, layer_index) {
-                // Skirt prints with the base tool (T0); region_id stays identity.
-                let tool_index = region_key.region_id as u32;
+                // Skirt prints with the base tool (T0); region_id stays a pure
+                // identity and is never read as the tool (D-125 invariant).
+                let tool_index = 0u32;
                 output
                     .push_entity_to_layer(layer_index, path, tool_index, region_key)
                     .map_err(|e| ModuleError::fatal(1, e))?;
@@ -391,8 +398,9 @@ impl FinalizationModule for SkirtBrim {
                 let layer_index = view.layer_index();
                 let z = view.z();
                 for (path, region_key) in self.generate_brim_entities(&bbox, z, layer_index) {
-                    // Brim prints with the base tool (T0); region_id stays identity.
-                    let tool_index = region_key.region_id as u32;
+                    // Brim prints with the base tool (T0); region_id stays a pure
+                    // identity and is never read as the tool (D-125 invariant).
+                    let tool_index = 0u32;
                     output
                         .push_entity_to_layer(layer_index, path, tool_index, region_key)
                         .map_err(|e| ModuleError::fatal(1, e))?;

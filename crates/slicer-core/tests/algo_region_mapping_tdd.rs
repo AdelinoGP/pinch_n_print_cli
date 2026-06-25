@@ -435,6 +435,87 @@ fn region_mapping_applies_per_tool_config_overlay_to_painted_tool() {
     );
 }
 
+/// Per-tool precedence ORDER: when the SAME key (`line_width`) is set by BOTH a
+/// per-paint-semantic config (`Material`) AND a `tool_config:<n>:<key>` override,
+/// the per-tool value must WIN (precedence `... < per_paint_semantic < per_tool`,
+/// OrcaSlicer filament-override-last). The sibling AC-11 test only proves
+/// override-vs-default; this test proves the override-vs-override ORDER, which is
+/// the actual contract from `design.md` §Selected Approach #3.
+#[test]
+fn region_mapping_per_tool_config_overrides_paint_semantic_on_same_key() {
+    let plan = single_region_plan("obj_a");
+    let stage_invocations: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = vec![];
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &stage_invocations,
+    };
+    let agg = aggregated(&["material"]);
+
+    // One object painted material tool 1 and tool 2.
+    let paints = vec![(
+        "material",
+        vec![PaintValue::ToolIndex(1), PaintValue::ToolIndex(2)],
+    )];
+    let objects = vec![painted_object("obj_a", &paints)];
+
+    let default_line_width = ResolvedConfig::default().line_width;
+    // Paint-semantic override for ALL material chains: a DISTINCT line_width.
+    let paint_width = default_line_width + 0.5;
+    // Per-tool override for tool 1 only: yet another DISTINCT line_width.
+    let tool1_width = default_line_width + 0.2;
+
+    let mut configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
+    configs.insert(
+        PaintSemantic::Material,
+        ResolvedConfig {
+            line_width: paint_width,
+            ..ResolvedConfig::default()
+        },
+    );
+    let mut tool_configs: BTreeMap<u32, ResolvedConfig> = BTreeMap::new();
+    tool_configs.insert(
+        1,
+        ResolvedConfig {
+            line_width: tool1_width,
+            ..ResolvedConfig::default()
+        },
+    );
+
+    let region_map = execute_region_mapping_inner(
+        &plan,
+        &projection,
+        &configs,
+        &agg,
+        &objects,
+        None,
+        &tool_configs,
+        DEFAULT_REGION_MAP_CAP,
+    )
+    .expect("region mapping must succeed");
+
+    let key_for = |chain: Vec<(String, PaintValue)>| RegionKey {
+        global_layer_index: 0,
+        object_id: "obj_a".to_string(),
+        region_id: 0,
+        variant_chain: chain,
+    };
+
+    // Tool 1: paint-semantic AND per-tool both set line_width — per-tool WINS.
+    let tool1_key = key_for(vec![("material".to_string(), PaintValue::ToolIndex(1))]);
+    assert_eq!(
+        region_map.config_for(&tool1_key).line_width,
+        tool1_width,
+        "per-tool override must win over the per-paint-semantic value on the same key"
+    );
+
+    // Tool 2: only the paint-semantic override applies (no per-tool override).
+    let tool2_key = key_for(vec![("material".to_string(), PaintValue::ToolIndex(2))]);
+    assert_eq!(
+        region_map.config_for(&tool2_key).line_width,
+        paint_width,
+        "tool-2 has no per-tool override, so the per-paint-semantic value applies"
+    );
+}
+
 // ---- AC-9 / AC-N1 / AC-N3 tests --------------------------------------------
 
 /// AC-9 (a): an unpainted object with a non-empty aggregated_region_split still

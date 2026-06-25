@@ -221,7 +221,11 @@ impl WipeTower {
                 let pairs = self.generate_purge_paths(z, layer_height, global_layer_index, tc);
                 for (path, region_key) in pairs {
                     let role = path.role.clone();
-                    let tool_index = region_key.region_id as u32;
+                    // The purge prints with the DESTINATION filament being changed
+                    // to (`tc.to_tool`) — the tower extrudes the incoming material to
+                    // flush the old colour. region_id is a pure identity post-split
+                    // and is never read as the tool (D-125 invariant).
+                    let tool_index = tc.to_tool;
                     // TODO(packet-41/DEV-047): retire this legacy `process()` path;
                     // live path is `run_finalization` which routes through
                     // `push_entity_with_priority(..., WipeTower.default_priority())`.
@@ -521,7 +525,11 @@ impl FinalizationModule for WipeTower {
                 let base_position = tc.after_entity_index + 1;
                 for (offset, (path, region_key)) in pairs.into_iter().enumerate() {
                     let position = base_position + offset as u32;
-                    let tool_index = region_key.region_id as u32;
+                    // The purge prints with the DESTINATION filament being changed
+                    // to (`tc.to_tool`) — the tower extrudes the incoming material to
+                    // flush the old colour. region_id is a pure identity post-split
+                    // and is never read as the tool (D-125 invariant).
+                    let tool_index = tc.to_tool;
                     output
                         .insert_entity_at(layer_index, position, path, tool_index, region_key)
                         .map_err(|e| ModuleError::fatal(4, e))?;

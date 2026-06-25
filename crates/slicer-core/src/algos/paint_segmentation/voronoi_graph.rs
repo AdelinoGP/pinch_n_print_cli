@@ -46,6 +46,19 @@ type ColorType = u32;
 /// builder (Part D). Far above any realistic painted-layer segment count
 /// (a dense multi-colour layer is ~10³–10⁴ segments); exists only to bound the
 /// latent `discretize` unbounded-loop exposure on pathological/degenerate input.
+///
+/// CONTAINMENT, NOT A FIX — and incomplete by construction:
+/// - The `discretize` bug is an unbounded LOOP (a hang), not a panic, so the
+///   `catch_unwind` backstop below cannot catch it — only the panic class
+///   (`PredicatePanic`) is recoverable.
+/// - The loop trigger is geometric STRUCTURE, not segment count. This cap only
+///   stops *over-cap* inputs from reaching the builder; an adversarial input
+///   with fewer than `MAX_VORONOI_SEGMENTS` segments can still hit the loop and
+///   hang the process with no defense here. The cap value is a conservative
+///   estimate, not a measured loop-trigger threshold.
+///
+/// The true fix is an upstream boostvoronoi `discretize` patch/fork (out of
+/// scope for packet 125 — see `requirements.md` §Out of Scope).
 const MAX_VORONOI_SEGMENTS: usize = 500_000;
 
 /// Errors that can arise when constructing the MMU Voronoi graph.

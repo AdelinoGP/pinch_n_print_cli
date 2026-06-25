@@ -154,6 +154,51 @@ fn run_finalization_pushes_wipe_tower_entities_for_tool_change_layers() {
     }
 }
 
+// ─── Regression: purge entities carry the destination tool (tc.to_tool) ──────
+
+/// The wipe tower flushes the OLD filament by extruding the INCOMING one, so a
+/// purge inserted for a tool change `from_tool → to_tool` must carry
+/// `tool_index == to_tool` — NOT 0, and NOT the region_id (D-125 invariant).
+/// Uses `to_tool = 3` (distinct from the base tool 0 and `from_tool = 0`) so a
+/// regression to either the old hardcoded `0` or a `region_id`-derived value is
+/// caught.
+#[test]
+fn purge_entities_carry_destination_tool_index() {
+    let wt = wipe_tower_from(&[
+        ("wipe_tower_enabled", ConfigValue::Bool(true)),
+        ("wipe_tower_purge_volume", ConfigValue::Float(70.0)),
+        ("wipe_tower_width", ConfigValue::Float(60.0)),
+        ("line_width", ConfigValue::Float(0.4)),
+        ("bed_shape", bed_shape_250()),
+    ]);
+
+    let layer = make_layer(0, 0.2, vec![tool_change(0, 0, 3)]);
+    let views = vec![LayerCollectionView::new(layer)];
+    let config = config_with(&[("bed_shape", bed_shape_250())]);
+    let mut output = FinalizationOutputBuilder::new();
+    wt.run_finalization(&views, &mut output, &config)
+        .expect("run_finalization must succeed");
+
+    let purge_tools: Vec<u32> = output
+        .merge_ops()
+        .filter_map(|op| match op {
+            MergeOp::InsertEntityAt {
+                path, tool_index, ..
+            } if matches!(path.role, ExtrusionRole::WipeTower) => Some(*tool_index),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !purge_tools.is_empty(),
+        "expected at least one wipe-tower purge insert"
+    );
+    assert!(
+        purge_tools.iter().all(|&t| t == 3),
+        "every purge entity must carry the destination tool (to_tool = 3); got {purge_tools:?}"
+    );
+}
+
 // ─── AC-2: purge_volume controls entity-push count ───────────────────────────
 
 #[test]

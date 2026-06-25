@@ -1264,7 +1264,7 @@ pub struct SeamPlanEntry {
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`
-**Current schema_version: 2.0.0** (Major bump by packet 39 — `TravelMove.entity_idx: u32` renamed to `entity_id: u64`; new `entity_id: u64` field on `PrintEntity`. Travel anchors are now decoupled from positional indices, so finalization-stage entity insertion no longer invalidates anchors.)
+**Current schema_version: 1.1.0** (authoritative source: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`). Introduced at 1.0.0; packet 125 added the additive `PrintEntity.tool_index: u32` field (region_id↔tool split), bumping 1.0.0→1.1.0. Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` and added `entity_id: u64` on `PrintEntity`, decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors (these landed without bumping the constant beyond 1.x).
 
 **Ownership lifecycle — three phases:**
 

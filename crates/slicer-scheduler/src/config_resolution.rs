@@ -427,8 +427,13 @@ pub fn resolve_per_object_configs(
 ///
 /// This is a clean additive config axis enabled by the region_id↔tool split
 /// (`PrintEntity.tool_index` is now a first-class selector). Precedence:
-/// `global < per_tool < per_object < per_paint_semantic` — per-tool is the
-/// physical filament/extruder base that logical region/paint overrides win over.
+/// `global < per_object < per_paint_semantic < per_tool` — per-tool is the
+/// highest-precedence override (mirroring OrcaSlicer's filament-preset overrides
+/// applied last, `PrintApply.cpp`). This function builds only the `global +
+/// per_tool` overlay; the per-object / per-paint overlays are composed at the
+/// region-mapping site (`region_mapping.rs`), where the per-tool result is
+/// applied last so a `tool_config:<idx>:<key>` wins over an object/paint value
+/// on the same key.
 ///
 /// The returned map is a [`BTreeMap`] (sorted by tool index) for deterministic
 /// ordering. Entries with a non-numeric tool index are skipped.

@@ -760,6 +760,11 @@ impl PerimeterRegionViewBuilder {
 /// (entity id, role, region key, topo order). Names are passed via named-struct
 /// construction to keep the signature stable as new IR fields land.
 ///
+/// `tool_index` defaults to the base tool `0`; `region_id` is a pure region
+/// identity post region_id↔tool split and is never read as the tool selector
+/// (D-125-TOOL-IDENTITY-SPLIT invariant). A fixture needing a specific tool
+/// should construct [`PrintEntity`] directly.
+///
 /// # Examples
 ///
 /// ```rust
@@ -800,7 +805,7 @@ pub fn print_entity(
             speed_factor: 1.0,
         },
         role,
-        tool_index: region_key.region_id as u32,
+        tool_index: 0,
         region_key,
         topo_order,
     }
