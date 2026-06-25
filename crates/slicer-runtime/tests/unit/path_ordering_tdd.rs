@@ -242,11 +242,17 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
 
 // â"€â"€ AC-2: cross-tool ordering â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-/// AC-2: Given a mixed-tool layer (tool = region_id) whose raw order is
+/// AC-2: Given a mixed-tool layer whose raw order is
 /// [A1(0,0), A2(0,100), B1(1,0), B2(1,1)], the live WASM dispatch groups by
 /// tool_index first, then applies nearest-neighbor within each cluster.
 /// Result: tool-0 cluster [A1, A2] then tool-1 cluster [B1, B2] â†’ x = [0.0, 0.0, 1.0, 1.0].
 /// Within-cluster NN still applies (A1 before A2, B1 before B2).
+///
+/// Since the region_id↔tool split, the tool is a first-class selector resolved
+/// from a real source — here the slice's `("material", ToolIndex(n))` variant
+/// chain (region_id 0 → tool 0, region_id 1 → tool 1), NOT `region_id` itself
+/// (which is now a pure identity). Before the split this fixture leaned on the
+/// conflated "tool = region_id" convention.
 #[test]
 fn cross_object_ordering_resequences_entities_by_travel_cost() {
     // A1(0,0) A2(0,100) B1(1,0) B2(1,1) â€" raw order is all A then all B.
@@ -286,7 +292,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         ],
         1,
     );
-    seed_slice_ir(&mut blackboard, &plan);
+    seed_tool_slice(&mut blackboard);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -758,6 +764,35 @@ fn path_at_explicit(x: f32, y: f32, role: ExtrusionRole) -> ExtrusionPath3D {
         role,
         speed_factor: 1.0,
     }
+}
+
+/// Commit a slice that assigns tools through the proper resolver (material
+/// variant chain), so two infill regions (region_id 0 / 1) resolve to distinct
+/// `tool_index` values (0 / 1) post region_id↔tool split. The generic
+/// `seed_slice_ir` helper carries no variant chains, so it would leave both at
+/// DEFAULT_TOOL and collapse tool grouping.
+fn seed_tool_slice(blackboard: &mut Blackboard) {
+    let tool_slice = slicer_ir::SliceIR {
+        global_layer_index: 0,
+        regions: vec![
+            slicer_ir::SlicedRegion {
+                object_id: "test-object".to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(0))],
+                ..Default::default()
+            },
+            slicer_ir::SlicedRegion {
+                object_id: "test-object".to_string(),
+                region_id: 1,
+                variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    blackboard
+        .commit_slice_ir(Arc::new(vec![tool_slice]))
+        .expect("commit_slice_ir");
 }
 
 fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {

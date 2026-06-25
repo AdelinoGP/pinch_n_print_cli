@@ -48,6 +48,7 @@ fn make_entity(entity_id: u64, layer: u32) -> PrintEntity {
         entity_id,
         path: path(),
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: region_key(layer),
         topo_order: (entity_id - 1) as u32,
     }
@@ -110,7 +111,7 @@ fn get_ordered_entities_reflects_staged_state() {
 
     // Push 1 entity to layer 0 → appended.
     output
-        .push_entity_to_layer(0, path(), region_key(0))
+        .push_entity_to_layer(0, path(), 1, region_key(0))
         .expect("push_entity_to_layer should succeed");
 
     let after_push = output.get_ordered_entities(0, &initial);
@@ -126,7 +127,7 @@ fn get_ordered_entities_reflects_staged_state() {
 
     // Insert 1 entity at position 1 → splits the original [1, 2] pair.
     output
-        .insert_entity_at(0, 1, path(), region_key(0))
+        .insert_entity_at(0, 1, path(), 1, region_key(0))
         .expect("insert_entity_at should succeed");
 
     let staged = output.get_ordered_entities(0, &initial);

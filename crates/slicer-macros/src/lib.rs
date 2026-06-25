@@ -1053,6 +1053,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                 entity_id: entity.entity_id,
                                 path: __slicer_path_wit_to_ir(&entity.path),
                                 role: __slicer_role_wit_to_ir(entity.role),
+                                tool_index: entity.tool_index,
                                 region_key: ::slicer_ir::RegionKey {
                                     global_layer_index: entity.region_key.layer_index,
                                     object_id: entity.region_key.object_id,
@@ -1112,14 +1113,14 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     // WIT boundary. entity_pushes() is NOT iterated here to avoid
                     // double-replay (all pushes, including legacy priority=0 ones, appear
                     // in priority_pushes()).
-                    for (layer_index, path, region_key, priority) in sdk_output.priority_pushes() {
+                    for (layer_index, path, tool_index, region_key, priority) in sdk_output.priority_pushes() {
                         let wit_path = __slicer_path_ir_to_wit(path);
                         let wit_region_key = RegionKey {
                             layer_index: region_key.global_layer_index,
                             object_id: region_key.object_id.clone(),
                             region_id: region_key.region_id.to_string(),
                         };
-                        let _ = output.push_entity_with_priority(layer_index, &wit_path, &wit_region_key, priority);
+                        let _ = output.push_entity_with_priority(layer_index, &wit_path, tool_index, &wit_region_key, priority);
                     }
                     for op in sdk_output.merge_ops() {
                         match op {
@@ -1144,14 +1145,14 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                 let wit_data = SyntheticLayerData { z: data.z, paths: wit_paths };
                                 let _ = output.insert_synthetic_layer_after(*idx, &wit_data);
                             }
-                            ::slicer_sdk::traits::MergeOp::InsertEntityAt { layer, position, path, region_key } => {
+                            ::slicer_sdk::traits::MergeOp::InsertEntityAt { layer, position, path, tool_index, region_key } => {
                                 let wit_path = __slicer_path_ir_to_wit(path);
                                 let wit_region_key = RegionKey {
                                     layer_index: region_key.global_layer_index,
                                     object_id: region_key.object_id.clone(),
                                     region_id: region_key.region_id.to_string(),
                                 };
-                                let _ = output.insert_entity_at(*layer, *position, &wit_path, &wit_region_key);
+                                let _ = output.insert_entity_at(*layer, *position, &wit_path, *tool_index, &wit_region_key);
                             }
                             ::slicer_sdk::traits::MergeOp::SetEntityOrder { layer, items } => {
                                 let wit_items: ::std::vec::Vec<(u32, bool)> = items.iter().copied().collect();
@@ -2100,6 +2101,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     sdk_view.set_z(r.z());
                     sdk_view.set_has_nonplanar(r.has_nonplanar());
                     sdk_view.set_segment_annotations(segment_annotations);
+                    let variant_chain: ::std::vec::Vec<(::std::string::String, ::slicer_ir::PaintValue)> =
+                        r.variant_chain()
+                            .iter()
+                            .map(|(name, value)| (name.clone(), __slicer_wit_paintvalue_to_ir(value)))
+                            .collect();
+                    sdk_view.set_variant_chain(variant_chain);
                     sdk_view.set_top_shell_index(r.top_shell_index());
                     sdk_view.set_bottom_shell_index(r.bottom_shell_index());
                     let top_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
@@ -2507,6 +2514,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     .into_iter()
                     .map(|e| ::slicer_sdk::OrderedEntityView {
                         original_index: e.original_index,
+                        tool_index: e.tool_index,
                         region_key: ::slicer_ir::RegionKey {
                             global_layer_index: e.region_key.layer_index as u32,
                             object_id: e.region_key.object_id,

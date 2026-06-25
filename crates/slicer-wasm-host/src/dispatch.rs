@@ -1440,6 +1440,9 @@ pub struct OrderedEntityView {
     /// Index into the host-staged `LayerCollectionIR.ordered_entities`
     /// at the time this snapshot was projected.
     pub original_index: u32,
+    /// Resolved tool/extruder index of the entity (first-class selector since
+    /// the region_id↔tool split; the guest reads this, not `region_key.region_id`).
+    pub tool_index: u32,
     /// Region key of the entity at `original_index`.
     pub region_key: slicer_ir::RegionKey,
     /// Extrusion role of the entity's path.
@@ -1480,6 +1483,7 @@ pub fn project_ordered_entities_from(
                 .expect("PrintEntity invariant: path.points non-empty");
             OrderedEntityView {
                 original_index: i as u32,
+                tool_index: entity.tool_index,
                 region_key: entity.region_key.clone(),
                 role: entity.path.role.clone(),
                 start_point,
@@ -2164,10 +2168,11 @@ fn apply_finalization_pushes(
             host::FinalizationBuilderPush::EntityToLayer {
                 layer_index,
                 path,
+                tool_index,
                 region_key,
             } => {
                 sdk_builder
-                    .push_entity_to_layer(layer_index, path, region_key)
+                    .push_entity_to_layer(layer_index, path, tool_index, region_key)
                     .unwrap_or_else(|e| {
                         log::warn!("finalization: push_entity_to_layer rejected: {e}")
                     });
@@ -2175,11 +2180,12 @@ fn apply_finalization_pushes(
             host::FinalizationBuilderPush::EntityToLayerWithPriority {
                 layer_index,
                 path,
+                tool_index,
                 region_key,
                 priority,
             } => {
                 sdk_builder
-                    .push_entity_with_priority(layer_index, path, region_key, priority)
+                    .push_entity_with_priority(layer_index, path, tool_index, region_key, priority)
                     .unwrap_or_else(|e| {
                         log::warn!("finalization: push_entity_with_priority rejected: {e}")
                     });
@@ -2221,10 +2227,11 @@ fn apply_finalization_pushes(
                 layer_index,
                 position,
                 path,
+                tool_index,
                 region_key,
             } => {
                 sdk_builder
-                    .insert_entity_at(layer_index, position, path, region_key)
+                    .insert_entity_at(layer_index, position, path, tool_index, region_key)
                     .unwrap_or_else(|e| log::warn!("finalization: insert_entity_at rejected: {e}"));
             }
             host::FinalizationBuilderPush::SetEntityOrder { layer_index, items } => {
@@ -2255,6 +2262,7 @@ fn apply_finalization_pushes(
                     entity_id: id_gen.next(),
                     path,
                     role,
+                    tool_index: 0,
                     region_key: slicer_ir::RegionKey {
                         global_layer_index: new_index,
                         object_id: String::new(),

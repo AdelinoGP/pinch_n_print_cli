@@ -356,6 +356,10 @@ pub fn resolve_global_config(
         if key.starts_with("paint_config:") {
             continue;
         }
+        // Skip per-tool overlay keys — handled by resolve_per_tool_configs.
+        if key.starts_with("tool_config:") {
+            continue;
+        }
         // Skip host-injected object_height keys.
         if key.starts_with("object_height:") {
             continue;
@@ -414,6 +418,47 @@ pub fn resolve_per_object_configs(
         result.insert(object_id.to_string(), per_obj_cfg);
     }
 
+    Ok(result)
+}
+
+/// Build per-tool/extruder [`ResolvedConfig`] overlays starting from the global
+/// base. For each `tool_config:<tool_index>:<config_key>` entry in `source`, the
+/// value overrides the global base for that integer tool index.
+///
+/// This is a clean additive config axis enabled by the region_id↔tool split
+/// (`PrintEntity.tool_index` is now a first-class selector). Precedence:
+/// `global < per_tool < per_object < per_paint_semantic` — per-tool is the
+/// physical filament/extruder base that logical region/paint overrides win over.
+///
+/// The returned map is a [`BTreeMap`] (sorted by tool index) for deterministic
+/// ordering. Entries with a non-numeric tool index are skipped.
+pub fn resolve_per_tool_configs(
+    global: &ResolvedConfig,
+    source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
+) -> Result<BTreeMap<u32, ResolvedConfig>, ConfigResolutionError> {
+    const PREFIX: &str = "tool_config:";
+    // Group override sub-keys by tool index: "tool_config:<idx>:<sub_key>".
+    let mut per_tool_source: BTreeMap<u32, HashMap<String, ConfigValue>> = BTreeMap::new();
+    for (key, value) in source {
+        if let Some(rest) = key.strip_prefix(PREFIX) {
+            if let Some(colon_pos) = rest.find(':') {
+                let idx_str = &rest[..colon_pos];
+                let sub_key = &rest[colon_pos + 1..];
+                if let Ok(tool_index) = idx_str.parse::<u32>() {
+                    per_tool_source
+                        .entry(tool_index)
+                        .or_default()
+                        .insert(sub_key.to_string(), value.clone());
+                }
+            }
+        }
+    }
+
+    let mut result = BTreeMap::new();
+    for (tool_index, sub) in per_tool_source {
+        result.insert(tool_index, apply_overlay(global, &sub, bounds)?);
+    }
     Ok(result)
 }
 

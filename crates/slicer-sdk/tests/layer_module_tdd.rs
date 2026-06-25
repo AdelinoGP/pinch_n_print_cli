@@ -940,6 +940,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
     let snapshot = vec![
         OrderedEntityView {
             original_index: 0,
+            tool_index: 1,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
@@ -967,6 +968,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
         },
         OrderedEntityView {
             original_index: 1,
+            tool_index: 1,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
@@ -994,6 +996,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
         },
         OrderedEntityView {
             original_index: 2,
+            tool_index: 2,
             region_key: RegionKey {
                 global_layer_index: 5,
                 object_id: "obj-B".to_string(),

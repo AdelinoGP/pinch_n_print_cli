@@ -65,8 +65,19 @@ pub fn build_wall_flags(
     is_outer: bool,
     inset_ring_points: Option<&[Point2]>,
     original_polygons: Option<&[ExPolygon]>,
+    variant_fuzzy: bool,
 ) -> (Vec<WallFeatureFlags>, WallBoundaryType) {
     let mut flags = vec![default_feature_flags(); num_points];
+
+    // Painted-variant FuzzySkin (D14): the signal arrives on the region's
+    // `variant_chain`, not `segment_annotations`, and applies uniformly to the
+    // whole painted region. Seed every vertex; per-vertex segment_annotations
+    // reads below can only add fuzzy, never clear it.
+    if variant_fuzzy {
+        for flag in flags.iter_mut() {
+            flag.fuzzy_skin = true;
+        }
+    }
 
     // Determine which annotation source to use for each flag slot.
     // For inner walls with geometry available, use reprojection; otherwise fall back

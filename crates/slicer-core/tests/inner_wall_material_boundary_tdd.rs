@@ -39,7 +39,7 @@ fn inner_wall_material_boundary_not_interior() {
     let annotations = two_tool_annotations(poly_idx);
 
     let (flags, boundary_type) =
-        build_wall_flags(num_points, poly_idx, &annotations, false, None, None);
+        build_wall_flags(num_points, poly_idx, &annotations, false, None, None, false);
 
     assert_eq!(flags.len(), num_points, "flag count must match num_points");
 
@@ -81,7 +81,7 @@ fn inner_wall_per_vertex_tool_index_reflects_membership() {
     let num_points = 4;
     let annotations = two_tool_annotations(poly_idx);
 
-    let (flags, _) = build_wall_flags(num_points, poly_idx, &annotations, false, None, None);
+    let (flags, _) = build_wall_flags(num_points, poly_idx, &annotations, false, None, None, false);
 
     // First two vertices → tool 1
     assert_eq!(
@@ -117,7 +117,7 @@ fn inner_wall_per_vertex_tool_index_reflects_membership() {
 fn inner_wall_no_paint_returns_interior() {
     let annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
 
-    let (flags, boundary_type) = build_wall_flags(4, 0, &annotations, false, None, None);
+    let (flags, boundary_type) = build_wall_flags(4, 0, &annotations, false, None, None, false);
 
     assert_eq!(flags.len(), 4);
     assert_eq!(
@@ -132,7 +132,7 @@ fn inner_wall_no_paint_returns_interior() {
 fn outer_wall_no_paint_returns_exterior_surface() {
     let annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> = HashMap::new();
 
-    let (flags, boundary_type) = build_wall_flags(4, 0, &annotations, true, None, None);
+    let (flags, boundary_type) = build_wall_flags(4, 0, &annotations, true, None, None, false);
 
     assert_eq!(flags.len(), 4);
     assert_eq!(
@@ -150,7 +150,7 @@ fn inner_wall_correct_poly_idx_selected() {
     let annotations = two_tool_annotations(poly_idx);
 
     let (flags, boundary_type) =
-        build_wall_flags(num_points, poly_idx, &annotations, false, None, None);
+        build_wall_flags(num_points, poly_idx, &annotations, false, None, None, false);
 
     assert_eq!(flags.len(), num_points);
     assert!(

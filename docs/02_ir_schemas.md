@@ -758,12 +758,19 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
 
 - `object_config:<id>:<key>` — per-object override for the object whose `ObjectId` matches `<id>`. Recognised since DEV-040 (Packet 35a).
 - `paint_config:<semantic>:<key>` — per-paint-semantic override. Applied during `PrePass::RegionMapping` when the region's polygons overlap a painted region for the corresponding `PaintSemantic`. Built-in `PaintSemantic` variants serialize as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` serializes the inner string `s` verbatim (e.g. `paint_config:ironing:line_width`). Added in Packet 51.
+- `tool_config:<tool_index>:<key>` — per-tool/extruder override keyed by the integer `tool_index`, resolved by `resolve_per_tool_configs`. A clean additive axis enabled by the region_id↔tool split (`PrintEntity.tool_index` is now a first-class selector). Consumed in **two** places, because a tool can be known at two different points:
+  1. **Painted/material tools — at `RegionMapping`** (`region_mapping.rs`): the variant-chain cross-product splits a painted region into one `RegionPlan` per `("material", ToolIndex(n))` chain, and the `tool_config:<n>:<key>` overlay is applied to that chain at **highest precedence** (see below). This delivers per-tool **geometry** (`line_width`, etc.) for painted/MMU tools **without any pipeline reordering** — the tool is already known from the paint. (Verified end-to-end: `algo_region_mapping_tdd::region_mapping_applies_per_tool_config_overlay_to_painted_tool` → `classic_perimeters_tdd::per_region_line_width_sets_emitted_wall_width`.)
+  2. **Every tool — at G-code emit** (`emit.rs`): emit-time settings (e.g. `retract_length`) are overlaid by the entity's resolved `tool_index`, the one place *every* entity's tool is known.
+
+  **Still out of scope:** per-tool *geometry* for **non-painted** tools (spatial / modifier-extruder / `DEFAULT_TOOL` fallback), whose tool is resolved *after* perimeter generation in `assemble_ordered_entities` (`layer_executor.rs:597,747-751`); that would require moving tool resolution before the perimeter stages (a pipeline-ordering change). OrcaSlicer itself has no per-filament line-width — its per-tool *width* variation comes from the per-extruder `nozzle_diameter` vector (a base, selected by the region's extruder index) when width is a percentage; our explicit `tool_config:<n>:line_width` is a superset.
 
 **Override precedence** (lowest → highest):
 
 ```
-global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>)
+global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>) < per_tool (tool_config:<idx>:<key>)
 ```
+
+Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
 
 When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule (determines which semantic's config wins in `RegionPlan.config`) is distinct from the `paint_order`-based rule documented in the [Paint Region Resolution Contract](#paint-region-resolution-contract) above, which governs intra-semantic polygon overlap resolution during `PrePass::PaintSegmentation`.
 
@@ -1322,6 +1329,16 @@ pub struct PrintEntity {
     /// positional index, so inserting or sorting entities cannot
     /// invalidate anchors. Added in packet 39.
     pub entity_id: u64,
+    /// Resolved tool/extruder index — a pure SELECTOR (which extruder/filament
+    /// prints this entity). Separated from `region_key.region_id` (a pure region
+    /// IDENTITY) by the region_id↔tool split so a painted-variant identity hash
+    /// can never leak into the tool slot (the packet-125 9.9 GiB OOM). Set at
+    /// assembly from `dominant_tool_index`/spatial/variant/modifier resolution,
+    /// falling back to `0` (T0). Read by the emitter and `path-optimization`.
+    /// `#[serde(default)]`; no `Default` on the struct (construction sites are
+    /// compiler-forced to set it). Added with LayerCollectionIR schema 1.0.0 →
+    /// 1.1.0 (additive).
+    pub tool_index: u32,
 }
 
 pub struct TravelMove {

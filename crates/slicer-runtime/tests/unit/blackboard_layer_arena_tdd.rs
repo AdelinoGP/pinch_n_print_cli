@@ -314,6 +314,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
                 speed_factor: 1.0,
             },
             role: ExtrusionRole::OuterWall,
+            tool_index: 0,
             region_key: RegionKey {
                 global_layer_index,
                 object_id: String::from("cube"),

@@ -9,16 +9,20 @@ use slicer_ir::{
 };
 
 #[test]
-fn schema_version_is_4_2_0() {
-    // AC-3: the MaterialBoundary widening is an additive minor bump 4.1.0 -> 4.2.0.
+fn schema_version_is_current() {
+    // The MaterialBoundary widening was an additive minor bump 4.1.0 -> 4.2.0
+    // (packet 102 step 2). The shared SLICE_IR constant has since advanced to
+    // 4.4.0 (packet 105 — additive `LoopType::GapFill` + `ExtrusionRole::GapFill`).
+    // This pin was left stale at 4.2.0 by that change; corrected to track the
+    // live constant (the MaterialBoundary widening is still present at 4.4.0).
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {
             major: 4,
-            minor: 2,
+            minor: 4,
             patch: 0
         },
-        "MaterialBoundary widening must bump the schema to 4.2.0"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.4.0)"
     );
 }
 

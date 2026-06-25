@@ -800,6 +800,7 @@ pub fn print_entity(
             speed_factor: 1.0,
         },
         role,
+        tool_index: region_key.region_id as u32,
         region_key,
         topo_order,
     }

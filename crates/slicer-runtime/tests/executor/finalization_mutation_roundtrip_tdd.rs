@@ -170,6 +170,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
             speed_factor,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: RegionKey {
             global_layer_index: layer_index,
             object_id: "obj1".to_string(),

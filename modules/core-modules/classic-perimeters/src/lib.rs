@@ -207,6 +207,12 @@ impl LayerModule for ClassicPerimeters {
                 continue;
             }
             let rid = *region.region_id();
+            // D14: painted FuzzySkin travels on variant_chain, not
+            // segment_annotations; resolve once and apply per-vertex below.
+            let region_fuzzy = region
+                .variant_chain()
+                .iter()
+                .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
             if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
                 let split = split_top_surfaces(polygons, region.top_solid_fill());
                 if !split.top_portion.is_empty() {
@@ -214,6 +220,7 @@ impl LayerModule for ClassicPerimeters {
                         &split.top_portion,
                         z,
                         region.segment_annotations(),
+                        region_fuzzy,
                         true,
                         true,
                         output,
@@ -238,6 +245,7 @@ impl LayerModule for ClassicPerimeters {
                         &split.non_top_portion,
                         z,
                         region.segment_annotations(),
+                        region_fuzzy,
                         true,
                         true,
                         output,
@@ -262,6 +270,7 @@ impl LayerModule for ClassicPerimeters {
                     polygons,
                     z,
                     region.segment_annotations(),
+                    region_fuzzy,
                     true,
                     true,
                     output,
@@ -325,6 +334,7 @@ impl ClassicPerimeters {
         polygons: &[ExPolygon],
         z: f32,
         segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        variant_fuzzy: bool,
         emit_outer: bool,
         emit_inner: bool,
         output: &mut PerimeterOutputBuilder,
@@ -485,6 +495,7 @@ impl ClassicPerimeters {
                     is_outer,
                     ring_pts,
                     orig_polys,
+                    variant_fuzzy,
                 );
                 // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
                 // poly.contour.points has N entries (integer units); feature_flags has N+1

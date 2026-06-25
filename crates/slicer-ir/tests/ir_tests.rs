@@ -679,14 +679,17 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       minor bump to 4.2.0 by packet 102 step 2 — widened
     //       `WallBoundaryType::MaterialBoundary` from single `adjacent_tool: u32`
     //       to `segments: Vec<MaterialBoundarySegment>`.
+    //       minor bump to 4.4.0 by packet 105 — additive `LoopType::GapFill` +
+    //       `ExtrusionRole::GapFill` variants (this pin was left stale at 4.2.0
+    //       by that change; corrected to track the constant).
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 2,
+            minor: 4,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 2, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 4, 0)"
     );
 
     // (c)

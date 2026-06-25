@@ -489,6 +489,18 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             bounds,
         )
     });
+    // Per-tool/extruder config overlays (`tool_config:<n>:<key>`). Consumed by
+    // region mapping for painted/MMU tools (the tool is known there via the
+    // material variant chain) and applied at highest precedence. Empty unless
+    // the user sets `tool_config:` keys, so default behaviour is unchanged.
+    let tool_configs = region_mapping_should_run.then(|| {
+        slicer_scheduler::config_resolution::resolve_per_tool_configs(
+            default_resolved_config,
+            raw_config_source,
+            bounds,
+        )
+        .unwrap_or_default()
+    });
     run_builtin_stage(
         blackboard,
         instrumentation,
@@ -499,12 +511,16 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             let paint_semantic_configs = paint_semantic_configs
                 .as_ref()
                 .expect("computed whenever region_mapping_should_run is true");
+            let tool_configs = tool_configs
+                .as_ref()
+                .expect("computed whenever region_mapping_should_run is true");
             commit_region_mapping_builtin(
                 plan,
                 bb,
                 resolved_configs,
                 default_resolved_config,
                 paint_semantic_configs,
+                tool_configs,
             )
             .map_err(|source| PrepassExecutionError::RegionMapping { source })
         },

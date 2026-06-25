@@ -208,6 +208,15 @@ pub fn sliced_region_to_data(
         })
         .collect();
 
+    // Project the region's paint variant chain (carries the painted FuzzySkin
+    // signal) so the guest's `variant-chain()` accessor can enable per-vertex
+    // jitter without routing FuzzySkin through segment_annotations (D14).
+    let variant_chain: Vec<(String, _)> = region
+        .variant_chain
+        .iter()
+        .map(|(name, value)| (name.clone(), ir_to_wit_paint_value(value)))
+        .collect();
+
     // Resolve the surface group from SurfaceClassificationIR if available.
     let surface_group: Option<crate::host::layer::slicer::ir_handles::ir_handles::SurfaceGroup> =
         region.nonplanar_surface.and_then(|sg_id| {
@@ -234,6 +243,7 @@ pub fn sliced_region_to_data(
         infill_areas: ir_to_wit_expolygons(&region.infill_areas),
         effective_layer_height: region.effective_layer_height,
         z,
+        variant_chain,
         has_nonplanar: region.nonplanar_surface.is_some(),
         segment_annotations,
         needs_support: true,

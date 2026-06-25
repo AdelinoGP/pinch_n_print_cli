@@ -69,6 +69,11 @@ pub struct DefaultGCodeEmitter {
     gcode_xy_decimals: u32,
     /// Resolved slicer config for precision / simplification parameters.
     resolved_config: ResolvedConfig,
+    /// Per-tool/extruder config overlays keyed by `tool_index`
+    /// (`tool_config:<idx>:<key>`). Applied at emit time for tool-resolvable
+    /// settings (e.g. `retract_length`) since the entity's tool is only known
+    /// here, not at region-mapping. Empty → global behaviour unchanged.
+    tool_configs: std::collections::BTreeMap<u32, ResolvedConfig>,
     /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
     /// Must match the `DefaultGCodeSerializer`'s extrusion-mode setting.
     relative: bool,
@@ -84,6 +89,7 @@ impl DefaultGCodeEmitter {
             feedrate_config: FeedrateConfig::default(),
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
+            tool_configs: std::collections::BTreeMap::new(),
             relative: true,
         }
     }
@@ -95,8 +101,28 @@ impl DefaultGCodeEmitter {
             feedrate_config,
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
+            tool_configs: std::collections::BTreeMap::new(),
             relative: true,
         }
+    }
+
+    /// Attaches per-tool/extruder config overlays (`tool_config:<idx>:<key>`),
+    /// keyed by `tool_index`. Applied at emit time for tool-resolvable settings.
+    pub fn with_tool_configs(
+        mut self,
+        tool_configs: std::collections::BTreeMap<u32, ResolvedConfig>,
+    ) -> Self {
+        self.tool_configs = tool_configs;
+        self
+    }
+
+    /// Resolves the retraction length for `tool`: the per-tool override when a
+    /// `tool_config:<tool>:retract_length` was set, else the global value.
+    fn retract_length_for_tool(&self, tool: u32) -> f32 {
+        self.tool_configs
+            .get(&tool)
+            .map(|c| c.retract_length)
+            .unwrap_or(self.resolved_config.retract_length)
     }
 
     /// Sets the extrusion mode.
@@ -271,13 +297,13 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             // intra-layer tool transitions, so layer N+1's first cluster
             // inherits whatever tool layer N ended on. Without this reset,
             // unpainted (T0) body extrusions are silently emitted under the
-            // last painted tool of the previous layer. By host convention,
-            // each ordered entity's `region_key.region_id` is its required
-            // tool index (see layer_executor::assemble_ordered_entities and
-            // path-optimization-default::tool_index_of). Emit a tool change
+            // last painted tool of the previous layer. Each ordered entity's
+            // `tool_index` is its required tool (a first-class field since the
+            // region_id↔tool split; see layer_executor::assemble_ordered_entities
+            // and path-optimization-default::tool_index_of). Emit a tool change
             // before the first entity whenever it differs from `current_tool`.
             if let Some(first_entity) = layer.ordered_entities.first() {
-                let required_tool = first_entity.region_key.region_id as u32;
+                let required_tool = first_entity.tool_index;
                 if required_tool != current_tool {
                     // Synthesize the pre-T<n> retract for layer-boundary tool
                     // changes too (the entity-loop synth at the bottom of this
@@ -287,7 +313,8 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     // follow-up (i).
                     if self.resolved_config.wipe_tower_enabled {
                         commands.push(GCodeCommand::Retract {
-                            length: self.resolved_config.retract_length,
+                            // Retract the outgoing tool's filament (per-tool override).
+                            length: self.retract_length_for_tool(current_tool),
                             speed: 2400.0,
                             mode: slicer_ir::RetractMode::Gcode,
                         });
@@ -548,7 +575,8 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         // wipe_tower_enabled so single-material prints are untouched.
                         // (See packet 58 / DEV-054 follow-up (i).)
                         commands.push(GCodeCommand::Retract {
-                            length: self.resolved_config.retract_length,
+                            // Retract the outgoing tool's filament (per-tool override).
+                            length: self.retract_length_for_tool(tc.from_tool),
                             speed: 2400.0,
                             mode: slicer_ir::RetractMode::Gcode,
                         });
@@ -776,18 +804,13 @@ fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
             continue;
         }
 
-        let first_tool = entities[0].region_key.region_id as u32;
+        let first_tool = entities[0].tool_index;
 
         if let Some(prev_tool) = prev_ending_tool {
             if prev_tool != first_tool {
-                if let Some(start) = entities
-                    .iter()
-                    .position(|e| e.region_key.region_id as u32 == prev_tool)
-                {
+                if let Some(start) = entities.iter().position(|e| e.tool_index == prev_tool) {
                     let mut end = start;
-                    while end < entities.len()
-                        && entities[end].region_key.region_id as u32 == prev_tool
-                    {
+                    while end < entities.len() && entities[end].tool_index == prev_tool {
                         end += 1;
                     }
 
@@ -812,8 +835,8 @@ fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
 
                     let mut new_tcs: Vec<slicer_ir::ToolChange> = Vec::new();
                     for i in 0..entities.len().saturating_sub(1) {
-                        let tool_i = entities[i].region_key.region_id as u32;
-                        let tool_next = entities[i + 1].region_key.region_id as u32;
+                        let tool_i = entities[i].tool_index;
+                        let tool_next = entities[i + 1].tool_index;
                         if tool_i != tool_next {
                             new_tcs.push(slicer_ir::ToolChange {
                                 after_entity_index: i as u32,
@@ -846,7 +869,7 @@ fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
             }
         }
 
-        prev_ending_tool = entities.last().map(|e| e.region_key.region_id as u32);
+        prev_ending_tool = entities.last().map(|e| e.tool_index);
     }
 }
 
@@ -883,6 +906,7 @@ mod tests {
                 speed_factor: 1.0,
             },
             role: slicer_ir::ExtrusionRole::OuterWall,
+            tool_index: tool,
             region_key: slicer_ir::RegionKey {
                 global_layer_index: layer,
                 object_id: "obj".to_string(),
@@ -901,8 +925,8 @@ mod tests {
             .collect();
         let mut tcs = Vec::new();
         for i in 0..entities.len().saturating_sub(1) {
-            let from = entities[i].region_key.region_id as u32;
-            let to = entities[i + 1].region_key.region_id as u32;
+            let from = entities[i].tool_index;
+            let to = entities[i + 1].tool_index;
             if from != to {
                 tcs.push(slicer_ir::ToolChange {
                     after_entity_index: i as u32,
@@ -918,6 +942,37 @@ mod tests {
             tool_changes: tcs,
             ..Default::default()
         }
+    }
+
+    /// Part C: a `tool_config:<idx>:retract_length` override is applied at emit
+    /// time for that tool, while other tools fall back to the global value. The
+    /// emitter is the only place the entity's tool is known, so per-tool config
+    /// composes here (not at region-mapping).
+    #[test]
+    fn per_tool_config_overrides_retract_length() {
+        let global = ResolvedConfig {
+            retract_length: 2.0,
+            ..ResolvedConfig::default()
+        };
+        let tool1 = ResolvedConfig {
+            retract_length: 6.5,
+            ..ResolvedConfig::default()
+        };
+        let tool_configs = std::collections::BTreeMap::from([(1u32, tool1)]);
+        let emitter = DefaultGCodeEmitter::new("test".into())
+            .with_resolved_config(global)
+            .with_tool_configs(tool_configs);
+
+        assert_eq!(
+            emitter.retract_length_for_tool(1),
+            6.5,
+            "tool 1 must use its per-tool retract_length override"
+        );
+        assert_eq!(
+            emitter.retract_length_for_tool(0),
+            2.0,
+            "tool 0 has no override and must fall back to the global retract_length"
+        );
     }
 
     /// Empty layer list and single-layer input must not panic or rotate.

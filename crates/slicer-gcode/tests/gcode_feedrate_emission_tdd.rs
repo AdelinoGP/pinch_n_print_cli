@@ -55,6 +55,7 @@ fn per_role_speed_resolves_to_f_token() {
             entity_id: *entity_id,
             path,
             role: role.clone(),
+            tool_index: *entity_id as u32,
             region_key: RegionKey {
                 region_id: *entity_id,
                 global_layer_index: 0,
@@ -151,6 +152,7 @@ fn speed_factor_modulates_role_speed() {
         entity_id: 1,
         path,
         role: ExtrusionRole::OuterWall,
+        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
@@ -202,6 +204,7 @@ fn module_supplied_f_wins() {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::InnerWall,
+        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
@@ -277,6 +280,7 @@ fn distinct_feedrates_present() {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
@@ -311,6 +315,7 @@ fn distinct_feedrates_present() {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::SparseInfill,
+        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,
@@ -382,6 +387,7 @@ fn f_token_within_200_lines() {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 0,
         region_key: RegionKey {
             region_id: 0,
             global_layer_index: 0,

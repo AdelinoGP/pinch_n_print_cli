@@ -836,7 +836,9 @@ pub enum MergeOp {
         position: u32,
         /// Extrusion path for the new entity.
         path: ExtrusionPath3D,
-        /// Region key for the new entity.
+        /// Tool/extruder selector for the new entity (explicit since the split).
+        tool_index: u32,
+        /// Region key for the new entity (pure identity).
         region_key: RegionKey,
     },
     /// Reorder all entities in a layer according to a permutation.
@@ -858,6 +860,8 @@ pub enum MergeOp {
 struct PriorityPush {
     layer_index: u32,
     path: ExtrusionPath3D,
+    /// Tool/extruder selector for the pushed entity (explicit since the split).
+    tool_index: u32,
     region_key: RegionKey,
     priority: u32,
 }
@@ -902,6 +906,7 @@ impl FinalizationOutputBuilder {
         &mut self,
         layer_index: u32,
         path: ExtrusionPath3D,
+        tool_index: u32,
         region_key: RegionKey,
     ) -> Result<(), String> {
         // Keep the legacy slice intact so `entity_pushes()` callers remain correct.
@@ -911,6 +916,7 @@ impl FinalizationOutputBuilder {
         self.priority_pushes.push(PriorityPush {
             layer_index,
             path,
+            tool_index,
             region_key,
             priority: 0,
         });
@@ -928,6 +934,7 @@ impl FinalizationOutputBuilder {
         &mut self,
         layer_index: u32,
         path: ExtrusionPath3D,
+        tool_index: u32,
         region_key: RegionKey,
         priority: u32,
     ) -> Result<(), String> {
@@ -937,6 +944,7 @@ impl FinalizationOutputBuilder {
         self.priority_pushes.push(PriorityPush {
             layer_index,
             path,
+            tool_index,
             region_key,
             priority,
         });
@@ -1003,12 +1011,14 @@ impl FinalizationOutputBuilder {
         layer_index: u32,
         position: u32,
         path: ExtrusionPath3D,
+        tool_index: u32,
         region_key: RegionKey,
     ) -> Result<(), String> {
         self.merge_ops.push(MergeOp::InsertEntityAt {
             layer: layer_index,
             position,
             path,
+            tool_index,
             region_key,
         });
         Ok(())
@@ -1044,22 +1054,33 @@ impl FinalizationOutputBuilder {
 
         let mut next_id: u64 = staged.iter().map(|e| e.entity_id).max().unwrap_or(0) + 1;
 
-        let make_entity =
-            |id: u64, path: &ExtrusionPath3D, region_key: &RegionKey| -> slicer_ir::PrintEntity {
-                slicer_ir::PrintEntity {
-                    entity_id: id,
-                    path: path.clone(),
-                    role: path.role.clone(),
-                    region_key: region_key.clone(),
-                    topo_order: 0,
-                }
-            };
+        let make_entity = |id: u64,
+                           path: &ExtrusionPath3D,
+                           tool_index: u32,
+                           region_key: &RegionKey|
+         -> slicer_ir::PrintEntity {
+            slicer_ir::PrintEntity {
+                entity_id: id,
+                path: path.clone(),
+                role: path.role.clone(),
+                // Tool is an explicit selector; region_id stays a pure identity.
+                tool_index,
+                region_key: region_key.clone(),
+                topo_order: 0,
+            }
+        };
 
-        // 1. Replay legacy pushes (push_entity_to_layer / push_entity_with_priority).
-        //    Both methods mirror into `entity_pushes`, so iterating that slice covers both.
-        for (li, path, rk) in &self.entity_pushes {
-            if *li == layer_index {
-                staged.push(make_entity(next_id, path, rk));
+        // 1. Replay pushes (push_entity_to_layer / push_entity_with_priority).
+        //    `priority_pushes` mirrors every push and carries the explicit
+        //    tool_index, so iterating it covers both methods in insertion order.
+        for push in &self.priority_pushes {
+            if push.layer_index == layer_index {
+                staged.push(make_entity(
+                    next_id,
+                    &push.path,
+                    push.tool_index,
+                    &push.region_key,
+                ));
                 next_id += 1;
             }
         }
@@ -1071,10 +1092,11 @@ impl FinalizationOutputBuilder {
                     layer,
                     position,
                     path,
+                    tool_index,
                     region_key,
                 } if *layer == layer_index => {
                     let pos = (*position as usize).min(staged.len());
-                    staged.insert(pos, make_entity(next_id, path, region_key));
+                    staged.insert(pos, make_entity(next_id, path, *tool_index, region_key));
                     next_id += 1;
                 }
                 MergeOp::SetEntityOrder { layer, items } if *layer == layer_index => {
@@ -1183,19 +1205,26 @@ impl FinalizationOutputBuilder {
         &self.annotations
     }
 
-    /// Get all priority-aware pushes as flat tuples `(layer_index, path, region_key, priority)`.
+    /// Get all priority-aware pushes as flat tuples
+    /// `(layer_index, path, tool_index, region_key, priority)`.
     ///
     /// Includes ALL pushes regardless of recording method: `push_entity_to_layer` records
     /// at priority=0, `push_entity_with_priority` records at the given priority.
     /// Used by the slicer-macros drain-back loop to relay pushes across the WIT boundary
-    /// with their correct priorities.
+    /// with their correct tool index and priorities.
     #[doc(hidden)]
     pub fn priority_pushes(
         &self,
-    ) -> impl Iterator<Item = (u32, &ExtrusionPath3D, &RegionKey, u32)> {
-        self.priority_pushes
-            .iter()
-            .map(|p| (p.layer_index, &p.path, &p.region_key, p.priority))
+    ) -> impl Iterator<Item = (u32, &ExtrusionPath3D, u32, &RegionKey, u32)> {
+        self.priority_pushes.iter().map(|p| {
+            (
+                p.layer_index,
+                &p.path,
+                p.tool_index,
+                &p.region_key,
+                p.priority,
+            )
+        })
     }
 
     /// Get all recorded merge operations (for drain-back in slicer-macros Step 5).
@@ -1254,6 +1283,7 @@ impl FinalizationOutputBuilder {
                 entity_id: next_id,
                 path: push.path.clone(),
                 role,
+                tool_index: push.tool_index,
                 region_key: push.region_key.clone(),
                 topo_order: layer.ordered_entities.len() as u32,
             };
@@ -1436,6 +1466,7 @@ impl FinalizationOutputBuilder {
                                 entity_id,
                                 path,
                                 role,
+                                tool_index: 0,
                                 region_key: RegionKey {
                                     global_layer_index,
                                     object_id: String::new(),
@@ -1459,6 +1490,7 @@ impl FinalizationOutputBuilder {
                     layer: layer_idx,
                     position,
                     path,
+                    tool_index,
                     region_key,
                 } => {
                     let layer = match layers
@@ -1490,6 +1522,7 @@ impl FinalizationOutputBuilder {
                         entity_id: next_id,
                         path,
                         role,
+                        tool_index,
                         region_key,
                         topo_order: position,
                     };

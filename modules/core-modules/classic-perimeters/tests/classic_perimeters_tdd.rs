@@ -48,6 +48,50 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
         .build()
 }
 
+/// Audit-gap closure: a per-region `line_width` config reaches the emitted wall
+/// geometry. Two runs with different `line_width` must produce proportionally
+/// different outer-wall extrusion widths. Combined with
+/// `region_mapping_applies_per_tool_config_overlay_to_painted_tool` (which proves
+/// `tool_config:<n>:line_width` lands in a painted tool's `RegionPlan.config`),
+/// this establishes per-tool `line_width` end-to-end: config → RegionPlan →
+/// perimeter geometry.
+#[test]
+fn per_region_line_width_sets_emitted_wall_width() {
+    let outer_width_for = |lw: f64| -> f32 {
+        let config = make_config(2, lw);
+        let module = ClassicPerimeters::on_print_start(&config).unwrap();
+        let regions = vec![make_region(10.0, 0.2)];
+        let paint = PaintRegionLayerView::new(0);
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(0, &regions, &paint, &mut output, &config)
+            .unwrap();
+        let outer = output
+            .wall_loops()
+            .iter()
+            .find(|w| w.loop_type == LoopType::Outer)
+            .expect("an outer wall loop must be emitted")
+            .clone();
+        outer.path.points[0].width
+    };
+
+    let w_narrow = outer_width_for(0.4);
+    let w_wide = outer_width_for(0.8);
+
+    assert!(
+        (w_narrow - 0.4).abs() < 1e-4,
+        "outer wall extrusion width must equal the per-region line_width 0.4; got {w_narrow}"
+    );
+    assert!(
+        (w_wide - 0.8).abs() < 1e-4,
+        "outer wall extrusion width must equal the per-region line_width 0.8; got {w_wide}"
+    );
+    assert!(
+        w_wide > w_narrow,
+        "a wider per-region line_width must yield a wider emitted wall ({w_wide} > {w_narrow})"
+    );
+}
+
 #[test]
 fn single_square_two_walls() {
     let config = make_config(2, 0.4);

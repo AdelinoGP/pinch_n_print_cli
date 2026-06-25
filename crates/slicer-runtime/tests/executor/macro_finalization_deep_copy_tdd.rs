@@ -138,6 +138,7 @@ fn layer_ir(
                 speed_factor: 1.0,
             },
             role: ExtrusionRole::Custom(String::new()),
+            tool_index: 0,
             region_key: slicer_ir::RegionKey {
                 global_layer_index,
                 object_id: "obj".into(),

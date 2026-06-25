@@ -111,7 +111,7 @@ fn test_04_finalization_output_builder_push_entity() {
         variant_chain: Vec::new(),
     };
 
-    let result = builder.push_entity_to_layer(0, path, region_key);
+    let result = builder.push_entity_to_layer(0, path, 0, region_key);
     assert!(result.is_ok());
     assert_eq!(builder.entity_pushes().len(), 1);
 }

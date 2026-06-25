@@ -67,6 +67,7 @@ fn entity_with_tool(
             speed_factor: 1.0,
         },
         role: ExtrusionRole::SparseInfill,
+        tool_index,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: object_id.to_string(),

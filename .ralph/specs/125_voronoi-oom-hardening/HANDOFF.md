@@ -1,5 +1,13 @@
 # HANDOFF — region_id↔tool conflation: pipeline-wide tool/identity split
 
+> **SUPERSEDED (2026-06-25).** The split this document hands off was implemented directly under packet
+> `125_voronoi-oom-hardening` (not a successor packet). See the rewritten `packet.spec.md` /
+> `requirements.md` / `design.md` / `implementation-plan.md` / `task-map.md` in this directory for the
+> shipped, verifiable contract. Some details below were corrected during implementation (notably:
+> `print-entity-view` **did** receive `tool-index` for the finalization input deep-copy — §1.2 fact #2
+> here is stale; `RegionMapIR.tool_configs` was not added — per-tool config composes at emit and at
+> the RegionMapping overlay instead). This file is retained for historical diagnosis context only.
+
 **Origin:** packet `125_voronoi-oom-hardening` (status: `active`, held). Packet 125 stopped the
 painted-model OOM (crash-stop floor + emit guard + restored tripwire) and restored painted fuzzy
 skin, but **3 executor-bucket tests are intentionally left red** because the true fix is a

@@ -42,6 +42,12 @@ type ColorType = u32;
 // Error type
 // ---------------------------------------------------------------------------
 
+/// Deterministic safety cap on the number of segments fed to the boostvoronoi
+/// builder (Part D). Far above any realistic painted-layer segment count
+/// (a dense multi-colour layer is ~10³–10⁴ segments); exists only to bound the
+/// latent `discretize` unbounded-loop exposure on pathological/degenerate input.
+const MAX_VORONOI_SEGMENTS: usize = 500_000;
+
 /// Errors that can arise when constructing the MMU Voronoi graph.
 #[derive(Debug)]
 pub enum MmuGraphError {
@@ -51,6 +57,20 @@ pub enum MmuGraphError {
     EdgeOp(String),
     /// An input coordinate did not fit in `i32` (boostvoronoi's site coord type).
     CoordinateOverflow(i64),
+    /// The input segment set exceeded the deterministic safety cap before the
+    /// builder. boostvoronoi's `discretize` has a latent unbounded loop on
+    /// pathological inputs; this guard bounds exposure (the true fix is upstream).
+    InputTooLarge {
+        /// Number of input segments that tripped the cap.
+        segments: usize,
+        /// The cap that was exceeded.
+        cap: usize,
+    },
+    /// A panic escaped `boost::polygon::voronoi` during predicate evaluation
+    /// (e.g. the `robust_fpt` `fpv.is_finite()` assertion on degenerate
+    /// collinear-overlapping sites). Caught and converted to a clean error so a
+    /// painted-path edge case degrades gracefully instead of aborting.
+    PredicatePanic,
 }
 
 impl std::fmt::Display for MmuGraphError {
@@ -60,6 +80,16 @@ impl std::fmt::Display for MmuGraphError {
             MmuGraphError::EdgeOp(s) => write!(f, "edge operation error: {s}"),
             MmuGraphError::CoordinateOverflow(v) => {
                 write!(f, "input coordinate {v} does not fit in i32")
+            }
+            MmuGraphError::InputTooLarge { segments, cap } => write!(
+                f,
+                "voronoi input has {segments} segments, exceeding the safety cap of {cap}"
+            ),
+            MmuGraphError::PredicatePanic => {
+                write!(
+                    f,
+                    "voronoi predicate evaluation panicked on degenerate input"
+                )
             }
         }
     }
@@ -454,10 +484,33 @@ impl MMU_Graph {
             int_segments.clone();
         let (bv_segments, bv_segment_colors) = merge_collinear_overlapping(int_segments);
 
-        // Build the diagram.
-        let diagram: Diagram = Builder::<i32>::default()
-            .with_segments(bv_segments.iter())?
-            .build()?;
+        // Part D — deterministic input guard. boostvoronoi's `discretize` has a
+        // latent unbounded loop on pathological inputs; bound exposure before the
+        // builder rather than risk a hang. The cap is far above any realistic
+        // painted-layer segment count; the true fix is an upstream patch/fork.
+        if bv_segments.len() > MAX_VORONOI_SEGMENTS {
+            return Err(MmuGraphError::InputTooLarge {
+                segments: bv_segments.len(),
+                cap: MAX_VORONOI_SEGMENTS,
+            });
+        }
+
+        // Build the diagram. Part E — `boost::polygon::voronoi` can PANIC during
+        // predicate evaluation on degenerate collinear-overlapping sites (the
+        // `robust_fpt` `fpv.is_finite()` assertion), not return a clean error.
+        // `merge_collinear_overlapping` above is the first line of defense; this
+        // `catch_unwind` is the backstop so any residual edge case degrades to a
+        // typed error instead of aborting the process.
+        let build_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Builder::<i32>::default()
+                .with_segments(bv_segments.iter())?
+                .build()
+        }));
+        let diagram: Diagram = match build_result {
+            Ok(Ok(d)) => d,
+            Ok(Err(e)) => return Err(MmuGraphError::from(e)),
+            Err(_) => return Err(MmuGraphError::PredicatePanic),
+        };
 
         // Wrap emitted vertices as typed VoronoiVertex.
         let mut vertices: Vec<VoronoiVertex> = diagram
@@ -1424,6 +1477,39 @@ mod tests {
             !graph.vertices.is_empty(),
             "expected at least one vertex after merge"
         );
+    }
+
+    /// Part D — the deterministic input guard rejects an oversized segment set
+    /// with a typed `InputTooLarge` error BEFORE invoking the boostvoronoi
+    /// builder, bounding the latent `discretize` unbounded-loop exposure. The
+    /// input must not hang or panic.
+    #[test]
+    fn oversized_input_returns_input_too_large() {
+        // `MAX_VORONOI_SEGMENTS + 1` distinct vertical unit segments at unique x.
+        // Distinct canonical lines so the collinear merge keeps them all, driving
+        // `bv_segments.len()` past the cap.
+        let n = MAX_VORONOI_SEGMENTS + 1;
+        let mut input: Vec<ColoredLine> = Vec::with_capacity(n);
+        for i in 0..n {
+            let x = i as i64;
+            input.push(ColoredLine {
+                line: Line {
+                    start: Point2 { x, y: 0 },
+                    end: Point2 { x, y: 1 },
+                },
+                value: None,
+                poly_idx: 0,
+                local_line_idx: i,
+            });
+        }
+        let result = MMU_Graph::from_colored_lines(&input);
+        match result {
+            Err(MmuGraphError::InputTooLarge { segments, cap }) => {
+                assert_eq!(cap, MAX_VORONOI_SEGMENTS);
+                assert!(segments > cap, "segments {segments} must exceed cap {cap}");
+            }
+            other => panic!("expected InputTooLarge, got {other:?}"),
+        }
     }
 
     /// i32 overflow on input coordinate is surfaced as a typed error rather

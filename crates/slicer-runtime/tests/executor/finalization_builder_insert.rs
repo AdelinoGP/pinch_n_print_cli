@@ -48,6 +48,7 @@ fn make_entity(entity_id: u64, layer: u32) -> PrintEntity {
         entity_id,
         path: path(),
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: region_key(layer),
         topo_order: (entity_id - 1) as u32,
     }
@@ -99,7 +100,7 @@ fn insert_at_position_remaps_indices() {
     let mut output = FinalizationOutputBuilder::new();
 
     output
-        .insert_entity_at(0, 2, path(), region_key(0))
+        .insert_entity_at(0, 2, path(), 1, region_key(0))
         .expect("insert_entity_at should not fail at record time");
 
     let result = output.apply_to(&mut layers);
@@ -164,7 +165,7 @@ fn insert_at_oob_position_rejected() {
 
     let mut output = FinalizationOutputBuilder::new();
     output
-        .insert_entity_at(0, 99, path(), region_key(0))
+        .insert_entity_at(0, 99, path(), 1, region_key(0))
         .expect("insert_entity_at should not fail at record time");
 
     let result = output.apply_to(&mut layers);

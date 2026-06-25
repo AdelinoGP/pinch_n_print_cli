@@ -48,6 +48,7 @@ fn make_entity(entity_id: u64, layer: u32) -> PrintEntity {
         entity_id,
         path: path(),
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: region_key(layer),
         topo_order: (entity_id - 1) as u32,
     }

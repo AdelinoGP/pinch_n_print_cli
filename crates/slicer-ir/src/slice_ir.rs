@@ -274,11 +274,11 @@ pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `LayerCollectionIR`. Initial 1.0.0 — no bumps recorded
-/// in `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `LayerCollectionIR`. 1.1.0 — packet 125 follow-up added
+/// the additive `PrintEntity.tool_index` field (tool/identity split).
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1922,6 +1922,15 @@ pub struct PrintEntity {
     pub region_key: RegionKey,
     /// Topological order
     pub topo_order: u32,
+    /// Resolved tool/extruder index for this entity (a pure SELECTOR — see
+    /// `dominant_tool_index` in `layer_executor.rs`). Separated from
+    /// `region_key.region_id` (a pure region IDENTITY) so a painted-variant
+    /// identity hash can never leak into the tool slot (the packet-125 OOM).
+    /// `#[serde(default)]` keeps older serialized `PrintEntity`s deserializable;
+    /// the struct intentionally has no `Default` derive so every construction
+    /// site is compiler-forced to set this field.
+    #[serde(default)]
+    pub tool_index: u32,
 }
 
 /// Kind of a guest-emitted layer annotation.

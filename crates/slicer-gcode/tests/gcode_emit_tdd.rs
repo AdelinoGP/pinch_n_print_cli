@@ -66,6 +66,7 @@ fn print_entity_fixture(points: Vec<Point3WithWidth>, role: ExtrusionRole) -> Pr
             speed_factor: 1.0,
         },
         role,
+        tool_index: 0,
         region_key: region_key_fixture(),
         topo_order: 0,
     }
@@ -1373,6 +1374,7 @@ fn entity_with_region_id(id: u64) -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: id as u32,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: ObjectId::from("test-object"),

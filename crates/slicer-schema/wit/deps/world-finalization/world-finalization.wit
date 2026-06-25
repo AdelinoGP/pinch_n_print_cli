@@ -24,6 +24,9 @@ world finalization-module {
         entity-id: u64,
         path: extrusion-path3d,
         role: extrusion-role,
+        // Resolved tool/extruder selector (first-class since the split); the
+        // finalization input deep-copy reconstructs PrintEntity from this view.
+        tool-index: u32,
         region-key: region-key,
         topo-order: u32,
     }
@@ -62,11 +65,15 @@ world finalization-module {
         push-entity-to-layer: func(
             layer-index: layer-idx,
             path: extrusion-path3d,
+            // Tool/extruder selector for the pushed entity (explicit since the
+            // region_id↔tool split; region-key.region-id is a pure identity).
+            tool-index: u32,
             region-key: region-key,
         ) -> result<_, string>;
         push-entity-with-priority: func(
             layer-index: layer-idx,
             path: extrusion-path3d,
+            tool-index: u32,
             region-key: region-key,
             priority: u32,
         ) -> result<_, string>;
@@ -91,6 +98,7 @@ world finalization-module {
             layer-index: layer-idx,
             position: u32,
             path: extrusion-path3d,
+            tool-index: u32,
             region-key: region-key,
         ) -> result<_, string>;
         set-entity-order: func(

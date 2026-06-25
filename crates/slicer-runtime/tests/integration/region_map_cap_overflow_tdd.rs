@@ -57,6 +57,7 @@ fn region_map_cap_exceeded_named_contributor() {
         &aggregated,
         &objects,
         None,
+        &BTreeMap::new(),
         /* cap = */ 5,
     )
     .expect_err("cross-product expansion must exceed cap of 5");

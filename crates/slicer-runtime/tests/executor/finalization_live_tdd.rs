@@ -160,6 +160,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: RegionKey {
             global_layer_index: layer_index,
             object_id: "obj1".to_string(),

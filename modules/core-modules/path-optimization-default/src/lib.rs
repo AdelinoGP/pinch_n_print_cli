@@ -107,12 +107,12 @@ fn nearest_neighbor_permutation(entities: &[&OrderedEntityView]) -> Vec<(u32, bo
     result
 }
 
-/// Extracts tool_index from an OrderedEntityView.
+/// Extracts the tool index from an OrderedEntityView.
 ///
-/// Tool index is propagated through `region_key.region_id` at assembly time
-/// via the host's per-region ActiveRegion.tool_index.
+/// Tool index is a first-class field since the region_id↔tool split;
+/// `region_key.region_id` is now a pure region identity (do not read it here).
 fn tool_index_of(entity: &OrderedEntityView) -> u32 {
-    entity.region_key.region_id as u32
+    entity.tool_index
 }
 
 /// Tool change record emitted at a tool-index boundary during path optimization.
@@ -485,6 +485,7 @@ mod tests {
     fn make_entity(original_index: u32, role: ExtrusionRole, x: f32, y: f32) -> OrderedEntityView {
         OrderedEntityView {
             original_index,
+            tool_index: 0,
             region_key: RegionKey {
                 global_layer_index: 0,
                 object_id: "test".to_string(),

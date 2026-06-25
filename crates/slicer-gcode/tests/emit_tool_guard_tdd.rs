@@ -56,6 +56,7 @@ fn entity_with_region_id(region_id: u64) -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: region_id as u32,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: ObjectId::from("test-obj"),

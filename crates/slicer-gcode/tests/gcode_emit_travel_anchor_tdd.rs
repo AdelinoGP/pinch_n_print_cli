@@ -61,6 +61,7 @@ fn make_entity(entity_id: u64, x_start: f32, x_end: f32, y: f32, z: f32) -> Prin
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: region_key(),
         topo_order: 0,
     }

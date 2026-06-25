@@ -1391,21 +1391,19 @@ fn extruder_synthetic_t0_t1_emission() {
 
     // Two perimeter wall entities, one per region. The Step-3 fallback resolves
     // each region's required_tool from RegionPlan.config.extensions["extruder"]
-    // because no paint-derived tool exists (feature_flags is empty).
-    let region_ids: Vec<u64> = l
-        .ordered_entities
-        .iter()
-        .map(|e| e.region_key.region_id)
-        .collect();
+    // because no paint-derived tool exists (feature_flags is empty). Since the
+    // region_id↔tool split, the resolved tool lives in `PrintEntity.tool_index`
+    // (a pure selector); `region_key.region_id` is now the region identity.
+    let tool_indices: Vec<u32> = l.ordered_entities.iter().map(|e| e.tool_index).collect();
 
     assert!(
-        region_ids.contains(&0),
-        "ordered_entities must contain a region_id=0 entry (T0) routed from \
-         RegionPlan.config.extensions[\"extruder\"] = Int(0); got {region_ids:?}"
+        tool_indices.contains(&0),
+        "ordered_entities must contain a tool_index=0 entry (T0) routed from \
+         RegionPlan.config.extensions[\"extruder\"] = Int(0); got {tool_indices:?}"
     );
     assert!(
-        region_ids.contains(&1),
-        "ordered_entities must contain a region_id=1 entry (T1) routed from \
-         RegionPlan.config.extensions[\"extruder\"] = Int(1); got {region_ids:?}"
+        tool_indices.contains(&1),
+        "ordered_entities must contain a tool_index=1 entry (T1) routed from \
+         RegionPlan.config.extensions[\"extruder\"] = Int(1); got {tool_indices:?}"
     );
 }

@@ -36,6 +36,7 @@ fn entity(role: ExtrusionRole) -> PrintEntity {
             speed_factor: 1.0,
         },
         role,
+        tool_index: 0,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: "obj".to_string(),

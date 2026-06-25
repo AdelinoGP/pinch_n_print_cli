@@ -73,6 +73,7 @@ fn skirt_entity(entity_id: u64) -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::Skirt,
+        tool_index: 1,
         region_key: region_key(),
         topo_order: 0,
     }
@@ -88,6 +89,7 @@ fn outer_wall_entity() -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 1,
         region_key: region_key(),
         topo_order: 0,
     }

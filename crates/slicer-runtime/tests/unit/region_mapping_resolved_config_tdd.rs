@@ -153,6 +153,7 @@ fn commit_stamps_per_object_resolved_config() {
         &resolved_configs,
         &default_resolved_config,
         &std::collections::BTreeMap::new(),
+        &std::collections::BTreeMap::new(),
     )
     .expect("commit_region_mapping_builtin must succeed");
 

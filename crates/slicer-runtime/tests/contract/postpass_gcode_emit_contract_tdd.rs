@@ -77,6 +77,7 @@ fn print_entity_fixture(
             speed_factor: 1.0,
         },
         role,
+        tool_index: 1,
         region_key: region_key_fixture(),
         topo_order: 0,
     }

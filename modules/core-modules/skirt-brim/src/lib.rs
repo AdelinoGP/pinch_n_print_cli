@@ -112,6 +112,7 @@ impl SkirtBrim {
                         entity_id: 0,
                         path,
                         role,
+                        tool_index: region_key.region_id as u32,
                         region_key,
                         topo_order: 0,
                     }
@@ -137,6 +138,7 @@ impl SkirtBrim {
                         entity_id: 0,
                         path,
                         role,
+                        tool_index: region_key.region_id as u32,
                         region_key,
                         topo_order: 0,
                     }
@@ -375,8 +377,10 @@ impl FinalizationModule for SkirtBrim {
             let layer_index = view.layer_index();
             let z = view.z();
             for (path, region_key) in self.generate_skirt_entities(&bbox, z, layer_index) {
+                // Skirt prints with the base tool (T0); region_id stays identity.
+                let tool_index = region_key.region_id as u32;
                 output
-                    .push_entity_to_layer(layer_index, path, region_key)
+                    .push_entity_to_layer(layer_index, path, tool_index, region_key)
                     .map_err(|e| ModuleError::fatal(1, e))?;
             }
         }
@@ -387,8 +391,10 @@ impl FinalizationModule for SkirtBrim {
                 let layer_index = view.layer_index();
                 let z = view.z();
                 for (path, region_key) in self.generate_brim_entities(&bbox, z, layer_index) {
+                    // Brim prints with the base tool (T0); region_id stays identity.
+                    let tool_index = region_key.region_id as u32;
                     output
-                        .push_entity_to_layer(layer_index, path, region_key)
+                        .push_entity_to_layer(layer_index, path, tool_index, region_key)
                         .map_err(|e| ModuleError::fatal(1, e))?;
                 }
             }

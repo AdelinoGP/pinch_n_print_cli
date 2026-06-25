@@ -68,6 +68,7 @@ fn make_entity(entity_id: u64, role: ExtrusionRole) -> PrintEntity {
         entity_id,
         path: make_path(role.clone()),
         role,
+        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 0,
     }
@@ -111,7 +112,7 @@ fn push_with_priority_lands_at_sorted_position() {
     let ironing_path = make_path(ExtrusionRole::Ironing);
     let priority = ExtrusionRole::Ironing.default_priority();
     builder
-        .push_entity_with_priority(0, ironing_path, make_region_key(), priority)
+        .push_entity_with_priority(0, ironing_path, 0, make_region_key(), priority)
         .expect("push_entity_with_priority should succeed");
 
     builder
@@ -380,7 +381,7 @@ fn legacy_push_preserves_prepend() {
     let mut builder = FinalizationOutputBuilder::new();
     // Legacy alias — push_entity_to_layer(layer, path, region) wraps priority=0
     builder
-        .push_entity_to_layer(0, make_path(ExtrusionRole::Skirt), make_region_key())
+        .push_entity_to_layer(0, make_path(ExtrusionRole::Skirt), 0, make_region_key())
         .expect("push_entity_to_layer (legacy) should succeed");
 
     builder
@@ -522,10 +523,10 @@ fn ties_preserve_insertion_order() {
     };
 
     builder
-        .push_entity_with_priority(0, path_a, make_region_key(), ironing_priority)
+        .push_entity_with_priority(0, path_a, 0, make_region_key(), ironing_priority)
         .expect("push A should succeed");
     builder
-        .push_entity_with_priority(0, path_b, make_region_key(), ironing_priority)
+        .push_entity_with_priority(0, path_b, 0, make_region_key(), ironing_priority)
         .expect("push B should succeed");
 
     builder
@@ -611,6 +612,7 @@ fn modify_entity_set_flow_factor_applies() {
         entity_id: 1,
         path: make_path_with_flow(ExtrusionRole::OuterWall, 1.0),
         role: ExtrusionRole::OuterWall,
+        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 0,
     };
@@ -618,6 +620,7 @@ fn modify_entity_set_flow_factor_applies() {
         entity_id: 2,
         path: make_path_with_flow(ExtrusionRole::InnerWall, 1.0),
         role: ExtrusionRole::InnerWall,
+        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 1,
     };
@@ -625,6 +628,7 @@ fn modify_entity_set_flow_factor_applies() {
         entity_id: 3,
         path: make_path_with_flow(ExtrusionRole::SparseInfill, 1.0),
         role: ExtrusionRole::SparseInfill,
+        tool_index: 0,
         region_key: make_region_key(),
         topo_order: 2,
     };

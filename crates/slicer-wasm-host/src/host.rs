@@ -136,6 +136,10 @@ pub struct SliceRegionData {
     pub has_nonplanar: bool,
     /// Boundary paint data.
     pub segment_annotations: Vec<layer::slicer::ir_handles::ir_handles::SegmentAnnotationsEntry>,
+    /// Ordered (paint-semantic-name, value) pairs identifying this region's
+    /// paint variant. Carries the painted FuzzySkin signal to the guest's
+    /// `variant-chain()` accessor (D14: keeps FuzzySkin off segment_annotations).
+    pub variant_chain: Vec<(String, layer::slicer::ir_handles::ir_handles::PaintValue)>,
     /// True when this region is support-eligible (from SurfaceClassificationIR).
     pub needs_support: bool,
     /// Minimum top-shell depth (0 = exposed) from PrePass::ShellClassification.
@@ -401,22 +405,26 @@ pub enum WitSortKey {
 /// post-call drain in `FinalizationStageRunner` can apply them.
 #[derive(Clone, Debug)]
 pub enum FinalizationBuilderPush {
-    /// Guest requested `push-entity-to-layer(layer_index, path, region_key)`.
+    /// Guest requested `push-entity-to-layer(layer_index, path, tool_index, region_key)`.
     EntityToLayer {
         /// Layer index the entity was pushed to.
         layer_index: u32,
         /// Extrusion path content.
         path: slicer_ir::ExtrusionPath3D,
-        /// Region key for ordering / provenance.
+        /// Tool/extruder selector for the entity (explicit since the split).
+        tool_index: u32,
+        /// Region key for ordering / provenance (pure identity).
         region_key: slicer_ir::RegionKey,
     },
-    /// Guest requested `push-entity-with-priority(layer_index, path, region_key, priority)`.
+    /// Guest requested `push-entity-with-priority(layer_index, path, tool_index, region_key, priority)`.
     EntityToLayerWithPriority {
         /// Layer index the entity was pushed to.
         layer_index: u32,
         /// Extrusion path content.
         path: slicer_ir::ExtrusionPath3D,
-        /// Region key for ordering / provenance.
+        /// Tool/extruder selector for the entity (explicit since the split).
+        tool_index: u32,
+        /// Region key for ordering / provenance (pure identity).
         region_key: slicer_ir::RegionKey,
         /// Merge priority (lower = earlier in sorted output).
         priority: u32,
@@ -453,7 +461,7 @@ pub enum FinalizationBuilderPush {
         /// Extrusion paths belonging to the synthetic layer.
         paths: Vec<slicer_ir::ExtrusionPath3D>,
     },
-    /// Guest requested `insert-entity-at(layer_index, position, path, region_key)`.
+    /// Guest requested `insert-entity-at(layer_index, position, path, tool_index, region_key)`.
     InsertEntityAt {
         /// Layer index the entity is inserted into.
         layer_index: u32,
@@ -461,7 +469,9 @@ pub enum FinalizationBuilderPush {
         position: u32,
         /// Extrusion path content.
         path: slicer_ir::ExtrusionPath3D,
-        /// Region key for the new entity.
+        /// Tool/extruder selector for the entity (explicit since the split).
+        tool_index: u32,
+        /// Region key for the new entity (pure identity).
         region_key: slicer_ir::RegionKey,
     },
     /// Guest requested `set-entity-order(layer_index, items)`.
@@ -1804,6 +1814,7 @@ mod region_origin_tests {
                 z: 0.2,
                 has_nonplanar: false,
                 segment_annotations: Vec::new(),
+                variant_chain: Vec::new(),
                 needs_support: true,
                 top_shell_index: None,
                 bottom_shell_index: None,
@@ -2084,6 +2095,13 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     ) -> wasmtime::Result<Vec<SegmentAnnotationsEntry>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.segment_annotations.clone())
+    }
+    fn variant_chain(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<(String, layer::slicer::ir_handles::ir_handles::PaintValue)>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.variant_chain.clone())
     }
     fn needs_support(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
         self.runtime_reads.push(String::from("SliceIR"));
@@ -2591,6 +2609,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
             .iter()
             .map(|v| ir::OrderedEntityView {
                 original_index: v.original_index,
+                tool_index: v.tool_index,
                 region_key: ir::RegionKey {
                     layer_index: v.region_key.global_layer_index as i32,
                     object_id: v.region_key.object_id.clone(),
@@ -3022,6 +3041,7 @@ mod finalization_impls {
                     entity_id: entity.entity_id,
                     path: ir_to_wit_extrusion_path(&entity.path),
                     role: ir_to_wit_extrusion_role(&entity.role),
+                    tool_index: entity.tool_index,
                     region_key: fm::RegionKey {
                         layer_index: entity.region_key.global_layer_index,
                         object_id: entity.region_key.object_id.clone(),
@@ -3060,6 +3080,7 @@ mod finalization_impls {
             self_: Resource<fm::FinalizationOutputBuilder>,
             layer_index: u32,
             path: fgeo::ExtrusionPath3d,
+            tool_index: u32,
             region_key: fm::RegionKey,
         ) -> wasmtime::Result<Result<(), String>> {
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
@@ -3082,6 +3103,7 @@ mod finalization_impls {
             data.pushes.push(FinalizationBuilderPush::EntityToLayer {
                 layer_index,
                 path: finalization_path_wit_to_ir(&path),
+                tool_index,
                 region_key: ir_region_key,
             });
             Ok(Ok(()))
@@ -3091,6 +3113,7 @@ mod finalization_impls {
             self_: Resource<fm::FinalizationOutputBuilder>,
             layer_index: u32,
             path: fgeo::ExtrusionPath3d,
+            tool_index: u32,
             region_key: fm::RegionKey,
             priority: u32,
         ) -> wasmtime::Result<Result<(), String>> {
@@ -3115,6 +3138,7 @@ mod finalization_impls {
                 .push(FinalizationBuilderPush::EntityToLayerWithPriority {
                     layer_index,
                     path: finalization_path_wit_to_ir(&path),
+                    tool_index,
                     region_key: ir_region_key,
                     priority,
                 });
@@ -3199,6 +3223,7 @@ mod finalization_impls {
             layer_index: u32,
             position: u32,
             path: fgeo::ExtrusionPath3d,
+            tool_index: u32,
             region_key: fm::RegionKey,
         ) -> wasmtime::Result<Result<(), String>> {
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
@@ -3222,6 +3247,7 @@ mod finalization_impls {
                 layer_index,
                 position,
                 path: finalization_path_wit_to_ir(&path),
+                tool_index,
                 region_key: ir_region_key,
             });
             Ok(Ok(()))
@@ -3275,11 +3301,13 @@ mod finalization_impls {
                     FinalizationBuilderPush::EntityToLayer {
                         layer_index: li,
                         path,
+                        tool_index,
                         region_key,
                     }
                     | FinalizationBuilderPush::EntityToLayerWithPriority {
                         layer_index: li,
                         path,
+                        tool_index,
                         region_key,
                         ..
                     } if *li == layer_index => {
@@ -3287,6 +3315,7 @@ mod finalization_impls {
                             entity_id: next_id,
                             path: path.clone(),
                             role: path.role.clone(),
+                            tool_index: *tool_index,
                             region_key: region_key.clone(),
                             topo_order: 0,
                         });
@@ -3296,6 +3325,7 @@ mod finalization_impls {
                         layer_index: li,
                         position,
                         path,
+                        tool_index,
                         region_key,
                     } if *li == layer_index => {
                         let pos = (*position as usize).min(staged.len());
@@ -3305,6 +3335,7 @@ mod finalization_impls {
                                 entity_id: next_id,
                                 path: path.clone(),
                                 role: path.role.clone(),
+                                tool_index: *tool_index,
                                 region_key: region_key.clone(),
                                 topo_order: 0,
                             },
@@ -3350,6 +3381,7 @@ mod finalization_impls {
                         entity_id: e.entity_id,
                         path: path_wit,
                         role: role_wit,
+                        tool_index: e.tool_index,
                         region_key: fm::RegionKey {
                             layer_index: e.region_key.global_layer_index,
                             object_id: e.region_key.object_id.clone(),
@@ -3410,6 +3442,7 @@ mod finalization_impls {
                         role: fgeo::ExtrusionRole::OuterWall,
                         speed_factor: 1.0,
                     },
+                    0,
                     fm::RegionKey {
                         layer_index: 0,
                         object_id: "obj-1".to_string(),

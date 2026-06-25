@@ -63,6 +63,7 @@ fn make_entity(
             speed_factor: 1.0,
         },
         role,
+        tool_index: 1,
         region_key: region_key(layer_index, object_id),
         topo_order: 0,
     }

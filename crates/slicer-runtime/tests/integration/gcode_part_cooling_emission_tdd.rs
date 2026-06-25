@@ -68,6 +68,7 @@ fn wall_entity() -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: 0,
         region_key: region_key_fixture(0),
         topo_order: 0,
     }

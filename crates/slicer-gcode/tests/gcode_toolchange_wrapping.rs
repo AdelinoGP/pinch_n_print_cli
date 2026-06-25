@@ -38,6 +38,7 @@ fn make_entity(id: u64, x: f32, y: f32, role: ExtrusionRole, tool: u32) -> Print
             speed_factor: 1.0,
         },
         role,
+        tool_index: tool,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: ObjectId::from("cube"),
@@ -68,6 +69,7 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
             speed_factor: 1.0,
         },
         role: ExtrusionRole::WipeTower,
+        tool_index: tool,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: ObjectId::from("cube"),

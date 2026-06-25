@@ -193,6 +193,7 @@ fn inner_wall_concave_vertex3_reprojection_gives_tool1() {
         false, // is_outer = false (inner wall)
         Some(&ring_pts),
         Some(&orig_polys),
+        false,
     );
 
     // Ring vertex 3 at (250000, 90000) is nearest to original vertex 2 (C, tool 1).
@@ -225,6 +226,7 @@ fn inner_wall_concave_vertex3_reprojection_gives_tool1() {
         false, // is_outer = false
         None,  // no inset ring positions → index-based fallback
         None,  // no original polygons  → index-based fallback
+        false, // variant_fuzzy
     );
 
     // Index-based reads annotations[0][3] = Some(ToolIndex(2)), which is WRONG.
@@ -296,8 +298,9 @@ fn inner_wall_convex_reprojection_equals_index_based() {
         false,
         Some(&ring_pts),
         Some(&orig_polys),
+        false,
     );
-    let (flags_idx, bt_idx) = build_wall_flags(4, 0, &annotations, false, None, None);
+    let (flags_idx, bt_idx) = build_wall_flags(4, 0, &annotations, false, None, None, false);
 
     // Both paths must agree on tool assignments for a convex rectangle.
     for i in 0..4 {

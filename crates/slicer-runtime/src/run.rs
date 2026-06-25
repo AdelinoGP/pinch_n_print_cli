@@ -12,8 +12,8 @@ use std::time::Instant;
 use slicer_ir::{ConfigValue, MeshIR};
 
 use crate::config_resolution::{
-    resolve_global_config, resolve_per_object_configs, validate_support_layer_heights,
-    ConfigBoundsIndex,
+    resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
+    validate_support_layer_heights, ConfigBoundsIndex,
 };
 use crate::dag::Producer;
 use crate::execution_plan::parse_cli_config_source;
@@ -454,6 +454,13 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     validate_support_layer_heights(&resolved_configs_map)
         .map_err(|e| SliceRunError(format!("{e}")))?;
 
+    // Per-tool/extruder config overlays (`tool_config:<idx>:<key>`). Applied at
+    // emit time (the entity's tool is only known there). Empty unless the user
+    // sets `tool_config:` keys, so default behaviour is unchanged.
+    let per_tool_configs_map =
+        resolve_per_tool_configs(&default_resolved_config, &config_source, &config_bounds)
+            .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+
     // Build wasm_handles side-table before consuming bindings.
     let wasm_handles: std::collections::HashMap<
         slicer_ir::ModuleId,
@@ -498,7 +505,8 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
             postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
             emitter: Box::new(
                 DefaultGCodeEmitter::new(concat!("pnp_cli ", env!("CARGO_PKG_VERSION")).into())
-                    .with_resolved_config(default_resolved_config.clone()),
+                    .with_resolved_config(default_resolved_config.clone())
+                    .with_tool_configs(per_tool_configs_map.clone()),
             ),
             serializer: Box::new(DefaultGCodeSerializer::with_extrusion_mode(relative)),
         },

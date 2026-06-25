@@ -130,6 +130,7 @@ fn make_entity(
             speed_factor,
         },
         role: ExtrusionRole::OuterWall,
+        tool_index: layer_index + 10,
         region_key: slicer_ir::RegionKey {
             global_layer_index: layer_index,
             object_id: format!("obj-{layer_index}"),

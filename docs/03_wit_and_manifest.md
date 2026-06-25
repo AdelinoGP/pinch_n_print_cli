@@ -285,6 +285,12 @@ interface ir-handles {
         z:                      func() -> f32;
         has-nonplanar:          func() -> bool;
         boundary-paint:         func() -> list<boundary-paint-entry>;
+        // Ordered (paint-semantic-name, value) pairs identifying this region's
+        // paint variant. Carries the painted FuzzySkin signal
+        // (`("fuzzy_skin", flag(true))`) so the perimeter guest can enable
+        // per-vertex fuzzy jitter WITHOUT routing FuzzySkin through
+        // segment-annotations (D14 reserves that channel for modifier volumes).
+        variant-chain:          func() -> list<tuple<string, paint-value>>;
     }
 
     resource perimeter-region-view {
@@ -513,10 +519,15 @@ resource layer-collection-builder {
 }
 
 // Confirm the exact field set against the on-disk WIT; the record currently
-// carries fields such as `original-index`, `region-key`, `role`, `start-point`,
-// `end-point`, and `point-count` (the older `entity-index` field was renamed
-// to `original-index`).
+// carries fields such as `original-index`, `tool-index`, `region-key`, `role`,
+// `start-point`, `end-point`, and `point-count` (the older `entity-index` field
+// was renamed to `original-index`).
 ```
+
+`ordered-entity-view.tool-index: u32` is the first-class tool selector from the
+region_id↔tool split. The `path-optimization` guest reads it (via SDK
+`OrderedEntityView.tool_index`) to cluster entities by tool — **not**
+`region-key.region-id`, which is now a pure region identity.
 
 `set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
 
@@ -717,16 +728,22 @@ Resources, records, and enums (current at time of writing — confirm against
   `tool-changes() -> list<tool-change-view>`,
   `z-hops() -> list<z-hop-view>`.
 - `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path-3d`,
-  `role: extrusion-role`, `region-key: region-key`, `topo-order: u32`.
-  The `entity-id` is the stable per-layer ID from packet 39 (see
-  `docs/02_ir_schemas.md` IR 10).
+  `role: extrusion-role`, `tool-index: u32`, `region-key: region-key`,
+  `topo-order: u32`. The `entity-id` is the stable per-layer ID from packet 39
+  (see `docs/02_ir_schemas.md` IR 10). `tool-index` is the first-class tool
+  selector from the region_id↔tool split — the finalization input deep-copy
+  reconstructs `PrintEntity` from this view, so the view must carry it.
 - `tool-change-view` (record): `after-entity-index: u32`, `from-tool: u32`,
   `to-tool: u32`.
 - `z-hop-view` (record): `after-entity-index: u32`, `hop-height: f32`.
 - `finalization-output-builder` (resource) — the mutation API:
-  - `push-entity-to-layer(layer-index, path, region-key) -> result<_, string>`
-  - `push-entity-with-priority(layer-index, path, region-key, priority) -> result<_, string>`
+  - `push-entity-to-layer(layer-index, path, tool-index, region-key) -> result<_, string>`
+  - `push-entity-with-priority(layer-index, path, tool-index, region-key, priority) -> result<_, string>`
     — note `extrusion-path-3d` already carries the role; there is no separate `role` parameter.
+    The `tool-index: u32` parameter is the explicit tool selector for the pushed
+    entity (region_id↔tool split): finalization guests pass it directly because
+    `push-entity-*` carries only a region-key (a pure identity, no tool channel),
+    and the host sets `PrintEntity.tool_index` from it at reconstruction.
   - `modify-entity(layer-index, entity-id, mutation) -> result<_, string>`
   - `sort-layer-by(layer-index, key) -> result<_, string>`
   - `insert-synthetic-layer(z, paths) -> result<_, string>` and
@@ -749,7 +766,7 @@ serialisable across the WIT boundary.
 **Positional insertion and permutation (Packet 58, 2026-05-18)**:
 `finalization-output-builder` exposes three additional methods that mirror PathOptimization's `layer-collection-builder` capability surface:
 
-- `insert-entity-at(layer-index, position: u32, path, region-key) -> result<_, string>` — inserts an entity at a specific position in the layer's `ordered_entities` list. On apply, `ToolChange.after_entity_index >= position` and `ZHop.after_entity_index >= position` are each incremented by 1 to preserve their positional references. Out-of-bounds position returns `Err` with no mutation.
+- `insert-entity-at(layer-index, position: u32, path, tool-index, region-key) -> result<_, string>` — inserts an entity at a specific position in the layer's `ordered_entities` list. `tool-index: u32` is the explicit tool selector (region_id↔tool split). On apply, `ToolChange.after_entity_index >= position` and `ZHop.after_entity_index >= position` are each incremented by 1 to preserve their positional references. Out-of-bounds position returns `Err` with no mutation.
 - `set-entity-order(layer-index, items: list<tuple<u32, bool>>) -> result<_, string>` — permutes the layer's entities by the supplied index list (one entry per existing entity; the boolean is a reverse flag). On apply, `ToolChange.after_entity_index` and `ZHop.after_entity_index` are remapped through the inverse permutation. Malformed proposals (length mismatch, duplicates, out-of-range indices) return `Err` with no mutation.
 - `get-ordered-entities(layer-index) -> list<print-entity-view>` — returns the staged state of the layer's `ordered_entities`. The SDK path observes both completed and in-flight builder state; the host-side WIT impl currently returns the pre-apply layer snapshot only (in-flight pushes are not reflected until `apply_to` runs). Module authors who need the staged state during the same `run_finalization` call should rely on the SDK side; the host accessor is a snapshot of pre-existing entities.
 

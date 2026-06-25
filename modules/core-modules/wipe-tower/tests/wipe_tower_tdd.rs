@@ -80,7 +80,12 @@ fn from_config_defaults() {
     assert!((wt.tower_x() - 0.0).abs() < 0.001);
     assert!((wt.tower_y() - 0.0).abs() < 0.001);
     assert!((wt.tower_width() - 60.0).abs() < 0.001);
-    assert!((wt.purge_volume() - 70.0).abs() < 0.001);
+    // Default purge volume is the manifest default (10.0); the previous 70.0
+    // fallback exceeded the schema max and was lowered in commit 6973f5c1
+    // (`fix(parity): close 4 OrcaSlicer parity gaps`). This assertion was left
+    // stale by that change and is corrected here to match the documented source
+    // default (`wipe-tower/src/lib.rs` `from_config` → `_ => 10.0`).
+    assert!((wt.purge_volume() - 10.0).abs() < 0.001);
 }
 
 #[test]

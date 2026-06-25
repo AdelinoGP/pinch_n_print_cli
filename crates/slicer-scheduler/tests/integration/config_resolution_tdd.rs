@@ -7,7 +7,8 @@ use std::collections::HashMap;
 
 use slicer_ir::ConfigValue;
 use slicer_scheduler::{
-    resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, ConfigResolutionError,
+    resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs, ConfigBoundsIndex,
+    ConfigResolutionError,
 };
 
 /// AC-1: A known field (top_shell_layers) is applied; unlisted fields keep
@@ -49,6 +50,56 @@ fn resolver_unknown_key_routes_to_extensions() {
         resolved.extensions.get("experimental_xyz"),
         Some(&ConfigValue::String("on".to_string())),
         "unknown key should land in extensions"
+    );
+}
+
+/// Part C: `tool_config:<idx>:<key>` overrides resolve into a per-tool overlay
+/// keyed by tool index, on top of the global base; tools without an override
+/// are absent (callers fall back to the global value).
+#[test]
+fn resolver_per_tool_overrides_global() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert("retract_length".to_string(), ConfigValue::Float(2.0));
+    // Tool 1 overrides retract_length; tool 0 has no override.
+    source.insert(
+        "tool_config:1:retract_length".to_string(),
+        ConfigValue::Float(5.5),
+    );
+
+    let bounds = ConfigBoundsIndex::empty();
+    let global = resolve_global_config(&source, &bounds).expect("global resolution");
+    assert_eq!(global.retract_length, 2.0);
+
+    let per_tool =
+        resolve_per_tool_configs(&global, &source, &bounds).expect("per-tool resolution");
+
+    assert_eq!(
+        per_tool.get(&1).map(|c| c.retract_length),
+        Some(5.5),
+        "tool 1 must carry its overridden retract_length"
+    );
+    assert!(
+        !per_tool.contains_key(&0),
+        "tool 0 has no tool_config override, so it must be absent (falls back to global)"
+    );
+}
+
+/// Part C: a non-numeric tool index in `tool_config:<idx>:…` is skipped rather
+/// than erroring the whole resolution.
+#[test]
+fn resolver_per_tool_skips_non_numeric_index() {
+    let mut source: HashMap<String, ConfigValue> = HashMap::new();
+    source.insert(
+        "tool_config:bogus:retract_length".to_string(),
+        ConfigValue::Float(9.9),
+    );
+    let bounds = ConfigBoundsIndex::empty();
+    let global = resolve_global_config(&source, &bounds).expect("global resolution");
+    let per_tool =
+        resolve_per_tool_configs(&global, &source, &bounds).expect("per-tool resolution");
+    assert!(
+        per_tool.is_empty(),
+        "non-numeric tool index must be skipped, yielding an empty map"
     );
 }
 

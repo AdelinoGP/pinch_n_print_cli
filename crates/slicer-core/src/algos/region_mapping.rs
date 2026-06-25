@@ -488,6 +488,8 @@ pub fn execute_region_mapping_with_cap(
         aggregated_region_split,
         objects,
         None,
+        // No per-tool overlays on the legacy/test entry point.
+        &BTreeMap::new(),
         cap,
     )
 }
@@ -516,6 +518,16 @@ pub fn execute_region_mapping_inner(
     // module-emitted `region.resolved_config` is used as the base (preserves
     // the pre-commit `execute_region_mapping` test/e2e callers).
     host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
+    // Per-tool/extruder config overlays keyed by `tool_index` (`tool_config:<n>:<key>`,
+    // global-based, resolved by `resolve_per_tool_configs`). For a painted variant
+    // chain carrying `("material", ToolIndex(n))`, the matching `tool_configs[n]` is
+    // overlaid LAST — highest precedence — onto the region's effective config,
+    // mirroring OrcaSlicer's filament-override-last model
+    // (`PrintApply.cpp` applies filament overrides on top of print/object/modifier).
+    // This is the only place a painted region's tool is known before perimeter
+    // generation, so it is where per-tool geometry (e.g. `line_width`) composes.
+    // Pass an empty map to disable (preserves the pre-existing single-config flow).
+    tool_configs: &BTreeMap<u32, ResolvedConfig>,
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
@@ -627,7 +639,11 @@ pub fn execute_region_mapping_inner(
             for chain in chains {
                 let mut effective = modifier_stamped_base.clone();
                 let mut paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
-                for (sem_name, _value) in &chain {
+                // The chain's painted material tool (if any). Captured here so the
+                // per-tool config can be overlaid LAST (highest precedence), after
+                // the paint overlays below.
+                let mut chain_tool_index: Option<u32> = None;
+                for (sem_name, value) in &chain {
                     // Match the canonical semantic name against the existing
                     // `paint_semantic_configs` keys via
                     // `paint_semantic_namespace_key`, mirroring the idiom in
@@ -640,6 +656,22 @@ pub fn execute_region_mapping_inner(
                             effective = overlay_resolved(effective, sem_cfg);
                             paint_overrides.insert(sem_key.clone(), sem_cfg.clone());
                         }
+                    }
+                    // A material chain entry carries the region's tool selector.
+                    if sem_name == "material" {
+                        if let PaintValue::ToolIndex(n) = value {
+                            chain_tool_index = Some(*n);
+                        }
+                    }
+                }
+
+                // Per-tool overlay — highest precedence (OrcaSlicer filament-
+                // override-last). Enables per-tool geometry (e.g. `line_width`) for
+                // painted/MMU tools at the one point the tool is known before
+                // perimeter generation. `region_id` stays the pure identity.
+                if let Some(t) = chain_tool_index {
+                    if let Some(tool_cfg) = tool_configs.get(&t) {
+                        effective = overlay_resolved(effective, tool_cfg);
                     }
                 }
 

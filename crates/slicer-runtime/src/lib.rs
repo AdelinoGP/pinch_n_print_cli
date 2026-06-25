@@ -42,8 +42,8 @@ pub use slicer_scheduler::validation;
 pub use blackboard::{Blackboard, DeferredRetract, DeferredTravelMove, LayerArena};
 pub use config_resolution::{
     paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
-    resolve_per_paint_semantic_configs, validate_support_layer_heights, BoundsDeclaration,
-    ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
+    resolve_per_paint_semantic_configs, resolve_per_tool_configs, validate_support_layer_heights,
+    BoundsDeclaration, ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
 };
 pub use dag::{
     build_global_dag, build_intra_stage_dag, BuiltinProducer, EdgeTo, GlobalEdge, ModuleNode,

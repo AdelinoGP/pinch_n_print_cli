@@ -108,6 +108,7 @@ fn layer_collection_with_entities(n: u32) -> LayerCollectionIR {
                 speed_factor: 1.0,
             },
             role: ExtrusionRole::SparseInfill,
+            tool_index: 0,
             region_key: RegionKey {
                 global_layer_index: 0,
                 object_id: ObjectId::from("obj-1"),

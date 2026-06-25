@@ -60,6 +60,7 @@ fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintE
             speed_factor: 1.0,
         },
         role,
+        tool_index: 0,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: "obj".to_string(),
@@ -262,6 +263,7 @@ fn entity_with_points_and_role(
             speed_factor: 1.0,
         },
         role,
+        tool_index: 0,
         region_key: RegionKey {
             global_layer_index: 0,
             object_id: "obj".to_string(),

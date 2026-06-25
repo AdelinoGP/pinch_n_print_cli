@@ -73,6 +73,7 @@ fn finalization_role_round_trip() {
             builder_handle,
             0,
             make_finalization_path(tag),
+            1,
             finalization::RegionKey {
                 layer_index: 0,
                 object_id: "obj-1".to_string(),

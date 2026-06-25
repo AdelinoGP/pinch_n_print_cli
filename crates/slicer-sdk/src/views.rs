@@ -25,6 +25,11 @@ pub struct SliceRegionView {
     z: f32,
     has_nonplanar: bool,
     segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// Ordered (paint-semantic-name, value) pairs identifying this region's paint
+    /// variant. Carries the painted FuzzySkin signal (`("fuzzy_skin", Flag(true))`)
+    /// so perimeter generators can enable per-vertex jitter without reading
+    /// FuzzySkin from `segment_annotations` (D14).
+    variant_chain: Vec<(String, PaintValue)>,
     /// SurfaceClassificationIR-derived eligibility flag. Surfaces the documented
     /// `needs_support` signal from docs/02_ir_schemas.md into the support stage
     /// so generators can apply the default eligibility rules from
@@ -80,6 +85,7 @@ impl Default for SliceRegionView {
             z: 0.0,
             has_nonplanar: false,
             segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             // `needs_support: true` matches the pre-TASK-200e `new()` default
             // (see docs/02_ir_schemas.md §IR 2). Test fixtures that predate
             // the SurfaceClassificationIR wiring observe the prior
@@ -151,6 +157,12 @@ impl SliceRegionView {
         segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
     ) {
         self.segment_annotations = segment_annotations;
+    }
+
+    /// Override the paint variant chain (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_variant_chain(&mut self, variant_chain: Vec<(String, PaintValue)>) {
+        self.variant_chain = variant_chain;
     }
 
     /// Override the `needs_support` eligibility flag (host-only, for testing).
@@ -339,6 +351,14 @@ impl SliceRegionView {
     /// if no paint data applies to this region.
     pub fn segment_annotations(&self) -> &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
         &self.segment_annotations
+    }
+
+    /// Returns the region's paint variant chain as ordered
+    /// `(paint_semantic_name, value)` pairs. Carries the painted FuzzySkin
+    /// signal (`("fuzzy_skin", Flag(true))`); empty for the legacy
+    /// single-variant flow.
+    pub fn variant_chain(&self) -> &[(String, PaintValue)] {
+        &self.variant_chain
     }
 
     /// Returns the per-layer expanded bridge polygons.
@@ -554,6 +574,10 @@ impl PerimeterRegionView {
 pub struct OrderedEntityView {
     /// Index of this entity in the host-staged ordering at snapshot time.
     pub original_index: u32,
+    /// Resolved tool/extruder index (first-class selector since the
+    /// region_id↔tool split; read this for the entity's tool, NOT
+    /// `region_key.region_id`, which is now a pure region identity).
+    pub tool_index: u32,
     /// Region key (layer / object / region triple) the entity belongs to.
     pub region_key: RegionKey,
     /// Extrusion role of the entity.

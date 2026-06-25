@@ -86,6 +86,7 @@ impl FinalizationModule for SdkFinalizationModule {
                 .push_entity_to_layer(
                     layer.layer_index(),
                     marker,
+                    0,
                     RegionKey {
                         global_layer_index: layer.layer_index(),
                         object_id: "__task109_fin_witness__".into(),

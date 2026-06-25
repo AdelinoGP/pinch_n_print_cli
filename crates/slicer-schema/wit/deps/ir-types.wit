@@ -61,6 +61,11 @@ interface ir-handles {
         external-contour: func() -> option<list<ex-polygon>>;
         overhang-areas: func() -> list<ex-polygon>;
         surface-group: func() -> option<surface-group>;
+        // Ordered (paint-semantic-name, value) pairs identifying this region's
+        // paint variant. Carries the painted FuzzySkin signal
+        // (`("fuzzy_skin", flag(true))`) so the perimeter guest can enable
+        // per-vertex jitter without routing through segment-annotations (D14).
+        variant-chain: func() -> list<tuple<string, paint-value>>;
     }
 
     record seam-position { point: point3-with-width, wall-index: u32 }
@@ -109,6 +114,9 @@ interface ir-handles {
 
     record ordered-entity-view {
         original-index: u32,
+        // Resolved tool/extruder index (first-class selector since the
+        // region_id↔tool split; read this, not region-key.region-id).
+        tool-index: u32,
         region-key: region-key,
         role: extrusion-role,
         start-point: point3-with-width,

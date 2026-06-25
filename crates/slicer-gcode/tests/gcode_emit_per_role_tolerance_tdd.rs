@@ -74,6 +74,7 @@ fn make_entity(id: u64, points: Vec<Point3WithWidth>, role: ExtrusionRole) -> Pr
             speed_factor: 1.0,
         },
         role,
+        tool_index: 0,
         region_key: region_key(),
         topo_order: id as u32,
     }

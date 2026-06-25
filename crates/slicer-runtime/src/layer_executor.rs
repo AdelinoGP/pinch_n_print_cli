@@ -606,6 +606,7 @@ pub(crate) fn assemble_ordered_entities(
     let id_gen = LayerEntityIdGen::new();
     let push = |path: slicer_ir::ExtrusionPath3D,
                 role: slicer_ir::ExtrusionRole,
+                tool_index: u32,
                 key: RegionKey,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
@@ -613,6 +614,10 @@ pub(crate) fn assemble_ordered_entities(
             entity_id: id_gen.next(),
             path,
             role,
+            // Tool is now an explicit SELECTOR; `region_key.region_id` stays a
+            // pure region IDENTITY so a paint-variant identity can never leak
+            // into the tool slot (the packet-125 OOM).
+            tool_index,
             region_key: key,
             topo_order,
         });
@@ -752,11 +757,19 @@ pub(crate) fn assemble_ordered_entities(
                 let entity_key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
-                    region_id: resolved_tool,
+                    // Pure region IDENTITY (restored — packet 125 had overwritten
+                    // this with the tool). Postpass back-refs key on this.
+                    region_id: region.region_id,
                     variant_chain: Vec::new(),
                 };
                 let role = wl.path.role.clone();
-                push(wl.path.clone(), role, entity_key, &mut out);
+                push(
+                    wl.path.clone(),
+                    role,
+                    resolved_tool as u32,
+                    entity_key,
+                    &mut out,
+                );
             }
         }
     }
@@ -782,10 +795,11 @@ pub(crate) fn assemble_ordered_entities(
                 let key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
-                    region_id: resolved_tool,
+                    // Pure region IDENTITY (restored — see wall-loop note above).
+                    region_id: region.region_id,
                     variant_chain: Vec::new(),
                 };
-                push(path.clone(), role, key, acc);
+                push(path.clone(), role, resolved_tool as u32, key, acc);
             };
             for path in &region.sparse_infill {
                 infill_push(path, path.role.clone(), &mut out);
@@ -809,17 +823,18 @@ pub(crate) fn assemble_ordered_entities(
             region_id: 0,
             variant_chain: Vec::new(),
         };
+        // Support geometry prints with the base tool (T0); region_id=0 identity.
         for path in &sup.support_paths {
-            push(path.clone(), path.role.clone(), key.clone(), &mut out);
+            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
         }
         for path in &sup.interface_paths {
-            push(path.clone(), path.role.clone(), key.clone(), &mut out);
+            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
         }
         for path in &sup.raft_paths {
-            push(path.clone(), path.role.clone(), key.clone(), &mut out);
+            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
         }
         for path in &sup.ironing_paths {
-            push(path.clone(), path.role.clone(), key.clone(), &mut out);
+            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
         }
     }
 
@@ -1470,11 +1485,24 @@ mod tests {
             "expected at least one PrintEntity (wall + infill)"
         );
         for entity in &entities {
-            let tool = entity.region_key.region_id;
+            // Post region_id↔tool split: the TOOL lives in the first-class
+            // `tool_index` (a pure selector). When all four resolvers return
+            // None it falls back to DEFAULT_TOOL=0 — the paint-variant IDENTITY
+            // can never reach the tool slot (the packet-125 9.9 GiB OOM).
             assert_eq!(
-                tool, 0,
-                "region_key.region_id (tool slot) must be DEFAULT_TOOL=0, \
-                 not the paint-variant identity {IDENTITY:#x}; got {tool:#x}"
+                entity.tool_index, 0,
+                "tool_index must be DEFAULT_TOOL=0 on fallback, \
+                 not the paint-variant identity {IDENTITY:#x}; got {:#x}",
+                entity.tool_index
+            );
+            // And the identity is correctly PRESERVED in its own slot
+            // (`region_key.region_id`) — the split keeps the back-reference the
+            // postpasses depend on, instead of zeroing it (packet-125 floor).
+            assert_eq!(
+                entity.region_key.region_id, IDENTITY,
+                "region_key.region_id must preserve the region IDENTITY {IDENTITY:#x} \
+                 (no longer overwritten by the tool); got {:#x}",
+                entity.region_key.region_id
             );
         }
     }

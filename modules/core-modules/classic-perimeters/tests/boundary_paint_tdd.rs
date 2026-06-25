@@ -345,11 +345,16 @@ fn count_outer(output: &PerimeterOutputBuilder) -> usize {
         .count()
 }
 
-/// Two painted cells of ONE object that share an `external_contour` must yield
-/// exactly ONE outer wall (the model perimeter traced once), not one per cell —
-/// the AC-22b dedup. Without it, each cell would emit its own outer wall.
+/// Per-color fragmentation (Model A, `D-105-AC22-PARITY-RESHAPE`): the P96
+/// `external_contour` single-outer-wall dedup was RETIRED in packet 105 — the
+/// modules no longer consume `external_contour`, so each painted cell of an
+/// object traces its OWN outer wall. Two cells therefore emit two outer loops,
+/// even when an `external_contour` is present on the view. (The IR field remains
+/// per D-105; only its consumption was removed. This assertion was left stale by
+/// that reshape — it previously expected ONE shared wall — and is corrected here
+/// to the documented current behavior.)
 #[test]
-fn painted_cells_share_one_outer_wall_via_external_contour() {
+fn painted_cells_each_trace_own_outer_wall_external_contour_retired() {
     let config = config_2_walls();
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
@@ -374,9 +379,9 @@ fn painted_cells_share_one_outer_wall_via_external_contour() {
 
     assert_eq!(
         count_outer(&output),
-        1,
-        "two painted cells of one object must share ONE outer wall (traced once \
-         from external_contour); got {} outer loops",
+        2,
+        "external_contour consumption is retired (P105 / D-105-AC22-PARITY-RESHAPE): \
+         each of the two painted cells must trace its OWN outer wall; got {} outer loops",
         count_outer(&output)
     );
     // Each cell still contributes its own inner wall.

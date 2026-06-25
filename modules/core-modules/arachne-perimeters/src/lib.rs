@@ -213,6 +213,13 @@ impl LayerModule for ArachnePerimeters {
                 continue;
             }
             let rid = *region.region_id();
+            // D14: painted FuzzySkin travels on the region's variant_chain, not
+            // segment_annotations. Resolve it once and apply uniformly to every
+            // wall vertex of this region via build_wall_flags(variant_fuzzy=…).
+            let region_fuzzy = region
+                .variant_chain()
+                .iter()
+                .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
             // Some(N>0) carve: split into top portion (1 wall) and non-top portion
             // (full wall_count). Pass ORIGINAL region polygons as original_polygons
             // to generate_arachne_walls so build_wall_flags paint reprojection
@@ -225,6 +232,7 @@ impl LayerModule for ArachnePerimeters {
                         &split.top_portion,
                         z,
                         region.segment_annotations(),
+                        region_fuzzy,
                         true,
                         true,
                         output,
@@ -249,6 +257,7 @@ impl LayerModule for ArachnePerimeters {
                         &split.non_top_portion,
                         z,
                         region.segment_annotations(),
+                        region_fuzzy,
                         true,
                         true,
                         output,
@@ -273,6 +282,7 @@ impl LayerModule for ArachnePerimeters {
                     polygons,
                     z,
                     region.segment_annotations(),
+                    region_fuzzy,
                     true,
                     true,
                     output,
@@ -321,6 +331,7 @@ impl ArachnePerimeters {
         polygons: &[ExPolygon],
         z: f32,
         segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        variant_fuzzy: bool,
         emit_outer: bool,
         emit_inner: bool,
         output: &mut PerimeterOutputBuilder,
@@ -507,6 +518,7 @@ impl ArachnePerimeters {
                     is_outer,
                     ring_pts,
                     orig_polys,
+                    variant_fuzzy,
                 );
                 // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
                 // inner_poly.contour.points has N entries (integer units); feature_flags has
