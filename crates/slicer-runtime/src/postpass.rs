@@ -37,6 +37,9 @@ fn gcode_emit_error_to_postpass(e: GCodeEmitError) -> PostpassError {
         },
         GCodeEmitError::Emit(message) => PostpassError::GCodeEmit { message },
         GCodeEmitError::Serialization(message) => PostpassError::GCodeSerialization { message },
+        GCodeEmitError::ToolIndexOutOfRange { tool, max } => PostpassError::GCodeEmit {
+            message: format!("tool index {tool} out of range (max plausible {max})"),
+        },
     }
 }
 use slicer_wasm_host::{

@@ -92,6 +92,18 @@ max     = 5.0
 display = "Minimum gap-fill segment length (mm)"
 group   = "Quality"
 
+[config.schema.gap_fill_medial_axis_on_painted]
+type    = "bool"
+default = false
+display = "Run gap-fill/thin-wall medial axis on painted slices"
+group   = "Quality"
+
+[config.schema.slice_has_paint]
+type    = "bool"
+default = false
+display = "Slice contains painted regions (host-injected)"
+group   = "Quality"
+
 [config.schema.outer_wall_speed]
 type    = "float"
 default = 30.0

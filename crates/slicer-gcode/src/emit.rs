@@ -27,6 +27,18 @@ use slicer_ir::{
 use crate::error::GCodeEmitError;
 use crate::serialize::{format_xyz, tolerance_for_role};
 
+/// Maximum plausible number of extruder/tool slots.
+///
+/// `filament_per_tool` is sized as a dense `Vec<f32>` indexed by tool id.
+/// A corrupted or garbage `region_id` (e.g. 2,664,076,552) would cause a
+/// ~9.9 GiB allocation.  We cap the tool index at this value and return a
+/// typed `GCodeEmitError::ToolIndexOutOfRange` instead.
+///
+/// 1 024 covers all known consumer/industrial multi-material systems and
+/// leaves orders-of-magnitude headroom above realistic max (≤ 256 tools)
+/// while still rejecting any garbage value.
+const MAX_PLAUSIBLE_TOOLS: u32 = 1_024;
+
 /// Trait for GCode emission (host-built-in).
 ///
 /// Implementations consume a `&[LayerCollectionIR]` and produce a `GCodeIR`.
@@ -614,6 +626,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 
         // Build filament_used_mm vector (indexed by tool)
         let max_tool = filament_per_tool.keys().max().copied().unwrap_or(0);
+        // Defense-in-depth: reject any tool index that would cause a multi-GB
+        // allocation regardless of how the garbage id got here (WI-4 guard).
+        if max_tool >= MAX_PLAUSIBLE_TOOLS {
+            return Err(GCodeEmitError::ToolIndexOutOfRange {
+                tool: max_tool,
+                max: MAX_PLAUSIBLE_TOOLS - 1,
+            });
+        }
         let mut filament_used_mm = vec![0.0; (max_tool + 1) as usize];
         for (tool, amount) in filament_per_tool {
             filament_used_mm[tool as usize] = amount;

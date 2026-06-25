@@ -134,6 +134,23 @@ impl LayerModule for ClassicPerimeters {
             .get_float("filter_out_gap_fill")
             .map(|s| s as f32)
             .unwrap_or(0.5);
+        // Medial-axis backend gate (diagnose 2026-06-24). On painted slices the
+        // gap-fill / thin-wall medial axis can OOM-abort boostvoronoi on degenerate
+        // per-color cell gaps (cube_fuzzyPainted). Until the medial axis is isolated
+        // in a worker subprocess, skip it for painted slices (`slice_has_paint`
+        // injected by the host) unless the user explicitly opts back in via
+        // `gap_fill_medial_axis_on_painted`. Unpainted models keep full parity.
+        let gap_fill_medial_axis_on_painted = _config
+            .get_bool("gap_fill_medial_axis_on_painted")
+            .unwrap_or(false);
+        let slice_has_paint = _config.get_bool("slice_has_paint").unwrap_or(false);
+        let medial_axis_enabled = gap_fill_medial_axis_on_painted || !slice_has_paint;
+        if !medial_axis_enabled && layer_index == 0 {
+            slicer_sdk::host::log_warn(
+                "medial-axis-skipped reason=backend-unstable scope=painted-slice \
+                 (set gap_fill_medial_axis_on_painted=true to re-enable)",
+            );
+        }
         // R1: precise_outer_wall — gated on wall_sequence==InnerOuter (AC-7, P105).
         // OrcaSlicer PerimeterGenerator.cpp:1501-1506,1644
         let precise_outer_wall_raw = _config.get_bool("precise_outer_wall").unwrap_or(false);
@@ -213,6 +230,7 @@ impl LayerModule for ClassicPerimeters {
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
+                        medial_axis_enabled,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -236,6 +254,7 @@ impl LayerModule for ClassicPerimeters {
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
+                        medial_axis_enabled,
                     )?;
                 }
             } else {
@@ -259,6 +278,7 @@ impl LayerModule for ClassicPerimeters {
                     gap_infill_speed,
                     filter_out_gap_fill,
                     rid,
+                    medial_axis_enabled,
                 )?;
             }
         }
@@ -321,6 +341,7 @@ impl ClassicPerimeters {
         gap_infill_speed: f32,
         filter_out_gap_fill: f32,
         region_id: u64,
+        medial_axis_enabled: bool,
     ) -> Result<(), ModuleError> {
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
@@ -531,7 +552,7 @@ impl ClassicPerimeters {
         }
 
         // ── Thin-wall detection (T-061/T-062) ──────────────────────────
-        if detect_thin_wall && emit_outer {
+        if detect_thin_wall && emit_outer && medial_axis_enabled {
             // R4 (P105): OrcaSlicer parity thin-wall min_width.
             // OrcaSlicer PerimeterGenerator.cpp:1603: min_width = nozzle_diameter()/3
             let min_width = nozzle_diameter / 3.0;
@@ -597,7 +618,7 @@ impl ClassicPerimeters {
         // the medial axis: keep only gaps whose width is in [min, max]. This both
         // matches Orca parity AND removes the sub-/super-threshold slivers that
         // were driving the RNG medial-axis (and thus non-deterministic gcode).
-        if emit_inner && !gaps.is_empty() {
+        if emit_inner && !gaps.is_empty() && medial_axis_enabled {
             // R4 (P105): OrcaSlicer parity gap-fill min_width.
             // OrcaSlicer PerimeterGenerator.cpp:1924:
             // min_gap_fill_width = 0.2 * line_width * (1.0 - INSET_OVERLAP_TOLERANCE)

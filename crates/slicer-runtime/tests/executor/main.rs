@@ -5,6 +5,62 @@
 
 #![allow(missing_docs)]
 
+// ── OOM tripwire (AC-N1) ─────────────────────────────────────────────────────
+// Guards against a single allocation >= 1 GiB (the Voronoi/emit OOM signature).
+// The cumulative TOTAL_LIMIT backstop is intentionally absent: a multi-test
+// bucket legitimately allocates >2 GiB in aggregate and must NOT false-trip.
+// Re-entrancy is guarded via IN_HOOK so backtrace capture doesn't recurse.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+const GIB: usize = 1024 * 1024 * 1024;
+const SINGLE_LIMIT: usize = GIB; // any single alloc >= 1 GiB is the OOM smoking gun
+
+static TRIPPED: AtomicBool = AtomicBool::new(false);
+
+thread_local! {
+    static IN_HOOK: Cell<bool> = const { Cell::new(false) };
+}
+
+struct OomGuard;
+
+unsafe impl GlobalAlloc for OomGuard {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let size = layout.size();
+        let in_hook = IN_HOOK.with(|f| f.get());
+        if !in_hook && size >= SINGLE_LIMIT {
+            if TRIPPED.swap(true, Ordering::SeqCst) {
+                std::process::exit(173);
+            }
+            IN_HOOK.with(|f| f.set(true)); // route allocs made below straight to System
+            eprintln!(
+                "\n=================== OOM-GUARD TRIPPED (SINGLE) ===================\n\
+                 requested SINGLE allocation = {} bytes  ({:.3} GiB)\n\
+                 alignment                   = {}",
+                size,
+                size as f64 / GIB as f64,
+                layout.align(),
+            );
+            let bt = std::backtrace::Backtrace::force_capture();
+            eprintln!("{bt}");
+            use std::io::Write as _;
+            let _ = std::io::stderr().flush();
+            std::process::exit(173);
+        }
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) }
+    }
+}
+
+#[global_allocator]
+static GUARD: OomGuard = OomGuard;
+// ── end OOM tripwire ──────────────────────────────────────────────────────────
+
 #[path = "../common/mod.rs"]
 mod common;
 

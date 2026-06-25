@@ -727,6 +727,16 @@ pub fn execute_paint_segmentation(
                 // `region_key.region_id` (see
                 // `path-optimization-default::tool_index_of` and
                 // `slicer_gcode::emit::layer_change_tool_reset`).
+                //
+                // Step 3 (WI-3): for FuzzySkin painted chains, propagate the
+                // FuzzySkin annotation into segment_annotations so that
+                // build_wall_flags sets WallFeatureFlags.fuzzy_skin = true for
+                // every vertex. Without this, the guest perimeter generator sees
+                // an empty segment_annotations and never enables per-vertex
+                // fuzzy jitter on the painted region's walls.
+                let painted_chain_annotations =
+                    build_painted_chain_annotations(&dominant_semantic, value, polys);
+
                 if matching_keys.is_empty() {
                     if let Some(existing) = working[i].regions.first() {
                         new_regions.push(slicer_ir::SlicedRegion {
@@ -734,7 +744,7 @@ pub fn execute_paint_segmentation(
                             region_id: paint_variant_region_id(existing.region_id, &chain_key),
                             polygons: polys.clone(),
                             variant_chain: chain_key.clone(),
-                            segment_annotations: std::collections::HashMap::new(),
+                            segment_annotations: painted_chain_annotations.clone(),
                             ..Default::default()
                         });
                     }
@@ -745,7 +755,7 @@ pub fn execute_paint_segmentation(
                             region_id: paint_variant_region_id(rk.region_id, &chain_key),
                             polygons: polys.clone(),
                             variant_chain: chain_key.clone(),
-                            segment_annotations: std::collections::HashMap::new(),
+                            segment_annotations: painted_chain_annotations.clone(),
                             ..Default::default()
                         });
                     }
@@ -1155,6 +1165,45 @@ fn build_modifier_segment_annotations(
             .extend(perimeters);
     }
 
+    annotations
+}
+
+// ---------------------------------------------------------------------------
+// Step 3 (WI-3): painted-chain annotation propagation
+// ---------------------------------------------------------------------------
+
+/// Build `segment_annotations` for a painted variant chain.
+///
+/// For FuzzySkin chains: synthesizes per-polygon per-vertex `Flag(true)` entries
+/// so that `build_wall_flags` sets `WallFeatureFlags.fuzzy_skin = true` for every
+/// vertex of the painted region. Without this, the guest perimeter generator sees
+/// an empty map and never enables fuzzy jitter on the painted face's walls.
+///
+/// For all other semantics (Material, SupportEnforcer, SupportBlocker, Custom):
+/// returns an empty map. Material tool resolution routes through `variant_chain`
+/// via `layer_executor::variant_tool_by_region`; modifier-volume annotations
+/// stay on the BASE region per D14.
+fn build_painted_chain_annotations(
+    semantic: &slicer_ir::PaintSemantic,
+    _value: &slicer_ir::PaintValue,
+    polys: &[slicer_ir::ExPolygon],
+) -> std::collections::HashMap<slicer_ir::PaintSemantic, Vec<Vec<Option<slicer_ir::PaintValue>>>> {
+    if !matches!(semantic, slicer_ir::PaintSemantic::FuzzySkin) {
+        return std::collections::HashMap::new();
+    }
+
+    // For each polygon in the painted chain, mark every vertex as Flag(true).
+    // The segment_annotations inner Vec aligns with polygon.contour.points.
+    let per_poly: Vec<Vec<Option<slicer_ir::PaintValue>>> = polys
+        .iter()
+        .map(|exp| {
+            let n = exp.contour.points.len();
+            vec![Some(slicer_ir::PaintValue::Flag(true)); n]
+        })
+        .collect();
+
+    let mut annotations = std::collections::HashMap::new();
+    annotations.insert(slicer_ir::PaintSemantic::FuzzySkin, per_poly);
     annotations
 }
 

@@ -703,6 +703,59 @@ fn cube_4color_right_face_uniform_requires_vertical_face_projection() {
     );
 }
 
+/// AC-2 — painted entity resolves a real (small) tool index through the variant-chain
+/// resolver, never a synthesised `region_id` identity value.
+///
+/// Contract (Step 2 invariant / Step 3c reframe): for a material-painted model
+/// (cube_4color: tools 0-3), every painted SlicedRegion must carry a
+/// `variant_chain` entry `("material", ToolIndex(t))` where `t < 16`.  A
+/// `region_id`-identity leak would produce t ≥ PAINT_VARIANT_REGION_ID_STRIDE
+/// (1_000_000), which this test explicitly rejects.
+///
+/// This is the honest AC-2 assertion: the fuzzy-painted cube has NO tool (single
+/// tool, tool=0 everywhere), so we assert against cube_4color which genuinely
+/// has 4 Material ToolIndex values (0-3).
+#[test]
+fn painted_entity_resolves_real_tool() {
+    let mesh = load_cube_4color();
+    let object_id = mesh.objects[0].id.clone();
+    let lp = build_50_layer_plan(&object_id);
+
+    let new_slice_ir = run_v2(Arc::new(mesh), &lp);
+
+    // Collect all (object_id, region_id, tool_index) triples from variant_chains.
+    let mut found_any_material = false;
+    for layer in new_slice_ir.iter() {
+        for region in &layer.regions {
+            for (sem_name, value) in &region.variant_chain {
+                if sem_name == "material" {
+                    found_any_material = true;
+                    if let PaintValue::ToolIndex(t) = value {
+                        // AC-2 core: tool index must be a real small value (< 16),
+                        // never a region_id identity leak (≥ 1_000_000).
+                        assert!(
+                            *t < 16,
+                            "AC-2: material paint resolved tool_index={t} which looks like a \
+                             region_id identity leak (must be < 16 for cube_4color's 4 tools). \
+                             region_id={}, layer={}, object={}",
+                            region.region_id,
+                            layer.global_layer_index,
+                            region.object_id
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        found_any_material,
+        "AC-2: expected at least one SlicedRegion with variant_chain material entry \
+         in cube_4color output. Pipeline produced no material-painted regions — \
+         check host-algos feature gate or paint segmentation path."
+    );
+}
+
 /// Back face (+Y, Y≈117.5): fully blue (ToolIndex 2).
 /// v2 contract: SlicedRegion(s) whose polygons cover the back face position (y≈y_max)
 /// must carry variant_chain [("material", ToolIndex(2))].

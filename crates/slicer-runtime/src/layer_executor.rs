@@ -26,6 +26,14 @@ use crate::slice_postprocess::SlicePostProcessPaintAnnotationError;
 use crate::{Blackboard, BlackboardError, ExecutionPlan, LayerArena, ModuleAccessAudit};
 use slicer_core::algos::prepass_slice::LayerSliceError;
 
+/// Base extruder; tool-resolution fallback so a region IDENTITY can never
+/// enter the tool slot. When all four resolvers (paint_tool, spatial_tool,
+/// variant_tool, modifier_tool) return `None`, we emit tool 0 (T0) rather
+/// than the synthesized paint-variant IDENTITY stored in `region.region_id`.
+/// Leaking the identity caused a 9.9 GiB OOM: `region_id as u32` produced
+/// 2_664_076_552, driving `vec![0.0f32; max_tool+1]` in `emit.rs`.
+const DEFAULT_TOOL: u64 = 0;
+
 /// Sink for per-layer progress events (e.g. host-built-in paint-annotation
 /// fallback warnings). Must be `Sync` because the per-layer executor fans out
 /// across rayon worker threads.
@@ -740,7 +748,7 @@ pub(crate) fn assemble_ordered_entities(
                     .or(spatial_tool)
                     .or(variant_tool)
                     .or(modifier_tool)
-                    .unwrap_or(region.region_id);
+                    .unwrap_or(DEFAULT_TOOL);
                 let entity_key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
@@ -770,7 +778,7 @@ pub(crate) fn assemble_ordered_entities(
                     .points
                     .first()
                     .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
-                let resolved_tool = spatial_tool.or(variant_tool).unwrap_or(region.region_id);
+                let resolved_tool = spatial_tool.or(variant_tool).unwrap_or(DEFAULT_TOOL);
                 let key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
@@ -1357,5 +1365,117 @@ mod tests {
                 message: "test".into()
             }
         );
+    }
+
+    /// AC-1 — P125 WI-2 / B: a region whose four tool resolvers all return
+    /// `None` must produce a `RegionKey.region_id` of `DEFAULT_TOOL` (0), never
+    /// the paint-variant IDENTITY (`region.region_id`).
+    ///
+    /// The captured OOM value was `0x3E8281949ECA9508`; when cast to `u32` that
+    /// yields 2_664_076_552, driving a 9.9 GiB allocation in `emit.rs`.
+    ///
+    /// NOTE: `assemble_ordered_entities` is `pub(crate)`, so this test lives
+    /// here rather than in `tests/integration/`. Run with:
+    ///   cargo test -p slicer-runtime -- tool_fallback_never_leaks_region_identity
+    #[test]
+    fn tool_fallback_never_leaks_region_identity() {
+        use slicer_ir::{
+            ExtrusionPath3D, ExtrusionRole, InfillIR, InfillRegion, LoopType, PerimeterIR,
+            PerimeterRegion, Point3WithWidth, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop,
+            WidthProfile,
+        };
+        use std::collections::HashMap;
+
+        // A paint-variant IDENTITY large enough to produce a 9.9 GiB alloc
+        // when passed as u32 to vec![0.0f32; max_tool+1].
+        const IDENTITY: u64 = 0x3E8281949ECA9508;
+
+        let schema_version = SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        };
+
+        // One wall-loop point; spatial lookup will return None (no SliceIR).
+        let pt = Point3WithWidth {
+            x: 1.0,
+            y: 1.0,
+            z: 0.2,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        };
+        let wall_path = ExtrusionPath3D {
+            points: vec![pt, pt],
+            role: ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        };
+        // feature_flags: tool_index = None  → paint_tool resolver returns None
+        let flags = WallFeatureFlags {
+            tool_index: None,
+            fuzzy_skin: false,
+            is_bridge: false,
+            is_thin_wall: false,
+            skip_ironing: false,
+            custom: HashMap::new(),
+        };
+        let wall = WallLoop {
+            perimeter_index: 0,
+            loop_type: LoopType::Outer,
+            path: wall_path.clone(),
+            width_profile: WidthProfile::default(),
+            feature_flags: vec![flags],
+            boundary_type: WallBoundaryType::Interior,
+        };
+
+        let perimeter = PerimeterIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![PerimeterRegion {
+                object_id: "obj".to_string(),
+                region_id: IDENTITY, // the dangerous identity
+                walls: vec![wall],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+            }],
+        };
+
+        // Infill path — also no resolvable tool.
+        let infill = InfillIR {
+            schema_version,
+            global_layer_index: 0,
+            regions: vec![InfillRegion {
+                object_id: "obj".to_string(),
+                region_id: IDENTITY,
+                sparse_infill: vec![wall_path.clone()],
+                solid_infill: Vec::new(),
+                ironing: Vec::new(),
+            }],
+        };
+
+        // No slice (no variant_tool), no region_map (no modifier_tool),
+        // no support — all four resolvers will return None at both sites.
+        let entities = super::assemble_ordered_entities(
+            0,
+            Some(&perimeter),
+            Some(&infill),
+            None, // support
+            None, // region_map  → modifier_tool = None
+            None, // slice       → variant_tool = None, spatial_tool = None
+        );
+
+        assert!(
+            !entities.is_empty(),
+            "expected at least one PrintEntity (wall + infill)"
+        );
+        for entity in &entities {
+            let tool = entity.region_key.region_id;
+            assert_eq!(
+                tool, 0,
+                "region_key.region_id (tool slot) must be DEFAULT_TOOL=0, \
+                 not the paint-variant identity {IDENTITY:#x}; got {tool:#x}"
+            );
+        }
     }
 }

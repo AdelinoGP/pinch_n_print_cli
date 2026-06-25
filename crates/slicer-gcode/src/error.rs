@@ -38,4 +38,20 @@ pub enum GCodeEmitError {
     /// runtime seam.
     #[error("gcode serialization failed: {0}")]
     Serialization(String),
+
+    /// A tool/extruder index in `filament_per_tool` exceeded the plausible
+    /// maximum (likely a corrupted or garbage `region_id` propagated through
+    /// the pipeline). Allocating `vec![0.0f32; tool + 1]` would require
+    /// multi-gigabyte memory; this error is the emitter-side safety net that
+    /// rejects the request before touching the allocator.
+    #[error(
+        "tool index {tool} exceeds maximum plausible extruder count {max}; \
+         rejecting to prevent multi-GB allocation"
+    )]
+    ToolIndexOutOfRange {
+        /// The out-of-range tool index that was encountered.
+        tool: u32,
+        /// The inclusive upper bound that was violated.
+        max: u32,
+    },
 }
