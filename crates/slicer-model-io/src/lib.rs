@@ -11,6 +11,9 @@ pub mod loader;
 pub mod sidecar;
 pub mod writer;
 
-pub use loader::{assemble_object, detect_format, load_model, ModelFormat, ModelLoadError};
+pub use loader::{
+    assemble_object, detect_format, load_model, read_3mf_filament_colours, ModelFormat,
+    ModelLoadError,
+};
 pub use sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
 pub use writer::{write_3mf, write_obj};

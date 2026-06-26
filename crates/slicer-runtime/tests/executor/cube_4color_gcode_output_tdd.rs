@@ -190,6 +190,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -210,6 +211,7 @@ fn slice_synthetic_mesh(label: &str, mesh: Arc<MeshIR>) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against synthetic mesh {label}: {e}"))

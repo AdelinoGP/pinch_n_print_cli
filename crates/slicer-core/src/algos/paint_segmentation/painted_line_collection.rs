@@ -8,7 +8,9 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-/// Phase 3 driver — intersect painted triangles with layer Z plane.
+//! Painted-line collection: intersect painted triangles with the layer Z plane
+//! and project the resulting cross-section lines onto the layer's contour edges.
+//! (Corresponds to OrcaSlicer's MultiMaterialSegmentation "phase 3" projection.)
 use crate::algos::paint_segmentation::colorize::Contour;
 use crate::algos::paint_segmentation::painted_line::{PaintedLine, PaintedLineVisitor};
 use crate::algos::paint_segmentation::preprocess::{extract_paint_layer_data, extract_stroke_data};
@@ -24,11 +26,6 @@ const FIRST_LAYER_Z_THRESHOLD_MM: f32 = 0.5;
 
 /// Z-tolerance for classifying a vertex as "on" a horizontal face (mm).
 const BOTTOM_FACE_Z_EPS_MM: f32 = 0.01;
-
-/// Minimum |n_xy| / |n_3d| ratio for using the face-normal projection hint.  Triangles
-/// flatter than ~17.5° from horizontal fall back to the geometric-closest (first-match)
-/// behavior — they cannot reliably disambiguate between contour edges.
-const FACE_NORMAL_XY_RATIO_MIN: f64 = 0.3;
 
 // ---------------------------------------------------------------------------
 // Coordinate-space helpers
@@ -133,113 +130,128 @@ fn world_contours_for_object(
 // Contour-projection helpers
 // ---------------------------------------------------------------------------
 
-/// Return true when `pt` lies within 1 unit of the edge's bounding box.
+/// Squared distance (f64, in units²) from point `(px, py)` to segment `a→b`.
 #[inline]
-fn point_near_edge_bbox(pt: Point2, edge: &Line) -> bool {
-    let min_x = edge.start.x.min(edge.end.x) - 1;
-    let max_x = edge.start.x.max(edge.end.x) + 1;
-    let min_y = edge.start.y.min(edge.end.y) - 1;
-    let max_y = edge.start.y.max(edge.end.y) + 1;
-    pt.x >= min_x && pt.x <= max_x && pt.y >= min_y && pt.y <= max_y
+fn dist_sq_point_to_seg(px: f64, py: f64, a: Point2, b: Point2) -> f64 {
+    let ax = a.x as f64;
+    let ay = a.y as f64;
+    let dx = b.x as f64 - ax;
+    let dy = b.y as f64 - ay;
+    let l2 = dx * dx + dy * dy;
+    if l2 == 0.0 {
+        let ddx = px - ax;
+        let ddy = py - ay;
+        return ddx * ddx + ddy * ddy;
+    }
+    let t = (((px - ax) * dx + (py - ay) * dy) / l2).clamp(0.0, 1.0);
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    let ddx = px - cx;
+    let ddy = py - cy;
+    ddx * ddx + ddy * ddy
 }
 
-/// Compute the XY-projected, normalized face normal of a 3D triangle.
+/// Project `line` onto the infinite line through `edge`, clamped to the `edge`
+/// span; returns the sub-segment of `edge` that `line` covers.
 ///
-/// Returns `None` when the triangle is nearly horizontal (the XY share of the 3D
-/// normal is below `FACE_NORMAL_XY_RATIO_MIN`), since such triangles cannot
-/// reliably disambiguate between adjacent contour edges.
-fn triangle_face_normal_xy(verts: &[Point3; 3]) -> Option<(f64, f64)> {
-    let e1x = (verts[1].x - verts[0].x) as f64;
-    let e1y = (verts[1].y - verts[0].y) as f64;
-    let e1z = (verts[1].z - verts[0].z) as f64;
-    let e2x = (verts[2].x - verts[0].x) as f64;
-    let e2y = (verts[2].y - verts[0].y) as f64;
-    let e2z = (verts[2].z - verts[0].z) as f64;
-    let nx = e1y * e2z - e1z * e2y;
-    let ny = e1z * e2x - e1x * e2z;
-    let nz = e1x * e2y - e1y * e2x;
-    let len_xy = (nx * nx + ny * ny).sqrt();
-    let len_3d = (nx * nx + ny * ny + nz * nz).sqrt();
-    if len_3d < 1e-9 || len_xy / len_3d < FACE_NORMAL_XY_RATIO_MIN {
+/// Port of OrcaSlicer `MultiMaterialSegmentation.cpp::project_line_on_line`
+/// (`projection_l` = `edge`, `projected_l` = `line`).
+fn project_line_on_line(edge: &Line, line: &Line) -> Option<Line> {
+    let ax = edge.start.x as f64;
+    let ay = edge.start.y as f64;
+    let v1x = edge.end.x as f64 - ax;
+    let v1y = edge.end.y as f64 - ay;
+    let l2 = v1x * v1x + v1y * v1y;
+    if l2 == 0.0 {
         return None;
     }
-    Some((nx / len_xy, ny / len_xy))
+    let t = |px: f64, py: f64| (((px - ax) * v1x + (py - ay) * v1y) / l2).clamp(0.0, 1.0);
+    let t1 = t(line.start.x as f64, line.start.y as f64);
+    let t2 = t(line.end.x as f64, line.end.y as f64);
+    Some(Line {
+        start: Point2 {
+            x: (ax + t1 * v1x).round() as i64,
+            y: (ay + t1 * v1y).round() as i64,
+        },
+        end: Point2 {
+            x: (ax + t2 * v1x).round() as i64,
+            y: (ay + t2 * v1y).round() as i64,
+        },
+    })
 }
 
-/// Compute the outward unit normal of a contour edge, assuming CCW polygon
-/// orientation (interior on the left of the walk; outward is rotate-right of
-/// the edge direction → `(dy, -dx) / |edge|`).
-fn edge_outward_normal(edge: &Line) -> Option<(f64, f64)> {
-    let dx = (edge.end.x - edge.start.x) as f64;
-    let dy = (edge.end.y - edge.start.y) as f64;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len < 1.0 {
-        return None;
+/// Project a painted Z-intersection `line` onto every nearby, nearly-collinear
+/// contour edge, returning one `(contour_idx, line_idx, projected_sub_segment)`
+/// per matching edge.
+///
+/// Port of OrcaSlicer's `PaintedLineVisitor` matching logic
+/// (`MultiMaterialSegmentation.cpp`): a painted line is assigned to a contour
+/// edge when (a) the two are collinear within 30° and (b) an endpoint of one
+/// lies within `APPEND_THRESHOLD` of the other; the painted line is then clipped
+/// to the edge.
+///
+/// This replaces the earlier single-edge "both endpoints inside one edge's
+/// ±1-unit bbox" match, which silently dropped any full-face (solid-painted)
+/// Z-line: such a line runs corner-to-corner, but the sliced contour insets its
+/// corners by a few units and may split a side into several short edges, so no
+/// single edge contained both endpoints. The result was that solid-painted faces
+/// lost their colour and fell back to the default tool. Projecting onto every
+/// overlapping collinear edge fixes both the corner-inset and multi-edge cases.
+fn project_onto_contours(line: &Line, contours: &[Contour]) -> Vec<(usize, usize, Line)> {
+    // OrcaSlicer uses append_threshold = 50 * SCALED_EPSILON, where SCALED_EPSILON
+    // is 1e-4 mm in scaled units. At this crate's 100 nm/unit, 1e-4 mm = 1 unit,
+    // so the threshold is 50 units (0.005 mm). cos_threshold2 = cos²(30°) = 0.75.
+    const APPEND_THRESHOLD2: f64 = 50.0 * 50.0;
+    const COS2_30: f64 = 0.75;
+
+    let v1x = (line.end.x - line.start.x) as f64;
+    let v1y = (line.end.y - line.start.y) as f64;
+    let v1_sqr = v1x * v1x + v1y * v1y;
+    let mut out: Vec<(usize, usize, Line)> = Vec::new();
+    if v1_sqr < 1.0 {
+        return out;
     }
-    Some((dy / len, -dx / len))
-}
-
-/// Try to match `line` to a contour edge whose bounding box contains both endpoints.
-///
-/// When `face_normal_xy` is provided AND multiple candidate edges match, the edge
-/// whose outward normal has the highest absolute alignment with the face normal
-/// wins.  This resolves the corner-ambiguity where a vertical-face stroke triangle
-/// near a polygon corner has its Z-intersection projecting onto BOTH adjacent
-/// edges by bbox-containment — first-match would pick the wrong face.
-///
-/// Returns `None` when no candidate edge is found within tolerance.
-fn project_onto_contour(
-    line: &Line,
-    contours: &[Contour],
-    face_normal_xy: Option<(f64, f64)>,
-) -> Option<(usize, usize, Line)> {
-    let mut candidates: Vec<(usize, usize)> = Vec::new();
     for (ci, contour) in contours.iter().enumerate() {
         for (li, edge) in contour.edges.iter().enumerate() {
-            if point_near_edge_bbox(line.start, edge) && point_near_edge_bbox(line.end, edge) {
-                candidates.push((ci, li));
+            if edge.start == edge.end {
+                continue;
+            }
+            let v2x = (edge.end.x - edge.start.x) as f64;
+            let v2y = (edge.end.y - edge.start.y) as f64;
+            let v2_sqr = v2x * v2x + v2y * v2y;
+            let dot = v1x * v2x + v1y * v2y;
+            // Collinearity: angle between line and edge below 30°.
+            if dot * dot <= COS2_30 * v1_sqr * v2_sqr {
+                continue;
+            }
+            // Proximity: any endpoint of one within APPEND_THRESHOLD of the other.
+            let near = dist_sq_point_to_seg(
+                line.start.x as f64,
+                line.start.y as f64,
+                edge.start,
+                edge.end,
+            ) < APPEND_THRESHOLD2
+                || dist_sq_point_to_seg(line.end.x as f64, line.end.y as f64, edge.start, edge.end)
+                    < APPEND_THRESHOLD2
+                || dist_sq_point_to_seg(
+                    edge.start.x as f64,
+                    edge.start.y as f64,
+                    line.start,
+                    line.end,
+                ) < APPEND_THRESHOLD2
+                || dist_sq_point_to_seg(edge.end.x as f64, edge.end.y as f64, line.start, line.end)
+                    < APPEND_THRESHOLD2;
+            if !near {
+                continue;
+            }
+            if let Some(proj) = project_line_on_line(edge, line) {
+                if proj.start != proj.end {
+                    out.push((ci, li, proj));
+                }
             }
         }
     }
-    if candidates.is_empty() {
-        return None;
-    }
-
-    let (ci, li) = match (face_normal_xy, candidates.len()) {
-        (Some((fnx, fny)), n) if n > 1 => candidates
-            .iter()
-            .copied()
-            .max_by(|a, b| {
-                let score = |(c, l): (usize, usize)| -> f64 {
-                    edge_outward_normal(&contours[c].edges[l])
-                        .map(|(nx, ny)| (nx * fnx + ny * fny).abs())
-                        .unwrap_or(f64::NEG_INFINITY)
-                };
-                score(*a)
-                    .partial_cmp(&score(*b))
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap_or(candidates[0]),
-        _ => candidates[0],
-    };
-
-    let edge = &contours[ci].edges[li];
-    let clamp = |v: i64, lo: i64, hi: i64| v.max(lo).min(hi);
-    let min_x = edge.start.x.min(edge.end.x);
-    let max_x = edge.start.x.max(edge.end.x);
-    let min_y = edge.start.y.min(edge.end.y);
-    let max_y = edge.start.y.max(edge.end.y);
-    let projected = Line {
-        start: Point2 {
-            x: clamp(line.start.x, min_x, max_x),
-            y: clamp(line.start.y, min_y, max_y),
-        },
-        end: Point2 {
-            x: clamp(line.end.x, min_x, max_x),
-            y: clamp(line.end.y, min_y, max_y),
-        },
-    };
-    Some((ci, li, projected))
+    out
 }
 
 /// Compute the object's world-space z_min from its local-space vertices and transform.
@@ -374,21 +386,19 @@ pub fn collect_painted_lines(
                 if let Some(line) =
                     triangle_z_intersection(tp.vertices[0], tp.vertices[1], tp.vertices[2], world_z)
                 {
-                    let face_n = triangle_face_normal_xy(&tp.vertices);
-                    let Some((contour_idx, line_idx, projected_line)) =
-                        project_onto_contour(&line, &obj_contours, face_n)
-                    else {
-                        continue;
-                    };
-                    visitor.push(PaintedLine {
-                        line,
-                        semantic: tp.semantic.clone(),
-                        value: tp.value.clone(),
-                        cell_indices: Vec::new(),
-                        contour_idx,
-                        line_idx,
-                        projected_line,
-                    });
+                    for (contour_idx, line_idx, projected_line) in
+                        project_onto_contours(&line, &obj_contours)
+                    {
+                        visitor.push(PaintedLine {
+                            line,
+                            semantic: tp.semantic.clone(),
+                            value: tp.value.clone(),
+                            cell_indices: Vec::new(),
+                            contour_idx,
+                            line_idx,
+                            projected_line,
+                        });
+                    }
                 }
             }
 
@@ -402,21 +412,19 @@ pub fn collect_painted_lines(
                 if let Some(line) =
                     triangle_z_intersection(tp.vertices[0], tp.vertices[1], tp.vertices[2], world_z)
                 {
-                    let face_n = triangle_face_normal_xy(&tp.vertices);
-                    let Some((contour_idx, line_idx, projected_line)) =
-                        project_onto_contour(&line, &obj_contours, face_n)
-                    else {
-                        continue;
-                    };
-                    visitor.push(PaintedLine {
-                        line,
-                        semantic: tp.semantic.clone(),
-                        value: tp.value.clone(),
-                        cell_indices: Vec::new(),
-                        contour_idx,
-                        line_idx,
-                        projected_line,
-                    });
+                    for (contour_idx, line_idx, projected_line) in
+                        project_onto_contours(&line, &obj_contours)
+                    {
+                        visitor.push(PaintedLine {
+                            line,
+                            semantic: tp.semantic.clone(),
+                            value: tp.value.clone(),
+                            cell_indices: Vec::new(),
+                            contour_idx,
+                            line_idx,
+                            projected_line,
+                        });
+                    }
                 }
             }
         }
@@ -508,14 +516,15 @@ mod tests {
         };
         // The mesh triangle (vertices at (0,0,0), (10,0,10), (5,10,10)) intersects z=5.0
         // from approx (5mm,0mm) to (2.5mm,5mm) in world space, i.e. units (50000,0)→(25000,50000).
-        // Provide a contour edge large enough to cover both endpoints so the match succeeds.
+        // The contour edge must be (nearly) collinear with that intersection line for the
+        // canonical projection to match it — a real perimeter edge adjacent to the painted
+        // face is collinear by construction. (The earlier version used a 45° diagonal edge
+        // that only matched under the old bbox-containment heuristic, which projected paint
+        // onto geometrically unrelated edges.)
         let contours = vec![Contour {
             edges: vec![Line {
-                start: Point2 { x: 0, y: 0 },
-                end: Point2 {
-                    x: 100000,
-                    y: 100000,
-                },
+                start: Point2 { x: 50000, y: 0 },
+                end: Point2 { x: 25000, y: 50000 },
             }],
         }];
         let lines = collect_painted_lines(&slice, &mesh_ir, &contours);
@@ -766,6 +775,115 @@ mod tests {
             "expected PaintedLine matched to contour_idx=0 line_idx=0; got: {:?}",
             lines
         );
+    }
+
+    /// Regression (solid-painted face): a full-face Z-line runs corner-to-corner,
+    /// but a real sliced contour insets/segments its corners by a few units, so the
+    /// painted line's endpoints fall a little OUTSIDE the contour side-edge. The old
+    /// single-edge "both endpoints inside one edge's ±1-unit bbox" match dropped such
+    /// lines entirely, so solid-painted faces lost their colour and fell back to the
+    /// default tool. `project_onto_contours` must still match (collinear + within the
+    /// ~50-unit append threshold) and clip the line to the edge span.
+    #[test]
+    fn solid_face_line_projects_onto_inset_contour_edge() {
+        // Painted full-face line: vertical at x=100000, corner-to-corner y∈[0, 250000].
+        let line = Line {
+            start: Point2 { x: 100000, y: 0 },
+            end: Point2 {
+                x: 100000,
+                y: 250000,
+            },
+        };
+        // Contour side-edge inset by 24 units at each corner (as the real cube slice was).
+        let contours = vec![Contour {
+            edges: vec![Line {
+                start: Point2 { x: 100000, y: 24 },
+                end: Point2 {
+                    x: 100000,
+                    y: 249976,
+                },
+            }],
+        }];
+        let matches = project_onto_contours(&line, &contours);
+        assert_eq!(
+            matches.len(),
+            1,
+            "corner-inset side-edge must still match the full-face line; got {matches:?}"
+        );
+        let (ci, li, proj) = &matches[0];
+        assert_eq!((*ci, *li), (0, 0));
+        // Projected onto the edge span (clamped to the edge ends).
+        assert_eq!(proj.start, Point2 { x: 100000, y: 24 });
+        assert_eq!(
+            proj.end,
+            Point2 {
+                x: 100000,
+                y: 249976
+            }
+        );
+    }
+
+    /// A single long painted line that overlaps several short, collinear contour
+    /// edges must project onto EACH of them (one PaintedLine per edge), not just one.
+    #[test]
+    fn long_line_projects_onto_multiple_collinear_edges() {
+        let line = Line {
+            start: Point2 { x: 0, y: 100000 },
+            end: Point2 {
+                x: 90000,
+                y: 100000,
+            },
+        };
+        // Three collinear horizontal edges tiling the span, plus one perpendicular
+        // edge that must NOT match (angle > 30°).
+        let contours = vec![Contour {
+            edges: vec![
+                Line {
+                    start: Point2 { x: 0, y: 100000 },
+                    end: Point2 {
+                        x: 30000,
+                        y: 100000,
+                    },
+                },
+                Line {
+                    start: Point2 {
+                        x: 30000,
+                        y: 100000,
+                    },
+                    end: Point2 {
+                        x: 60000,
+                        y: 100000,
+                    },
+                },
+                Line {
+                    start: Point2 {
+                        x: 60000,
+                        y: 100000,
+                    },
+                    end: Point2 {
+                        x: 90000,
+                        y: 100000,
+                    },
+                },
+                Line {
+                    start: Point2 {
+                        x: 90000,
+                        y: 100000,
+                    },
+                    end: Point2 {
+                        x: 90000,
+                        y: 130000,
+                    },
+                },
+            ],
+        }];
+        let matches = project_onto_contours(&line, &contours);
+        assert_eq!(
+            matches.len(),
+            3,
+            "long line must project onto all 3 collinear edges (not the perpendicular one); got {matches:?}"
+        );
+        assert!(matches.iter().all(|(_, li, _)| *li != 3));
     }
 
     /// Same vertical face triangle BUT with a non-identity translation transform.

@@ -827,6 +827,70 @@ fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<Vec<ThreeMfPart>, ModelLo
     parse_3mf_model_xml(&xml_bytes, &sidecar, &sub_models)
 }
 
+/// Read the project-level per-filament colours from a 3MF's
+/// `Metadata/project_settings.config` (the BambuStudio/OrcaSlicer JSON sidecar).
+///
+/// Returns the hex colour strings (e.g. `#FF9B00`) in filament order, or `None`
+/// when the file is not a readable 3MF or carries no `filament_colour` array.
+/// Used to emit the model's real palette in the G-code config block instead of a
+/// hardcoded default, so a multi-tool print previews with the authored colours.
+pub fn read_3mf_filament_colours(path: &Path) -> Option<Vec<String>> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut archive = zip::ZipArchive::new(BufReader::new(file)).ok()?;
+    let name = (0..archive.len()).find_map(|i| {
+        let n = archive.name_for_index(i)?;
+        if n.to_lowercase().ends_with("project_settings.config") {
+            Some(n.to_string())
+        } else {
+            None
+        }
+    })?;
+    let mut text = String::new();
+    archive
+        .by_name(&name)
+        .ok()?
+        .read_to_string(&mut text)
+        .ok()?;
+    extract_json_string_array(&text, "filament_colour")
+}
+
+/// Extract a JSON array of strings for `key` from `text`, dependency-free.
+///
+/// Tolerant of surrounding whitespace/newlines; assumes the array values are
+/// simple strings without escaped quotes (true for hex colour codes). The
+/// quoted key (`"key"`) is matched with both delimiters so it never collides
+/// with a longer key that contains it as a substring (e.g. `filament_colour`
+/// vs `default_filament_colour` / `filament_colour_type`).
+fn extract_json_string_array(text: &str, key: &str) -> Option<Vec<String>> {
+    let key_pat = format!("\"{key}\"");
+    let after_key = &text[text.find(&key_pat)? + key_pat.len()..];
+    let lb = after_key.find('[')?;
+    let rb = after_key[lb..].find(']')? + lb;
+    let inner = &after_key.as_bytes()[lb + 1..rb];
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < inner.len() {
+        if inner[i] == b'"' {
+            let s = i + 1;
+            let mut j = s;
+            while j < inner.len() && inner[j] != b'"' {
+                j += 1;
+            }
+            if let Ok(val) = std::str::from_utf8(&inner[s..j]) {
+                out.push(val.to_string());
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 /// Find the 3D model XML path inside a 3MF ZIP archive.
 fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<String, ModelLoadError> {
     for i in 0..archive.len() {
@@ -1082,7 +1146,16 @@ fn parse_sub_model_objects(
                                                 }
                                             },
                                         )?;
-                                        mc.color_strokes.extend(strokes);
+                                        if !strokes.is_empty() {
+                                            mc.color_strokes.extend(strokes);
+                                            // Subdivided facet: the per-leaf strokes are the
+                                            // authoritative paint and tile the whole facet.
+                                            // Clear the coarse per-facet dominant so phase3 does
+                                            // not ALSO project a half-face line that conflicts
+                                            // with the strokes and creates a spurious colour
+                                            // boundary / wall along the facet's triangle diagonal.
+                                            color_state = None;
+                                        }
                                     }
                                 }
                             }
@@ -2559,6 +2632,41 @@ pub fn object_world_z_extent(object: &ObjectMesh) -> Option<(f32, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_json_string_array_basic_and_prefix_safe() {
+        // `filament_colour` must not be confused with `default_filament_colour`
+        // (different leading char) or `filament_colour_type` (different trailing).
+        let json = r##"{
+            "default_filament_colour": ["", "", "", ""],
+            "filament_colour": ["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
+            "filament_colour_type": ["1","1","1","1"]
+        }"##;
+        let colours = extract_json_string_array(json, "filament_colour").unwrap();
+        assert_eq!(colours, vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"]);
+        assert!(extract_json_string_array(json, "nope").is_none());
+    }
+
+    #[test]
+    fn read_3mf_filament_colours_returns_authored_order() {
+        // Regression: the cube_4color fixture authors filament 1 = orange (the
+        // object's default extruder) and filament 4 = red. The G-code palette must
+        // preserve this order; the old hardcoded default emitted red first.
+        let path = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../resources/cube_4color.3mf"
+        ));
+        if !path.exists() {
+            // Fixture path differs in some checkouts; skip rather than fail.
+            return;
+        }
+        let colours = read_3mf_filament_colours(path).expect("filament_colour present");
+        assert_eq!(
+            colours,
+            vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
+            "filament colours must be in the authored order (orange first, red last)"
+        );
+    }
 
     #[test]
     fn identity_transform_diagonal() {

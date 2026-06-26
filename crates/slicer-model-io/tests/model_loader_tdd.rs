@@ -796,21 +796,30 @@ fn load_3mf_cube_4color_facet_coverage() {
         .expect("no Material layer");
     let facet_count = mat.facet_values.len();
     assert_eq!(facet_count, 12, "cube has 12 triangles");
-    let painted: usize = mat
+    // Paint has two mutually-exclusive per-facet representations:
+    //   * SOLID-painted facets (a single colour over the whole triangle, encoded
+    //     in 1-2 hex chars) carry a per-facet Material value in `facet_values`.
+    //   * SUBDIVIDED facets (the front circles and left stripes) carry their paint
+    //     as per-leaf `strokes`; their `facet_values` entry is None so phase3 does
+    //     not also project a coarse half-face line that would conflict with the
+    //     strokes (spurious colour boundary on the triangle diagonal).
+    // The cube_4color fixture has 7 solid-painted facets (top/bottom/back/right),
+    // 4 subdivided facets (front + left), and 1 genuinely unpainted facet.
+    let facet_painted: usize = mat
         .facet_values
         .iter()
         .filter(|v| matches!(v, Some(PaintValue::ToolIndex(_))))
         .count();
-    let unpainted: usize = mat.facet_values.iter().filter(|v| v.is_none()).count();
+    let none: usize = mat.facet_values.iter().filter(|v| v.is_none()).count();
+    assert_eq!(facet_painted + none, 12, "all facets accounted for");
     assert!(
-        painted >= 9,
-        "at least 9 of 12 facets must have Material paint, got {painted}"
+        facet_painted >= 6,
+        "solid-painted facets must carry per-facet Material values, got {facet_painted}"
     );
     assert!(
-        unpainted >= 1,
-        "at least 1 facet must be unpainted (bottom face has unpainted triangle), got {unpainted}"
+        !mat.strokes.is_empty(),
+        "subdivided facets (circles/stripes) must carry Material strokes"
     );
-    assert_eq!(painted + unpainted, 12, "all facets accounted for");
 }
 
 /// Documented coverage gap from packet 89 (Benchy 3MF Retirement).

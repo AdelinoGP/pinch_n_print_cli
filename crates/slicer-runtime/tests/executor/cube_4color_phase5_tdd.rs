@@ -66,6 +66,7 @@ fn slice_cube(name: &str, config_json: Option<&str>) -> String {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed: {e}"))

@@ -374,6 +374,24 @@ fn main() {
             let (report_opt, report_verbose_opt) = (report, report_verbose);
             #[cfg(not(feature = "report"))]
             let (report_opt, report_verbose_opt): (Option<PathBuf>, bool) = (None, false);
+            // Seed the model's authored per-filament palette (from a 3MF project's
+            // project_settings.config) so the G-code emits the real colours rather
+            // than the serializer's hardcoded default palette.
+            let mut config_overrides: std::collections::HashMap<String, slicer_ir::ConfigValue> =
+                std::collections::HashMap::new();
+            if let Some(colours) = slicer_model_io::read_3mf_filament_colours(&model) {
+                if !colours.is_empty() {
+                    let csv = colours.join(";");
+                    config_overrides.insert(
+                        "filament_colour".to_string(),
+                        slicer_ir::ConfigValue::String(csv.clone()),
+                    );
+                    config_overrides.insert(
+                        "extruder_colour".to_string(),
+                        slicer_ir::ConfigValue::String(csv),
+                    );
+                }
+            }
             let opts = SliceRunOptions {
                 mesh,
                 model_label,
@@ -385,6 +403,7 @@ fn main() {
                 report: report_opt,
                 report_verbose: report_verbose_opt,
                 instrument_stderr,
+                config_overrides,
             };
             match slicer_runtime::run_slice(opts) {
                 Ok(outcome) => {

@@ -201,6 +201,20 @@ fn filament_colour_csv(slot_count: usize) -> String {
         .join(";")
 }
 
+/// Resolve the per-filament colour CSV (`#RRGGBB;#RRGGBB;…`): prefer the model's
+/// authored palette carried in `raw_config["filament_colour"]` (a semicolon-
+/// separated string seeded from the 3MF project settings), falling back to the
+/// hardcoded default palette sized to the tools in use.
+fn resolve_filament_colour_csv(
+    raw_config: &HashMap<String, ConfigValue>,
+    slot_count: usize,
+) -> String {
+    match raw_config.get("filament_colour") {
+        Some(ConfigValue::String(s)) if !s.trim().is_empty() => s.clone(),
+        _ => filament_colour_csv(slot_count),
+    }
+}
+
 /// Default distinct per-filament colour palette (hex), used to populate the
 /// `filament_colour` / `extruder_colour` directives so OrcaSlicer's filament-view
 /// preview renders each tool in a different colour. Cycles for prints with more
@@ -500,9 +514,27 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
             base
         };
 
-        // 2. Append CONFIG_BLOCK at the end of the output, with the per-filament
+        // 2. Rewrite the HEADER_BLOCK's filament/extruder colour lines to the
+        // model's authored palette when the config carries one (the inner
+        // serializer emits a hardcoded default palette and has no config access).
+        let slot_count = gcode_ir.metadata.filament_used_mm.len();
+        let default_csv = filament_colour_csv(slot_count);
+        let colour_csv = resolve_filament_colour_csv(&self.raw_config, slot_count);
+        let base = if colour_csv != default_csv {
+            base.replace(
+                &format!("; filament_colour = {default_csv}"),
+                &format!("; filament_colour = {colour_csv}"),
+            )
+            .replace(
+                &format!("; extruder_colour = {default_csv}"),
+                &format!("; extruder_colour = {colour_csv}"),
+            )
+        } else {
+            base
+        };
+
+        // 3. Append CONFIG_BLOCK at the end of the output, with the per-filament
         // colour list sized to the tools in use (drives the OrcaSlicer preview).
-        let colour_csv = filament_colour_csv(gcode_ir.metadata.filament_used_mm.len());
         let config_block = serialize_config_block(&self.raw_config, &colour_csv);
         let mut result = base;
         result.push_str(&config_block);
@@ -728,5 +760,38 @@ mod tests {
     fn default_gcode_serializer_can_be_created() {
         let _serializer = DefaultGCodeSerializer::new();
         let _default_serializer = DefaultGCodeSerializer::default();
+    }
+
+    #[test]
+    fn config_filament_colour_overrides_hardcoded_palette() {
+        // Regression (RC1): when the model's authored palette is present in the
+        // config, both the CONFIG_BLOCK and the resolved CSV must use it instead
+        // of the hardcoded default (which put red first, swapping tools 1 and 4).
+        let mut cfg: HashMap<String, ConfigValue> = HashMap::new();
+        let authored = "#FF9B00;#02BF06;#1800F2;#EC0006";
+        cfg.insert(
+            "filament_colour".to_string(),
+            ConfigValue::String(authored.to_string()),
+        );
+
+        assert_eq!(resolve_filament_colour_csv(&cfg, 4), authored);
+
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4));
+        assert!(
+            block.contains(&format!("; filament_colour = {authored}")),
+            "config block must emit authored palette; got:\n{block}"
+        );
+        // The default hardcoded palette (red first) must NOT appear.
+        assert!(!block.contains("; filament_colour = #EC0006;#02BF06;#1800F2;#FF9B00"));
+    }
+
+    #[test]
+    fn resolve_filament_colour_csv_falls_back_to_default_palette() {
+        let cfg: HashMap<String, ConfigValue> = HashMap::new();
+        assert_eq!(
+            resolve_filament_colour_csv(&cfg, 4),
+            filament_colour_csv(4),
+            "with no config palette, fall back to the default"
+        );
     }
 }

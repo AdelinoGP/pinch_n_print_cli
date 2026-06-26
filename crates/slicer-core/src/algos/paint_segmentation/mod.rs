@@ -25,8 +25,9 @@ pub mod extract_segments;
 pub mod modifier_volumes;
 /// Painted line with semantic value and spatial cell membership.
 pub mod painted_line;
-/// Phase 3 driver — intersect painted triangles with layer Z plane.
-pub mod phase3;
+/// Collects painted lines by intersecting painted triangles with the layer
+/// Z plane and projecting them onto the layer's contour edges.
+pub mod painted_line_collection;
 /// Phase 1 preprocess — extracts per-layer paint data from mesh objects.
 pub mod preprocess;
 /// Phase 6 — top/bottom surface propagation across layers.
@@ -257,7 +258,8 @@ fn run_kernel_for_layer(
     }
 
     // Phase 3 — collect painted lines.
-    let painted_lines = phase3::collect_painted_lines(layer_slice, mesh, &contours);
+    let painted_lines =
+        painted_line_collection::collect_painted_lines(layer_slice, mesh, &contours);
     if painted_lines.is_empty() {
         return Ok(Vec::new());
     }
@@ -550,7 +552,8 @@ pub fn execute_paint_segmentation(
             if contours.is_empty() {
                 std::collections::BTreeMap::new()
             } else {
-                let painted_lines = phase3::collect_painted_lines(&working[i], &mesh, &contours);
+                let painted_lines =
+                    painted_line_collection::collect_painted_lines(&working[i], &mesh, &contours);
                 if painted_lines.is_empty() {
                     std::collections::BTreeMap::new()
                 } else {
@@ -915,7 +918,7 @@ pub fn execute_paint_segmentation(
     // ResolvedConfig defaults (top=3, bottom=3, matching OrcaSlicer) apply.
     #[cfg(feature = "host-algos")]
     {
-        use crate::polygon_ops::{difference_ex, union_ex};
+        use crate::polygon_ops::{difference_ex, intersection_ex, union_ex};
         use std::collections::BTreeMap;
 
         // Collect distinct (semantic, value) pairs present in the mesh. For
@@ -938,52 +941,84 @@ pub fn execute_paint_segmentation(
             }
         };
 
+        // The Phase 6 slab projection runs in WORLD space (it is intersected with
+        // the world-space layer contours and sliced against world `layer_zs`), so
+        // each subset stores world-transformed triangle vertices. The mesh and the
+        // stroke geometry are in object-LOCAL space, so apply the object transform.
         for obj in &mesh.objects {
             let Some(pd) = &obj.paint_data else { continue };
+            let m = &obj.transform.matrix;
+            let push_tri = |entry: &mut slicer_ir::IndexedTriangleSet,
+                            a: slicer_ir::Point3,
+                            b: slicer_ir::Point3,
+                            c: slicer_ir::Point3| {
+                let base = entry.vertices.len() as u32;
+                entry.vertices.push(crate::transform_point3(m, a));
+                entry.vertices.push(crate::transform_point3(m, b));
+                entry.vertices.push(crate::transform_point3(m, c));
+                entry.indices.push(base);
+                entry.indices.push(base + 1);
+                entry.indices.push(base + 2);
+            };
+            let new_set = || slicer_ir::IndexedTriangleSet {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            };
             for layer in &pd.layers {
-                // Facet paint: triangles share the object's existing vertex pool.
+                // Facet paint: emit each painted facet's three world vertices.
                 for (facet_idx, fv) in layer.facet_values.iter().enumerate() {
-                    let Some(value) = fv else { continue };
-                    let key = (sem_name(&layer.semantic), value.clone());
-                    let entry = painted_subsets.entry(key).or_insert_with(|| {
-                        (
-                            layer.semantic.clone(),
-                            slicer_ir::IndexedTriangleSet {
-                                vertices: obj.mesh.vertices.clone(),
-                                indices: Vec::new(),
-                            },
-                        )
-                    });
+                    // A facet with an explicit Material value uses it; a facet with
+                    // NO value (genuinely unpainted) defaults to the object's base
+                    // extruder (tool 0) so its top/bottom HORIZONTAL faces feed the
+                    // default-colour top/bottom projection. Vertical unpainted facets
+                    // (e.g. subdivided faces whose paint lives in `strokes`) are
+                    // ignored by the slab projection, so this is safe. Non-Material
+                    // layers have no default-fill semantics → skip their None facets.
+                    let value = match fv {
+                        Some(v) => v.clone(),
+                        None => {
+                            if layer.semantic != slicer_ir::PaintSemantic::Material {
+                                continue;
+                            }
+                            slicer_ir::PaintValue::ToolIndex(0)
+                        }
+                    };
                     let base = facet_idx * 3;
-                    if base + 2 < obj.mesh.indices.len() {
-                        entry.1.indices.push(obj.mesh.indices[base]);
-                        entry.1.indices.push(obj.mesh.indices[base + 1]);
-                        entry.1.indices.push(obj.mesh.indices[base + 2]);
+                    if base + 2 >= obj.mesh.indices.len() {
+                        continue;
                     }
+                    let (i0, i1, i2) = (
+                        obj.mesh.indices[base] as usize,
+                        obj.mesh.indices[base + 1] as usize,
+                        obj.mesh.indices[base + 2] as usize,
+                    );
+                    if i0 >= obj.mesh.vertices.len()
+                        || i1 >= obj.mesh.vertices.len()
+                        || i2 >= obj.mesh.vertices.len()
+                    {
+                        continue;
+                    }
+                    let key = (sem_name(&layer.semantic), value.clone());
+                    let entry = painted_subsets
+                        .entry(key)
+                        .or_insert_with(|| (layer.semantic.clone(), new_set()));
+                    push_tri(
+                        &mut entry.1,
+                        obj.mesh.vertices[i0],
+                        obj.mesh.vertices[i1],
+                        obj.mesh.vertices[i2],
+                    );
                 }
-                // Stroke paint: append raw stroke-triangle vertices to the
-                // subset's vertex pool and emit fresh indices. Strokes carry
-                // their own semantic/value (overriding the layer semantic when
-                // they differ, matching `extract_stroke_data` in phase3 prep).
+                // Stroke paint: world-transform each stroke triangle. Strokes carry
+                // their own semantic/value (overriding the layer semantic when they
+                // differ, matching `extract_stroke_data` in painted_line_collection prep).
                 for stroke in &layer.strokes {
                     let key = (sem_name(&stroke.semantic), stroke.value.clone());
-                    let entry = painted_subsets.entry(key).or_insert_with(|| {
-                        (
-                            stroke.semantic.clone(),
-                            slicer_ir::IndexedTriangleSet {
-                                vertices: obj.mesh.vertices.clone(),
-                                indices: Vec::new(),
-                            },
-                        )
-                    });
+                    let entry = painted_subsets
+                        .entry(key)
+                        .or_insert_with(|| (stroke.semantic.clone(), new_set()));
                     for tri in &stroke.triangles {
-                        let base_idx = entry.1.vertices.len() as u32;
-                        entry.1.vertices.push(tri[0]);
-                        entry.1.vertices.push(tri[1]);
-                        entry.1.vertices.push(tri[2]);
-                        entry.1.indices.push(base_idx);
-                        entry.1.indices.push(base_idx + 1);
-                        entry.1.indices.push(base_idx + 2);
+                        push_tri(&mut entry.1, tri[0], tri[1], tri[2]);
                     }
                 }
             }
@@ -992,36 +1027,44 @@ pub fn execute_paint_segmentation(
         // Shell-window counts come from the BASE ResolvedConfig (configs[0]).
         // RegionMapIR pre-seeds configs[0] with `ResolvedConfig::default()`, so
         // the fallback for missing keys is OrcaSlicer's default (top=3, bottom=3).
-        let (top_shell_layers, bottom_shell_layers): (usize, usize) =
-            match region_map.configs.first() {
-                Some(cfg) => (
-                    cfg.top_shell_layers as usize,
-                    cfg.bottom_shell_layers as usize,
-                ),
-                // TODO: when per-object/per-region paint configs are wired through
-                // execute_paint_segmentation, prefer the region-specific config
-                // here instead of the BASE default.
-                None => (3, 3),
-            };
+        let (top_shell_layers, bottom_shell_layers, shell_line_width, shell_layer_height): (
+            usize,
+            usize,
+            f32,
+            f32,
+        ) = match region_map.configs.first() {
+            Some(cfg) => (
+                cfg.top_shell_layers as usize,
+                cfg.bottom_shell_layers as usize,
+                cfg.line_width,
+                cfg.layer_height,
+            ),
+            // TODO: when per-object/per-region paint configs are wired through
+            // execute_paint_segmentation, prefer the region-specific config
+            // here instead of the BASE default.
+            None => (3, 3, 0.4, 0.2),
+        };
 
         if !painted_subsets.is_empty() && !working.is_empty() {
             // layer_zs already computed above for modifier volumes.
             // Per-layer BASE contours come from each layer's current BASE
             // SlicedRegion (the empty-variant_chain region produced by Phase 4
             // above). Fall back to a union over all regions if BASE is missing.
+            // Full layer cross-section = union of ALL regions (BASE + painted).
+            // Using only the BASE region is wrong here: Phase 4 progressively
+            // diffs painted colours OUT of BASE, so at layers fully covered by
+            // paint (e.g. the top cap) BASE is empty — which would collapse the
+            // top/bottom shell propagation's running intersection to nothing.
             let layer_input_polygons: Vec<Vec<slicer_ir::ExPolygon>> = working
                 .iter()
                 .map(|s| {
-                    s.regions
-                        .iter()
-                        .find(|r| r.variant_chain.is_empty())
-                        .map(|r| r.polygons.clone())
-                        .unwrap_or_else(|| {
-                            s.regions
-                                .iter()
-                                .flat_map(|r| r.polygons.iter().cloned())
-                                .collect()
-                        })
+                    let all: Vec<slicer_ir::ExPolygon> =
+                        s.regions.iter().flat_map(|r| r.polygons.iter().cloned()).collect();
+                    if all.is_empty() {
+                        all
+                    } else {
+                        union_ex(&all)
+                    }
                 })
                 .collect();
 
@@ -1038,6 +1081,8 @@ pub fn execute_paint_segmentation(
                     &layer_input_polygons,
                     top_shell_layers,
                     bottom_shell_layers,
+                    shell_line_width,
+                    shell_layer_height,
                 );
 
                 let chain_key: Vec<(String, slicer_ir::PaintValue)> =
@@ -1047,27 +1092,62 @@ pub fn execute_paint_segmentation(
                     if polys.is_empty() || l >= working.len() {
                         continue;
                     }
-                    // Phase 7 merge step 1: diff_ex BASE − phase6 (phase6 wins).
-                    if let Some(base) = working[l]
-                        .regions
-                        .iter_mut()
-                        .find(|r| r.variant_chain.is_empty())
-                    {
-                        base.polygons = difference_ex(&base.polygons, polys);
+                    // Phase 7 merge:
+                    //  (1) The top/bottom-face projection wins WITHIN its area over
+                    //      every other region. Remove `polys` from each region that
+                    //      is not the target colour (BASE and the vertical-side
+                    //      colours) so the spatial tool lookup returns this colour
+                    //      for the projected top/bottom solid surface. At the contact
+                    //      (cap) layer the projection is full-area → side walls there
+                    //      also take the face colour; at shell layers it is inset →
+                    //      side walls keep their colour, only the inner solid fill flips.
+                    //  (2) Harvest the BASE region's top/bottom SOLID FILL that falls
+                    //      under the projection and hand it to the painted region, so
+                    //      the surface is emitted under (and coloured by) this tool.
+                    let mut top_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
+                    let mut bot_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
+                    for region in working[l].regions.iter_mut() {
+                        if region.variant_chain == chain_key {
+                            continue;
+                        }
+                        if region.variant_chain.is_empty() {
+                            if !region.top_solid_fill.is_empty() {
+                                top_clip = intersection_ex(&region.top_solid_fill, polys);
+                                region.top_solid_fill =
+                                    difference_ex(&region.top_solid_fill, polys);
+                            }
+                            if !region.bottom_solid_fill.is_empty() {
+                                bot_clip = intersection_ex(&region.bottom_solid_fill, polys);
+                                region.bottom_solid_fill =
+                                    difference_ex(&region.bottom_solid_fill, polys);
+                            }
+                        }
+                        region.polygons = difference_ex(&region.polygons, polys);
                     }
 
-                    // Phase 7 merge step 2: append/union phase6 into per-color
-                    // SlicedRegion. If no region has this variant_chain yet,
-                    // create one cloning the BASE's object_id / region_id.
+                    // (3) Append/union the projection into the per-colour SlicedRegion,
+                    // carrying the harvested solid fill. Create one cloning the BASE's
+                    // object_id / region_id if this colour has no region on the layer.
                     let existing_idx = working[l]
                         .regions
                         .iter()
                         .position(|r| r.variant_chain == chain_key);
                     match existing_idx {
                         Some(idx) => {
-                            let mut combined = working[l].regions[idx].polygons.clone();
+                            let region = &mut working[l].regions[idx];
+                            let mut combined = region.polygons.clone();
                             combined.extend(polys.iter().cloned());
-                            working[l].regions[idx].polygons = union_ex(&combined);
+                            region.polygons = union_ex(&combined);
+                            if !top_clip.is_empty() {
+                                let mut t = region.top_solid_fill.clone();
+                                t.extend(top_clip);
+                                region.top_solid_fill = union_ex(&t);
+                            }
+                            if !bot_clip.is_empty() {
+                                let mut b = region.bottom_solid_fill.clone();
+                                b.extend(bot_clip);
+                                region.bottom_solid_fill = union_ex(&b);
+                            }
                         }
                         None => {
                             // Use first existing region as template for ids.
@@ -1080,6 +1160,8 @@ pub fn execute_paint_segmentation(
                                     polygons: polys.clone(),
                                     variant_chain: chain_key.clone(),
                                     segment_annotations: std::collections::HashMap::new(),
+                                    top_solid_fill: top_clip,
+                                    bottom_solid_fill: bot_clip,
                                     ..Default::default()
                                 });
                             }

@@ -66,6 +66,10 @@ pub struct SliceRunOptions {
     /// When true, emit per-stage / per-module timing events on the stderr
     /// JSONL stream during the slice (schema version `"1.1.0"`).
     pub instrument_stderr: bool,
+    /// Config values derived from the loaded model (e.g. the 3MF project's
+    /// `filament_colour`) that seed `config_source` as defaults. An explicit
+    /// `--config` key always wins over an override with the same name.
+    pub config_overrides: std::collections::HashMap<String, ConfigValue>,
 }
 
 /// Output produced by a successful `run_slice` call.
@@ -265,6 +269,14 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         }
         None => std::collections::HashMap::new(),
     };
+
+    // Seed model-derived config (e.g. the 3MF project's filament_colour) as
+    // defaults: only fill keys the user did not set explicitly via --config.
+    for (key, value) in &opts.config_overrides {
+        config_source
+            .entry(key.clone())
+            .or_insert_with(|| value.clone());
+    }
 
     // Insert thumbnail_path into config_source when --thumbnail is supplied.
     if let Some(ref thumb_path) = opts.thumbnail {
