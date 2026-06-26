@@ -1536,6 +1536,10 @@ pub enum ExtrusionRole {
     TopSolidInfill,
     /// Bottom solid infill
     BottomSolidInfill,
+    /// Internal solid infill — the solid shell layers *beneath* an exposed top
+    /// surface or *above* an exposed bottom surface (top/bottom shell depth ≥ 1).
+    /// OrcaSlicer role `stInternalSolid`; emitted as `;TYPE:Internal solid infill`.
+    InternalSolidInfill,
     /// Sparse infill
     SparseInfill,
     /// Support material
@@ -1571,6 +1575,7 @@ impl ExtrusionRole {
             Self::ThinWall => 1700,
             Self::SparseInfill => 3000,
             Self::BridgeInfill => 3500,
+            Self::InternalSolidInfill => 3800,
             Self::BottomSolidInfill => 4000,
             Self::TopSolidInfill => 4500,
             Self::SupportMaterial => 5000,

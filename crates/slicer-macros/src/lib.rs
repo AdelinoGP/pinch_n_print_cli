@@ -690,6 +690,9 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     ExtrusionRole::Ironing => ::slicer_sdk::ir::ExtrusionRole::Ironing,
                     ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
+                        ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill
+                    }
                     ExtrusionRole::Custom(s) => ::slicer_sdk::ir::ExtrusionRole::Custom(s.clone()),
                     ExtrusionRole::GapFill => ::slicer_sdk::ir::ExtrusionRole::GapFill,
                     _ => ::slicer_sdk::ir::ExtrusionRole::OuterWall,
@@ -715,6 +718,11 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     }
                     ::slicer_sdk::ir::ExtrusionRole::Skirt => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill => {
+                        ExtrusionRole::Custom(::std::string::String::from(
+                            "slicer.builtin/internal-solid-infill@1",
+                        ))
                     }
                     ::slicer_sdk::ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
                     _ => ExtrusionRole::OuterWall,
@@ -922,6 +930,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
                     ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
+                        ::slicer_ir::ExtrusionRole::InternalSolidInfill
+                    }
                     ExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
                     ExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
                 }
@@ -945,6 +956,11 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     }
                     ::slicer_ir::ExtrusionRole::Skirt => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::InternalSolidInfill => {
+                        ExtrusionRole::Custom(::std::string::String::from(
+                            "slicer.builtin/internal-solid-infill@1",
+                        ))
                     }
                     ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
                     ::slicer_ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
@@ -1968,6 +1984,9 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
                     WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                    WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
+                        ::slicer_ir::ExtrusionRole::InternalSolidInfill
+                    }
                     WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s.clone()),
                     WitExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
                 }
@@ -2263,6 +2282,11 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     }
                     ::slicer_ir::ExtrusionRole::Skirt => {
                         WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::InternalSolidInfill => {
+                        WitExtrusionRole::Custom(::std::string::String::from(
+                            "slicer.builtin/internal-solid-infill@1",
+                        ))
                     }
                     ::slicer_ir::ExtrusionRole::GapFill => WitExtrusionRole::GapFill,
                     _ => WitExtrusionRole::OuterWall,

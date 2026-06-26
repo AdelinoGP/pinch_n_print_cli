@@ -30,11 +30,15 @@
 //! precedence over the vertical-side segmentation so the top/bottom SOLID surface
 //! is coloured by the face it belongs to rather than by the adjacent side walls.
 //!
-//! NB: this does NOT inset successive shell layers (unlike the OrcaSlicer source)
-//! — see the comment on Step 2 in the body.
+//! Successive shell layers are inset inward by `extrusion_spacing +
+//! extrusion_width` per layer of depth (OrcaSlicer parity), so the face colour
+//! fills only the internal-solid-infill interior of those layers while their
+//! perimeter walls keep the side-face colour — see the comment on Step 2.
 
 use crate::flow::line_width_to_spacing;
-use crate::polygon_ops::{difference_ex, intersection_ex, opening, union_ex};
+use crate::polygon_ops::{
+    difference_ex, intersection_ex, offset, opening, union_ex, OffsetJoinType,
+};
 use crate::triangle_mesh_slicer::slice_mesh_slabs;
 use slicer_ir::{ExPolygon, IndexedTriangleSet, PaintSemantic, PaintValue};
 
@@ -135,8 +139,8 @@ pub fn propagate_top_bottom(
     let spacing = line_width_to_spacing(width, layer_height_mm, width);
     let shell_step = spacing + width; // mm, inward per shell layer
     let small_thr = (0.5 * width) as f64; // mm opening radius
-    // Effective shell depth (contact layer + propagated layers). `.max(1)` keeps a
-    // single contact layer even when the shell-count config is 0.
+                                          // Effective shell depth (contact layer + propagated layers). `.max(1)` keeps a
+                                          // single contact layer even when the shell-count config is 0.
     let top_depth = top_shell_layers.max(1);
     let bottom_depth = bottom_shell_layers.max(1);
 
@@ -186,17 +190,19 @@ pub fn propagate_top_bottom(
     // print body. The whole top/bottom solid shell is therefore coloured by the
     // face it belongs to.
     //
-    // NOTE on the OrcaSlicer inset: `segmentation_top_and_bottom_layers`
-    // (MMSeg.cpp:1551-1562) insets each successive shell layer by
-    // `extrusion_spacing + extrusion_width` so the face colour does not flood the
-    // side WALLS of the *internal solid infill* layers (which OrcaSlicer prints as
-    // `Internal solid infill`, not `Top/Bottom surface`). PNP does not yet classify
-    // those layers as internal solid infill, so an inset here would leave the
-    // perimeter ring of each shell layer coloured by the side faces — visible as
-    // colour bleed on the top/bottom surface. Projecting the full surface keeps the
-    // solid shell single-coloured (matching Orca's visible result); `shell_step`
-    // is retained for when internal-solid-infill classification lands.
-    let _ = shell_step;
+    // OrcaSlicer inset (`segmentation_top_and_bottom_layers`, MMSeg.cpp:1551-1562):
+    // each successive shell layer below a top surface (above a bottom surface) is
+    // inset inward by `extrusion_spacing + extrusion_width` per layer of depth, so
+    // the face colour fills only the INTERIOR of those layers — which print as
+    // `Internal solid infill` (G4) — while their perimeter WALLS keep the side-face
+    // colour. The contact (exposed) layer takes the full surface.
+    let inset = |p: &[ExPolygon], delta_mm: f32| -> Vec<ExPolygon> {
+        if delta_mm <= 0.0 || p.is_empty() {
+            p.to_vec()
+        } else {
+            offset(p, -delta_mm, OffsetJoinType::Miter, 0.01)
+        }
+    };
     let mut acc: Vec<Vec<ExPolygon>> = vec![Vec::new(); out_len];
     for l in 0..out_len {
         if !top_raw[l].is_empty() {
@@ -209,7 +215,13 @@ pub fn propagate_top_bottom(
                 if trimmed.is_empty() {
                     break;
                 }
-                let region = open(&intersection_ex(&top_ex, &trimmed));
+                // Depth below the contact layer (1, 2, …): inset progressively.
+                let depth = (l - last) as f32;
+                let inset_surface = inset(&top_ex, depth * shell_step);
+                if inset_surface.is_empty() {
+                    break;
+                }
+                let region = open(&intersection_ex(&inset_surface, &trimmed));
                 if region.is_empty() {
                     break;
                 }
@@ -226,7 +238,13 @@ pub fn propagate_top_bottom(
                 if trimmed.is_empty() {
                     break;
                 }
-                let region = open(&intersection_ex(&bot_ex, &trimmed));
+                // Depth above the contact layer (1, 2, …): inset progressively.
+                let depth = (last - l) as f32;
+                let inset_surface = inset(&bot_ex, depth * shell_step);
+                if inset_surface.is_empty() {
+                    break;
+                }
+                let region = open(&intersection_ex(&inset_surface, &trimmed));
                 if region.is_empty() {
                     break;
                 }

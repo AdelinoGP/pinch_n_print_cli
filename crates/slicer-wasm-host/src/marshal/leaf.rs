@@ -9,7 +9,8 @@
 use crate::host::{
     ExPolygon, ExtrusionPath3d, ExtrusionRole, PaintSemantic, PaintValue, Point2, Point3WithWidth,
     Polygon, WallFeatureFlag, WallLoopType, WallLoopView, WitRetractMode,
-    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
+    BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG, BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG,
+    BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
 // postpass type alias used by convert_postpass_retract_mode.
@@ -202,6 +203,9 @@ pub fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRol
         slicer_ir::ExtrusionRole::Skirt => {
             ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
         }
+        slicer_ir::ExtrusionRole::InternalSolidInfill => {
+            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG.to_string())
+        }
         slicer_ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
         _ => ExtrusionRole::OuterWall,
     }
@@ -317,6 +321,9 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         }
         ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG => {
             slicer_ir::ExtrusionRole::Skirt
+        }
+        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG => {
+            slicer_ir::ExtrusionRole::InternalSolidInfill
         }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
         ExtrusionRole::GapFill => slicer_ir::ExtrusionRole::GapFill,
@@ -455,6 +462,10 @@ mod tests {
         for role in [
             slicer_ir::ExtrusionRole::PrimeTower,
             slicer_ir::ExtrusionRole::Skirt,
+            // RC4/G4: InternalSolidInfill has no dedicated WIT variant; it must
+            // survive the boundary via its builtin Custom tag. A regression here
+            // would silently turn internal solid shells into outer walls.
+            slicer_ir::ExtrusionRole::InternalSolidInfill,
         ] {
             let wit = ir_to_wit_extrusion_role(&role);
             let recovered = convert_extrusion_role(&wit);

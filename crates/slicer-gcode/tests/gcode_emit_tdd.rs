@@ -1469,3 +1469,65 @@ fn layer_boundary_no_redundant_tool_change_when_tool_unchanged() {
          already on T1, so no redundant tool change should be emitted",
     );
 }
+
+// ============================================================================
+// Regression (RC5): volumetric E = length × width × layer_height / filament_area
+//
+// Guards against the historical bug where the emitter computed
+// `E = distance × width × flow_factor`, omitting the layer-height and
+// filament-cross-section terms. That produced ~12–22× over-extrusion
+// (filament E/mm ≈ 0.4–0.7 instead of OrcaSlicer's ~0.033 for a 0.4 mm wall
+// at 0.2 mm layers). See handoff RC5 / G5.
+// ============================================================================
+
+#[test]
+fn emit_e_uses_volumetric_flow_formula() {
+    // Single straight 10 mm horizontal extrusion at z = 0.2 (first layer uses
+    // the 0.2 mm default height), width 0.4 mm, flow_factor 1.0.
+    let p0 = Point3WithWidth {
+        x: 0.0,
+        y: 0.0,
+        z: 0.2,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+    };
+    let p1 = Point3WithWidth {
+        x: 10.0,
+        y: 0.0,
+        z: 0.2,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+    };
+    let entity = print_entity_fixture(vec![p0, p1], ExtrusionRole::OuterWall);
+    let layer = layer_with_entity(0, 0.2, entity);
+
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let gcode_ir = emitter
+        .emit_gcode(&[layer])
+        .expect("emit_gcode must succeed");
+
+    let total_e: f32 = gcode_ir.metadata.filament_used_mm.iter().sum();
+
+    // Expected: V = length × width × height = 10 × 0.4 × 0.2 = 0.8 mm³.
+    // E = V / filament_area, filament_area = π·(1.75/2)² ≈ 2.405 mm².
+    let filament_area = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
+    let expected_e = 10.0 * 0.4 * 0.2 / filament_area; // ≈ 0.3326 mm
+
+    assert!(
+        (total_e - expected_e).abs() < 1e-4,
+        "volumetric E mismatch: got {total_e:.5} mm, expected {expected_e:.5} mm \
+         (length×width×height/filament_area). A value ~12× larger (~{:.4}) indicates \
+         the layer-height/filament-area terms are missing.",
+        10.0 * 0.4_f32, // the old buggy value
+    );
+
+    // E/mm of XY path must be in OrcaSlicer's plausible range (~0.033 for a
+    // 0.4 mm × 0.2 mm line), never the ~0.4 of the old formula.
+    let e_per_mm = total_e / 10.0;
+    assert!(
+        e_per_mm < 0.1,
+        "E/mm {e_per_mm:.4} is implausibly high (over-extrusion regression)"
+    );
+}

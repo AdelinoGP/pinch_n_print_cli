@@ -33,6 +33,7 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
         ExtrusionRole::SparseInfill
         | ExtrusionRole::TopSolidInfill
         | ExtrusionRole::BottomSolidInfill
+        | ExtrusionRole::InternalSolidInfill
         | ExtrusionRole::BridgeInfill
         | ExtrusionRole::Ironing
         | ExtrusionRole::WipeTower

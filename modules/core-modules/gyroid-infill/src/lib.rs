@@ -70,6 +70,18 @@ pub struct GyroidInfill {
     line_width: f32,
 }
 
+/// Maps a top/bottom shell depth index to the emitted extrusion role.
+///
+/// Depth 0 is the exposed surface (keeps `exposed` — Top/BottomSolidInfill);
+/// any deeper shell layer (index ≥ 1) is `InternalSolidInfill`. A `None` index
+/// is treated as the exposed surface to preserve legacy behaviour.
+fn solid_fill_role(shell_index: Option<u8>, exposed: ExtrusionRole) -> ExtrusionRole {
+    match shell_index {
+        Some(0) | None => exposed,
+        Some(_) => ExtrusionRole::InternalSolidInfill,
+    }
+}
+
 impl GyroidInfill {
     /// Returns the configured infill density.
     pub fn density(&self) -> f32 {
@@ -137,11 +149,16 @@ impl LayerModule for GyroidInfill {
         for region in regions {
             let z = region.z();
 
+            // `gate_role` decides ownership (claim) and `role` is the emitted
+            // label. They differ only for internal solid infill, where the
+            // top/bottom-fill holder emits deeper shell layers under the
+            // InternalSolidInfill label. See handoff G4.
             let emit_polys = |polys: &[ExPolygon],
                               role: ExtrusionRole,
+                              gate_role: ExtrusionRole,
                               push_solid: bool,
                               output: &mut InfillOutputBuilder| {
-                if polys.is_empty() || !region.should_emit(role.clone()) {
+                if polys.is_empty() || !region.should_emit(gate_role) {
                     return;
                 }
                 for expoly in polys {
@@ -162,23 +179,30 @@ impl LayerModule for GyroidInfill {
             emit_polys(
                 region.sparse_infill_area(),
                 ExtrusionRole::SparseInfill,
+                ExtrusionRole::SparseInfill,
                 false,
                 output,
             );
             emit_polys(
                 region.top_solid_fill(),
+                solid_fill_role(region.top_shell_index(), ExtrusionRole::TopSolidInfill),
                 ExtrusionRole::TopSolidInfill,
                 true,
                 output,
             );
             emit_polys(
                 region.bottom_solid_fill(),
+                solid_fill_role(
+                    region.bottom_shell_index(),
+                    ExtrusionRole::BottomSolidInfill,
+                ),
                 ExtrusionRole::BottomSolidInfill,
                 true,
                 output,
             );
             emit_polys(
                 region.bridge_areas(),
+                ExtrusionRole::BridgeInfill,
                 ExtrusionRole::BridgeInfill,
                 true,
                 output,

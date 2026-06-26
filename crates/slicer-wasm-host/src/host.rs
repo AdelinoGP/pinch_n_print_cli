@@ -27,6 +27,10 @@ pub struct ConfigViewData {
 pub const BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG: &str = "slicer.builtin/prime-tower@1";
 /// Reserved custom extrusion-role tag used to preserve Skirt through WIT boundaries.
 pub const BUILTIN_EXTRUSION_ROLE_SKIRT_TAG: &str = "slicer.builtin/skirt@1";
+/// Reserved custom extrusion-role tag used to preserve InternalSolidInfill through
+/// WIT boundaries (the WIT `extrusion-role` variant has no dedicated case).
+pub const BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG: &str =
+    "slicer.builtin/internal-solid-infill@1";
 
 /// Storage for a single config value on the host side.
 #[derive(Debug, Clone)]

@@ -218,6 +218,95 @@ fn bottom_wins_over_top_on_overlap() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 3c/3d (RC4/G4): deeper top/bottom shell layers (depth >= 1) emit
+// InternalSolidInfill, NOT the exposed-surface role. Depth 0 stays Top/Bottom
+// surface (covered by tests 1/2); depth >= 1 is the solid shell beneath the
+// surface and must become ;TYPE:Internal solid infill so the surface is
+// supported by solid layers (OrcaSlicer stInternalSolid).
+// ---------------------------------------------------------------------------
+fn make_shell_region(top_index: Option<u8>, bottom_index: Option<u8>) -> SliceRegionView {
+    let s = square_polygon(5.0, 5.0, 10.0);
+    SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(s.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .top_shell_index(top_index)
+        .top_solid_fill(if top_index.is_some() {
+            vec![s.clone()]
+        } else {
+            vec![]
+        })
+        .bottom_shell_index(bottom_index)
+        .bottom_solid_fill(if bottom_index.is_some() {
+            vec![s]
+        } else {
+            vec![]
+        })
+        .build()
+}
+
+#[test]
+fn deep_top_shell_emits_internal_solid_infill() {
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let region = make_shell_region(Some(1), None);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .unwrap();
+
+    let all_paths: Vec<_> = output
+        .sparse_paths()
+        .iter()
+        .chain(output.solid_paths().iter())
+        .cloned()
+        .collect();
+
+    assert!(
+        has_path_with_role(&all_paths, ExtrusionRole::InternalSolidInfill),
+        "depth-1 top shell must emit InternalSolidInfill, got: {:?}",
+        all_paths
+    );
+    assert!(
+        !has_path_with_role(&all_paths, ExtrusionRole::TopSolidInfill),
+        "depth-1 top shell must NOT emit TopSolidInfill (that is depth 0 only), got: {:?}",
+        all_paths
+    );
+}
+
+#[test]
+fn deep_bottom_shell_emits_internal_solid_infill() {
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let region = make_shell_region(None, Some(2));
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .unwrap();
+
+    let all_paths: Vec<_> = output
+        .sparse_paths()
+        .iter()
+        .chain(output.solid_paths().iter())
+        .cloned()
+        .collect();
+
+    assert!(
+        has_path_with_role(&all_paths, ExtrusionRole::InternalSolidInfill),
+        "depth-2 bottom shell must emit InternalSolidInfill, got: {:?}",
+        all_paths
+    );
+    assert!(
+        !has_path_with_role(&all_paths, ExtrusionRole::BottomSolidInfill),
+        "depth-2 bottom shell must NOT emit BottomSolidInfill (depth 0 only), got: {:?}",
+        all_paths
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Test 4: sparse_only_region_does_not_fabricate_surface_fill_roles
 // ---------------------------------------------------------------------------
 #[test]

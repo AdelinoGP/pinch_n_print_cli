@@ -148,6 +148,10 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::ThinWall => self.feedrate_config.thin_wall_speed,
             ExtrusionRole::TopSolidInfill => self.feedrate_config.top_surface_speed,
             ExtrusionRole::BottomSolidInfill => self.feedrate_config.bottom_surface_speed,
+            // No dedicated internal-solid speed in FeedrateConfig; use the infill
+            // speed (OrcaSlicer's internal_solid_infill_speed family). Defaults
+            // match sparse, so cube output is unchanged.
+            ExtrusionRole::InternalSolidInfill => self.feedrate_config.sparse_infill_speed,
             ExtrusionRole::SparseInfill => self.feedrate_config.sparse_infill_speed,
             ExtrusionRole::BridgeInfill => self.feedrate_config.bridge_speed,
             ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
@@ -193,6 +197,7 @@ fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
         (ExtrusionRole::ThinWall, ExtrusionRole::ThinWall) => true,
         (ExtrusionRole::TopSolidInfill, ExtrusionRole::TopSolidInfill) => true,
         (ExtrusionRole::BottomSolidInfill, ExtrusionRole::BottomSolidInfill) => true,
+        (ExtrusionRole::InternalSolidInfill, ExtrusionRole::InternalSolidInfill) => true,
         (ExtrusionRole::SparseInfill, ExtrusionRole::SparseInfill) => true,
         (ExtrusionRole::BridgeInfill, ExtrusionRole::BridgeInfill) => true,
         (ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterial) => true,
@@ -214,6 +219,7 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::ThinWall => ";TYPE:Inner wall",
         ExtrusionRole::TopSolidInfill => ";TYPE:Top surface",
         ExtrusionRole::BottomSolidInfill => ";TYPE:Bottom surface",
+        ExtrusionRole::InternalSolidInfill => ";TYPE:Internal solid infill",
         ExtrusionRole::SparseInfill => ";TYPE:Sparse infill",
         ExtrusionRole::BridgeInfill => ";TYPE:Bridge infill",
         ExtrusionRole::SupportMaterial => ";TYPE:Support",
@@ -254,6 +260,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         let mut current_tool: u32 = 0;
         // Cumulative E position
         let mut e_position: f32 = 0.0;
+
+        // Filament cross-sectional area (mm²) for volumetric E. Extruded volume
+        // is width × layer-height × path-length (mm³); dividing by the filament
+        // cross-section converts it to filament length (mm) — the E value.
+        // OrcaSlicer: Flow::mm3_per_mm() / (PI * (filament_diameter/2)²).
+        let filament_radius = self.resolved_config.filament_diameter * 0.5;
+        let filament_area =
+            (std::f32::consts::PI * filament_radius * filament_radius).max(f32::EPSILON);
 
         // Previous layer Z for computing ;HEIGHT: delta
         let mut prev_layer_z: Option<f32> = None;
@@ -456,8 +470,12 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         let dy = point.y - prev.y;
                         let dz = point.z - prev.z;
                         let distance = (dx * dx + dy * dy + dz * dz).sqrt();
-                        // E = distance * width * flow_factor (simplified)
-                        distance * point.width * point.flow_factor
+                        // Volumetric E: extruded volume (width × layer-height ×
+                        // length) divided by the filament cross-section gives the
+                        // filament length to feed. `flow_factor` is a per-path
+                        // modulation (1.0 normally; e.g. ~0.1 for ironing).
+                        // OrcaSlicer: GCode.cpp `_extrude` → Flow::mm3_per_mm.
+                        distance * point.width * height_delta * point.flow_factor / filament_area
                     } else {
                         0.0 // First point, no extrusion
                     };

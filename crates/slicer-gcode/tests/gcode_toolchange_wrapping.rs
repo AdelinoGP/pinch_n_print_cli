@@ -231,13 +231,19 @@ fn toolchange_emits_retract_prime_wipe() {
         .filter(|v| *v > 0.0)
         .sum();
 
-    let purge_volume_mm: f32 = 70.0; // wipe_tower_purge_volume default
+    // `cum_e` is filament length (mm); convert to deposited volume via the
+    // 1.75 mm filament cross-section (π·r² ≈ 2.405 mm²). The wipe block must
+    // deposit at least `wipe_tower_purge_volume` (70 mm³).
+    let filament_area: f32 = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
+    let purge_volume_mm3: f32 = 70.0; // wipe_tower_purge_volume default
+    let deposited_volume_mm3 = cum_e * filament_area;
     assert!(
-        cum_e >= purge_volume_mm,
-        "AC1 FAIL: cumulative positive-E after T1 ({:.3} mm) is less than wipe_tower_purge_volume \
-         ({:.1} mm). Prime+wipe block is missing or undersized.",
+        deposited_volume_mm3 >= purge_volume_mm3,
+        "AC1 FAIL: deposited purge volume after T1 ({:.3} mm³, from {:.3} mm E) is less than \
+         wipe_tower_purge_volume ({:.1} mm³). Prime+wipe block is missing or undersized.",
+        deposited_volume_mm3,
         cum_e,
-        purge_volume_mm
+        purge_volume_mm3
     );
 }
 
@@ -306,10 +312,12 @@ fn purge_volume_within_tolerance() {
         .filter(|v| *v > 0.0)
         .sum();
 
-    // Convert mm (E axis) to mmÂ³ volume: V = cum_e Ã— layer_height
-    // cum_e already includes line_width via emitter's E = distance Ã— line_width Ã— flow_factor;
-    // multiplying by line_width again would double-count it.
-    let measured_volume_mm3 = cum_e_mm * 0.2;
+    // Convert filament length (E, mm) to deposited volume (mm³):
+    // V = cum_e × filament_cross_section_area. The emitter's volumetric E is
+    // E = distance × line_width × layer_height × flow_factor / filament_area,
+    // so multiplying back by filament_area recovers the extruded volume.
+    let filament_area = std::f32::consts::PI * (1.75 / 2.0_f32).powi(2);
+    let measured_volume_mm3 = cum_e_mm * filament_area;
 
     let lo = reference_volume_mm3 * tolerance_lo;
     let hi = reference_volume_mm3 * tolerance_hi;

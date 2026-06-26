@@ -132,9 +132,12 @@ impl LayerModule for RectilinearInfill {
                 }
             }
 
-            // TopSolidInfill over top_solid_fill.
+            // Top solid fill. Depth-0 (exposed) is the Top surface; deeper shell
+            // layers (index ≥ 1) are Internal solid infill. Gating stays on the
+            // top-fill claim. See handoff G4 / OrcaSlicer stTop vs stInternalSolid.
             let top = region.top_solid_fill();
             if !top.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
+                let role = solid_fill_role(region.top_shell_index(), ExtrusionRole::TopSolidInfill);
                 let paths = self.fill_expolygon_multi(
                     top,
                     line_spacing,
@@ -142,16 +145,21 @@ impl LayerModule for RectilinearInfill {
                     std_sin_a,
                     z,
                     speed_factor,
-                    ExtrusionRole::TopSolidInfill,
+                    role,
                 );
                 for path in paths {
                     let _ = output.push_solid_path(path);
                 }
             }
 
-            // BottomSolidInfill over bottom_solid_fill.
+            // Bottom solid fill. Depth-0 (exposed) is the Bottom surface; deeper
+            // shell layers are Internal solid infill.
             let bottom = region.bottom_solid_fill();
             if !bottom.is_empty() && region.should_emit(ExtrusionRole::BottomSolidInfill) {
+                let role = solid_fill_role(
+                    region.bottom_shell_index(),
+                    ExtrusionRole::BottomSolidInfill,
+                );
                 let paths = self.fill_expolygon_multi(
                     bottom,
                     line_spacing,
@@ -159,7 +167,7 @@ impl LayerModule for RectilinearInfill {
                     std_sin_a,
                     z,
                     speed_factor,
-                    ExtrusionRole::BottomSolidInfill,
+                    role,
                 );
                 for path in paths {
                     let _ = output.push_solid_path(path);
@@ -189,6 +197,19 @@ impl LayerModule for RectilinearInfill {
 
         let _ = angle_rad; // angle_rad retained for fixture readability; no longer used
         Ok(())
+    }
+}
+
+/// Maps a top/bottom shell depth index to the emitted extrusion role.
+///
+/// Depth 0 is the exposed surface (keeps `exposed` — Top/BottomSolidInfill);
+/// any deeper shell layer (index ≥ 1) is `InternalSolidInfill`. A `None` index
+/// (fill present without a recorded depth) is treated as the exposed surface to
+/// preserve legacy behaviour.
+fn solid_fill_role(shell_index: Option<u8>, exposed: ExtrusionRole) -> ExtrusionRole {
+    match shell_index {
+        Some(0) | None => exposed,
+        Some(_) => ExtrusionRole::InternalSolidInfill,
     }
 }
 

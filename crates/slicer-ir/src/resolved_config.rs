@@ -573,6 +573,9 @@ declare_resolved_config! {
     cli "first_layer_height"     first_layer_height: f32 = 0.2 => extract_float;
     /// First layer line width in millimeters.
     cli "first_layer_line_width" first_layer_line_width: f32 = 0.4 => extract_float;
+    /// Filament diameter in millimeters. Used by the G-code emitter to convert
+    /// extruded volume (width × height × length) into filament length (E).
+    cli "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float;
 
     // Walls
     /// Number of walls (perimeters).
@@ -692,6 +695,7 @@ impl PartialEq for ResolvedConfig {
             && self.line_width.to_bits() == other.line_width.to_bits()
             && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
             && self.first_layer_line_width.to_bits() == other.first_layer_line_width.to_bits()
+            && self.filament_diameter.to_bits() == other.filament_diameter.to_bits()
             && self.wall_count == other.wall_count
             && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
             && self.inner_wall_speed.to_bits() == other.inner_wall_speed.to_bits()
@@ -759,6 +763,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.line_width.to_bits().hash(state);
         self.first_layer_height.to_bits().hash(state);
         self.first_layer_line_width.to_bits().hash(state);
+        self.filament_diameter.to_bits().hash(state);
         self.wall_count.hash(state);
         self.outer_wall_speed.to_bits().hash(state);
         self.inner_wall_speed.to_bits().hash(state);
