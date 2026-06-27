@@ -597,6 +597,47 @@ impl MMU_Graph {
             }
         }
 
+        // ---- Per-border-node colour-boundary flags (Orca build_graph colour gating) ----
+        // OrcaSlicer only attaches a contour vertex to the interior medial axis where
+        // the contour COLOUR CHANGES (`!has_same_color(contour_line_prev/next, colored_line)`,
+        // MultiMaterialSegmentation.cpp:1869-1910). On a uniform-colour span it adds NO
+        // contour-attachment "spike". PNP previously attached at every node, creating
+        // spurious medial spikes that let the leftmost-walk short-circuit back to the
+        // contour (returning to an adjacent node instead of the start corner → the walk
+        // self-intersects and is discarded). We reproduce the gate: a border node is a
+        // colour boundary iff the border arc leaving it differs in colour from the one
+        // entering it. Attachment arcs (Cases 2 & 3 below) are suppressed at uniform nodes.
+        let border_node_is_color_boundary: Vec<bool> = {
+            let mut color_leaving: Vec<Option<PaintValue>> = vec![None; all_border_points];
+            let mut color_entering: Vec<Option<PaintValue>> = vec![None; all_border_points];
+            let mut has_leaving = vec![false; all_border_points];
+            let mut has_entering = vec![false; all_border_points];
+            for a in &arcs {
+                if a.kind == MmuArcKind::Border {
+                    if a.from_node < all_border_points {
+                        color_leaving[a.from_node] = a.color.clone();
+                        has_leaving[a.from_node] = true;
+                    }
+                    if a.to_node < all_border_points {
+                        color_entering[a.to_node] = a.color.clone();
+                        has_entering[a.to_node] = true;
+                    }
+                }
+            }
+            (0..all_border_points)
+                .map(|n| {
+                    // Closed-ring nodes always have both sides; if a side is missing
+                    // (degenerate/open input) default to boundary=true so we never
+                    // over-suppress a genuinely-needed attachment.
+                    if has_leaving[n] && has_entering[n] {
+                        color_leaving[n] != color_entering[n]
+                    } else {
+                        true
+                    }
+                })
+                .collect()
+        };
+
         // ---- Build NonBorder arcs from Voronoi diagram interior edges ----
         // Interior nodes start at index `all_border_points` and map 1-to-1
         // with `vertices` (which mirrors `diagram.vertices()` after sorting).
@@ -668,6 +709,7 @@ impl MMU_Graph {
         let (mut c_sec_finite, mut c_case1, mut c_case2_attempt) = (0usize, 0usize, 0usize);
         let (mut c_case2_miss, mut c_case2_ok) = (0usize, 0usize);
         let (mut c_case3_attempt, mut c_case3_ok) = (0usize, 0usize);
+        let (mut c_case2_suppressed, mut c_case3_suppressed) = (0usize, 0usize);
 
         // Helper: if a cell is a point site (a segment endpoint), return
         // (source_index, is_end) where is_end picks seg.end vs seg.start.
@@ -745,6 +787,15 @@ impl MMU_Graph {
                 };
                 let border_node = if is_end { node_b } else { node_a };
                 if interior_node == border_node || border_node >= nodes.len() {
+                    continue;
+                }
+                // Orca colour gating: only attach the contour vertex to the interior
+                // medial axis where the contour colour changes. At a uniform-colour
+                // node this would be a spurious medial spike (the short-circuit bug).
+                if !border_node_is_color_boundary[border_node] {
+                    if edbg {
+                        c_case3_suppressed += 1;
+                    }
                     continue;
                 }
                 let pair = (
@@ -864,6 +915,14 @@ impl MMU_Graph {
                 if interior_node == border_node || border_node >= nodes.len() {
                     continue;
                 }
+                // Orca colour gating (see Case 3): suppress the contour attachment at
+                // uniform-colour nodes; only attach where the contour colour changes.
+                if !border_node_is_color_boundary[border_node] {
+                    if edbg {
+                        c_case2_suppressed += 1;
+                    }
+                    continue;
+                }
 
                 let pair = (
                     interior_node.min(border_node),
@@ -916,6 +975,12 @@ impl MMU_Graph {
                 c_case3_attempt,
                 c_case3_ok,
                 border_with_nb,
+            );
+            eprintln!(
+                "EDGEDBG_SUPPRESS case2_suppressed={} case3_suppressed={} color_boundary_nodes={}",
+                c_case2_suppressed,
+                c_case3_suppressed,
+                border_node_is_color_boundary.iter().filter(|&&b| b).count(),
             );
             let _ = (c_case2_attempt, c_case2_miss);
         }

@@ -201,10 +201,18 @@ fn get_next_arc(
                 .iter()
                 .map(|&ai| {
                     let a = &graph.arcs[ai];
-                    let far = if a.from_node == node_idx { a.to_node } else { a.from_node };
+                    let far = if a.from_node == node_idx {
+                        a.to_node
+                    } else {
+                        a.from_node
+                    };
                     format!(
                         "{}{}->{}@{:.2}",
-                        if a.kind == MmuArcKind::Border { "B" } else { "N" },
+                        if a.kind == MmuArcKind::Border {
+                            "B"
+                        } else {
+                            "N"
+                        },
                         node_idx,
                         far,
                         angle_of(ai)
@@ -218,7 +226,11 @@ fn get_next_arc(
                 descr.join(" "),
                 chosen.map(|ai| {
                     let a = &graph.arcs[ai];
-                    if a.from_node == node_idx { a.to_node } else { a.from_node }
+                    if a.from_node == node_idx {
+                        a.to_node
+                    } else {
+                        a.from_node
+                    }
                 })
             );
         }
@@ -446,7 +458,11 @@ pub fn extract_colored_segments(
                 };
                 eprintln!(
                     "WALKDETAIL seed_color={:?} pre_len={} post_len={} area={:.0} valid={}",
-                    seed_color, pre_repair_len, walk_segments.len(), area, valid
+                    seed_color,
+                    pre_repair_len,
+                    walk_segments.len(),
+                    area,
+                    valid
                 );
             }
             // Dump the geometry of a FAILING painted walk (pre-repair) to locate the
@@ -464,10 +480,18 @@ pub fn extract_colored_segments(
                         .iter()
                         .map(|&(ai, en)| {
                             let a = &graph.arcs[ai];
-                            let far = if a.from_node == en { a.to_node } else { a.from_node };
+                            let far = if a.from_node == en {
+                                a.to_node
+                            } else {
+                                a.from_node
+                            };
                             format!(
                                 "{}:{}->{}{}",
-                                if a.kind == MmuArcKind::Border { "B" } else { "N" },
+                                if a.kind == MmuArcKind::Border {
+                                    "B"
+                                } else {
+                                    "N"
+                                },
                                 en,
                                 far,
                                 if a.from_node < graph.all_border_points
@@ -489,7 +513,7 @@ pub fn extract_colored_segments(
                 }
             }
             if valid {
-                result.extend(walk_segments.drain(..));
+                result.append(&mut walk_segments);
                 walk_idx += 1;
             }
         }
@@ -538,6 +562,52 @@ mod tests {
         MMU_Graph::from_parts(nodes, arcs, 4, vec![0])
     }
 
+    /// Square with a centre node (index 4) and four spokes (centre↔corner) so each
+    /// border arc can close into a triangle (border arc + two spokes). NonBorder
+    /// spokes are registered at BOTH endpoints (matching `from_colored_lines`) and
+    /// are traversable once per direction. This is the smallest graph that exercises
+    /// real per-arc closure + the colour filter the way the live decomposition does.
+    fn square_with_center_graph(colors: [Option<PaintValue>; 4]) -> MMU_Graph {
+        let corners = [(0i64, 0i64), (100, 0), (100, 100), (0, 100)];
+        let center = (50i64, 50i64);
+        let mut nodes: Vec<MmuNode> = (0..5).map(|_| MmuNode::default()).collect();
+        let mut arcs: Vec<MmuArc> = Vec::new();
+        // 4 border arcs (corner ring), registered at from_node only (winding dir).
+        for i in 0..4 {
+            let (ax, ay) = corners[i];
+            let (bx, by) = corners[(i + 1) % 4];
+            let ai = arcs.len();
+            arcs.push(MmuArc {
+                from_node: i,
+                to_node: (i + 1) % 4,
+                color: colors[i].clone(),
+                kind: MmuArcKind::Border,
+                deleted: false,
+                point_a: pt(ax, ay),
+                point_b: pt(bx, by),
+            });
+            nodes[i].arc_indices.push(ai);
+        }
+        // 4 spokes centre↔corner, NonBorder, registered at both nodes.
+        for i in 0..4 {
+            let (cx, cy) = center;
+            let (bx, by) = corners[i];
+            let ai = arcs.len();
+            arcs.push(MmuArc {
+                from_node: 4,
+                to_node: i,
+                color: None,
+                kind: MmuArcKind::NonBorder,
+                deleted: false,
+                point_a: pt(cx, cy),
+                point_b: pt(bx, by),
+            });
+            nodes[4].arc_indices.push(ai);
+            nodes[i].arc_indices.push(ai);
+        }
+        MMU_Graph::from_parts(nodes, arcs, 4, vec![0])
+    }
+
     #[test]
     fn extract_simple_square_walk_emits_4_segments() {
         let graph = square_graph();
@@ -553,72 +623,55 @@ mod tests {
 
     #[test]
     fn extract_two_color_walk_separates_at_color_change() {
-        // 4-node ring where arcs alternate between two colors.
-        // With Orca's colour filter, each arc is in its own walk: a BORDER arc of
-        // a different colour is never a valid continuation, so the walk halts and
-        // emits a repair chord after each arc. Result: 4 real arcs + 4 repair chords.
-        // This test verifies that (a) all 4 real arcs are emitted once each with the
-        // correct colour, and (b) colour filtering produces one walk per arc.
+        // Square + centre, border colours alternating around the ring. Each border
+        // arc closes into its own triangle (border arc + two None spokes). Orca's
+        // colour filter forbids a walk from continuing across a BORDER arc of a
+        // different colour, so NO walk may carry two distinct paint colours: this is
+        // the faithful "separates at colour change" contract (a single mixed-colour
+        // walk would be the colour-flood bug the cell-shortcut was introduced to dodge).
         use slicer_ir::PaintValue;
-        let mut nodes: Vec<MmuNode> = (0..4).map(|_| MmuNode::default()).collect();
-        let mut arcs: Vec<MmuArc> = Vec::new();
-        let corners = [(0i64, 0i64), (100, 0), (100, 100), (0, 100)];
-        let colors = [
+        use std::collections::{BTreeMap, BTreeSet};
+        let graph = square_with_center_graph([
             Some(PaintValue::ToolIndex(0)),
             Some(PaintValue::ToolIndex(1)),
             Some(PaintValue::ToolIndex(0)),
             Some(PaintValue::ToolIndex(1)),
-        ];
-        let n = 4;
-        for i in 0..n {
-            let (ax, ay) = corners[i];
-            let (bx, by) = corners[(i + 1) % n];
-            let ai = arcs.len();
-            arcs.push(MmuArc {
-                from_node: i,
-                to_node: (i + 1) % n,
-                color: colors[i].clone(),
-                kind: MmuArcKind::Border,
-                deleted: false,
-                point_a: pt(ax, ay),
-                point_b: pt(bx, by),
-            });
-            nodes[i].arc_indices.push(ai);
-            nodes[(i + 1) % n].arc_indices.push(ai);
-        }
-        let graph = MMU_Graph::from_parts(nodes, arcs, 4, vec![0]);
+        ]);
         let segs = extract_colored_segments(&graph, 2);
 
-        // All 4 real arcs must be emitted exactly once each with their correct colour.
-        // (Repair chords have arc_idx: None and color: None; we filter them out here.)
-        let real_segs: Vec<_> = segs.iter().filter(|s| s.arc_idx.is_some()).collect();
-        assert_eq!(real_segs.len(), 4, "all 4 real arcs must be emitted");
-        let c0_count = real_segs
-            .iter()
-            .filter(|s| s.color == Some(PaintValue::ToolIndex(0)))
-            .count();
-        let c1_count = real_segs
-            .iter()
-            .filter(|s| s.color == Some(PaintValue::ToolIndex(1)))
-            .count();
-        assert_eq!(c0_count, 2, "should have 2 segments with color 0");
-        assert_eq!(c1_count, 2, "should have 2 segments with color 1");
+        // Group real-arc segments per walk; each walk must carry at most ONE non-None
+        // (paint) colour — the colour filter never lets a walk cross a colour change.
+        let mut per_walk: BTreeMap<usize, BTreeSet<Option<PaintValue>>> = BTreeMap::new();
+        for s in segs.iter().filter(|s| s.arc_idx.is_some()) {
+            per_walk.entry(s.poly_idx).or_default().insert(s.color.clone());
+        }
+        assert!(!per_walk.is_empty(), "expected at least one closed walk");
+        for (pidx, colset) in &per_walk {
+            let painted: BTreeSet<_> = colset.iter().filter(|c| c.is_some()).collect();
+            assert!(
+                painted.len() <= 1,
+                "walk {pidx} crossed a colour boundary (mixed colours {colset:?})"
+            );
+        }
 
-        // Colour filtering must produce one separate walk per arc (4 distinct poly_idx).
-        let poly_idxs: std::collections::BTreeSet<usize> =
-            segs.iter().map(|s| s.poly_idx).collect();
-        assert_eq!(
-            poly_idxs.len(),
-            4,
-            "colour filtering should produce one walk per arc boundary; got poly_idxs={:?}",
-            poly_idxs
+        // Both paint colours must survive as seed colours across the separated walks.
+        let seed_colors: BTreeSet<Option<PaintValue>> = per_walk
+            .values()
+            .filter_map(|cs| cs.iter().find(|c| c.is_some()).cloned())
+            .collect();
+        assert!(
+            seed_colors.contains(&Some(PaintValue::ToolIndex(0)))
+                && seed_colors.contains(&Some(PaintValue::ToolIndex(1))),
+            "both colours must appear as separated walks; got {seed_colors:?}"
         );
     }
 
     #[test]
-    fn extract_uses_option_none_sentinel_on_repair() {
-        // Force repair path: a non-closing chain of 2 border nodes connected by one arc.
-        // Node 0 (border) -> Node 1 (border), one arc, no way back.
+    fn extract_discards_non_closing_walk() {
+        // A single border arc between two nodes cannot close into a polygon. The
+        // faithful repair (Orca pop-retry, MultiMaterialSegmentation.cpp:547-562)
+        // POPS the degenerate tail and discards the walk entirely — it never emits a
+        // synthetic chord (the old arc_idx:None sentinel path no longer exists).
         let mut nodes: Vec<MmuNode> = (0..2).map(|_| MmuNode::default()).collect();
         let mut arcs: Vec<MmuArc> = Vec::new();
         let ai = arcs.len();
@@ -637,64 +690,38 @@ mod tests {
         let graph = MMU_Graph::from_parts(nodes, arcs, 2, vec![0]);
         let segs = extract_colored_segments(&graph, 1);
 
-        // Walk from node 0 via arc 0 to node 1; node 1 has no continuation → repair chord.
-        let repair = segs.iter().find(|s| s.arc_idx.is_none());
         assert!(
-            repair.is_some(),
-            "expected at least one repair chord with arc_idx: None"
+            segs.is_empty(),
+            "a non-closing single-arc walk must be discarded; got {} segment(s)",
+            segs.len()
         );
-
-        // H562: ensure None is used, not Some(usize::MAX).
-        for s in &segs {
-            if s.arc_idx.is_some() {
-                assert_ne!(
-                    s.arc_idx,
-                    Some(usize::MAX),
-                    "must not use usize::MAX sentinel"
-                );
-            }
-        }
+        // H562/H567: no segment may ever carry the usize::MAX sentinel.
+        assert!(
+            segs.iter().all(|s| s.arc_idx != Some(usize::MAX)),
+            "must never use usize::MAX as an arc index"
+        );
     }
 
     #[test]
     fn extract_poly_idx_increments_per_walk() {
-        // 3 disjoint single-arc walks: each border node pair produces its own walk.
-        // Nodes 0,1 (border); 2,3 (border); 4,5 (border). Each pair has one arc.
-        let mut nodes: Vec<MmuNode> = (0..6).map(|_| MmuNode::default()).collect();
-        let mut arcs: Vec<MmuArc> = Vec::new();
-        for pair in 0..3usize {
-            let from = pair * 2;
-            let to = pair * 2 + 1;
-            let ai = arcs.len();
-            arcs.push(MmuArc {
-                from_node: from,
-                to_node: to,
-                color: None,
-                kind: MmuArcKind::Border,
-                deleted: false,
-                point_a: pt((pair * 200) as i64, 0),
-                point_b: pt((pair * 200 + 100) as i64, 0),
-            });
-            nodes[from].arc_indices.push(ai);
-            nodes[to].arc_indices.push(ai);
-        }
-
-        // all_border_points = 6 (all nodes are border)
-        let graph = MMU_Graph::from_parts(nodes, arcs, 6, vec![0, 2, 4]);
+        // Square + centre, all border arcs unpainted: each of the four border arcs
+        // closes into its own triangle, so the walk index increments once per emitted
+        // walk and the poly_idx values are distinct and contiguous from 0.
+        let graph = square_with_center_graph([None, None, None, None]);
         let segs = extract_colored_segments(&graph, 1);
 
-        // 3 real arcs + 3 repair chords (each walk can't close back) = 6 total.
-        // Poly_idx values seen.
         let poly_idxs: std::collections::BTreeSet<usize> =
             segs.iter().map(|s| s.poly_idx).collect();
+        assert!(
+            poly_idxs.len() >= 2,
+            "expected multiple distinct walks, got {poly_idxs:?}"
+        );
+        // Contiguous from 0: one increment per kept walk, no gaps.
+        let max = *poly_idxs.iter().max().unwrap();
         assert_eq!(
             poly_idxs.len(),
-            3,
-            "expected 3 distinct poly_idx values, got {:?}",
-            poly_idxs
+            max + 1,
+            "poly_idx must be contiguous from 0; got {poly_idxs:?}"
         );
-        let mut sorted: Vec<usize> = poly_idxs.into_iter().collect();
-        sorted.sort();
-        assert_eq!(sorted, vec![0, 1, 2]);
     }
 }

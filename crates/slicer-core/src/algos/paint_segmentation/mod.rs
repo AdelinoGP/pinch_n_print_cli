@@ -494,10 +494,65 @@ fn segments_to_expolygons_by_color(
         a * 0.5
     }
 
+    // Collapse consecutive near-duplicate and collinear vertices on an OPEN ring.
+    //
+    // The arc-walk emits a cluster of near-coincident points at each region corner
+    // (the corner attachment arc plus tiny medial steps). Left in place these form
+    // degenerate zero-length edges that (a) are invalid polygon geometry and (b)
+    // make a region's *shared corner vertex* read as an EDGE running along a
+    // neighbouring face — a false cross-colour "bleed" under the confinement
+    // predicate (`regions_with_edge_on_face`, which only permits a single shared
+    // corner). Collapsing the clusters yields the clean face-quadrant whose only
+    // contact with a neighbour's face is the permitted single corner vertex.
+    fn clean_ring(pts: &[slicer_ir::Point2]) -> Vec<slicer_ir::Point2> {
+        // 0.1 mm — below one extrusion width, so this only merges true corner
+        // clusters, never a real geometric feature.
+        const EPS: i64 = 1000;
+        let near = |a: &slicer_ir::Point2, b: &slicer_ir::Point2| -> bool {
+            (a.x - b.x).abs() <= EPS && (a.y - b.y).abs() <= EPS
+        };
+        // 1. Drop consecutive near-duplicates (compare against the last kept point
+        //    so a whole tight cluster collapses to its first member).
+        let mut out: Vec<slicer_ir::Point2> = Vec::with_capacity(pts.len());
+        for &p in pts {
+            if !out.last().is_some_and(|q| near(q, &p)) {
+                out.push(p);
+            }
+        }
+        while out.len() >= 2 && near(&out[0], out.last().unwrap()) {
+            out.pop();
+        }
+        if out.len() < 3 {
+            return out;
+        }
+        // 2. Drop exactly-collinear midpoints (i128 cross == 0). A point is removed
+        //    iff it is collinear with its two original neighbours, which correctly
+        //    strips an entire straight run down to its endpoints.
+        let m = out.len();
+        let mut simp: Vec<slicer_ir::Point2> = Vec::with_capacity(m);
+        for i in 0..m {
+            let a = out[(i + m - 1) % m];
+            let b = out[i];
+            let c = out[(i + 1) % m];
+            let cross = (b.x as i128 - a.x as i128) * (c.y as i128 - b.y as i128)
+                - (b.y as i128 - a.y as i128) * (c.x as i128 - b.x as i128);
+            if cross != 0 {
+                simp.push(b);
+            }
+        }
+        if simp.len() < 3 {
+            out
+        } else {
+            simp
+        }
+    }
+
     // Emit exactly ONE ExPolygon per walk under the walk's seed colour.
-    for (poly_idx, mut pts) in walk_pts {
+    for (poly_idx, pts_raw) in walk_pts {
         // The walk point list is an OPEN ring (one point per segment start);
-        // do not duplicate the first point before the winding test.
+        // clean corner clusters / collinear runs before the winding test so a
+        // shared corner is a single vertex, not a degenerate edge.
+        let mut pts = clean_ring(&pts_raw);
         if pts.len() < 3 {
             continue;
         }
@@ -514,12 +569,12 @@ fn segments_to_expolygons_by_color(
         if area < 0.0 {
             pts.reverse();
         }
-        // Close the polygon (ExPolygon contour is an explicit closed ring).
-        if let Some(&first) = pts.first() {
-            if pts.last() != Some(&first) {
-                pts.push(first);
-            }
-        }
+        // Emit an OPEN contour ring (no explicit closing duplicate), matching the
+        // pipeline convention established by `slice_mesh_ex` (a square slice has 4
+        // points, not 5) and consumed everywhere downstream. An explicit closing
+        // duplicate would also make a region's start vertex read as a degenerate
+        // edge under `regions_with_edge_on_face`, falsely flagging a shared corner
+        // that sits on a neighbouring face as cross-colour bleed.
         let seed_color = walk_seed_color.get(&poly_idx).cloned().unwrap_or(None);
         result.entry(seed_color).or_default().push(ExPolygon {
             contour: Polygon { points: pts },
@@ -852,6 +907,65 @@ pub fn execute_paint_segmentation(
                                 );
                                 let polys_by_color_result =
                                     segments_to_expolygons_by_color(&segments);
+                                // FACEDBG: dump, for the mid-height layer (z≈12.5), each
+                                // output colour-polygon's bbox + which cube face its contour
+                                // has an EDGE on (mirrors the AC-2 confinement predicate
+                                // `regions_with_edge_on_face`). Gated; remove after diagnosis.
+                                if std::env::var("PNP_PAINTSEG_FACEDBG").is_ok()
+                                    && (layer_zs[i] - 12.5).abs() < 0.3
+                                {
+                                    let (xmn, xmx, ymn, ymx) =
+                                        (1_125_000i64, 1_375_000i64, 925_000i64, 1_175_000i64);
+                                    let tol = 2500i64;
+                                    let edge_on =
+                                        |pts: &[slicer_ir::Point2],
+                                         f: &dyn Fn(slicer_ir::Point2) -> bool|
+                                         -> bool {
+                                            let n = pts.len();
+                                            n >= 2
+                                                && (0..n)
+                                                    .any(|k| f(pts[k]) && f(pts[(k + 1) % n]))
+                                        };
+                                    eprintln!(
+                                        "FACEDBG layer z={:.2} colors={}",
+                                        layer_zs[i],
+                                        polys_by_color_result.len()
+                                    );
+                                    for (col, polys) in &polys_by_color_result {
+                                        for (pi, ep) in polys.iter().enumerate() {
+                                            let pts = &ep.contour.points;
+                                            let back = edge_on(pts, &|p| p.y >= ymx - tol);
+                                            let front = edge_on(pts, &|p| p.y <= ymn + tol);
+                                            let right = edge_on(pts, &|p| p.x >= xmx - tol);
+                                            let left = edge_on(pts, &|p| p.x <= xmn + tol);
+                                            let (mut bxmn, mut bxmx, mut bymn, mut bymx) =
+                                                (i64::MAX, i64::MIN, i64::MAX, i64::MIN);
+                                            for p in pts {
+                                                bxmn = bxmn.min(p.x);
+                                                bxmx = bxmx.max(p.x);
+                                                bymn = bymn.min(p.y);
+                                                bymx = bymx.max(p.y);
+                                            }
+                                            eprintln!(
+                                                "FACEDBG  color={:?} poly#{} npts={} bbox=[{}..{}]x[{}..{}] edges back={} front={} right={} left={}",
+                                                col, pi, pts.len(), bxmn, bxmx, bymn, bymx, back, front, right, left
+                                            );
+                                            if pts.len() <= 30 {
+                                                let s: Vec<String> = pts
+                                                    .iter()
+                                                    .map(|p| {
+                                                        format!(
+                                                            "({:.1},{:.1})",
+                                                            p.x as f64 / 10000.0,
+                                                            p.y as f64 / 10000.0
+                                                        )
+                                                    })
+                                                    .collect();
+                                                eprintln!("FACEDBG    pts_mm={}", s.join(" "));
+                                            }
+                                        }
+                                    }
+                                }
                                 // TEMPORARY diagnostic instrumentation — remove after diagnosis.
                                 // Gate: PNP_PAINTSEG_WALK_DEBUG (any non-empty value).
                                 if std::env::var("PNP_PAINTSEG_WALK_DEBUG").is_ok() {
