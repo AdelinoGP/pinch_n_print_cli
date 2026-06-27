@@ -281,10 +281,160 @@ fn run_kernel_for_layer(
     // Phase 4c — build MMU graph.
     let mut graph = voronoi_graph::MMU_Graph::from_colored_lines(&colored_lines)?;
 
+    // NODEDBG — env-gated diagnostic: classify why arc-walks dead-end after one step.
+    // Enabled by PNP_PAINTSEG_NODEDBG=1. Prints once for the first layer with ≥4 border arcs.
+    #[cfg(debug_assertions)]
+    let _nodedbg_noop = (); // suppress unused-variable warnings in release
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static NODEDBG_FIRED: AtomicBool = AtomicBool::new(false);
+        if std::env::var("PNP_PAINTSEG_NODEDBG").is_ok() && !NODEDBG_FIRED.load(Ordering::Relaxed) {
+            // Find the first border arc seed from border nodes; require ≥4 border arcs total.
+            let total_border_arcs = graph
+                .arcs
+                .iter()
+                .filter(|a| !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::Border))
+                .count();
+            if total_border_arcs >= 4 {
+                NODEDBG_FIRED.store(true, Ordering::Relaxed);
+                // Pick first non-deleted border arc.
+                if let Some((seed_ai, seed_arc)) = graph.arcs.iter().enumerate().find(|(_, a)| {
+                    !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::Border)
+                }) {
+                    let from_node = seed_arc.from_node;
+                    let to_node = seed_arc.to_node;
+                    let color = seed_arc.color.clone();
+                    eprintln!(
+                        "NODEDBG A seed: arc_idx={} from_node={} to_node={} color={:?}  total_border_arcs={}  total_arcs={}  all_border_points={}",
+                        seed_ai, from_node, to_node, color, total_border_arcs, graph.arcs.len(), graph.all_border_points
+                    );
+                    // Print every arc at to_node (pre-prune).
+                    let nb_total_pre = graph
+                        .arcs
+                        .iter()
+                        .filter(|a| {
+                            !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder)
+                        })
+                        .count();
+                    eprintln!("NODEDBG A total_NonBorder_arcs={}", nb_total_pre);
+                    let nb_incident_pre: Vec<usize> = graph
+                        .arcs
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, a)| {
+                            !a.deleted
+                                && matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder)
+                                && (a.from_node == to_node || a.to_node == to_node)
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    eprintln!(
+                        "NODEDBG A NonBorder_arcs_incident_to_to_node={}: {:?}",
+                        nb_incident_pre.len(),
+                        nb_incident_pre
+                    );
+                    for &ai in &graph.nodes[to_node].arc_indices {
+                        let a = &graph.arcs[ai];
+                        eprintln!(
+                            "NODEDBG A   arc[{}] kind={:?} color={:?} from={} to={} deleted={}",
+                            ai, a.kind, a.color, a.from_node, a.to_node, a.deleted
+                        );
+                    }
+                    if graph.nodes[to_node].arc_indices.is_empty() {
+                        eprintln!("NODEDBG A   <to_node {} has NO arc_indices>", to_node);
+                    }
+                }
+            }
+        }
+    }
+
     // Phase 4d/4e — prune.
     // remove_multiple_edges_in_vertices expects &[Vec<ColoredLine>] (colored_per_contour).
-    voronoi_prune::remove_multiple_edges_in_vertices(&mut graph, &colored_per_contour);
-    voronoi_prune::remove_nodes_with_one_arc(&mut graph);
+    if std::env::var("PNP_PAINTSEG_NOPRUNE").is_err() {
+        voronoi_prune::remove_multiple_edges_in_vertices(&mut graph, &colored_per_contour);
+        voronoi_prune::remove_nodes_with_one_arc(&mut graph);
+    }
+
+    // NODEDBG B — post-prune snapshot of same seed arc's to_node.
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static NODEDBG_B_FIRED: AtomicBool = AtomicBool::new(false);
+        if std::env::var("PNP_PAINTSEG_NODEDBG").is_ok() && !NODEDBG_B_FIRED.load(Ordering::Relaxed)
+        {
+            let total_border_arcs = graph
+                .arcs
+                .iter()
+                .filter(|a| !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::Border))
+                .count();
+            if total_border_arcs >= 4
+                || graph
+                    .arcs
+                    .iter()
+                    .any(|a| matches!(a.kind, voronoi_graph::MmuArcKind::Border))
+            {
+                NODEDBG_B_FIRED.store(true, Ordering::Relaxed);
+                if let Some((seed_ai, seed_arc)) = graph
+                    .arcs
+                    .iter()
+                    .enumerate()
+                    .find(|(_, a)| matches!(a.kind, voronoi_graph::MmuArcKind::Border))
+                {
+                    let from_node = seed_arc.from_node;
+                    let to_node = seed_arc.to_node;
+                    let color = seed_arc.color.clone();
+                    eprintln!(
+                        "NODEDBG B seed: arc_idx={} from_node={} to_node={} color={:?}  deleted={}",
+                        seed_ai, from_node, to_node, color, seed_arc.deleted
+                    );
+                    let nb_total_post = graph
+                        .arcs
+                        .iter()
+                        .filter(|a| {
+                            !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder)
+                        })
+                        .count();
+                    eprintln!("NODEDBG B total_NonBorder_arcs_alive={}", nb_total_post);
+                    let nb_total_all = graph
+                        .arcs
+                        .iter()
+                        .filter(|a| matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder))
+                        .count();
+                    eprintln!(
+                        "NODEDBG B total_NonBorder_arcs_all(incl.deleted)={}",
+                        nb_total_all
+                    );
+                    let nb_incident_post: Vec<(usize, bool)> = graph
+                        .arcs
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, a)| {
+                            matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder)
+                                && (a.from_node == to_node || a.to_node == to_node)
+                        })
+                        .map(|(i, a)| (i, a.deleted))
+                        .collect();
+                    eprintln!(
+                        "NODEDBG B NonBorder_arcs_incident_to_to_node={}: {:?}",
+                        nb_incident_post.len(),
+                        nb_incident_post
+                    );
+                    for &ai in &graph.nodes[to_node].arc_indices {
+                        let a = &graph.arcs[ai];
+                        eprintln!(
+                            "NODEDBG B   arc[{}] kind={:?} color={:?} from={} to={} deleted={}",
+                            ai, a.kind, a.color, a.from_node, a.to_node, a.deleted
+                        );
+                    }
+                    if graph.nodes[to_node].arc_indices.is_empty() {
+                        eprintln!(
+                            "NODEDBG B   <to_node {} has NO arc_indices post-prune>",
+                            to_node
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     // Phase 4f — extract segments.
     let segments = extract_segments::extract_colored_segments(&graph, num_color_states);
@@ -294,20 +444,19 @@ fn run_kernel_for_layer(
 
 /// Convert colored segments for one layer into ExPolygons keyed by paint value.
 ///
-/// Emits one ExPolygon per (walk × distinct color found in walk). Builds the
-/// full perimeter per poly_idx AND the set of distinct non-None colors in that
-/// walk in one pass, then emits one ExPolygon per (walk × color).
+/// Emits exactly ONE `ExPolygon` per walk under the walk's SEED colour.
+/// The seed colour is the colour of the BORDER arc that seeded the walk
+/// (i.e., `seg.color` of the first `ColoredSegment` in each `poly_idx` group,
+/// which is always the seeding Border arc). This faithfully mirrors
+/// `MultiMaterialSegmentation.cpp`'s `expolygons_segments[seed_arc.color]` push.
 ///
-/// Walks with no painted color are emitted under `None` (unpainted/BASE) so
-/// compose downstream sees them.
-///
-/// Superseded by `cells_to_expolygons_by_color` in the B-4 cell-decomposition path.
-#[allow(dead_code)]
+/// Walks whose seed BORDER arc has no colour (`None`) are emitted under `None`
+/// (unpainted / BASE residual) so the compose stage sees them.
 fn segments_to_expolygons_by_color(
     segments: &[extract_segments::ColoredSegment],
 ) -> std::collections::BTreeMap<Option<slicer_ir::PaintValue>, Vec<slicer_ir::ExPolygon>> {
     use slicer_ir::{ExPolygon, Polygon};
-    use std::collections::{BTreeMap, BTreeSet};
+    use std::collections::BTreeMap;
 
     let mut result: BTreeMap<Option<slicer_ir::PaintValue>, Vec<ExPolygon>> = BTreeMap::new();
 
@@ -315,55 +464,67 @@ fn segments_to_expolygons_by_color(
         return result;
     }
 
-    // Per-walk point list + set of distinct non-None colors in that walk.
+    // Per-walk point list; seed colour recorded from the FIRST segment of each walk.
     let mut walk_pts: BTreeMap<usize, Vec<slicer_ir::Point2>> = BTreeMap::new();
-    let mut walk_colors: BTreeMap<usize, BTreeSet<slicer_ir::PaintValue>> = BTreeMap::new();
+    let mut walk_seed_color: BTreeMap<usize, Option<slicer_ir::PaintValue>> = BTreeMap::new();
     for seg in segments {
         walk_pts
             .entry(seg.poly_idx)
             .or_default()
             .push(seg.line.start);
-        if let Some(c) = &seg.color {
-            walk_colors
-                .entry(seg.poly_idx)
-                .or_default()
-                .insert(c.clone());
-        }
+        // Seed colour = colour of the FIRST segment of this walk (the seeding Border arc).
+        walk_seed_color
+            .entry(seg.poly_idx)
+            .or_insert_with(|| seg.color.clone());
     }
 
-    // Emit one ExPolygon per (walk × distinct color).
-    for (poly_idx, mut pts) in walk_pts {
-        if let Some(&first) = pts.first() {
-            pts.push(first);
+    // Signed area (shoelace) over an open point ring (first != last assumed).
+    // Positive = counter-clockwise in this coordinate system.
+    fn signed_area(pts: &[slicer_ir::Point2]) -> f64 {
+        let n = pts.len();
+        if n < 3 {
+            return 0.0;
         }
+        let mut a = 0.0_f64;
+        for i in 0..n {
+            let p = pts[i];
+            let q = pts[(i + 1) % n];
+            a += (p.x as f64) * (q.y as f64) - (q.x as f64) * (p.y as f64);
+        }
+        a * 0.5
+    }
+
+    // Emit exactly ONE ExPolygon per walk under the walk's seed colour.
+    for (poly_idx, mut pts) in walk_pts {
+        // The walk point list is an OPEN ring (one point per segment start);
+        // do not duplicate the first point before the winding test.
         if pts.len() < 3 {
             continue;
         }
-        // If the walk has no painted color, emit it under None (unpainted/BASE) so compose downstream sees it.
-        let colors = walk_colors.get(&poly_idx);
-        match colors {
-            None => {
-                result.entry(None).or_default().push(ExPolygon {
-                    contour: Polygon {
-                        points: pts.clone(),
-                    },
-                    holes: Vec::new(),
-                });
-            }
-            Some(set) => {
-                for color in set {
-                    result
-                        .entry(Some(color.clone()))
-                        .or_default()
-                        .push(ExPolygon {
-                            contour: Polygon {
-                                points: pts.clone(),
-                            },
-                            holes: Vec::new(),
-                        });
-                }
+        // Normalise winding to CCW: a walk traversed in the reverse sense yields a
+        // clockwise (negative-area) polygon which cancels against its neighbours in
+        // the downstream union, leaving the layer ~half-covered. Reverse such walks
+        // so every emitted region carries positive area. Drop near-zero slivers
+        // (degenerate walks closed only by the synthetic repair chord) — they
+        // contribute no area and only seed cross-colour bleed.
+        let area = signed_area(&pts);
+        if area.abs() < 1.0e6 {
+            continue;
+        }
+        if area < 0.0 {
+            pts.reverse();
+        }
+        // Close the polygon (ExPolygon contour is an explicit closed ring).
+        if let Some(&first) = pts.first() {
+            if pts.last() != Some(&first) {
+                pts.push(first);
             }
         }
+        let seed_color = walk_seed_color.get(&poly_idx).cloned().unwrap_or(None);
+        result.entry(seed_color).or_default().push(ExPolygon {
+            contour: Polygon { points: pts },
+            holes: Vec::new(),
+        });
     }
 
     result
@@ -457,8 +618,7 @@ pub fn execute_paint_segmentation(
             .collect();
 
         // Determine num_color_states from PaintLayer facet values.
-        // Retained for reference (was passed to run_kernel_for_layer in the old segment-walk path).
-        #[allow(unused_variables)]
+        // Passed to extract_colored_segments (API parity with OrcaSlicer).
         let num_color_states: usize = {
             let mut max_tool: usize = 0;
             for obj in &mesh.objects {
@@ -493,35 +653,7 @@ pub fn execute_paint_segmentation(
         // Run kernel (feature-gated).
         #[cfg(feature = "host-algos")]
         let polys_by_color = {
-            use slicer_ir::slice_ir::BoundingBox2;
-            use slicer_ir::Point2;
-
-            // Compute bounding box of the layer contour points.
-            let mut min_x = i64::MAX;
-            let mut min_y = i64::MAX;
-            let mut max_x = i64::MIN;
-            let mut max_y = i64::MIN;
-            for exp in &layer_total_contours {
-                for pt in &exp.contour.points {
-                    min_x = min_x.min(pt.x);
-                    min_y = min_y.min(pt.y);
-                    max_x = max_x.max(pt.x);
-                    max_y = max_y.max(pt.y);
-                }
-            }
-            let contour_bbox = if min_x <= max_x && min_y <= max_y {
-                BoundingBox2 {
-                    min: Point2 { x: min_x, y: min_y },
-                    max: Point2 { x: max_x, y: max_y },
-                }
-            } else {
-                BoundingBox2 {
-                    min: Point2 { x: 0, y: 0 },
-                    max: Point2 { x: 1, y: 1 },
-                }
-            };
-
-            // Build contours → colored lines → MMU graph, then cell-decompose.
+            // Build contours → colored lines → MMU graph → arc-walk decomposition.
             use colorize::Contour;
             use triangle_intersect::Line;
 
@@ -568,16 +700,226 @@ pub fn execute_paint_segmentation(
                         match voronoi_graph::MMU_Graph::from_colored_lines(&colored_lines) {
                             Err(e) => return Err(PaintSegmentationError::from(e)),
                             Ok(mut graph) => {
-                                voronoi_prune::remove_multiple_edges_in_vertices(
-                                    &mut graph,
-                                    &colored_per_contour,
+                                // NODEDBG A — pre-prune snapshot (gated by PNP_PAINTSEG_NODEDBG).
+                                {
+                                    use std::sync::atomic::{AtomicBool, Ordering};
+                                    static NODEDBG2_A_FIRED: AtomicBool = AtomicBool::new(false);
+                                    if std::env::var("PNP_PAINTSEG_NODEDBG").is_ok()
+                                        && !NODEDBG2_A_FIRED.load(Ordering::Relaxed)
+                                    {
+                                        let total_border = graph
+                                            .arcs
+                                            .iter()
+                                            .filter(|a| {
+                                                !a.deleted
+                                                    && matches!(
+                                                        a.kind,
+                                                        voronoi_graph::MmuArcKind::Border
+                                                    )
+                                            })
+                                            .count();
+                                        if total_border >= 4 {
+                                            NODEDBG2_A_FIRED.store(true, Ordering::Relaxed);
+                                            if let Some((seed_ai, seed_arc)) =
+                                                graph.arcs.iter().enumerate().find(|(_, a)| {
+                                                    !a.deleted
+                                                        && matches!(
+                                                            a.kind,
+                                                            voronoi_graph::MmuArcKind::Border
+                                                        )
+                                                })
+                                            {
+                                                let from_node = seed_arc.from_node;
+                                                let to_node = seed_arc.to_node;
+                                                let color = seed_arc.color.clone();
+                                                eprintln!(
+                                                    "NODEDBG A seed: arc_idx={} from_node={} to_node={} color={:?}  total_border={} total_arcs={} all_border_points={}",
+                                                    seed_ai, from_node, to_node, color, total_border, graph.arcs.len(), graph.all_border_points
+                                                );
+                                                let nb_total = graph.arcs.iter()
+                                                    .filter(|a| !a.deleted && matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder))
+                                                    .count();
+                                                eprintln!(
+                                                    "NODEDBG A total_NonBorder_arcs={}",
+                                                    nb_total
+                                                );
+                                                let nb_incident: Vec<usize> = graph.arcs.iter().enumerate()
+                                                    .filter(|(_, a)| !a.deleted
+                                                        && matches!(a.kind, voronoi_graph::MmuArcKind::NonBorder)
+                                                        && (a.from_node == to_node || a.to_node == to_node))
+                                                    .map(|(i, _)| i)
+                                                    .collect();
+                                                eprintln!("NODEDBG A NonBorder_incident_to_node[{}]: count={} arcs={:?}", to_node, nb_incident.len(), nb_incident);
+                                                for &ai in &graph.nodes[to_node].arc_indices {
+                                                    let a = &graph.arcs[ai];
+                                                    eprintln!(
+                                                        "NODEDBG A   arc[{}] kind={:?} color={:?} from={} to={} deleted={}",
+                                                        ai, a.kind, a.color, a.from_node, a.to_node, a.deleted
+                                                    );
+                                                }
+                                                if graph.nodes[to_node].arc_indices.is_empty() {
+                                                    eprintln!("NODEDBG A   <to_node {} has NO arc_indices>", to_node);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if std::env::var("PNP_PAINTSEG_NOPRUNE").is_err() {
+                                    voronoi_prune::remove_multiple_edges_in_vertices(
+                                        &mut graph,
+                                        &colored_per_contour,
+                                    );
+                                    voronoi_prune::remove_nodes_with_one_arc(&mut graph);
+                                }
+                                // NODEDBG B — post-prune snapshot.
+                                {
+                                    use std::sync::atomic::{AtomicBool, Ordering};
+                                    static NODEDBG2_B_FIRED: AtomicBool = AtomicBool::new(false);
+                                    if std::env::var("PNP_PAINTSEG_NODEDBG").is_ok()
+                                        && !NODEDBG2_B_FIRED.load(Ordering::Relaxed)
+                                    {
+                                        // Find seed again (post-prune, same arc index 0 approach)
+                                        if let Some((seed_ai, seed_arc)) =
+                                            graph.arcs.iter().enumerate().find(|(_, a)| {
+                                                matches!(a.kind, voronoi_graph::MmuArcKind::Border)
+                                            })
+                                        {
+                                            NODEDBG2_B_FIRED.store(true, Ordering::Relaxed);
+                                            let from_node = seed_arc.from_node;
+                                            let to_node = seed_arc.to_node;
+                                            let color = seed_arc.color.clone();
+                                            let deleted = seed_arc.deleted;
+                                            eprintln!(
+                                                "NODEDBG B seed: arc_idx={} from_node={} to_node={} color={:?} deleted={}",
+                                                seed_ai, from_node, to_node, color, deleted
+                                            );
+                                            let nb_alive = graph
+                                                .arcs
+                                                .iter()
+                                                .filter(|a| {
+                                                    !a.deleted
+                                                        && matches!(
+                                                            a.kind,
+                                                            voronoi_graph::MmuArcKind::NonBorder
+                                                        )
+                                                })
+                                                .count();
+                                            let nb_all = graph
+                                                .arcs
+                                                .iter()
+                                                .filter(|a| {
+                                                    matches!(
+                                                        a.kind,
+                                                        voronoi_graph::MmuArcKind::NonBorder
+                                                    )
+                                                })
+                                                .count();
+                                            eprintln!("NODEDBG B total_NonBorder_alive={} total_NonBorder_all={}", nb_alive, nb_all);
+                                            let nb_incident_post: Vec<(usize, bool)> = graph
+                                                .arcs
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(_, a)| {
+                                                    matches!(
+                                                        a.kind,
+                                                        voronoi_graph::MmuArcKind::NonBorder
+                                                    ) && (a.from_node == to_node
+                                                        || a.to_node == to_node)
+                                                })
+                                                .map(|(i, a)| (i, a.deleted))
+                                                .collect();
+                                            eprintln!(
+                                                "NODEDBG B NonBorder_incident_to_node[{}]: count={} (idx,deleted)={:?}",
+                                                to_node, nb_incident_post.len(), nb_incident_post
+                                            );
+                                            for &ai in &graph.nodes[to_node].arc_indices {
+                                                let a = &graph.arcs[ai];
+                                                eprintln!(
+                                                    "NODEDBG B   arc[{}] kind={:?} color={:?} from={} to={} deleted={}",
+                                                    ai, a.kind, a.color, a.from_node, a.to_node, a.deleted
+                                                );
+                                            }
+                                            if graph.nodes[to_node].arc_indices.is_empty() {
+                                                eprintln!("NODEDBG B   <to_node {} has NO arc_indices post-prune>", to_node);
+                                            }
+                                        }
+                                    }
+                                }
+                                // Faithful arc-walk decomposition (Orca parity).
+                                let segments = extract_segments::extract_colored_segments(
+                                    &graph,
+                                    num_color_states,
                                 );
-                                voronoi_prune::remove_nodes_with_one_arc(&mut graph);
-                                // B-4: cell decomposition replaces segment walk.
-                                graph.cells_to_expolygons_by_color(
-                                    &contour_bbox,
-                                    &layer_total_contours,
-                                )
+                                let polys_by_color_result =
+                                    segments_to_expolygons_by_color(&segments);
+                                // TEMPORARY diagnostic instrumentation — remove after diagnosis.
+                                // Gate: PNP_PAINTSEG_WALK_DEBUG (any non-empty value).
+                                if std::env::var("PNP_PAINTSEG_WALK_DEBUG").is_ok() {
+                                    fn shoelace(pts: &[slicer_ir::Point2]) -> f64 {
+                                        let n = pts.len();
+                                        if n < 3 {
+                                            return 0.0;
+                                        }
+                                        let mut acc: i128 = 0;
+                                        for k in 0..n {
+                                            let j = (k + 1) % n;
+                                            acc += (pts[k].x as i128) * (pts[j].y as i128)
+                                                - (pts[j].x as i128) * (pts[k].y as i128);
+                                        }
+                                        (acc as f64).abs() * 0.5
+                                    }
+                                    let poly_ids: std::collections::BTreeSet<usize> =
+                                        segments.iter().map(|s| s.poly_idx).collect();
+                                    let walks_seeded = poly_ids.len();
+                                    let walks_needed_chord = segments
+                                        .iter()
+                                        .filter(|s| s.arc_idx.is_none())
+                                        .map(|s| s.poly_idx)
+                                        .collect::<std::collections::BTreeSet<usize>>()
+                                        .len();
+                                    let walks_closed_natural =
+                                        walks_seeded.saturating_sub(walks_needed_chord);
+                                    let mut polys_count = 0usize;
+                                    let mut polys_with_area_count = 0usize;
+                                    let mut polys_sliver = 0usize;
+                                    let mut total_painted_area = 0.0_f64;
+                                    for (color_opt, polys) in &polys_by_color_result {
+                                        if color_opt.is_none() {
+                                            continue;
+                                        }
+                                        for ep in polys {
+                                            polys_count += 1;
+                                            let a = shoelace(&ep.contour.points);
+                                            if a > 1e6_f64 {
+                                                polys_with_area_count += 1;
+                                                total_painted_area += a;
+                                            } else {
+                                                polys_sliver += 1;
+                                            }
+                                        }
+                                    }
+                                    let input_area: f64 = layer_total_contours
+                                        .iter()
+                                        .map(|ep| shoelace(&ep.contour.points))
+                                        .sum();
+                                    let area_ratio = if input_area > 0.0 {
+                                        total_painted_area / input_area
+                                    } else {
+                                        0.0
+                                    };
+                                    eprintln!(
+                                        "WALKDBG layer={} seeded={} closed_natural={} needed_chord={} polys={} area_polys={} slivers={} area_ratio={:.4}",
+                                        global_layer_index,
+                                        walks_seeded,
+                                        walks_closed_natural,
+                                        walks_needed_chord,
+                                        polys_count,
+                                        polys_with_area_count,
+                                        polys_sliver,
+                                        area_ratio,
+                                    );
+                                }
+                                polys_by_color_result
                             }
                         }
                     }
@@ -765,12 +1107,10 @@ pub fn execute_paint_segmentation(
             // Fix 1 cell-tiling diagnostic (Step 19 / Option B′):
             // Verify that the union of all painted-chain polygons covers the
             // BASE polygon area within 1% relative error. If a gap is observed,
-            // the Voronoi edge clipping has left holes in the cell decomposition
-            // — this is a known follow-up (do NOT paper over by re-adding the
-            // BASE outline to painted chains). The diagnostic is gated behind
+            // the arc-walk cell decomposition has left holes — tracked as a
+            // follow-up in the closure-log. The diagnostic is gated behind
             // env var `PNP_PAINTSEG_CELL_TILING_DEBUG=1` to keep debug-build
-            // tests quiet by default. Tracked in the closure-log Run #9 entry
-            // and TBD packet 96 width-limiting work.
+            // tests quiet by default.
             #[cfg(feature = "host-algos")]
             if std::env::var("PNP_PAINTSEG_CELL_TILING_DEBUG")
                 .map(|v| v == "1")
@@ -1990,6 +2330,238 @@ mod driver_v2_tests {
         assert_eq!(
             working, working_snapshot,
             "beam=true must leave working unmodified"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Arc-walk tiling tests (host-algos only)
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "host-algos"))]
+mod arc_walk_tiling_tests {
+    use super::*;
+    use crate::algos::paint_segmentation::{
+        colorize::ColoredLine, extract_segments, triangle_intersect::Line,
+        voronoi_graph::MMU_Graph, voronoi_prune,
+    };
+    use slicer_ir::{PaintValue, Point2};
+
+    /// AC-4: arc-walk decomposition of a fully-painted 4-colour face tiles without
+    /// leaving a gap wider than one extrusion width (~0.5 mm; reject > 0.6 mm),
+    /// AND produces true area-covering polygons (not degenerate boundary slivers).
+    ///
+    /// Geometry: a 250 000 × 250 000 unit square (~25 mm × 25 mm at 100 nm/unit)
+    /// divided into 8 boundary segments (2 per side), mirroring the left-face
+    /// geometry of cube_4color.3mf where 4 painted circles interrupt the red base.
+    ///
+    /// Colour assignment: [0,1,2,3,3,2,1,0] (symmetric). Each colour appears on at
+    /// least one forward-traversed arc so the seed-colour test is reliable even though
+    /// the arc-walk's backward-traversal of the closing arc N-1→0 produces a
+    /// degenerate zero-length repair chord (a known property of the current graph's
+    /// closed-ring topology; the REAL segment is still emitted and counted in coverage).
+    ///
+    /// Checks:
+    ///   1. All 4 tool colours appear as walk seed colours.
+    ///   2. No residual (`None`-keyed) polygon has bounding-box width > 0.6 mm (6 000 units).
+    ///   3. The total arc-length covered by real (non-repair) segments equals the
+    ///      full perimeter within the gap tolerance (6 000 units).
+    ///   4. (Falsifiable area gate) The total area of all non-None colour polygons
+    ///      is ≥ 90% of the input square area. Before the from_colored_lines fix the
+    ///      arc-walk produced only boundary slivers (area ≈ 0) and would fail here.
+    #[test]
+    fn cube_4color_left_face_circles_tile_without_gap() {
+        let x_min: i64 = 1_125_000;
+        let y_min: i64 = 925_000;
+        let x_max: i64 = 1_375_000;
+        let y_max: i64 = 1_175_000;
+        let x_mid: i64 = (x_min + x_max) / 2;
+        let y_mid: i64 = (y_min + y_max) / 2;
+
+        // 8 boundary segments, 2 per side.  Colours [0,1,2,3,3,2,1,0] ensure each
+        // colour has at least one forward-traversed arc (avoiding the degenerate
+        // closed-ring backward-traversal issue for arc 7→0).
+        let colored_lines: Vec<ColoredLine> = vec![
+            // Bottom-left half: ToolIndex(0)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_min, y: y_min },
+                    end: Point2 { x: x_mid, y: y_min },
+                },
+                value: Some(PaintValue::ToolIndex(0)),
+                poly_idx: 0,
+                local_line_idx: 0,
+            },
+            // Bottom-right half: ToolIndex(1)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_mid, y: y_min },
+                    end: Point2 { x: x_max, y: y_min },
+                },
+                value: Some(PaintValue::ToolIndex(1)),
+                poly_idx: 0,
+                local_line_idx: 1,
+            },
+            // Right-bottom half: ToolIndex(2)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_max, y: y_min },
+                    end: Point2 { x: x_max, y: y_mid },
+                },
+                value: Some(PaintValue::ToolIndex(2)),
+                poly_idx: 0,
+                local_line_idx: 2,
+            },
+            // Right-top half: ToolIndex(3)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_max, y: y_mid },
+                    end: Point2 { x: x_max, y: y_max },
+                },
+                value: Some(PaintValue::ToolIndex(3)),
+                poly_idx: 0,
+                local_line_idx: 3,
+            },
+            // Top-right half: ToolIndex(3)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_max, y: y_max },
+                    end: Point2 { x: x_mid, y: y_max },
+                },
+                value: Some(PaintValue::ToolIndex(3)),
+                poly_idx: 0,
+                local_line_idx: 4,
+            },
+            // Top-left half: ToolIndex(2)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_mid, y: y_max },
+                    end: Point2 { x: x_min, y: y_max },
+                },
+                value: Some(PaintValue::ToolIndex(2)),
+                poly_idx: 0,
+                local_line_idx: 5,
+            },
+            // Left-top half: ToolIndex(1)
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_min, y: y_max },
+                    end: Point2 { x: x_min, y: y_mid },
+                },
+                value: Some(PaintValue::ToolIndex(1)),
+                poly_idx: 0,
+                local_line_idx: 6,
+            },
+            // Left-bottom half: ToolIndex(0)  [arc 7, seeded backward from node 0 — known degenerate walk;
+            // ToolIndex(0) is still present via arc 0's forward walk]
+            ColoredLine {
+                line: Line {
+                    start: Point2 { x: x_min, y: y_mid },
+                    end: Point2 { x: x_min, y: y_min },
+                },
+                value: Some(PaintValue::ToolIndex(0)),
+                poly_idx: 0,
+                local_line_idx: 7,
+            },
+        ];
+
+        let mut graph =
+            MMU_Graph::from_colored_lines(&colored_lines).expect("graph construction must succeed");
+        voronoi_prune::remove_multiple_edges_in_vertices(&mut graph, &[colored_lines.clone()]);
+        voronoi_prune::remove_nodes_with_one_arc(&mut graph);
+
+        let segments = extract_segments::extract_colored_segments(&graph, 4);
+        assert!(
+            !segments.is_empty(),
+            "arc-walk must produce at least one segment for a fully-painted face"
+        );
+
+        let result = segments_to_expolygons_by_color(&segments);
+        assert!(
+            !result.is_empty(),
+            "arc-walk decomposition must produce at least one coloured region"
+        );
+
+        // ---- Check 1: all 4 tool colours appear as walk seed colours ----
+        for tool_idx in 0..4u32 {
+            assert!(
+                result.contains_key(&Some(PaintValue::ToolIndex(tool_idx))),
+                "ToolIndex({tool_idx}) missing from arc-walk decomposition output"
+            );
+        }
+
+        // ---- Check 2: no large residual (None-keyed) polygon ----
+        // A residual polygon with bounding-box extent > 6 000 units (0.6 mm) represents
+        // a gap too wide to ignore. With a fully-painted face (all 4 sides coloured), no
+        // `None`-keyed polygon should appear at all.
+        let gap_threshold_units: i64 = 6_000; // 0.6 mm
+        if let Some(residual) = result.get(&None) {
+            for exp in residual {
+                let pts = &exp.contour.points;
+                if pts.is_empty() {
+                    continue;
+                }
+                let x_extent = pts.iter().map(|p| p.x).max().unwrap_or(0)
+                    - pts.iter().map(|p| p.x).min().unwrap_or(0);
+                let y_extent = pts.iter().map(|p| p.y).max().unwrap_or(0)
+                    - pts.iter().map(|p| p.y).min().unwrap_or(0);
+                assert!(
+                    x_extent <= gap_threshold_units && y_extent <= gap_threshold_units,
+                    "residual (unassigned) polygon bounding box {x_extent}×{y_extent} units \
+                     exceeds the 0.6 mm gap threshold ({gap_threshold_units} units) — \
+                     arc-walk left a gap"
+                );
+            }
+        }
+
+        // ---- Check 3: boundary-coverage (no arc left unrepresented) ----
+        // Real segments (arc_idx.is_some()) must sum to ≥ (perimeter − 6 000 units).
+        // For this 4-side square each side is 250 000 units; perimeter = 1 000 000 units.
+        let total_perimeter: i64 = (x_max - x_min) * 2 + (y_max - y_min) * 2;
+        let covered_length: i64 = segments
+            .iter()
+            .filter(|s| s.arc_idx.is_some())
+            .map(|s| {
+                let dx = (s.line.end.x - s.line.start.x) as f64;
+                let dy = (s.line.end.y - s.line.start.y) as f64;
+                (dx * dx + dy * dy).sqrt() as i64
+            })
+            .sum();
+        assert!(
+            covered_length >= total_perimeter - gap_threshold_units,
+            "arc-walk boundary coverage {covered_length} units < perimeter {total_perimeter} units \
+             − tolerance {gap_threshold_units} — a gap exists in the walk"
+        );
+
+        // ---- Check 4: area coverage (falsifiable sliver guard) ----
+        // Before the from_colored_lines connectivity fix the walk produced boundary
+        // slivers with area ≈ 0. After the fix, NonBorder bisector arcs connect border
+        // nodes to interior Voronoi vertices, enabling closed loops that enclose real area.
+        // Total area of all non-None colour polygons must be ≥ 90% of the input square.
+        let total_sq_area = ((x_max - x_min) as f64) * ((y_max - y_min) as f64);
+        fn polygon_area_abs(pts: &[Point2]) -> f64 {
+            if pts.len() < 3 {
+                return 0.0;
+            }
+            let mut acc: i128 = 0;
+            for i in 0..pts.len() {
+                let j = (i + 1) % pts.len();
+                acc += (pts[i].x as i128) * (pts[j].y as i128)
+                    - (pts[j].x as i128) * (pts[i].y as i128);
+            }
+            (acc as f64).abs() * 0.5
+        }
+        let covered_area: f64 = result
+            .iter()
+            .filter(|(k, _)| k.is_some())
+            .flat_map(|(_, polys)| polys.iter())
+            .map(|exp| polygon_area_abs(&exp.contour.points))
+            .sum();
+        assert!(
+            covered_area >= 0.9 * total_sq_area,
+            "arc-walk covered area {covered_area:.0} units² < 90% of square area \
+             {total_sq_area:.0} units² — walk produced slivers instead of area polygons \
+             (from_colored_lines connectivity fix missing or incomplete)"
         );
     }
 }

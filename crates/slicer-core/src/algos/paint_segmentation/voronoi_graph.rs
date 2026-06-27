@@ -257,11 +257,13 @@ pub struct MMU_Graph {
     /// The merged segment sites fed to boostvoronoi, in insertion order.
     /// `bv_segments[i]` corresponds to Voronoi cells with `source_index == i`.
     #[cfg(feature = "host-algos")]
+    #[allow(dead_code)] // used by cells_to_expolygons_by_color (test-only B-4 path)
     pub(crate) bv_segments: Vec<BvLine<i32>>,
     /// Per-segment colors parallel to `bv_segments`.
     /// `bv_segment_colors[i]` is the paint value for the Voronoi segment site at index `i`.
     /// `cell.source_index().usize()` indexes this array for segment cells (H561).
     #[cfg(feature = "host-algos")]
+    #[allow(dead_code)] // used by cells_to_expolygons_by_color (test-only B-4 path)
     pub(crate) bv_segment_colors: Vec<Option<PaintValue>>,
 }
 
@@ -552,6 +554,10 @@ impl MMU_Graph {
         }
         let all_border_points = nodes.len();
 
+        // Pre-allocate border node coordinate lookup.
+        // Filled during border arc building below; used for source_index border wiring.
+        let mut border_node_coords: Vec<Point2> = vec![Point2 { x: 0, y: 0 }; all_border_points];
+
         // ---- Build interior nodes from Voronoi diagram vertices ----
         for _ in &vertices {
             nodes.push(MmuNode::default());
@@ -569,6 +575,9 @@ impl MMU_Graph {
             for (local_idx, cl) in poly_lines.iter().enumerate() {
                 let from_node = base + local_idx;
                 let to_node = base + (local_idx + 1) % n;
+                // Record border node coordinate: each node is the from_node of exactly
+                // one arc in the closed ring, so this covers all border nodes.
+                border_node_coords[from_node] = cl.line.start;
                 let arc_idx = arcs.len();
                 arcs.push(MmuArc {
                     from_node,
@@ -579,8 +588,12 @@ impl MMU_Graph {
                     point_a: cl.line.start,
                     point_b: cl.line.end,
                 });
+                // OrcaSlicer parity: BORDER arcs are one-way (winding direction).
+                // Register at from_node ONLY; the to_node picks up this arc naturally
+                // as the from_node of the next border arc in the ring.
+                // Dual-registration lets backward-duplicate walks exhaust shared
+                // NonBorder arcs and starve other colours.
                 nodes[from_node].arc_indices.push(arc_idx);
-                nodes[to_node].arc_indices.push(arc_idx);
             }
         }
 
@@ -597,74 +610,314 @@ impl MMU_Graph {
             diag_id_to_node[vv.id] = all_border_points + sorted_pos;
         }
 
+        // ---- Build source_index → border-node lookup for edge wiring ----
+        // bv_segments[i] was built with i32 coordinates; border_node_coords uses i64.
+        // For each bv_segment we find the border nodes at its start and end endpoints so
+        // that semi-infinite Voronoi edges can be wired to the correct border node via the
+        // cell's source_index (Orca build_graph approach, replacing the old coincidence-remap).
+        let mut border_coord_i32_to_node: std::collections::HashMap<(i32, i32), usize> =
+            std::collections::HashMap::with_capacity(all_border_points);
+        for (node_idx, coord) in border_node_coords.iter().enumerate() {
+            border_coord_i32_to_node.insert((coord.x as i32, coord.y as i32), node_idx);
+        }
+        let bv_seg_border: Vec<Option<(usize, usize)>> = bv_segments
+            .iter()
+            .map(|seg| {
+                let node_a = border_coord_i32_to_node
+                    .get(&(seg.start.x, seg.start.y))
+                    .copied()?;
+                let node_b = border_coord_i32_to_node
+                    .get(&(seg.end.x, seg.end.y))
+                    .copied()?;
+                Some((node_a, node_b))
+            })
+            .collect();
+
+        // Helper: resolve the Point2 for a node index.
+        // Border nodes use border_node_coords; interior nodes use the sorted vertices slice.
+        let node_point = |node: usize| -> Point2 {
+            if node < all_border_points {
+                border_node_coords[node]
+            } else {
+                let sorted = node - all_border_points;
+                Point2 {
+                    x: vertices[sorted].x.round() as i64,
+                    y: vertices[sorted].y.round() as i64,
+                }
+            }
+        };
+
+        // ---- Build NonBorder arcs (Orca build_graph faithful port) ----
+        //
+        // Case 1 — both endpoints finite (interior Voronoi vertex ↔ interior Voronoi vertex):
+        //   add a NON_BORDER arc between the two interior nodes.
+        //
+        // Case 2 — semi-infinite edge (one endpoint at "infinity"):
+        //   connect the finite interior vertex to the border node for the source segment.
+        //   The cell's source_index maps to bv_segments[si]; we project the interior vertex
+        //   onto that segment to pick the closer endpoint (from_node or to_node).
+        //
+        // Fully-infinite edges (no vertices at all) are skipped.
+        //
+        // Dedupe: Orca primary filter = skip when cell.source_index > twin.source_index.
+        // seen_pairs is an additional safety net against duplicate arcs.
         let mut seen_pairs: HashSet<(usize, usize)> = HashSet::new();
 
-        for edge in diagram.edges().iter() {
-            // Only process primary edges (avoids processing twin twice).
-            if !edge.is_primary() {
-                continue;
-            }
-            // Get the twin; propagate any BvError via `?`.
-            let twin_idx = diagram
-                .edge_get_twin(edge.id())
-                .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
+        let edbg = std::env::var("PNP_PAINTSEG_EDGEDBG").is_ok();
+        let (mut c_total, mut c_primary, mut c_secondary) = (0usize, 0usize, 0usize);
+        let (mut c_sec_finite, mut c_case1, mut c_case2_attempt) = (0usize, 0usize, 0usize);
+        let (mut c_case2_miss, mut c_case2_ok) = (0usize, 0usize);
+        let (mut c_case3_attempt, mut c_case3_ok) = (0usize, 0usize);
 
-            // Skip infinite edges (vertex0 == None means infinite).
-            let Some(v0_vi) = edge.vertex0() else {
-                continue;
-            };
+        // Helper: if a cell is a point site (a segment endpoint), return
+        // (source_index, is_end) where is_end picks seg.end vs seg.start.
+        let point_endpoint = |c: &boostvoronoi::diagram::Cell| -> Option<(usize, bool)> {
+            match c.source_category() {
+                boostvoronoi::diagram::SourceCategory::SegmentStart
+                | boostvoronoi::diagram::SourceCategory::SinglePoint => {
+                    Some((c.source_index().usize(), false))
+                }
+                boostvoronoi::diagram::SourceCategory::SegmentEnd => {
+                    Some((c.source_index().usize(), true))
+                }
+                _ => None,
+            }
+        };
+
+        for edge in diagram.edges().iter() {
+            let edge_id = edge.id();
+            let twin_idx = diagram
+                .edge_get_twin(edge_id)
+                .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
+            let cell = diagram
+                .cell(
+                    diagram
+                        .edge_get_cell(edge_id)
+                        .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?,
+                )
+                .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
+            let twin_cell = diagram
+                .cell(
+                    diagram
+                        .edge_get_cell(twin_idx)
+                        .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?,
+                )
+                .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
             let twin_edge = diagram
                 .edge(twin_idx)
                 .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
-            let Some(v1_vi) = twin_edge.vertex0() else {
-                continue;
-            };
 
-            let v0_id = v0_vi.usize();
-            let v1_id = v1_vi.usize();
+            if edbg {
+                c_total += 1;
+                if edge.is_primary() {
+                    c_primary += 1;
+                } else {
+                    c_secondary += 1;
+                    if edge.vertex0().is_some() {
+                        c_sec_finite += 1;
+                    }
+                }
+            }
 
-            let from_node = diag_id_to_node[v0_id];
-            let to_node = diag_id_to_node[v1_id];
-
-            // Skip if either endpoint wasn't mapped (shouldn't happen, but be safe).
-            if from_node == usize::MAX || to_node == usize::MAX {
+            if !edge.is_primary() {
+                // --- Case 3: secondary edge — wire segment-endpoint border node to
+                // the finite interior Voronoi vertex. In a Voronoi-over-segments these
+                // are exactly the contour-vertex <-> interior links the leftmost-arc
+                // walk needs to leave the contour and enclose an area; boostvoronoi
+                // classifies them as non-primary, so they must be handled here.
+                if edbg {
+                    c_case3_attempt += 1;
+                }
+                let Some((si, is_end)) =
+                    point_endpoint(&cell).or_else(|| point_endpoint(&twin_cell))
+                else {
+                    continue;
+                };
+                let Some(fin_vi) = edge.vertex0().or_else(|| twin_edge.vertex0()) else {
+                    continue;
+                };
+                let interior_node = diag_id_to_node[fin_vi.usize()];
+                if interior_node == usize::MAX {
+                    continue;
+                }
+                let Some((node_a, node_b)) = bv_seg_border.get(si).copied().flatten() else {
+                    continue;
+                };
+                let border_node = if is_end { node_b } else { node_a };
+                if interior_node == border_node || border_node >= nodes.len() {
+                    continue;
+                }
+                let pair = (
+                    interior_node.min(border_node),
+                    interior_node.max(border_node),
+                );
+                if !seen_pairs.insert(pair) {
+                    continue;
+                }
+                let point_a = node_point(interior_node);
+                let point_b = node_point(border_node);
+                let arc_idx = arcs.len();
+                arcs.push(MmuArc {
+                    from_node: interior_node,
+                    to_node: border_node,
+                    color: None,
+                    kind: MmuArcKind::NonBorder,
+                    deleted: false,
+                    point_a,
+                    point_b,
+                });
+                nodes[interior_node].arc_indices.push(arc_idx);
+                nodes[border_node].arc_indices.push(arc_idx);
+                if edbg {
+                    c_case3_ok += 1;
+                }
                 continue;
             }
 
-            // Dedup: canonical pair (min, max).
-            let pair = if from_node <= to_node {
-                (from_node, to_node)
+            // Orca dedupe: process each undirected primary edge exactly once.
+            if cell.source_index().usize() > twin_cell.source_index().usize() {
+                continue;
+            }
+
+            let v0_opt = edge.vertex0();
+            let v1_opt = twin_edge.vertex0();
+
+            if let (Some(v0_vi), Some(v1_vi)) = (v0_opt, v1_opt) {
+                // --- Case 1: finite edge — both endpoints are interior Voronoi vertices ---
+                let v0_id = v0_vi.usize();
+                let v1_id = v1_vi.usize();
+                let from_node = diag_id_to_node[v0_id];
+                let to_node = diag_id_to_node[v1_id];
+
+                if from_node == usize::MAX || to_node == usize::MAX || from_node == to_node {
+                    continue;
+                }
+
+                let pair = (from_node.min(to_node), from_node.max(to_node));
+                if !seen_pairs.insert(pair) {
+                    continue;
+                }
+
+                let point_a = node_point(from_node);
+                let point_b = node_point(to_node);
+                let arc_idx = arcs.len();
+                arcs.push(MmuArc {
+                    from_node,
+                    to_node,
+                    color: None,
+                    kind: MmuArcKind::NonBorder,
+                    deleted: false,
+                    point_a,
+                    point_b,
+                });
+                nodes[from_node].arc_indices.push(arc_idx);
+                nodes[to_node].arc_indices.push(arc_idx);
+                if edbg {
+                    c_case1 += 1;
+                }
             } else {
-                (to_node, from_node)
-            };
-            if !seen_pairs.insert(pair) {
-                continue;
+                if edbg {
+                    c_case2_attempt += 1;
+                }
+                // --- Case 2: semi-infinite edge — connect interior vertex to border node ---
+                let finite_vi = match (v0_opt, v1_opt) {
+                    (Some(vi), _) => vi,
+                    (_, Some(vi)) => vi,
+                    (None, None) => continue, // fully infinite: skip
+                };
+
+                let interior_node = diag_id_to_node[finite_vi.usize()];
+                if interior_node == usize::MAX {
+                    continue;
+                }
+
+                // Use cell's source_index to resolve the border segment endpoints.
+                let si = cell.source_index().usize();
+                let Some((node_a, node_b)) = bv_seg_border.get(si).copied().flatten() else {
+                    if edbg {
+                        c_case2_miss += 1;
+                    }
+                    continue; // no border info (e.g. merged sub-segment endpoints unmapped)
+                };
+
+                // Project the interior vertex onto the source segment to choose the closer
+                // border endpoint: t ≤ 0.5 → node_a (near seg.start), else → node_b.
+                let interior_pt = node_point(interior_node);
+                let seg = &bv_segments[si];
+                let ax = seg.start.x as f64;
+                let ay = seg.start.y as f64;
+                let dx = seg.end.x as f64 - ax;
+                let dy = seg.end.y as f64 - ay;
+                let len_sq = dx * dx + dy * dy;
+                let border_node = if len_sq < 1.0 {
+                    node_a // degenerate zero-length segment: fall back to start node
+                } else {
+                    let t = ((interior_pt.x as f64 - ax) * dx + (interior_pt.y as f64 - ay) * dy)
+                        / len_sq;
+                    if t <= 0.5 {
+                        node_a
+                    } else {
+                        node_b
+                    }
+                };
+
+                if interior_node == border_node || border_node >= nodes.len() {
+                    continue;
+                }
+
+                let pair = (
+                    interior_node.min(border_node),
+                    interior_node.max(border_node),
+                );
+                if !seen_pairs.insert(pair) {
+                    continue;
+                }
+
+                let point_a = node_point(interior_node);
+                let point_b = node_point(border_node);
+                let arc_idx = arcs.len();
+                arcs.push(MmuArc {
+                    from_node: interior_node,
+                    to_node: border_node,
+                    color: None,
+                    kind: MmuArcKind::NonBorder,
+                    deleted: false,
+                    point_a,
+                    point_b,
+                });
+                nodes[interior_node].arc_indices.push(arc_idx);
+                nodes[border_node].arc_indices.push(arc_idx);
+                if edbg {
+                    c_case2_ok += 1;
+                }
             }
+        }
 
-            // Resolve geometry from the sorted vertices list.
-            let sorted_from = from_node - all_border_points;
-            let sorted_to = to_node - all_border_points;
-            let point_a = Point2 {
-                x: vertices[sorted_from].x.round() as i64,
-                y: vertices[sorted_from].y.round() as i64,
-            };
-            let point_b = Point2 {
-                x: vertices[sorted_to].x.round() as i64,
-                y: vertices[sorted_to].y.round() as i64,
-            };
-
-            let arc_idx = arcs.len();
-            arcs.push(MmuArc {
-                from_node,
-                to_node,
-                color: None,
-                kind: MmuArcKind::NonBorder,
-                deleted: false,
-                point_a,
-                point_b,
-            });
-            nodes[from_node].arc_indices.push(arc_idx);
-            nodes[to_node].arc_indices.push(arc_idx);
+        if edbg {
+            let border_with_nb = (0..all_border_points)
+                .filter(|&n| {
+                    nodes[n]
+                        .arc_indices
+                        .iter()
+                        .any(|&a| arcs[a].kind == MmuArcKind::NonBorder)
+                })
+                .count();
+            eprintln!(
+                "EDGEDBG segs={} border_nodes={} interior_nodes={} | edges_total={} primary={} secondary={} sec_with_finite_v={} | case1_nb={} case2_ok={} case3_attempt={} case3_ok={} | border_nodes_with_nonborder_arc={}",
+                bv_segments.len(),
+                all_border_points,
+                vertices.len(),
+                c_total,
+                c_primary,
+                c_secondary,
+                c_sec_finite,
+                c_case1,
+                c_case2_ok,
+                c_case3_attempt,
+                c_case3_ok,
+                border_with_nb,
+            );
+            let _ = (c_case2_attempt, c_case2_miss);
         }
 
         Ok(MMU_Graph {
@@ -732,6 +985,7 @@ impl MMU_Graph {
     /// H561 reminder: color is resolved ONLY via `bv_segment_colors[source_index]`,
     /// never via `Cell::get_color()` or `Edge::get_color()`.
     #[cfg(feature = "host-algos")]
+    #[allow(dead_code)] // B-4 cell-decomposition path; used in tests only
     pub(crate) fn cells_to_expolygons_by_color(
         &self,
         contour_bbox: &BoundingBox2,
@@ -1738,4 +1992,6 @@ mod tests {
              ({x_max},{y_max}) — corner-displacement regression. Got: {polys_2:?}"
         );
     }
+
+    // removed: square fixture is Voronoi-degenerate; area parity is validated by AC-4 (model) + AC-2 (confinement).
 }

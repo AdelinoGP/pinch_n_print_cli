@@ -15,7 +15,72 @@
 /// H567: all arc tracking uses explicit `usize` indices.
 use crate::algos::paint_segmentation::triangle_intersect::Line;
 use crate::algos::paint_segmentation::voronoi_graph::{MMU_Graph, MmuArcKind};
-use slicer_ir::PaintValue;
+use slicer_ir::{PaintValue, Point2};
+use std::collections::HashSet;
+
+/// Minimum |signed area| (unit²) for a walk polygon to count as a real region
+/// rather than a degenerate sliver. Degenerate repair slivers have area ~0-10;
+/// real (even thin) colour strips are ≥ ~1e5, so 1e3 cleanly separates them
+/// (mirrors Orca's `poly.is_valid()` which only rejects ~zero-area polygons).
+const MIN_WALK_AREA: f64 = 1.0e3;
+
+/// Shoelace signed area over an OPEN point ring (first != last). Positive = CCW.
+fn poly_signed_area(pts: &[Point2]) -> f64 {
+    let n = pts.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let mut a = 0.0_f64;
+    for i in 0..n {
+        let p = pts[i];
+        let q = pts[(i + 1) % n];
+        a += (p.x as f64) * (q.y as f64) - (q.x as f64) * (p.y as f64);
+    }
+    a * 0.5
+}
+
+/// Sign of the orientation of (p, q, r): +1 CCW, -1 CW, 0 collinear.
+/// Uses i128 to avoid overflow on i64 coordinates.
+fn orient(p: Point2, q: Point2, r: Point2) -> i32 {
+    let v = (q.x as i128 - p.x as i128) * (r.y as i128 - p.y as i128)
+        - (q.y as i128 - p.y as i128) * (r.x as i128 - p.x as i128);
+    v.signum() as i32
+}
+
+/// True if open segments ab and cd cross at a single interior point (proper
+/// intersection — shared endpoints and collinear overlaps return false).
+fn seg_proper_intersect(a: Point2, b: Point2, c: Point2, d: Point2) -> bool {
+    let d1 = orient(a, b, c);
+    let d2 = orient(a, b, d);
+    let d3 = orient(c, d, a);
+    let d4 = orient(c, d, b);
+    d1 != d2 && d3 != d4 && d1 != 0 && d2 != 0 && d3 != 0 && d4 != 0
+}
+
+/// True if the closed polygon over `pts` (open ring, implicit last→first edge)
+/// is simple — no two non-adjacent edges properly intersect.
+fn is_simple_closed(pts: &[Point2]) -> bool {
+    let n = pts.len();
+    if n < 4 {
+        return true;
+    }
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        for j in (i + 1)..n {
+            // Skip edges adjacent to edge i (they share a vertex).
+            if (i + 1) % n == j || (j + 1) % n == i {
+                continue;
+            }
+            let c = pts[j];
+            let d = pts[(j + 1) % n];
+            if seg_proper_intersect(a, b, c, d) {
+                return false;
+            }
+        }
+    }
+    true
+}
 
 // ---------------------------------------------------------------------------
 // Output types
@@ -39,48 +104,126 @@ pub struct ColoredSegment {
 // ---------------------------------------------------------------------------
 
 /// Return the "next" arc to walk from `node_idx` given that we arrived via
-/// `arrived_via_arc`. Among all non-deleted arcs at that node (excluding the
-/// one we came from), prefer the arc that makes the leftmost turn, then
-/// same-color. Returns `None` if no continuation is available.
+/// `arrived_via_arc`. Implements Orca's leftmost-angle convention
+/// (MultiMaterialSegmentation.cpp:401-447):
+///   - Excludes BORDER arcs whose colour differs from `seed_color` (NON_BORDER always allowed).
+///   - If arrived via a BORDER arc of a different colour, returns None immediately.
+///   - Selects the candidate with the smallest angle relative to the reverse-travel
+///     direction of the incoming arc (leftmost turn), using `dir_from_node` to orient
+///     each candidate leaving the current node.
 fn get_next_arc(
     graph: &MMU_Graph,
-    used_arcs: &[bool],
+    used_border: &[bool],
+    used_nb: &HashSet<(usize, usize)>,
     arrived_via_arc: usize,
     node_idx: usize,
-    _color: Option<PaintValue>,
+    seed_color: Option<PaintValue>,
 ) -> Option<usize> {
-    // Direction we arrived from (pointing INTO node_idx).
     let arc_in = &graph.arcs[arrived_via_arc];
-    let in_dx = (arc_in.point_b.x - arc_in.point_a.x) as f64;
-    let in_dy = (arc_in.point_b.y - arc_in.point_a.y) as f64;
 
-    // Candidates: non-deleted, unused arcs incident on node_idx, not the arc we arrived on.
+    // Orca parity (MultiMaterialSegmentation.cpp:401-405): if we arrived along a
+    // BORDER arc whose colour differs from the walk seed colour, the walk cannot
+    // continue here. NON_BORDER arcs have no colour and never trigger this gate.
+    if arc_in.kind == MmuArcKind::Border && arc_in.color != seed_color {
+        return None;
+    }
+
+    // `process_line_vec_n` (Orca): reverse of the travel direction — points from
+    // node_idx back toward the node we came from. Use `node_idx` to determine
+    // which stored endpoint corresponds to our current position vs the previous node.
+    let (node_pt, prev_pt) = if arc_in.from_node == node_idx {
+        (arc_in.point_a, arc_in.point_b)
+    } else {
+        (arc_in.point_b, arc_in.point_a)
+    };
+    let mut prx = (prev_pt.x - node_pt.x) as f64;
+    let mut pry = (prev_pt.y - node_pt.y) as f64;
+    let plen = (prx * prx + pry * pry).sqrt();
+    if plen < 1e-9 {
+        prx = 1.0;
+        pry = 0.0;
+    } else {
+        prx /= plen;
+        pry /= plen;
+    }
+
+    // Candidates: non-deleted, unused arcs incident on node_idx, not the arc we
+    // arrived on, excluding BORDER arcs of a different colour than the seed.
+    // NON_BORDER (Voronoi bisector) arcs are never excluded by the colour filter.
     let candidates: Vec<usize> = graph.nodes[node_idx]
         .arc_indices
         .iter()
         .copied()
-        .filter(|&ai| ai != arrived_via_arc && !graph.arcs[ai].deleted && !used_arcs[ai])
+        .filter(|&ai| {
+            let a = &graph.arcs[ai];
+            let avail = if a.kind == MmuArcKind::Border {
+                !used_border[ai]
+            } else {
+                // NonBorder usable if this direction (leaving node_idx) is free.
+                !used_nb.contains(&(ai, node_idx))
+            };
+            ai != arrived_via_arc
+                && !a.deleted
+                && avail
+                && !(a.kind == MmuArcKind::Border && a.color != seed_color)
+        })
         .collect();
 
     if candidates.is_empty() {
         return None;
     }
 
-    // Pick the leftmost-turn arc (cross-product, then fallback to index order for determinism).
-    candidates.iter().copied().min_by(|&a, &b| {
-        let arc_a = &graph.arcs[a];
-        let arc_b = &graph.arcs[b];
-        let (adx, ady) = dir_from_node(arc_a, node_idx);
-        let (bdx, bdy) = dir_from_node(arc_b, node_idx);
-        // Cross product: positive → a is more to the left of in_dir than b.
-        let cross_a = in_dx * ady - in_dy * adx;
-        let cross_b = in_dx * bdy - in_dy * bdx;
-        // Leftmost = largest positive cross product.
-        cross_b
-            .partial_cmp(&cross_a)
+    // Leftmost-arc selection by Orca's angle convention (MultiMaterialSegmentation.cpp:430-447):
+    // compute angle in [0, 2π) between the reverse-travel vector and each candidate's
+    // leaving-node direction (via `dir_from_node`). Pick the SMALLEST angle (leftmost).
+    let angle_of = |ai: usize| -> f64 {
+        // Orientation: leaving node_idx — use dir_from_node, NOT raw point_a→point_b.
+        let (dx, dy) = dir_from_node(&graph.arcs[ai], node_idx);
+        let dot = (dx * prx + dy * pry).clamp(-1.0, 1.0);
+        let mut ang = dot.acos();
+        // cross2(neighbour_vec, incoming_rev) < 0 → reflex angle → 2π − angle.
+        if dx * pry - dy * prx < 0.0 {
+            ang = 2.0 * std::f64::consts::PI - ang;
+        }
+        ang
+    };
+    let chosen = candidates.iter().copied().min_by(|&a, &b| {
+        angle_of(a)
+            .partial_cmp(&angle_of(b))
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.cmp(&b))
-    })
+    });
+    if std::env::var("PNP_PAINTSEG_CANDDBG").is_ok() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        if N.fetch_add(1, Ordering::Relaxed) < 40 {
+            let descr: Vec<String> = candidates
+                .iter()
+                .map(|&ai| {
+                    let a = &graph.arcs[ai];
+                    let far = if a.from_node == node_idx { a.to_node } else { a.from_node };
+                    format!(
+                        "{}{}->{}@{:.2}",
+                        if a.kind == MmuArcKind::Border { "B" } else { "N" },
+                        node_idx,
+                        far,
+                        angle_of(ai)
+                    )
+                })
+                .collect();
+            eprintln!(
+                "CANDDBG at node {} (seed={:?}) cands=[{}] chose={:?}",
+                node_idx,
+                seed_color,
+                descr.join(" "),
+                chosen.map(|ai| {
+                    let a = &graph.arcs[ai];
+                    if a.from_node == node_idx { a.to_node } else { a.from_node }
+                })
+            );
+        }
+    }
+    chosen
 }
 
 /// Direction vector of `arc` leaving `node_idx` (normalized).
@@ -143,7 +286,13 @@ pub fn extract_colored_segments(
     _num_color_states: usize,
 ) -> Vec<ColoredSegment> {
     let mut result: Vec<ColoredSegment> = Vec::new();
-    let mut used_arcs: Vec<bool> = vec![false; graph.arcs.len()];
+    // Border arcs are single-use (winding direction). NonBorder (bisector) arcs are
+    // traversable ONCE PER DIRECTION — matching OrcaSlicer's bidirectional NonBorder
+    // arcs — keyed by (arc_idx, entry_node). This lets two adjacent colour regions
+    // each use a shared bisector (once in each direction) rather than the first walk
+    // starving the second (the ~50%-coverage failure mode).
+    let mut used_border: Vec<bool> = vec![false; graph.arcs.len()];
+    let mut used_nb: HashSet<(usize, usize)> = HashSet::new();
     let mut walk_idx: usize = 0;
 
     // Iterate over all border nodes.
@@ -155,31 +304,50 @@ pub fn extract_colored_segments(
             .copied()
             .filter(|&ai| {
                 !graph.arcs[ai].deleted
-                    && !used_arcs[ai]
+                    && !used_border[ai]
                     && graph.arcs[ai].kind == MmuArcKind::Border
             })
             .collect();
 
         for seed_arc_idx in seed_arcs {
-            if used_arcs[seed_arc_idx] {
+            if used_border[seed_arc_idx] {
                 continue;
             }
+
+            // Capture the walk's seed colour once. Passed unchanged to every
+            // get_next_arc call so colour filtering always uses the walk's
+            // originating colour, not the colour of the arc currently being
+            // traversed (which may be None for NON_BORDER arcs).
+            let seed_color = graph.arcs[seed_arc_idx].color.clone();
 
             // Determine orientation: walk forward from start_node.
             let mut current_node = start_node;
             let mut current_arc = seed_arc_idx;
             let mut walk_segments: Vec<ColoredSegment> = Vec::new();
+            // Parallel to walk_segments: (arc_idx, entry_node) per traversal, so the
+            // repair can free the exact directed usage when it pops an arc.
+            let mut walk_traversals: Vec<(usize, usize)> = Vec::new();
             let mut steps: usize = 0;
             const MAX_STEPS: usize = 65536; // guard
 
             loop {
-                if used_arcs[current_arc] || steps >= MAX_STEPS {
+                let is_border_arc = graph.arcs[current_arc].kind == MmuArcKind::Border;
+                let already_used = if is_border_arc {
+                    used_border[current_arc]
+                } else {
+                    used_nb.contains(&(current_arc, current_node))
+                };
+                if already_used || steps >= MAX_STEPS {
                     break;
                 }
-                used_arcs[current_arc] = true;
+                if is_border_arc {
+                    used_border[current_arc] = true;
+                } else {
+                    used_nb.insert((current_arc, current_node));
+                }
+                walk_traversals.push((current_arc, current_node));
                 steps += 1;
 
-                let arc_color = graph.arcs[current_arc].color.clone();
                 let seg = segment_from_arc(graph, current_arc, current_node, walk_idx);
                 // Advance current_node to the far end.
                 let next_node = {
@@ -197,42 +365,131 @@ pub fn extract_colored_segments(
                     break;
                 }
 
-                // Find continuation.
-                match get_next_arc(graph, &used_arcs, current_arc, next_node, arc_color) {
+                // Find continuation. Always pass seed_color so the colour filter
+                // is stable across NON_BORDER arc traversals within a walk.
+                match get_next_arc(
+                    graph,
+                    &used_border,
+                    &used_nb,
+                    current_arc,
+                    next_node,
+                    seed_color.clone(),
+                ) {
                     Some(next_arc) => {
                         current_node = next_node;
                         current_arc = next_arc;
                     }
                     None => {
-                        // Repair path: emit a synthetic closing chord.
-                        // H562: arc_idx = None (never usize::MAX).
-                        let last_pt = graph.arcs[current_arc].point_b;
-                        // Find the start point of the walk.
-                        let start_pt = if graph.arcs[seed_arc_idx].from_node == start_node {
-                            graph.arcs[seed_arc_idx].point_a
-                        } else {
-                            graph.arcs[seed_arc_idx].point_b
-                        };
-
-                        // The repair_index sentinel: we do NOT call unwrap() on None here.
-                        // debug_assert that we are in the documented repair branch.
-                        let repair_chord = ColoredSegment {
-                            line: Line {
-                                start: last_pt,
-                                end: start_pt,
-                            },
-                            arc_idx: None, // H562 — Option<usize>::None sentinel
-                            color: None,
-                            poly_idx: walk_idx,
-                        };
-                        walk_segments.push(repair_chord);
+                        // Dead end: stop accumulating. The walk is closed implicitly
+                        // by the polygon builder; validity (CCW + simple) and the
+                        // pop-and-retry repair are handled below (Orca 547-562).
                         break;
                     }
                 }
             }
 
-            if !walk_segments.is_empty() {
-                result.extend(walk_segments);
+            // ---- Walk-closure repair (OrcaSlicer MultiMaterialSegmentation.cpp:547-562) ----
+            // Validate the polygon of the accumulated walk. If it is not a simple,
+            // positive-area ring, pop the last arc (returning it to the pool so other
+            // colours' walks can use it) and retry with the shorter prefix. This both
+            // discards self-intersecting/degenerate tails AND frees over-consumed
+            // bisector arcs — without it, the first walks grab shared NonBorder arcs
+            // and starve later colours (the ~50%-coverage failure mode).
+            let pre_repair_len = walk_segments.len();
+            let pre_repair_trav: Vec<(usize, usize)> =
+                if std::env::var("PNP_PAINTSEG_FAILWALK").is_ok() {
+                    walk_traversals.clone()
+                } else {
+                    Vec::new()
+                };
+            let mut valid = false;
+            let rdbg = std::env::var("PNP_PAINTSEG_REPAIRDBG").is_ok() && seed_color.is_some();
+            while walk_segments.len() >= 3 {
+                let pts: Vec<slicer_ir::Point2> =
+                    walk_segments.iter().map(|s| s.line.start).collect();
+                let area = poly_signed_area(&pts);
+                let simple = is_simple_closed(&pts);
+                if rdbg {
+                    use std::sync::atomic::{AtomicUsize, Ordering};
+                    static N: AtomicUsize = AtomicUsize::new(0);
+                    if N.fetch_add(1, Ordering::Relaxed) < 30 {
+                        eprintln!(
+                            "REPAIRDBG seed={:?} len={} area={:.0} simple={}",
+                            seed_color,
+                            walk_segments.len(),
+                            area,
+                            simple
+                        );
+                    }
+                }
+                if area.abs() >= MIN_WALK_AREA && simple {
+                    valid = true;
+                    break;
+                }
+                // Pop the last arc and free its directed usage for reuse by other walks.
+                walk_segments.pop();
+                if let Some((ai, entry)) = walk_traversals.pop() {
+                    if graph.arcs[ai].kind == MmuArcKind::Border {
+                        used_border[ai] = false;
+                    } else {
+                        used_nb.remove(&(ai, entry));
+                    }
+                }
+            }
+            // The seed border arc must never be re-seeded, even on discard.
+            used_border[seed_arc_idx] = true;
+            if std::env::var("PNP_PAINTSEG_WALKDETAIL").is_ok() && walk_idx < 16 {
+                let area = {
+                    let pts: Vec<slicer_ir::Point2> =
+                        walk_segments.iter().map(|s| s.line.start).collect();
+                    poly_signed_area(&pts)
+                };
+                eprintln!(
+                    "WALKDETAIL seed_color={:?} pre_len={} post_len={} area={:.0} valid={}",
+                    seed_color, pre_repair_len, walk_segments.len(), area, valid
+                );
+            }
+            // Dump the geometry of a FAILING painted walk (pre-repair) to locate the
+            // self-intersection. Gated; prints only the first few per process.
+            if !valid && std::env::var("PNP_PAINTSEG_FAILWALK").is_ok() {
+                use std::sync::atomic::{AtomicUsize, Ordering};
+                static N: AtomicUsize = AtomicUsize::new(0);
+                if seed_color.is_some()
+                    && pre_repair_len >= 4
+                    && N.fetch_add(1, Ordering::Relaxed) < 3
+                {
+                    // Re-walk was consumed; reconstruct from result is not possible, so
+                    // print the kinds/nodes of the traversal we recorded.
+                    let trav: Vec<String> = pre_repair_trav
+                        .iter()
+                        .map(|&(ai, en)| {
+                            let a = &graph.arcs[ai];
+                            let far = if a.from_node == en { a.to_node } else { a.from_node };
+                            format!(
+                                "{}:{}->{}{}",
+                                if a.kind == MmuArcKind::Border { "B" } else { "N" },
+                                en,
+                                far,
+                                if a.from_node < graph.all_border_points
+                                    || a.to_node < graph.all_border_points
+                                {
+                                    "*"
+                                } else {
+                                    ""
+                                }
+                            )
+                        })
+                        .collect();
+                    eprintln!(
+                        "FAILWALK seed={:?} prelen={} trav=[{}]",
+                        seed_color,
+                        pre_repair_len,
+                        trav.join(" ")
+                    );
+                }
+            }
+            if valid {
+                result.extend(walk_segments.drain(..));
                 walk_idx += 1;
             }
         }
@@ -297,7 +554,11 @@ mod tests {
     #[test]
     fn extract_two_color_walk_separates_at_color_change() {
         // 4-node ring where arcs alternate between two colors.
-        // Two walks: one per color group (or two poly_idx groups).
+        // With Orca's colour filter, each arc is in its own walk: a BORDER arc of
+        // a different colour is never a valid continuation, so the walk halts and
+        // emits a repair chord after each arc. Result: 4 real arcs + 4 repair chords.
+        // This test verifies that (a) all 4 real arcs are emitted once each with the
+        // correct colour, and (b) colour filtering produces one walk per arc.
         use slicer_ir::PaintValue;
         let mut nodes: Vec<MmuNode> = (0..4).map(|_| MmuNode::default()).collect();
         let mut arcs: Vec<MmuArc> = Vec::new();
@@ -327,18 +588,31 @@ mod tests {
         }
         let graph = MMU_Graph::from_parts(nodes, arcs, 4, vec![0]);
         let segs = extract_colored_segments(&graph, 2);
-        // All 4 arcs should be emitted with their respective colors.
-        assert_eq!(segs.len(), 4);
-        let c0_count = segs
+
+        // All 4 real arcs must be emitted exactly once each with their correct colour.
+        // (Repair chords have arc_idx: None and color: None; we filter them out here.)
+        let real_segs: Vec<_> = segs.iter().filter(|s| s.arc_idx.is_some()).collect();
+        assert_eq!(real_segs.len(), 4, "all 4 real arcs must be emitted");
+        let c0_count = real_segs
             .iter()
             .filter(|s| s.color == Some(PaintValue::ToolIndex(0)))
             .count();
-        let c1_count = segs
+        let c1_count = real_segs
             .iter()
             .filter(|s| s.color == Some(PaintValue::ToolIndex(1)))
             .count();
         assert_eq!(c0_count, 2, "should have 2 segments with color 0");
         assert_eq!(c1_count, 2, "should have 2 segments with color 1");
+
+        // Colour filtering must produce one separate walk per arc (4 distinct poly_idx).
+        let poly_idxs: std::collections::BTreeSet<usize> =
+            segs.iter().map(|s| s.poly_idx).collect();
+        assert_eq!(
+            poly_idxs.len(),
+            4,
+            "colour filtering should produce one walk per arc boundary; got poly_idxs={:?}",
+            poly_idxs
+        );
     }
 
     #[test]
