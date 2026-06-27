@@ -263,18 +263,6 @@ pub struct MMU_Graph {
     /// `cell.source_index().usize()` indexes this array for segment cells (H561).
     #[cfg(feature = "host-algos")]
     pub(crate) bv_segment_colors: Vec<Option<PaintValue>>,
-    /// Pre-merge input segment endpoints (i32 coords) with their colors.
-    ///
-    /// Stored so the corner-displacement post-pass in `cells_to_expolygons_by_color`
-    /// can identify which corners a color actually OWNS in the original colored-line
-    /// input, before `merge_collinear_overlapping` reassigned some intervals to
-    /// other colors. Without this, a color whose original short-interval at a
-    /// contour corner was preempted by an overlapping shortest-segment-wins merger
-    /// would leave a leaked corner vertex untouched (see B1 diagnosis, packet 95).
-    ///
-    /// Tuple: ((sx, sy), (ex, ey), color).
-    #[cfg(feature = "host-algos")]
-    pub(crate) bv_pre_merge_segments: Vec<((i32, i32), (i32, i32), Option<PaintValue>)>,
 }
 
 /// Bucket integer segments by canonical infinite-line identity and merge any
@@ -490,11 +478,6 @@ impl MMU_Graph {
             }
             int_segments.push(((sx, sy), (ex, ey), cl.value.clone()));
         }
-        // Clone pre-merge segments before consuming `int_segments` in the merger.
-        // Needed by the corner-displacement post-pass to recover endpoints that
-        // the shortest-segment-wins merger reassigned to another color.
-        let bv_pre_merge_segments: Vec<((i32, i32), (i32, i32), Option<PaintValue>)> =
-            int_segments.clone();
         let (bv_segments, bv_segment_colors) = merge_collinear_overlapping(int_segments);
 
         // Part D — deterministic input guard. boostvoronoi's `discretize` has a
@@ -693,7 +676,6 @@ impl MMU_Graph {
             polygon_idx_offset,
             bv_segments,
             bv_segment_colors,
-            bv_pre_merge_segments,
         })
     }
 
@@ -722,8 +704,6 @@ impl MMU_Graph {
             bv_segments: Vec::new(),
             #[cfg(feature = "host-algos")]
             bv_segment_colors: Vec::new(),
-            #[cfg(feature = "host-algos")]
-            bv_pre_merge_segments: Vec::new(),
         }
     }
 
@@ -1104,276 +1084,14 @@ impl MMU_Graph {
             result.entry(color).or_default().extend(clipped);
         }
 
-        // --- Step 9: corner-ownership post-processing ---
-        //
-        // Voronoi cells for adjacent differently-coloured segments share the input corner
-        // vertex (the endpoint where those two segments meet) in their polygon
-        // representations.  This means both cells get a polygon vertex at exactly the same
-        // contour corner, causing "face bleed" when downstream code queries whether a
-        // region touches a face by checking polygon vertex positions.
-        //
-        // Fix: every segment that shares a corner C with a segment of a DIFFERENT colour
-        // displaces C slightly toward its own OTHER endpoint.  This pulls each cell away
-        // from the adjacent face's boundary, eliminating the shared-corner vertex issue
-        // for all participants simultaneously.  No single owner is assigned; each face
-        // independently recedes from its neighbour's boundary.
-        //
-        // `merge_collinear_overlapping` may reverse a segment's start/end direction, so
-        // we check BOTH endpoints of each segment, not just the start.
-        //
-        // Displacement magnitude: slightly more than 1 % of the bbox diagonal, which is
-        // the typical face-proximity tolerance used in downstream positional queries.
-        let corner_shift = {
-            let diag = bbox_width + bbox_height;
-            (diag / 100.0 + 1.0) as i64 // slightly more than 1 % of the bbox diagonal
-        };
-
-        if !bv_segs.is_empty() && corner_shift > 0 {
-            // Build per-colour displacement table:
-            //   color_key → Vec<(corner: Point2, shift_x: i64, shift_y: i64)>
-            //
-            // Source of truth: PRE-merge ColoredLine endpoints
-            // (`self.bv_pre_merge_segments`).  Using POST-merge `bv_segs` here
-            // misses corners owned by a colour whose short-interval at the corner
-            // was reassigned to a different colour by the shortest-segment-wins
-            // rule in `merge_collinear_overlapping`.  Concretely, packet 95's
-            // back-face failure: a TI=3 facet stroke at left-edge interval
-            // [1172500, 1175000] is preempted by a TI=0 stroke; bv_segs[TI=3]'s
-            // endpoint moves to (1125000, 1172500), so the corner (1125000,
-            // 1175000) is no longer a TI=3 endpoint in bv_segs, no displacement
-            // entry is built for it, and the Voronoi walk's leaked corner vertex
-            // for TI=3 stays put.  Pre-merge segments preserve TI=3's original
-            // (1125000, 1175000) endpoint and trigger the displacement.
-            //
-            // For every pre-merge segment si and each of its two endpoints C:
-            //   if there exists another pre-merge segment sj ≠ si sharing C with
-            //   a DIFFERENT colour:
-            //     si displaces C toward its OTHER endpoint.
-            // (Both neighbours of C displace; each moves along its own face
-            // direction.)
-            let mut displacement_map: std::collections::HashMap<
-                Option<PaintValue>,
-                Vec<(Point2, i64, i64)>,
-            > = std::collections::HashMap::new();
-
-            let pre = &self.bv_pre_merge_segments;
-            let n_pre = pre.len();
-            for si in 0..n_pre {
-                let si_color = pre[si].2.clone();
-                for endpoint_is_start in [true, false] {
-                    let (cx, cy, ox, oy) = if endpoint_is_start {
-                        (
-                            pre[si].0 .0 as i64,
-                            pre[si].0 .1 as i64,
-                            pre[si].1 .0 as i64,
-                            pre[si].1 .1 as i64,
-                        )
-                    } else {
-                        (
-                            pre[si].1 .0 as i64,
-                            pre[si].1 .1 as i64,
-                            pre[si].0 .0 as i64,
-                            pre[si].0 .1 as i64,
-                        )
-                    };
-
-                    // si displaces C if any other pre-merge segment sj has an
-                    // endpoint at C with a DIFFERENT colour (regardless of
-                    // whether sj's colour is higher or lower — both sides of the
-                    // colour boundary displace symmetrically).
-                    let must_displace = (0..n_pre).any(|sj| {
-                        if sj == si {
-                            return false;
-                        }
-                        let sj_color = pre[sj].2.clone();
-                        if sj_color == si_color {
-                            return false;
-                        }
-                        let s_at_c = pre[sj].0 .0 as i64 == cx && pre[sj].0 .1 as i64 == cy;
-                        let e_at_c = pre[sj].1 .0 as i64 == cx && pre[sj].1 .1 as i64 == cy;
-                        s_at_c || e_at_c
-                    });
-
-                    if must_displace {
-                        // Direction: from corner C toward si's other endpoint O.
-                        let dx = ox - cx;
-                        let dy = oy - cy;
-                        let len = ((dx * dx + dy * dy) as f64).sqrt();
-                        if len > 0.5 {
-                            // No cap — use the full corner_shift even for short
-                            // sub-segments.  Degenerate polygons resulting from
-                            // overshoot are clipped by the downstream `intersection_ex`
-                            // against the slice contour, which keeps the displaced
-                            // vertex inside the contour boundary.  This is critical
-                            // for short stroke segments at face corners: capping the
-                            // shift to segment-length/2 leaves the displaced corner
-                            // inside the downstream face-proximity tolerance zone,
-                            // causing cross-face paint bleed.
-                            let shift_x = (dx as f64 / len * corner_shift as f64).round() as i64;
-                            let shift_y = (dy as f64 / len * corner_shift as f64).round() as i64;
-                            displacement_map.entry(si_color.clone()).or_default().push((
-                                Point2 { x: cx, y: cy },
-                                shift_x,
-                                shift_y,
-                            ));
-                        }
-                    }
-                }
-            }
-
-            // Apply corner displacement table to each colour's polygons.
-            for (color_key, displacements) in &displacement_map {
-                if let Some(polys) = result.get_mut(color_key) {
-                    for expoly in polys.iter_mut() {
-                        for pt in expoly.contour.points.iter_mut() {
-                            for &(corner, shift_x, shift_y) in displacements {
-                                // Match within 1 unit to handle any rounding from the walk.
-                                if (pt.x - corner.x).abs() <= 1 && (pt.y - corner.y).abs() <= 1 {
-                                    pt.x = corner.x + shift_x;
-                                    pt.y = corner.y + shift_y;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- Step 10: foreign-edge proximity shrink post-pass ---
-            //
-            // The corner displacement above handles exact-corner leaks, but
-            // bisector vertices in the Voronoi walk can also land inside the
-            // downstream face-proximity tolerance zone of a FOREIGN contour
-            // edge (an edge that the current colour has no pre-merge
-            // ColoredLine on).  Example (packet 95 back-face): a TI=3 stroke
-            // on the LEFT contour edge near the back-left corner produces
-            // bisector vertices like (x_min, ~1_172_872) — only ~2128 units
-            // below the back contour edge (y_max = 1_175_000), inside the
-            // 2500-unit predicate window.  TI=3 has no painted-line on the
-            // back edge, so this vertex represents a Voronoi bleed onto the
-            // back face.
-            //
-            // Fix: for every colour C, identify which canonical contour edges
-            // (infinite-line identity from `merge_collinear_overlapping`) C
-            // owns at least one pre-merge ColoredLine on.  Then for each
-            // vertex of every C polygon, if the vertex lies within
-            // `corner_shift` of a pre-merge segment of any OTHER colour on a
-            // line C does NOT own, displace the vertex perpendicular to that
-            // foreign line by `corner_shift`, away from the line.
-            //
-            // The canonical-line identity is exactly the bucket key used by
-            // `merge_collinear_overlapping`: ((cdx, cdy), perp_offset) with
-            // cdx/cdy gcd-reduced and sign-canonicalised.
-
-            fn gcd_p95(a: i64, b: i64) -> i64 {
-                let (mut a, mut b) = (a.abs(), b.abs());
-                while b != 0 {
-                    let t = a % b;
-                    a = b;
-                    b = t;
-                }
-                a
-            }
-            fn canon_dir_p95(dx: i64, dy: i64) -> (i64, i64) {
-                let g = gcd_p95(dx, dy).max(1);
-                let (mut cdx, mut cdy) = (dx / g, dy / g);
-                if cdx < 0 || (cdx == 0 && cdy < 0) {
-                    cdx = -cdx;
-                    cdy = -cdy;
-                }
-                (cdx, cdy)
-            }
-            // Canonical line identity for a pre-merge segment.
-            fn line_key_p95(sx: i32, sy: i32, ex: i32, ey: i32) -> ((i64, i64), i64) {
-                let dx = (ex as i64) - (sx as i64);
-                let dy = (ey as i64) - (sy as i64);
-                let (cdx, cdy) = canon_dir_p95(dx, dy);
-                let offset = cdx * (sy as i64) - cdy * (sx as i64);
-                ((cdx, cdy), offset)
-            }
-
-            // Build owned-line set per colour.
-            let mut owned_lines: std::collections::HashMap<
-                Option<PaintValue>,
-                std::collections::HashSet<((i64, i64), i64)>,
-            > = std::collections::HashMap::new();
-            for ((sx, sy), (ex, ey), col) in self.bv_pre_merge_segments.iter() {
-                let key = line_key_p95(*sx, *sy, *ex, *ey);
-                owned_lines.entry(col.clone()).or_default().insert(key);
-            }
-
-            // Apply foreign-edge shrink per colour.
-            for (color_key, polys) in result.iter_mut() {
-                let owned: &std::collections::HashSet<((i64, i64), i64)> =
-                    match owned_lines.get(color_key) {
-                        Some(s) => s,
-                        None => continue,
-                    };
-
-                for expoly in polys.iter_mut() {
-                    for pt in expoly.contour.points.iter_mut() {
-                        // For each pre-merge foreign segment, check distance.
-                        for ((sx, sy), (ex, ey), other_col) in self.bv_pre_merge_segments.iter() {
-                            if other_col == color_key {
-                                continue;
-                            }
-                            let key = line_key_p95(*sx, *sy, *ex, *ey);
-                            if owned.contains(&key) {
-                                // Colour C also has at least one ColoredLine on
-                                // this same infinite line — not foreign.
-                                continue;
-                            }
-                            // Compute signed perpendicular distance from pt to the
-                            // canonical-line direction.  We only need to fence
-                            // the vertex away from the line itself (not the
-                            // bounded segment), because contour edges extend
-                            // across the entire face and any vertex within
-                            // `corner_shift` of the line is in the foreign-face
-                            // tolerance zone regardless of where on the line it
-                            // projects.  This matches the v2 vertical-face
-                            // contract: a colour confined to the left face must
-                            // not produce vertices within the back-face zone.
-                            let ((cdx, cdy), _off) = key;
-                            // Unit perpendicular: (cdy, -cdx) / sqrt(cdx^2+cdy^2).
-                            let len_sq = (cdx * cdx + cdy * cdy) as f64;
-                            if len_sq < 0.25 {
-                                continue;
-                            }
-                            let inv_len = 1.0 / len_sq.sqrt();
-                            // Perpendicular distance = (-cdy * (px - sx) + cdx * (py - sy)) / sqrt(len_sq)
-                            let dx_p = (pt.x - *sx as i64) as f64;
-                            let dy_p = (pt.y - *sy as i64) as f64;
-                            // Use the (cdy, -cdx) perpendicular convention.
-                            let perp = (cdy as f64 * dx_p - cdx as f64 * dy_p) * inv_len;
-                            let dist = perp.abs();
-                            if dist >= corner_shift as f64 {
-                                continue;
-                            }
-                            // Shift perpendicular to the foreign line, AWAY from
-                            // it.  If `perp > 0`, the vertex is on the +perp
-                            // side, so we shift further in +perp direction;
-                            // if `perp < 0`, shift further in -perp direction.
-                            // Magnitude: (corner_shift - dist) so the vertex
-                            // ends up exactly corner_shift from the line.
-                            let need = corner_shift as f64 - dist;
-                            let sign = if perp >= 0.0 { 1.0 } else { -1.0 };
-                            // Perpendicular unit vector is (cdy, -cdx) * inv_len.
-                            let ux = cdy as f64 * inv_len;
-                            let uy = -(cdx as f64) * inv_len;
-                            let shift_x = (sign * need * ux).round() as i64;
-                            let shift_y = (sign * need * uy).round() as i64;
-                            pt.x += shift_x;
-                            pt.y += shift_y;
-                            // Only apply one foreign-edge displacement per
-                            // vertex per pass; further iterations would
-                            // compound rounding error.  In practice the
-                            // closest foreign edge dominates the danger zone.
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        // NOTE (parity): the former Step 9 (corner-ownership displacement) and
+        // Step 10 (foreign-edge proximity shrink) post-passes were removed here.
+        // They displaced legitimately-shared corner vertices ~0.5mm inward to dodge
+        // an over-strict downstream face-proximity check, which opened a visible
+        // cross-colour gap between adjacent painted regions. OrcaSlicer's partition
+        // shares each bisector arc once with NO such displacement
+        // (MultiMaterialSegmentation.cpp:523/547-548; ADR-0013). The cell polygons
+        // are returned as the exact (unioned + contour-clipped) partition.
 
         result
     }
@@ -1870,6 +1588,12 @@ mod tests {
     /// B-4 diagnostic: 4-color square mimicking the cube geometry.
     /// Verifies that each face color covers ONLY its own quadrant (no bleed-over).
     /// bottom=ToolIndex(0), right=ToolIndex(1), top=ToolIndex(2), left=ToolIndex(3).
+    ///
+    /// "Covers a face" / "bleeds onto a face" is tested as having a polygon EDGE
+    /// (two consecutive vertices) along the face band — NOT a single vertex touching
+    /// it. Adjacent colors legitimately share their common corner vertex (the bisector
+    /// arc emanates from it, OrcaSlicer `MultiMaterialSegmentation.cpp:547-548`); the
+    /// back cell's shared back-right corner is correct geometry, not bleed.
     #[test]
     fn cells_to_expolygons_four_color_square_each_color_covers_its_face() {
         use slicer_ir::slice_ir::BoundingBox2;
@@ -1953,31 +1677,65 @@ mod tests {
             result.keys().collect::<Vec<_>>()
         );
 
-        // Right face (ToolIndex(1)) must have at least one point with x near x_max.
+        let tol = (x_max - x_min) / 100;
+        // "Has a wall along the right face" = two CONSECUTIVE contour vertices both on
+        // the right band (an edge), not a single shared-corner vertex.
+        let has_right_edge = |polys: &[ExPolygon]| {
+            polys.iter().any(|exp| {
+                let pts = &exp.contour.points;
+                let n = pts.len();
+                n >= 2
+                    && (0..n).any(|i| pts[i].x >= x_max - tol && pts[(i + 1) % n].x >= x_max - tol)
+            })
+        };
+
+        // Right face (ToolIndex(1)) must have an edge along the right face.
         let polys_1 = result
             .get(&Some(PaintValue::ToolIndex(1)))
             .expect("ToolIndex(1) missing");
-        let tol = (x_max - x_min) / 100;
-        let right_face_covered = polys_1
-            .iter()
-            .any(|exp| exp.contour.points.iter().any(|pt| pt.x >= x_max - tol));
         assert!(
-            right_face_covered,
-            "ToolIndex(1) polygon must touch right face (x near {}), got polys: {:?}",
+            has_right_edge(polys_1),
+            "ToolIndex(1) polygon must have a wall along the right face (x near {}), got polys: {:?}",
             x_max, polys_1
         );
 
-        // Back face (ToolIndex(2)) must NOT touch right face.
+        // Back face (ToolIndex(2)) must NOT have an edge along the right face. It MAY
+        // share the single back-right corner vertex — that is correct partition geometry.
         let polys_2 = result
             .get(&Some(PaintValue::ToolIndex(2)))
             .expect("ToolIndex(2) missing");
-        let back_face_bleeds_to_right = polys_2
-            .iter()
-            .any(|exp| exp.contour.points.iter().any(|pt| pt.x >= x_max - tol));
         assert!(
-            !back_face_bleeds_to_right,
-            "ToolIndex(2) polygon must NOT touch right face (x near {}), got polys: {:?}",
-            x_max, polys_2
+            !has_right_edge(polys_2),
+            "ToolIndex(2) polygon must NOT have a wall along the right face (x near {}); \
+             a single shared corner is allowed. Got polys: {:?}",
+            x_max,
+            polys_2
+        );
+
+        // Regression guard (cross-colour gap): adjacent colours must SHARE the exact
+        // back-right corner vertex (x_max, y_max). The retired Step 9/10 displacement
+        // post-passes shoved each colour's shared-corner vertex ~0.5mm inward to dodge
+        // an over-strict face-proximity check, opening a visible gap between adjacent
+        // painted regions. Assert both the right (1) and back (2) cells keep a vertex
+        // AT the corner — any re-introduction of corner displacement would move these
+        // vertices far beyond CORNER_TOL and fail here.
+        const CORNER_TOL: i64 = 200; // << the ~5000-unit displacement, >> walk rounding
+        let has_back_right_corner = |polys: &[ExPolygon]| {
+            polys.iter().any(|exp| {
+                exp.contour.points.iter().any(|pt| {
+                    (pt.x - x_max).abs() <= CORNER_TOL && (pt.y - y_max).abs() <= CORNER_TOL
+                })
+            })
+        };
+        assert!(
+            has_back_right_corner(polys_1),
+            "ToolIndex(1) (right) must keep a vertex at the shared back-right corner \
+             ({x_max},{y_max}) — corner-displacement regression. Got: {polys_1:?}"
+        );
+        assert!(
+            has_back_right_corner(polys_2),
+            "ToolIndex(2) (back) must keep a vertex at the shared back-right corner \
+             ({x_max},{y_max}) — corner-displacement regression. Got: {polys_2:?}"
         );
     }
 }

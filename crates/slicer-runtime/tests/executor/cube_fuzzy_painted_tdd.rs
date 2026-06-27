@@ -142,6 +142,29 @@ fn regions_covering<'a>(
         .collect()
 }
 
+/// Return all SlicedRegions that have a polygon EDGE lying along a face — two
+/// CONSECUTIVE contour vertices both satisfying `on_band`. A single vertex merely
+/// touching a shared CORNER is not coverage (adjacent painted faces legitimately
+/// share their corner vertex; see the cube_4color sibling for the full rationale).
+/// Requiring an edge still flags real bleed (a foreign region with a wall along the
+/// face) while permitting the geometrically-correct shared corner.
+fn regions_with_edge_on_face<'a>(
+    slice_ir: &'a slicer_ir::SliceIR,
+    on_band: impl Fn(Point2) -> bool,
+) -> Vec<&'a SlicedRegion> {
+    slice_ir
+        .regions
+        .iter()
+        .filter(|r| {
+            r.polygons.iter().any(|exp| {
+                let pts = &exp.contour.points;
+                let n = pts.len();
+                n >= 2 && (0..n).any(|i| on_band(pts[i]) && on_band(pts[(i + 1) % n]))
+            })
+        })
+        .collect()
+}
+
 /// Build initial `Vec<SliceIR>` by slicing `object_mesh` at each layer Z.
 fn build_initial_slice_ir(
     object_id: &str,
@@ -401,11 +424,13 @@ fn cube_fuzzy_painted_left_face_unpainted_requires_vertical_face_projection() {
         })
         .expect("must have a layer near Z=12.5mm");
 
-    // Positional query: find regions whose polygons touch the left face (x ≈ x_min).
+    // Positional query: find regions with a wall EDGE along the left face (x ≈ x_min).
+    // A region "covers" the face only if it has an edge there, not a single shared
+    // corner vertex (see regions_with_edge_on_face).
     let fb = face_bounds();
     // Tolerance: 1% of cube width (25mm) = 0.25mm = 2500 units.
     let tol = (fb.x_max - fb.x_min) / 100;
-    let left_face_regions = regions_covering(mid_layer, |pt| pt.x <= fb.x_min + tol);
+    let left_face_regions = regions_with_edge_on_face(mid_layer, |pt| pt.x <= fb.x_min + tol);
 
     // v2 contract: the left face is unpainted — none of its covering regions should carry fuzzy.
     let fuzzy_on_left_count = left_face_regions

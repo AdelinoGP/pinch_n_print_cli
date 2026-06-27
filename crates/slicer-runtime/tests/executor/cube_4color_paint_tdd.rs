@@ -163,6 +163,37 @@ fn regions_covering<'a>(
         .collect()
 }
 
+/// Return all SlicedRegions that have a polygon EDGE lying along a face — i.e. two
+/// CONSECUTIVE contour vertices both satisfying `on_band` (the face plane ± tolerance).
+///
+/// This is the correct "covers the face" test. A single polygon vertex merely
+/// touching the band at a shared CORNER is NOT coverage: adjacent painted faces
+/// legitimately share their corner vertex (OrcaSlicer
+/// `MultiMaterialSegmentation.cpp:547-548` — the bisector arc emanates from the
+/// corner and is consumed by both cells; along the face edge itself only the exact
+/// corner point belongs to the neighbour). The earlier "any vertex near the plane"
+/// predicate counted that shared corner as bleed, which the segmentation papered
+/// over by displacing the corner ~0.5mm inward — opening a visible cross-colour gap.
+/// Requiring an edge (≥2 consecutive on-band vertices) still flags any real bleed (a
+/// foreign region spanning the face interior has a wall running along it) while
+/// permitting the geometrically-correct shared corner.
+fn regions_with_edge_on_face<'a>(
+    slice_ir: &'a SliceIR,
+    on_band: impl Fn(Point2) -> bool,
+) -> Vec<&'a SlicedRegion> {
+    slice_ir
+        .regions
+        .iter()
+        .filter(|r| {
+            r.polygons.iter().any(|exp| {
+                let pts = &exp.contour.points;
+                let n = pts.len();
+                n >= 2 && (0..n).any(|i| on_band(pts[i]) && on_band(pts[(i + 1) % n]))
+            })
+        })
+        .collect()
+}
+
 /// Collect Material ToolIndex values from the variant_chains of a slice of SlicedRegions.
 fn material_tool_indices_from_regions(regions: &[&SlicedRegion]) -> std::collections::HashSet<u32> {
     regions
@@ -677,11 +708,13 @@ fn cube_4color_right_face_uniform_requires_vertical_face_projection() {
         })
         .expect("must have a layer near Z=12.5mm");
 
-    // Positional query: find regions whose polygons touch the right face (x ≈ x_max).
+    // Positional query: find regions with a wall EDGE along the right face (x ≈ x_max).
+    // A region "covers" the face only if it has an edge there, not a single shared
+    // corner vertex (see regions_with_edge_on_face).
     let fb = face_bounds();
     // Use a generous tolerance: 1% of cube width (25mm) = 0.25mm = 2500 units.
     let tol = (fb.x_max - fb.x_min) / 100;
-    let right_face_regions = regions_covering(mid_layer, |pt| pt.x >= fb.x_max - tol);
+    let right_face_regions = regions_with_edge_on_face(mid_layer, |pt| pt.x >= fb.x_max - tol);
 
     // v2 contract: the right-face regions must carry ToolIndex(1)=green.
     let right_face_tools = material_tool_indices_from_regions(&right_face_regions);
@@ -779,11 +812,13 @@ fn cube_4color_back_face_uniform_requires_vertical_face_projection() {
         })
         .expect("must have a layer near Z=12.5mm");
 
-    // Positional query: find regions whose polygons touch the back face (y ≈ y_max).
+    // Positional query: find regions with a wall EDGE along the back face (y ≈ y_max).
+    // A region "covers" the face only if it has an edge there, not a single shared
+    // corner vertex (see regions_with_edge_on_face).
     let fb = face_bounds();
     // Use a generous tolerance: 1% of cube depth (25mm) = 0.25mm = 2500 units.
     let tol = (fb.y_max - fb.y_min) / 100;
-    let back_face_regions = regions_covering(mid_layer, |pt| pt.y >= fb.y_max - tol);
+    let back_face_regions = regions_with_edge_on_face(mid_layer, |pt| pt.y >= fb.y_max - tol);
 
     // v2 contract: the back-face regions must carry ToolIndex(2)=blue.
     let back_face_tools = material_tool_indices_from_regions(&back_face_regions);

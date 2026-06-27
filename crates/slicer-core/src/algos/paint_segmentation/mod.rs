@@ -1058,8 +1058,11 @@ pub fn execute_paint_segmentation(
             let layer_input_polygons: Vec<Vec<slicer_ir::ExPolygon>> = working
                 .iter()
                 .map(|s| {
-                    let all: Vec<slicer_ir::ExPolygon> =
-                        s.regions.iter().flat_map(|r| r.polygons.iter().cloned()).collect();
+                    let all: Vec<slicer_ir::ExPolygon> = s
+                        .regions
+                        .iter()
+                        .flat_map(|r| r.polygons.iter().cloned())
+                        .collect();
                     if all.is_empty() {
                         all
                     } else {
