@@ -917,15 +917,12 @@ pub fn execute_paint_segmentation(
                                     let (xmn, xmx, ymn, ymx) =
                                         (1_125_000i64, 1_375_000i64, 925_000i64, 1_175_000i64);
                                     let tol = 2500i64;
-                                    let edge_on =
-                                        |pts: &[slicer_ir::Point2],
-                                         f: &dyn Fn(slicer_ir::Point2) -> bool|
-                                         -> bool {
-                                            let n = pts.len();
-                                            n >= 2
-                                                && (0..n)
-                                                    .any(|k| f(pts[k]) && f(pts[(k + 1) % n]))
-                                        };
+                                    let edge_on = |pts: &[slicer_ir::Point2],
+                                                   f: &dyn Fn(slicer_ir::Point2) -> bool|
+                                     -> bool {
+                                        let n = pts.len();
+                                        n >= 2 && (0..n).any(|k| f(pts[k]) && f(pts[(k + 1) % n]))
+                                    };
                                     eprintln!(
                                         "FACEDBG layer z={:.2} colors={}",
                                         layer_zs[i],
@@ -1418,23 +1415,50 @@ pub fn execute_paint_segmentation(
                 vertices: Vec::new(),
                 indices: Vec::new(),
             };
+            // AC-G7: resolve the object's base extruder to a 0-indexed tool number.
+            // The loader stores the already-rebased 0-indexed value under key "extruder".
+            // Missing key → extruder 1 (0-indexed: 0), preserving existing behaviour.
+            let base_extruder_tool: u32 = match obj.config.data.get("extruder") {
+                Some(slicer_ir::ConfigValue::Int(n)) => *n as u32,
+                _ => 0u32,
+            };
             for layer in &pd.layers {
+                // AC-G8: build a set of vertex positions that appear in this layer's
+                // stroke triangles. A None facet whose own vertices appear in this set
+                // was subdivided by the brush and its colour is supplied by the strokes —
+                // skip it from the default-fill projection so we don't flood it with the
+                // base-extruder colour.  Only needed for Material layers (others already
+                // `continue` in the None arm below).
+                let stroke_vertex_bits: std::collections::HashSet<(u32, u32, u32)> =
+                    if layer.semantic == slicer_ir::PaintSemantic::Material
+                        && !layer.strokes.is_empty()
+                    {
+                        layer
+                            .strokes
+                            .iter()
+                            .flat_map(|s| s.triangles.iter())
+                            .flat_map(|tri| tri.iter())
+                            .map(|p| (p.x.to_bits(), p.y.to_bits(), p.z.to_bits()))
+                            .collect()
+                    } else {
+                        std::collections::HashSet::new()
+                    };
                 // Facet paint: emit each painted facet's three world vertices.
                 for (facet_idx, fv) in layer.facet_values.iter().enumerate() {
                     // A facet with an explicit Material value uses it; a facet with
                     // NO value (genuinely unpainted) defaults to the object's base
-                    // extruder (tool 0) so its top/bottom HORIZONTAL faces feed the
-                    // default-colour top/bottom projection. Vertical unpainted facets
-                    // (e.g. subdivided faces whose paint lives in `strokes`) are
-                    // ignored by the slab projection, so this is safe. Non-Material
-                    // layers have no default-fill semantics → skip their None facets.
+                    // extruder so its top/bottom HORIZONTAL faces feed the
+                    // default-colour top/bottom projection. Non-Material layers have
+                    // no default-fill semantics → skip their None facets.
+                    // Stroke-subdivided None facets are skipped below (AC-G8).
                     let value = match fv {
                         Some(v) => v.clone(),
                         None => {
                             if layer.semantic != slicer_ir::PaintSemantic::Material {
                                 continue;
                             }
-                            slicer_ir::PaintValue::ToolIndex(0)
+                            // AC-G7: use the object base extruder, not a hardcoded 0.
+                            slicer_ir::PaintValue::ToolIndex(base_extruder_tool)
                         }
                     };
                     let base = facet_idx * 3;
@@ -1451,6 +1475,23 @@ pub fn execute_paint_segmentation(
                         || i2 >= obj.mesh.vertices.len()
                     {
                         continue;
+                    }
+                    // AC-G8: None facets whose vertices appear in stroke triangles are
+                    // stroke-subdivided; their colour is supplied by the strokes loop
+                    // below. Skip the default-fill projection for them.
+                    if fv.is_none() && !stroke_vertex_bits.is_empty() {
+                        let v0 = obj.mesh.vertices[i0];
+                        let v1 = obj.mesh.vertices[i1];
+                        let v2 = obj.mesh.vertices[i2];
+                        if [v0, v1, v2].iter().any(|v| {
+                            stroke_vertex_bits.contains(&(
+                                v.x.to_bits(),
+                                v.y.to_bits(),
+                                v.z.to_bits(),
+                            ))
+                        }) {
+                            continue;
+                        }
                     }
                     let key = (sem_name(&layer.semantic), value.clone());
                     let entry = painted_subsets
@@ -1810,8 +1851,8 @@ mod driver_v2_tests {
     use slicer_ir::{
         BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, FacetPaintData, IndexedTriangleSet,
         ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic,
-        PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, SliceIR,
-        SlicedRegion, Transform3d, CURRENT_MESH_IR_SCHEMA_VERSION,
+        PaintStroke, PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
+        SliceIR, SlicedRegion, Transform3d, CURRENT_MESH_IR_SCHEMA_VERSION,
         CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
     };
     use std::sync::Arc;
@@ -2444,6 +2485,180 @@ mod driver_v2_tests {
         assert_eq!(
             working, working_snapshot,
             "beam=true must leave working unmodified"
+        );
+    }
+
+    // ---- AC-G7: default face colour reads object base extruder ----------------
+
+    /// AC-G7: A genuinely-unpainted facet (facet_values=None) in a Material layer
+    /// resolves to `ToolIndex(base_extruder - 1)`, NOT the hardcoded `ToolIndex(0)`.
+    ///
+    /// Geometry: two horizontal triangles at opposite ends of the Z axis so that
+    /// both are captured in the single slab built around layer z=0.5 mm.
+    ///  - Triangle 0 (indices 0–2): top face at z=1 mm, explicitly painted ToolIndex(1).
+    ///    Ensures `mesh_has_any_paint` does NOT short-circuit.
+    ///  - Triangle 1 (indices 3–5): bottom face at z=0 mm, facet_values=None.
+    ///    Should resolve to ToolIndex(2) once AC-G7 is applied (base extruder 3 stored
+    ///    as 0-indexed 2 in obj.config.data["extruder"]).
+    ///
+    /// After execute_paint_segmentation + Phase 6 slab projection the output must
+    /// contain a region with variant_chain=[(material, ToolIndex(2))] and must NOT
+    /// contain one with ToolIndex(0).
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn default_face_colour_uses_object_base_extruder() {
+        // --- mesh ----------------------------------------------------------------
+        // Top face (z=1 mm): CCW from above → normal.z > 0 (top-facing).
+        // nz = (v1.x-v0.x)*(v2.y-v0.y) - (v1.y-v0.y)*(v2.x-v0.x)
+        //    = (1-0)*(1-0) - (0-0)*(0-0) = 1 > 0 ✓
+        let top_v0 = Point3 { x: 0.0, y: 0.0, z: 1.0 };
+        let top_v1 = Point3 { x: 1.0, y: 0.0, z: 1.0 };
+        let top_v2 = Point3 { x: 0.0, y: 1.0, z: 1.0 };
+
+        // Bottom face (z=0 mm): CW from above → normal.z < 0 (bottom-facing).
+        // nz = (0-0)*(0-0) - (1-0)*(1-0) = -1 < 0 ✓
+        let bot_v0 = Point3 { x: 0.0, y: 0.0, z: 0.0 };
+        let bot_v1 = Point3 { x: 0.0, y: 1.0, z: 0.0 };
+        let bot_v2 = Point3 { x: 1.0, y: 0.0, z: 0.0 };
+
+        let mut config_data = std::collections::HashMap::new();
+        // OrcaSlicer base extruder 3 → loader stores 0-indexed Int(2).
+        config_data.insert("extruder".to_string(), ConfigValue::Int(2));
+
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![ObjectMesh {
+                id: "obj1".to_string(),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![top_v0, top_v1, top_v2, bot_v0, bot_v1, bot_v2],
+                    indices: vec![0, 1, 2, 3, 4, 5],
+                },
+                transform: identity_transform(),
+                config: ObjectConfig { data: config_data },
+                modifier_volumes: Vec::new(),
+                paint_data: Some(FacetPaintData {
+                    layers: vec![PaintLayer {
+                        semantic: PaintSemantic::Material,
+                        // Triangle 0 explicitly painted as tool 1 (avoids short-circuit).
+                        // Triangle 1 unpainted (None) → must resolve to base extruder = ToolIndex(2).
+                        facet_values: vec![Some(PaintValue::ToolIndex(1)), None],
+                        strokes: Vec::new(),
+                    }],
+                }),
+                world_z_extent: None,
+            }],
+            build_volume: default_build_volume(),
+        });
+
+        let slice = Arc::new(one_layer_slice_ir());
+        let rmap = Arc::new(region_map_with_base_entry());
+
+        let result = execute_paint_segmentation(mesh, slice, rmap).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let chains: Vec<&Vec<(String, PaintValue)>> =
+            result[0].regions.iter().map(|r| &r.variant_chain).collect();
+
+        // AC-G7: genuinely-unpainted facet must resolve to object base extruder (ToolIndex(2)).
+        assert!(
+            chains.iter().any(|c| *c
+                == &vec![("material".to_string(), PaintValue::ToolIndex(2))]),
+            "AC-G7 FAIL: expected region with ToolIndex(2) (base extruder 3) not found; \
+             chains = {:?}",
+            chains
+        );
+        // Regression guard: the old hardcoded ToolIndex(0) must NOT appear.
+        assert!(
+            !chains.iter().any(|c| *c
+                == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
+            "AC-G7 FAIL: found hardcoded ToolIndex(0) region; base extruder 3 should give \
+             ToolIndex(2); chains = {:?}",
+            chains
+        );
+    }
+
+    // ---- AC-G8: stroke-covered None facet skips tool-0 default flood ----------
+
+    /// AC-G8: A horizontal facet with facet_values=None that is covered by stroke
+    /// triangles (stroke-subdivided) must NOT be added to the default-extruder
+    /// painted subset.  Its colour comes from the strokes loop, not the default fill.
+    ///
+    /// Geometry: one horizontal bottom-face triangle at z=0 mm with facet_values=None
+    /// and a PaintStroke whose triangle vertices EXACTLY match the facet vertices
+    /// (simulating the subdivided-facet data produced by the 3MF loader).  The
+    /// object has no "extruder" config key → base extruder defaults to ToolIndex(0).
+    ///
+    /// After execute_paint_segmentation the output must NOT have a ToolIndex(0) region
+    /// (the default fill was correctly skipped) and MUST have a ToolIndex(1) region
+    /// (supplied by the stroke).
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn subdivided_horizontal_face_skips_default_tool0_projection() {
+        // Bottom-facing triangle at z=0 mm.
+        // nz = (0-0)*(0-0) - (1-0)*(1-0) = -1 < 0 → bottom-facing ✓
+        let v0 = Point3 { x: 0.0, y: 0.0, z: 0.0 };
+        let v1 = Point3 { x: 0.0, y: 1.0, z: 0.0 };
+        let v2 = Point3 { x: 1.0, y: 0.0, z: 0.0 };
+
+        // Stroke triangle exactly covering the facet.  The AC-G8 condition detects
+        // stroke-coverage via vertex-position membership in stroke_vertex_bits:
+        // since f32 values {0.0, 1.0} are exact in IEEE-754, the to_bits() keys match.
+        let stroke_tri = [v0, v1, v2];
+
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![ObjectMesh {
+                id: "obj1".to_string(),
+                mesh: IndexedTriangleSet {
+                    vertices: vec![v0, v1, v2],
+                    indices: vec![0, 1, 2],
+                },
+                transform: identity_transform(),
+                config: ObjectConfig {
+                    data: std::collections::HashMap::new(), // no extruder key → ToolIndex(0)
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: Some(FacetPaintData {
+                    layers: vec![PaintLayer {
+                        semantic: PaintSemantic::Material,
+                        // None: the facet is stroke-subdivided, not genuinely unpainted.
+                        facet_values: vec![None],
+                        // Stroke covers the whole facet with ToolIndex(1).
+                        strokes: vec![PaintStroke {
+                            triangles: vec![stroke_tri],
+                            semantic: PaintSemantic::Material,
+                            value: PaintValue::ToolIndex(1),
+                        }],
+                    }],
+                }),
+                world_z_extent: None,
+            }],
+            build_volume: default_build_volume(),
+        });
+
+        let slice = Arc::new(one_layer_slice_ir());
+        let rmap = Arc::new(region_map_with_base_entry());
+
+        let result = execute_paint_segmentation(mesh, slice, rmap).unwrap();
+        assert_eq!(result.len(), 1);
+
+        let chains: Vec<&Vec<(String, PaintValue)>> =
+            result[0].regions.iter().map(|r| &r.variant_chain).collect();
+
+        // AC-G8: the default tool-0 flood must be SKIPPED for the stroke-covered facet.
+        assert!(
+            !chains.iter().any(|c| *c
+                == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
+            "AC-G8 FAIL: found unwanted ToolIndex(0) default-fill region; \
+             stroke-covered None facets must be skipped; chains = {:?}",
+            chains
+        );
+        // The stroke itself must supply ToolIndex(1).
+        assert!(
+            chains.iter().any(|c| *c
+                == &vec![("material".to_string(), PaintValue::ToolIndex(1))]),
+            "AC-G8 FAIL: ToolIndex(1) region from stroke is missing; chains = {:?}",
+            chains
         );
     }
 }
