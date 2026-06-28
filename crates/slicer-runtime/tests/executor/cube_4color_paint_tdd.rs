@@ -789,6 +789,65 @@ fn painted_entity_resolves_real_tool() {
     );
 }
 
+/// AC-G3 — first-layer / bottom-shell perimeter colour.
+///
+/// On the first layer (Z≈0.2mm), OrcaSlicer's bottom-face-dominance rule means that
+/// the bottom-face projection wins over any vertical-face (side-wall) paint.
+///
+/// In cube_4color the bottom face has TWO triangles:
+///   • one painted blue (ToolIndex 2)   → produces a ToolIndex(2) bottom projection
+///   • one UNPAINTED                    → defaults to the base extruder (ToolIndex 0)
+///                                         and produces a ToolIndex(0) bottom projection
+///
+/// Together they cover the full cross-section at layer 0.  After the Phase-7 merge
+/// the first-layer region set MUST contain ToolIndex(0) (from the unpainted-bottom half
+/// defaulting to the base extruder) and MUST NOT be `{ToolIndex(1)}` (green right-face
+/// only), which would indicate the bottom-face projection failed.
+#[test]
+fn cube_4color_first_layer_perimeter_colour_matches_bottom_face() {
+    let mesh = load_cube_4color();
+    let object_id = mesh.objects[0].id.clone();
+    let lp = build_50_layer_plan(&object_id);
+
+    let new_slice_ir = run_v2(Arc::new(mesh), &lp);
+
+    // Select the first layer (minimum z in the output).
+    let first_layer = new_slice_ir
+        .iter()
+        .min_by(|a, b| a.z.partial_cmp(&b.z).unwrap())
+        .expect("must have at least one layer");
+
+    let tools = unique_material_tool_indices(first_layer);
+    eprintln!(
+        "DIAGNOSTIC AC-G3: first layer Z={} tool indices = {:?}",
+        first_layer.z, tools
+    );
+
+    // The base-extruder colour (ToolIndex 0 = orange) must appear: the unpainted
+    // half of the bottom face defaults to the base extruder and its bottom
+    // projection is full-area at the contact layer (layer 0).
+    assert!(
+        tools.contains(&0),
+        "AC-G3: first layer (Z={}) material-tool set must include ToolIndex(0) (orange / base \
+         extruder from unpainted bottom-face projection). Got: {:?}.\n\
+         Check Phase-6 bottom projection for ToolIndex(0) at layer 0 and Phase-7 merge.",
+        first_layer.z,
+        tools
+    );
+
+    // The set must NOT be exactly {{ToolIndex(1)}} alone — that would mean the
+    // green right-face side-wall colour dominated the entire first layer, which
+    // violates the bottom-face-dominance rule.
+    let only_green = tools.len() == 1 && tools.contains(&1);
+    assert!(
+        !only_green,
+        "AC-G3: first layer (Z={}) material-tool set is {{ToolIndex(1)}} (green only), \
+         indicating bottom-face projection did not reach layer 0. Got: {:?}.",
+        first_layer.z,
+        tools
+    );
+}
+
 /// Back face (+Y, Y≈117.5): fully blue (ToolIndex 2).
 /// v2 contract: SlicedRegion(s) whose polygons cover the back face position (y≈y_max)
 /// must carry variant_chain [("material", ToolIndex(2))].

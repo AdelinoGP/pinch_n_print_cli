@@ -1479,11 +1479,19 @@ pub fn execute_paint_segmentation(
                     // AC-G8: None facets whose vertices appear in stroke triangles are
                     // stroke-subdivided; their colour is supplied by the strokes loop
                     // below. Skip the default-fill projection for them.
+                    //
+                    // Use `all` (not `any`): a stroke-subdivided facet's TriangleSelector
+                    // tree always includes the three ORIGINAL CORNERS in its sub-triangle
+                    // vertex set, so ALL three corners are in stroke_vertex_bits.  An
+                    // adjacent but genuinely-unpainted facet that merely shares one or two
+                    // corner vertices with a subdivided neighbour must NOT be skipped — the
+                    // `any` check incorrectly fired on shared corners and excluded bottom-face
+                    // triangles adjacent to stroke-subdivided side faces (AC-G3 regression).
                     if fv.is_none() && !stroke_vertex_bits.is_empty() {
                         let v0 = obj.mesh.vertices[i0];
                         let v1 = obj.mesh.vertices[i1];
                         let v2 = obj.mesh.vertices[i2];
-                        if [v0, v1, v2].iter().any(|v| {
+                        if [v0, v1, v2].iter().all(|v| {
                             stroke_vertex_bits.contains(&(
                                 v.x.to_bits(),
                                 v.y.to_bits(),
@@ -2511,15 +2519,39 @@ mod driver_v2_tests {
         // Top face (z=1 mm): CCW from above → normal.z > 0 (top-facing).
         // nz = (v1.x-v0.x)*(v2.y-v0.y) - (v1.y-v0.y)*(v2.x-v0.x)
         //    = (1-0)*(1-0) - (0-0)*(0-0) = 1 > 0 ✓
-        let top_v0 = Point3 { x: 0.0, y: 0.0, z: 1.0 };
-        let top_v1 = Point3 { x: 1.0, y: 0.0, z: 1.0 };
-        let top_v2 = Point3 { x: 0.0, y: 1.0, z: 1.0 };
+        let top_v0 = Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        let top_v1 = Point3 {
+            x: 1.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        let top_v2 = Point3 {
+            x: 0.0,
+            y: 1.0,
+            z: 1.0,
+        };
 
         // Bottom face (z=0 mm): CW from above → normal.z < 0 (bottom-facing).
         // nz = (0-0)*(0-0) - (1-0)*(1-0) = -1 < 0 ✓
-        let bot_v0 = Point3 { x: 0.0, y: 0.0, z: 0.0 };
-        let bot_v1 = Point3 { x: 0.0, y: 1.0, z: 0.0 };
-        let bot_v2 = Point3 { x: 1.0, y: 0.0, z: 0.0 };
+        let bot_v0 = Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let bot_v1 = Point3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let bot_v2 = Point3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
 
         let mut config_data = std::collections::HashMap::new();
         // OrcaSlicer base extruder 3 → loader stores 0-indexed Int(2).
@@ -2561,16 +2593,18 @@ mod driver_v2_tests {
 
         // AC-G7: genuinely-unpainted facet must resolve to object base extruder (ToolIndex(2)).
         assert!(
-            chains.iter().any(|c| *c
-                == &vec![("material".to_string(), PaintValue::ToolIndex(2))]),
+            chains
+                .iter()
+                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(2))]),
             "AC-G7 FAIL: expected region with ToolIndex(2) (base extruder 3) not found; \
              chains = {:?}",
             chains
         );
         // Regression guard: the old hardcoded ToolIndex(0) must NOT appear.
         assert!(
-            !chains.iter().any(|c| *c
-                == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
+            !chains
+                .iter()
+                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
             "AC-G7 FAIL: found hardcoded ToolIndex(0) region; base extruder 3 should give \
              ToolIndex(2); chains = {:?}",
             chains
@@ -2596,9 +2630,21 @@ mod driver_v2_tests {
     fn subdivided_horizontal_face_skips_default_tool0_projection() {
         // Bottom-facing triangle at z=0 mm.
         // nz = (0-0)*(0-0) - (1-0)*(1-0) = -1 < 0 → bottom-facing ✓
-        let v0 = Point3 { x: 0.0, y: 0.0, z: 0.0 };
-        let v1 = Point3 { x: 0.0, y: 1.0, z: 0.0 };
-        let v2 = Point3 { x: 1.0, y: 0.0, z: 0.0 };
+        let v0 = Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let v1 = Point3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let v2 = Point3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
 
         // Stroke triangle exactly covering the facet.  The AC-G8 condition detects
         // stroke-coverage via vertex-position membership in stroke_vertex_bits:
@@ -2647,16 +2693,18 @@ mod driver_v2_tests {
 
         // AC-G8: the default tool-0 flood must be SKIPPED for the stroke-covered facet.
         assert!(
-            !chains.iter().any(|c| *c
-                == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
+            !chains
+                .iter()
+                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(0))]),
             "AC-G8 FAIL: found unwanted ToolIndex(0) default-fill region; \
              stroke-covered None facets must be skipped; chains = {:?}",
             chains
         );
         // The stroke itself must supply ToolIndex(1).
         assert!(
-            chains.iter().any(|c| *c
-                == &vec![("material".to_string(), PaintValue::ToolIndex(1))]),
+            chains
+                .iter()
+                .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(1))]),
             "AC-G8 FAIL: ToolIndex(1) region from stroke is missing; chains = {:?}",
             chains
         );
