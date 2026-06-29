@@ -704,13 +704,6 @@ impl MMU_Graph {
         // seen_pairs is an additional safety net against duplicate arcs.
         let mut seen_pairs: HashSet<(usize, usize)> = HashSet::new();
 
-        let edbg = std::env::var("PNP_PAINTSEG_EDGEDBG").is_ok();
-        let (mut c_total, mut c_primary, mut c_secondary) = (0usize, 0usize, 0usize);
-        let (mut c_sec_finite, mut c_case1, mut c_case2_attempt) = (0usize, 0usize, 0usize);
-        let (mut c_case2_miss, mut c_case2_ok) = (0usize, 0usize);
-        let (mut c_case3_attempt, mut c_case3_ok) = (0usize, 0usize);
-        let (mut c_case2_suppressed, mut c_case3_suppressed) = (0usize, 0usize);
-
         // Helper: if a cell is a point site (a segment endpoint), return
         // (source_index, is_end) where is_end picks seg.end vs seg.start.
         let point_endpoint = |c: &boostvoronoi::diagram::Cell| -> Option<(usize, bool)> {
@@ -749,27 +742,12 @@ impl MMU_Graph {
                 .edge(twin_idx)
                 .map_err(|e| MmuGraphError::EdgeOp(e.to_string()))?;
 
-            if edbg {
-                c_total += 1;
-                if edge.is_primary() {
-                    c_primary += 1;
-                } else {
-                    c_secondary += 1;
-                    if edge.vertex0().is_some() {
-                        c_sec_finite += 1;
-                    }
-                }
-            }
-
             if !edge.is_primary() {
                 // --- Case 3: secondary edge — wire segment-endpoint border node to
                 // the finite interior Voronoi vertex. In a Voronoi-over-segments these
                 // are exactly the contour-vertex <-> interior links the leftmost-arc
                 // walk needs to leave the contour and enclose an area; boostvoronoi
                 // classifies them as non-primary, so they must be handled here.
-                if edbg {
-                    c_case3_attempt += 1;
-                }
                 let Some((si, is_end)) =
                     point_endpoint(&cell).or_else(|| point_endpoint(&twin_cell))
                 else {
@@ -793,9 +771,6 @@ impl MMU_Graph {
                 // medial axis where the contour colour changes. At a uniform-colour
                 // node this would be a spurious medial spike (the short-circuit bug).
                 if !border_node_is_color_boundary[border_node] {
-                    if edbg {
-                        c_case3_suppressed += 1;
-                    }
                     continue;
                 }
                 let pair = (
@@ -819,9 +794,6 @@ impl MMU_Graph {
                 });
                 nodes[interior_node].arc_indices.push(arc_idx);
                 nodes[border_node].arc_indices.push(arc_idx);
-                if edbg {
-                    c_case3_ok += 1;
-                }
                 continue;
             }
 
@@ -863,13 +835,7 @@ impl MMU_Graph {
                 });
                 nodes[from_node].arc_indices.push(arc_idx);
                 nodes[to_node].arc_indices.push(arc_idx);
-                if edbg {
-                    c_case1 += 1;
-                }
             } else {
-                if edbg {
-                    c_case2_attempt += 1;
-                }
                 // --- Case 2: semi-infinite edge — connect interior vertex to border node ---
                 let finite_vi = match (v0_opt, v1_opt) {
                     (Some(vi), _) => vi,
@@ -885,9 +851,6 @@ impl MMU_Graph {
                 // Use cell's source_index to resolve the border segment endpoints.
                 let si = cell.source_index().usize();
                 let Some((node_a, node_b)) = bv_seg_border.get(si).copied().flatten() else {
-                    if edbg {
-                        c_case2_miss += 1;
-                    }
                     continue; // no border info (e.g. merged sub-segment endpoints unmapped)
                 };
 
@@ -918,9 +881,6 @@ impl MMU_Graph {
                 // Orca colour gating (see Case 3): suppress the contour attachment at
                 // uniform-colour nodes; only attach where the contour colour changes.
                 if !border_node_is_color_boundary[border_node] {
-                    if edbg {
-                        c_case2_suppressed += 1;
-                    }
                     continue;
                 }
 
@@ -946,43 +906,7 @@ impl MMU_Graph {
                 });
                 nodes[interior_node].arc_indices.push(arc_idx);
                 nodes[border_node].arc_indices.push(arc_idx);
-                if edbg {
-                    c_case2_ok += 1;
-                }
             }
-        }
-
-        if edbg {
-            let border_with_nb = (0..all_border_points)
-                .filter(|&n| {
-                    nodes[n]
-                        .arc_indices
-                        .iter()
-                        .any(|&a| arcs[a].kind == MmuArcKind::NonBorder)
-                })
-                .count();
-            eprintln!(
-                "EDGEDBG segs={} border_nodes={} interior_nodes={} | edges_total={} primary={} secondary={} sec_with_finite_v={} | case1_nb={} case2_ok={} case3_attempt={} case3_ok={} | border_nodes_with_nonborder_arc={}",
-                bv_segments.len(),
-                all_border_points,
-                vertices.len(),
-                c_total,
-                c_primary,
-                c_secondary,
-                c_sec_finite,
-                c_case1,
-                c_case2_ok,
-                c_case3_attempt,
-                c_case3_ok,
-                border_with_nb,
-            );
-            eprintln!(
-                "EDGEDBG_SUPPRESS case2_suppressed={} case3_suppressed={} color_boundary_nodes={}",
-                c_case2_suppressed,
-                c_case3_suppressed,
-                border_node_is_color_boundary.iter().filter(|&&b| b).count(),
-            );
-            let _ = (c_case2_attempt, c_case2_miss);
         }
 
         Ok(MMU_Graph {

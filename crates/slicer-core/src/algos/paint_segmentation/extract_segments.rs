@@ -193,48 +193,6 @@ fn get_next_arc(
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.cmp(&b))
     });
-    if std::env::var("PNP_PAINTSEG_CANDDBG").is_ok() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static N: AtomicUsize = AtomicUsize::new(0);
-        if N.fetch_add(1, Ordering::Relaxed) < 40 {
-            let descr: Vec<String> = candidates
-                .iter()
-                .map(|&ai| {
-                    let a = &graph.arcs[ai];
-                    let far = if a.from_node == node_idx {
-                        a.to_node
-                    } else {
-                        a.from_node
-                    };
-                    format!(
-                        "{}{}->{}@{:.2}",
-                        if a.kind == MmuArcKind::Border {
-                            "B"
-                        } else {
-                            "N"
-                        },
-                        node_idx,
-                        far,
-                        angle_of(ai)
-                    )
-                })
-                .collect();
-            eprintln!(
-                "CANDDBG at node {} (seed={:?}) cands=[{}] chose={:?}",
-                node_idx,
-                seed_color,
-                descr.join(" "),
-                chosen.map(|ai| {
-                    let a = &graph.arcs[ai];
-                    if a.from_node == node_idx {
-                        a.to_node
-                    } else {
-                        a.from_node
-                    }
-                })
-            );
-        }
-    }
     chosen
 }
 
@@ -407,33 +365,12 @@ pub fn extract_colored_segments(
             // discards self-intersecting/degenerate tails AND frees over-consumed
             // bisector arcs — without it, the first walks grab shared NonBorder arcs
             // and starve later colours (the ~50%-coverage failure mode).
-            let pre_repair_len = walk_segments.len();
-            let pre_repair_trav: Vec<(usize, usize)> =
-                if std::env::var("PNP_PAINTSEG_FAILWALK").is_ok() {
-                    walk_traversals.clone()
-                } else {
-                    Vec::new()
-                };
             let mut valid = false;
-            let rdbg = std::env::var("PNP_PAINTSEG_REPAIRDBG").is_ok() && seed_color.is_some();
             while walk_segments.len() >= 3 {
                 let pts: Vec<slicer_ir::Point2> =
                     walk_segments.iter().map(|s| s.line.start).collect();
                 let area = poly_signed_area(&pts);
                 let simple = is_simple_closed(&pts);
-                if rdbg {
-                    use std::sync::atomic::{AtomicUsize, Ordering};
-                    static N: AtomicUsize = AtomicUsize::new(0);
-                    if N.fetch_add(1, Ordering::Relaxed) < 30 {
-                        eprintln!(
-                            "REPAIRDBG seed={:?} len={} area={:.0} simple={}",
-                            seed_color,
-                            walk_segments.len(),
-                            area,
-                            simple
-                        );
-                    }
-                }
                 if area.abs() >= MIN_WALK_AREA && simple {
                     valid = true;
                     break;
@@ -450,68 +387,6 @@ pub fn extract_colored_segments(
             }
             // The seed border arc must never be re-seeded, even on discard.
             used_border[seed_arc_idx] = true;
-            if std::env::var("PNP_PAINTSEG_WALKDETAIL").is_ok() && walk_idx < 16 {
-                let area = {
-                    let pts: Vec<slicer_ir::Point2> =
-                        walk_segments.iter().map(|s| s.line.start).collect();
-                    poly_signed_area(&pts)
-                };
-                eprintln!(
-                    "WALKDETAIL seed_color={:?} pre_len={} post_len={} area={:.0} valid={}",
-                    seed_color,
-                    pre_repair_len,
-                    walk_segments.len(),
-                    area,
-                    valid
-                );
-            }
-            // Dump the geometry of a FAILING painted walk (pre-repair) to locate the
-            // self-intersection. Gated; prints only the first few per process.
-            if !valid && std::env::var("PNP_PAINTSEG_FAILWALK").is_ok() {
-                use std::sync::atomic::{AtomicUsize, Ordering};
-                static N: AtomicUsize = AtomicUsize::new(0);
-                if seed_color.is_some()
-                    && pre_repair_len >= 4
-                    && N.fetch_add(1, Ordering::Relaxed) < 3
-                {
-                    // Re-walk was consumed; reconstruct from result is not possible, so
-                    // print the kinds/nodes of the traversal we recorded.
-                    let trav: Vec<String> = pre_repair_trav
-                        .iter()
-                        .map(|&(ai, en)| {
-                            let a = &graph.arcs[ai];
-                            let far = if a.from_node == en {
-                                a.to_node
-                            } else {
-                                a.from_node
-                            };
-                            format!(
-                                "{}:{}->{}{}",
-                                if a.kind == MmuArcKind::Border {
-                                    "B"
-                                } else {
-                                    "N"
-                                },
-                                en,
-                                far,
-                                if a.from_node < graph.all_border_points
-                                    || a.to_node < graph.all_border_points
-                                {
-                                    "*"
-                                } else {
-                                    ""
-                                }
-                            )
-                        })
-                        .collect();
-                    eprintln!(
-                        "FAILWALK seed={:?} prelen={} trav=[{}]",
-                        seed_color,
-                        pre_repair_len,
-                        trav.join(" ")
-                    );
-                }
-            }
             if valid {
                 result.append(&mut walk_segments);
                 walk_idx += 1;
@@ -643,7 +518,10 @@ mod tests {
         // (paint) colour — the colour filter never lets a walk cross a colour change.
         let mut per_walk: BTreeMap<usize, BTreeSet<Option<PaintValue>>> = BTreeMap::new();
         for s in segs.iter().filter(|s| s.arc_idx.is_some()) {
-            per_walk.entry(s.poly_idx).or_default().insert(s.color.clone());
+            per_walk
+                .entry(s.poly_idx)
+                .or_default()
+                .insert(s.color.clone());
         }
         assert!(!per_walk.is_empty(), "expected at least one closed walk");
         for (pidx, colset) in &per_walk {

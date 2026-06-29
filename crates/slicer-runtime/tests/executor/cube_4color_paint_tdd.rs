@@ -466,6 +466,43 @@ fn cube_4color_top_face_two_tool_indices_requires_projection_coverage() {
     );
 }
 
+/// Top surface / ironing layer (Z≈24.75mm): should NOT contain green (ToolIndex 1)
+/// or blue (ToolIndex 2) slivers leaked from side-face painted regions. Only orange
+/// (0) and red (3) are expected — the two colours painted on the top face itself.
+///
+/// Regression test for bug where Phase-6/7 top/bottom solid-fill harvest left
+/// sub-extrusion (~0.06 mm²) side-face regions on the top surface layer, causing
+/// ironing to run a stray pass in the wrong colour.
+#[test]
+fn cube_4color_top_contact_layer_has_no_green_blue_sliver() {
+    let mesh = load_cube_4color();
+    let object_id = mesh.objects[0].id.clone();
+    let lp = build_50_layer_plan(&object_id);
+
+    let new_slice_ir = run_v2(Arc::new(mesh), &lp);
+
+    let top_surface = new_slice_ir
+        .iter()
+        .min_by(|a, b| {
+            (a.z - 24.75f32)
+                .abs()
+                .partial_cmp(&(b.z - 24.75f32).abs())
+                .unwrap()
+        })
+        .expect("must have a layer near Z=24.75mm (top surface / ironing layer)");
+
+    let tool_indices = unique_material_tool_indices(top_surface);
+    assert!(
+        !tool_indices.contains(&1) && !tool_indices.contains(&2),
+        "BUG: top surface layer at Z≈24.75mm should NOT contain green (ToolIndex 1) \
+         or blue (ToolIndex 2) slivers leaked from side-face painted regions. \
+         Got tool indices: {tool_indices:?}. \
+         Expected: subset of {{0 (orange), 3 (red)}}.\n\
+         Root cause: Phase-6/7 top/bottom solid-fill harvest left sub-extrusion \
+         side-face regions that survived into the final output."
+    );
+}
+
 /// Bottom face (Z≈0.1mm): half ToolIndex 2 (blue) / half unpainted.
 /// v2 contract: painted area has variant_chain [("material", ToolIndex(2))];
 /// unpainted area has variant_chain [] (BASE).
@@ -940,7 +977,8 @@ fn cube_4color_bottom_shell_infill_uses_bottom_face_colour_regression() {
                 let mut acc = 0i128;
                 for i in 0..p.len() {
                     let j = (i + 1) % p.len();
-                    acc += (p[i].x as i128) * (p[j].y as i128) - (p[j].x as i128) * (p[i].y as i128);
+                    acc +=
+                        (p[i].x as i128) * (p[j].y as i128) - (p[j].x as i128) * (p[i].y as i128);
                 }
                 a += (acc as f64).abs() * 0.5;
             }
@@ -950,10 +988,13 @@ fn cube_4color_bottom_shell_infill_uses_bottom_face_colour_regression() {
 
     let mut per_tool: std::collections::BTreeMap<u32, f64> = std::collections::BTreeMap::new();
     for r in &out[bottom_idx].regions {
-        let tool = r.variant_chain.iter().find_map(|(n, v)| match (n.as_str(), v) {
-            ("material", PaintValue::ToolIndex(t)) => Some(*t),
-            _ => None,
-        });
+        let tool = r
+            .variant_chain
+            .iter()
+            .find_map(|(n, v)| match (n.as_str(), v) {
+                ("material", PaintValue::ToolIndex(t)) => Some(*t),
+                _ => None,
+            });
         if let Some(t) = tool {
             *per_tool.entry(t).or_default() += fill_area(&r.bottom_solid_fill);
         }
