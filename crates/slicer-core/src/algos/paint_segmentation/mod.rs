@@ -1607,26 +1607,31 @@ pub fn execute_paint_segmentation(
                     //      (cap) layer the projection is full-area → side walls there
                     //      also take the face colour; at shell layers it is inset →
                     //      side walls keep their colour, only the inner solid fill flips.
-                    //  (2) Harvest the BASE region's top/bottom SOLID FILL that falls
-                    //      under the projection and hand it to the painted region, so
-                    //      the surface is emitted under (and coloured by) this tool.
+                    //  (2) Harvest the top/bottom SOLID FILL that falls under the
+                    //      projection from EVERY overlapping region — BASE *and* the
+                    //      vertical-side colours — and hand it to the painted region.
+                    //      OrcaSlicer's merge_segmented_layers gives the projected
+                    //      top/bottom region the whole area (walls + solid fill); the
+                    //      pre-Phase-6 step distributes the shell solid fill to the
+                    //      side-face regions, so a BASE-only harvest left the top/bottom
+                    //      shell INFILL coloured by the side faces while only the WALLS
+                    //      flipped to the face colour — a visible mismatch (and ironing
+                    //      followed the wrong infill colour on the top surface).
+                    //      Accumulate across regions; the projection owns the union.
                     let mut top_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
                     let mut bot_clip: Vec<slicer_ir::ExPolygon> = Vec::new();
                     for region in working[l].regions.iter_mut() {
                         if region.variant_chain == chain_key {
                             continue;
                         }
-                        if region.variant_chain.is_empty() {
-                            if !region.top_solid_fill.is_empty() {
-                                top_clip = intersection_ex(&region.top_solid_fill, polys);
-                                region.top_solid_fill =
-                                    difference_ex(&region.top_solid_fill, polys);
-                            }
-                            if !region.bottom_solid_fill.is_empty() {
-                                bot_clip = intersection_ex(&region.bottom_solid_fill, polys);
-                                region.bottom_solid_fill =
-                                    difference_ex(&region.bottom_solid_fill, polys);
-                            }
+                        if !region.top_solid_fill.is_empty() {
+                            top_clip.extend(intersection_ex(&region.top_solid_fill, polys));
+                            region.top_solid_fill = difference_ex(&region.top_solid_fill, polys);
+                        }
+                        if !region.bottom_solid_fill.is_empty() {
+                            bot_clip.extend(intersection_ex(&region.bottom_solid_fill, polys));
+                            region.bottom_solid_fill =
+                                difference_ex(&region.bottom_solid_fill, polys);
                         }
                         region.polygons = difference_ex(&region.polygons, polys);
                     }
@@ -1676,6 +1681,99 @@ pub fn execute_paint_segmentation(
                 }
             }
         }
+    }
+
+    // FINALDBG: post-Phase-6/7 region dump for the bottom (z≈0.2) and top (z≈24.8)
+    // layers — colour (variant_chain), region polygon area, and solid-fill areas.
+    // Gated; for diagnosing bottom/top-face colour parity. Strip at closure.
+    if std::env::var("PNP_PAINTSEG_FINALDBG").is_ok() {
+        fn area(polys: &[slicer_ir::ExPolygon]) -> f64 {
+            let mut a = 0.0_f64;
+            for ep in polys {
+                let p = &ep.contour.points;
+                if p.len() >= 3 {
+                    let mut acc = 0i128;
+                    for i in 0..p.len() {
+                        let j = (i + 1) % p.len();
+                        acc += (p[i].x as i128) * (p[j].y as i128)
+                            - (p[j].x as i128) * (p[i].y as i128);
+                    }
+                    a += (acc as f64).abs() * 0.5;
+                }
+            }
+            a
+        }
+        for (li, s) in working.iter().enumerate() {
+            let z = layer_zs.get(li).copied().unwrap_or(s.z);
+            if (z - 0.2).abs() < 0.25 || (z - 24.8).abs() < 0.25 {
+                let total: f64 = s.regions.iter().map(|r| area(&r.polygons)).sum();
+                eprintln!(
+                    "FINALDBG layer {} z={:.2} regions={} sum_poly_area={:.0}",
+                    li,
+                    z,
+                    s.regions.len(),
+                    total
+                );
+                for r in &s.regions {
+                    let col: Vec<String> = r
+                        .variant_chain
+                        .iter()
+                        .map(|(n, v)| format!("{}={:?}", n, v))
+                        .collect();
+                    eprintln!(
+                        "FINALDBG   chain=[{}] poly_area={:.0} bot_fill={:.0} top_fill={:.0}",
+                        col.join(","),
+                        area(&r.polygons),
+                        area(&r.bottom_solid_fill),
+                        area(&r.top_solid_fill)
+                    );
+                }
+            }
+        }
+    }
+
+    // POSTTILING: count layers whose FINAL (post-Phase-6) painted coverage leaves
+    // >1% of the layer as base/unpainted — the true completeness signal (the AC-1
+    // diagnostic at line ~1224 runs PRE-Phase-6 and so over-reports the top/bottom
+    // shells that Phase-6 fills). Gated; for AC-1 re-baselining.
+    if std::env::var("PNP_PAINTSEG_POSTTILING").is_ok() {
+        use crate::polygon_ops::union_ex;
+        let ar = |polys: &[slicer_ir::ExPolygon]| -> f64 {
+            let mut a = 0.0_f64;
+            for ep in polys {
+                let p = &ep.contour.points;
+                if p.len() >= 3 {
+                    let mut acc = 0i128;
+                    for i in 0..p.len() {
+                        let j = (i + 1) % p.len();
+                        acc += (p[i].x as i128) * (p[j].y as i128)
+                            - (p[j].x as i128) * (p[i].y as i128);
+                    }
+                    a += (acc as f64).abs() * 0.5;
+                }
+            }
+            a
+        };
+        let mut gaps = 0usize;
+        for s in working.iter() {
+            let painted: Vec<slicer_ir::ExPolygon> = s
+                .regions
+                .iter()
+                .filter(|r| !r.variant_chain.is_empty())
+                .flat_map(|r| r.polygons.iter().cloned())
+                .collect();
+            let all: Vec<slicer_ir::ExPolygon> =
+                s.regions.iter().flat_map(|r| r.polygons.iter().cloned()).collect();
+            if all.is_empty() {
+                continue;
+            }
+            let pa = ar(&union_ex(&painted));
+            let aa = ar(&union_ex(&all));
+            if aa > 0.0 && (aa - pa) / aa > 0.01 {
+                gaps += 1;
+            }
+        }
+        eprintln!("POSTTILING layers_with_gap_over_1pct={gaps}");
     }
 
     Ok(Arc::new(working))
