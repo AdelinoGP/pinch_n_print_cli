@@ -843,8 +843,7 @@ fn cube_4color_first_layer_perimeter_colour_matches_bottom_face() {
         !only_green,
         "AC-G3: first layer (Z={}) material-tool set is {{ToolIndex(1)}} (green only), \
          indicating bottom-face projection did not reach layer 0. Got: {:?}.",
-        first_layer.z,
-        tools
+        first_layer.z, tools
     );
 }
 
@@ -896,5 +895,80 @@ fn cube_4color_back_face_uniform_requires_vertical_face_projection() {
         "RED: back face should be uniformly ToolIndex(2)=blue (no bleed). \
          Got back-face covering region tools: {back_face_tools:?}.\n\
          Gap: vertical face projection must confine ToolIndex(2) to the back face.",
+    );
+}
+
+/// Regression for commit e1fb1781: the bottom-shell SOLID INFILL must be coloured by
+/// the BOTTOM-FACE tools (blue=2 painted, orange=0 = the unpainted half's base
+/// extruder), NOT by the vertical SIDE-FACE tools (green=1, red=3).
+///
+/// The Phase-6/7 merge previously harvested top/bottom solid fill only from the BASE
+/// region, but the pre-Phase-6 step distributes that fill to the per-colour side-face
+/// regions. So the top/bottom-face projection took over only the WALLS while the
+/// INFILL stayed side-coloured (bottom-layer infill green/red, top-surface ironing
+/// following the wrong colour). The fix harvests solid fill from EVERY overlapping
+/// region. This test seeds a full-area `bottom_solid_fill` (the minimal harness does
+/// not run ShellClassification) and asserts the face colours own it after Phase 6.
+#[test]
+fn cube_4color_bottom_shell_infill_uses_bottom_face_colour_regression() {
+    let mesh = load_cube_4color();
+    let object_id = mesh.objects[0].id.clone();
+    let object_mesh = mesh.objects[0].mesh.clone();
+    let lp = build_50_layer_plan(&object_id);
+
+    let mut initial = build_initial_slice_ir(&object_id, &object_mesh, &lp);
+    // Bottom (contact) layer = lowest z; seed its solid bottom shell.
+    let bottom_idx = initial
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.z.partial_cmp(&b.z).unwrap())
+        .map(|(i, _)| i)
+        .expect("must have layers");
+    for r in &mut initial[bottom_idx].regions {
+        r.bottom_solid_fill = r.polygons.clone();
+    }
+
+    let region_map = build_region_map(&object_id, LAYER_COUNT);
+    let out = execute_paint_segmentation(Arc::new(mesh), Arc::new(initial), region_map)
+        .expect("execute_paint_segmentation must succeed");
+
+    fn fill_area(polys: &[slicer_ir::ExPolygon]) -> f64 {
+        let mut a = 0.0_f64;
+        for ep in polys {
+            let p = &ep.contour.points;
+            if p.len() >= 3 {
+                let mut acc = 0i128;
+                for i in 0..p.len() {
+                    let j = (i + 1) % p.len();
+                    acc += (p[i].x as i128) * (p[j].y as i128) - (p[j].x as i128) * (p[i].y as i128);
+                }
+                a += (acc as f64).abs() * 0.5;
+            }
+        }
+        a
+    }
+
+    let mut per_tool: std::collections::BTreeMap<u32, f64> = std::collections::BTreeMap::new();
+    for r in &out[bottom_idx].regions {
+        let tool = r.variant_chain.iter().find_map(|(n, v)| match (n.as_str(), v) {
+            ("material", PaintValue::ToolIndex(t)) => Some(*t),
+            _ => None,
+        });
+        if let Some(t) = tool {
+            *per_tool.entry(t).or_default() += fill_area(&r.bottom_solid_fill);
+        }
+    }
+
+    let face = per_tool.get(&0).copied().unwrap_or(0.0) + per_tool.get(&2).copied().unwrap_or(0.0);
+    let side = per_tool.get(&1).copied().unwrap_or(0.0) + per_tool.get(&3).copied().unwrap_or(0.0);
+    assert!(
+        face > 1.0e9,
+        "bottom-face colours (orange=0 base / blue=2) must own the bottom-shell solid \
+         infill; got per_tool={per_tool:?}"
+    );
+    assert!(
+        side < face * 0.01,
+        "REGRESSION e1fb1781: side-face colours (green=1, red=3) must NOT colour the \
+         bottom-shell solid infill. side={side:.0} face={face:.0} per_tool={per_tool:?}"
     );
 }
