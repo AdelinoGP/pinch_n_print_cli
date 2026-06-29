@@ -1667,6 +1667,7 @@ fn wedge_user_top_shell_layers_propagates_through_binary() {
     let gcode1 = outcome1.gcode.as_str();
     let top1 = gcode1.matches(";TYPE:Top surface").count();
     let bot1 = gcode1.matches(";TYPE:Bottom surface").count();
+    let isi1 = gcode1.matches(";TYPE:Internal solid infill").count();
 
     // --- Run 2: N=4 ---
     // Shared combined-feature config (top/bottom_shell_layers=4). Reusing
@@ -1696,25 +1697,34 @@ fn wedge_user_top_shell_layers_propagates_through_binary() {
     let gcode4 = outcome4.gcode.as_str();
     let top4 = gcode4.matches(";TYPE:Top surface").count();
     let bot4 = gcode4.matches(";TYPE:Bottom surface").count();
+    let isi4 = gcode4.matches(";TYPE:Internal solid infill").count();
 
     // AC-5 propagation witness. With fe6ca6d's PrePass shell classifier,
-    // `top_shell_layers = N` projects the depth-0 shell backward by `N âˆ’ 1`
+    // `top_shell_layers = N` projects the depth-0 shell backward by `N - 1`
     // layers via shrinking-shadow intersection (same for bottom_shell_layers
     // walking forward). Because rectilinear-infill applies a "bottom wins on
-    // overlap" tie-break (PrintObject.cpp:detect_surfaces_type parity â€” see
+    // overlap" tie-break (PrintObject.cpp:detect_surfaces_type parity - see
     // modules/.../rectilinear-infill/src/lib.rs and the DEVIATION_LOG entry),
     // layers that fall inside BOTH a top shell zone and a bottom shell zone
     // get tagged as `Bottom surface` rather than `Top surface`. Increasing
     // N therefore can redistribute counts between the two tags without
-    // strictly increasing either alone â€” but the combined coverage grows.
-    // The right invariant is on the SUM: total solid-surface blocks
-    // (top + bottom) must grow strictly with the shell window.
-    let combined1 = top1 + bot1;
-    let combined4 = top4 + bot4;
+    // strictly increasing either alone - but the combined coverage grows.
+    //
+    // Packet 126 (G4, commit 17bb59bd) added `ExtrusionRole::InternalSolidInfill`
+    // and reclassifies the depth>=1 shell layers (everything below the depth-0
+    // exposed face) from `Top surface`/`Bottom surface` to `Internal solid
+    // infill` - OrcaSlicer parity, those layers are solid but not the exposed
+    // surface. The propagation witness therefore counts ALL solid-shell block
+    // types (top + bottom + internal solid infill); the depth-0 surface tags
+    // alone no longer grow with N because the extra shells land in the new tag.
+    // The right invariant is on the SUM: total solid-shell blocks must grow
+    // strictly with the shell window.
+    let combined1 = top1 + bot1 + isi1;
+    let combined4 = top4 + bot4 + isi4;
     assert!(
         combined4 > combined1,
-        "AC-5 FAILED: N=4 combined top+bottom surface block count ({combined4}) must exceed N=1 ({combined1}). \
-         Breakdown: N=1 top={top1} bot={bot1}; N=4 top={top4} bot={bot4}. \
+        "AC-5 FAILED: N=4 combined solid-shell block count ({combined4}) must exceed N=1 ({combined1}). \
+         Breakdown: N=1 top={top1} bot={bot1} isi={isi1}; N=4 top={top4} bot={bot4} isi={isi4}. \
          Resolved top_shell_layers / bottom_shell_layers config did not propagate to the PrePass shell classifier."
     );
 }
