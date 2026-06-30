@@ -86,6 +86,20 @@ identity reconstruction, so the question "how does a value cross the
 host/module seam" has one answer rather than several scattered across dispatch
 and host-side code.
 
+### Per-region output origin
+The explicit identity tag a guest attaches to perimeter and infill output pushes
+so the **marshalling boundary** can route each push back to the source **region**.
+Set via the WIT `set-current-origin` method (host `explicit_perimeter_origin`
+field) or the SDK `begin_region` context method. Takes highest precedence in
+the additive `effective_perimeter_origin` chain (explicit → perimeter-region
+touch → slice-region touch), so a guest that calls `begin_region` at the top
+of its `for region in regions` loop tags every wall loop, infill area, seam
+candidate, reordered wall loop, sparse/solid/ironing path with the correct
+region — restoring per-tool sparse-infill distribution on multi-region prints.
+Distinct from the `touch_slice_region` / `touch_perimeter_region` fallback,
+which is defence-in-depth for guests that forget `begin_region` and is the
+only origin source for the support stage (deferred to a sequel packet).
+
 ### Global layer
 One authoritative horizontal slicing plane spanning the whole build and shared
 by every object. The canonical Z list against which all per-object layers are

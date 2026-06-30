@@ -147,6 +147,7 @@ impl LayerModule for GyroidInfill {
         // polygon — zero polygon math, zero per-region role-pick.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             let z = region.z();
 
             // `gate_role` decides ownership (claim) and `role` is the emitted

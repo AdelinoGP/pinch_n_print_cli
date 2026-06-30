@@ -191,6 +191,7 @@ impl LayerModule for ClassicPerimeters {
         let inner_speed_factor = inner_wall_speed / BASE_SPEED;
 
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             if region.polygons().is_empty() {
                 continue;
             }

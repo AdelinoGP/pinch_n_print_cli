@@ -82,6 +82,7 @@ interface ir-handles {
         push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
         push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
         push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
+        set-current-origin: func(object-id: string, region-id: string) -> result<_, string>;
     }
 
     resource perimeter-output-builder {
@@ -90,6 +91,7 @@ interface ir-handles {
         set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
         push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
         push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
+        set-current-origin:      func(object-id: string, region-id: string) -> result<_, string>;
     }
 
     resource slice-postprocess-builder {

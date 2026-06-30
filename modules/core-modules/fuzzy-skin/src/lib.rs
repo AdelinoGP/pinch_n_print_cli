@@ -78,6 +78,7 @@ impl LayerModule for FuzzySkinModule {
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             for (wall_index, wall) in region.wall_loops().iter().enumerate() {
                 // Only perturb outer walls
                 if wall.loop_type != LoopType::Outer {

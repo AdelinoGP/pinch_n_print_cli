@@ -314,6 +314,7 @@ impl LayerModule for TopSurfaceIroning {
         let flow_factor = self.ironing_flow as f32;
 
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             // Self-gate per region: only the topmost exposed surface gets
             // ironed (depth 0). Deeper top-shell layers and the bottom-shell
             // zone are skipped.

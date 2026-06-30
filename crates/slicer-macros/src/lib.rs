@@ -2370,13 +2370,28 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 sdk: &::slicer_sdk::builders::InfillOutputBuilder,
                 wit: &InfillOutputBuilder,
             ) {
-                for p in sdk.sparse_paths() {
+                let sparse = sdk.sparse_paths();
+                let sparse_origins = sdk.sparse_path_origins();
+                for (i, p) in sparse.iter().enumerate() {
+                    if let Some((obj, reg)) = &sparse_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_sparse_path(&__slicer_ir_path_to_wit(p));
                 }
-                for p in sdk.solid_paths() {
+                let solid = sdk.solid_paths();
+                let solid_origins = sdk.solid_path_origins();
+                for (i, p) in solid.iter().enumerate() {
+                    if let Some((obj, reg)) = &solid_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_solid_path(&__slicer_ir_path_to_wit(p));
                 }
-                for p in sdk.ironing_paths() {
+                let ironing = sdk.ironing_paths();
+                let ironing_origins = sdk.ironing_path_origins();
+                for (i, p) in ironing.iter().enumerate() {
+                    if let Some((obj, reg)) = &ironing_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_ironing_path(&__slicer_ir_path_to_wit(p));
                 }
             }
@@ -2385,7 +2400,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 sdk: &::slicer_sdk::builders::PerimeterOutputBuilder,
                 wit: &PerimeterOutputBuilder,
             ) {
-                for w in sdk.wall_loops() {
+                let wall_loops = sdk.wall_loops();
+                let wall_loop_origins = sdk.wall_loop_origins();
+                for (i, w) in wall_loops.iter().enumerate() {
+                    if let Some((obj, reg)) = &wall_loop_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_wall_loop(&__slicer_ir_wallloop_to_wit(w));
                 }
                 // Per-call infill areas: one `set_infill_areas` call from the
@@ -2398,20 +2418,35 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 // accumulation here keeps each call distinct so the
                 // marshal layer can distribute per-origin entries to
                 // per-region PerimeterIR buckets correctly.
-                for call_areas in sdk.infill_areas() {
+                let infill_areas = sdk.infill_areas();
+                let infill_areas_origins = sdk.infill_areas_origins();
+                for (i, call_areas) in infill_areas.iter().enumerate() {
                     let areas: ::std::vec::Vec<WitExPolygon> =
                         call_areas.iter().map(__slicer_ir_expolygon_to_wit).collect();
                     if !areas.is_empty() {
+                        if let Some((obj, reg)) = &infill_areas_origins[i] {
+                            let _ = wit.set_current_origin(obj, &reg.to_string());
+                        }
                         let _ = wit.set_infill_areas(&areas);
                     }
                 }
-                for (pos, score) in sdk.seam_candidates() {
+                let seam_candidates = sdk.seam_candidates();
+                let seam_candidate_origins = sdk.seam_candidate_origins();
+                for (i, (pos, score)) in seam_candidates.iter().enumerate() {
+                    if let Some((obj, reg)) = &seam_candidate_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_seam_candidate(
                         WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: 0.0 },
                         *score,
                     );
                 }
-                for (pos, wall_index, loop_) in sdk.rotated_wall_loops() {
+                let rotated_wall_loops = sdk.rotated_wall_loops();
+                let rotated_wall_loop_origins = sdk.rotated_wall_loop_origins();
+                for (i, (pos, wall_index, loop_)) in rotated_wall_loops.iter().enumerate() {
+                    if let Some((obj, reg)) = &rotated_wall_loop_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
                     let _ = wit.push_reordered_wall_loop(
                         WitPoint3WithWidth {
                             x: pos.x,

@@ -114,6 +114,7 @@ impl LayerModule for LightningInfill {
         // host-partitioned canonical sparse polygon (Q3 contract); see
         // `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             let sparse = region.sparse_infill_area();
             if sparse.is_empty() {
                 continue;

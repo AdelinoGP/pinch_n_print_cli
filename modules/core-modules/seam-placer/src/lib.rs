@@ -217,6 +217,7 @@ impl LayerModule for SeamPlacer {
         // and corrupt the `(object_id, region_id)` pairing in
         // `layer_executor::commit_layer_outputs` for multi-region prints.
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             let wall_loops = region.wall_loops();
             if wall_loops.is_empty() {
                 continue;

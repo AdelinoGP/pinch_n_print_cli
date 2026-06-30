@@ -644,6 +644,15 @@ pub struct HostExecutionContext {
     /// preserve per-region identity (grouping + structured diagnostic on
     /// untagged pushes) rather than silently flattening.
     pub(crate) current_slice_region: Option<OriginId>,
+    /// Highest-precedence explicit perimeter origin, set by the WIT
+    /// `perimeter-output-builder.set-current-origin` method. When set,
+    /// `effective_perimeter_origin` returns this before falling back to
+    /// the `touch_*`-driven `current_perimeter_region` /
+    /// `current_slice_region` chain. The fallback chain STAYS as
+    /// defence-in-depth — guests that do not call `set-current-origin`
+    /// (e.g. legacy guests, or stages where the explicit origin is not
+    /// yet wired) continue to resolve origin via the LIFO `touch_*` path.
+    pub(crate) explicit_perimeter_origin: Option<OriginId>,
 
     /// Layer proposals collected from `push_layer` calls during a prepass
     /// `run-layer-planning` invocation.  Empty for all non-prepass stages.
@@ -810,6 +819,7 @@ impl HostExecutionContextBuilder {
             slice_postprocess_output: SlicePostprocessCollected::default(),
             current_perimeter_region: None,
             current_slice_region: None,
+            explicit_perimeter_origin: None,
             layer_plan_proposals: Vec::new(),
             mesh_analysis_annotations: Vec::new(),
             mesh_analysis_surface_groups: Vec::new(),
@@ -935,8 +945,9 @@ impl HostExecutionContext {
     /// `PerimeterRegionView`, `current_perimeter_region` is set, and the
     /// fallback is a no-op.
     pub(crate) fn effective_perimeter_origin(&self) -> Option<OriginId> {
-        self.current_perimeter_region
+        self.explicit_perimeter_origin
             .clone()
+            .or_else(|| self.current_perimeter_region.clone())
             .or_else(|| self.current_slice_region.clone())
     }
 
@@ -2332,6 +2343,23 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         self.record_write("InfillIR");
         Ok(Ok(()))
     }
+    fn set_current_origin(
+        &mut self,
+        _self_: Resource<InfillOutputBuilderData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        match region_id.parse::<u64>() {
+            Ok(parsed) => {
+                self.explicit_perimeter_origin = Some(OriginId {
+                    object_id,
+                    region_id: parsed,
+                });
+                Ok(Ok(()))
+            }
+            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+        }
+    }
     fn drop(&mut self, rep: Resource<InfillOutputBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
@@ -2433,6 +2461,23 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         self.perimeter_output.rotated_wall_loop_origins.push(origin);
         self.record_write("PerimeterIR.regions.walls");
         Ok(Ok(()))
+    }
+    fn set_current_origin(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        match region_id.parse::<u64>() {
+            Ok(parsed) => {
+                self.explicit_perimeter_origin = Some(OriginId {
+                    object_id,
+                    region_id: parsed,
+                });
+                Ok(Ok(()))
+            }
+            Err(_) => Ok(Err(format!("invalid region-id: {region_id}"))),
+        }
     }
     fn drop(&mut self, rep: Resource<PerimeterOutputBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

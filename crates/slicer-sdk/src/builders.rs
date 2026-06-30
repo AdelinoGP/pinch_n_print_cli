@@ -22,6 +22,19 @@ pub struct InfillOutputBuilder {
     sparse_paths: Vec<ExtrusionPath3D>,
     solid_paths: Vec<ExtrusionPath3D>,
     ironing_paths: Vec<ExtrusionPath3D>,
+    /// Explicit origin set by `begin_region` — the highest-precedence
+    /// origin for per-region infill output pushes. Stored as the SDK
+    /// representation `(String, u64)`; the macro drain forwards it to the
+    /// WIT `set-current-origin` method. `None` means no explicit origin
+    /// has been set for the current region; the host `touch_*` fallback
+    /// chain remains as defence-in-depth.
+    current_origin: Option<(String, u64)>,
+    /// Per-`push_sparse_path` origin tags, parallel to `sparse_paths`.
+    sparse_path_origins: Vec<Option<(String, u64)>>,
+    /// Per-`push_solid_path` origin tags, parallel to `solid_paths`.
+    solid_path_origins: Vec<Option<(String, u64)>>,
+    /// Per-`push_ironing_path` origin tags, parallel to `ironing_paths`.
+    ironing_path_origins: Vec<Option<(String, u64)>>,
 }
 
 impl InfillOutputBuilder {
@@ -31,24 +44,45 @@ impl InfillOutputBuilder {
             sparse_paths: Vec::new(),
             solid_paths: Vec::new(),
             ironing_paths: Vec::new(),
+            current_origin: None,
+            sparse_path_origins: Vec::new(),
+            solid_path_origins: Vec::new(),
+            ironing_path_origins: Vec::new(),
         }
+    }
+
+    /// Set the explicit origin for the region the guest is currently
+    /// iterating. The origin is attached to every subsequent per-item
+    /// infill output push (`push_sparse_path`, `push_solid_path`,
+    /// `push_ironing_path`) as a parallel `*_origins` entry, and is
+    /// forwarded to the host via the WIT `set-current-origin` method by
+    /// the macro drain.
+    ///
+    /// Pure setter — does not return `Result`. Call once per region before
+    /// pushing that region's infill output. The host `touch_*` fallback
+    /// chain remains as defence-in-depth when no explicit origin is set.
+    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+        self.current_origin = Some((object_id.to_string(), region_id));
     }
 
     /// Push a sparse infill path.
     pub fn push_sparse_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.sparse_paths.push(path);
+        self.sparse_path_origins.push(self.current_origin.clone());
         Ok(())
     }
 
     /// Push a solid infill path.
     pub fn push_solid_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.solid_paths.push(path);
+        self.solid_path_origins.push(self.current_origin.clone());
         Ok(())
     }
 
     /// Push an ironing path.
     pub fn push_ironing_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
         self.ironing_paths.push(path);
+        self.ironing_path_origins.push(self.current_origin.clone());
         Ok(())
     }
 
@@ -69,6 +103,24 @@ impl InfillOutputBuilder {
     pub fn ironing_paths(&self) -> &[ExtrusionPath3D] {
         &self.ironing_paths
     }
+
+    /// Per-item origin tags for sparse paths (macro drain only).
+    #[doc(hidden)]
+    pub fn sparse_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.sparse_path_origins
+    }
+
+    /// Per-item origin tags for solid paths (macro drain only).
+    #[doc(hidden)]
+    pub fn solid_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.solid_path_origins
+    }
+
+    /// Per-item origin tags for ironing paths (macro drain only).
+    #[doc(hidden)]
+    pub fn ironing_path_origins(&self) -> &[Option<(String, u64)>] {
+        &self.ironing_path_origins
+    }
 }
 
 impl Default for InfillOutputBuilder {
@@ -83,6 +135,7 @@ impl std::fmt::Debug for InfillOutputBuilder {
             .field("sparse_paths", &self.sparse_paths.len())
             .field("solid_paths", &self.solid_paths.len())
             .field("ironing_paths", &self.ironing_paths.len())
+            .field("current_origin", &self.current_origin)
             .finish()
     }
 }
@@ -133,6 +186,21 @@ pub struct PerimeterOutputBuilder {
     max_infill_areas: Option<usize>,
     max_seam_candidates: Option<usize>,
     max_rotated_wall_loops: Option<usize>,
+    /// Explicit origin set by `begin_region` — the highest-precedence
+    /// origin for per-region perimeter output pushes. Stored as the SDK
+    /// representation `(String, u64)`; the macro drain (Step 3) forwards it
+    /// to the WIT `set-current-origin` method. `None` means no explicit
+    /// origin has been set for the current region; the host `touch_*`
+    /// fallback chain remains as defence-in-depth.
+    current_origin: Option<(String, u64)>,
+    /// Per-`push_wall_loop` origin tags, parallel to `wall_loops`.
+    wall_loop_origins: Vec<Option<(String, u64)>>,
+    /// Per-`set_infill_areas` origin tags, parallel to `infill_areas`.
+    infill_areas_origins: Vec<Option<(String, u64)>>,
+    /// Per-`push_seam_candidate` origin tags, parallel to `seam_candidates`.
+    seam_candidate_origins: Vec<Option<(String, u64)>>,
+    /// Per-`push_reordered_wall_loop` origin tags, parallel to `rotated_wall_loops`.
+    rotated_wall_loop_origins: Vec<Option<(String, u64)>>,
 }
 
 impl PerimeterOutputBuilder {
@@ -148,6 +216,11 @@ impl PerimeterOutputBuilder {
             max_infill_areas: None,
             max_seam_candidates: None,
             max_rotated_wall_loops: None,
+            current_origin: None,
+            wall_loop_origins: Vec::new(),
+            infill_areas_origins: Vec::new(),
+            seam_candidate_origins: Vec::new(),
+            rotated_wall_loop_origins: Vec::new(),
         }
     }
 
@@ -172,7 +245,26 @@ impl PerimeterOutputBuilder {
             max_infill_areas,
             max_seam_candidates,
             max_rotated_wall_loops,
+            current_origin: None,
+            wall_loop_origins: Vec::new(),
+            infill_areas_origins: Vec::new(),
+            seam_candidate_origins: Vec::new(),
+            rotated_wall_loop_origins: Vec::new(),
         }
+    }
+
+    /// Set the explicit origin for the region the guest is currently
+    /// iterating. The origin is attached to every subsequent per-item
+    /// perimeter output push (`push_wall_loop`, `set_infill_areas`,
+    /// `push_seam_candidate`, `push_reordered_wall_loop`) as a parallel
+    /// `*_origins` entry, and is forwarded to the host via the WIT
+    /// `set-current-origin` method by the macro drain (Step 3).
+    ///
+    /// Pure setter — does not return `Result`. Call once per region before
+    /// pushing that region's perimeter output. The host `touch_*` fallback
+    /// chain remains as defence-in-depth when no explicit origin is set.
+    pub fn begin_region(&mut self, object_id: &str, region_id: u64) {
+        self.current_origin = Some((object_id.to_string(), region_id));
     }
 
     /// Push a wall loop.
@@ -183,6 +275,7 @@ impl PerimeterOutputBuilder {
             }
         }
         self.wall_loops.push(loop_);
+        self.wall_loop_origins.push(self.current_origin.clone());
         Ok(())
     }
 
@@ -203,6 +296,7 @@ impl PerimeterOutputBuilder {
             }
         }
         self.infill_areas.push(areas);
+        self.infill_areas_origins.push(self.current_origin.clone());
         Ok(())
     }
 
@@ -216,6 +310,8 @@ impl PerimeterOutputBuilder {
             }
         }
         self.seam_candidates.push((pos, score));
+        self.seam_candidate_origins
+            .push(self.current_origin.clone());
         Ok(())
     }
 
@@ -252,6 +348,8 @@ impl PerimeterOutputBuilder {
             }
         }
         self.rotated_wall_loops.push((pos, wall_index, loop_));
+        self.rotated_wall_loop_origins
+            .push(self.current_origin.clone());
         Ok(())
     }
 
@@ -288,6 +386,36 @@ impl PerimeterOutputBuilder {
     #[doc(hidden)]
     pub fn resolved_seam(&self) -> Option<&SeamPosition> {
         self.resolved_seam.as_ref()
+    }
+
+    /// Get the current explicit region origin (for testing).
+    #[doc(hidden)]
+    pub fn current_origin(&self) -> Option<&(String, u64)> {
+        self.current_origin.as_ref()
+    }
+
+    /// Get the per-`push_wall_loop` origin tags (for testing).
+    #[doc(hidden)]
+    pub fn wall_loop_origins(&self) -> &[Option<(String, u64)>] {
+        &self.wall_loop_origins
+    }
+
+    /// Get the per-`set_infill_areas` origin tags (for testing).
+    #[doc(hidden)]
+    pub fn infill_areas_origins(&self) -> &[Option<(String, u64)>] {
+        &self.infill_areas_origins
+    }
+
+    /// Get the per-`push_seam_candidate` origin tags (for testing).
+    #[doc(hidden)]
+    pub fn seam_candidate_origins(&self) -> &[Option<(String, u64)>] {
+        &self.seam_candidate_origins
+    }
+
+    /// Get the per-`push_reordered_wall_loop` origin tags (for testing).
+    #[doc(hidden)]
+    pub fn rotated_wall_loop_origins(&self) -> &[Option<(String, u64)>] {
+        &self.rotated_wall_loop_origins
     }
 }
 

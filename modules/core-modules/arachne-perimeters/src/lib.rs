@@ -197,6 +197,7 @@ impl LayerModule for ArachnePerimeters {
         // traces its own outer+inner walls independently. No union-trace over a shared
         // external contour — that was the old AC-22b approach and is now removed.
         for region in regions {
+            output.begin_region(region.object_id(), *region.region_id());
             if region.polygons().is_empty() {
                 continue;
             }

@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 127_sdk_wit_origin_propagation
 task_ids:
   - TASK-252
@@ -93,3 +93,10 @@ This packet was generated against the context-discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- [AC-1, §Acceptance Criteria] — Specified: T1 >= 1000 AND T3 <= 1500 per-tool sparse-infill segment count | Implemented: NOT verified — absolute thresholds blocked on a separate pre-existing infill-generation bug (multiple infill patterns running concurrently, ~9-12x move-count inflation); origin mechanism verified working (T1: 30→14906) | Reason: user confirmed infill-generation bug is out of scope, addressing in another session.
+- [AC-3, §Acceptance Criteria] — Specified: test asserts (a) all four tools in sparse infill, (b) T1 >= 1000, (c) T3 <= 1500 | Implemented: test asserts only (a); (b) and (c) omitted | Reason: absolute thresholds blocked on the infill-generation bug (same as AC-1).
+- [Scope, §Scope Boundaries + requirements.md §Out of Scope] — Specified: infill stage deferred to a sequel packet | Implemented: infill stage origin propagation implemented in this session (WIT `set-current-origin` on `infill-output-builder`, SDK `InfillOutputBuilder.begin_region`, host `set_current_origin` on `HostInfillOutputBuilder`, macro `__slicer_drain_infill` forwarding, `begin_region` in top-surface-ironing + rectilinear-infill + gyroid-infill + lightning-infill) | Reason: user asked to fold it into the same session.
+- [Docs, CONTEXT.md §Per-region output origin] — Specified: "infill and support stages (deferred to sequel packets)" | Implemented: term updated to mention infill output pushes; only support stage now deferred | Reason: term was written for perimeter-only scope, corrected after the infill extension was folded in.
