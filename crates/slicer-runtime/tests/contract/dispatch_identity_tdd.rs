@@ -473,8 +473,16 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
             }],
         }],
         wall_loop_origins: vec![None],
+        // Force "any_tagged" by including a tagged entry (the empty Vec is
+        // filtered out by the per-origin drain, but the origin tag in the
+        // parallel `infill_areas_origins` vector still flips `any_tagged` so
+        // the identity-preserving path is exercised; the untagged wall_loop
+        // then fails).
         infill_areas: Vec::new(),
-        infill_areas_origin: None,
+        infill_areas_origins: vec![Some(OriginId {
+            object_id: "dummy".into(),
+            region_id: 0,
+        })],
         rotated_wall_loops: Vec::new(),
         rotated_wall_loop_origins: Vec::new(),
         seam_candidates: Vec::new(),
@@ -482,13 +490,6 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
         resolved_seam: None,
         resolved_seam_origin: None,
     };
-    // Force "any_tagged" by setting a dummy infill_areas_origin so the
-    // identity-preserving path is taken; then the untagged wall_loop fails.
-    let mut output = output;
-    output.infill_areas_origin = Some(OriginId {
-        object_id: "dummy".into(),
-        region_id: 0,
-    });
     let result = convert_perimeter_output(&output, 0);
     assert!(result.is_err(), "untagged push in identity mode must fail");
     let msg = result.unwrap_err();

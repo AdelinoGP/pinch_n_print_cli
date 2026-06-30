@@ -285,7 +285,11 @@ fn infill_areas_set() {
         "10mm square with 2 walls should have infill area"
     );
 
-    let infill_area: f64 = infill.iter().map(|p| polygon_area_mm(&p.contour)).sum();
+    let infill_area: f64 = infill
+        .iter()
+        .flat_map(|call| call.iter())
+        .map(|p| polygon_area_mm(&p.contour))
+        .sum();
     assert!(infill_area > 0.0, "Infill area should be positive");
     assert!(
         infill_area < 100.0,

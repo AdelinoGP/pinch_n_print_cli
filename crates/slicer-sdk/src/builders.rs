@@ -116,7 +116,15 @@ impl std::fmt::Debug for InfillOutputBuilder {
 /// second line for structural correctness.
 pub struct PerimeterOutputBuilder {
     wall_loops: Vec<WallLoop>,
-    infill_areas: Vec<ExPolygon>,
+    /// Per-call infill areas (one entry per `set_infill_areas` call).
+    /// Pre-fix this was a single `Vec<ExPolygon>` that got REPLACED on
+    /// every call, which collapsed multi-region infill to a single marshal
+    /// bucket — the "missing infill across internal painted regions"
+    /// symptom on `resources/cube_4color.3mf`. Per-call accumulation is
+    /// the SDK-side half of the marshal fix; the marshal layer
+    /// (`marshal/out.rs`) drains one entry per call into the matching
+    /// origin bucket.
+    infill_areas: Vec<Vec<ExPolygon>>,
     seam_candidates: Vec<(Point3, f32)>,
     resolved_seam: Option<SeamPosition>,
     /// Rotated wall loops with seam at points[0], set by seam-placer.
@@ -178,14 +186,23 @@ impl PerimeterOutputBuilder {
         Ok(())
     }
 
-    /// Set the infill areas.
+    /// Append infill areas (per-call accumulation).
+    ///
+    /// Pre-fix this method REPLACED `self.infill_areas`, which meant a
+    /// perimeters guest that called `set_infill_areas` once per region
+    /// (the painted-slice / multi-region case) silently lost every region
+    /// except the LAST in dispatch order — producing the visible "missing
+    /// infill across internal painted regions" symptom on
+    /// `resources/cube_4color.3mf`. The marshal layer (`marshal/out.rs`)
+    /// now drains one entry per call into the matching origin bucket, so
+    /// per-region infill areas survive the round trip end-to-end.
     pub fn set_infill_areas(&mut self, areas: Vec<ExPolygon>) -> Result<(), String> {
         if let Some(limit) = self.max_infill_areas {
             if areas.len() > limit {
                 return Err(format!("builder at capacity: infill_areas (limit={limit})"));
             }
         }
-        self.infill_areas = areas;
+        self.infill_areas.push(areas);
         Ok(())
     }
 
@@ -251,8 +268,13 @@ impl PerimeterOutputBuilder {
     }
 
     /// Get the infill areas (for testing).
+    ///
+    /// Returns one slice per `set_infill_areas` call (a slice-of-slices).
+    /// Pre-fix this returned a single `&[ExPolygon]` (the union/flatten of
+    /// all per-call entries), which masked the per-region structure that
+    /// the host marshal layer relies on for correct bucketing.
     #[doc(hidden)]
-    pub fn infill_areas(&self) -> &[ExPolygon] {
+    pub fn infill_areas(&self) -> &[Vec<ExPolygon>] {
         &self.infill_areas
     }
 

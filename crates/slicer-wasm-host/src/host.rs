@@ -2355,7 +2355,16 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         self.record_write("PerimeterIR.regions.walls");
         Ok(Ok(()))
     }
-    /// Sets infill areas for this perimeter output builder.
+    /// Set infill areas for this perimeter output builder, accumulating
+    /// per-origin entries (one `set_infill_areas` call → one entry in
+    /// `infill_areas` paired with one entry in `infill_areas_origins`).
+    ///
+    /// Pre-fix this method REPLACED a single `Vec<ExPolygon>`, which meant
+    /// every perimeters guest that called `set_infill_areas` more than once
+    /// per dispatch (the painted-slice / multi-region case) silently lost
+    /// every region except the LAST in dispatch order — producing the
+    /// "missing infill across internal painted regions" symptom on
+    /// `resources/cube_4color.3mf`.
     ///
     /// No Z envelope check is needed here — `ExPolygon` carries no Z coordinate.
     /// Z validation for infill paths is performed in `push_sparse_path` and
@@ -2365,8 +2374,9 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         _self_: Resource<PerimeterOutputBuilderData>,
         areas: Vec<ExPolygon>,
     ) -> wasmtime::Result<Result<(), String>> {
-        self.perimeter_output.infill_areas = areas;
-        self.perimeter_output.infill_areas_origin = self.effective_perimeter_origin();
+        let origin = self.effective_perimeter_origin();
+        self.perimeter_output.infill_areas.push(areas);
+        self.perimeter_output.infill_areas_origins.push(origin);
         Ok(Ok(()))
     }
     fn push_seam_candidate(

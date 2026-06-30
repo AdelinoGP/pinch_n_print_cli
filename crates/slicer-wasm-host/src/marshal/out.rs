@@ -296,7 +296,11 @@ pub fn convert_perimeter_output(
             (original, collected.wall_loop_origins.clone())
         };
 
-    let infill_areas = wit_to_ir_expolygons(&collected.infill_areas);
+    let infill_areas_per_call: Vec<Vec<slicer_ir::ExPolygon>> = collected
+        .infill_areas
+        .iter()
+        .map(|areas| wit_to_ir_expolygons(areas))
+        .collect();
 
     let seam_candidates: Vec<slicer_ir::SeamCandidate> = collected
         .seam_candidates
@@ -350,7 +354,7 @@ pub fn convert_perimeter_output(
 
     let any_tagged = wall_origins.iter().any(Option::is_some)
         || collected.seam_candidate_origins.iter().any(Option::is_some)
-        || collected.infill_areas_origin.is_some();
+        || collected.infill_areas_origins.iter().any(Option::is_some);
 
     fn mint_perimeter_region(o: &OriginId) -> slicer_ir::PerimeterRegion {
         slicer_ir::PerimeterRegion {
@@ -380,20 +384,35 @@ pub fn convert_perimeter_output(
         )
         .map_err(|e| perimeter_untagged_msg(e, "seam_candidate"))?;
 
-    // Infill areas: single-item drain (at most one set-infill-areas call per
-    // dispatch, recorded as a single Option<OriginId>).
-    if !infill_areas.is_empty() {
-        let ia_origins: Vec<Option<OriginId>> = vec![collected.infill_areas_origin.clone()];
+    // Infill areas: per-origin drain (one entry per set_infill_areas call,
+    // each paired with its own origin tag). Mirrors the wall_loops drain above;
+    // every distinct (object_id, region_id) the guest touched gets its own
+    // PerimeterRegion with the infill areas it emitted. Pre-fix this was a
+    // single-item drain, so every perimeters guest that called
+    // set_infill_areas more than once per dispatch (the painted-slice /
+    // multi-region case) silently lost every region except the LAST in
+    // dispatch order.
+    let any_infill = infill_areas_per_call.iter().any(|areas| !areas.is_empty());
+    if any_infill {
+        // Filter empty Vec<ExPolygon> entries but keep origin indices
+        // aligned so the OriginBucket grouping matches the guest's
+        // per-call origin tags.
+        let mut payloads: Vec<Vec<slicer_ir::ExPolygon>> = Vec::new();
+        let mut origins: Vec<Option<OriginId>> = Vec::new();
+        for (areas, origin) in infill_areas_per_call
+            .iter()
+            .zip(collected.infill_areas_origins.iter())
+        {
+            if !areas.is_empty() {
+                payloads.push(areas.clone());
+                origins.push(origin.clone());
+            }
+        }
         bucket
-            .drain(
-                "infill_areas",
-                vec![infill_areas],
-                &ia_origins,
-                |r, areas| r.infill_areas = areas,
-            )
-            .map_err(|_| {
-                "set_infill_areas called without an active perimeter source region".to_string()
-            })?;
+            .drain("infill_areas", payloads, &origins, |r, areas| {
+                r.infill_areas = areas
+            })
+            .map_err(|e| perimeter_untagged_msg(e, "infill_areas"))?;
     }
 
     // Resolved seam: inject directly if any bucket exists.

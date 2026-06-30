@@ -181,7 +181,11 @@ fn infill_area_computed() {
 
     // Infill area should be smaller than original polygon
     // Original is 10x10=100mm^2, after 2 walls + half width inset, much smaller
-    let infill_area: f64 = infill.iter().map(|p| polygon_area_mm(&p.contour)).sum();
+    let infill_area: f64 = infill
+        .iter()
+        .flat_map(|call| call.iter())
+        .map(|p| polygon_area_mm(&p.contour))
+        .sum();
     assert!(
         infill_area < 100.0,
         "Infill area ({}) should be smaller than input (100mm^2)",

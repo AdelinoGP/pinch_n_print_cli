@@ -47,8 +47,22 @@ pub struct PerimeterOutputCollected {
     pub rotated_wall_loops: Vec<WallLoopView>,
     /// Origin tags parallel to `rotated_wall_loops`.
     pub rotated_wall_loop_origins: Vec<Option<OriginId>>,
-    /// Infill areas set by the guest.
-    pub infill_areas: Vec<ExPolygon>,
+    /// Infill areas set by the guest, one entry per `set_infill_areas` call.
+    ///
+    /// Each call corresponds to one `(object_id, region_id)` origin — see
+    /// [`PerimeterOutputCollected::infill_areas_origins`]. Parallel to
+    /// `wall_loops` / `wall_loop_origins`.
+    ///
+    /// Was previously a single `Vec<ExPolygon>` + `Option<OriginId>` that got
+    /// REPLACED on every `set_infill_areas` call. That single-shot shape
+    /// caused `convert_perimeter_output` to emit infill for exactly one
+    /// `(object_id, region_id)` bucket — the LAST region's origin in
+    /// dispatch order — and silently dropped infill for every other region.
+    /// Downstream `sync_perimeter_infill_areas_into_slice` then computed
+    /// `sparse_infill_area = []` for those (N-1) regions, producing the
+    /// visible "missing infill across internal painted regions" bug in
+    /// multi-color prints (e.g. `resources/cube_4color.3mf`).
+    pub infill_areas: Vec<Vec<ExPolygon>>,
     /// Seam candidates emitted by the guest.
     pub seam_candidates: Vec<(Point3, f32)>,
     /// Resolved seam position set by the guest (e.g. by seam-placer).
@@ -57,8 +71,8 @@ pub struct PerimeterOutputCollected {
     pub resolved_seam_origin: Option<OriginId>,
     /// Origin tags parallel to `wall_loops`.
     pub wall_loop_origins: Vec<Option<OriginId>>,
-    /// Origin tag for the most recent `set_infill_areas` call.
-    pub infill_areas_origin: Option<OriginId>,
+    /// Origin tags parallel to `infill_areas` (one per `set_infill_areas` call).
+    pub infill_areas_origins: Vec<Option<OriginId>>,
     /// Origin tags parallel to `seam_candidates`.
     pub seam_candidate_origins: Vec<Option<OriginId>>,
 }

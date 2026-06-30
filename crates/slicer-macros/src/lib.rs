@@ -2388,10 +2388,22 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 for w in sdk.wall_loops() {
                     let _ = wit.push_wall_loop(&__slicer_ir_wallloop_to_wit(w));
                 }
-                let areas: ::std::vec::Vec<WitExPolygon> =
-                    sdk.infill_areas().iter().map(__slicer_ir_expolygon_to_wit).collect();
-                if !areas.is_empty() {
-                    let _ = wit.set_infill_areas(&areas);
+                // Per-call infill areas: one `set_infill_areas` call from the
+                // WASM → one `wit.set_infill_areas` here. Each WIT call
+                // captures `effective_perimeter_origin()` (the last touched
+                // slice-region-view's `(object_id, region_id)`) at call time.
+                // When the SDK→WIT drain loses origin info (the
+                // Multi-Region LIFO-touch architectural bug still latent),
+                // every entry collapses to one bucket; the per-call
+                // accumulation here keeps each call distinct so the
+                // marshal layer can distribute per-origin entries to
+                // per-region PerimeterIR buckets correctly.
+                for call_areas in sdk.infill_areas() {
+                    let areas: ::std::vec::Vec<WitExPolygon> =
+                        call_areas.iter().map(__slicer_ir_expolygon_to_wit).collect();
+                    if !areas.is_empty() {
+                        let _ = wit.set_infill_areas(&areas);
+                    }
                 }
                 for (pos, score) in sdk.seam_candidates() {
                     let _ = wit.push_seam_candidate(

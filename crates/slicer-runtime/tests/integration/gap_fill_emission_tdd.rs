@@ -171,20 +171,22 @@ fn gap_fill_emitted_for_narrow_gap() {
     let arm_y_min = mm_to_units(-4.1);
     let arm_y_max = mm_to_units(4.1);
 
-    for area in output.infill_areas() {
-        if area.contour.points.is_empty() {
-            continue;
+    for call_areas in output.infill_areas() {
+        for area in call_areas {
+            if area.contour.points.is_empty() {
+                continue;
+            }
+            let cx: i64 = area.contour.points.iter().map(|p| p.x).sum::<i64>()
+                / area.contour.points.len() as i64;
+            let cy: i64 = area.contour.points.iter().map(|p| p.y).sum::<i64>()
+                / area.contour.points.len() as i64;
+            assert!(
+                !(cx >= arm_x_min && cx <= arm_x_max && cy >= arm_y_min && cy <= arm_y_max),
+                "infill_area centroid ({}, {}) lies inside the arm region — gap was not consumed",
+                cx,
+                cy
+            );
         }
-        let cx: i64 =
-            area.contour.points.iter().map(|p| p.x).sum::<i64>() / area.contour.points.len() as i64;
-        let cy: i64 =
-            area.contour.points.iter().map(|p| p.y).sum::<i64>() / area.contour.points.len() as i64;
-        assert!(
-            !(cx >= arm_x_min && cx <= arm_x_max && cy >= arm_y_min && cy <= arm_y_max),
-            "infill_area centroid ({}, {}) lies inside the arm region — gap was not consumed",
-            cx,
-            cy
-        );
     }
 }
 
