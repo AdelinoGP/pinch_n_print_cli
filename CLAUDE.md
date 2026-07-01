@@ -65,6 +65,20 @@ Default to the narrowest test that proves the change:
 
 When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail` return — never absorb the full output. See `.claude/skills/swarm/SKILL.md` and `.claude/skills/spec-review/SKILL.md` for the dispatch contract.
 
+### Gated test entry point: `cargo xtask test`
+
+`cargo xtask test [ARGS...]` runs `cargo xtask build-guests --check` first (rebuilding if any guest is stale), then execs `cargo test ARGS...` with output tee'd to `target/test-output.log`. It is the **enforced entry point** for any test run that touches guest WASM artifacts — i.e. the two permitted `cargo test --workspace` cases above and any whole-suite / multi-crate run.
+
+`cargo xtask test --summary [ARGS...]` runs the same pipeline but prints a compact LLM-friendly digest (one `test result:` line per test binary, failing-test detail blocks, a final `PASS`/`FAIL` verdict, and the full-output path) instead of streaming every per-test `ok` line. **Prefer `--summary` for agent-driven runs** — it keeps context usage to ~10-50 lines instead of 1000+, with the full output still on disk for `Grep`/`Read` drill-down.
+
+`cargo xtask test --summary-from <FILE>` (or `-` for `target/test-output.log`) re-summarizes an existing log without re-running tests; no freshness gate fires (no test run).
+
+**Rule:** before running `cargo test --workspace` (or any broad test run after stashing working-tree changes to diagnose a regression), you MUST use `cargo xtask test --workspace` instead of bare `cargo test --workspace`. This guarantees the guest-WASM freshness gate fires before the suite; a stale guest is your bug until `--check` proves otherwise (see "Guest WASM Staleness" below).
+
+Narrow runs — single test, one file, one crate — stay on plain `cargo test` directly; the gate is opt-in, not on every invocation.
+
+**Regression-diagnosis workflow (enforced):** when you stash working-tree changes to bisect / diagnose a regression (per `.claude/skills/diagnose/SKILL.md`), the test run after stashing MUST go through `cargo xtask test` so the freshness gate runs against the stashed (baseline) tree, not whatever guest artifacts happen to be on disk. Skipping the gate during a bisect silently attributes stale-guest failures to your stashed code and corrupts the diagnosis.
+
 ### Test output must always tee to `target/test-output.log`
 
 The Bash tool truncates long console output. Re-running a multi-minute test suite just to re-read its summary is the single most expensive agent mistake on this repo. **Every `cargo test` / `cargo nextest` invocation MUST redirect combined output to `target/test-output.log`:**

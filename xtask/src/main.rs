@@ -2,6 +2,7 @@ mod build_guests;
 mod check_deviations;
 mod dist;
 mod gen_config_docs;
+mod test;
 
 use std::env;
 use std::process::ExitCode;
@@ -22,6 +23,18 @@ SUBCOMMANDS:
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
     dist --debug          Same as `dist`, but stages the debug-profile binary.
+    test [ARGS...]        Run `cargo xtask build-guests --check` (rebuild if stale),
+                          then `cargo test ARGS...` with output tee'd to
+                          target/test-output.log. Use for whole-suite /
+                          regression-diagnosis runs. Narrow single-test runs
+                          should still use plain `cargo test` directly.
+    test --summary [ARGS]  Same as `test`, but prints a compact LLM-friendly
+                          digest (summary lines + failure detail + verdict)
+                          instead of streaming every per-test `ok` line.
+                          Full output is still written to the log file.
+    test --summary-from F  Skip the test run; just parse file F (or
+                          target/test-output.log if F is `-`) and print the
+                          digest. No freshness gate (no test run).
 
 OPTIONS:
     -h, --help            Print this message.
@@ -114,6 +127,11 @@ fn main() -> ExitCode {
                     ExitCode::from(2)
                 }
             }
+        }
+        Some("test") => {
+            let ws = build_guests::workspace_root();
+            let passthrough: Vec<String> = args[1..].to_vec();
+            ExitCode::from(test::test_command(&ws, &passthrough) as u8)
         }
         Some(other) => {
             eprintln!("xtask: unknown subcommand '{other}'\n");
