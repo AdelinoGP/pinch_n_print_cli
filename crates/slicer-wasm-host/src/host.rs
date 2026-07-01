@@ -1027,7 +1027,9 @@ impl HostExecutionContext {
     }
 
     /// Look up the held-claim set for a specific region. Returns `&[]` when no
-    /// entry exists (treated as "holds all" by the SDK convention).
+    /// entry exists (the SDK convention is that empty `held_claims` means the
+    /// module holds no fill claims for this region, so emission is suppressed;
+    /// see `slicer-sdk/src/views.rs`).
     pub fn held_claims_for(&self, object_id: &str, region_id: &str) -> &[String] {
         self.held_claims_per_region
             .get(&(object_id.to_string(), region_id.to_string()))

@@ -9,6 +9,7 @@ mod common;
 mod effective_perimeter_origin_integration_tdd;
 mod finalization_role_round_trip_tdd;
 mod host_services_tdd;
+mod infill_holder_resolution_painted_region_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod prepass_output_builder_validation_tdd;
 mod set_current_origin_routes_to_correct_bucket_tdd;

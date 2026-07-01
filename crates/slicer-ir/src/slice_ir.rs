@@ -1177,6 +1177,14 @@ impl Default for RegionMapIR {
 }
 
 impl RegionMapIR {
+    /// Resolves a raw `ConfigId` to its interned `ResolvedConfig`.
+    ///
+    /// Useful when the caller already has the `ConfigId` (e.g. from a
+    /// `RegionPlan`) and does not need the full `RegionKey` lookup.
+    pub fn config_for_raw(&self, id: ConfigId) -> &ResolvedConfig {
+        &self.configs[id.0 as usize]
+    }
+
     /// Resolves a `RegionKey` to its `ResolvedConfig` via the interner.
     /// Panics if the key is unknown or the ConfigId is out of bounds —
     /// both are construction invariants the interner upholds.

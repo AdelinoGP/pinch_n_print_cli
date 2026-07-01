@@ -310,6 +310,19 @@ pub fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolu
     }
 }
 
+/// Extract a `String` from a `String` `ConfigValue`.
+#[doc(hidden)]
+pub fn extract_string(key: &str, value: &ConfigValue) -> Result<String, ConfigResolutionError> {
+    match value {
+        ConfigValue::String(s) => Ok(s.clone()),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "String",
+            actual: variant_name(other),
+        }),
+    }
+}
+
 /// Extract a `Vec<f64>` from a `List(Vec<ConfigValue::Float>)` `ConfigValue`.
 ///
 /// Each element must be a `Float` (or `Int`, coerced to `f64`). Returns
@@ -608,13 +621,13 @@ declare_resolved_config! {
     // Fill-role holders (packet 37). Per-region overrides flow through
     // `RegionMapIR.entries[*].config`, not CLI keys.
     /// Module ID holding `claim:top-fill`.
-    plain                        top_fill_holder: String = String::from("rectilinear-infill");
+    cli "top_fill_holder"          top_fill_holder: String = String::from("rectilinear-infill") => extract_string;
     /// Module ID holding `claim:bottom-fill`.
-    plain                        bottom_fill_holder: String = String::from("rectilinear-infill");
+    cli "bottom_fill_holder"       bottom_fill_holder: String = String::from("rectilinear-infill") => extract_string;
     /// Module ID holding `claim:bridge-fill`.
-    plain                        bridge_fill_holder: String = String::from("rectilinear-infill");
+    cli "bridge_fill_holder"       bridge_fill_holder: String = String::from("rectilinear-infill") => extract_string;
     /// Module ID holding `claim:sparse-fill`.
-    plain                        sparse_fill_holder: String = String::from("rectilinear-infill");
+    cli "sparse_fill_holder"       sparse_fill_holder: String = String::from("rectilinear-infill") => extract_string;
 
     // Precision / resolution
     /// G-code path resolution in mm (OrcaSlicer: gcode_resolution).

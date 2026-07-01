@@ -1635,21 +1635,24 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                     .regions
                     .iter()
                     .map(|region| {
-                        let region_key = slicer_ir::RegionKey {
-                            global_layer_index: layer.index,
-                            object_id: region.object_id.clone(),
-                            region_id: region.region_id,
-                            variant_chain: Vec::new(),
-                        };
+                        // Resolve the per-region config by (layer, object, region)
+                        // ignoring any paint-driven variant_chain entries. The
+                        // fill-role holders are host-resolved and painted variants
+                        // do not introduce separate fill-holder semantics, so the
+                        // base/per-object/per-paint effective config for this
+                        // region is the right authority.
                         let config = input
                             .region_map
                             .as_deref()
                             .and_then(|map| {
-                                if map.entries.contains_key(&region_key) {
-                                    Some(map.config_for(&region_key).clone())
-                                } else {
-                                    None
-                                }
+                                map.entries
+                                    .iter()
+                                    .find(|(key, _)| {
+                                        key.global_layer_index == layer.index
+                                            && key.object_id == region.object_id
+                                            && key.region_id == region.region_id
+                                    })
+                                    .map(|(_, plan)| map.config_for_raw(plan.config).clone())
                             })
                             .unwrap_or_default();
                         let top = config.top_fill_holder.as_str();
