@@ -1254,6 +1254,34 @@ pub fn execute_paint_segmentation(
                             if let Some(template) = working[l].regions.first() {
                                 let object_id = template.object_id.clone();
                                 let region_id = template.region_id;
+                                // Shell-index propagation: the propagation block
+                                // above (the `if !saved_top.is_empty() || ...` arm
+                                // inside the per-layer loop) only stamps
+                                // `top_shell_index` / `bottom_shell_index` on
+                                // regions that already existed when new_regions was
+                                // assembled. A painted colour that has NO region on
+                                // this layer (the `None` branch) gets a fresh
+                                // `..Default::default()` SlicedRegion with
+                                // `top_shell_index = None` — but the harvested
+                                // `top_clip` / `bot_clip` it just received IS a
+                                // top/bottom solid fill, so the region's
+                                // `top_solid_fill` is non-empty while its
+                                // `top_shell_index` is None. Downstream consumers
+                                // (notably the ironing module's gate at
+                                // `top-surface-ironing/src/lib.rs:316-327`,
+                                // which requires `top_shell_index() == Some(0)`)
+                                // skip the region, and the user-visible symptom
+                                // is that one of several painted top colors is
+                                // not ironed on `resources/cube_4color.3mf`.
+                                // Borrow the per-layer shell indices from any
+                                // existing region (they were harmonised by the
+                                // propagation block above) so the new region
+                                // gets the same `top_shell_index` /
+                                // `bottom_shell_index` as its painted siblings.
+                                let new_top_shell_index =
+                                    working[l].regions.iter().find_map(|r| r.top_shell_index);
+                                let new_bottom_shell_index =
+                                    working[l].regions.iter().find_map(|r| r.bottom_shell_index);
                                 working[l].regions.push(slicer_ir::SlicedRegion {
                                     object_id,
                                     region_id,
@@ -1262,6 +1290,8 @@ pub fn execute_paint_segmentation(
                                     segment_annotations: std::collections::HashMap::new(),
                                     top_solid_fill: top_clip,
                                     bottom_solid_fill: bot_clip,
+                                    top_shell_index: new_top_shell_index,
+                                    bottom_shell_index: new_bottom_shell_index,
                                     ..Default::default()
                                 });
                             }
@@ -2328,6 +2358,225 @@ mod driver_v2_tests {
                 .any(|c| *c == &vec![("material".to_string(), PaintValue::ToolIndex(1))]),
             "AC-G8 FAIL: ToolIndex(1) region from stroke is missing; chains = {:?}",
             chains
+        );
+    }
+
+    // ---- AC-Ironing: Phase 6/7 None arm stamps shell indices ------------------
+
+    /// AC-Ironing (packet 128): when `PrePass::PaintSegmentation` runs, its
+    /// Phase 6/7 top/bottom merge sometimes needs to create a NEW
+    /// `SlicedRegion` for a colour that did not exist on this layer yet
+    /// (the `None` arm of the Phase 6/7 merge at
+    /// `crates/slicer-core/src/algos/paint_segmentation/mod.rs:1266`). The
+    /// fresh region receives a harvested `top_solid_fill` from the
+    /// existing BASE region (correct: that is the projected top face
+    /// area) but `..Default::default()` would leave its
+    /// `top_shell_index = None` (wrong: it IS an exposed top surface).
+    /// Downstream surface-treatment stages — the ironing module's gate
+    /// at `modules/core-modules/top-surface-ironing/src/lib.rs:316-327`
+    /// requires `top_shell_index() == Some(0)` — silently skip the
+    /// region. On `resources/cube_4color.3mf` (a 25mm cube with orange
+    /// and red on the top face) the symptom was that only the red
+    /// top-surface colour was ironed, not the orange one.
+    ///
+    /// This test pins the fix: build a minimal two-layer slice where the
+    /// top layer's BASE region has `top_solid_fill` non-empty and
+    /// `top_shell_index = Some(0)` (simulating the post-prepass state the
+    /// production pipeline produces); paint a single material on the top
+    /// face whose colour resolves to `ToolIndex(0)` via the base-extruder
+    /// fallback (AC-G7); run `execute_paint_segmentation`; and assert
+    /// that the newly-created T0 region on the top layer has BOTH
+    /// `top_solid_fill` non-empty (the harvested projection) AND
+    /// `top_shell_index = Some(0)` (the borrowed shell index).
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn phase6_7_none_arm_stamps_shell_index_on_new_region() {
+        // Geometry: a 2x2x2 cube. The TOP face is split into TWO triangles
+        // (the standard triangulation of a 2-triangle quad face). The
+        // FIRST top-face triangle is explicitly painted ToolIndex(1); the
+        // SECOND top-face triangle is unpainted and resolves via the
+        // AC-G7 base-extruder fallback to ToolIndex(0). The 5 other
+        // faces are unpainted and resolve to ToolIndex(0). This mirrors
+        // the cube_4color.3mf pattern where the top face is split between
+        // a painted colour and the unpainted base colour.
+        //
+        // Vertex layout (8 cube corners, CCW from outside):
+        //   0:(0,0,0) 1:(2,0,0) 2:(2,2,0) 3:(0,2,0)  — bottom (z=0)
+        //   4:(0,0,2) 5:(2,0,2) 6:(2,2,2) 7:(0,2,2)  — top    (z=2)
+        // Triangles (12 total, 2 per face, CCW when viewed from outside):
+        //   Bottom (z=0, normal -z):  0,2,1 and 0,3,2
+        //   Top    (z=2, normal +z):  4,5,6 and 4,6,7
+        //   Front  (y=0, normal -y):  0,1,5 and 0,5,4
+        //   Back   (y=2, normal +y):  2,3,7 and 2,7,6
+        //   Left   (x=0, normal -x):  0,4,7 and 0,7,3
+        //   Right  (x=2, normal +x):  1,2,6 and 1,6,5
+        // The painted T1 is triangle index 2 (top, first half). The
+        // unpainted fallback-to-T0 includes triangle 3 (top, second half).
+        let vertices = vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }, // 0
+            Point3 {
+                x: 2.0,
+                y: 0.0,
+                z: 0.0,
+            }, // 1
+            Point3 {
+                x: 2.0,
+                y: 2.0,
+                z: 0.0,
+            }, // 2
+            Point3 {
+                x: 0.0,
+                y: 2.0,
+                z: 0.0,
+            }, // 3
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 2.0,
+            }, // 4
+            Point3 {
+                x: 2.0,
+                y: 0.0,
+                z: 2.0,
+            }, // 5
+            Point3 {
+                x: 2.0,
+                y: 2.0,
+                z: 2.0,
+            }, // 6
+            Point3 {
+                x: 0.0,
+                y: 2.0,
+                z: 2.0,
+            }, // 7
+        ];
+        let indices: Vec<u32> = vec![
+            0, 2, 1, 0, 3, 2, // bottom
+            4, 5, 6, 4, 6, 7, // top
+            0, 1, 5, 0, 5, 4, // front
+            2, 3, 7, 2, 7, 6, // back
+            0, 4, 7, 0, 7, 3, // left
+            1, 2, 6, 1, 6, 5, // right
+        ];
+        let mut facet_values: Vec<Option<PaintValue>> = (0..12).map(|_| None).collect();
+        facet_values[2] = Some(PaintValue::ToolIndex(1)); // First top-face triangle
+                                                          // Triangles 3 (top second half) + 0,1,4..11 (other 5 faces) stay
+                                                          // `None` → base-extruder fallback → ToolIndex(0).
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+        let mut config_data = std::collections::HashMap::new();
+        // Base extruder = 1 → 0-indexed ToolIndex(0). Unpainted facets
+        // must resolve to ToolIndex(0); matches the cube_4color.3mf
+        // fixture where the unpainted half's colour is T0.
+        config_data.insert("extruder".to_string(), ConfigValue::Int(0));
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![ObjectMesh {
+                id: "obj1".to_string(),
+                mesh: IndexedTriangleSet { vertices, indices },
+                transform: identity_transform(),
+                config: ObjectConfig { data: config_data },
+                modifier_volumes: Vec::new(),
+                paint_data: Some(FacetPaintData {
+                    layers: vec![PaintLayer {
+                        semantic: PaintSemantic::Material,
+                        facet_values,
+                        strokes: Vec::new(),
+                    }],
+                }),
+                world_z_extent: None,
+            }],
+            build_volume: default_build_volume(),
+        });
+
+        // --- slice_ir: two layers, with the top layer's BASE region
+        // carrying `top_solid_fill` non-empty AND `top_shell_index = Some(0)`
+        // (mimicking the post-prepass state `PrePass::ShellClassification`
+        // produces in production). The mid layer carries no fill (the
+        // test only needs the top layer to exercise Phase 6/7).
+        let base_polys = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(2.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(2.0),
+                        y: u(2.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(2.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+        let mid_region = SlicedRegion {
+            object_id: "obj1".to_string(),
+            region_id: 0u64,
+            polygons: base_polys.clone(),
+            ..Default::default()
+        };
+        let top_region = SlicedRegion {
+            object_id: "obj1".to_string(),
+            region_id: 0u64,
+            polygons: base_polys.clone(),
+            top_solid_fill: base_polys.clone(),
+            top_shell_index: Some(0),
+            ..Default::default()
+        };
+        let slice = Arc::new(vec![
+            SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: 0,
+                z: 1.0,
+                regions: vec![mid_region],
+            },
+            SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: 1,
+                z: 1.5,
+                regions: vec![top_region],
+            },
+        ]);
+        let rmap = Arc::new(region_map_with_base_entry());
+
+        let result = execute_paint_segmentation(mesh, slice, rmap).expect("paint segmentation");
+        assert_eq!(result.len(), 2);
+
+        // The top layer must contain a ToolIndex(0) region (created by
+        // Phase 6/7 in the `None` arm because ToolIndex(0) had no region
+        // on this layer before). Pre-fix this region's
+        // `top_shell_index = None` (default), causing the ironing
+        // module's gate at `top_shell_index() != Some(0)` to skip it —
+        // and on resources/cube_4color.3mf only one of the two painted
+        // top colors was ironed. The fix borrows `top_shell_index`
+        // from any existing region on the layer, so the new T0 region
+        // has `top_shell_index = Some(0)` (matching the BASE's stamp
+        // from the propagation block).
+        let top_layer = &result[1];
+        let t0_region = top_layer
+            .regions
+            .iter()
+            .find(|r| r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(0))])
+            .expect("paint segmentation must create a ToolIndex(0) region on the top layer");
+        assert_eq!(
+            t0_region.top_shell_index,
+            Some(0),
+            "ToolIndex(0) region must inherit top_shell_index from the per-layer shell \
+             index harmonised by the propagation block. Pre-fix this was None (default), \
+             causing the ironing module's gate at top_shell_index() != Some(0) to skip \
+             the region and the user-visible symptom of one of two painted top colors \
+             not being ironed on resources/cube_4color.3mf."
         );
     }
 }

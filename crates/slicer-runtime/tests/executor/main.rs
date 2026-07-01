@@ -66,6 +66,7 @@ mod common;
 
 mod apply_commit_regression_tdd;
 mod cube_4color_gcode_output_tdd;
+mod cube_4color_ironing_per_painted_top_color_tdd;
 mod cube_4color_paint_tdd;
 mod cube_4color_phase5_tdd;
 mod cube_4color_sparse_infill_per_painted_region_tdd;
