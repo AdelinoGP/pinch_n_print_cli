@@ -142,6 +142,52 @@ silent continuation past the failure.
 ### Shell depth
 Depth, in layers, of a region within its owning object's top or bottom shell zone. `0` = exposed surface; `None` = outside any shell zone of that object. A property of a region of an object, computed per-object — not shared across objects on a layer.
 
+### Infill
+The sparse or solid extrusion paths filling the interior of a region's
+wall-inset polygon. Produced by `Layer::Infill` modules (raw segments) and
+connected by the `Layer::InfillPostProcess` linker (see Infill linker). Divided
+into four roles — sparse, top-solid, bottom-solid, bridge — each carried by a
+pre-partitioned polygon (`sparse_infill_area`, `top_solid_fill`,
+`bottom_solid_fill`, `bridge_areas`) produced by the host at
+`Layer::Perimeters` commit with precedence `bridge > bottom > top > sparse`.
+
+### Fill holder
+The module currently configured to produce extrusions for one of the four
+infill roles on a region. Selected per-role via `top_fill_holder` /
+`bottom_fill_holder` / `bridge_fill_holder` / `sparse_fill_holder` (default
+`"rectilinear-infill"`). Distinct from a **declared claim**: a module may
+declare a claim it never holds (out-prioritized by another holder), and may
+contain emission code for a role it neither declares nor holds (dead until the
+manifest adds the claim). The `should_emit(role)` gate keys on the *held* set,
+not the *declared* set.
+
+### Declared claim vs held claim
+A **declared claim** is a capability slot a module's manifest says it *can*
+hold. A **held claim** is what the host dispatcher resolves that module to
+actually hold for a given `(layer, object, region)` triple at runtime. Code
+branching on `should_emit(role)` is gated by the *held* set, so a module
+emitting code for a role it doesn't declare is dead code, not a user option —
+until the manifest adds the claim and the user configures the module as the
+holder.
+
+### Infill linker
+The single `Layer::InfillPostProcess` module that connects raw infill segments
+(emitted by all `Layer::Infill` modules) into continuous multi-point polylines,
+across region and module boundaries, applying the infill overlap offset and
+re-clipping against the partitioned fill polygons. Required infrastructure in
+the default dispatch graph — without it, infill is raw disjoint segments with
+maximum travel. Distinct from `Layer::PathOptimization`, which sorts
+already-linked whole entities but does not connect endpoints. Diverges from
+OrcaSlicer, which links inside each fill class. See ADR-0025.
+
+### Infill overlap
+The lateral inset applied to infill scan lines so they overlap the perimeter
+walls, ensuring adhesion and avoiding gaps at the wall/infill boundary. In
+PnP, applied by the infill linker module (not the infill module or the host
+partition) as a Clipper2 offset on the wall-inset polygon before re-clipping
+raw segments. OrcaSlicer applies it inside the fill class. PnP centralizes it
+in the linker so infill modules emit geometry only.
+
 ## Flagged ambiguities
 
 ### "region"
