@@ -884,19 +884,38 @@ pub fn execute_paint_segmentation(
             // that region's own polygon area so each per-color cell gets exactly
             // its share (mirrors region_partition::sync_perimeter_infill_areas_into_slice,
             // which re-clips to perimeter.infill_areas downstream).
+            // INVARIANT: shell depths are per-object; cross-object regions on
+            // a layer are NOT required to agree.  Any new SlicedRegion
+            // construction post-propagation must source its depths from the
+            // per-object accumulator by object_id.  The four Phase 5 sites
+            // at mod.rs:724-802 are pre-propagation and harmonised by this
+            // block.
+            //
+            // INVARIANT: shell-depth propagation is scoped per object.  The
+            // `saved_top_idx` / `saved_bottom_idx` accumulators are keyed by
+            // `object_id`, and each newly-created region receives the shell
+            // index recorded for *its own* object.  Cross-object shell-index
+            // disagreement is legal — different objects may have different
+            // shell thicknesses or different exposure on this layer.
             {
                 use crate::polygon_ops::intersection_ex;
                 let mut saved_top: Vec<slicer_ir::ExPolygon> = Vec::new();
                 let mut saved_bottom: Vec<slicer_ir::ExPolygon> = Vec::new();
                 let mut saved_bridge: Vec<slicer_ir::ExPolygon> = Vec::new();
-                let mut saved_top_idx: Option<u8> = None;
-                let mut saved_bottom_idx: Option<u8> = None;
+                let mut saved_top_idx: std::collections::BTreeMap<slicer_ir::ObjectId, Option<u8>> =
+                    std::collections::BTreeMap::new();
+                let mut saved_bottom_idx: std::collections::BTreeMap<
+                    slicer_ir::ObjectId,
+                    Option<u8>,
+                > = std::collections::BTreeMap::new();
                 for r in &working[i].regions {
                     saved_top.extend(r.top_solid_fill.iter().cloned());
                     saved_bottom.extend(r.bottom_solid_fill.iter().cloned());
                     saved_bridge.extend(r.bridge_areas.iter().cloned());
-                    saved_top_idx = saved_top_idx.or(r.top_shell_index);
-                    saved_bottom_idx = saved_bottom_idx.or(r.bottom_shell_index);
+                    let top_entry = saved_top_idx.entry(r.object_id.clone()).or_insert(None);
+                    *top_entry = top_entry.or(r.top_shell_index);
+                    let bottom_entry = saved_bottom_idx.entry(r.object_id.clone()).or_insert(None);
+                    *bottom_entry = bottom_entry.or(r.bottom_shell_index);
                 }
                 if !saved_top.is_empty() || !saved_bottom.is_empty() || !saved_bridge.is_empty() {
                     for r in &mut new_regions {
@@ -909,8 +928,12 @@ pub fn execute_paint_segmentation(
                         if !saved_bridge.is_empty() {
                             r.bridge_areas = intersection_ex(&saved_bridge, &r.polygons);
                         }
-                        r.top_shell_index = saved_top_idx;
-                        r.bottom_shell_index = saved_bottom_idx;
+                        // Per-object lookup: depth accumulators are keyed by
+                        // `object_id`, so a region receives the shell index from
+                        // its own object only.
+                        r.top_shell_index = saved_top_idx.get(&r.object_id).copied().flatten();
+                        r.bottom_shell_index =
+                            saved_bottom_idx.get(&r.object_id).copied().flatten();
                     }
                 }
             }
@@ -959,16 +982,22 @@ pub fn execute_paint_segmentation(
     #[cfg(feature = "host-algos")]
     {
         use crate::polygon_ops::{difference_ex, intersection_ex, union_ex};
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, BTreeSet};
 
         // Collect distinct (semantic, value) pairs present in the mesh. For
         // each pair build a painted-only IndexedTriangleSet that carries both
         // facet-painted triangles (vertex indices into the object's mesh) AND
         // stroke triangles (whose raw vertex coordinates are appended to the
-        // subset's vertex pool with fresh contiguous indices).
+        // subset's vertex pool with fresh contiguous indices).  Also track the
+        // SET of source object_ids so the Phase 6/7 None arm can stamp the
+        // correct object_id on a newly-created region (packet 128 invariant).
         let mut painted_subsets: BTreeMap<
             (String, slicer_ir::PaintValue),
-            (slicer_ir::PaintSemantic, slicer_ir::IndexedTriangleSet),
+            (
+                slicer_ir::PaintSemantic,
+                slicer_ir::IndexedTriangleSet,
+                BTreeSet<String>,
+            ),
         > = BTreeMap::new();
 
         let sem_name = |s: &slicer_ir::PaintSemantic| -> String {
@@ -1093,13 +1122,14 @@ pub fn execute_paint_segmentation(
                     let key = (sem_name(&layer.semantic), value.clone());
                     let entry = painted_subsets
                         .entry(key)
-                        .or_insert_with(|| (layer.semantic.clone(), new_set()));
+                        .or_insert_with(|| (layer.semantic.clone(), new_set(), BTreeSet::new()));
                     push_tri(
                         &mut entry.1,
                         obj.mesh.vertices[i0],
                         obj.mesh.vertices[i1],
                         obj.mesh.vertices[i2],
                     );
+                    entry.2.insert(obj.id.clone());
                 }
                 // Stroke paint: world-transform each stroke triangle. Strokes carry
                 // their own semantic/value (overriding the layer semantic when they
@@ -1108,10 +1138,11 @@ pub fn execute_paint_segmentation(
                     let key = (sem_name(&stroke.semantic), stroke.value.clone());
                     let entry = painted_subsets
                         .entry(key)
-                        .or_insert_with(|| (stroke.semantic.clone(), new_set()));
+                        .or_insert_with(|| (stroke.semantic.clone(), new_set(), BTreeSet::new()));
                     for tri in &stroke.triangles {
                         push_tri(&mut entry.1, tri[0], tri[1], tri[2]);
                     }
+                    entry.2.insert(obj.id.clone());
                 }
             }
         }
@@ -1164,7 +1195,7 @@ pub fn execute_paint_segmentation(
                 .collect();
 
             // Run Phase 6 for each (semantic, value) and merge into working.
-            for ((sname, value), (semantic, painted_mesh)) in &painted_subsets {
+            for ((sname, value), (semantic, painted_mesh, source_objects)) in &painted_subsets {
                 if painted_mesh.indices.is_empty() {
                     continue;
                 }
@@ -1250,38 +1281,27 @@ pub fn execute_paint_segmentation(
                             }
                         }
                         None => {
-                            // Use first existing region as template for ids.
-                            if let Some(template) = working[l].regions.first() {
-                                let object_id = template.object_id.clone();
-                                let region_id = template.region_id;
-                                // Shell-index propagation: the propagation block
-                                // above (the `if !saved_top.is_empty() || ...` arm
-                                // inside the per-layer loop) only stamps
-                                // `top_shell_index` / `bottom_shell_index` on
-                                // regions that already existed when new_regions was
-                                // assembled. A painted colour that has NO region on
-                                // this layer (the `None` branch) gets a fresh
-                                // `..Default::default()` SlicedRegion with
-                                // `top_shell_index = None` — but the harvested
-                                // `top_clip` / `bot_clip` it just received IS a
-                                // top/bottom solid fill, so the region's
-                                // `top_solid_fill` is non-empty while its
-                                // `top_shell_index` is None. Downstream consumers
-                                // (notably the ironing module's gate at
-                                // `top-surface-ironing/src/lib.rs:316-327`,
-                                // which requires `top_shell_index() == Some(0)`)
-                                // skip the region, and the user-visible symptom
-                                // is that one of several painted top colors is
-                                // not ironed on `resources/cube_4color.3mf`.
-                                // Borrow the per-layer shell indices from any
-                                // existing region (they were harmonised by the
-                                // propagation block above) so the new region
-                                // gets the same `top_shell_index` /
-                                // `bottom_shell_index` as its painted siblings.
-                                let new_top_shell_index =
-                                    working[l].regions.iter().find_map(|r| r.top_shell_index);
-                                let new_bottom_shell_index =
-                                    working[l].regions.iter().find_map(|r| r.bottom_shell_index);
+                            // Source the new region's `object_id` from the painted
+                            // color's owning object (not from
+                            // `working[l].regions.first()` which is layer-global).
+                            // For multi-object prints, the same color painted on
+                            // multiple objects would have multiple source objects;
+                            // BTreeSet yields a deterministic order — pick the
+                            // first. The vast majority of cases have exactly one.
+                            let source_object_id = source_objects.iter().next().cloned();
+                            if let Some(object_id) = source_object_id {
+                                // Find a same-object region on this layer to
+                                // inherit region_id + shell indices; fall back
+                                // to defaults if no same-object region exists.
+                                let same_object_region =
+                                    working[l].regions.iter().find(|r| r.object_id == object_id);
+                                let (region_id, top_shell_index, bottom_shell_index) =
+                                    match same_object_region {
+                                        Some(r) => {
+                                            (r.region_id, r.top_shell_index, r.bottom_shell_index)
+                                        }
+                                        None => (0u64, None, None),
+                                    };
                                 working[l].regions.push(slicer_ir::SlicedRegion {
                                     object_id,
                                     region_id,
@@ -1290,8 +1310,8 @@ pub fn execute_paint_segmentation(
                                     segment_annotations: std::collections::HashMap::new(),
                                     top_solid_fill: top_clip,
                                     bottom_solid_fill: bot_clip,
-                                    top_shell_index: new_top_shell_index,
-                                    bottom_shell_index: new_bottom_shell_index,
+                                    top_shell_index,
+                                    bottom_shell_index,
                                     ..Default::default()
                                 });
                             }
@@ -1329,7 +1349,47 @@ pub fn execute_paint_segmentation(
         });
     }
 
+    #[cfg(debug_assertions)]
+    for s in working.iter() {
+        assert_per_object_shell_index_invariant(s);
+    }
+
     Ok(Arc::new(working))
+}
+
+/// Assert that, within each layer, every `SlicedRegion` belonging to the same
+/// object agrees on `top_shell_index` and `bottom_shell_index`.  Cross-object
+/// disagreement is legal because shell-depth propagation is scoped by
+/// `object_id`.
+#[cfg(debug_assertions)]
+fn assert_per_object_shell_index_invariant(slice: &slicer_ir::SliceIR) {
+    let mut by_object: std::collections::HashMap<&slicer_ir::ObjectId, (Option<u8>, Option<u8>)> =
+        std::collections::HashMap::new();
+    for region in &slice.regions {
+        let entry = by_object.entry(&region.object_id).or_insert((None, None));
+        if let Some(idx) = region.top_shell_index {
+            if let Some(existing) = entry.0 {
+                debug_assert_eq!(
+                    existing, idx,
+                    "layer {}: object {} disagrees on top_shell_index",
+                    slice.global_layer_index, region.object_id
+                );
+            } else {
+                entry.0 = Some(idx);
+            }
+        }
+        if let Some(idx) = region.bottom_shell_index {
+            if let Some(existing) = entry.1 {
+                debug_assert_eq!(
+                    existing, idx,
+                    "layer {}: object {} disagrees on bottom_shell_index",
+                    slice.global_layer_index, region.object_id
+                );
+            } else {
+                entry.1 = Some(idx);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2577,6 +2637,856 @@ mod driver_v2_tests {
              causing the ironing module's gate at top_shell_index() != Some(0) to skip \
              the region and the user-visible symptom of one of two painted top colors \
              not being ironed on resources/cube_4color.3mf."
+        );
+    }
+
+    // ---- AC-Ironing packet 128 Step 2: per-object shell index invariant ----
+
+    /// When Phase 6/7 hoists shell indices it must do so per-object.
+    /// A short object's top layer (object A, region `top_shell_index = Some(0)`)
+    /// must not leak that shell index onto a tall object's region
+    /// (object B, region `top_shell_index = None`) on the same layer.
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn shell_index_invariant_multi_object() {
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+
+        // Shared square polygon, 10 mm × 10 mm, used for both objects.
+        let square_10mm = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(10.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(10.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+
+        // Object A: 10 mm cube. Its top layer is layer 9 (0-indexed), z ≈ 9.5 mm.
+        // Object B: 50 mm cube. It extends far above object A; at layer 9 it is
+        // deep interior, so its region must have `top_shell_index = None`.
+        let region_a_top = SlicedRegion {
+            object_id: "objA".to_string(),
+            region_id: 0u64,
+            polygons: square_10mm.clone(),
+            top_solid_fill: square_10mm.clone(),
+            top_shell_index: Some(0),
+            ..Default::default()
+        };
+        let region_b_interior = SlicedRegion {
+            object_id: "objB".to_string(),
+            region_id: 0u64,
+            polygons: square_10mm.clone(),
+            // No top solid fill and no shell index: this is an interior layer of objB.
+            ..Default::default()
+        };
+
+        // Build a 10-layer slice IR (layers 0..9). At layer 9 object A ends while
+        // object B continues. Earlier layers carry a single combined region just to
+        // keep the fixture minimal; only layer 9 needs the split state.
+        let mut slices: Vec<SliceIR> = (0..9)
+            .map(|i| SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: i as u32,
+                z: i as f32 + 0.5,
+                regions: vec![
+                    SlicedRegion {
+                        object_id: "objA".to_string(),
+                        region_id: 0u64,
+                        polygons: square_10mm.clone(),
+                        ..Default::default()
+                    },
+                    SlicedRegion {
+                        object_id: "objB".to_string(),
+                        region_id: 0u64,
+                        polygons: square_10mm.clone(),
+                        ..Default::default()
+                    },
+                ],
+            })
+            .collect();
+        slices.push(SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 9,
+            z: 9.5,
+            regions: vec![region_a_top.clone(), region_b_interior.clone()],
+        });
+
+        // Mesh: both objects have paint data so the driver does not short-circuit.
+        // We paint one facet of object A with ToolIndex(1) so the kernel creates a
+        // painted variant; the unpainted base falls back to ToolIndex(0) via the
+        // base-extruder config. Object B is fully unpainted (ToolIndex(0) only).
+        let mut config_a = std::collections::HashMap::new();
+        config_a.insert("extruder".to_string(), ConfigValue::Int(0));
+        let mut config_b = std::collections::HashMap::new();
+        config_b.insert("extruder".to_string(), ConfigValue::Int(0));
+
+        let vertices_10 = vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        ];
+        let vertices_50 = vertices_10
+            .iter()
+            .map(|v| Point3 {
+                x: v.x,
+                y: v.y,
+                z: v.z * 5.0,
+            })
+            .collect();
+        let indices: Vec<u32> = vec![
+            0, 2, 1, 0, 3, 2, // bottom
+            4, 5, 6, 4, 6, 7, // top
+            0, 1, 5, 0, 5, 4, // front
+            2, 3, 7, 2, 7, 6, // back
+            0, 4, 7, 0, 7, 3, // left
+            1, 2, 6, 1, 6, 5, // right
+        ];
+
+        let mut facet_values_a: Vec<Option<PaintValue>> = (0..12).map(|_| None).collect();
+        facet_values_a[2] = Some(PaintValue::ToolIndex(1)); // one top-face triangle
+
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![
+                ObjectMesh {
+                    id: "objA".to_string(),
+                    mesh: IndexedTriangleSet {
+                        vertices: vertices_10,
+                        indices: indices.clone(),
+                    },
+                    transform: identity_transform(),
+                    config: ObjectConfig { data: config_a },
+                    modifier_volumes: Vec::new(),
+                    paint_data: Some(FacetPaintData {
+                        layers: vec![PaintLayer {
+                            semantic: PaintSemantic::Material,
+                            facet_values: facet_values_a,
+                            strokes: Vec::new(),
+                        }],
+                    }),
+                    world_z_extent: None,
+                },
+                ObjectMesh {
+                    id: "objB".to_string(),
+                    mesh: IndexedTriangleSet {
+                        vertices: vertices_50,
+                        indices,
+                    },
+                    transform: identity_transform(),
+                    config: ObjectConfig { data: config_b },
+                    modifier_volumes: Vec::new(),
+                    paint_data: Some(FacetPaintData {
+                        layers: vec![PaintLayer {
+                            semantic: PaintSemantic::Material,
+                            facet_values: (0..12).map(|_| None).collect(),
+                            strokes: Vec::new(),
+                        }],
+                    }),
+                    world_z_extent: None,
+                },
+            ],
+            build_volume: default_build_volume(),
+        });
+
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objA".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objA".to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(0))],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objA".to_string(),
+                region_id: 1,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objB".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+        let rmap = Arc::new(RegionMapIR {
+            schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+            entries,
+            configs: vec![slicer_ir::ResolvedConfig::default()],
+        });
+        let result =
+            execute_paint_segmentation(mesh, Arc::new(slices), rmap).expect("paint segmentation");
+
+        // Locate layer 9 and the regions belonging to each object.
+        let layer_9 = result
+            .iter()
+            .find(|s| s.global_layer_index == 9)
+            .expect("layer 9 must exist in result");
+
+        let region_a = layer_9
+            .regions
+            .iter()
+            .find(|r| r.object_id == "objA")
+            .expect("objA region must exist on layer 9");
+        let region_b = layer_9
+            .regions
+            .iter()
+            .find(|r| r.object_id == "objB")
+            .expect("objB region must exist on layer 9");
+
+        assert_eq!(
+            region_a.top_shell_index,
+            Some(0),
+            "objA's top layer must retain top_shell_index = Some(0)"
+        );
+        assert_eq!(
+            region_b.top_shell_index, None,
+            "objB's region at the same layer must NOT inherit objA's top shell index; \
+             expected None, got {:?}",
+            region_b.top_shell_index
+        );
+    }
+
+    // ---- AC-4 packet 128 Step 3: shell index invariant on a 3-colour slice ----
+
+    /// Single-object, three-colour partial paint: every region on every layer must
+    /// share the same `top_shell_index` and `bottom_shell_index`. This is the
+    /// degenerate single-object case of the per-object invariant added in Step 1.
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn shell_index_invariant_multi_color() {
+        // Use the 2x2x2 cube from `phase6_7_none_arm_stamps_shell_index_on_new_region`
+        // but paint both top-face triangles so the top surface is split between two
+        // colours and the unpainted base facets resolve to ToolIndex(0). On the top
+        // layer every colour region must inherit the BASE region's exposed top surface
+        // and therefore the same top_shell_index.
+        let vertices = vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }, // 0
+            Point3 {
+                x: 2.0,
+                y: 0.0,
+                z: 0.0,
+            }, // 1
+            Point3 {
+                x: 2.0,
+                y: 2.0,
+                z: 0.0,
+            }, // 2
+            Point3 {
+                x: 0.0,
+                y: 2.0,
+                z: 0.0,
+            }, // 3
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 2.0,
+            }, // 4
+            Point3 {
+                x: 2.0,
+                y: 0.0,
+                z: 2.0,
+            }, // 5
+            Point3 {
+                x: 2.0,
+                y: 2.0,
+                z: 2.0,
+            }, // 6
+            Point3 {
+                x: 0.0,
+                y: 2.0,
+                z: 2.0,
+            }, // 7
+        ];
+        let indices: Vec<u32> = vec![
+            0, 2, 1, 0, 3, 2, // bottom
+            4, 5, 6, 4, 6, 7, // top
+            0, 1, 5, 0, 5, 4, // front
+            2, 3, 7, 2, 7, 6, // back
+            0, 4, 7, 0, 7, 3, // left
+            1, 2, 6, 1, 6, 5, // right
+        ];
+        let mut facet_values: Vec<Option<PaintValue>> = (0..12).map(|_| None).collect();
+        // Paint both top-face triangles so all top-layer colour regions remain
+        // exposed top surfaces and share the same top_shell_index.
+        facet_values[2] = Some(PaintValue::ToolIndex(1)); // top first half
+        facet_values[3] = Some(PaintValue::ToolIndex(2)); // top second half
+
+        let mut config_data = std::collections::HashMap::new();
+        config_data.insert("extruder".to_string(), ConfigValue::Int(0));
+
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![ObjectMesh {
+                id: "obj1".to_string(),
+                mesh: IndexedTriangleSet { vertices, indices },
+                transform: identity_transform(),
+                config: ObjectConfig { data: config_data },
+                modifier_volumes: Vec::new(),
+                paint_data: Some(FacetPaintData {
+                    layers: vec![PaintLayer {
+                        semantic: PaintSemantic::Material,
+                        facet_values,
+                        strokes: Vec::new(),
+                    }],
+                }),
+                world_z_extent: None,
+            }],
+            build_volume: default_build_volume(),
+        });
+
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+        let base_polys = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(2.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(2.0),
+                        y: u(2.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(2.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+
+        let mid_region = SlicedRegion {
+            object_id: "obj1".to_string(),
+            region_id: 0u64,
+            polygons: base_polys.clone(),
+            ..Default::default()
+        };
+        let top_region = SlicedRegion {
+            object_id: "obj1".to_string(),
+            region_id: 0u64,
+            polygons: base_polys.clone(),
+            top_solid_fill: base_polys.clone(),
+            top_shell_index: Some(0),
+            ..Default::default()
+        };
+
+        let slice = Arc::new(vec![
+            SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: 0,
+                z: 1.0,
+                regions: vec![mid_region],
+            },
+            SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: 1,
+                z: 1.5,
+                regions: vec![top_region],
+            },
+        ]);
+
+        // Region map must know all three painted variant chains plus the BASE chain.
+        let mut entries = std::collections::HashMap::new();
+        for layer_idx in [0u32, 1u32] {
+            for chain in [
+                vec![],
+                vec![("material".to_string(), PaintValue::ToolIndex(0))],
+                vec![("material".to_string(), PaintValue::ToolIndex(1))],
+                vec![("material".to_string(), PaintValue::ToolIndex(2))],
+            ] {
+                entries.insert(
+                    RegionKey {
+                        global_layer_index: layer_idx,
+                        object_id: "obj1".to_string(),
+                        region_id: 0,
+                        variant_chain: chain,
+                    },
+                    RegionPlan::default(),
+                );
+            }
+        }
+        let rmap = Arc::new(RegionMapIR {
+            schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+            entries,
+            configs: vec![slicer_ir::ResolvedConfig::default()],
+        });
+
+        let result = execute_paint_segmentation(mesh, slice, rmap).expect("paint segmentation");
+
+        // The top layer must have been split into at least three colour regions.
+        let top_layer = result
+            .iter()
+            .find(|s| s.global_layer_index == 1)
+            .expect("top layer must exist");
+        assert!(
+            top_layer.regions.len() >= 3,
+            "expected at least 3 colour regions on the top layer, found {}",
+            top_layer.regions.len()
+        );
+
+        // Per-object invariant degenerates to: every region on a layer agrees.
+        for layer in result.iter() {
+            let top_values: std::collections::HashSet<Option<u8>> =
+                layer.regions.iter().map(|r| r.top_shell_index).collect();
+            let bottom_values: std::collections::HashSet<Option<u8>> =
+                layer.regions.iter().map(|r| r.bottom_shell_index).collect();
+            assert_eq!(
+                top_values.len(),
+                1,
+                "layer {}: regions disagree on top_shell_index: {:?}",
+                layer.global_layer_index,
+                top_values
+            );
+            assert_eq!(
+                bottom_values.len(),
+                1,
+                "layer {}: regions disagree on bottom_shell_index: {:?}",
+                layer.global_layer_index,
+                bottom_values
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn shell_index_invariant_assert_fires() {
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+        let square = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(10.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(10.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+
+        let slice = SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.5,
+            regions: vec![
+                SlicedRegion {
+                    object_id: "obj1".to_string(),
+                    region_id: 0,
+                    polygons: square.clone(),
+                    top_shell_index: Some(0),
+                    ..Default::default()
+                },
+                SlicedRegion {
+                    object_id: "obj1".to_string(),
+                    region_id: 1,
+                    polygons: square.clone(),
+                    top_shell_index: Some(2),
+                    ..Default::default()
+                },
+            ],
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_per_object_shell_index_invariant(&slice);
+        }));
+        assert!(
+            result.is_err(),
+            "invariant helper must panic when same-object regions disagree on top_shell_index"
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn shell_index_invariant_cross_object_legal() {
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+        let square = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(10.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(10.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+
+        let slice = SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.5,
+            regions: vec![
+                SlicedRegion {
+                    object_id: "objA".to_string(),
+                    region_id: 0,
+                    polygons: square.clone(),
+                    top_shell_index: Some(0),
+                    ..Default::default()
+                },
+                SlicedRegion {
+                    object_id: "objB".to_string(),
+                    region_id: 0,
+                    polygons: square.clone(),
+                    top_shell_index: None,
+                    ..Default::default()
+                },
+            ],
+        };
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_per_object_shell_index_invariant(&slice);
+        }));
+        assert!(
+            result.is_ok(),
+            "invariant helper must NOT panic when different objects have different top_shell_index"
+        );
+    }
+
+    /// Regression test for the Phase 6/7 None arm: when a painted color has
+    /// NO existing region on a layer, the new region's `object_id` must come
+    /// from the painted color's source object, not from
+    /// `working[l].regions.first()` (which is layer-global and can pick the
+    /// wrong object on a multi-object layer).
+    #[test]
+    #[cfg(feature = "host-algos")]
+    fn shell_index_invariant_none_arm_multi_object() {
+        let u = |mm: f64| -> i64 { (mm * 10_000.0).round() as i64 };
+
+        // Shared square polygon, 10 mm × 10 mm.
+        let square_10mm = vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 {
+                        x: u(0.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(0.0),
+                    },
+                    Point2 {
+                        x: u(10.0),
+                        y: u(10.0),
+                    },
+                    Point2 {
+                        x: u(0.0),
+                        y: u(10.0),
+                    },
+                ],
+            },
+            holes: Vec::new(),
+        }];
+
+        // Object A: 10 mm cube. Object B: 50 mm cube.
+        // Layer 9 is the top layer of objA. objA has a painted ToolIndex(1)
+        // top-face triangle, but objA has ZERO existing regions on layer 9
+        // (the fixture places objA's region only on layers 0..8). objB has
+        // a region on layer 9. The None arm must create the ToolIndex(1)
+        // region with `object_id = "objA"`, not "objB".
+        let region_b = SlicedRegion {
+            object_id: "objB".to_string(),
+            region_id: 0u64,
+            polygons: square_10mm.clone(),
+            ..Default::default()
+        };
+
+        // Build a 10-layer slice IR (layers 0..9). Layers 0..8 carry both
+        // objects. Layer 9 carries ONLY objB (objA has ended).
+        let mut slices: Vec<SliceIR> = (0..9)
+            .map(|i| SliceIR {
+                schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+                global_layer_index: i as u32,
+                z: i as f32 + 0.5,
+                regions: vec![
+                    SlicedRegion {
+                        object_id: "objA".to_string(),
+                        region_id: 0u64,
+                        polygons: square_10mm.clone(),
+                        ..Default::default()
+                    },
+                    SlicedRegion {
+                        object_id: "objB".to_string(),
+                        region_id: 0u64,
+                        polygons: square_10mm.clone(),
+                        ..Default::default()
+                    },
+                ],
+            })
+            .collect();
+        slices.push(SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 9,
+            z: 9.5,
+            // objA has NO region on this layer — the None arm must fire
+            // for objA's painted color and must pick object_id = "objA".
+            regions: vec![region_b.clone()],
+        });
+
+        let mut config_a = std::collections::HashMap::new();
+        config_a.insert("extruder".to_string(), ConfigValue::Int(0));
+        let mut config_b = std::collections::HashMap::new();
+        config_b.insert("extruder".to_string(), ConfigValue::Int(0));
+
+        let vertices_10 = vec![
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        ];
+        let vertices_50 = vertices_10
+            .iter()
+            .map(|v| Point3 {
+                x: v.x,
+                y: v.y,
+                z: v.z * 5.0,
+            })
+            .collect();
+        let indices: Vec<u32> = vec![
+            0, 2, 1, 0, 3, 2, // bottom
+            4, 5, 6, 4, 6, 7, // top
+            0, 1, 5, 0, 5, 4, // front
+            2, 3, 7, 2, 7, 6, // back
+            0, 4, 7, 0, 7, 3, // left
+            1, 2, 6, 1, 6, 5, // right
+        ];
+
+        let mut facet_values_a: Vec<Option<PaintValue>> = (0..12).map(|_| None).collect();
+        facet_values_a[2] = Some(PaintValue::ToolIndex(1)); // one top-face triangle
+
+        let mesh = Arc::new(slicer_ir::MeshIR {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: vec![
+                ObjectMesh {
+                    id: "objA".to_string(),
+                    mesh: IndexedTriangleSet {
+                        vertices: vertices_10,
+                        indices: indices.clone(),
+                    },
+                    transform: identity_transform(),
+                    config: ObjectConfig { data: config_a },
+                    modifier_volumes: Vec::new(),
+                    paint_data: Some(FacetPaintData {
+                        layers: vec![PaintLayer {
+                            semantic: PaintSemantic::Material,
+                            facet_values: facet_values_a,
+                            strokes: Vec::new(),
+                        }],
+                    }),
+                    world_z_extent: None,
+                },
+                ObjectMesh {
+                    id: "objB".to_string(),
+                    mesh: IndexedTriangleSet {
+                        vertices: vertices_50,
+                        indices,
+                    },
+                    transform: identity_transform(),
+                    config: ObjectConfig { data: config_b },
+                    modifier_volumes: Vec::new(),
+                    paint_data: Some(FacetPaintData {
+                        layers: vec![PaintLayer {
+                            semantic: PaintSemantic::Material,
+                            facet_values: (0..12).map(|_| None).collect(),
+                            strokes: Vec::new(),
+                        }],
+                    }),
+                    world_z_extent: None,
+                },
+            ],
+            build_volume: default_build_volume(),
+        });
+
+        let mut entries = std::collections::HashMap::new();
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objA".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objA".to_string(),
+                region_id: 0,
+                variant_chain: vec![("material".to_string(), PaintValue::ToolIndex(1))],
+            },
+            RegionPlan::default(),
+        );
+        entries.insert(
+            RegionKey {
+                global_layer_index: 9,
+                object_id: "objB".to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+        let rmap = Arc::new(RegionMapIR {
+            schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+            entries,
+            configs: vec![slicer_ir::ResolvedConfig::default()],
+        });
+        let result =
+            execute_paint_segmentation(mesh, Arc::new(slices), rmap).expect("paint segmentation");
+
+        // Locate layer 9.
+        let layer_9 = result
+            .iter()
+            .find(|s| s.global_layer_index == 9)
+            .expect("layer 9 must exist in result");
+
+        // Find the ToolIndex(1) region — it was created by the None arm.
+        let t1_region = layer_9
+            .regions
+            .iter()
+            .find(|r| r.variant_chain == vec![("material".to_string(), PaintValue::ToolIndex(1))])
+            .expect("ToolIndex(1) region must exist on layer 9 (created by None arm)");
+
+        // The critical assertion: the new region must belong to objA, not objB.
+        assert_eq!(
+            t1_region.object_id, "objA",
+            "None arm must stamp object_id from the painted color's source object, \
+             not from working[l].regions.first() which is layer-global. \
+             Pre-fix this would have been 'objB' (the only region on layer 9)."
         );
     }
 }

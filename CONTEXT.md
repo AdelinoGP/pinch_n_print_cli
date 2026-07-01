@@ -139,6 +139,9 @@ is usable but flagged as degraded, and every failure is reported — never silen
 A module, contract, or integrity error that aborts the slice immediately. No
 silent continuation past the failure.
 
+### Shell depth
+Depth, in layers, of a region within its owning object's top or bottom shell zone. `0` = exposed surface; `None` = outside any shell zone of that object. A property of a region of an object, computed per-object — not shared across objects on a layer.
+
 ## Flagged ambiguities
 
 ### "region"
