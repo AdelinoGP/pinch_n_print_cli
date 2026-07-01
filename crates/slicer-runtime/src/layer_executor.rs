@@ -416,6 +416,9 @@ fn execute_single_layer_inner(
                 .map(|p| vec![p])
                 .unwrap_or_default();
             let runtime_reads = runner.last_runtime_reads();
+            // Drain module log messages (already forwarded to the log facade
+            // inside the dispatcher; this clears the thread-local stash).
+            let _log_messages = runner.last_log_messages();
             if !writes.is_empty() || !runtime_reads.is_empty() {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),

@@ -37,6 +37,12 @@ thread_local! {
     /// Rayon workers are stable threads, so a thread-local is safe for the
     /// per-layer parallel executor's `run_stage → on_module_end` sequence.
     static LAST_WASM_MEM_SAMPLE: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
+
+    /// Per-worker-thread slot holding the log messages emitted by the most
+    /// recent module invocation on this thread. Each entry is `(level, message)`.
+    /// Read and cleared by `last_log_messages` on the runner traits.
+    static LAST_MODULE_LOG_MESSAGES: std::cell::RefCell<Vec<(String, String)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -951,6 +957,10 @@ impl WasmRuntimeDispatcher {
             ),
         })?;
 
+        // Forward module log messages to the host log facade before the
+        // store (and its HostExecutionContext) is consumed.
+        forward_module_logs(module_id, &store.data().log_messages);
+
         Ok(store.data_mut().drain_finalization_output_builder())
     }
 
@@ -1082,6 +1092,9 @@ impl WasmRuntimeDispatcher {
             own(config_handle),
         );
         let runtime_reads = store.data().runtime_reads.clone();
+        // Forward module log messages to the host log facade before the
+        // store (and its HostExecutionContext) is consumed.
+        forward_module_logs(module_id, &store.data().log_messages);
 
         match call_result {
             Ok(Ok(())) => {
@@ -1228,6 +1241,9 @@ impl WasmRuntimeDispatcher {
 
         let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
         let runtime_reads = store.data().runtime_reads.clone();
+        // Forward module log messages to the host log facade before the
+        // store (and its HostExecutionContext) is consumed.
+        forward_module_logs(module_id, &store.data().log_messages);
 
         match call_result {
             Ok(Ok(result_text)) => (Ok(result_text), runtime_reads),
@@ -1534,6 +1550,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             }
         };
 
+        // Forward module log messages to the host log facade before the ctx
+        // is consumed by the harvest functions below.
+        forward_module_logs(module_id_str, &ctx.log_messages);
+
         // Deconstruct HostExecutionContext → PrepassStageOutput based on stage.
         if stage_id == "PrePass::LayerPlanning" {
             let ir = harvest_layer_plan_ir(stage_id, module_id_str, ctx).map_err(|msg| {
@@ -1585,6 +1605,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         }
 
         Ok(slicer_core::PrepassStageOutput::None)
+    }
+
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
 }
 
@@ -1735,6 +1759,10 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
     fn last_wasm_mem_sample(&self) -> (u64, u64) {
         LAST_WASM_MEM_SAMPLE.with(|c| c.replace((0, 0)))
     }
+
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
 }
 
 impl FinalizationStageRunner for WasmRuntimeDispatcher {
@@ -1770,6 +1798,10 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         };
 
         apply_finalization_pushes(stage_id, module_id_str, pushes, layers)
+    }
+
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
 }
 
@@ -1847,6 +1879,10 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
     fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
         self.postpass_runtime_reads.borrow_mut().drain(..).collect()
     }
+
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
 }
 
 // Safety: WasmRuntimeDispatcher is Sync because WasmEngine (wrapping wasmtime::Engine)
@@ -1902,6 +1938,33 @@ fn derive_layer_output_envelope_from_input(
 
 // ── Layer-context deconstruction (HostExecutionContext → LayerStageCommit) ─────
 
+/// Forward module log messages to the host's `log` facade and stash them
+/// in the thread-local `LAST_MODULE_LOG_MESSAGES` for the `last_log_messages`
+/// accessor. Each message is emitted with target `slicer_module::<module_id>`
+/// so `RUST_LOG` filtering applies per-module.
+pub fn forward_module_logs(module_id: &str, messages: &[(String, String)]) {
+    let target = format!("slicer_module::{module_id}");
+    for (level, msg) in messages {
+        match level.as_str() {
+            "trace" => log::trace!(target: &target, "{}", msg),
+            "debug" => log::debug!(target: &target, "{}", msg),
+            "info" => log::info!(target: &target, "{}", msg),
+            "warn" => log::warn!(target: &target, "{}", msg),
+            "error" => log::error!(target: &target, "{}", msg),
+            _ => log::info!(target: &target, "{}", msg),
+        }
+    }
+    LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().extend(messages.iter().cloned()));
+}
+
+/// Test-only accessor: drain the thread-local log message stash.
+/// Mirrors `WasmRuntimeDispatcher::last_log_messages` but callable without
+/// a dispatcher instance.
+#[doc(hidden)]
+pub fn last_log_messages_for_test() -> Vec<(String, String)> {
+    LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+}
+
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into
 /// the per-stage [`slicer_ir::LayerStageCommit`] the runtime's `apply` consumes
 /// (ADR-0020). Produces only plain IR values — no arena mutations. Returns
@@ -1918,6 +1981,9 @@ fn deconstruct_layer_ctx(
     layer_index: u32,
     ctx: HostExecutionContext,
 ) -> Result<Option<slicer_ir::LayerStageCommit>, slicer_ir::LayerStageError> {
+    // Forward module log messages to the host log facade before the ctx is consumed.
+    forward_module_logs(module_id, &ctx.log_messages);
+
     use slicer_ir::LayerStageCommit;
     let mk_fatal = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
         stage_id: stage_id.to_string(),

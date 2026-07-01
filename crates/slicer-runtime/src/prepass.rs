@@ -230,6 +230,9 @@ pub fn execute_prepass_with_instrumentation(
                 }
             };
             let runtime_reads: Vec<String> = runner.last_runtime_reads();
+            // Drain module log messages (already forwarded to the log facade
+            // inside the dispatcher; this clears the thread-local stash).
+            let _log_messages = runner.last_log_messages();
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);

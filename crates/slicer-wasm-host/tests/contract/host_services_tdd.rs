@@ -274,3 +274,47 @@ fn clip_result_changes_when_clip_polygon_moves() {
         "far clip should produce empty intersection"
     );
 }
+
+// ── G. Module log forwarding ──────────────────────────────────────────────
+
+#[test]
+fn forward_module_logs_stashes_in_thread_local() {
+    use slicer_wasm_host::dispatch::forward_module_logs;
+
+    let messages = vec![
+        ("info".to_string(), "hello from module".to_string()),
+        ("warn".to_string(), "something suspicious".to_string()),
+        ("error".to_string(), "something failed".to_string()),
+    ];
+
+    forward_module_logs("com.core.test-module", &messages);
+
+    // Assert thread-local stash.
+    let stashed = slicer_wasm_host::dispatch::last_log_messages_for_test();
+    assert_eq!(stashed.len(), 3, "should have stashed 3 messages");
+    assert_eq!(
+        stashed[0],
+        ("info".to_string(), "hello from module".to_string())
+    );
+    assert_eq!(
+        stashed[1],
+        ("warn".to_string(), "something suspicious".to_string())
+    );
+    assert_eq!(
+        stashed[2],
+        ("error".to_string(), "something failed".to_string())
+    );
+}
+
+#[test]
+fn forward_module_logs_clears_stash_on_read() {
+    use slicer_wasm_host::dispatch::{forward_module_logs, last_log_messages_for_test};
+
+    forward_module_logs("mod", &[("info".to_string(), "msg".to_string())]);
+
+    let first = last_log_messages_for_test();
+    assert_eq!(first.len(), 1);
+
+    let second = last_log_messages_for_test();
+    assert_eq!(second.len(), 0, "stash should be empty after drain");
+}

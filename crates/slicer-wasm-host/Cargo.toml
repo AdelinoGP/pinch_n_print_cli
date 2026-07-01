@@ -15,6 +15,7 @@ slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
 [dev-dependencies]
+log = "0.4"
 witness = { path = "test-guests/witness" }
 wat = "1.0"
 wit-parser = "0.247"

@@ -123,6 +123,15 @@ conventions:
 Community modules: pick `target: "<module-id>::<component>"` so users
 can filter your output independently.
 
+**WASM module log forwarding.** When a module calls `host::log_*` from
+inside a WASM component, the message is forwarded across the WIT boundary
+to the host's `log` facade with target `slicer_module::<module_id>`.
+This means `RUST_LOG` filtering works per-module — for example,
+`RUST_LOG=slicer_module::com.acme.foo=debug` enables debug-level messages
+from that module while keeping others at their default level. In native
+test mode (no WASM), `host::log_*` writes directly to stderr via the
+SDK's thread-local sink.
+
 ### Misplaced-vs-Legitimately-Located Test Heuristic (Normative — Packet 80)
 
 When migrating module tests between crates, the question is whether a test that imports a module belongs in the module's own crate or in the runtime/host crate. The heuristic:

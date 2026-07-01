@@ -183,6 +183,12 @@ pub fn execute_postpass_with_instrumentation(
                         // Record runtime audit for GCodePostProcess modules.
                         // runtime_reads are drained via take_runtime_reads().
                         let runtime_reads = runner.take_runtime_reads();
+                        // Drain module log messages (already forwarded to the log facade
+                        // inside the dispatcher; this clears the thread-local stash).
+                        let _log_messages = runner.last_log_messages();
+                        // Drain module log messages (already forwarded to the log facade
+                        // inside the dispatcher; this clears the thread-local stash).
+                        let _log_messages = runner.last_log_messages();
                         let reads = runtime_reads.into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {
                             module_id: module.module_id().to_owned(),

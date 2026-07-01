@@ -45,6 +45,13 @@ pub trait LayerStageRunner {
     fn last_runtime_reads(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Returns the log messages emitted by the module during the most recent
+    /// `run_stage` call. Each entry is `(level, message)`. Default returns an
+    /// empty `Vec` for runners that do not capture logs.
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
 }
 
 /// Runner for prepass-stage dispatch (mesh analysis, support geometry, seam planning, etc.).
@@ -61,6 +68,13 @@ pub trait PrepassStageRunner {
     /// `run_stage` call. Used by the executor to populate `ModuleAccessAudit.runtime_reads`.
     /// Default returns an empty `Vec` for runners that do not instrument reads.
     fn last_runtime_reads(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Returns the log messages emitted by the module during the most recent
+    /// `run_stage` call. Each entry is `(level, message)`. Default returns an
+    /// empty `Vec` for runners that do not capture logs.
+    fn last_log_messages(&self) -> Vec<(String, String)> {
         Vec::new()
     }
 }
@@ -90,6 +104,13 @@ pub trait PostpassStageRunner {
     fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
         Vec::new()
     }
+
+    /// Returns the log messages emitted by the module during the most recent
+    /// `run_stage` call. Each entry is `(level, message)`. Default returns an
+    /// empty `Vec` for runners that do not capture logs.
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
 }
 
 /// Runner for finalization-stage dispatch (layer-collection assembly).
@@ -102,4 +123,11 @@ pub trait FinalizationStageRunner {
         input: FinalizationStageInput<'_>,
         layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError>;
+
+    /// Returns the log messages emitted by the module during the most recent
+    /// `run_stage` call. Each entry is `(level, message)`. Default returns an
+    /// empty `Vec` for runners that do not capture logs.
+    fn last_log_messages(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
 }

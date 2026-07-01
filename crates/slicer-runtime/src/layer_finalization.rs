@@ -78,6 +78,9 @@ pub fn execute_layer_finalization_with_instrumentation(
                 _phantom: std::marker::PhantomData,
             };
             let res = runner.run_stage(&stage.stage_id, &live_module, input, layers);
+            // Drain module log messages (already forwarded to the log facade
+            // inside the dispatcher; this clears the thread-local stash).
+            let _log_messages = runner.last_log_messages();
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             res?;
 
