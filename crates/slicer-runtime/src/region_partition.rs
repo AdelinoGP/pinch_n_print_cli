@@ -42,6 +42,19 @@
 //! (`take_slice` / `arena.perimeter()` both `None`) are preserved because
 //! those represent a genuine stage-ordering violation, not a per-region
 //! absence.
+//!
+//! Empty-wall-inset behaviour: a `PerimeterIR` entry whose `infill_areas`
+//! is empty (perimeter stage emitted no infill — thin-walled regions or
+//! painted regions where the perimeters dispatch produced no
+//! `set_infill_areas` call) does NOT collapse `top_solid_fill` /
+//! `bottom_solid_fill` to empty. The intersection with an empty wall inset
+//! would discard the exposed top surface that the shell-classification
+//! step deliberately marked, breaking surface-treatment stages such as
+//! ironing. The fallback preserves the original PrePass fill polygons
+//! (modulo the bridge / bottom precedence zones) for those regions. The
+//! sparse role stays empty by construction (no infill center was produced).
+//! See `cube_4color_ironing_per_painted_top_color_tdd` in
+//! `tests/executor/` for the regression.
 
 use std::collections::HashMap;
 
@@ -133,16 +146,50 @@ pub fn sync_perimeter_infill_areas_into_slice(
         let wall_inset = &perim.infill_areas;
 
         // Precedence: bridge > bottom > top > sparse.
+        //
+        // Edge case (fix): when the perimeter stage produces no infill area
+        // for a region (e.g., a thin-walled region whose inset collapses to
+        // empty, or a region whose perimeter dispatch never reached
+        // `set_infill_areas`), `wall_inset` is the empty set. The naive
+        // `intersection(top_solid_fill, wall_inset)` would wipe
+        // `top_solid_fill` to empty, discarding an exposed top surface that
+        // the shell-classification step deliberately marked. Ironing then
+        // skips the region (gate at
+        // `modules/core-modules/top-surface-ironing/src/lib.rs:316-327`
+        // requires non-empty `top_solid_fill`). The fallback preserves
+        // the original `top_solid_fill` / `bottom_solid_fill` polygons
+        // (minus the bridge / bottom precedence zones) so that
+        // surface-treatment stages still see the exposed top. For the
+        // common case where `wall_inset` is non-empty the precedence path
+        // is unchanged.
+        //
+        // Note (cube_4color diagnostic, 2026-06-30): runtime
+        // instrumentation on `resources/cube_4color.3mf` showed
+        // `wall_inset` is non-empty for the affected region (`rid=0`) at
+        // the top layer, so this fallback branch never fires and the
+        // remaining ironing-on-one-color symptom is rooted upstream of
+        // `region_partition`. The fix is still a defensive correctness
+        // improvement; the cube_4color test in
+        // `cube_4color_ironing_per_painted_top_color_tdd` is a RED gate
+        // tracking the open root cause.
         let bridge = intersection(&slice_region.bridge_areas, wall_inset);
-        let bottom = difference(
-            &intersection(&slice_region.bottom_solid_fill, wall_inset),
-            &bridge,
-        );
+        let bottom = if wall_inset.is_empty() {
+            Vec::new()
+        } else {
+            difference(
+                &intersection(&slice_region.bottom_solid_fill, wall_inset),
+                &bridge,
+            )
+        };
         let bridge_or_bottom = union(&bridge, &bottom);
-        let top = difference(
-            &intersection(&slice_region.top_solid_fill, wall_inset),
-            &bridge_or_bottom,
-        );
+        let top = if wall_inset.is_empty() {
+            difference(&slice_region.top_solid_fill, &bridge_or_bottom)
+        } else {
+            difference(
+                &intersection(&slice_region.top_solid_fill, wall_inset),
+                &bridge_or_bottom,
+            )
+        };
         let bridge_or_bottom_or_top = union(&bridge_or_bottom, &top);
         let sparse = difference(wall_inset, &bridge_or_bottom_or_top);
 

@@ -394,6 +394,58 @@ fn ac5_no_perimeter_entry_leaves_region_polygons_untouched() {
     assert!(b.sparse_infill_area.is_empty());
 }
 
+// ── AC-7: empty wall_inset preserves top/bottom solid fill ───────────────────
+
+/// When the perimeter stage produces no infill area for a region
+/// (thin-walled region, or a region whose perimeter dispatch never
+/// reached `set_infill_areas`), the naive
+/// `intersection(top_solid_fill, wall_inset)` would discard an exposed
+/// top surface that the shell-classification step deliberately marked,
+/// breaking surface-treatment stages such as ironing. The host
+/// partition falls back to the original top/bottom polygons (minus
+/// bridge precedence zones) so those surfaces still flow through to
+/// the infill / ironing stages. The sparse role is empty by
+/// construction (no infill center was produced).
+#[test]
+fn ac7_empty_wall_inset_preserves_top_solid_fill() {
+    let top = square(0.0, 0.0, 10.0, 10.0);
+    let bottom = square(0.0, 0.0, 10.0, 10.0);
+    let bridge = square(0.0, 0.0, 10.0, 10.0);
+    let region_polys = square(0.0, 0.0, 10.0, 10.0);
+
+    let mut slice = empty_slice_ir();
+    let mut sr = sliced_region("obj-1", 0, vec![region_polys]);
+    sr.top_solid_fill = vec![top.clone()];
+    sr.bottom_solid_fill = vec![bottom.clone()];
+    sr.bridge_areas = vec![bridge];
+    slice.regions.push(sr);
+
+    // Empty wall_inset (perimeter stage produced no infill for this region).
+    let mut perim = empty_perimeter_ir();
+    perim.regions.push(perimeter_region("obj-1", 0, Vec::new()));
+
+    let mut arena = arena_with(slice, perim);
+    sync_perimeter_infill_areas_into_slice(&mut arena, 0).expect("partition must not be fatal");
+
+    let r = &arena.slice().expect("slice").regions[0];
+    // top_solid_fill preserved (minus bridge, which is empty here anyway).
+    assert!(
+        approx_eq(ex_area_mm2(&r.top_solid_fill), 100.0, 0.01),
+        "top_solid_fill must be preserved when wall_inset is empty; got {} mm²",
+        ex_area_mm2(&r.top_solid_fill)
+    );
+    // bottom_solid_fill is empty by contract when wall_inset is empty
+    // (bottom role has no precedence over an empty infill center, so it
+    // contributes nothing to the ironing/solid path).
+    assert!(
+        r.bottom_solid_fill.is_empty(),
+        "bottom_solid_fill must be empty when wall_inset is empty; got {} mm²",
+        ex_area_mm2(&r.bottom_solid_fill)
+    );
+    // sparse is empty by construction (no infill center).
+    assert!(r.sparse_infill_area.is_empty());
+}
+
 // ── AC-6: preserves untouched fields ─────────────────────────────────────────
 
 #[test]
