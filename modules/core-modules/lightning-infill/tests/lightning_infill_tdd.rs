@@ -23,13 +23,17 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
     // sparse-fill emission has its canonical polygon (see
     // `crates/slicer-runtime/src/region_partition.rs`).
     let sq = square_polygon(0.0, 0.0, size_mm);
-    SliceRegionViewBuilder::new()
+    let mut region = SliceRegionViewBuilder::new()
         .object_id("obj1")
         .region_id(1)
         .z(z)
         .add_polygon(sq.clone())
         .sparse_infill_area(vec![sq])
-        .build()
+        .build();
+    // Lightning manifest declares only `claim:sparse-fill`; set held_claims
+    // so should_emit gates correctly (empty held_claims = emit nothing).
+    region.set_held_claims(vec!["claim:sparse-fill".into()]);
+    region
 }
 
 /// Test 1: Default config values when no fields provided.

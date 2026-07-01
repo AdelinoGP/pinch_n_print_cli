@@ -19,7 +19,15 @@ fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigV
 #[rustfmt::skip]
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
     let sq = square_polygon(0.0, 0.0, size_mm);
-    SliceRegionViewBuilder::new().object_id("obj1").region_id(1).add_polygon(sq.clone()).add_infill_area(sq.clone()).sparse_infill_area(vec![sq]).effective_layer_height(0.2).z(z).has_nonplanar(false).build()
+    let mut region = SliceRegionViewBuilder::new().object_id("obj1").region_id(1).add_polygon(sq.clone()).add_infill_area(sq.clone()).sparse_infill_area(vec![sq]).effective_layer_height(0.2).z(z).has_nonplanar(false).build();
+    // Rectilinear manifest declares all four fill claims.
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
 }
 
 /// Test 1: 10mm square, density=0.2, line_width=0.4, angle=0.

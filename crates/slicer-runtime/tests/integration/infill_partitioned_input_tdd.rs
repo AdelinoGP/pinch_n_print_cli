@@ -98,7 +98,7 @@ const CONTAIN_EPS_MM: f64 = 0.01;
 /// (`crates/slicer-sdk/src/views.rs`). Kept in lockstep so `held_claims`
 /// fixtures gate exactly the way production dispatch does. The SDK exposes no
 /// public constant for these strings, so this is the single source in the test.
-fn claim_for_role(role: ExtrusionRole) -> &'static str {
+fn claim_for_role(role: &ExtrusionRole) -> &'static str {
     match role {
         ExtrusionRole::SparseInfill => "claim:sparse-fill",
         ExtrusionRole::TopSolidInfill => "claim:top-fill",
@@ -221,14 +221,24 @@ impl FillModule {
     }
 
     /// Roles this module is expected to populate given a non-empty source
-    /// polygon. Lightning declares only `claim:sparse-fill` (packet 37);
-    /// solid/bridge are delegated to sibling modules, so it must emit sparse
-    /// ONLY. Rectilinear and gyroid hold all four fill claims.
+    /// polygon. Rectilinear holds all four fill claims (top, bottom, bridge,
+    /// sparse). Gyroid and lightning declare only `claim:sparse-fill`
+    /// (packet 37); solid/bridge are delegated to sibling modules.
     fn expected_roles(&self) -> &'static [ExtrusionRole] {
         match self {
-            Self::Rectilinear(_) | Self::Gyroid(_) => &ALL_FILL_ROLES,
-            Self::Lightning(_) => &SPARSE_ONLY,
+            Self::Rectilinear(_) => &ALL_FILL_ROLES,
+            Self::Gyroid(_) | Self::Lightning(_) => &SPARSE_ONLY,
         }
+    }
+
+    /// Return the held-claim strings matching this module's manifest claims.
+    /// Mirrors what `resolve_held_claims` in the production dispatch would
+    /// produce when this module is the configured holder for those roles.
+    fn held_claims(&self) -> Vec<String> {
+        self.expected_roles()
+            .iter()
+            .map(|r| claim_for_role(r).to_string())
+            .collect()
     }
 }
 
@@ -249,9 +259,11 @@ fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
 
     for module in all_three_modules() {
         let mut output = InfillOutputBuilder::new();
+        let mut region_clone = region.clone();
+        region_clone.set_held_claims(module.held_claims());
         module.run(
             0,
-            std::slice::from_ref(&region),
+            std::slice::from_ref(&region_clone),
             &mut output,
             &min_density_config(),
         );
@@ -295,7 +307,75 @@ fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
     }
 }
 
-// ── AC-7b: concave source polygon — confinement via winding, not AABB ────────
+// ── REGRESSION: empty held_claims suppresses all fill emission ──────────────
+//
+// Pre-fix: `should_emit` had a fail-open — empty held_claims returned true
+// for every role. When dispatch correctly resolved that gyroid/lightning hold
+// nothing (all four holders default to rectilinear-infill), they still emitted
+// duplicate sparse infill paths overlapping rectilinear's output.
+// Post-fix: empty held_claims = emit nothing.
+
+#[test]
+fn empty_held_claims_suppresses_all_fill_emission() {
+    let region = SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(0)
+        .z(0.2)
+        .effective_layer_height(0.2)
+        .add_polygon(square(0.0, 0.0, 10.0, 10.0))
+        .sparse_infill_area(vec![square(0.0, 0.0, 10.0, 10.0)])
+        .top_shell_index(Some(0))
+        .top_solid_fill(vec![square(0.0, 0.0, 10.0, 10.0)])
+        .build();
+
+    for module in all_three_modules() {
+        // held_claims left empty — dispatch resolved this module holds nothing.
+        let mut output = InfillOutputBuilder::new();
+        module.run(
+            0,
+            std::slice::from_ref(&region),
+            &mut output,
+            &min_density_config(),
+        );
+        let all = collect_all_paths(&output);
+        assert!(
+            all.is_empty(),
+            "[{}] empty held_claims → expected 0 paths (all roles suppressed); got {}",
+            module.name(),
+            all.len()
+        );
+    }
+}
+
+#[test]
+fn empty_held_claims_suppresses_sparse_even_when_polygon_populated() {
+    // Sparse polygon is populated but held_claims is empty — must emit nothing.
+    let region = SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(0)
+        .z(0.2)
+        .effective_layer_height(0.2)
+        .add_polygon(square(0.0, 0.0, 10.0, 10.0))
+        .sparse_infill_area(vec![square(0.0, 0.0, 10.0, 10.0)])
+        .build();
+
+    for module in all_three_modules() {
+        let mut output = InfillOutputBuilder::new();
+        module.run(
+            0,
+            std::slice::from_ref(&region),
+            &mut output,
+            &min_density_config(),
+        );
+        let sparse = paths_with_role(&collect_all_paths(&output), ExtrusionRole::SparseInfill);
+        assert!(
+            sparse.is_empty(),
+            "[{}] empty held_claims → expected 0 SparseInfill paths; got {}",
+            module.name(),
+            sparse.len()
+        );
+    }
+}
 
 #[test]
 fn ac7b_concave_sparse_area_confined_via_winding_not_just_aabb() {
@@ -312,9 +392,11 @@ fn ac7b_concave_sparse_area_confined_via_winding_not_just_aabb() {
     let containers = [area];
     for module in all_three_modules() {
         let mut output = InfillOutputBuilder::new();
+        let mut region_clone = region.clone();
+        region_clone.set_held_claims(module.held_claims());
         module.run(
             0,
-            std::slice::from_ref(&region),
+            std::slice::from_ref(&region_clone),
             &mut output,
             &min_density_config(),
         );
@@ -354,9 +436,11 @@ fn ac8_empty_sparse_infill_area_yields_zero_sparse_paths_even_with_top_flag_set(
 
     for module in all_three_modules() {
         let mut output = InfillOutputBuilder::new();
+        let mut region_clone = region.clone();
+        region_clone.set_held_claims(module.held_claims());
         module.run(
             0,
-            std::slice::from_ref(&region),
+            std::slice::from_ref(&region_clone),
             &mut output,
             &min_density_config(),
         );
@@ -403,9 +487,11 @@ fn ac9_all_four_polygons_empty_yields_zero_paths_no_panic() {
 
     for module in all_three_modules() {
         let mut output = InfillOutputBuilder::new();
+        let mut region_clone = region.clone();
+        region_clone.set_held_claims(module.held_claims());
         module.run(
             0,
-            std::slice::from_ref(&region),
+            std::slice::from_ref(&region_clone),
             &mut output,
             &min_density_config(),
         );
@@ -439,16 +525,20 @@ fn neg1_should_emit_gating_filters_top_role_by_held_claims() {
 
     // Case A — claim:top-fill NOT held (only sparse) → zero TopSolidInfill paths.
     let mut gated_out = base.clone();
-    gated_out.set_held_claims(vec![claim_for_role(ExtrusionRole::SparseInfill).into()]);
+    gated_out.set_held_claims(vec![claim_for_role(&ExtrusionRole::SparseInfill).into()]);
 
     // Case B — claim:top-fill held → TopSolidInfill paths DO emit. This positive
     // counterpart is what distinguishes "gating works" from "the module never
     // emits top at all" — Case A alone cannot tell those apart.
     let mut gated_in = base.clone();
-    gated_in.set_held_claims(vec![claim_for_role(ExtrusionRole::TopSolidInfill).into()]);
+    gated_in.set_held_claims(vec![claim_for_role(&ExtrusionRole::TopSolidInfill).into()]);
 
     for module in all_three_modules() {
-        let emits_top = role_in(module.expected_roles(), &ExtrusionRole::TopSolidInfill);
+        // A module's code may be capable of emitting top fill even if its
+        // manifest only declares sparse-fill (gyroid). `code_can_emit_top`
+        // captures that: rectilinear and gyroid both have top-fill code paths;
+        // lightning does not.
+        let code_can_emit_top = !matches!(module.name(), "lightning-infill");
 
         let mut out_a = InfillOutputBuilder::new();
         module.run(
@@ -473,7 +563,7 @@ fn neg1_should_emit_gating_filters_top_role_by_held_claims() {
             &min_density_config(),
         );
         let top_b = paths_with_role(&collect_all_paths(&out_b), ExtrusionRole::TopSolidInfill);
-        if emits_top {
+        if code_can_emit_top {
             assert!(
                 !top_b.is_empty(),
                 "[{}] claim:top-fill held + top_solid_fill populated → \

@@ -18,7 +18,7 @@ use rectilinear_infill::RectilinearInfill;
 /// Create a region with bridge areas and orientation set.
 fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
     let s = square_polygon(5.0, 5.0, 10.0);
-    SliceRegionViewBuilder::new()
+    let mut region = SliceRegionViewBuilder::new()
         .object_id("test_object")
         .region_id(0)
         .add_infill_area(s.clone())
@@ -28,7 +28,25 @@ fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
         .is_bridge(true)
         .bridge_areas(vec![s])
         .bridge_orientation_deg(bridge_orientation_deg)
-        .build()
+        .build();
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
+}
+
+/// Add the four rectilinear held claims to a region built inline.
+fn with_rectilinear_claims(mut region: SliceRegionView) -> SliceRegionView {
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
 }
 
 /// Compute the direction angle (degrees, 0-360) of a path from its first two points.
@@ -152,17 +170,19 @@ fn straddling_expoly_partitioned_via_set_difference() {
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge = rect_expoly_mm(5, 5, 15, 15);
 
-    let region = SliceRegionViewBuilder::new()
-        .object_id("test_object")
-        .region_id(0)
-        .add_infill_area(outer)
-        .effective_layer_height(0.2)
-        .z(1.0)
-        .has_nonplanar(false)
-        .is_bridge(true)
-        .bridge_areas(vec![bridge])
-        .bridge_orientation_deg(0.0)
-        .build();
+    let region = with_rectilinear_claims(
+        SliceRegionViewBuilder::new()
+            .object_id("test_object")
+            .region_id(0)
+            .add_infill_area(outer)
+            .effective_layer_height(0.2)
+            .z(1.0)
+            .has_nonplanar(false)
+            .is_bridge(true)
+            .bridge_areas(vec![bridge])
+            .bridge_orientation_deg(0.0)
+            .build(),
+    );
 
     let mut output = InfillOutputBuilder::new();
     module
@@ -231,17 +251,19 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge_rect = rect_expoly_mm(2, 2, 18, 18);
 
-    let region = SliceRegionViewBuilder::new()
-        .object_id("test_object")
-        .region_id(0)
-        .add_infill_area(outer)
-        .effective_layer_height(0.2)
-        .z(1.0)
-        .has_nonplanar(false)
-        .is_bridge(true)
-        .bridge_areas(vec![bridge_rect])
-        .bridge_orientation_deg(bridge_angle)
-        .build();
+    let region = with_rectilinear_claims(
+        SliceRegionViewBuilder::new()
+            .object_id("test_object")
+            .region_id(0)
+            .add_infill_area(outer)
+            .effective_layer_height(0.2)
+            .z(1.0)
+            .has_nonplanar(false)
+            .is_bridge(true)
+            .bridge_areas(vec![bridge_rect])
+            .bridge_orientation_deg(bridge_angle)
+            .build(),
+    );
 
     let mut output = InfillOutputBuilder::new();
     // layer_index=1 → sparse alternation would be 90°
@@ -290,16 +312,18 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
 fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
 
-    let region = SliceRegionViewBuilder::new()
-        .object_id("test_object")
-        .region_id(0)
-        .add_infill_area(rect_expoly_mm(0, 0, 20, 20))
-        .effective_layer_height(0.2)
-        .z(1.0)
-        .has_nonplanar(false)
-        .is_bridge(true)
-        // bridge_areas intentionally left empty
-        .build();
+    let region = with_rectilinear_claims(
+        SliceRegionViewBuilder::new()
+            .object_id("test_object")
+            .region_id(0)
+            .add_infill_area(rect_expoly_mm(0, 0, 20, 20))
+            .effective_layer_height(0.2)
+            .z(1.0)
+            .has_nonplanar(false)
+            .is_bridge(true)
+            // bridge_areas intentionally left empty
+            .build(),
+    );
 
     let mut output = InfillOutputBuilder::new();
     module

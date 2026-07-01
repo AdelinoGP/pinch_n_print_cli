@@ -59,7 +59,8 @@ pub struct SliceRegionView {
     sparse_infill_area: Vec<ExPolygon>,
     /// Claim IDs held by the module that produced this region.
     /// Modules may only emit fill paths for roles they hold; empty means
-    /// the full set (rectilinear default emits all four).
+    /// the module holds no fill claims for this region (suppresses all fill
+    /// emission via `should_emit`).
     held_claims: Vec<String>,
     /// Clean model boundary for the painted cell group this region belongs to
     /// (AC-22b). `Some(boundary)` for painted regions; `None` for unpainted regions
@@ -406,9 +407,8 @@ impl SliceRegionView {
     ///
     /// Used by the infill stage to gate path emission: a module may only
     /// emit TopSolidInfill if it holds `claim:top-fill`, etc.
-    /// Empty means the module holds all four fill-role claims (legacy
-    /// fail-open default for paths that bypass the host resolver — see
-    /// `should_emit` for the convention).
+    /// Empty means the module holds no fill claims for this region —
+    /// `should_emit` returns false for all four fill roles.
     pub fn held_claims(&self) -> &[String] {
         &self.held_claims
     }
@@ -458,12 +458,11 @@ impl SliceRegionView {
     /// Roles outside the four fill claims (walls, support, ironing, …) are
     /// always allowed — `should_emit` returns true for them.
     ///
-    /// Convention: an empty `held_claims` is treated as "holds all four"
-    /// so test fixtures and code paths that bypass `dispatch_layer_call`
-    /// keep the pre-packet-37 default behavior. Production dispatch
-    /// populates the set authoritatively via
-    /// `validation::resolve_held_claims`, after which `should_emit`
-    /// reflects the configured holder per role.
+    /// Convention: an empty `held_claims` means the module holds no fill
+    /// claims for this region — `should_emit` returns `false` for all four
+    /// fill roles. Production dispatch populates the set authoritatively via
+    /// `validation::resolve_held_claims`; test fixtures must set the correct
+    /// held_claims to match the module's manifest claims.
     pub fn should_emit(&self, role: ExtrusionRole) -> bool {
         let claim = match role {
             ExtrusionRole::TopSolidInfill => "claim:top-fill",
@@ -472,8 +471,12 @@ impl SliceRegionView {
             ExtrusionRole::SparseInfill => "claim:sparse-fill",
             _ => return true,
         };
+        // When held_claims is empty (dispatch resolved this module holds
+        // nothing for this region), suppress all fill emission. Test fixtures
+        // must set the correct held_claims to match the module's manifest
+        // claims — see `infill_partitioned_input_tdd.rs` for examples.
         if self.held_claims.is_empty() {
-            return true;
+            return false;
         }
         self.held_claims.iter().any(|c| c == claim)
     }

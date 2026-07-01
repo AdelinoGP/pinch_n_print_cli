@@ -33,7 +33,7 @@ fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegi
     } else {
         Vec::new()
     };
-    SliceRegionViewBuilder::new()
+    let mut region = SliceRegionViewBuilder::new()
         .object_id("test_object")
         .region_id(0)
         .add_infill_area(s.clone())
@@ -46,7 +46,15 @@ fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegi
         .bottom_shell_index(if is_bottom { Some(0) } else { None })
         .bottom_solid_fill(if is_bottom { vec![s] } else { vec![] })
         .is_bridge(is_bridge)
-        .build()
+        .build();
+    // Rectilinear manifest declares all four fill claims.
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
 }
 
 /// Helper: returns true if any path in `paths` has the given role AND > 1 point.
@@ -64,6 +72,17 @@ fn no_surface_fill_roles(paths: &[slicer_ir::ExtrusionPath3D]) -> bool {
                 | ExtrusionRole::BridgeInfill
         )
     })
+}
+
+/// Add the four rectilinear held claims to a region built inline.
+fn with_rectilinear_claims(mut region: SliceRegionView) -> SliceRegionView {
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
 }
 
 // ---------------------------------------------------------------------------
@@ -127,17 +146,19 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 fn bridge_surface_region_emits_bridge_infill_role() {
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
     // rev1 contract: is_bridge requires non-empty bridge_areas to emit BridgeInfill.
-    let region = SliceRegionViewBuilder::new()
-        .object_id("test_object")
-        .region_id(0)
-        .add_infill_area(make_square_expolygon())
-        .effective_layer_height(0.2)
-        .z(1.0)
-        .has_nonplanar(false)
-        .is_bridge(true)
-        .bridge_areas(vec![make_square_expolygon()])
-        .bridge_orientation_deg(0.0)
-        .build();
+    let region = with_rectilinear_claims(
+        SliceRegionViewBuilder::new()
+            .object_id("test_object")
+            .region_id(0)
+            .add_infill_area(make_square_expolygon())
+            .effective_layer_height(0.2)
+            .z(1.0)
+            .has_nonplanar(false)
+            .is_bridge(true)
+            .bridge_areas(vec![make_square_expolygon()])
+            .bridge_orientation_deg(0.0)
+            .build(),
+    );
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -179,19 +200,21 @@ fn bottom_wins_over_top_on_overlap() {
     // Post-host-partition state for a layer-0 region (both shell zones touch
     // it): bottom polygon is populated, top has been subtracted to empty.
     let s = square_polygon(5.0, 5.0, 10.0);
-    let region = SliceRegionViewBuilder::new()
-        .object_id("test_object")
-        .region_id(0)
-        .add_infill_area(s.clone())
-        .effective_layer_height(0.2)
-        .z(1.0)
-        .has_nonplanar(false)
-        .top_shell_index(Some(0))
-        .bottom_shell_index(Some(0))
-        // top_solid_fill empty post-precedence-dedup; bottom carries the area.
-        .top_solid_fill(Vec::new())
-        .bottom_solid_fill(vec![s])
-        .build();
+    let region = with_rectilinear_claims(
+        SliceRegionViewBuilder::new()
+            .object_id("test_object")
+            .region_id(0)
+            .add_infill_area(s.clone())
+            .effective_layer_height(0.2)
+            .z(1.0)
+            .has_nonplanar(false)
+            .top_shell_index(Some(0))
+            .bottom_shell_index(Some(0))
+            // top_solid_fill empty post-precedence-dedup; bottom carries the area.
+            .top_solid_fill(Vec::new())
+            .bottom_solid_fill(vec![s])
+            .build(),
+    );
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -226,7 +249,7 @@ fn bottom_wins_over_top_on_overlap() {
 // ---------------------------------------------------------------------------
 fn make_shell_region(top_index: Option<u8>, bottom_index: Option<u8>) -> SliceRegionView {
     let s = square_polygon(5.0, 5.0, 10.0);
-    SliceRegionViewBuilder::new()
+    let region = SliceRegionViewBuilder::new()
         .object_id("test_object")
         .region_id(0)
         .add_infill_area(s.clone())
@@ -245,7 +268,8 @@ fn make_shell_region(top_index: Option<u8>, bottom_index: Option<u8>) -> SliceRe
         } else {
             vec![]
         })
-        .build()
+        .build();
+    with_rectilinear_claims(region)
 }
 
 #[test]

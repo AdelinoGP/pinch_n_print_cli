@@ -40,7 +40,7 @@ fn l_shape() -> ExPolygon {
 }
 
 fn region_with_sparse(area: ExPolygon, z: f32) -> SliceRegionView {
-    SliceRegionViewBuilder::new()
+    let mut region = SliceRegionViewBuilder::new()
         .object_id("obj1")
         .region_id(1)
         .add_polygon(area.clone())
@@ -48,7 +48,14 @@ fn region_with_sparse(area: ExPolygon, z: f32) -> SliceRegionView {
         .sparse_infill_area(vec![area])
         .effective_layer_height(0.2)
         .z(z)
-        .build()
+        .build();
+    region.set_held_claims(vec![
+        "claim:top-fill".into(),
+        "claim:bottom-fill".into(),
+        "claim:bridge-fill".into(),
+        "claim:sparse-fill".into(),
+    ]);
+    region
 }
 
 #[test]
