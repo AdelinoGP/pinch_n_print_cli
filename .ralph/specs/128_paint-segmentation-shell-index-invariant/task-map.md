@@ -1,0 +1,14 @@
+# Task Map — Packet 128: Paint-Segmentation Shell-Index Invariant
+
+This packet spans one new task ID (TASK-253) that is the deferred follow-up to two shipped tasks (TASK-250, TASK-252), so an explicit bridge back to `docs/07_implementation_status.md` is included.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-253` (new — deferred follow-up to TASK-250 / TASK-252) | `Step 1` | `docs/02_ir_schemas.md` (SlicedRegion section) | `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (propagation block 887-916, None arm 1252-1296, function return 1333) | none | M | Load-bearing refactor: scope accumulator by `ObjectId`, update None arm lookup, add debug_assert + invariant helper + doc comment. Step 1 is sufficient evidence for the propagation-scope half of TASK-253. |
+| `TASK-253` | `Step 2` | `docs/02_ir_schemas.md` (SlicedRegion fields for fixture) | `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (inline tests) | none | S | Multi-object mixed-height invariant test — the fixture no existing test exercises. Step 2 is sufficient evidence for the multi-object-correctness half of TASK-253. |
+| `TASK-253` | `Step 3` | none new | `crates/slicer-core/src/algos/paint_segmentation/mod.rs` (inline tests) | none | S | Single-object multi-colour test + two debug_assert negative tests (fires on same-object mismatch, does NOT fire on cross-object mismatch). Step 3 is sufficient evidence for the invariant-locking half of TASK-253. |
+| `TASK-253` | `Step 4` | `CONTEXT.md`, `docs/07_implementation_status.md` | `CONTEXT.md` (Shell depth glossary entry), `docs/07` (TASK-253 row append) | none | S | Doc writes + gate. Step 4 is sufficient evidence for the doc-impact half of TASK-253 and runs the acceptance gate. |
+
+**Lineage note:** TASK-250 (packet 126 — MMU painted-cube OrcaSlicer parity closure) and TASK-252 (packet 127 — SDK→WIT origin propagation for per-region perimeter/infill output) are both marked `[x]` in `docs/07`. This packet does NOT supersede or reopen them — their shipped work stays in tree. TASK-253 is the new row that tracks the deferred follow-up the packet-126 post-mortem "filed" but never tracked: the per-object shell-depth propagation scope fix that the post-mortem's ad-hoc Phase 6/7 fix treated as a symptom. The grilling session that produced this packet found that the original post-mortem's proposed invariant (per-layer-global) would have cemented the cross-object corruption bug with a `debug_assert!`; the reframed invariant (per-object-per-layer) is what TASK-253 closes.
+
+The `Context cost` column copies the per-step estimate from `implementation-plan.md`. No cell is `L`. The aggregate (M + S + S + S) is `M`.
