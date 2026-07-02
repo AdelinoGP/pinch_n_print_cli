@@ -1950,6 +1950,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 RegionKey as WitRegionKey,
                 RetractMode as WitRetractMode,
+                SeamCandidate as WitSeamCandidate,
                 SeamPosition as WitSeamPosition,
                 WallFeatureFlag as WitWallFeatureFlag,
                 WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
@@ -2162,6 +2163,29 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 }
             }
 
+            /// Adapt a WIT `seam-candidate` (`position: point3, score: f32`) into
+            /// the SDK's `slicer_ir::SeamCandidate`. Width/flow_factor/overhang_quartile
+            /// default per the `point3` (not `point3-with-width`) write contract on
+            /// `push-seam-candidate`, and `reason` defaults to `Aligned` — the host
+            /// never round-trips a scoring reason for live per-region candidates
+            /// (mirrors `crates/slicer-wasm-host/src/marshal/out.rs`'s conversion).
+            fn __slicer_adapt_seam_candidate(
+                sc: &WitSeamCandidate,
+            ) -> ::slicer_ir::SeamCandidate {
+                ::slicer_ir::SeamCandidate {
+                    position: ::slicer_ir::Point3WithWidth {
+                        x: sc.position.x,
+                        y: sc.position.y,
+                        z: sc.position.z,
+                        width: 0.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                    },
+                    score: sc.score,
+                    reason: ::slicer_ir::SeamReason::Aligned,
+                }
+            }
+
             fn __slicer_adapt_perimeter_regions(
                 regions: &[PerimeterRegionView],
             ) -> ::std::vec::Vec<::slicer_sdk::views::PerimeterRegionView> {
@@ -2176,16 +2200,23 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     // read it and map to the SDK seam position type.
                     let resolved_seam = r.resolved_seam()
                         .map(|sp| __slicer_adapt_seam_position(sp));
+                    // Seam candidates written by the `Layer::Perimeters` guest
+                    // via `perimeter-output-builder.push-seam-candidate` and
+                    // committed to `PerimeterIR.regions[].seam_candidates`;
+                    // read back here through the `perimeter-region-view.seam-candidates`
+                    // accessor so `Layer::PerimetersPostProcess` consumers
+                    // (e.g. com.core.seam-placer) can see them.
+                    let seam_candidates: ::std::vec::Vec<::slicer_ir::SeamCandidate> = r
+                        .seam_candidates()
+                        .iter()
+                        .map(__slicer_adapt_seam_candidate)
+                        .collect();
                     let mut perimeter_view = ::slicer_sdk::views::PerimeterRegionView::default();
                     perimeter_view.set_object_id(r.object_id());
                     perimeter_view.set_region_id(region_id);
                     perimeter_view.set_wall_loops(walls);
                     perimeter_view.set_infill_areas(infill);
-                    // Seam candidates are not on the WIT view (they are
-                    // written via `perimeter-output-builder.push-seam-candidate`
-                    // and consumed later); per the read-only input view we
-                    // arrive here with none.
-                    perimeter_view.set_seam_candidates(::std::vec::Vec::new());
+                    perimeter_view.set_seam_candidates(seam_candidates);
                     perimeter_view.set_resolved_seam(resolved_seam);
                     out.push(perimeter_view);
                 }
@@ -2436,8 +2467,16 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     if let Some((obj, reg)) = &seam_candidate_origins[i] {
                         let _ = wit.set_current_origin(obj, &reg.to_string());
                     }
+                    // NOTE: `z` MUST be the layer-space z of the candidate, not a
+                    // hardcoded 0.0. The host's `check_z_envelope` (see
+                    // `crates/slicer-wasm-host/src/host.rs`) rejects any pushed Z
+                    // outside the current layer's [floor, ceiling] window, and — per
+                    // the `let _ =` convention shared by every WIT call in this drain
+                    // function — that rejection is silently swallowed here. A wrong
+                    // z therefore does not fail loudly; it just makes
+                    // `seam_candidates` silently empty on the host side.
                     let _ = wit.push_seam_candidate(
-                        WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: 0.0 },
+                        WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: pos.z as f32 },
                         *score,
                     );
                 }

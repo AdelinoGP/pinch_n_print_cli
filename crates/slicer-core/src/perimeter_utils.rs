@@ -424,6 +424,18 @@ pub fn generate_seam_candidates(contour: &slicer_ir::Polygon, z: f32) -> Vec<Sea
 /// scores every vertex with a continuous Gaussian angle penalty and only uses a
 /// 55° cutoff for "sharp corner" snapping. This port intentionally uses a binary
 /// angle threshold (default 30°) per packet 108 design.
+///
+/// Guarantees a non-empty result for any non-degenerate contour (i.e. one with
+/// at least one vertex whose adjacent edges both have non-zero length): a
+/// contour with no vertex clearing `angle_threshold_deg` degrades to a single
+/// candidate at the sharpest-turn vertex, scored by the same convention as the
+/// threshold-gated candidates. OrcaSlicer has no binary candidacy cutoff — the
+/// sharpest corner always competes — so this fallback keeps low-curvature
+/// contours (e.g. MMU bisector-fragment perimeters) from producing zero
+/// candidates, which is fatal downstream in `com.core.seam-placer`. Note that
+/// [`apply_seam_paint_bias`] runs *after* this function and can still empty a
+/// non-empty result via its blocker hard-filter — that fatal path is
+/// intentional and unaffected by this fallback.
 pub fn generate_sharp_corner_seam_candidates(
     contour: &slicer_ir::Polygon,
     z: f32,
@@ -447,6 +459,11 @@ pub fn generate_sharp_corner_seam_candidates(
 
     let mut candidates = Vec::new();
 
+    // Tracks the sharpest-turn usable vertex seen so far (largest absolute
+    // turn angle), regardless of whether it clears `threshold_rad`. Used as a
+    // fallback when the threshold gate rejects every vertex.
+    let mut sharpest: Option<(f64, SeamCandidate)> = None;
+
     for i in 0..n {
         let prev = if i == 0 { n - 1 } else { i - 1 };
         let next = (i + 1) % n;
@@ -468,9 +485,6 @@ pub fn generate_sharp_corner_seam_candidates(
 
         // Absolute turn angle (deviation from straight pass-through), in [0, pi].
         let turn_angle_rad = (cross as f64).atan2(dot as f64).abs();
-        if turn_angle_rad < threshold_rad {
-            continue;
-        }
 
         let sin_angle = (cross.unsigned_abs() as f64 / denom) as f32;
         let is_concave = if is_ccw { cross < 0 } else { cross > 0 };
@@ -485,7 +499,25 @@ pub fn generate_sharp_corner_seam_candidates(
             y: slicer_ir::units_to_mm(pts[i].y),
             z,
         };
+
+        if sharpest
+            .as_ref()
+            .is_none_or(|(best_angle, _)| turn_angle_rad > *best_angle)
+        {
+            sharpest = Some((turn_angle_rad, SeamCandidate { position, score }));
+        }
+
+        if turn_angle_rad < threshold_rad {
+            continue;
+        }
+
         candidates.push(SeamCandidate { position, score });
+    }
+
+    if candidates.is_empty() {
+        if let Some((_, fallback)) = sharpest {
+            candidates.push(fallback);
+        }
     }
 
     candidates

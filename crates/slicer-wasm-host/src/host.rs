@@ -193,6 +193,11 @@ pub struct PerimeterRegionData {
     pub infill_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Resolved seam position (populated from PerimeterIR after seam-placer runs).
     pub resolved_seam: Option<(Point3, u32)>,
+    /// Seam candidates pushed by the `Layer::Perimeters` guest for this region
+    /// (populated from `PerimeterIR.regions[].seam_candidates`). Read by
+    /// `Layer::PerimetersPostProcess` consumers via the `seam-candidates`
+    /// WIT accessor.
+    pub seam_candidates: Vec<(Point3, f32)>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -290,9 +295,9 @@ pub use layer::slicer::config::config_types::ConfigValue;
 /// `RetractMode` end-to-end across the guest→host boundary.
 pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
 pub use layer::slicer::ir_handles::ir_handles::{
-    GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, RegionKey, SeamPosition,
-    SegmentAnnotationsEntry, SegmentAnnotationsPolygon, SemanticRegion, WallFeatureFlag,
-    WallLoopType, WallLoopView,
+    GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, RegionKey, SeamCandidate,
+    SeamPosition, SegmentAnnotationsEntry, SegmentAnnotationsPolygon, SemanticRegion,
+    WallFeatureFlag, WallLoopType, WallLoopView,
 };
 pub use layer::slicer::types::geometry::{
     BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
@@ -1877,6 +1882,7 @@ mod region_origin_tests {
                 wall_loops: Vec::new(),
                 infill_areas: Vec::new(),
                 resolved_seam: None,
+                seam_candidates: Vec::new(),
             })
             .expect("push perimeter region");
 
@@ -2304,6 +2310,30 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                 }))
             }
         }
+    }
+    fn seam_candidates(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<layer::slicer::ir_handles::ir_handles::SeamCandidate>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.seam-candidates"));
+        Ok(self
+            .table
+            .get(&self_)?
+            .seam_candidates
+            .iter()
+            .map(
+                |(pos, score)| layer::slicer::ir_handles::ir_handles::SeamCandidate {
+                    position: Point3 {
+                        x: pos.x,
+                        y: pos.y,
+                        z: pos.z,
+                    },
+                    score: *score,
+                },
+            )
+            .collect())
     }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

@@ -1198,3 +1198,202 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         resolved_seam.wall_index
     );
 }
+
+// ── Regression: SDK→WIT seam-candidate Z round-trip (drain-fn z=0.0 bug) ──
+
+/// Regression test for a pre-existing bug (predates packet 108, fixed
+/// alongside this test): `__slicer_drain_perimeter` in
+/// `crates/slicer-macros/src/lib.rs` hardcoded `z: 0.0` when forwarding SDK
+/// `seam_candidates` (real `Point3`, carrying the region's actual Z) to the
+/// WIT `push_seam_candidate` call. The host's `check_z_envelope` rejects any
+/// Z outside `[layer.z, layer.z + effective_layer_height]`; on any layer
+/// above the first, z=0.0 falls below the floor and the push is rejected —
+/// silently, because the macro-generated guest glue does
+/// `let _ = wit.push_seam_candidate(...)`. Host-side `seam_candidates` was
+/// therefore always empty coming out of real WASM dispatch, a defect masked
+/// until packet 108's seam-placer fatal-on-empty path surfaced it (13
+/// `cube_4color_*` executor tests failing with "no seam candidates for
+/// region ... region_id=3").
+///
+/// This drives the REAL `classic-perimeters.wasm` guest (built via
+/// `cargo xtask build-guests`, so it exercises the actual macro-generated
+/// drain code — not a hand-rolled WIT-only test guest like the other
+/// fixtures in this crate) through the real `Layer::Perimeters` dispatch
+/// path at a layer Z above the first (layer_z = 0.6, envelope [0.6, 0.8]).
+/// z=0.0 falls outside that envelope, so this test fails loudly pre-fix and
+/// passes post-fix.
+#[test]
+fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer() {
+    use slicer_ir::{mm_to_units, ExPolygon, Point2, Polygon, SemVer, SliceIR, SlicedRegion};
+    use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+    use slicer_runtime::manifest::LoadedModuleBuilder;
+    use slicer_runtime::{Blackboard, CompiledModuleBuilder, LayerArena, WasmRuntimeDispatcher};
+    use std::sync::Arc;
+
+    let layer_index = 3u32;
+    let layer_z = 0.6_f32; // Above the first layer — z=0.0 would fail check_z_envelope here.
+    let object_id = "obj-a";
+    let region_id: u64 = 0;
+
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    // Load the real classic-perimeters.wasm module (the real seam-candidate
+    // producer — NOT a hand-rolled test guest — so the drain-fn fix is
+    // actually exercised at the WIT boundary).
+    let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap() // crates
+        .parent()
+        .unwrap() // pinch_n_print
+        .join("modules/core-modules/classic-perimeters/classic-perimeters.wasm");
+    assert!(
+        wasm_path.exists(),
+        "classic-perimeters.wasm not found at {}. Build it with: `cargo xtask build-guests`",
+        wasm_path.display()
+    );
+    let component = wasm_cache::compiled_component_at(&wasm_path);
+
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.classic-perimeters",
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        wasm_path.clone(),
+    )
+    .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
+    .ir_writes(vec!["PerimeterIR".to_string()])
+    .claims(vec!["perimeter-generator".to_string()])
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 5,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
+
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
+    );
+
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(
+            std::collections::HashMap::new(),
+        )))
+        .build();
+
+    let bundle = crate::common::TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    };
+
+    // Stage a real 10mm square region at layer_z=0.6 — large enough to match
+    // the geometry classic-perimeters' own passing tests use for corner-based
+    // seam-candidate generation (4 candidates, one per 90-degree corner).
+    let side = mm_to_units(10.0);
+    let mut arena = LayerArena::new();
+    arena
+        .set_slice(SliceIR {
+            global_layer_index: layer_index,
+            z: layer_z,
+            regions: vec![SlicedRegion {
+                object_id: object_id.to_string(),
+                region_id,
+                polygons: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2 { x: 0, y: 0 },
+                            Point2 { x: side, y: 0 },
+                            Point2 { x: side, y: side },
+                            Point2 { x: 0, y: side },
+                        ],
+                    },
+                    holes: Vec::new(),
+                }],
+                infill_areas: Vec::new(),
+                nonplanar_surface: None,
+                effective_layer_height: 0.2,
+                segment_annotations: std::collections::HashMap::new(),
+                variant_chain: Vec::new(),
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
+                sparse_infill_area: Vec::new(),
+                external_contour: None,
+            }],
+            ..Default::default()
+        })
+        .expect("set_slice must succeed");
+
+    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+
+    let layer = slicer_ir::GlobalLayer {
+        index: layer_index,
+        z: layer_z,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    crate::common::run_layer_and_commit_with_bundle(
+        &dispatcher,
+        "Layer::Perimeters",
+        &layer,
+        &bundle,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("Layer::Perimeters dispatch+commit must succeed");
+
+    let perimeter_ir = arena
+        .perimeter()
+        .expect("PerimeterIR must be committed after Layer::Perimeters dispatch");
+    let region = perimeter_ir
+        .regions
+        .iter()
+        .find(|r| r.object_id == object_id && r.region_id == region_id)
+        .expect("staged region must be present in committed PerimeterIR");
+
+    assert!(
+        !region.seam_candidates.is_empty(),
+        "seam_candidates must be non-empty for a layer above the first (layer_z={layer_z}); \
+         an empty list here reproduces the z=0.0 drain bug: candidates are rejected by \
+         check_z_envelope and silently dropped via `let _ = wit.push_seam_candidate(...)`"
+    );
+    for c in &region.seam_candidates {
+        assert_eq!(
+            c.position.z, layer_z,
+            "seam candidate Z must equal the region/layer Z ({layer_z}), got {} — the drain fn \
+             must forward pos.z, not hardcode 0.0",
+            c.position.z
+        );
+    }
+}

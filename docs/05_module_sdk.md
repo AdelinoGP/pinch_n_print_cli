@@ -609,6 +609,10 @@ turn angle (deviation from a straight pass-through) clears
 `seam_candidate_angle_threshold_deg` (default **30.0** degrees). This filters
 dense runs of near-collinear tessellation points down to one candidate per
 genuine corner (see `crates/slicer-core/tests/sharp_corner_seam_threshold_tdd.rs`).
+If no vertex clears the threshold (e.g. a low-curvature MMU bisector-fragment
+perimeter), the function falls back to a single candidate at the sharpest-turn
+vertex so the result is never empty for a non-degenerate contour — OrcaSlicer
+has no binary candidacy cutoff, so the sharpest corner always competes.
 The deprecated `generate_seam_candidates` (no threshold — every non-collinear
 vertex qualifies) is kept only for callers that have not migrated.
 

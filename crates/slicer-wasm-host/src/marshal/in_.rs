@@ -384,6 +384,25 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
                 sp.wall_index,
             )
         }),
+        // Note: width/flow_factor/overhang_quartile and `reason` are
+        // intentionally discarded here, mirroring the resolved_seam
+        // conversion above — the WIT `push-seam-candidate` write contract
+        // never carried them (only `pos: point3, score: f32`), so there is
+        // nothing to round-trip.
+        seam_candidates: region
+            .seam_candidates
+            .iter()
+            .map(|sc| {
+                (
+                    Point3 {
+                        x: sc.position.x,
+                        y: sc.position.y,
+                        z: sc.position.z,
+                    },
+                    sc.score,
+                )
+            })
+            .collect(),
     }
 }
 

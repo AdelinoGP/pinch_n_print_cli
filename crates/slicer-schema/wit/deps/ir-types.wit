@@ -77,12 +77,21 @@ interface ir-handles {
 
     record seam-position { point: point3-with-width, wall-index: u32 }
 
+    /// Read-side seam candidate record, mirroring the `(pos, score)` shape
+    /// written by `perimeter-output-builder.push-seam-candidate` below. Lets
+    /// `Layer::PerimetersPostProcess` consumers (e.g. com.core.seam-placer)
+    /// read back the candidates a `Layer::Perimeters` guest pushed for this
+    /// region, closing the write-only gap `push-seam-candidate` originally
+    /// left on `perimeter-region-view`.
+    record seam-candidate { position: point3, score: f32 }
+
     resource perimeter-region-view {
         object-id: func() -> object-id;
         region-id: func() -> region-id;
         wall-loops: func() -> list<wall-loop-view>;
         infill-areas: func() -> list<ex-polygon>;
         resolved-seam: func() -> option<seam-position>;
+        seam-candidates: func() -> list<seam-candidate>;
     }
 
     resource infill-output-builder {
