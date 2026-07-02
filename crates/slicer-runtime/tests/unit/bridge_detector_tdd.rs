@@ -675,6 +675,7 @@ fn expansion_margin_grows_polygon_observably() {
             patch: 0,
         },
         per_object: vec![(object_id.clone(), obj_surface)].into_iter().collect(),
+        overhang_quartile_polygons: std::collections::HashMap::new(),
     };
 
     let mut sliced_region = SlicedRegion {
@@ -782,6 +783,7 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
             patch: 0,
         },
         per_object: vec![(object_id.clone(), obj_surface)].into_iter().collect(),
+        overhang_quartile_polygons: std::collections::HashMap::new(),
     };
 
     let mut sliced_region = SlicedRegion {

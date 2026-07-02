@@ -439,12 +439,17 @@ caller must call this symbol rather than re-implementing the parse.
 
 **Stage:** Output of `PrePass::MeshAnalysis`  
 **Lifetime:** Blackboard (immutable after PrePass)  
-**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
+**Current schema_version: 1.2.0** (Bumped to 1.2.0 by packet 106 — `OverhangRegion` gains `xy_footprint`, new type `QuartileBand`, and new field `overhang_quartile_polygons` on `SurfaceClassificationIR`. Previously bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
 
 ```rust
 pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
+    /// Populated by `PrePass::OverhangAnnotation` (packet 106), which atomically
+    /// replaces this IR via `replace_surface_classification()`. Key = global layer
+    /// index. A layer with no overhang has its key ABSENT (not an empty Vec); layer 0
+    /// is always absent. `#[serde(default)]`.
+    pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
 }
 
 pub struct ObjectSurfaceData {
@@ -490,6 +495,15 @@ pub struct OverhangRegion {
     pub facet_indices: Vec<u32>,
     pub max_angle_deg: f32,
     pub needs_support: bool,
+    pub xy_footprint: Vec<ExPolygon>,     // packet 106: per-region 2D projection of the underlying facets, populated at MeshAnalysis, mirrors BridgeRegion.xy_footprint
+}
+
+// packet 106: one quartile band of unsupported overhang area for a single layer.
+// `quartile` ranges 1..=4 (band 1 nearest support, band 4 most overhanging), computed by
+// `annotate_overhangs()` from thresholds at line_width_mm × {0.5, 1.0, 1.5, 2.0}.
+pub struct QuartileBand {
+    pub quartile: u8,
+    pub polygons: Vec<ExPolygon>,
 }
 ```
 
@@ -1666,7 +1680,7 @@ The `extensions: HashMap<String, ConfigValue>` field on `ResolvedConfig` is the 
 | 4.2.0 | P102 | `WallBoundaryType::MaterialBoundary` widening to `Vec<MaterialBoundarySegment>` (T-013). The old single-`adjacent_tool` wire format is deserialized via `WallBoundaryTypeWire` migration adapter; new code writes `segments`. |
 | 4.3.0 | P103 | `ThickPolyline` + `Point2WithWidth` additive types (T-042) |
 | 4.4.0 | P105 | `LoopType::GapFill` + `ExtrusionRole::GapFill` additive variants (T-062b) |
-| 4.5.0 | P106 | `SurfaceClassificationIR.overhang_quartile_polygons` additive field (O-T010..O-T012) |
+| ~~4.5.0~~ | ~~P106~~ | STRUCK — reservation was speculative; P106 shipped `overhang_quartile_polygons` on `SurfaceClassificationIR` (bumped 1.1.0 → 1.2.0, see IR 2 above), not on `SliceIR`. `CURRENT_SLICE_IR_SCHEMA_VERSION` was left unchanged at 4.4.0 by P106. |
 | 4.6.0 | P109 | `SlicedRegion.external_contour` additive removal (T-P96-D) |
 | 4.7.0 | P112 | `ExtrusionLine` + `ExtrusionJunction` additive types (T-224) |
 

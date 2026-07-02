@@ -4,14 +4,14 @@
 
 | Task ID | Description | Step | Status |
 | ------- | ----------- | ---- | ------ |
-| O-T001  | Author `docs/adr/0022-overhang-classification-at-prepass.md` (ADR slot 0022 — next free after 0021; slot 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`) | Step 1 | pending |
-| O-T002  | Close O-1..O-8 decisions inline in `docs/specs/overhang-pipeline-restructuring.md` (O-1 → ADR-0022; O-3 → extract wrapper from `triangle_mesh_slicer.rs`) | Step 1 | pending |
+| O-T001  | Author `docs/adr/0031-overhang-classification-at-prepass.md` (ADR slot 0031 — next free after 0021; slot 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`) | Step 1 | pending |
+| O-T002  | Close O-1..O-8 decisions inline in `docs/specs/overhang-pipeline-restructuring.md` (O-1 → ADR-0031; O-3 → extract wrapper from `triangle_mesh_slicer.rs`) | Step 1 | pending |
 | O-T010  | Add `pub xy_footprint: Vec<ExPolygon>` to `OverhangRegion` (net-new, mirrors `BridgeRegion.xy_footprint` at line ~581); populate at `MeshAnalysis` construction site | Step 2 | pending |
 | O-T011  | Add `pub struct QuartileBand { pub quartile: u8, pub polygons: Vec<ExPolygon> }` (net-new; P107 consumer uses same name) and `pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` to `SurfaceClassificationIR`; bump `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION` (currently 1.1.0) — NOT `CURRENT_SLICE_IR_SCHEMA_VERSION` | Step 2 | pending |
 | O-T012  | Create `crates/slicer-core/src/algos/mesh_cross_section.rs` (NET-NEW) wrapping `slice_mesh_ex` from `crates/slicer-core/src/triangle_mesh_slicer.rs`; declare `pub mod mesh_cross_section` in `mod.rs`. NOTE: `support_geometry.rs` has NO plane-triangle intersection to promote — no changes to that file. | Step 3 | pending |
 | O-T020  | Declare `"PrePass::OverhangAnnotation"` in `STAGE_ORDER` array in `crates/slicer-scheduler/src/execution_plan.rs` (the canonical stage list; `stage_order.rs` is a thin import wrapper) — after `"PrePass::LayerPlanning"` | Step 5 | pending |
 | O-T021  | Implement classifier algorithm in `crates/slicer-core/src/algos/overhang_annotation.rs` (NET-NEW): per consecutive layer pair, compute cross-sections via `mesh_cross_section::cross_section_at_z`, derive distance field, partition into 4 `QuartileBand` bands | Step 4 | pending |
-| O-T022  | Wire quartile thresholds to config (`outer_wall_line_width × {0.5, 1.0, 1.5, 2.0}`; fall back to `line_width` if P105 not yet shipped) | Step 4 | pending |
+| O-T031  | Wire quartile thresholds to config (`outer_wall_line_width × {0.5, 1.0, 1.5, 2.0}`; fall back to `line_width` if P105 not yet shipped) | Step 4 | pending |
 | O-T023  | Host stage runner: invoke `overhang_annotation` after MeshAnalysis + LayerPlanning commit; write to Blackboard `SurfaceClassificationIR.overhang_quartile_polygons` | Step 5 | pending |
 
 ## Cross-Packet Contracts
@@ -30,4 +30,4 @@
 
 ## Notes on Fix #8 (ADR Dangling Refs — VERIFIED CLEAN)
 
-grep of `docs/01_system_architecture.md` and `docs/04_host_scheduler.md` for `0022-overhang` and `overhang-classification-at-prepass` returned NO MATCHES. There are no premature references to the overhang ADR in those files. No fix required.
+grep of `docs/01_system_architecture.md` and `docs/04_host_scheduler.md` for `0031-overhang` and `overhang-classification-at-prepass` returned NO MATCHES. There are no premature references to the overhang ADR in those files. No fix required.

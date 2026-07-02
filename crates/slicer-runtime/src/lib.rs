@@ -151,7 +151,7 @@ pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use postpass::execute_postpass;
 pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
-    PrepassExecutionError,
+    execute_prepass_with_builtins_configured_instr, PrepassExecutionError,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use run::{run_slice, SliceOutcome, SliceRunError, SliceRunOptions};

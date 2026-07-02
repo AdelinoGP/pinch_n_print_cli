@@ -268,6 +268,7 @@ mod tests {
                 patch: 0,
             },
             per_object: std::collections::HashMap::new(),
+            overhang_quartile_polygons: std::collections::HashMap::new(),
         };
 
         test_serde_roundtrip!(surf_ir);
@@ -323,6 +324,7 @@ mod tests {
             facet_indices: vec![0, 1, 2],
             max_angle_deg: 60.0,
             needs_support: true,
+            xy_footprint: vec![],
         };
 
         test_serde_roundtrip!(region);

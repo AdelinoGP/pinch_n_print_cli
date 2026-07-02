@@ -10,6 +10,9 @@ pub use slicer_core::{
 };
 use slicer_ir::{ConfigKey, ConfigValue, ModuleId, ResolvedConfig, StageId};
 
+use crate::builtins::overhang_annotation_producer::{
+    commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
+};
 use crate::builtins::region_mapping_producer::{
     commit_region_mapping_builtin, RegionMappingBuiltinError,
 };
@@ -67,6 +70,11 @@ pub enum PrepassExecutionError {
         /// Underlying region-mapping failure.
         source: RegionMappingBuiltinError,
     },
+    /// The host-built-in `PrePass::OverhangAnnotation` stage failed.
+    OverhangAnnotation {
+        /// Underlying overhang-annotation failure.
+        source: OverhangAnnotationBuiltinError,
+    },
     /// The host-built-in `PrePass::SupportGeometry` stage failed.
     SupportGeometry {
         /// Underlying support geometry failure.
@@ -118,6 +126,9 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::RegionMapping { source } => {
                 write!(f, "built-in PrePass::RegionMapping failed: {source}")
+            }
+            Self::OverhangAnnotation { source } => {
+                write!(f, "built-in PrePass::OverhangAnnotation failed: {source}")
             }
             Self::SupportGeometry { source } => {
                 write!(f, "built-in PrePass::SupportGeometry failed: {source}")
@@ -357,7 +368,14 @@ pub fn execute_prepass_with_builtins_configured(
 /// Instrumented version of [`execute_prepass_with_builtins_configured`] that
 /// brackets each prepass stage and module (including host built-ins) via
 /// `instrumentation`.
-pub(crate) fn execute_prepass_with_builtins_configured_instr(
+///
+/// Made `pub` (rather than `pub(crate)`) so integration tests can observe the
+/// host built-ins' stage-order trace (e.g. asserting `PrePass::
+/// OverhangAnnotation` runs strictly after `PrePass::MeshAnalysis` /
+/// `PrePass::LayerPlanning`) without needing the full `pipeline::run_pipeline*`
+/// stack. See `crates/slicer-runtime/tests/executor/
+/// prepass_overhang_annotation_stage_order_tdd.rs`.
+pub fn execute_prepass_with_builtins_configured_instr(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
@@ -475,6 +493,23 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             wasm_handles,
         )?;
     }
+    // PrePass::OverhangAnnotation — host built-in. Runs immediately after
+    // MeshAnalysis + LayerPlanning (both are satisfied once `early_stages` has
+    // executed, per canonical `STAGE_ORDER`), and before RegionMapping/Slice so
+    // later stages could in principle consume the banded overhang data. Merges
+    // per-object `annotate_overhangs` output into a replacement
+    // `SurfaceClassificationIR` via `replace_surface_classification`.
+    run_builtin_stage(
+        blackboard,
+        instrumentation,
+        "PrePass::OverhangAnnotation",
+        "host:overhang_annotation",
+        |bb| bb.layer_plan().is_some() && bb.surface_classification().is_some(),
+        |bb| {
+            commit_overhang_annotation_builtin(bb, raw_config_source)
+                .map_err(|source| PrepassExecutionError::OverhangAnnotation { source })
+        },
+    )?;
     // Region-mapping: needs LayerPlan; resolves per-paint-semantic config overlays
     // into RegionPlan.paint_overrides.
     //
@@ -691,6 +726,10 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
     match stage_id.as_str() {
         "PrePass::MeshAnalysis" => &[],
         "PrePass::LayerPlanning" => &[BlackboardPrepassSlot::SurfaceClassification],
+        "PrePass::OverhangAnnotation" => &[
+            BlackboardPrepassSlot::SurfaceClassification,
+            BlackboardPrepassSlot::LayerPlan,
+        ],
         "PrePass::SeamPlanning" => &[BlackboardPrepassSlot::LayerPlan],
         "PrePass::SupportGeometry" => &[
             BlackboardPrepassSlot::SurfaceClassification,

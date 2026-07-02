@@ -91,6 +91,7 @@ mod paint_segmentation_skip_when_no_paint_or_no_opted_in_semantic;
 mod postpass_executor_tdd;
 mod prepass_execution_order_tdd;
 mod prepass_executor_tdd;
+mod prepass_overhang_annotation_stage_order_tdd;
 mod prepass_seam_planning_macro_path_tdd;
 mod prepass_slice_and_shell_tdd;
 mod prepass_support_geometry_layer_plan_tdd;

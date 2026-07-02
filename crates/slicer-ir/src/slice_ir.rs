@@ -179,9 +179,12 @@ impl std::fmt::Display for SemVer {
 
 /// Schema version for `SurfaceClassificationIR`. Single source of truth — production
 /// constructors must use this constant, not literal `SemVer { ... }` values.
+/// Minor bump to 1.2.0 (packet 106) adds the additive `OverhangRegion.xy_footprint`
+/// field and `SurfaceClassificationIR.overhang_quartile_polygons` map.
+/// `#[serde(default)]` preserves backward compatibility with 1.1.0 fixtures.
 pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 1,
+    minor: 2,
     patch: 0,
 };
 
@@ -595,6 +598,20 @@ pub struct OverhangRegion {
     pub max_angle_deg: f32,
     /// Whether this region needs support
     pub needs_support: bool,
+    /// Facet-cluster XY projection in 100 nm units
+    #[serde(default)]
+    pub xy_footprint: Vec<ExPolygon>,
+}
+
+/// A quartile-banded subset of overhang polygons for a single layer, used by
+/// the PrePass overhang-annotation pipeline to bucket overhang area by
+/// severity quartile (1 = least severe, 4 = most severe).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct QuartileBand {
+    /// Quartile bucket (1-4)
+    pub quartile: u8,
+    /// Polygons assigned to this quartile band
+    pub polygons: Vec<ExPolygon>,
 }
 
 /// Object surface data
@@ -617,6 +634,11 @@ pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     /// Per-object surface data
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
+    /// Overhang polygons bucketed by severity quartile, keyed by global layer
+    /// index. Host-only aggregation populated by the PrePass overhang
+    /// annotation pipeline; not mirrored in the WIT boundary.
+    #[serde(default)]
+    pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
 }
 
 impl Default for SurfaceClassificationIR {
@@ -624,6 +646,7 @@ impl Default for SurfaceClassificationIR {
         Self {
             schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
             per_object: HashMap::new(),
+            overhang_quartile_polygons: HashMap::new(),
         }
     }
 }

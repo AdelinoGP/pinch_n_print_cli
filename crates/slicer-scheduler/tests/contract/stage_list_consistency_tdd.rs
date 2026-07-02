@@ -29,6 +29,7 @@ const HOST_ONLY_STAGES: &[&str] = &[
     "PrePass::RegionMapping",
     "PrePass::Slice",
     "PrePass::ShellClassification",
+    "PrePass::OverhangAnnotation",
     "Layer::PaintRegionAnnotation",
     "PostPass::GCodeEmit",
 ];

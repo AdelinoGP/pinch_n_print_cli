@@ -15,6 +15,7 @@ mod builtin_producers_tdd;
 mod dag_validation_tdd;
 mod host_keys_doc_lock_tdd;
 mod layer_collection_builder_tdd;
+mod mesh_analysis_overhang_xy_footprint_tdd;
 mod mesh_analysis_tdd;
 mod multi_object_transform_world_z_tdd;
 mod path_ordering_tdd;

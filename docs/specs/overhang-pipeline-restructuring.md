@@ -25,23 +25,23 @@ This roadmap moves classification to PrePass, separates it from speed-factor app
 ## Related plans
 
 - [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](./perimeter-modules-orca-parity-roadmap.md) — perimeter parity work that depends on this restructuring (T-024, T-077).
-- [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. **To be superseded** in part by a new ADR (see O-1 / T-001 below). The finalization-module placement was correct **for the wall-geometry-based algorithm**; with the mesh-cross-section algorithm, the constraints differ.
+- [ADR-0008](../adr/0008-overhang-as-finalization-module.md) — overhang annotation as a FinalizationModule. **Superseded in part** by [ADR-0022](../adr/0022-overhang-classification-at-prepass.md) (O-1, closed). The finalization-module placement was correct **for the wall-geometry-based algorithm**; with the mesh-cross-section algorithm, the constraints differ.
 - [`docs/specs/infill-fill-partition-plan.md`](./infill-fill-partition-plan.md) — precedent for host-side post-commit polygon operations. Not a dependency, but informs the IR-mutation pattern.
 
 ---
 
 ## Open decision points
 
-| ID | Decision | Default if unanswered |
+| ID | Decision | Resolution |
 |---|---|---|
-| O-1 | ADR shape — write a new `0022-overhang-classification-at-prepass.md` that supersedes ADR-0008's "unnecessary scope" caveat, or amend ADR-0008 in place? | New ADR-0022. ADR-0008 stays accurate for "speed-factor application is a finalization concern"; the superseded part is just the "unnecessary scope" of a dedicated stage. |
-| O-2 | New `OverhangAnnotationIR` vs extension of `SurfaceClassificationIR`? | Extension of `SurfaceClassificationIR`. Overhang classification is a sub-aspect of surface classification; a parallel IR would duplicate the per-object indexing. |
-| O-3 | Mesh cross-section infrastructure — reuse `PrePass::SupportGeometry`'s plane-triangle intersection helpers, or implement independently? | Reuse via promotion to `slicer-core/src/algos/mesh_cross_section.rs` (extract from `support_geometry.rs`). Two callers means it earns its keep as a shared primitive. |
-| O-4 | Quartile thresholds — OrcaSlicer's hardcoded constants (`detect_steep_overhang` uses `0.5 * extrusion_width` per band), or derive from `line_width` config? | Derive from config (`line_width * { 0.5, 1.0, 1.5, 2.0 }` for quartile band boundaries). Matches Orca's intent without baking in nozzle assumptions. |
-| O-5 | Stage ordering — after `PrePass::MeshAnalysis` only, after `PrePass::LayerPlanning` only, or strictly after both? | Strictly after both. Needs MeshAnalysis for facet-level overhang classification (to AABB-prefilter the cross-section work) and LayerPlanning for the global Z sequence. |
-| O-6 | Fate of existing `overhang-classifier-default` — retire the module entirely (functionality moves to host) or keep it as a finalization-tier consumer that reads quartiles from IR and applies speed factors? | Keep it. Speed-factor application is a finalization-tier concern (`EntityMutation::SetSpeedFactor` is a finalization API). The module shrinks to ~50 LOC — pure consumer. ADR-0008's core decision stands for that part. |
-| O-7 | Output shape per layer — `Vec<(quartile, Vec<ExPolygon>)>` (4 polygon sets per layer) or distance field (e.g. signed-distance polygon)? | Polygon partition (4 sets). Matches existing IR style (polygons, not fields); per-vertex membership is a cheap point-in-polygon test. |
-| O-8 | Fold `OverhangRegion.xy_footprint` (perimeter-roadmap D-12) into this roadmap? | Yes — same workstream (PrePass-side overhang plumbing). Closes the asymmetry with `BridgeRegion.xy_footprint` at the same time. |
+| O-1 | ~~ADR shape — write a new `0022-overhang-classification-at-prepass.md` that supersedes ADR-0008's "unnecessary scope" caveat, or amend ADR-0008 in place?~~ **CLOSED** | New ADR-0022 written (`docs/adr/0022-overhang-classification-at-prepass.md`). ADR-0008 stays accurate for "speed-factor application is a finalization concern"; the superseded part is just the "unnecessary scope" of a dedicated stage. |
+| O-2 | ~~New `OverhangAnnotationIR` vs extension of `SurfaceClassificationIR`?~~ **CLOSED** | Extension of `SurfaceClassificationIR`. Overhang classification is a sub-aspect of surface classification; a parallel IR would duplicate the per-object indexing. |
+| O-3 | ~~Mesh cross-section infrastructure — reuse `PrePass::SupportGeometry`'s plane-triangle intersection helpers, or implement independently?~~ **CLOSED** | Reuse via promotion to `slicer-core/src/algos/mesh_cross_section.rs`, extracted from `triangle_mesh_slicer.rs` (the actual source of the plane-triangle primitives — `support_geometry.rs` has no plane-triangle code to extract from). Two callers means it earns its keep as a shared primitive. |
+| O-4 | ~~Quartile thresholds — OrcaSlicer's hardcoded constants (`detect_steep_overhang` uses `0.5 * extrusion_width` per band), or derive from `line_width` config?~~ **CLOSED** | Derive from config (`line_width * { 0.5, 1.0, 1.5, 2.0 }` for quartile band boundaries). Matches Orca's intent without baking in nozzle assumptions. |
+| O-5 | ~~Stage ordering — after `PrePass::MeshAnalysis` only, after `PrePass::LayerPlanning` only, or strictly after both?~~ **CLOSED** | Strictly after both. Needs MeshAnalysis for facet-level overhang classification (to AABB-prefilter the cross-section work) and LayerPlanning for the global Z sequence. |
+| O-6 | ~~Fate of existing `overhang-classifier-default` — retire the module entirely (functionality moves to host) or keep it as a finalization-tier consumer that reads quartiles from IR and applies speed factors?~~ **CLOSED** | Keep it (refactor deferred to packet P107). Speed-factor application is a finalization-tier concern (`EntityMutation::SetSpeedFactor` is a finalization API). The module shrinks to ~50 LOC — pure consumer. ADR-0008's core decision stands for that part. |
+| O-7 | ~~Output shape per layer — `Vec<(quartile, Vec<ExPolygon>)>` (4 polygon sets per layer) or distance field (e.g. signed-distance polygon)?~~ **CLOSED** | Polygon partition (4 sets). Matches existing IR style (polygons, not fields); per-vertex membership is a cheap point-in-polygon test. |
+| O-8 | ~~Fold `OverhangRegion.xy_footprint` (perimeter-roadmap D-12) into this roadmap?~~ **CLOSED** | Yes — same workstream (PrePass-side overhang plumbing). Closes the asymmetry with `BridgeRegion.xy_footprint` at the same time. |
 
 ---
 

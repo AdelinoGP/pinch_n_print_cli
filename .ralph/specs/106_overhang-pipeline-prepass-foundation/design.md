@@ -15,7 +15,7 @@
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 
 - ADR-0008 invariant preserved: speed-factor application stays a `PostPass::LayerFinalization` concern. This packet does NOT touch `overhang-classifier-default` (P107 work).
-- ADR-0022 invariant introduced: classification uses mesh cross-sections, not wall geometry. The classifier reads only `MeshIR` + `LayerPlanIR` — no per-layer slice data, no Tier 2 per-region data.
+- ADR-0031 invariant introduced: classification uses mesh cross-sections, not wall geometry. The classifier reads only `MeshIR` + `LayerPlanIR` — no per-layer slice data, no Tier 2 per-region data.
 - Schema-version contract: bump `CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION` (currently `1.1.0`) additively (→ `1.2.0`). `CURRENT_SLICE_IR_SCHEMA_VERSION` (currently `4.3.0`) is NOT bumped — one IR, one constant. `#[serde(default)]` on the new fields preserves old fixtures.
 - WIT type identity: `OverhangRegion` record gains `xy-footprint` field; `SurfaceClassificationIR` gains `overhang-quartile-polygons` accessor (host-only — no guest reads of this top-level IR; guests get the per-region projection via P107's view accessors).
 - Stage ordering invariant: `PrePass::OverhangAnnotation` MUST execute after both `MeshAnalysis` and `LayerPlanning` commit. The scheduler validates this; AC-N2 covers the violation case.
@@ -25,7 +25,7 @@
 
 - Selected approach: extend the existing `MeshAnalysis` construction path for `xy_footprint` (one-line addition mirroring the bridge pattern); promote the plane-triangle intersection to a shared module so both `SupportGeometry` and `OverhangAnnotation` consume it (avoids duplication and keeps both in lock-step on coordinate conventions); implement the classifier as a standalone pure function in a new file (no host-services dependency, deterministic); declare the stage in the scheduler with explicit precondition declarations on MeshAnalysis + LayerPlanning so the validator catches ordering violations.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `docs/adr/0022-overhang-classification-at-prepass.md` (NEW; ADR slot 0022 — next free after 0021).
+  - `docs/adr/0031-overhang-classification-at-prepass.md` (NEW; ADR slot 0031 — next free after 0021).
   - `docs/specs/overhang-pipeline-restructuring.md` — close O-1..O-8 entries.
   - `crates/slicer-ir/src/slice_ir.rs` — `OverhangRegion.xy_footprint`, `QuartileBand`, `SurfaceClassificationIR.overhang_quartile_polygons`, schema bump.
   - `crates/slicer-schema/wit/deps/ir-types.wit` — WIT mirrors.
@@ -57,12 +57,12 @@ Primary edit surface exceeds 3 files because the packet covers 9 tasks spanning 
 - `crates/slicer-scheduler/src/execution_plan.rs` (or analogous) — ~15 LOC for stage declaration.
 - `crates/slicer-runtime/src/prepass.rs` (or analogous) + possibly a new builtin producer file — ~30 LOC.
 - 4 new TDD files.
-- `docs/adr/0022-overhang-classification-at-prepass.md` (NEW), `docs/specs/overhang-pipeline-restructuring.md` (close O-decisions), `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`.
+- `docs/adr/0031-overhang-classification-at-prepass.md` (NEW), `docs/specs/overhang-pipeline-restructuring.md` (close O-decisions), `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`.
 
 ## Read-Only Context
 
-- `docs/adr/0008-overhang-as-finalization-module.md` — read full — purpose: align ADR-0022's supersession language; preserve the speed-factor decision.
-- `docs/specs/overhang-pipeline-restructuring.md` — read full — purpose: scope confirmation per phase + default-if-unanswered for O-1..O-8 (O-1 resolves to ADR-0022).
+- `docs/adr/0008-overhang-as-finalization-module.md` — read full — purpose: align ADR-0031's supersession language; preserve the speed-factor decision.
+- `docs/specs/overhang-pipeline-restructuring.md` — read full — purpose: scope confirmation per phase + default-if-unanswered for O-1..O-8 (O-1 resolves to ADR-0031).
 - `docs/01_system_architecture.md` — range-read §"Tier 1 — PrePass" — purpose: match existing stage-block format when adding `PrePass::OverhangAnnotation`.
 - `docs/02_ir_schemas.md` — delegate SUMMARY for `SurfaceClassificationIR`, `OverhangRegion`, `BridgeRegion`.
 - `CLAUDE.md` — §"Guest WASM Staleness" + §"WIT/Type Changes Checklist".
@@ -102,7 +102,7 @@ Primary edit surface exceeds 3 files because the packet covers 9 tasks spanning 
 - `overhang_quartile_polygons` outer key is the global layer index (`u32`). Inner Vec carries one `QuartileBand` per quartile (1, 2, 3, 4); a layer with no overhang has an empty Vec at that key (or the key is absent — both semantics are valid; pick one and document).
 - The classifier classifies based on distance to **previous-layer cross-section**, NOT to previous-layer walls. The threshold band formula uses `outer_wall_line_width × {0.5, 1.0, 1.5, 2.0}` (or `line_width` if width split isn't shipped yet).
 - The new stage runs strictly after `MeshAnalysis` + `LayerPlanning` and strictly before any Tier 2 stage. It does not depend on `PaintSegmentation` or any other PrePass stage.
-- ADR-0022 supersedes only ADR-0008's "unnecessary scope" caveat — NOT ADR-0008 in its entirety. The speed-factor-application-at-finalization decision stays.
+- ADR-0031 supersedes only ADR-0008's "unnecessary scope" caveat — NOT ADR-0008 in its entirety. The speed-factor-application-at-finalization decision stays.
 
 ## Risks and Tradeoffs
 

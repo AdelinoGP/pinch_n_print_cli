@@ -19,6 +19,7 @@ use crate::region_split::{aggregate_region_splits, AggregatedRegionSplitEntry};
 pub const STAGE_ORDER: &[&str] = &[
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
+    "PrePass::OverhangAnnotation",
     "PrePass::SeamPlanning",
     "PrePass::PaintSegmentation",
     "PrePass::RegionMapping",

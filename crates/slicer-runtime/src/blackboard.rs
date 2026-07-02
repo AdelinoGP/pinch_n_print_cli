@@ -142,6 +142,28 @@ impl Blackboard {
         self.surface_classification.as_ref()
     }
 
+    /// Atomically replace the committed `SurfaceClassificationIR`.
+    ///
+    /// Legal only when [`commit_surface_classification`] has already run
+    /// (i.e. `PrePass::MeshAnalysis` committed the base classification).
+    /// Used by `PrePass::OverhangAnnotation` to install a copy carrying a
+    /// populated `overhang_quartile_polygons` map without re-running mesh
+    /// analysis or requiring a second, dedicated blackboard slot.
+    ///
+    /// [`commit_surface_classification`]: Self::commit_surface_classification
+    pub fn replace_surface_classification(
+        &mut self,
+        ir: Arc<SurfaceClassificationIR>,
+    ) -> Result<(), BlackboardError> {
+        if self.surface_classification.is_none() {
+            return Err(BlackboardError::MissingRequiredPrepass {
+                slot: BlackboardPrepassSlot::SurfaceClassification,
+            });
+        }
+        self.surface_classification = Some(ir);
+        Ok(())
+    }
+
     /// Commit `LayerPlanIR` exactly once.
     pub fn commit_layer_plan(&mut self, ir: Arc<LayerPlanIR>) -> Result<(), BlackboardError> {
         commit_prepass(&mut self.layer_plan, ir, BlackboardPrepassSlot::LayerPlan)

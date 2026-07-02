@@ -9,11 +9,11 @@
 
 ## Steps
 
-### Step 1: O-T001/O-T002 — ADR-0022 + close roadmap open decisions
+### Step 1: O-T001/O-T002 — ADR-0031 + close roadmap open decisions
 
 - Task IDs:
-  - `O-T001` — Author ADR-0022 (slot 0022; next free after 0021; 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`)
-  - `O-T002` — Close O-1..O-8 inline in overhang roadmap (O-1 resolves to ADR-0022)
+  - `O-T001` — Author ADR-0031 (slot 0031; next free after 0021; 0012 is taken by `0012-spatial-indexing-as-reconstruction-only-companions.md`)
+  - `O-T002` — Close O-1..O-8 inline in overhang roadmap (O-1 resolves to ADR-0031)
 - Objective: write the ADR; mark O-1..O-8 CLOSED with the documented defaults.
 - Precondition: workspace builds clean.
 - Postcondition: AC-1 + AC-2 verification commands pass.
@@ -21,15 +21,15 @@
   - `docs/adr/0008-overhang-as-finalization-module.md` — read full.
   - `docs/specs/overhang-pipeline-restructuring.md` — read full.
 - Files allowed to edit (≤ 3):
-  - `docs/adr/0022-overhang-classification-at-prepass.md` (NEW)
+  - `docs/adr/0031-overhang-classification-at-prepass.md` (NEW)
   - `docs/specs/overhang-pipeline-restructuring.md` (close O-1..O-8)
 - Files explicitly out-of-bounds: all source files.
 - Expected sub-agent dispatches: none.
 - Context cost: `S`
 - Authoritative docs: `docs/adr/0008-overhang-as-finalization-module.md`, `docs/specs/overhang-pipeline-restructuring.md`.
 - OrcaSlicer refs: none.
-- Verification: `rg -q 'changed algorithm.*mesh cross-section' docs/adr/0022-overhang-classification-at-prepass.md` + `rg -q 'supersedes.*ADR-0008.*unnecessary scope' docs/adr/0022-overhang-classification-at-prepass.md`; AC-2 grep.
-- Exit condition: ADR-0022 exists with supersession language; all 8 O-decisions show CLOSED.
+- Verification: `rg -q 'changed algorithm.*mesh cross-section' docs/adr/0031-overhang-classification-at-prepass.md` + `rg -q 'supersedes.*ADR-0008.*unnecessary scope' docs/adr/0031-overhang-classification-at-prepass.md`; AC-2 grep.
+- Exit condition: ADR-0031 exists with supersession language; all 8 O-decisions show CLOSED.
 
 ### Step 2: O-T010/O-T011 — IR additions
 
@@ -87,11 +87,11 @@
   - `cargo check --workspace --all-targets 2>&1 | tee target/test-output.log` — FACT pass.
 - Exit condition: AC-4 green; workspace compiles.
 
-### Step 4: O-T021/O-T022 — Implement classifier algorithm
+### Step 4: O-T021/O-T031 — Implement classifier algorithm
 
 - Task IDs:
   - `O-T021` — Classifier algorithm in `overhang_annotation.rs`
-  - `O-T022` — Wire quartile thresholds to config (`line_width × {0.5, 1.0, 1.5, 2.0}`)
+  - `O-T031` — Wire quartile thresholds to config (`line_width × {0.5, 1.0, 1.5, 2.0}`)
 - Objective: implement the per-layer quartile classifier as a pure function; write the overhang-ramp TDD; threshold config-read.
 - Precondition: Step 3 exit condition met.
 - Postcondition: AC-5 + AC-N1 verification commands pass.

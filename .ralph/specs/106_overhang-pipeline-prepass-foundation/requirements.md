@@ -3,14 +3,14 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `O-T001` — Author `docs/adr/0022-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause
+  - `O-T001` — Author `docs/adr/0031-overhang-classification-at-prepass.md` superseding ADR-0008's "unnecessary scope" clause
   - `O-T002` — Resolve O-1 through O-8 decisions inline in the overhang roadmap with documented defaults
   - `O-T010` — Add `xy_footprint: Vec<ExPolygon>` to `OverhangRegion`; populate at `MeshAnalysis`
   - `O-T011` — Add per-layer overhang quartile polygons to `SurfaceClassificationIR` via `overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>`
   - `O-T012` — Promote mesh cross-section helpers from `PrePass::SupportGeometry` to shared `slicer-core/src/algos/mesh_cross_section.rs`
   - `O-T020` — Declare `PrePass::OverhangAnnotation` stage in the stage order (after MeshAnalysis + LayerPlanning); host scheduling
   - `O-T021` — Implement classifier algorithm in `slicer-core/src/algos/overhang_annotation.rs`: per consecutive layer pair, compute cross-sections, derive distance field, partition into 4 quartile bands
-  - `O-T022` — Wire quartile thresholds to config (`line_width` derivation: `line_width × {0.5, 1.0, 1.5, 2.0}`)
+  - `O-T031` — Wire quartile thresholds to config (`line_width` derivation: `line_width × {0.5, 1.0, 1.5, 2.0}`)
   - `O-T023` — Host stage runner: invoke `overhang_annotation` after MeshAnalysis + LayerPlanning commit; write to Blackboard `SurfaceClassificationIR` extension field
 - Backlog source: `docs/specs/overhang-pipeline-restructuring.md`
 - Packet status: `draft`
@@ -22,12 +22,12 @@ The current `overhang-classifier-default` at `PostPass::LayerFinalization` (per 
 
 The architecturally correct version uses **mesh cross-sections** — a 2D slice of the mesh at each layer Z plane, derived purely from `MeshIR` + `LayerPlanIR`. This runs at PrePass time with full mesh access and no cross-layer constraint. The classifier produces per-layer quartile polygon partitions that downstream Tier 2 modules consume by point-in-polygon. ADR-0008's finalization-tier reasoning remains valid for **speed-factor application** (the action `overhang-classifier-default` takes is still a finalization mutation); only the classification step moves.
 
-This packet lands the PrePass foundation: ADR-0022 (supersedes ADR-0008's "unnecessary scope" caveat — not the whole ADR), the IR additions (xy_footprint + quartile polygons), the new `mesh_cross_section.rs` wrapper around `triangle_mesh_slicer::slice_mesh_ex` (used by `OverhangAnnotation`; `support_geometry.rs` is unchanged), the classifier algorithm itself, and the stage wiring. View accessors and the `overhang-classifier-default` refactor are deferred to P107 so each packet stays a coherent vertical slice.
+This packet lands the PrePass foundation: ADR-0031 (supersedes ADR-0008's "unnecessary scope" caveat — not the whole ADR), the IR additions (xy_footprint + quartile polygons), the new `mesh_cross_section.rs` wrapper around `triangle_mesh_slicer::slice_mesh_ex` (used by `OverhangAnnotation`; `support_geometry.rs` is unchanged), the classifier algorithm itself, and the stage wiring. View accessors and the `overhang-classifier-default` refactor are deferred to P107 so each packet stays a coherent vertical slice.
 
 ## In Scope
 
-- New ADR `docs/adr/0022-overhang-classification-at-prepass.md`. Supersedes ADR-0008's "unnecessary scope" caveat specifically; preserves ADR-0008's "speed-factor application is a finalization concern" decision.
-- Closure of overhang roadmap open decisions O-1 through O-8 inline in `docs/specs/overhang-pipeline-restructuring.md` (per the roadmap's default-if-unanswered column; O-1 resolves to ADR-0022; investigation findings recorded if implementer escalates).
+- New ADR `docs/adr/0031-overhang-classification-at-prepass.md`. Supersedes ADR-0008's "unnecessary scope" caveat specifically; preserves ADR-0008's "speed-factor application is a finalization concern" decision.
+- Closure of overhang roadmap open decisions O-1 through O-8 inline in `docs/specs/overhang-pipeline-restructuring.md` (per the roadmap's default-if-unanswered column; O-1 resolves to ADR-0031; investigation findings recorded if implementer escalates).
 - IR additions in `crates/slicer-ir/src/slice_ir.rs`:
   - `OverhangRegion.xy_footprint: Vec<ExPolygon>` field (mirrors `BridgeRegion.xy_footprint`).
   - New type `QuartileBand { quartile: u8, polygons: Vec<ExPolygon> }`.
@@ -59,7 +59,7 @@ This packet lands the PrePass foundation: ADR-0022 (supersedes ADR-0008's "unnec
 | --- | --- | --- |
 | `docs/specs/overhang-pipeline-restructuring.md` | ~150 lines | Read full. |
 | `docs/adr/0008-overhang-as-finalization-module.md` | ~30 lines | Read full. |
-| `docs/adr/0022-overhang-classification-at-prepass.md` | NEW | Author in Step 1. ADR slot 0022 is the next free slot (0021 is highest existing). |
+| `docs/adr/0031-overhang-classification-at-prepass.md` | NEW | Author in Step 1. ADR slot 0031 is the next free slot (0021 is highest existing). |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | ~700 lines | Range-read D-10 + D-12 entries only. |
 | `docs/01_system_architecture.md` | varies | Range-read §"Tier 1 — PrePass" (~30 lines). |
 | `docs/02_ir_schemas.md` | ~900 lines | Delegate SUMMARY for `OverhangRegion`, `BridgeRegion`, `SurfaceClassificationIR`. |
@@ -77,7 +77,7 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` (ADR-0022 authored + supersedes correctly), `AC-2` (open decisions closed), `AC-3` (IR field present + schema bump on CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION), `AC-4` (mesh_cross_section.rs created wrapping slice_mesh_ex), `AC-5` (overhang ramp classifier produces expected band partition), `AC-6` (stage runs after MeshAnalysis+LayerPlanning; Blackboard carries non-empty data).
+- Positive cases: `AC-1` (ADR-0031 authored + supersedes correctly), `AC-2` (open decisions closed), `AC-3` (IR field present + schema bump on CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION), `AC-4` (mesh_cross_section.rs created wrapping slice_mesh_ex), `AC-5` (overhang ramp classifier produces expected band partition), `AC-6` (stage runs after MeshAnalysis+LayerPlanning; Blackboard carries non-empty data).
 - Negative cases: `AC-N1` (no overhang → empty Vec, no panic), `AC-N2` (stage scheduled before LayerPlanning → validation rejects).
 - Refinements not captured in Given/When/Then:
   - Mesh cross-section signature: the implementer picks the exact signature based on the existing `slice_mesh_ex` slicer in `crates/slicer-core/src/triangle_mesh_slicer.rs` (NOT `support_geometry.rs`, which has no plane-triangle intersection code). AC-4's grep matches `pub fn cross_section_at_z` — if a different name (`cross_section`, `slice_at_z`) emerges from refactoring, the AC grep is updated.
@@ -92,7 +92,7 @@ Files to inspect for this packet:
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clippy gate | FACT pass/fail |
 | `cargo test -p slicer-core --test overhang_annotation_ramp_tdd` | AC-5 | FACT pass/fail |
 | `cargo test -p slicer-core --test overhang_annotation_no_overhang_case` | AC-N1 | FACT pass/fail |
-| `cargo test -p slicer-core --test prepass_support_geometry_tdd` | AC-4 regression (existing test stays green after helper promotion) | FACT pass/fail |
+| `cargo test -p slicer-runtime --test executor prepass_support_geometry` | AC-4 regression (existing test stays green after helper promotion) | FACT pass/fail |
 | `cargo test -p slicer-runtime --test executor prepass_overhang_annotation_stage_order_tdd` | AC-6 + AC-N2 | FACT pass/fail per case |
 | `cargo xtask build-guests --check` | Guest WASM coherence after WIT change | FACT clean / STALE list |
 | `rg -q 'PrePass::OverhangAnnotation' docs/01_system_architecture.md` | AC doc grep | FACT pass/fail |

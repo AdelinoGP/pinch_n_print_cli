@@ -127,6 +127,7 @@ pub fn execute_mesh_analysis_with(
     Ok(SurfaceClassificationIR {
         schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         per_object,
+        overhang_quartile_polygons: HashMap::new(),
     })
 }
 
@@ -213,11 +214,13 @@ fn classify_object(
     let overhang_regions: Vec<OverhangRegion> = if overhang_facets.is_empty() {
         Vec::new()
     } else {
+        let xy_footprint = compute_xy_footprint(mesh, transform, &overhang_facets);
         vec![OverhangRegion {
             id: 0,
             facet_indices: overhang_facets,
             max_angle_deg: overhang_max_angle,
             needs_support: true,
+            xy_footprint,
         }]
     };
 
