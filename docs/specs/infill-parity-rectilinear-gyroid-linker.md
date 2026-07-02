@@ -461,10 +461,11 @@ version = "0.1.0"
 layer = "InfillPostProcess"
 
 [claims]
-# The linker does not hold fill-role claims; it operates on the prior stage's
-# output. A new claim or the stage-dispatch default routes it. Design detail
-# at implementation.
-holds = []  # or ["claim:infill-link"] — TBD
+# RESOLVED 2026-07-01: the linker holds the new NON-fill claim `claim:infill-link`
+# (catalog entry in docs/03_wit_and_manifest.md; startup first-winner dedup like
+# claim:ironing / claim:path-optimizer). No ResolvedConfig field and no FILL_CLAIM_IDS
+# change — those are fill-claim mechanisms only (validation.rs:11-15,90).
+holds = ["claim:infill-link"]
 
 [config.schema.infill_overlap]
 type = "float"
@@ -499,10 +500,21 @@ Port from OrcaSlicer `FillBase.cpp:1497-2300` (`connect_infill` +
 5. **`chain_or_connect_infill`** (port FillBase.cpp:2201-2300): nearest-neighbor
    ordering + connect_infill wrapper. Orders the linked polylines for minimal
    travel.
-6. **Cross-region/cross-module connection** (PnP-native, no OrcaSlicer
-   precedent): connect endpoints between paths emitted by *different* regions
-   or *different* infill modules, via perimeter walks on shared boundaries.
-   This is the globally-optimal step that no single `run_infill` module could do.
+6. **Cross-region connection within wall-sharing groups** (PnP-native, no OrcaSlicer
+   precedent; REWRITTEN 2026-07-01 — see ADR-0025 §Amendment for the code evidence that
+   scoped it). Connection between regions separated by walls is physically invalid and is
+   NOT performed. Two branches:
+   a. **Same-config wall-less siblings** (paint virtual-variants sharing base walls):
+      predicate = same object-id AND same tool-index AND same role AND same wall-sharing
+      group (via `wall-source-region-id`) AND path-compatible (equal `speed_factor`,
+      endpoint widths within epsilon). Mechanism: union the group's role polygons, build
+      ONE `ExPolygonWithOffset`, run `connect_infill` over the union boundary. Bucket
+      ownership of a merged polyline: region containing the majority of its length; tie →
+      lower region-id.
+   b. **Different-config wall-less siblings** (modifier sub-regions, ADR-0030): link
+      per-region along the region's OWN boundary including the wall-less shared arc, with
+      **no overlap inset along wall-less arcs** (a uniform inset would leave a
+      2 × 0.45 × spacing unfilled ring at the shared boundary).
 7. **Emit linked multi-point polylines** via `InfillOutputBuilder`
    (`push_sparse_path` / `push_solid_path`), tagged with the original role +
    speed factor from the raw segments.
@@ -513,22 +525,20 @@ linker. The linker constructs it from the partitioned fill polygon (outer =
 wall-inset boundary; inner = overlap-inset boundary) for `connect_infill` to
 walk. The `BoundaryInfillGraph` is built on the inner (offset) boundary.
 
-### Default config
-`ResolvedConfig` must add `infill-linker` to the default dispatch graph so
-every print has linking. Without it, infill is raw disjoint segments (ADR-0025
-trade-off). Add the `infill_overlap` config key (default 0.45) to
-`crates/slicer-ir/src/resolved_config.rs` + the CLI in `pnp_cli`.
+### Default config (CORRECTED 2026-07-01)
+There is **no default module list to extend**: modules under `--module-dir` are discovered
+and dispatched at their declared stage automatically (`manifest.rs:585-615`,
+`execution_plan.rs:680-684`). Placing `modules/core-modules/infill-linker/` under the
+standard module dir makes every default slice run it — no `ResolvedConfig` wiring. What
+remains: the `infill_overlap` config key (default 0.45) in the module manifest schema, with
+CLI exposure at integration.
 
-### Claim question (open)
-The linker needs the dispatcher to route `Layer::InfillPostProcess` to it.
-Options:
-- A new `claim:infill-link` claim that the linker holds.
-- No claim; the stage dispatches to the module by default (like the host
-  built-ins).
-Decide at implementation. The `docs/04_host_scheduler.md:378` rule permits a
-module to hold multiple fill-role claims, but the linker is not a fill-role
-module — it is a post-process module. A new claim or a stage-level default is
-cleaner.
+### Claim question (RESOLVED 2026-07-01)
+The linker holds the new **non-fill** claim `claim:infill-link` — catalog entry in
+`docs/03_wit_and_manifest.md`, startup first-winner dedup (precedent: `claim:ironing`,
+`claim:path-optimizer`), so only one linker can be active. No `ResolvedConfig` field and no
+`FILL_CLAIM_IDS` change (those mechanisms are fill-claims-only,
+`crates/slicer-scheduler/src/validation.rs:11-15,90`).
 
 ### Tests (TDD)
 - `raw_segments_in_linked_polylines_out` — feed raw 2-point segments, assert
@@ -562,9 +572,10 @@ cargo xtask build-guests    # if stale
 Wire everything together, run the full validation ceremony.
 
 ### Steps
-1. Add `infill-linker` to the default module set in `ResolvedConfig` /
-   `pnp_cli` default dispatch.
-2. Add `infill_overlap` config key to `ResolvedConfig` + CLI flag.
+1. ~~Add `infill-linker` to the default module set~~ — DROPPED 2026-07-01: module-dir
+   auto-discovery already dispatches any module at its declared stage; there is no default
+   list (see Phase 4 §Default config).
+2. Add `infill_overlap` CLI exposure (the key itself lives in the linker's manifest schema).
 3. Run the full validation:
    ```bash
    cargo build --workspace --all-targets
@@ -629,34 +640,35 @@ until E lands. Flag this in the packet plan.
 
 ---
 
-## Open questions for implementation
+## Open questions for implementation — ALL RESOLVED (2026-07-01 grilling)
 
-1. **Option 1a vs 1b for prior-IR input (ADR-0028).** Pre-populated builder
-   (muddies write-only semantics, smaller WIT change) vs new input parameter
-   (cleaner semantics, larger WIT change). Pick at Phase 1 implementation.
+1. **Option 1a vs 1b — RESOLVED: 1b.** New `prior-infill` input parameter mirroring
+   `InfillIR`'s region buckets; builder stays write-only; commit stays replace with a
+   full-re-emit contract. See ADR-0028 §Amendment 2026-07-01.
 
-2. **`clipper2_rust` line-clipping API.** Phase 0 must verify whether
-   `clipper2_rust` exposes line clipping or whether we need the
-   thicken-and-intersect workaround or a Sutherland-Hodgman variant. Research
-   task before Phase 0 can commit to an approach.
+2. **`clipper2_rust` line-clipping API — RESOLVED: native support exists.** `clipper2-rust
+   1.0.3` (pure Rust, wasm32-clean) exposes open-path clipping via
+   `Clipper64::add_open_subject(&Paths64)` + `execute(clip_type, fill_rule, solution_closed,
+   Some(&mut solution_open))` (`engine_public.rs:296,335`). `clip_polylines` uses this
+   directly; the thicken-and-intersect and Sutherland-Hodgman fallbacks are dead options.
 
-3. **Linker claim.** New `claim:infill-link` vs stage-level default dispatch.
-   Phase 4 design detail.
+3. **Linker claim — RESOLVED:** non-fill claim `claim:infill-link` (see Phase 4 §Claim
+   question).
 
-4. **`pattern_shift` placement.** Module (scan lines shifted per layer) or
-   linker (connection pattern shifts). Recommended: module, so adjacent layers'
-   segments interleave before the linker sees them.
+4. **`pattern_shift` placement — RESOLVED: module.** Scan lines shift per layer in
+   rectilinear-infill so adjacent layers' segments interleave; the linker connects what it
+   receives.
 
-5. **Lightning-infill transitional state (DEV-081).** Lightning currently
-   self-links. Under Architecture A it should switch to raw emit, but that is a
-   separate follow-up packet. Until then, lightning's self-linked output passes
-   through the linker unchanged (the linker links raw segments; already-linked
-   paths are not re-broken unless re-clipping changes them). Flag in
-   DEVIATION_LOG.
+5. **Lightning-infill (DEV-081) — RESOLVED: full parity in-roadmap.** The roadmap includes
+   full OrcaSlicer lightning parity (ADR-0029, `docs/specs/lightning-infill-parity.md`,
+   packets 137–140); DEV-081 closes at packet 140. Note: the pass-through premise below was
+   found weaker than written — paths carry no module identity, so the linker cannot detect
+   already-linked output; the raw-emit conversion is the real fix.
 
-6. **Existing infill tests.** Survey (Phase 5) which tests assert on linked
-   polylines from `run_infill` modules — those need updating to assert on the
-   linker's output or the post-`InfillPostProcess` `InfillIR`.
+6. **Existing infill tests — RESOLVED: survey moved to the first output-changing packet.**
+   The golden/linked-output survey + carve list happens at packet 131 (the per-region
+   ConfigView fix can already change painted-fixture output), is maintained through 132–135,
+   and is restored + re-blessed once at packet 136.
 
 ---
 

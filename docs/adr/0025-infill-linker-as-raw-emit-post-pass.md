@@ -157,6 +157,45 @@ that no single `run_infill` module (which sees only its own regions) can do.
   PathOptimization sorts whole entities (combinatorial). Removing either
   degrades print time.
 
+## Amendment 2026-07-01 — cross-region connection scoped to wall-sharing groups; lightning parity in-roadmap (grilling session)
+
+Two claims in this ADR were sharpened by the 2026-07-01 grilling against the codebase:
+
+1. **"Globally-optimal cross-region connection" is scoped to wall-sharing groups.** Code
+   evidence showed extruded cross-region connection is physically invalid in the general case:
+   perimeter walls are generated along every normal shared region boundary (each paint-variant
+   region gets its own full wall loops, `crates/slicer-core/src/algos/prepass_slice.rs:244` +
+   the paint-segmentation region rebuild), tool identity is resolved per-entity only after
+   `Layer::InfillPostProcess` (`crates/slicer-runtime/src/layer_executor.rs:590-775`), and
+   per-region config is invisible at the stage
+   (`crates/slicer-wasm-host/src/dispatch.rs:1629-1645`). Cross-region connection is therefore
+   restricted to **wall-sharing groups** — regions with no walls between them (paint
+   virtual-variants sharing base walls, `region_partition.rs:35-44`, and modifier sub-regions
+   per ADR-0030) — under the predicate: same object-id, same tool-index, same role, same
+   wall-sharing group, path-compatible (equal `speed_factor`, endpoint widths within epsilon).
+   Two linking branches:
+   - **Same-config wall-less siblings:** union the group's role polygons, build one
+     `ExPolygonWithOffset`, run `connect_infill` over the union boundary. Bucket ownership of
+     a merged polyline: the region containing the majority of its length; tie → lower
+     region-id.
+   - **Different-config wall-less siblings** (the modifier-infill case — different densities/
+     patterns): link per-region along the region's OWN boundary including the wall-less shared
+     arc, applying **no overlap inset along wall-less arcs** (a uniform inset would leave a
+     `2 × 0.45 × spacing` unfilled ring at the shared boundary).
+   Connection between regions separated by walls remains invalid; revisit only with an IR
+   change. Travel between such regions stays `Layer::PathOptimization`'s job. The two
+   supporting view fields (`tool-index`, `wall-source-region-id`) are recorded in ADR-0028
+   §Amendment.
+
+2. **Lightning-infill is no longer a transitional exception.** The roadmap now includes full
+   OrcaSlicer lightning parity (ADR-0029: `PrePass::LightningTreeGen` + `LightningTreeIR` +
+   module rewrite to raw emit), closing DEV-081 inside this effort (packet
+   `140_lightning-module-rewrite`). Until that packet lands, the transitional note in
+   §Consequences stands — but note the pass-through premise is weaker than written: paths
+   carry no module identity (`ExtrusionPath3D` has no origin field), so the linker cannot
+   reliably distinguish lightning's self-linked output from raw waves; the real fix is the
+   raw-emit conversion, not pass-through detection.
+
 ## Future-Reviewer Notes
 
 - **Do not re-suggest putting `connect_infill` in `slicer-core::infill_ops`.**

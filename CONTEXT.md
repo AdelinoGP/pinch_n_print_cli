@@ -173,12 +173,39 @@ holder.
 ### Infill linker
 The single `Layer::InfillPostProcess` module that connects raw infill segments
 (emitted by all `Layer::Infill` modules) into continuous multi-point polylines,
-across region and module boundaries, applying the infill overlap offset and
-re-clipping against the partitioned fill polygons. Required infrastructure in
-the default dispatch graph — without it, infill is raw disjoint segments with
-maximum travel. Distinct from `Layer::PathOptimization`, which sorts
-already-linked whole entities but does not connect endpoints. Diverges from
-OrcaSlicer, which links inside each fill class. See ADR-0025.
+uniformly across all regions and modules, applying the infill overlap offset
+and re-clipping against the partitioned fill polygons. Linking is per
+(region, role); endpoint connection *between* regions happens only inside a
+wall-sharing group — never across perimeter walls. Required infrastructure —
+without it, infill is raw disjoint segments with maximum travel. Distinct from
+`Layer::PathOptimization`, which sorts already-linked whole entities but does
+not connect endpoints. Diverges from OrcaSlicer, which links inside each fill
+class. See ADR-0025 (+ 2026-07-01 amendment).
+
+### Wall-sharing group
+A base region together with the wall-less sibling regions that share its
+perimeter walls: paint virtual-variants without their own perimeter entry, and
+modifier sub-regions (see Modifier sub-region). Boundaries *within* the group
+carry no walls, so infill may anchor or connect along them; boundaries between
+groups are wall-backed and infill never crosses them. The only scope in which
+the infill linker connects paths across region boundaries. See ADR-0025
+amendment and ADR-0030.
+
+### Modifier sub-region
+A wall-less sub-region produced by intersecting a modifier volume's
+cross-section with its base region's fill areas: it has its own region
+identity and config (e.g. a different infill density) but shares the base
+region's walls — no perimeters are generated at the modifier boundary.
+Contrast with paint splits, which produce fully walled regions. The mechanism
+behind local-stiffness infill modifiers. See ADR-0030.
+
+### Lightning tree
+The branching structure that lightning infill extrudes: grown top-down across
+all layers of an object (each layer's branches must land on the layer below),
+then sampled per layer at fill time. Tree generation is a whole-object,
+cross-layer computation (a PrePass concern), not a per-layer one; the
+lightning module only samples the finished trees for its layer and emits raw
+branch polylines. See ADR-0029.
 
 ### Infill overlap
 The lateral inset applied to infill scan lines so they overlap the perimeter

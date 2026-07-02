@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed (lands with the infill-parity effort; companion to ADR-0025).
+Accepted (2026-07-01 grilling session; see §Amendment 2026-07-01 for the resolved options).
+Lands with the infill-parity effort; companion to ADR-0025.
 
 ## Context
 
@@ -128,6 +129,42 @@ merge semantics depend on Option 1a vs 1b and are decided at implementation.
   (Option 1b) is an implementation detail. Both are valid; the implementation
   picks based on which produces cleaner host-dispatch code. The WIT change is
   the same shape either way (one new field or one new param).
+
+## Amendment 2026-07-01 — options resolved, field list extended (grilling session)
+
+The 2026-07-01 grilling session (recorded in the packet roadmap under `.ralph/specs/129…140`)
+resolved every open choice in this ADR and extended the field list. These resolutions are
+binding for the implementing packets:
+
+1. **Option 1b selected.** `run_infill_postprocess` gains a `prior-infill` input parameter;
+   the `InfillOutputBuilder` stays write-only. The parameter shape **mirrors `InfillIR`'s
+   region buckets** (`InfillRegion { object_id, region_id, sparse_infill, solid_infill,
+   ironing }`, `crates/slicer-ir/src/slice_ir.rs:1821,1836`) so region attribution comes free
+   from the IR structure — no per-path origin field is needed.
+
+2. **Change 3 resolved: the commit stays replace, with a full re-emit contract.** The
+   postprocess module emits the COMPLETE replacement `InfillIR`, including buckets it did not
+   transform (e.g. `ironing` passes through by re-emit; testable as paths-in == paths-out).
+   This is safe because a stage with zero registered modules never produces a commit — the
+   prior `InfillIR` is preserved (`crates/slicer-runtime/src/layer_executor.rs:330`; the
+   replace at 1151-1156 fires only when a module actually ran). That preservation behavior is
+   pinned by a negative acceptance criterion in the contract packet.
+
+3. **`perimeter-region-view` gains six fields, not four.** Beyond `sparse-infill-area`,
+   `top-solid-fill`, `bottom-solid-fill`, `bridge-areas`:
+   - `tool-index` — host-computed at dispatch: variant-chain material tool →
+     `RegionMapIR.extensions["extruder"]` → `DEFAULT_TOOL(0)`. Needed because tool is
+     otherwise resolved per-entity only after this stage
+     (`crates/slicer-runtime/src/layer_executor.rs:590-775`).
+   - `wall-source-region-id: option<region-id>` — `none` = the region owns its walls;
+     `some(base)` = the region shares the base region's walls (derived from the absence of a
+     per-variant PerimeterIR entry, `crates/slicer-runtime/src/region_partition.rs:35-44`;
+     later also populated for modifier sub-regions per ADR-0030).
+   Both fields exist for the linker's wall-sharing-group connection predicate (ADR-0025
+   §Amendment). Per-region *config* remains invisible at this stage
+   (`crates/slicer-wasm-host/src/dispatch.rs:1629-1645` — a single global `ConfigView`);
+   the linker deliberately uses path-level observables (`speed_factor`, endpoint widths)
+   instead of config for compatibility checks.
 
 ## Future-Reviewer Notes
 
