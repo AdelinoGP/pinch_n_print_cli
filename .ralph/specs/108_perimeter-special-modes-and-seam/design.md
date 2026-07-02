@@ -91,6 +91,10 @@
 - T-077 consumer code path is wired and tested for **both** non-empty (overhang → N+1 walls) and empty (flat → N walls) inputs on the same AC-6 fixture, because the P106+P107 data flow is a hard predecessor of this packet.
 - `perimeter_utils` consumed from `slicer-core` per docs/13 §Out of Scope. Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT`.
 
+## Closure Note (added at packet close)
+
+The activation gate cleared before implementation began: P104, P105, P106, and P107 all reached `status: implemented`. The `xy_footprint` BridgeRegion-vs-OverhangRegion discrepancy flagged above resolved itself in P106's landed form — `OverhangRegion` carries `pub xy_footprint: Vec<ExPolygon>` (slice_ir.rs:603) alongside `BridgeRegion`'s (slice_ir.rs:587), and the T-077 consumer reads it only through `SliceRegionView::overhang_areas()` (views.rs:449), never touching either struct directly. Forward-dep language in this file is retained for historical context.
+
 ## Risks and Tradeoffs
 
 - T-077 consumes data from two upstream packets (P106 + P107). Risk: if P106 or P107 ships incomplete (e.g., `xy_footprint` populated but accessor pre-filter buggy), T-077's overhang region check would silently produce wrong wall counts. Mitigation: AC-6 directly tests both "non-empty overhang → N+1 walls" and "empty overhang → N walls" paths on the same fixture, catching either failure mode.

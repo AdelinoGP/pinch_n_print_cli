@@ -65,8 +65,10 @@ path = "../../modules/core-modules/lightning-infill"
 [dev-dependencies.classic-perimeters]
 path = "../../modules/core-modules/classic-perimeters"
 
-[dev-dependencies.arachne-perimeters]
-path = "../../modules/core-modules/arachne-perimeters"
+# packet 108 (D-108-SEAM-CONSUMED): painted_seam_enforcer_blocker_tdd exercises
+# seam-placer directly against classic-perimeters output.
+[dev-dependencies.seam-placer]
+path = "../../modules/core-modules/seam-placer"
 
 [[bench]]
 name = "pipeline"

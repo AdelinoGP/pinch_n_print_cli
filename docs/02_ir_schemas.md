@@ -1643,7 +1643,7 @@ unless stated.
 | `support_resolution`      | f32  | `0.05 mm`      | Per-role tolerance for support material / interface.              |
 | `min_segment_length`      | f32  | `0.025 mm`     | Drop adjacent segments shorter than this after D-P.               |
 | `gcode_xy_decimals`       | u32  | `3`            | Decimal places for X / Y / Z token formatting (via `format_xyz`). |
-| `perimeter_arc_tolerance` | f32  | `0.0025 mm`    | Clipper2 arc-tolerance for `slicer_core::polygon_ops::offset(...)` — read per-module by `classic-perimeters` and `arachne-perimeters`. |
+| `perimeter_arc_tolerance` | f32  | `0.0025 mm`    | Clipper2 arc-tolerance for `slicer_core::polygon_ops::offset(...)` — read per-module by `classic-perimeters` (the fake `arachne-perimeters` module was deleted in P108). |
 | `slice_closing_radius`    | f32  | `0.0 mm` (off) | Per-layer Clipper2 `inflate(+r) → inflate(-r)` round-trip after `simplify_polygon_points` in `triangle_mesh_slicer`. |
 
 Per-role tolerance dispatch (consumed by `tolerance_for_role` in

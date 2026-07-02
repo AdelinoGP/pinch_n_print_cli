@@ -64,5 +64,8 @@ name = "flow_tdd"
 [[test]]
 name = "wall_sequence_reorder_tdd"
 
+[[test]]
+name = "sharp_corner_seam_threshold_tdd"
+
 [lints]
 workspace = true

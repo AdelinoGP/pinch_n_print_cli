@@ -911,7 +911,6 @@ fn canonical_core_module_artifacts_are_real_components() {
         "seam-placer",
         "gyroid-infill",
         "lightning-infill",
-        "arachne-perimeters",
         "support-surface-ironing",
     ];
 

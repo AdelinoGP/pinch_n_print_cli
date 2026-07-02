@@ -34,6 +34,20 @@ max     = 10
 display = "Wall Count"
 group   = "Walls"
 
+[config.schema.extra_perimeters]
+type    = "int"
+default = 0
+min     = 0
+max     = 10
+display = "Extra perimeters (per-region bonus wall count)"
+group   = "Walls"
+
+[config.schema.extra_perimeters_on_overhangs]
+type    = "bool"
+default = false
+display = "Extra perimeter on overhangs (adds one wall loop inside region.overhang_areas())"
+group   = "Walls"
+
 [config.schema.line_width]
 type    = "float"
 default = 0.4
@@ -75,6 +89,14 @@ type    = "bool"
 default = true
 display = "Detect thin walls via medial-axis cascade"
 group   = "Walls"
+
+[config.schema.seam_candidate_angle_threshold_deg]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 180.0
+display = "Seam candidate sharp-corner angle threshold (degrees)"
+group   = "Seam"
 
 [config.schema.gap_infill_speed]
 type    = "float"
@@ -138,6 +160,30 @@ group   = "Walls"
 type    = "bool"
 default = false
 display = "Only one wall on first layer"
+group   = "Walls"
+
+[config.schema.smaller_perimeter_line_width]
+type    = "float"
+default = 0.25
+min     = 0.05
+max     = 2.0
+display = "Smaller perimeter line width (narrow-island override, mm)"
+group   = "Walls"
+
+[config.schema.smaller_perimeter_threshold_mm]
+type    = "float"
+default = 0.8
+min     = 0.0
+max     = 10.0
+display = "Narrow-island width threshold (mm)"
+group   = "Walls"
+
+[config.schema.narrow_loop_length_threshold_mm]
+type    = "float"
+default = 10.0
+min     = 0.0
+max     = 1000.0
+display = "Minimum longest-dimension for narrow-island classification (mm)"
 group   = "Walls"
 
 [config.overridable-per-region]

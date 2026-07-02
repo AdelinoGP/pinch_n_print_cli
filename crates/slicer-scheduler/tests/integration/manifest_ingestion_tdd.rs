@@ -808,7 +808,6 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.paint-segmentation",
         "com.core.path-optimization-default",
         "com.core.classic-perimeters",
-        "com.core.arachne-perimeters",
         "com.core.rectilinear-infill",
         "com.core.gyroid-infill",
         "com.core.lightning-infill",

@@ -249,6 +249,18 @@ impl SliceRegionView {
         self.sparse_infill_area = sparse_infill_area;
     }
 
+    /// Override the resolved surface group (host-only, for testing).
+    ///
+    /// Production code path: the wasm-host marshal layer resolves
+    /// `region.nonplanar_surface` against `SurfaceClassificationIR` (see
+    /// `crates/slicer-wasm-host/src/marshal/in_.rs::sliced_region_to_data`).
+    /// Tests that exercise non-planar-surface consumers directly (bypassing
+    /// the WASM boundary) can populate it here (P108 T-074).
+    #[doc(hidden)]
+    pub fn set_surface_group(&mut self, surface_group: Option<SurfaceGroup>) {
+        self.surface_group = surface_group;
+    }
+
     /// Returns the SurfaceClassificationIR-derived support eligibility flag.
     ///
     /// Used by `Layer::Support` modules as the default-eligibility predicate when
@@ -454,6 +466,18 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_overhang_quartile_polygons(&mut self, bands: Vec<QuartileBand>) {
         self.overhang_quartile_polygons = bands;
+    }
+
+    /// Override the flattened overhang area polygons (host-only, for testing).
+    ///
+    /// Production code populates `overhang_areas` from
+    /// `SurfaceClassificationIR.overhang_quartile_polygons` at the WASM
+    /// marshal boundary (`crates/slicer-wasm-host/src/marshal/in_.rs`). Tests
+    /// that exercise overhang consumers directly (bypassing the WASM
+    /// boundary) can populate it here (P108 T-077).
+    #[doc(hidden)]
+    pub fn set_overhang_areas(&mut self, overhang_areas: Vec<ExPolygon>) {
+        self.overhang_areas = overhang_areas;
     }
 
     /// Returns the quartile-banded overhang polygons for this region's layer,

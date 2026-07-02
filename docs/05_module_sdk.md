@@ -512,7 +512,7 @@ Recommended budgeting:
 
 ### Geometry Helpers
 
-Geometry utilities for module authors live in the `slicer-core` crate (add `slicer-core = { path = "..." }` to `[dependencies]` — already declared by `arachne-perimeters`, `classic-perimeters`, `rectilinear-infill`, `traditional-support`, and `tree-support`).
+Geometry utilities for module authors live in the `slicer-core` crate (add `slicer-core = { path = "..." }` to `[dependencies]` — already declared by `classic-perimeters`, `rectilinear-infill`, `traditional-support`, and `tree-support`; the fake `arachne-perimeters` module that also declared it was deleted in P108).
 
 ```rust
 use slicer_core::{segment_path, distribute_points, path_length, seg_len_3d, flow_correction};
@@ -597,6 +597,92 @@ be propagated. The TDD contract test
 asserts that a capacity-rejecting builder causes the module to return
 `Err(ModuleError)` whose message contains `"builder at capacity"` — not
 silently `Ok(())`.
+
+### Seam-candidate generation convention (packet 108, D-108-SEAM-CONSUMED)
+
+Perimeter-generation modules (currently `classic-perimeters`) emit
+`seam_candidates` for the outer wall only, via
+`slicer_core::perimeter_utils::generate_sharp_corner_seam_candidates(contour,
+z, angle_threshold_deg)`. A vertex becomes a candidate only when its absolute
+turn angle (deviation from a straight pass-through) clears
+`angle_threshold_deg` — the per-invocation config key
+`seam_candidate_angle_threshold_deg` (default **30.0** degrees). This filters
+dense runs of near-collinear tessellation points down to one candidate per
+genuine corner (see `crates/slicer-core/tests/sharp_corner_seam_threshold_tdd.rs`).
+The deprecated `generate_seam_candidates` (no threshold — every non-collinear
+vertex qualifies) is kept only for callers that have not migrated.
+
+**Paint-seam consumption.** Before candidates are pushed to the builder, the
+perimeter module consumes painted `PaintSemantic::Custom("seam_enforcer")` /
+`Custom("seam_blocker")` segment annotations via
+`slicer_core::perimeter_utils::apply_seam_paint_bias(candidates,
+enforcer_polys, blocker_polys)`:
+
+- `seam_blocker` **excludes** — any candidate whose position falls inside a
+  blocker polygon is removed from the list entirely (hard filter, matching
+  OrcaSlicer's `Blocked` top-priority discriminator).
+- `seam_enforcer` applies a **bias** — any surviving candidate inside an
+  enforcer polygon has its `score` multiplied by `0.1`. `seam-placer`'s
+  `SeamMode::Nearest` selects the candidate with the *minimum*
+  `effective_score` (`Iterator::min_by`), and perimeter-emitted candidates
+  always carry `SeamReason::Aligned` (zero reason-bonus), so shrinking the
+  score makes an enforced candidate strictly more likely to win, even against
+  an unpainted candidate with a numerically higher geometric score.
+
+`slicer-core` cannot depend on `slicer-sdk` (where `PaintRegionLayerView`
+lives), so `apply_seam_paint_bias` is data-driven: it takes plain
+`&[ExPolygon]` slices. The caller (`classic-perimeters`) is responsible for
+extracting `enforcer_polys`/`blocker_polys` from `SliceRegionView::
+segment_annotations()` — per painted outer-wall vertex, a small 1&nbsp;mm
+half-size square `ExPolygon` centered on that vertex (see
+`seam_paint_boxes`/`seam_paint_box` in
+`modules/core-modules/classic-perimeters/src/lib.rs`). Index alignment
+against the original region contour is valid for outer walls specifically
+because outer-wall vertex ordering/count is preserved from the source
+contour (see the `build_wall_flags` doc comment on the same "outer walls
+always use index-based lookup" guarantee).
+
+**Orca-parity note.** OrcaSlicer treats enforcer/blocker as a hard
+top-priority discriminator (`Enforced > Neutral > Blocked`, checked before
+all geometric scoring) with a `central_enforcer` anchor preference; there is
+no soft bias. This port keeps `seam_blocker` as a hard filter (matching
+Orca) but implements `seam_enforcer` as a `0.1x` soft score bias rather than
+a hard top-priority override — a deliberate, narrower deviation from Orca's
+"always wins" enforcer semantics, chosen so an enforcer region competes with
+(rather than unconditionally overrides) other geometric candidates on the
+same wall loop.
+
+**T-082 audit — seam-placer's tolerance for sparse/empty candidate lists.**
+`seam-placer`'s `run_wall_postprocess` was already robust to a region with
+zero seam candidates and no `resolved_seam`: it silently emits the wall loop
+unrotated (no `set_resolved_seam` call) rather than panicking or erroring.
+This matters beyond paint — a region with only weak/collinear corners under
+the 30° threshold (e.g. a densely-tessellated round cross-section) can
+legitimately produce zero candidates, and non-planar-shell regions
+(`LoopType::NonPlanarShell`, `emit_nonplanar_shells`) never push seam
+candidates by design. The audit found no bug in that general path; it stays
+a no-op. Packet 108 (AC-N2) added one narrower, deliberate carve-out on top
+of that robust baseline: for a region with **standard** (non
+non-planar-shell) wall loops, an empty `seam_candidates` list **and** no
+`resolved_seam` now returns `Err(ModuleError::fatal(6, ..))` with a message
+containing `"no seam candidates"` — this is the observable signal that a
+`seam_blocker` paint region excluded every corner candidate for that region,
+which should surface as a hard slice error rather than a silent unrotated
+wall. `SeamPlacerError` (module-local, `modules/core-modules/seam-placer/src/lib.rs`)
+carries the message; there is no `SeamPlacerError::NoCandidates` variant —
+just one constructor, `SeamPlacerError::no_candidates`.
+
+**T-083 — `seam-planner-default` (PrePass) independence.** Per
+`modules/core-modules/seam-planner-default/seam-planner-default.toml`, this
+module implements `PrePass::SeamPlanning` (`run_seam_planning`), a
+mesh-level, once-per-object stage that runs before per-layer slicing,
+reading `MeshIR`/`SurfaceClassificationIR`/`LayerPlanIR` and writing
+`SeamPlanIR` per its manifest's `[ir-access]` table. It
+does not read `PaintSemantic::Custom("seam_enforcer"/"seam_blocker")` and
+has no dependency on, or interaction with, the per-layer outer-wall
+candidate generation this section describes (`classic-perimeters` +
+`seam-placer`). The two seam mechanisms — PrePass planning and per-layer
+candidate/placement — operate independently.
 
 ### Module State Lifecycle (Normative)
 

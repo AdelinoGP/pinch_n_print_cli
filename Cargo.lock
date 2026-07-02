@@ -145,17 +145,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arachne-perimeters"
-version = "0.1.0"
-dependencies = [
- "slicer-core",
- "slicer-ir",
- "slicer-schema",
- "slicer-sdk",
- "wit-bindgen 0.57.1",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2536,7 +2525,6 @@ dependencies = [
 name = "slicer-runtime"
 version = "0.1.0"
 dependencies = [
- "arachne-perimeters",
  "assert_cmd",
  "base64 0.22.1",
  "clap",
@@ -2550,6 +2538,7 @@ dependencies = [
  "rayon",
  "rectilinear-infill",
  "rstar",
+ "seam-placer",
  "serde",
  "serde_json",
  "sha2",

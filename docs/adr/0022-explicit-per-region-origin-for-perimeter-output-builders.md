@@ -66,8 +66,10 @@ each WIT push when the SDK item's origin is `Some`, and skips it for `None` (the
 host fallback chain handles the `None` case).
 
 Guests call `output.begin_region(region.object_id(), *region.region_id());` at
-the top of their `for region in regions` loop. Four modules:
-classic-perimeters, arachne-perimeters, seam-placer, fuzzy-skin.
+the top of their `for region in regions` loop. Four modules at the time of this
+decision: classic-perimeters, arachne-perimeters, seam-placer, fuzzy-skin.
+(The fake `arachne-perimeters` module was deleted in P108; `classic-perimeters`
+is the sole perimeter generator until real Arachne lands under P110+P112.)
 
 The marshal (`convert_perimeter_output`, `OriginBucket`) is unchanged. The
 origins are just correct now; the bucketing logic is the same. The

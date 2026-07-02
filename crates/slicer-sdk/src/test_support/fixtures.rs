@@ -6,7 +6,8 @@ use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
     LayerCollectionIR, LoopType, Point3WithWidth, Polygon, PrintEntity, RegionKey, SeamCandidate,
-    SeamReason, ToolChange, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    SeamReason, SurfaceGroup, ToolChange, WallBoundaryType, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
 
 /// Builder for creating [`ConfigView`] fixtures.
@@ -148,6 +149,8 @@ pub struct SliceRegionViewBuilder {
     bridge_areas: Vec<ExPolygon>,
     bridge_orientation_deg: f32,
     sparse_infill_area: Vec<ExPolygon>,
+    surface_group: Option<SurfaceGroup>,
+    overhang_areas: Vec<ExPolygon>,
 }
 
 impl SliceRegionViewBuilder {
@@ -179,6 +182,8 @@ impl SliceRegionViewBuilder {
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
+            surface_group: None,
+            overhang_areas: Vec::new(),
         }
     }
 
@@ -368,6 +373,22 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the resolved surface group (non-planar-surface consumers, P108).
+    /// Mirrors [`SliceRegionView::set_surface_group`].
+    #[must_use]
+    pub fn surface_group(mut self, group: SurfaceGroup) -> Self {
+        self.surface_group = Some(group);
+        self
+    }
+
+    /// Set the region's overhang-area polygons (T-077, P108).
+    /// Mirrors [`SliceRegionView::set_overhang_areas`].
+    #[must_use]
+    pub fn overhang_areas(mut self, areas: Vec<ExPolygon>) -> Self {
+        self.overhang_areas = areas;
+        self
+    }
+
     /// Build a [`SliceRegionView`].
     ///
     /// If no infill areas were explicitly added, polygons are cloned
@@ -396,6 +417,8 @@ impl SliceRegionViewBuilder {
             tmp.set_bridge_areas(self.bridge_areas);
             tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp.set_sparse_infill_area(self.sparse_infill_area);
+            tmp.set_surface_group(self.surface_group);
+            tmp.set_overhang_areas(self.overhang_areas);
             tmp
         }
     }

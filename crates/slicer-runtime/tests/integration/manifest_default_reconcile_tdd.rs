@@ -13,13 +13,13 @@
 //! assertion.
 //!
 //! Covers all three reconciled keys: `wall_count`, `outer_wall_speed`,
-//! `inner_wall_speed`, for both `classic-perimeters` and `arachne-perimeters`.
+//! `inner_wall_speed`, for `classic-perimeters` (the sole perimeter generator;
+//! the fake `arachne-perimeters` module was deleted in P108).
 //!
 //! Exit condition: `cargo test -p slicer-runtime --test integration manifest_default_reconcile_tdd`
 
 use std::collections::HashMap;
 
-use arachne_perimeters::ArachnePerimeters;
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{ConfigView, ExPolygon, Point2, Polygon};
 use slicer_sdk::builders::PerimeterOutputBuilder;
@@ -33,8 +33,6 @@ const BASE_SPEED: f32 = 50.0;
 
 const CLASSIC_MANIFEST: &str =
     include_str!("../../../../modules/core-modules/classic-perimeters/classic-perimeters.toml");
-const ARACHNE_MANIFEST: &str =
-    include_str!("../../../../modules/core-modules/arachne-perimeters/arachne-perimeters.toml");
 
 /// Read a numeric `[config.schema.<key>].default` value from a manifest TOML.
 /// Panics (failing the test) if the key or its default is absent / non-numeric.
@@ -125,10 +123,4 @@ fn assert_reconciled(manifest: &str, wall_count: usize, outer: f32, inner: f32) 
 fn classic_perimeters_defaults_match_manifest() {
     let (wall_count, outer, inner) = observed_code_fallbacks::<ClassicPerimeters>();
     assert_reconciled(CLASSIC_MANIFEST, wall_count, outer, inner);
-}
-
-#[test]
-fn arachne_perimeters_defaults_match_manifest() {
-    let (wall_count, outer, inner) = observed_code_fallbacks::<ArachnePerimeters>();
-    assert_reconciled(ARACHNE_MANIFEST, wall_count, outer, inner);
 }

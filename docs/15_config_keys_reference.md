@@ -43,16 +43,28 @@ is the authoritative catalog of their defaults and ranges.
 <!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Module |
 |---|---|---|---|---|
-| `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `arachne-perimeters` |
-| `line_width` | float | `0.4` | [0.1, 2.0] | `arachne-perimeters` |
-| `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `arachne-perimeters` |
-| `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | `arachne-perimeters` |
-| `wall_count` | int | `3` | [1.0, 10.0] | `arachne-perimeters` |
+| `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
+| `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
+| `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters` |
+| `filter_out_gap_fill` | float | `0.5` | [0.0, 5.0] | `classic-perimeters` |
+| `gap_fill_medial_axis_on_painted` | bool | `false` | — | `classic-perimeters` |
+| `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
+| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
+| `outer_wall_line_width` | float | `0.5` | [0.1, 2.0] | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | `classic-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
+| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters` |
+| `slice_has_paint` | bool | `false` | — | `classic-perimeters` |
+| `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
+| `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
 | `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |
+| `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
 | `point_distance` | float | `0.5` | [0.01, 5.0] | `fuzzy-skin` |
 | `thickness` | float | `0.3` | [0.0, 2.0] | `fuzzy-skin` |
@@ -89,7 +101,6 @@ is the authoritative catalog of their defaults and ranges.
 | `retract_mode` | enum | `"gcode"` | — | `path-optimization-default` |
 | `retract_speed` | float | `25.0` | — | `path-optimization-default` |
 | `travel_z_hop` | float | `0.0` | — | `path-optimization-default` |
-| `wall_sequence` | enum | `"inner_outer"` | — | `path-optimization-default` |
 | `infill_angle` | float | `45.0` | [0.0, 360.0] | `rectilinear-infill` |
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
@@ -242,11 +253,10 @@ upstream or has no upstream equivalent.
 | Key | Owner | Pinch 'n Print default | OrcaSlicer default |
 |---|---|---|---|
 | `brim_width` | `skirt-brim` | `8.0` | `0.0` |
-| `inner_wall_speed` | `arachne-perimeters` | `45.0` | `60.0` |
+| `filter_out_gap_fill` | `classic-perimeters` | `0.5` | `0.0` |
 | `inner_wall_speed` | `classic-perimeters` | `45.0` | `60.0` |
 | `ironing_speed` | `support-surface-ironing` | `30.0` | `20.0` |
 | `nozzle_temperature_initial_layer` | `machine-gcode-emit` | `215` | `200.0` |
-| `outer_wall_speed` | `arachne-perimeters` | `30.0` | `60.0` |
 | `outer_wall_speed` | `classic-perimeters` | `30.0` | `60.0` |
 | `skirt_distance` | `skirt-brim` | `3.0` | `2.0` |
 | `skirt_loops` | `skirt-brim` | `6` | `1.0` |
@@ -360,8 +370,9 @@ The host precision keys (`gcode_resolution`, `infill_resolution`,
 `support_resolution`, `min_segment_length`, `gcode_xy_decimals`,
 `slice_closing_radius`) carried on `ResolvedConfig` are in the generated
 **Host-registered config keys** table above; `perimeter_arc_tolerance` is
-module-owned (`classic-perimeters`, `arachne-perimeters`) and appears in the
-generated **Module-owned config keys** table. Defaults / all-zero short-circuit
+module-owned (`classic-perimeters`; the fake `arachne-perimeters` module was
+deleted in P108) and appears in the generated **Module-owned config keys**
+table. Defaults / all-zero short-circuit
 to byte-identical pre-packet-60 output.
 
 See `docs/02_ir_schemas.md` "Polyline simplification and precision" for the
@@ -417,17 +428,17 @@ global < object_config:<id>:<key> < paint_config:<semantic>:<key>
 
 ## Walls (packet 104)
 
-Keys consumed by `classic-perimeters` and `arachne-perimeters` to gate single-wall reduction on specific layer types. Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
+Keys consumed by `classic-perimeters` to gate single-wall reduction on specific layer types (the fake `arachne-perimeters` module was deleted in P108; `classic-perimeters` is the sole perimeter generator until real Arachne lands under P110+P112). Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
 
 | Key | Type | Default | Range | Module(s) |
 |---|---|---|---|---|
-| `only_one_wall_top` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
-| `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
-| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters`, `arachne-perimeters` |
-| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters`, `arachne-perimeters` |
-| `precise_outer_wall` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
-| `detect_thin_wall` | bool | `true` | — | `classic-perimeters`, `arachne-perimeters` |
-| `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters`, `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
+| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
+| `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
+| `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `wall_sequence` | enum | `"inner_outer"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `path-optimization-default` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.

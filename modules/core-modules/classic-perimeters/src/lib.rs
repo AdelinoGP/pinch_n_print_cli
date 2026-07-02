@@ -22,14 +22,15 @@
 use std::collections::HashMap;
 
 use slicer_core::perimeter_utils::{
-    build_wall_flags, expolygon_to_path3d, generate_seam_candidates, point_in_any_polygon,
-    wall_sequence_reorder, WallSequence, BASE_SPEED,
+    apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
+    generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
+    WallSequence, BASE_SPEED,
 };
 use slicer_core::polygon_ops::{difference_ex, offset, offset2_ex, opening_ex, OffsetJoinType};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
-    variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
-    PaintSemantic, PaintValue, WallLoop, WidthProfile,
+    units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
+    ExtrusionRole, LoopType, PaintSemantic, PaintValue, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -126,6 +127,12 @@ impl LayerModule for ClassicPerimeters {
             _ => WallSequence::InnerOuter,
         };
         let detect_thin_wall = _config.get_bool("detect_thin_wall").unwrap_or(true);
+        // Packet 108: absolute turn-angle threshold (degrees) gating seam-candidate
+        // emission to sharp corners only, instead of every outer-wall vertex.
+        let seam_candidate_angle_threshold_deg = _config
+            .get_float("seam_candidate_angle_threshold_deg")
+            .map(|v| v as f32)
+            .unwrap_or(30.0);
         let gap_infill_speed = _config
             .get_float("gap_infill_speed")
             .map(|s| s as f32)
@@ -168,6 +175,37 @@ impl LayerModule for ClassicPerimeters {
             .get_int("wall_count")
             .map(|n| n as u32)
             .unwrap_or(self.wall_count);
+        // extra_perimeters (T-070/T-071, P108): per-region bonus wall count.
+        // OrcaSlicer PerimeterGenerator.cpp:1569 —
+        // `int loop_number = this->config->wall_loops + surface.extra_perimeters - 1;`
+        // (0-indexed loops). Translated to an actual wall count, this is simply
+        // `wall_count + extra_perimeters`.
+        let extra_perimeters = _config.get_int("extra_perimeters").unwrap_or(0).max(0) as u32;
+        let base_wall_count = base_wall_count + extra_perimeters;
+        // extra_perimeters_on_overhangs (T-077, P108): add ONE extra wall loop
+        // inside the region's overhang footprint (region.overhang_areas()),
+        // leaving the rest of the region at the base wall count. Additive
+        // with the plain extra_perimeters bonus above (independent branch in
+        // the planar path); never applies to the non-planar shell branch,
+        // which returns before this code runs.
+        let extra_perimeters_on_overhangs = _config
+            .get_bool("extra_perimeters_on_overhangs")
+            .unwrap_or(false);
+        // Narrow-island smaller-width override (T-072/T-073, P108). See
+        // `classify_narrow_island` for the classification rule; these three
+        // keys are per-invocation (not per-object/per-layer overridable yet).
+        let smaller_perimeter_line_width = _config
+            .get_float("smaller_perimeter_line_width")
+            .map(|v| v as f32)
+            .unwrap_or(0.25);
+        let smaller_perimeter_threshold_mm = _config
+            .get_float("smaller_perimeter_threshold_mm")
+            .map(|v| v as f32)
+            .unwrap_or(0.8);
+        let narrow_loop_length_threshold_mm = _config
+            .get_float("narrow_loop_length_threshold_mm")
+            .map(|v| v as f32)
+            .unwrap_or(10.0);
         let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
@@ -195,6 +233,24 @@ impl LayerModule for ClassicPerimeters {
             if region.polygons().is_empty() {
                 continue;
             }
+            // ── Non-planar shell branch (T-074b/c/d, P108) ──────────────
+            // Highest precedence: a region backed by a resolved SurfaceGroup
+            // (region.nonplanar_surface.is_some() at the IR level) emits
+            // exactly `shell_count` NonPlanarShell walls and nothing else —
+            // no thin-wall, no gap-fill, no narrow-island override, no
+            // extra_perimeters bonus, no infill. This module does not compute
+            // per-vertex Z; that is a downstream concern.
+            if let Some(surface_group) = region.surface_group() {
+                self.emit_nonplanar_shells(
+                    region.polygons(),
+                    region.z(),
+                    surface_group.shell_count,
+                    outer_wall_line_width,
+                    inner_wall_line_width,
+                    output,
+                )?;
+                continue;
+            }
             let top_shell = region.top_shell_index();
             let wall_count = if only_one_wall_top && top_shell == Some(0) {
                 1
@@ -208,13 +264,87 @@ impl LayerModule for ClassicPerimeters {
                 continue;
             }
             let rid = *region.region_id();
+            // Narrow-island override (T-072/T-073, P108): classify against the
+            // full region polygon set, additive with extra_perimeters — the
+            // narrow-island check only swaps the outer-wall width/spacing,
+            // it does not change wall_count.
+            let region_outer_wall_line_width = if classify_narrow_island(
+                polygons,
+                smaller_perimeter_threshold_mm,
+                narrow_loop_length_threshold_mm,
+                self.perimeter_arc_tolerance,
+            ) {
+                smaller_perimeter_line_width
+            } else {
+                outer_wall_line_width
+            };
             // D14: painted FuzzySkin travels on variant_chain, not
             // segment_annotations; resolve once and apply per-vertex below.
             let region_fuzzy = region
                 .variant_chain()
                 .iter()
                 .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
-            if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
+            let overhang_areas = region.overhang_areas();
+            if extra_perimeters_on_overhangs && !overhang_areas.is_empty() {
+                // T-077 (P108): one extra wall loop inside the overhang
+                // footprint, base wall count elsewhere. Reuses the
+                // intersection/difference + sliver-filter split utility
+                // (generic mask split, despite its top-surface-flavoured
+                // name/docs) with `region.overhang_areas()` as the mask.
+                let split = split_top_surfaces(polygons, overhang_areas);
+                if !split.top_portion.is_empty() {
+                    self.emit_walls(
+                        &split.top_portion,
+                        z,
+                        region.segment_annotations(),
+                        region_fuzzy,
+                        true,
+                        true,
+                        output,
+                        wall_count + 1,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                        region.bridge_areas(),
+                        region_outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
+                        medial_axis_enabled,
+                        seam_candidate_angle_threshold_deg,
+                    )?;
+                }
+                if !split.non_top_portion.is_empty() {
+                    self.emit_walls(
+                        &split.non_top_portion,
+                        z,
+                        region.segment_annotations(),
+                        region_fuzzy,
+                        true,
+                        true,
+                        output,
+                        wall_count,
+                        outer_speed_factor,
+                        inner_speed_factor,
+                        region.bridge_areas(),
+                        region_outer_wall_line_width,
+                        inner_wall_line_width,
+                        wall_sequence,
+                        precise_outer_wall,
+                        detect_thin_wall,
+                        nozzle_diameter,
+                        gap_infill_speed,
+                        filter_out_gap_fill,
+                        rid,
+                        medial_axis_enabled,
+                        seam_candidate_angle_threshold_deg,
+                    )?;
+                }
+            } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
                 let split = split_top_surfaces(polygons, region.top_solid_fill());
                 if !split.top_portion.is_empty() {
                     self.emit_walls(
@@ -229,7 +359,7 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
-                        outer_wall_line_width,
+                        region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
                         precise_outer_wall,
@@ -239,6 +369,7 @@ impl LayerModule for ClassicPerimeters {
                         filter_out_gap_fill,
                         rid,
                         medial_axis_enabled,
+                        seam_candidate_angle_threshold_deg,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -254,7 +385,7 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
-                        outer_wall_line_width,
+                        region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
                         precise_outer_wall,
@@ -264,6 +395,7 @@ impl LayerModule for ClassicPerimeters {
                         filter_out_gap_fill,
                         rid,
                         medial_axis_enabled,
+                        seam_candidate_angle_threshold_deg,
                     )?;
                 }
             } else {
@@ -279,7 +411,7 @@ impl LayerModule for ClassicPerimeters {
                     outer_speed_factor,
                     inner_speed_factor,
                     region.bridge_areas(),
-                    outer_wall_line_width,
+                    region_outer_wall_line_width,
                     inner_wall_line_width,
                     wall_sequence,
                     precise_outer_wall,
@@ -289,6 +421,7 @@ impl LayerModule for ClassicPerimeters {
                     filter_out_gap_fill,
                     rid,
                     medial_axis_enabled,
+                    seam_candidate_angle_threshold_deg,
                 )?;
             }
         }
@@ -353,6 +486,7 @@ impl ClassicPerimeters {
         filter_out_gap_fill: f32,
         region_id: u64,
         medial_axis_enabled: bool,
+        seam_candidate_angle_threshold_deg: f32,
     ) -> Result<(), ModuleError> {
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
@@ -706,10 +840,27 @@ impl ClassicPerimeters {
         }
 
         // Seam candidates belong to the outer wall (the shared-perimeter pass).
+        //
+        // Packet 108 (T-P98-SEAM, D-108-SEAM-CONSUMED): consume painted
+        // `seam_enforcer`/`seam_blocker` semantics at candidate-generation
+        // time. Outer-wall vertex ordering/count is preserved from the
+        // original region contour (see `build_wall_flags` doc comment), so
+        // per-vertex `segment_annotations` lookups by `poly_idx`/vertex-index
+        // are valid against `poly.contour.points` here.
         if emit_outer {
             if let Some((_, outer_polys)) = all_wall_polygons.first() {
-                for poly in outer_polys {
-                    for candidate in generate_seam_candidates(&poly.contour, z) {
+                for (poly_idx, poly) in outer_polys.iter().enumerate() {
+                    let mut candidates = generate_sharp_corner_seam_candidates(
+                        &poly.contour,
+                        z,
+                        seam_candidate_angle_threshold_deg,
+                    );
+                    let enforcer_polys =
+                        seam_paint_boxes(poly_idx, poly, segment_annotations, "seam_enforcer");
+                    let blocker_polys =
+                        seam_paint_boxes(poly_idx, poly, segment_annotations, "seam_blocker");
+                    apply_seam_paint_bias(&mut candidates, &enforcer_polys, &blocker_polys);
+                    for candidate in candidates {
                         output.push_seam_candidate(candidate.position, candidate.score)?;
                     }
                 }
@@ -736,6 +887,190 @@ impl ClassicPerimeters {
 
         Ok(())
     }
+
+    /// Emit `shell_count` concentric `LoopType::NonPlanarShell` wall loops for
+    /// a region backed by a resolved `SurfaceGroup` (T-074b/c/d, P108).
+    ///
+    /// This is our own extension — absent in OrcaSlicer's classic perimeter
+    /// generator — for regions whose `nonplanar_surface` resolved to a
+    /// `SurfaceGroup`. Unlike [`Self::emit_walls`], this path emits no
+    /// thin-wall, no gap-fill, and no infill: `shell_count` overrides the
+    /// normal wall-count logic entirely, and the leftover core (if any) is
+    /// left unfilled by design (a future non-planar infill module owns it).
+    /// Z is passed through unchanged per vertex — this module does not
+    /// compute per-vertex Z for non-planar surfaces.
+    fn emit_nonplanar_shells(
+        &self,
+        polygons: &[ExPolygon],
+        z: f32,
+        shell_count: u32,
+        outer_wall_line_width: f32,
+        inner_wall_line_width: f32,
+        output: &mut PerimeterOutputBuilder,
+    ) -> Result<(), ModuleError> {
+        let mut current_polygons = polygons.to_vec();
+        for i in 0..shell_count {
+            let inset_delta = if i == 0 {
+                -(outer_wall_line_width / 2.0)
+            } else {
+                -inner_wall_line_width
+            };
+            let inset_result = offset(
+                &current_polygons,
+                inset_delta,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
+            if inset_result.is_empty() {
+                break;
+            }
+            let width = self.line_width_for(i, outer_wall_line_width, inner_wall_line_width);
+            let role = if i == 0 {
+                ExtrusionRole::OuterWall
+            } else {
+                ExtrusionRole::InnerWall
+            };
+            for poly in &inset_result {
+                let points = expolygon_to_path3d(&poly.contour, z, width);
+                if points.is_empty() {
+                    continue;
+                }
+                let num_points = points.len();
+                let feature_flags =
+                    vec![slicer_core::perimeter_utils::default_feature_flags(); num_points];
+                output.push_wall_loop(WallLoop {
+                    perimeter_index: i,
+                    loop_type: LoopType::NonPlanarShell,
+                    path: ExtrusionPath3D {
+                        points,
+                        role: role.clone(),
+                        speed_factor: 1.0,
+                    },
+                    width_profile: WidthProfile {
+                        widths: vec![width; num_points],
+                    },
+                    feature_flags,
+                    boundary_type: slicer_ir::WallBoundaryType::Interior,
+                })?;
+            }
+            current_polygons = inset_result;
+        }
+        Ok(())
+    }
+}
+
+/// Extract small "coverage" boxes around outer-wall vertices painted with
+/// `semantic_name` (packet 108: `seam_enforcer` / `seam_blocker` consumption,
+/// D-108-SEAM-CONSUMED).
+///
+/// `segment_annotations` values live at `PaintSemantic::Custom(semantic_name)`,
+/// indexed `[poly_idx][vertex_idx]` against the ORIGINAL region contour;
+/// outer-wall vertex ordering/count is preserved from that contour (see
+/// `slicer_core::perimeter_utils::build_wall_flags` doc comment), so index
+/// alignment against `poly.contour.points` is valid. Each painted vertex
+/// becomes a small square `ExPolygon` (1 mm half-size) centered on it, since
+/// `apply_seam_paint_bias` tests candidate positions via point-in-polygon,
+/// not point-to-point proximity.
+fn seam_paint_boxes(
+    poly_idx: usize,
+    poly: &ExPolygon,
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    semantic_name: &str,
+) -> Vec<ExPolygon> {
+    const HALF_SIZE_MM: f32 = 1.0;
+    let half = slicer_ir::mm_to_units(HALF_SIZE_MM);
+    let semantic = PaintSemantic::Custom(semantic_name.to_string());
+    let Some(vals) = segment_annotations
+        .get(&semantic)
+        .and_then(|per_poly| per_poly.get(poly_idx))
+    else {
+        return Vec::new();
+    };
+    poly.contour
+        .points
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| matches!(vals.get(*i), Some(Some(PaintValue::Flag(true)))))
+        .map(|(_, pt)| seam_paint_box(*pt, half))
+        .collect()
+}
+
+/// Build a small axis-aligned square `ExPolygon` centered on `center` with
+/// `half`-unit half-size (see [`seam_paint_boxes`]).
+fn seam_paint_box(center: slicer_ir::Point2, half: i64) -> ExPolygon {
+    ExPolygon {
+        contour: slicer_ir::Polygon {
+            points: vec![
+                slicer_ir::Point2 {
+                    x: center.x - half,
+                    y: center.y - half,
+                },
+                slicer_ir::Point2 {
+                    x: center.x + half,
+                    y: center.y - half,
+                },
+                slicer_ir::Point2 {
+                    x: center.x + half,
+                    y: center.y + half,
+                },
+                slicer_ir::Point2 {
+                    x: center.x - half,
+                    y: center.y + half,
+                },
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
+/// Narrow-island classification (T-072/T-073, P108).
+///
+/// An island is classified "narrow" when it is narrower than
+/// `threshold_mm` everywhere (an inward-then-outward offset — a
+/// morphological opening — by `threshold_mm / 2` erodes it to nothing) AND
+/// its longest bounding-box dimension is at least `min_length_mm` — this
+/// second condition filters out tiny slivers/noise from being misclassified
+/// as genuine narrow islands, it is not an upper bound.
+///
+/// Loosely follows OrcaSlicer PerimeterGenerator.cpp:1611-1628's "narrow but
+/// not too long" island classification, adapted to this port's own
+/// `smaller_perimeter_threshold_mm` / `narrow_loop_length_threshold_mm`
+/// config keys (see classic-perimeters.toml).
+fn classify_narrow_island(
+    polygons: &[ExPolygon],
+    threshold_mm: f32,
+    min_length_mm: f32,
+    arc_tolerance: f32,
+) -> bool {
+    if polygons.is_empty() {
+        return false;
+    }
+    let opened = opening_ex(
+        polygons,
+        (threshold_mm / 2.0) as f64,
+        OffsetJoinType::Miter,
+        arc_tolerance as f64,
+    );
+    if !opened.is_empty() {
+        return false;
+    }
+    let mut min_x = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut min_y = i64::MAX;
+    let mut max_y = i64::MIN;
+    for poly in polygons {
+        for pt in &poly.contour.points {
+            min_x = min_x.min(pt.x);
+            max_x = max_x.max(pt.x);
+            min_y = min_y.min(pt.y);
+            max_y = max_y.max(pt.y);
+        }
+    }
+    if min_x > max_x {
+        return false;
+    }
+    let longest_dim_mm = units_to_mm(max_x - min_x).max(units_to_mm(max_y - min_y));
+    longest_dim_mm >= min_length_mm
 }
 
 #[cfg(test)]

@@ -340,6 +340,16 @@ pub struct SeamCandidate {
 /// All corners with a non-trivial turn angle are candidates. Concave corners
 /// receive a higher score (seam is less visible there), convex corners get a
 /// lower but positive score.
+///
+/// # Deprecated
+///
+/// Emits a candidate for *every* vertex with a non-zero turn angle, including
+/// near-collinear noise from redundant/densely-sampled contour points. Use
+/// [`generate_sharp_corner_seam_candidates`] instead, which gates candidacy on
+/// an absolute turn-angle threshold (see packet 108).
+#[deprecated(
+    note = "use generate_sharp_corner_seam_candidates with an explicit angle threshold instead"
+)]
 pub fn generate_seam_candidates(contour: &slicer_ir::Polygon, z: f32) -> Vec<SeamCandidate> {
     let pts = &contour.points;
     let n = pts.len();
@@ -395,6 +405,144 @@ pub fn generate_seam_candidates(contour: &slicer_ir::Polygon, z: f32) -> Vec<Sea
     }
 
     candidates
+}
+
+/// Generate seam candidates at sharp corners of the outer wall path, gated by an
+/// absolute turn-angle threshold.
+///
+/// Only vertices whose turn angle (deviation from a straight pass-through, in
+/// degrees) is `>= angle_threshold_deg` become candidates. This filters out the
+/// dense runs of near-collinear points that a contour tessellation can leave on
+/// otherwise-straight edges, so a single sharp corner produces one candidate
+/// instead of one per redundant point.
+///
+/// Both convex and concave corners qualify once they clear the threshold.
+/// Concave corners keep the score bonus from [`generate_seam_candidates`] (seam
+/// is less visible there); convex corners get a lower but positive score.
+///
+/// Parity note: OrcaSlicer's seam placer has no binary candidacy threshold — it
+/// scores every vertex with a continuous Gaussian angle penalty and only uses a
+/// 55° cutoff for "sharp corner" snapping. This port intentionally uses a binary
+/// angle threshold (default 30°) per packet 108 design.
+pub fn generate_sharp_corner_seam_candidates(
+    contour: &slicer_ir::Polygon,
+    z: f32,
+    angle_threshold_deg: f32,
+) -> Vec<SeamCandidate> {
+    let pts = &contour.points;
+    let n = pts.len();
+    if n < 3 {
+        return Vec::new();
+    }
+
+    let mut signed_area: i128 = 0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        signed_area += (pts[i].x as i128) * (pts[j].y as i128);
+        signed_area -= (pts[j].x as i128) * (pts[i].y as i128);
+    }
+    let is_ccw = signed_area > 0;
+
+    let threshold_rad = (angle_threshold_deg.max(0.0) as f64).to_radians();
+
+    let mut candidates = Vec::new();
+
+    for i in 0..n {
+        let prev = if i == 0 { n - 1 } else { i - 1 };
+        let next = (i + 1) % n;
+
+        let dx1 = pts[i].x - pts[prev].x;
+        let dy1 = pts[i].y - pts[prev].y;
+        let dx2 = pts[next].x - pts[i].x;
+        let dy2 = pts[next].y - pts[i].y;
+
+        let len1 = ((dx1 * dx1 + dy1 * dy1) as f64).sqrt();
+        let len2 = ((dx2 * dx2 + dy2 * dy2) as f64).sqrt();
+        let denom = len1 * len2;
+        if denom == 0.0 {
+            continue;
+        }
+
+        let cross = dx1 * dy2 - dy1 * dx2;
+        let dot = dx1 * dx2 + dy1 * dy2;
+
+        // Absolute turn angle (deviation from straight pass-through), in [0, pi].
+        let turn_angle_rad = (cross as f64).atan2(dot as f64).abs();
+        if turn_angle_rad < threshold_rad {
+            continue;
+        }
+
+        let sin_angle = (cross.unsigned_abs() as f64 / denom) as f32;
+        let is_concave = if is_ccw { cross < 0 } else { cross > 0 };
+        let score = if is_concave {
+            sin_angle + 1.0
+        } else {
+            sin_angle * 0.5
+        };
+
+        let position = Point3 {
+            x: slicer_ir::units_to_mm(pts[i].x),
+            y: slicer_ir::units_to_mm(pts[i].y),
+            z,
+        };
+        candidates.push(SeamCandidate { position, score });
+    }
+
+    candidates
+}
+
+/// Apply paint-driven seam bias/exclusion to already-generated seam candidates
+/// (packet 108, T-P98-SEAM). `slicer-core` cannot depend on `slicer-sdk`
+/// (`PaintRegionLayerView` lives there), so this helper is data-driven: the
+/// caller (a perimeter-generation module) is responsible for extracting
+/// `enforcer_polys`/`blocker_polys` from `PaintSemantic::Custom("seam_enforcer")`
+/// / `Custom("seam_blocker")` segment annotations and passing them in as plain
+/// `ExPolygon`s.
+///
+/// - **Blocker** (hard filter): any candidate whose position falls inside a
+///   blocker polygon is removed from `candidates` entirely — mirrors
+///   OrcaSlicer's hard `Blocked` discriminator (checked before all geometric
+///   scoring).
+/// - **Enforcer** (soft bias): any *surviving* candidate whose position falls
+///   inside an enforcer polygon has `score` multiplied by `0.1`.
+///
+/// # Score-direction note
+///
+/// `SeamCandidate::score` is documented above as "higher is preferred", but
+/// the only production consumer — `seam-placer`'s `select_seam_candidate`
+/// (`SeamMode::Nearest`) — picks the candidate with the **minimum**
+/// `effective_score` via `Iterator::min_by` (`modules/core-modules/seam-placer/src/lib.rs`).
+/// Candidates emitted by the perimeter-generation modules always carry
+/// `SeamReason::Aligned` (zero reason-bonus), so `effective_score ==
+/// candidate.score` for this path and *lower actually wins*. Multiplying by
+/// `0.1` therefore *increases* an enforced candidate's real-world selection
+/// priority, matching the packet's locked design (see docs/05_module_sdk.md,
+/// "Paint-seam consumption").
+pub fn apply_seam_paint_bias(
+    candidates: &mut Vec<SeamCandidate>,
+    enforcer_polys: &[ExPolygon],
+    blocker_polys: &[ExPolygon],
+) {
+    if !blocker_polys.is_empty() {
+        candidates.retain(|c| {
+            let p = Point2 {
+                x: slicer_ir::mm_to_units(c.position.x),
+                y: slicer_ir::mm_to_units(c.position.y),
+            };
+            !point_in_any_polygon(&p, blocker_polys)
+        });
+    }
+    if !enforcer_polys.is_empty() {
+        for c in candidates.iter_mut() {
+            let p = Point2 {
+                x: slicer_ir::mm_to_units(c.position.x),
+                y: slicer_ir::mm_to_units(c.position.y),
+            };
+            if point_in_any_polygon(&p, enforcer_polys) {
+                c.score *= 0.1;
+            }
+        }
+    }
 }
 
 /// Test whether a point lies strictly inside any polygon in the given slice.

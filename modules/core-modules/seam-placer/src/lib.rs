@@ -20,12 +20,46 @@
 #![warn(unused_imports)]
 #![allow(dead_code)]
 
-use slicer_ir::{ConfigValue, ConfigView, SeamReason};
+use slicer_ir::{ConfigValue, ConfigView, LoopType, SeamReason};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
+
+/// Error raised when a region has no usable seam information at all: an
+/// empty `seam_candidates` list, no `resolved_seam`, yet standard (non
+/// non-planar-shell) wall loops to seam. Packet 108 AC-N2
+/// (D-108-SEAM-CONSUMED): this happens when a `seam_blocker` paint region
+/// exhausts every corner candidate for a region — the perimeter generator
+/// filters blocked candidates out entirely (see
+/// `slicer_core::perimeter_utils::apply_seam_paint_bias`), so seam-placer
+/// must surface the resulting "nothing left to seam" state as a hard error
+/// rather than silently emitting an unrotated (and possibly badly-seamed)
+/// wall loop.
+///
+/// Regions whose walls are ENTIRELY `LoopType::NonPlanarShell` are exempt:
+/// `emit_nonplanar_shells` (classic-perimeters) never populates seam
+/// candidates for those walls by design (T-074b), so an empty list there is
+/// expected, not anomalous (T-082 audit finding).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeamPlacerError {
+    /// Human-readable description of the failure.
+    pub message: String,
+}
+
+impl SeamPlacerError {
+    /// A region has zero seam candidates and no resolved seam.
+    fn no_candidates(object_id: &str, region_id: u64) -> Self {
+        Self {
+            message: format!(
+                "no seam candidates for region (object_id={object_id}, region_id={region_id}): \
+                 seam_candidates is empty and no resolved_seam is set (likely a seam_blocker \
+                 paint region excluded every corner candidate)"
+            ),
+        }
+    }
+}
 
 /// Seam placement mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -221,6 +255,23 @@ impl LayerModule for SeamPlacer {
             let wall_loops = region.wall_loops();
             if wall_loops.is_empty() {
                 continue;
+            }
+
+            // AC-N2 (packet 108, D-108-SEAM-CONSUMED): a region with standard
+            // (non non-planar-shell) walls but zero seam candidates AND no
+            // resolved_seam has no usable seam information at all — most
+            // commonly because a `seam_blocker` paint region excluded every
+            // corner candidate at perimeter-generation time. Non-planar-shell
+            // regions are exempt (see `SeamPlacerError::no_candidates` doc).
+            let all_nonplanar = wall_loops
+                .iter()
+                .all(|loop_| loop_.loop_type == LoopType::NonPlanarShell);
+            if !all_nonplanar
+                && region.seam_candidates().is_empty()
+                && region.resolved_seam().is_none()
+            {
+                let err = SeamPlacerError::no_candidates(region.object_id(), *region.region_id());
+                return Err(ModuleError::fatal(6, err.message));
             }
 
             // Compute the optional seam target. `None` → emit walls pristine
