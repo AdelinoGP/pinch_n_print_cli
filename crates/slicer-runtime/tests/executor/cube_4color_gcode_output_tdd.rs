@@ -341,6 +341,386 @@ fn outer_wall_fragments_per_layer(gcode: &str) -> Vec<usize> {
     counts
 }
 
+// --------------------------------------------------------------------------
+// Model A loop-level parser (ADR-0013)
+// --------------------------------------------------------------------------
+//
+// A single `;TYPE:Outer wall` block may contain MULTIPLE independent closed
+// loops (a per-color cell whose contour was traced, plus any disjoint pieces of
+// the same colour, plus the seam re-approach). Treating a whole outer-wall block
+// as one polyline mis-computes closure — the "first-to-last" gap then spans two
+// separate loops. This parser splits each block into its constituent loops so
+// each is closure-checked independently.
+
+fn dist(a: (f32, f32), b: (f32, f32)) -> f32 {
+    ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
+}
+
+/// One closed outer-wall loop. `pts[0]` is the seam/approach point (the
+/// non-extruding move that positions the nozzle); `pts[1..]` are the extrusion
+/// endpoints in trace order. A closed loop returns its final extrusion point to
+/// `pts[0]`.
+#[derive(Clone)]
+struct OuterLoop {
+    tool: u32,
+    /// 0-based index of the `;TYPE:Outer wall` header (within its layer) this
+    /// loop was emitted under. Loops sharing a header share a tool + travel-in.
+    header_idx: usize,
+    pts: Vec<(f32, f32)>,
+}
+
+impl OuterLoop {
+    /// Distance from the seam/approach point to the final extrusion point.
+    /// Small ⇒ the loop closes.
+    fn closure_gap(&self) -> f32 {
+        match (self.pts.first(), self.pts.last()) {
+            (Some(a), Some(b)) if self.pts.len() >= 2 => dist(*a, *b),
+            _ => f32::INFINITY,
+        }
+    }
+}
+
+/// Parse a `G0`/`G1` move line into `(x, y, has_e)`. Missing X/Y are `None` so
+/// callers carry forward the last known coordinate. `has_e` marks an extrusion.
+fn parse_move(trimmed: &str) -> Option<(Option<f32>, Option<f32>, bool)> {
+    let is_move = trimmed.starts_with("G1 ")
+        || trimmed.starts_with("G1\t")
+        || trimmed.starts_with("G0 ")
+        || trimmed.starts_with("G0\t");
+    if !is_move {
+        return None;
+    }
+    let mut x = None;
+    let mut y = None;
+    let mut has_e = false;
+    for tok in trimmed.split_whitespace() {
+        if let Some(r) = tok.strip_prefix('X') {
+            x = r.parse::<f32>().ok();
+        } else if let Some(r) = tok.strip_prefix('Y') {
+            y = r.parse::<f32>().ok();
+        } else if let Some(r) = tok.strip_prefix('E') {
+            // Only count a POSITIVE extrusion with XY motion as a wall segment;
+            // retract/unretract (E-only, or negative E) is not a wall vertex.
+            if let Ok(e) = r.parse::<f32>() {
+                if e > 0.0 {
+                    has_e = true;
+                }
+            }
+        }
+    }
+    if x.is_none() && y.is_none() {
+        return None;
+    }
+    Some((x, y, has_e))
+}
+
+/// Split every layer's outer-wall blocks into independent loops, each tagged with
+/// its tool and header index. Returns one `Vec<OuterLoop>` per layer bucket.
+fn parse_outer_wall_loops_per_layer(gcode: &str) -> Vec<Vec<OuterLoop>> {
+    let marker = ";LAYER_CHANGE";
+    let outer = ";TYPE:Outer wall";
+    let mut layers: Vec<Vec<OuterLoop>> = Vec::new();
+    let mut current: Vec<OuterLoop> = Vec::new();
+    let mut layer_started = false;
+    let mut in_outer = false;
+    let mut tool: u32 = 0;
+    let mut header_idx: usize = 0;
+    let mut seen_outer_this_layer = false;
+    let mut pos: (f32, f32) = (0.0, 0.0);
+    let mut cur: Option<OuterLoop> = None;
+
+    // Flush the in-progress loop if it carries at least one extrusion segment.
+    fn flush(cur: &mut Option<OuterLoop>, out: &mut Vec<OuterLoop>) {
+        if let Some(l) = cur.take() {
+            if l.pts.len() >= 2 {
+                out.push(l);
+            }
+        }
+    }
+
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with(marker) {
+            flush(&mut cur, &mut current);
+            if layer_started {
+                layers.push(std::mem::take(&mut current));
+            }
+            layer_started = true;
+            in_outer = false;
+            header_idx = 0;
+            seen_outer_this_layer = false;
+            continue;
+        }
+        if !layer_started {
+            // still parse tool changes before the first layer for continuity
+            if is_tool_line(trimmed) {
+                tool = trimmed[1..].parse::<u32>().unwrap_or(tool);
+            }
+            continue;
+        }
+
+        // Tool changes can appear anywhere; keep `tool` current.
+        if is_tool_line(trimmed) {
+            flush(&mut cur, &mut current);
+            tool = trimmed[1..].parse::<u32>().unwrap_or(tool);
+            continue;
+        }
+
+        if trimmed == outer {
+            flush(&mut cur, &mut current);
+            if seen_outer_this_layer {
+                header_idx += 1;
+            }
+            seen_outer_this_layer = true;
+            in_outer = true;
+            continue;
+        }
+        if trimmed.starts_with(";TYPE:") || trimmed.starts_with(";LAYER") {
+            flush(&mut cur, &mut current);
+            in_outer = false;
+            continue;
+        }
+
+        if let Some((mx, my, has_e)) = parse_move(trimmed) {
+            if let Some(x) = mx {
+                pos.0 = x;
+            }
+            if let Some(y) = my {
+                pos.1 = y;
+            }
+            if !in_outer {
+                continue;
+            }
+            if has_e {
+                // Extrusion segment: append to the current loop (starting one if
+                // an extrusion somehow precedes its approach move).
+                match cur.as_mut() {
+                    Some(l) => l.pts.push(pos),
+                    None => {
+                        cur = Some(OuterLoop {
+                            tool,
+                            header_idx,
+                            pts: vec![pos],
+                        })
+                    }
+                }
+            } else {
+                // Non-extruding move = seam/approach. Starts a new loop unless the
+                // current loop has no extrusion yet (consecutive approaches), in
+                // which case just update its seam position.
+                match cur.as_mut() {
+                    Some(l) if l.pts.len() >= 2 => {
+                        flush(&mut cur, &mut current);
+                        cur = Some(OuterLoop {
+                            tool,
+                            header_idx,
+                            pts: vec![pos],
+                        });
+                    }
+                    Some(l) => {
+                        l.tool = tool;
+                        l.header_idx = header_idx;
+                        l.pts = vec![pos];
+                    }
+                    None => {
+                        cur = Some(OuterLoop {
+                            tool,
+                            header_idx,
+                            pts: vec![pos],
+                        })
+                    }
+                }
+            }
+        }
+    }
+    flush(&mut cur, &mut current);
+    if layer_started {
+        layers.push(current);
+    }
+    layers
+}
+
+fn is_tool_line(trimmed: &str) -> bool {
+    trimmed.len() >= 2
+        && trimmed.as_bytes()[0] == b'T'
+        && trimmed.as_bytes()[1..].iter().all(|c| c.is_ascii_digit())
+}
+
+/// Axis-aligned bounding box of a layer's outer-wall extrusion points. Its four
+/// edges are the layer's (inward-offset) external silhouette; a loop point lying
+/// on an edge is tracing that silhouette arc, whereas an interior point (off all
+/// four edges, toward centre) is a bisector wall between adjacent per-color cells.
+struct SilhouetteBox {
+    x_min: f32,
+    x_max: f32,
+    y_min: f32,
+    y_max: f32,
+}
+
+/// Which silhouette edge a point lies on (a corner point may report two).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum SilEdge {
+    Left,
+    Right,
+    Front,
+    Back,
+}
+
+impl SilhouetteBox {
+    fn from_loops(layer: &[OuterLoop]) -> Self {
+        let mut x_min = f32::INFINITY;
+        let mut x_max = f32::NEG_INFINITY;
+        let mut y_min = f32::INFINITY;
+        let mut y_max = f32::NEG_INFINITY;
+        for lp in layer {
+            for &(x, y) in lp.pts.iter().skip(1) {
+                x_min = x_min.min(x);
+                x_max = x_max.max(x);
+                y_min = y_min.min(y);
+                y_max = y_max.max(y);
+            }
+        }
+        SilhouetteBox {
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+        }
+    }
+
+    /// The constant coordinate of an edge's line (x for Left/Right, y for Front/Back).
+    fn edge_coord(&self, edge: SilEdge) -> f32 {
+        match edge {
+            SilEdge::Left => self.x_min,
+            SilEdge::Right => self.x_max,
+            SilEdge::Front => self.y_min,
+            SilEdge::Back => self.y_max,
+        }
+    }
+
+    /// The along-edge extent (the perpendicular axis range).
+    fn edge_extent(&self, edge: SilEdge) -> (f32, f32) {
+        match edge {
+            SilEdge::Left | SilEdge::Right => (self.y_min, self.y_max),
+            SilEdge::Front | SilEdge::Back => (self.x_min, self.x_max),
+        }
+    }
+
+    /// Project a point onto the edge's along-axis coordinate.
+    fn proj(&self, edge: SilEdge, p: (f32, f32)) -> f32 {
+        match edge {
+            SilEdge::Left | SilEdge::Right => p.1,
+            SilEdge::Front | SilEdge::Back => p.0,
+        }
+    }
+
+    /// Is the point within `eps` of this edge's line?
+    fn point_on(&self, edge: SilEdge, p: (f32, f32), eps: f32) -> bool {
+        let c = self.edge_coord(edge);
+        match edge {
+            SilEdge::Left | SilEdge::Right => (p.0 - c).abs() <= eps,
+            SilEdge::Front | SilEdge::Back => (p.1 - c).abs() <= eps,
+        }
+    }
+}
+
+/// Collect the along-edge intervals `(lo, hi, tool)` of every wall SEGMENT that
+/// lies on `edge` (both endpoints within `eps` of the edge line). These are the
+/// silhouette arcs traced by the per-color loops.
+fn edge_intervals(
+    layer: &[OuterLoop],
+    sil: &SilhouetteBox,
+    edge: SilEdge,
+    eps: f32,
+) -> Vec<(f32, f32, u32)> {
+    let mut out = Vec::new();
+    for lp in layer {
+        // Segments are consecutive point pairs, including the closing pair
+        // (last -> first) since the loop is closed.
+        let n = lp.pts.len();
+        if n < 2 {
+            continue;
+        }
+        for i in 0..n {
+            let a = lp.pts[i];
+            let b = lp.pts[(i + 1) % n];
+            if sil.point_on(edge, a, eps) && sil.point_on(edge, b, eps) {
+                let pa = sil.proj(edge, a);
+                let pb = sil.proj(edge, b);
+                out.push((pa.min(pb), pa.max(pb), lp.tool));
+            }
+        }
+    }
+    out.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
+    out
+}
+
+/// Coverage report over an edge: `(max_gap, max_overlap, covered_len, extent_len)`
+/// on the trimmed extent (corner margin `trim` removed at both ends).
+fn coverage_report(
+    intervals: &[(f32, f32, u32)],
+    extent: (f32, f32),
+    trim: f32,
+) -> (f32, f32, f32, f32) {
+    let lo = extent.0 + trim;
+    let hi = extent.1 - trim;
+    if hi <= lo {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+    // Clip intervals to [lo, hi].
+    let mut clipped: Vec<(f32, f32)> = intervals
+        .iter()
+        .map(|&(a, b, _)| (a.max(lo), b.min(hi)))
+        .filter(|&(a, b)| b > a)
+        .collect();
+    clipped.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
+
+    // Overlap = sum of pairwise overlaps of adjacent (by start) intervals.
+    let mut max_overlap = 0.0_f32;
+    for w in clipped.windows(2) {
+        let ov = w[0].1 - w[1].0;
+        if ov > max_overlap {
+            max_overlap = ov;
+        }
+    }
+    // Merge to compute covered length and gaps.
+    let mut covered = 0.0_f32;
+    let mut max_gap = 0.0_f32;
+    let mut cur_lo = lo;
+    let mut cursor = lo;
+    let mut started = false;
+    for &(a, b) in &clipped {
+        if !started {
+            if a > cursor {
+                max_gap = max_gap.max(a - cursor);
+            }
+            cur_lo = a.max(cursor);
+            cursor = b.max(cur_lo);
+            started = true;
+            continue;
+        }
+        if a > cursor {
+            // gap
+            max_gap = max_gap.max(a - cursor);
+            covered += cursor - cur_lo;
+            cur_lo = a;
+            cursor = b;
+        } else {
+            cursor = cursor.max(b);
+        }
+    }
+    if started {
+        covered += cursor - cur_lo;
+        if hi > cursor {
+            max_gap = max_gap.max(hi - cursor);
+        }
+    } else {
+        max_gap = hi - lo;
+    }
+    (max_gap, max_overlap, covered, hi - lo)
+}
+
 /// Count the number of distinct `T<digits>` tool indices appearing per layer
 /// (separated by `;LAYER_CHANGE` markers). Returns one entry per layer.
 fn distinct_tool_indices_per_layer(gcode: &str) -> Vec<usize> {
@@ -448,156 +828,302 @@ fn cube_4color_gcode_emits_all_four_tool_indices() {
 }
 
 // --------------------------------------------------------------------------
-// Test 2 — Model A: per-color outer-wall fragmentation on painted layers
+// Test 2 — Model A: per-color outer-wall fragmentation on painted layers (AC-4)
 // --------------------------------------------------------------------------
 //
-// ADR-0013 (P105 rewrite): under the confirmed OrcaSlicer "Model A" behavior,
-// a painted 4-color cube emits PER-COLOR outer-wall fragments on every painted
-// layer — one distinct ;TYPE:Outer wall sequence per paint cell encountered on
-// that layer. The old "within ±1 of unpainted baseline" contract (union-trace
-// behavior) is RETIRED. This test asserts the new Model A contract.
+// ADR-0013 (accepted 2026-06-23, "Model A"): MMU multi-color perimeters are a
+// NON-OVERLAPPING partition of the painted interior into per-color cells; each
+// cell runs a COMPLETE INDEPENDENT perimeter pass from its FULL contour
+// (bisector edge included), offset inward by ext_perimeter_width/2. Near a
+// bisector, BOTH adjacent colors trace their own wall, parallel and ~one
+// line-width apart — never coincident, never deduplicated. The retired
+// union-trace / skip-mask model (which merged the outer wall into one silhouette
+// loop) is REJECTED. See docs/adr/0013.
 //
-// AC-6: external_contour removal asserted by the rg grep in packet.spec.md AC-6
+// This E2E test asserts the four Model-A sub-properties of AC-4 on the full
+// `cube_4color.3mf` fixture over its mid-body layers:
 //
-// P105_CUBE_4COLOR_PARITY_SHA: gcode is byte-stable across runs (confirmed by
-// test run post-FIX2 (boostvoronoi panic hardening) on 2026-06-24).  SHA-256 pinned below.
-// Previous SHA d4b4a3fad... was set before the catch_unwind hardening; new SHA reflects
-// correct medial-axis output now that panics are caught and regions are processed.
-// If this assertion fails after a legitimate impl change, re-baseline by running
-// `pnp_cli slice --model resources/cube_4color.3mf --module-dir modules/core-modules
-// --output /tmp/out.gcode && sha256sum /tmp/out.gcode` and updating the const.
-// Do NOT remove the assertion; treat a hash mismatch as a regression gate.
+//   (a) per painted layer, the number of distinct per-color outer-wall FRAGMENTS
+//       (`;TYPE:Outer wall` extrusion sequences) equals the number of distinct
+//       tool indices present on that layer;
+//   (b) each per-color fragment is a CLOSED loop, and the union of the fragments'
+//       silhouette-portions covers the layer's external silhouette with no gap
+//       beyond a color-boundary line-width and no double-trace (each silhouette
+//       point owned by exactly one fragment); the total outer-wall length far
+//       exceeds the bare silhouette perimeter because per-cell loops include
+//       interior bisector walls;
+//   (c) each fragment is preceded by a `T<N>` matching its ToolIndex;
+//   (d) color transitions occur at cell-partition boundary junctions (interior
+//       cell boundaries meeting the silhouette), NOT only at the 4 outer
+//       silhouette corners, and the per-color fragments are independent closed
+//       loops rather than one merged wall whose color flips at corners.
 //
-// Note: the EXACT per-layer fragment count is covered by the controlled fixture
-// in `mmu_per_color_fragmentation_tdd::per_color_regions_each_trace_own_outer_wall`
-// (AC-6 exact-count, 2 per-color regions → exactly 2 outer-wall loops).  This
-// E2E test covers the full cube fixture at a coarser level (total/max fragments,
-// all 4 tools present, per-layer tool-change invariant) plus the SHA regression gate.
+// Model-A NOTE: sub-assertions (b) and (d) were re-modeled (packet 109) away from
+// the RETIRED union-trace premises — "total length == a single silhouette loop"
+// and "transitions at the cube's 4 outer geometric corners" — which are FALSE
+// under ADR-0013. Interior bisector walls legitimately add length, and cells
+// meet at interior bisector junctions.
+//
+// Tolerances below were calibrated 2026-07-02 against the live pipeline output
+// (per-loop closure observed 0.000mm; uniform-edge gap 0.000mm / ratio 1.000;
+// multi-color-edge gap <= 0.834mm / ratio >= 0.891; silhouette overlap 0.000mm;
+// total-length/silhouette-perimeter >= 2.25x; tool_changes == distinct_tools-1;
+// >=1 non-corner transition/layer). All assertions are STRUCTURAL/geometric and
+// robust to the known boostvoronoi medial-axis non-determinism (byte-exact SHA
+// pinning is intentionally NOT used — see the determinism note at the end).
 #[test]
-fn cube_4color_per_layer_per_color_fragmentation_with_tool_changes() {
+fn cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes() {
     let painted = slice_fixture_file(&cube_4color_path());
-    let unpainted = slice_synthetic_mesh("unpainted_25mm_cube", unpainted_25mm_cube());
-
-    // Use ;TYPE:Outer wall header count (fragments), NOT G1 segment count.
-    let painted_frags = outer_wall_fragments_per_layer(&painted.gcode_text);
-    let unpainted_frags = outer_wall_fragments_per_layer(&unpainted.gcode_text);
-    let tc_per_layer = tool_changes_per_layer(&painted.gcode_text);
-    let distinct_tools_per_layer = distinct_tool_indices_per_layer(&painted.gcode_text);
-
-    let painted_total: usize = painted_frags.iter().sum();
-    let unpainted_total: usize = unpainted_frags.iter().sum();
-    let painted_max = painted_frags.iter().copied().max().unwrap_or(0);
-
-    // Print per-layer diagnostics for post-Model-A capture.
-    eprintln!(
-        "cube_4color Model A diagnostics (FRAGMENTS): painted_layers={}, unpainted_ref_layers={}, \
-         painted_total_frags={}, unpainted_total_frags={}, painted_max_frags_per_layer={}",
-        painted_frags.len(),
-        unpainted_frags.len(),
-        painted_total,
-        unpainted_total,
-        painted_max,
-    );
-    for i in 0..painted_frags.len().min(10) {
-        let ref_count = unpainted_frags.get(i).copied().unwrap_or(0);
-        let tc = tc_per_layer.get(i).copied().unwrap_or(0);
-        let dt = distinct_tools_per_layer.get(i).copied().unwrap_or(0);
-        eprintln!(
-            "  layer {:>3}: painted_frags={}, unpainted_frags={}, tool_changes={}, distinct_tools={}",
-            i, painted_frags[i], ref_count, tc, dt
-        );
-    }
 
     // Layer alignment guard: if the pipeline emits zero layers (stale guests),
     // fail loudly — do NOT silently skip assertions.
+    let per_layer = parse_outer_wall_loops_per_layer(&painted.gcode_text);
+    let tc_per_layer = tool_changes_per_layer(&painted.gcode_text);
     assert!(
-        !painted_frags.is_empty(),
-        "Model A fragmentation assertion: painted gcode has 0 ;LAYER_CHANGE markers. \
+        !per_layer.is_empty(),
+        "AC-4: painted gcode has 0 ;LAYER_CHANGE markers. \
          Rebuild guests (cargo xtask build-guests) and re-run."
     );
 
-    // -----------------------------------------------------------------------
-    // Assertion 1 — Model A fragmentation.
-    //
-    // (a) The painted cube's TOTAL outer-wall-fragment count across all layers
-    //     must be strictly greater than the unpainted baseline's total.
-    //     An unpainted cube has ~1 fragment per layer; a 4-color painted cube
-    //     must produce additional per-color fragments, raising the total.
-    //
-    // (b) At least some painted layers must have >= 2 outer-wall fragments,
-    //     proving that at least one layer split into multiple per-color outer
-    //     walls. We require at least 1 such layer as the minimal meaningful
-    //     bound that distinguishes Model A from single-fragment monochrome output.
-    // -----------------------------------------------------------------------
-    assert!(
-        painted_total > unpainted_total,
-        "cube_4color Model A Assertion 1(a): painted total outer-wall fragments ({painted_total}) \
-         must exceed unpainted baseline total ({unpainted_total}). \
-         Per-color fragmentation must raise the total fragment count across all layers."
-    );
-
-    let layers_with_multi_frags = painted_frags.iter().filter(|&&f| f >= 2).count();
-    assert!(
-        layers_with_multi_frags >= 1,
-        "cube_4color Model A Assertion 1(b): at least 1 painted layer must have >= 2 outer-wall \
-         fragments (proving per-color split occurred), but found {layers_with_multi_frags} such layers. \
-         painted_frags (first 10): {:?}",
-        painted_frags.iter().take(10).collect::<Vec<_>>()
-    );
-
-    // -----------------------------------------------------------------------
-    // Assertion 2 — Tool changes.
-    //
-    // (a) All four tool indices T0, T1, T2, T3 must appear somewhere in the
-    //     full gcode (already asserted by Test 1, but we re-verify here for
-    //     completeness within this test).
-    //
-    // (b) For every layer whose gcode block contains >= 2 DISTINCT tool indices,
-    //     that layer must contain at least 1 tool-change line. A layer that
-    //     uses two or more tools must switch between them at least once.
-    // -----------------------------------------------------------------------
+    // Global: all four tool indices must appear (also covered by Test 1).
     let all_tools = parse_tool_index_lines(&painted.gcode_text);
     let expected_tools: BTreeSet<u32> = [0u32, 1, 2, 3].iter().copied().collect();
     assert_eq!(
         all_tools, expected_tools,
-        "cube_4color Model A Assertion 2(a): not all four tool indices appear in the gcode. \
+        "AC-4: not all four tool indices appear in the gcode. \
          Found: {all_tools:?}, expected: {expected_tools:?}"
     );
 
-    let mut multi_tool_no_change: Vec<(usize, usize, usize)> = Vec::new();
-    let n = distinct_tools_per_layer.len().min(tc_per_layer.len());
-    for i in 0..n {
-        let distinct = distinct_tools_per_layer[i];
-        let tcs = tc_per_layer[i];
-        if distinct >= 2 && tcs == 0 {
-            multi_tool_no_change.push((i, distinct, tcs));
+    // Mid-body window: exclude the bottom (~first 15%) and top (~last 20%) shell
+    // layers, whose top/bottom solid-fill harvest replaces some perimeter arcs
+    // (near-top layers legitimately leave multi-mm silhouette gaps). The window is
+    // fraction-based so it is robust to minor layer-count drift.
+    let n = per_layer.len();
+    let lo = n * 15 / 100;
+    let hi = n * 80 / 100;
+    assert!(
+        hi > lo + 5,
+        "AC-4: too few layers ({n}) to form a mid-body window [{lo},{hi})"
+    );
+
+    // Calibrated tolerances (see header comment).
+    const CLOSURE_EPS_MM: f32 = 0.30; // per-loop self-closure (observed 0.000)
+    const EDGE_EPS_MM: f32 = 0.12; // on-silhouette membership band
+    const OVERLAP_EPS_MM: f32 = 0.20; // silhouette double-trace tolerance (observed 0.000)
+    const CORNER_TRIM_MM: f32 = 0.35; // corner exclusion for coverage
+    const UNIFORM_GAP_MM: f32 = 0.30; // max gap on a single-tool edge (observed 0.000)
+    const UNIFORM_RATIO: f32 = 0.97; // min coverage on a single-tool edge (observed 1.000)
+    const MULTI_GAP_MM: f32 = 1.20; // max gap on a multi-tool edge (line-width boundaries; observed 0.834)
+    const MULTI_RATIO: f32 = 0.82; // min coverage on a multi-tool edge (observed 0.891)
+    const CORNER_TOL_MM: f32 = 1.5; // corner classification for (d)
+    const MIN_LEN_RATIO: f32 = 1.5; // total outer-wall length / silhouette perimeter (observed >= 2.25)
+
+    let mut mid_body_layers = 0usize;
+
+    for li in lo..hi {
+        let layer = &per_layer[li];
+        assert!(
+            !layer.is_empty(),
+            "AC-4: mid-body layer {li} has no outer-wall loops"
+        );
+        mid_body_layers += 1;
+
+        let sil = SilhouetteBox::from_loops(layer);
+        // Distinct `;TYPE:Outer wall` extrusion-sequences (fragments) that produced
+        // at least one loop, and the distinct tool indices tracing outer walls.
+        let headers: BTreeSet<usize> = layer.iter().map(|l| l.header_idx).collect();
+        let tools: BTreeSet<u32> = layer.iter().map(|l| l.tool).collect();
+
+        // ---- (a) fragment count == distinct tool count (multi-color) --------
+        assert!(
+            tools.len() >= 3,
+            "AC-4(a) layer {li}: expected >= 3 distinct per-color outer-wall fragments \
+             (Model A: one per painted cell present), got {} tool(s): {:?}",
+            tools.len(),
+            tools
+        );
+        assert_eq!(
+            headers.len(),
+            tools.len(),
+            "AC-4(a) layer {li}: number of ;TYPE:Outer wall fragments ({}) must equal the number \
+             of distinct tool indices ({}) — each color traces exactly ONE contiguous outer-wall \
+             extrusion sequence (ADR-0013 line 38). headers={:?} tools={:?}",
+            headers.len(),
+            tools.len(),
+            headers,
+            tools
+        );
+
+        // ---- (b) closed loops + silhouette coverage (Model A re-model) -------
+        // (b1) every per-color fragment self-closes: it traces its OWN closed
+        //      contour (bisector edge included), so seam ≈ final extrusion point.
+        for (i, lp) in layer.iter().enumerate() {
+            let g = lp.closure_gap();
+            assert!(
+                g <= CLOSURE_EPS_MM,
+                "AC-4(b) layer {li} loop {i} (tool {}): fragment does not self-close — gap {:.3}mm \
+                 > {:.2}mm. Under Model A each per-color region traces its own CLOSED contour; a \
+                 non-closing loop means the region contour was truncated. seam={:?} last={:?}",
+                lp.tool,
+                g,
+                CLOSURE_EPS_MM,
+                lp.pts.first(),
+                lp.pts.last()
+            );
         }
+
+        // (b2) interior bisector walls: total outer-wall length far exceeds the
+        //      bare silhouette perimeter (NOT a single silhouette trace — the
+        //      retired union-trace premise). Do NOT assert length == silhouette.
+        let mut total_len = 0.0_f32;
+        for lp in layer {
+            let m = lp.pts.len();
+            for k in 0..m {
+                total_len += dist(lp.pts[k], lp.pts[(k + 1) % m]);
+            }
+        }
+        let sil_perim = 2.0 * ((sil.x_max - sil.x_min) + (sil.y_max - sil.y_min));
+        assert!(
+            total_len >= MIN_LEN_RATIO * sil_perim,
+            "AC-4(b) layer {li}: total outer-wall length {:.1}mm must be >= {:.1}x the bare \
+             silhouette perimeter {:.1}mm — Model A per-color loops include interior bisector \
+             walls, they are NOT a single silhouette loop. Got ratio {:.2}.",
+            total_len,
+            MIN_LEN_RATIO,
+            sil_perim,
+            total_len / sil_perim
+        );
+
+        // (b3) silhouette coverage: on every silhouette edge the union of the
+        //      per-color arcs covers the edge (no untraced arc) with no
+        //      double-trace (each silhouette point owned by exactly one fragment).
+        //      Single-tool (uniform-face) edges are covered essentially fully;
+        //      multi-tool edges (painted circles / bands) tile the edge with
+        //      ~line-width gaps at cell boundaries (Model A "walls one line-width
+        //      apart"), so a looser but still-strong bound applies there.
+        for edge in [SilEdge::Left, SilEdge::Right, SilEdge::Front, SilEdge::Back] {
+            let iv = edge_intervals(layer, &sil, edge, EDGE_EPS_MM);
+            assert!(
+                !iv.is_empty(),
+                "AC-4(b) layer {li} edge {edge:?}: no outer-wall arc traces this silhouette edge \
+                 at all (a per-color fragment failed to trace its silhouette portion)."
+            );
+            let (max_gap, max_overlap, cov, ext) =
+                coverage_report(&iv, sil.edge_extent(edge), CORNER_TRIM_MM);
+            let edge_tools: BTreeSet<u32> = iv.iter().map(|&(_, _, t)| t).collect();
+            assert!(
+                max_overlap <= OVERLAP_EPS_MM,
+                "AC-4(b) layer {li} edge {edge:?}: silhouette DOUBLE-TRACE — per-color arcs overlap \
+                 by {:.3}mm > {:.2}mm. Each silhouette point must be owned by exactly one fragment. \
+                 intervals={:?}",
+                max_overlap,
+                OVERLAP_EPS_MM,
+                iv
+            );
+            let ratio = if ext > 0.0 { cov / ext } else { 0.0 };
+            let (gap_tol, ratio_min) = if edge_tools.len() <= 1 {
+                (UNIFORM_GAP_MM, UNIFORM_RATIO)
+            } else {
+                (MULTI_GAP_MM, MULTI_RATIO)
+            };
+            assert!(
+                max_gap <= gap_tol,
+                "AC-4(b) layer {li} edge {edge:?} ({} tool(s)): silhouette coverage GAP {:.3}mm > \
+                 {:.2}mm — a silhouette arc is untraced by any fragment. intervals={:?}",
+                edge_tools.len(),
+                max_gap,
+                gap_tol,
+                iv
+            );
+            assert!(
+                ratio >= ratio_min,
+                "AC-4(b) layer {li} edge {edge:?} ({} tool(s)): silhouette coverage RATIO {:.3} < \
+                 {:.2} — the per-color fragments fail to cover this edge. cov={:.2}/{:.2}mm \
+                 intervals={:?}",
+                edge_tools.len(),
+                ratio,
+                ratio_min,
+                cov,
+                ext,
+                iv
+            );
+        }
+
+        // ---- (c) each fragment preceded by a matching T<N> ------------------
+        // With (a) proven (each color is a single contiguous fragment), the layer
+        // must carry exactly (distinct_tools - 1) tool-change lines: one T<N>
+        // selecting every color except the single color carried over from the
+        // previous layer's final tool. This proves each fragment (other than the
+        // carried-in one) is immediately preceded by its own T<N> matching its
+        // ToolIndex, and none is emitted without a selecting tool change.
+        let tc = *tc_per_layer.get(li).unwrap_or(&0);
+        assert_eq!(
+            tc,
+            tools.len() - 1,
+            "AC-4(c) layer {li}: expected exactly {} tool-change (T<N>) lines (one per distinct \
+             color, minus the color carried over from the previous layer), got {}. Each per-color \
+             outer-wall fragment must be preceded by a T<N> matching its ToolIndex. tools={:?}",
+            tools.len() - 1,
+            tc,
+            tools
+        );
+
+        // ---- (d) transitions at cell-partition boundaries, not outer corners
+        // (d1) At least one silhouette color transition lies at a NON-corner cell
+        //      boundary (e.g. a left-face painted circle or a front-face band
+        //      meeting the silhouette between the outer corners). The retired
+        //      union-trace model changes color only at the 4 outer silhouette
+        //      corners, so it would have ZERO non-corner transitions.
+        let mut noncorner_transitions = 0usize;
+        for edge in [SilEdge::Left, SilEdge::Right, SilEdge::Front, SilEdge::Back] {
+            let iv = edge_intervals(layer, &sil, edge, EDGE_EPS_MM);
+            let (elo, ehi) = sil.edge_extent(edge);
+            for w in iv.windows(2) {
+                let (_, hi_i, ti) = w[0];
+                let (lo_j, _, tj) = w[1];
+                if ti != tj {
+                    let boundary = 0.5 * (hi_i + lo_j);
+                    let near_corner = (boundary - elo).abs() <= CORNER_TOL_MM
+                        || (boundary - ehi).abs() <= CORNER_TOL_MM;
+                    if !near_corner {
+                        noncorner_transitions += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            noncorner_transitions >= 1,
+            "AC-4(d) layer {li}: no non-corner silhouette color transition found. Model A partitions \
+             the painted interior into per-color cells that meet the silhouette at interior \
+             (non-corner) boundary junctions; the retired union-trace model would change color \
+             only at the 4 outer corners. Zero non-corner transitions indicates the union-trace \
+             regression."
+        );
+        // (d2) The per-color fragments are independent CLOSED loops, NOT one merged
+        //      wall whose color flips at corners: there are at least as many distinct
+        //      closed loops as distinct colors (>= 3 separate closed loops). A single
+        //      merged union-trace wall would yield ~1 loop.
+        assert!(
+            layer.len() >= tools.len() && layer.len() >= 3,
+            "AC-4(d) layer {li}: expected >= {} independent closed outer-wall loops (one or more \
+             per color), got {}. A single merged union-trace wall would yield ~1 loop.",
+            tools.len(),
+            layer.len()
+        );
     }
 
     assert!(
-        multi_tool_no_change.is_empty(),
-        "cube_4color Model A Assertion 2(b): {} layer(s) have >= 2 distinct tool indices but \
-         zero tool-change lines. Every multi-tool layer must contain at least one T<N> switch.\n\
-         Failures (layer_idx, distinct_tools, tool_changes): {:?}",
-        multi_tool_no_change.len(),
-        multi_tool_no_change.iter().take(5).collect::<Vec<_>>()
+        mid_body_layers >= 10,
+        "AC-4 sanity: expected >= 10 mid-body layers in window [{lo},{hi}), got {mid_body_layers}"
     );
 
-    // AC-6: external_contour removal asserted by the rg grep in packet.spec.md AC-6
-
-    // Assertion 3 — byte-exact SHA pin REMOVED (diagnose 2026-06-24).
-    //
-    // The former `P105_CUBE_4COLOR_PARITY_SHA` assertion claimed the cube_4color
-    // gcode was byte-stable. It is NOT: the medial axis runs on boostvoronoi
-    // 0.12.1 → cpp_map 0.2.0 → rand 0.9.4, whose RNG-seeded skiplist makes the
-    // Voronoi output (gap-fill + MMU paint-segmentation partition) vary across
-    // runs (~1/3 of slices differed; inner-wall and gap-fill geometry drift). A
-    // byte-exact hash is therefore a guaranteed CI flake, not a regression gate.
-    // The meaningful behavioural gates are the structural assertions above
-    // (all four tools present, per-color Model A fragmentation, multi-tool layers
-    // carry tool changes). Determinism itself is tracked as a separate follow-up
-    // (make the Voronoi path reproducible — e.g. a fixed-seed cpp_map). Do NOT
-    // re-introduce a byte-exact pin until the Voronoi path is deterministic.
+    // Determinism note: byte-exact SHA pinning is intentionally NOT used here. The
+    // medial axis runs on boostvoronoi 0.12.1 → cpp_map 0.2.0 → rand 0.9.4, whose
+    // RNG-seeded skiplist makes the Voronoi output (gap-fill + MMU partition) vary
+    // across runs (~1/3 of slices differ; inner-wall / gap-fill geometry drift). A
+    // byte-exact hash would be a guaranteed CI flake. Every assertion above is a
+    // STRUCTURAL / geometric Model-A invariant, robust to that non-determinism.
+    // Do NOT re-introduce a byte-exact pin until the Voronoi path is deterministic.
     assert!(
         !painted.gcode_text.is_empty(),
         "cube_4color produced empty gcode"

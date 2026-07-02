@@ -290,6 +290,31 @@ fn preview(gcode: &str, n: usize) -> String {
     gcode.lines().take(n).collect::<Vec<_>>().join("\n")
 }
 
+/// Extract the ordered `;TYPE:<name>` markers emitted within the G-code layer
+/// whose `;Z:<value>` header is closest to `z_target` (within 0.05 mm). Used by
+/// the flat-bridge reconciliation to inspect a single layer's surface mix.
+fn layer_type_markers(gcode: &str, z_target: f32) -> Vec<String> {
+    let mut in_layer = false;
+    let mut markers = Vec::new();
+    for line in gcode.lines() {
+        if let Some(rest) = line.strip_prefix(";Z:") {
+            if in_layer {
+                // Reached the next layer header — stop collecting.
+                break;
+            }
+            let z: f32 = rest.trim().parse().unwrap_or(f32::NAN);
+            in_layer = z.is_finite() && (z - z_target).abs() < 0.05;
+            continue;
+        }
+        if in_layer {
+            if let Some(rest) = line.strip_prefix(";TYPE:") {
+                markers.push(rest.trim().to_string());
+            }
+        }
+    }
+    markers
+}
+
 /// **MVP content gate.** Runs the real binary against the real
 /// Benchy STL and the real `modules/core-modules/` tree and asserts
 /// that the emitted G-code has real printable content.
@@ -1613,11 +1638,58 @@ fn wedge_multi_layer_top_bottom_evidence() {
         top_surface_blocks,
         preview(gcode, 30)
     );
+
+    // ------------------------------------------------------------------
+    // Packet 109 (flat-bridge enclosure discriminator) reconciliation.
+    //
+    // `regression_wedge.stl` has exactly THREE genuine flat bottom surfaces:
+    //   * z=0.2  — the build-plate base,
+    //   * z=2.2  — the base shell over the first sloped step,
+    //   * z=29.0 — the underside of the cantilevered y-extension. This is a
+    //              FREE-EDGE flat bottom: unsupported by the layer below, but
+    //              NOT spanned by support on opposite sides, so it is a genuine
+    //              `Bottom surface`, not a bridge.
+    // It also has ONE INTERIOR SLOT (x∈[21,29], full-y) whose ceiling at
+    // z≈28.0 is a flat bottom ENCLOSED by supported material on both x-sides —
+    // i.e. a genuine flat *bridge*, not a bottom surface.
+    //
+    // Before the flat-bridge fix there was no bridge detection at all, so the
+    // slot ceiling was mis-counted as ~2 extra `;TYPE:Bottom surface` blocks
+    // (total 5). The old `>= 4` gate silently depended on that mis-count. With
+    // the enclosure discriminator the slot ceiling is correctly a bridge, so
+    // the genuine-bottom count is 3, and the slot-is-bridge fact is asserted
+    // separately below. Lowering the count alone would be a weakening; the
+    // slot-is-bridge assertions are what actually verify the fix.
+    // ------------------------------------------------------------------
     assert!(
-        bottom_surface_blocks >= 4,
-        "packet-35 evidence: expected at least 4 `;TYPE:Bottom surface` blocks with \
-         bottom_shell_layers=4, found {}. G-code preview:\n{}",
+        bottom_surface_blocks >= 3,
+        "packet-109 evidence: expected at least 3 genuine `;TYPE:Bottom surface` \
+         blocks (plate base z=0.2, base shell z=2.2, y-extension z=29.0), found {}. \
+         A count below 3 means a genuine FREE-EDGE bottom was wrongly reclassified \
+         as a bridge (over-eager flat-bridge detection). G-code preview:\n{}",
         bottom_surface_blocks,
+        preview(gcode, 30)
+    );
+
+    // Slot-ceiling reclassification (this is the assertion that exercises the
+    // enclosure discriminator): the z≈28.0 interior-slot ceiling must now emit
+    // `;TYPE:Bridge infill` and must NOT emit `;TYPE:Bottom surface`. Pre-fix
+    // this layer carried the mis-counted Bottom-surface blocks; post-fix the
+    // flat bridge over the enclosed slot gap replaces them.
+    let slot_ceiling = layer_type_markers(gcode, 28.0);
+    assert!(
+        slot_ceiling.iter().any(|t| t == "Bridge infill"),
+        "packet-109: interior-slot ceiling at z=28.0 must emit `;TYPE:Bridge infill` \
+         — the enclosed flat gap span is a bridge. Markers found: {:?}. Preview:\n{}",
+        slot_ceiling,
+        preview(gcode, 30)
+    );
+    assert!(
+        !slot_ceiling.iter().any(|t| t == "Bottom surface"),
+        "packet-109: interior-slot ceiling at z=28.0 must NOT emit `;TYPE:Bottom \
+         surface` — the enclosed gap span is a bridge, not a bottom. Markers found: \
+         {:?}. Preview:\n{}",
+        slot_ceiling,
         preview(gcode, 30)
     );
 }

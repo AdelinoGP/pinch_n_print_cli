@@ -2,7 +2,7 @@
 //!
 //! Each per-color `SlicedRegion` must trace its own independent outer wall.
 //! Before this change arachne grouped regions by object and traced the shared
-//! `external_contour` once (union-trace), producing a monochrome outer wall
+//! object boundary once (union-trace), producing a monochrome outer wall
 //! for painted objects. After the fix every region emits `emit_outer=true`,
 //! so N per-color cells → N distinct outer-wall loops.
 //!

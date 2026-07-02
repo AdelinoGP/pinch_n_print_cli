@@ -313,10 +313,6 @@ pub fn sliced_region_to_data(
         bridge_orientation_deg: region.bridge_orientation_deg,
         sparse_infill_area: ir_to_wit_expolygons(&region.sparse_infill_area),
         held_claims,
-        external_contour: region
-            .external_contour
-            .as_ref()
-            .map(|b| ir_to_wit_expolygons(b)),
         overhang_areas,
         overhang_quartile_polygons,
         surface_group,

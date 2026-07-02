@@ -665,16 +665,20 @@ the 30° threshold (e.g. a densely-tessellated round cross-section) can
 legitimately produce zero candidates, and non-planar-shell regions
 (`LoopType::NonPlanarShell`, `emit_nonplanar_shells`) never push seam
 candidates by design. The audit found no bug in that general path; it stays
-a no-op. Packet 108 (AC-N2) added one narrower, deliberate carve-out on top
-of that robust baseline: for a region with **standard** (non
-non-planar-shell) wall loops, an empty `seam_candidates` list **and** no
-`resolved_seam` now returns `Err(ModuleError::fatal(6, ..))` with a message
-containing `"no seam candidates"` — this is the observable signal that a
-`seam_blocker` paint region excluded every corner candidate for that region,
-which should surface as a hard slice error rather than a silent unrotated
-wall. `SeamPlacerError` (module-local, `modules/core-modules/seam-placer/src/lib.rs`)
-carries the message; there is no `SeamPlacerError::NoCandidates` variant —
-just one constructor, `SeamPlacerError::no_candidates`.
+a no-op. Packet 108 (AC-N2) originally made this a hard error
+(`Err(ModuleError::fatal(6, ..))`) when a `seam_blocker` paint region excluded
+every corner candidate. **P109 corrected that (D-109-SEAM-FATAL-CORRECTED,
+superseding D-108-SEAM-CONSUMED's fatal-on-empty):** for a region with
+**standard** (non non-planar-shell) wall loops, an empty `seam_candidates` list
+**and** no `resolved_seam`, seam-placer now degrades **gracefully** — it emits
+the region's walls pristine and leaves `resolved_seam` unset — rather than
+aborting the layer. This honours the wall-preservation invariant (dropping or
+failing a region's walls corrupts the `(object_id, region_id)` pairing in
+`commit_layer_outputs` for multi-region prints), matches OrcaSlicer's non-abort
+behaviour, and is redundant-safe because the upstream sharpest-vertex fallback
+in `slicer_core` normally guarantees a candidate exists. The module-local
+`SeamPlacerError` type that carried the old fatal message was removed with the
+fatal path.
 
 **T-083 — `seam-planner-default` (PrePass) independence.** Per
 `modules/core-modules/seam-planner-default/seam-planner-default.toml`, this

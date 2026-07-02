@@ -6,10 +6,13 @@
 //! elsewhere on the same wall loop); a `Custom("seam_blocker")` region
 //! excludes its covered corner from `seam_candidates` entirely.
 //!
-//! AC-N2 (`blocker_exhausts_candidates_case`): when a blocker excludes the
-//! ONLY qualifying corner, `seam_candidates` is empty for that region and
-//! `seam-placer` returns `Err(ModuleError::fatal(..))` rather than silently
-//! no-op-ing.
+//! AC-N2 (`blocker_exhausts_candidates_preserves_walls_no_seam`): when a
+//! blocker excludes the ONLY qualifying corner, `seam_candidates` is empty for
+//! that region. Per D-109-SEAM-FATAL-CORRECTED (superseding packet 108's
+//! fatal-on-empty), `seam-placer` degrades GRACEFULLY — it preserves the
+//! region's walls in the output and leaves `resolved_seam` unset — rather than
+//! aborting the layer, honouring the HIGH-2 wall-preservation invariant and
+//! OrcaSlicer's non-abort behaviour.
 
 use std::collections::HashMap;
 
@@ -294,10 +297,12 @@ fn classic_perimeters_blocker_excludes_painted_corner() {
     );
 }
 
-// ── AC-N2: blocker exhausts every candidate → seam-placer hard error ──────
+// ── AC-N2 (corrected, P109 / D-109-SEAM-FATAL-CORRECTED): blocker exhausts
+// every candidate → seam-placer degrades GRACEFULLY (walls preserved, no
+// resolved seam), never aborts the layer ─────────────────────────────────────
 
 #[test]
-fn blocker_exhausts_candidates_case() {
+fn blocker_exhausts_candidates_preserves_walls_no_seam() {
     let path = quad_path([(0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0)], 0.0, 0.4);
     // No seam candidates added (all blocked at generation time) and no
     // resolved_seam — but real, non non-planar-shell wall loops exist.
@@ -316,12 +321,24 @@ fn blocker_exhausts_candidates_case() {
     let config = ConfigViewBuilder::new().build();
     let module = SeamPlacer::on_print_start(&config).expect("on_print_start");
     let mut output = PerimeterOutputBuilder::new();
-    let result = module.run_wall_postprocess(0, &[region], &mut output, &config);
 
-    let err = result.expect_err("expected a fatal error when candidates are exhausted");
+    // A blocker that exhausts every candidate must NOT abort the layer: the
+    // region has no usable seam, but its walls MUST still reach the output
+    // (HIGH-2 wall-preservation invariant; OrcaSlicer degrades, never crashes).
+    module
+        .run_wall_postprocess(0, &[region], &mut output, &config)
+        .expect("blocker-exhausted region must degrade gracefully, not fail the layer");
+
     assert!(
-        err.message.to_lowercase().contains("no seam candidates"),
-        "expected a recognisable 'no seam candidates' message, got: {}",
-        err.message
+        output.resolved_seam().is_none(),
+        "no surviving candidate => no resolved seam"
     );
+    let rotated = output.rotated_wall_loops();
+    assert_eq!(
+        rotated.len(),
+        1,
+        "the region's wall must be preserved in the output even when no seam can be placed"
+    );
+    let (_, emitted_wall_index, _) = &rotated[0];
+    assert_eq!(*emitted_wall_index, 0);
 }

@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::polygon_ops::{intersection, offset, OffsetJoinType};
+use crate::polygon_ops::{closing_ex, difference, intersection, offset, union, OffsetJoinType};
 use crate::slice_mesh_ex;
 use crate::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
@@ -231,6 +231,203 @@ pub fn assemble_bridge_areas(
 }
 
 // ============================================================================
+// assemble_flat_bridge_areas
+// ============================================================================
+
+/// Maximum flat gap span (mm) the enclosure discriminator will bridge.
+///
+/// A genuine flat bridge spans a gap *enclosed* by supported material on
+/// opposite sides. We detect enclosure by morphologically **closing** the
+/// supported region (dilate then erode by [`FLAT_BRIDGE_ENCLOSURE_RADIUS_MM`]):
+/// closing re-fills only a gap pinched between supports on opposite sides
+/// within `2·R`, and never a convex free-edge band. The dilation from each
+/// supported side must reach the middle of the gap, so the closing radius is
+/// half the widest span we accept. 24 mm comfortably clears the positive unit
+/// test's 20 mm beam-over-gap (the dilations overlap by 4 mm, a solid fill)
+/// while staying moderate enough not to close over unrelated free-edge notches.
+const MAX_FLAT_BRIDGE_SPAN_MM: f64 = 24.0;
+
+/// Morphological-closing radius (mm) used for the enclosure test — half the
+/// widest bridgeable span (see [`MAX_FLAT_BRIDGE_SPAN_MM`]).
+const FLAT_BRIDGE_ENCLOSURE_RADIUS_MM: f64 = MAX_FLAT_BRIDGE_SPAN_MM / 2.0;
+
+/// Minimum fraction of a flat-unsupported component that must be covered by the
+/// closing's re-filled ("enclosed-gap") mask for it to count as a bridge.
+///
+/// This gate separates genuine gap-spans from the thin closing artifacts a
+/// free-edge bottom leaves along its supported boundary. Measured re-fill
+/// fractions (closing radius = 12 mm):
+///
+/// | case                                    | comp   | refill | fraction |
+/// |-----------------------------------------|--------|--------|----------|
+/// | wedge interior slot (true bridge)       | 400 mm²| 393 mm²| **0.98** |
+/// | beam-over-20 mm-gap unit test (true)    | 200 mm²|  51 mm²| **0.26** |
+/// | wedge cantilever lip (free-edge, false) | 160 mm²| 0.9 mm²|   0.006  |
+/// | wedge edge sliver (free-edge, false)    |10.4 mm²| 0.3 mm²|   0.03   |
+///
+/// A wide thin bridge only *partially* re-fills (the round-join dilations meet
+/// in a narrow waist), so the true-positive floor is ~0.26 — far below 1.0 but
+/// far above the artifact ceiling (~0.03). 0.1 sits in that empty band.
+const FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION: f64 = 0.1;
+
+/// Detect and record *flat* (perfectly horizontal) unsupported bridge spans.
+///
+/// The sloped-overhang bridge pipeline ([`assemble_bridge_areas`]) never sees
+/// perfectly-horizontal downward facets: they classify as
+/// [`slicer_ir::FacetClass::BottomSurface`], not
+/// [`slicer_ir::FacetClass::Overhang`], so a flat beam spanning a gap between
+/// two supports is missed (its underside normal points straight down, so the
+/// facet-normal test alone cannot tell a build-plate bottom from a
+/// gap-spanning bridge). This function recovers those spans by intersecting
+/// two pre-computed polygon sets:
+///
+/// 1. `bottom_surface_footprint` — the XY projection of the region's
+///    `BottomSurface` facets (the region's flat-bottom footprint,
+///    via [`crate::algos::mesh_analysis::bottom_surface_footprint`]), and
+/// 2. `unsupported_region` — this layer's area **not** supported by the layer
+///    below (the union of
+///    `SurfaceClassificationIR.overhang_quartile_polygons[layer]`, populated
+///    by the `PrePass::OverhangAnnotation` step),
+///
+/// then clipping the result to the region's own printable area
+/// (`region.infill_areas`, mirroring [`assemble_bridge_areas`]) and appending
+/// it to `region.bridge_areas`. `region.is_bridge` is set whenever any
+/// flat-bridge area is added.
+///
+/// # First-layer / build-plate exclusion
+///
+/// Build-plate-contact and first-layer bottoms are excluded automatically:
+/// `annotate_overhangs` never emits an unsupported region for layer 0 (a layer
+/// with no predecessor is never overhanging), and a genuinely *supported*
+/// bottom surface (its footprint sits entirely on material below) likewise has
+/// an empty `difference(current, previous)` and therefore an empty
+/// `unsupported_region`. In both cases this function is a no-op. The
+/// discriminator is exactly "is this flat bottom supported by the layer
+/// below?" — never the facet normal in isolation.
+///
+/// # Enclosure discriminator (free-edge vs. gap-span)
+///
+/// Being flat *and* unsupported is necessary but **not** sufficient to be a
+/// bridge. A sloped solid's outward-growing perimeter band, or a cantilever
+/// lip, is flat and unsupported at a **free edge** — there is no opposing
+/// support — and is a genuine `Bottom surface`, not a bridge. Only a gap
+/// **enclosed** by supported material on opposite sides (a slot ceiling, a beam
+/// over a gap) is a flat bridge.
+///
+/// Enclosure is detected by morphologically **closing** the supported region:
+///
+/// * `support  = region.polygons \ unsupported_region` (this layer's
+///   cross-section that *is* carried by the layer below),
+/// * `closed   = dilate(support, R)` then `erode(support, R)` with
+///   `R = FLAT_BRIDGE_ENCLOSURE_RADIUS_MM`,
+/// * `refilled = closed \ support`.
+///
+/// Closing re-fills a gap only when supported material lies on opposite sides
+/// within `2·R`; a convex free-edge band is never re-filled. So `refilled` is
+/// the "enclosed-gap" mask, and a flat-unsupported component is a bridge iff it
+/// overlaps `refilled`.
+///
+/// The closing radius is used **only** as a boolean enclosure test: a
+/// flat-bridge component that overlaps `refilled` is kept in **full**, and the
+/// reported `bridge_areas` geometry is the untouched flat-bottom ∩ unsupported
+/// span — never the eroded closing geometry. This decouples the enclosure
+/// radius from the reported area, so a radius large enough to span a wide gap
+/// cannot pinch the reported span's middle (which would otherwise collapse the
+/// detected area of a wide bridge).
+pub fn assemble_flat_bridge_areas(
+    region: &mut SlicedRegion,
+    bottom_surface_footprint: &[ExPolygon],
+    unsupported_region: &[ExPolygon],
+) {
+    if bottom_surface_footprint.is_empty() || unsupported_region.is_empty() {
+        return;
+    }
+
+    // Flat unsupported = flat-bottom footprint ∩ not-supported-by-below.
+    // Intersecting with the bottom-surface footprint restricts the result to
+    // genuinely-flat bottoms, so sloped overhangs (already handled by
+    // `assemble_bridge_areas`, and never `BottomSurface`) are not re-flagged
+    // here and keep their min-length / anchor-width validity filtering.
+    let flat_unsupported = intersection(bottom_surface_footprint, unsupported_region);
+    if flat_unsupported.is_empty() {
+        return;
+    }
+
+    // Clip to this region's printable area (matches `assemble_bridge_areas`).
+    let flat_bridge = intersection(&flat_unsupported, &region.infill_areas);
+    if flat_bridge.is_empty() {
+        return;
+    }
+
+    // Enclosure discriminator: keep only flat-unsupported spans that are
+    // pinched between supported material on opposite sides. See the fn doc.
+    let support = difference(&region.polygons, unsupported_region);
+    if support.is_empty() {
+        // Entire cross-section is unsupported: nothing to enclose the flat
+        // bottom against, so it is a free-floating bottom, not a bridge.
+        return;
+    }
+    let closed = closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM);
+    let refilled = difference(&closed, &support);
+    if refilled.is_empty() {
+        // No pinched gap anywhere: every flat-unsupported area is a free-edge
+        // bottom (growing perimeter band, cantilever lip). Not a bridge.
+        return;
+    }
+
+    // A component is a genuine bridge iff the enclosed-gap mask (`refilled`)
+    // covers a SUBSTANTIAL fraction of it. A real gap-span is almost fully
+    // re-filled by the closing (~100% overlap); a free-edge bottom (an
+    // outward-growing perimeter band, a cantilever lip) only *grazes*
+    // `refilled` through thin dilate/erode artifacts along the shared support
+    // boundary (a few % at most). The fraction gate rejects those slivers.
+    //
+    // Emit the FULL component (not the eroded closing geometry) so the enclosure
+    // radius never shrinks the reported bridge area.
+    let mut enclosed_bridge: Vec<ExPolygon> = Vec::new();
+    for component in &flat_bridge {
+        let comp_area = expoly_set_area(std::slice::from_ref(component));
+        if comp_area <= 0.0 {
+            continue;
+        }
+        let overlap = intersection(std::slice::from_ref(component), &refilled);
+        let overlap_area = expoly_set_area(&overlap);
+        if overlap_area >= FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION * comp_area {
+            enclosed_bridge.push(component.clone());
+        }
+    }
+    if enclosed_bridge.is_empty() {
+        return;
+    }
+
+    region.bridge_areas.extend(enclosed_bridge);
+    region.is_bridge = true;
+}
+
+/// Total area (in workspace units², 1 unit = 100 nm) of a polygon set: the sum
+/// of each ExPolygon's outer-contour area minus its holes, via the shoelace
+/// formula. Used only for the flat-bridge enclosure fraction test, where the
+/// absolute unit scaling cancels (it appears on both sides of the ratio).
+fn expoly_set_area(polys: &[ExPolygon]) -> f64 {
+    fn ring_area(ring: &Polygon) -> f64 {
+        let pts = &ring.points;
+        if pts.len() < 3 {
+            return 0.0;
+        }
+        let mut a = 0.0_f64;
+        for i in 0..pts.len() {
+            let j = (i + 1) % pts.len();
+            a += (pts[i].x as f64) * (pts[j].y as f64) - (pts[j].x as f64) * (pts[i].y as f64);
+        }
+        (a * 0.5).abs()
+    }
+    polys
+        .iter()
+        .map(|ep| ring_area(&ep.contour) - ep.holes.iter().map(ring_area).sum::<f64>())
+        .sum()
+}
+
+// ============================================================================
 // execute_prepass_slice_single_layer
 // ============================================================================
 
@@ -353,10 +550,35 @@ pub fn execute_prepass_slice_single_layer(
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-            external_contour: None,
         };
 
         assemble_bridge_areas(&mut sliced_region, surface_class);
+
+        // Flat (perfectly horizontal) unsupported bridge spans. The sloped
+        // pipeline above only sees `Overhang`-derived clusters; a flat beam
+        // over a gap has a `BottomSurface` underside and is missed there. The
+        // discriminator is this layer's unsupported region (from the overhang
+        // prepass), which is empty for layer 0 / build-plate contact, so
+        // genuinely-supported bottoms are never flagged.
+        if let Some(sc) = surface_class {
+            if let Some(bands) = sc.overhang_quartile_polygons.get(&layer.index) {
+                if let Some(obj_data) = sc.per_object.get(&active.object_id) {
+                    // Union this layer's quartile bands into its unsupported region.
+                    let mut unsupported: Vec<ExPolygon> = Vec::new();
+                    for band in bands {
+                        unsupported = union(&unsupported, &band.polygons);
+                    }
+                    if !unsupported.is_empty() {
+                        let bottom_fp = crate::algos::mesh_analysis::bottom_surface_footprint(
+                            &object.mesh,
+                            &object.transform,
+                            &obj_data.facet_classes,
+                        );
+                        assemble_flat_bridge_areas(&mut sliced_region, &bottom_fp, &unsupported);
+                    }
+                }
+            }
+        }
 
         regions.push(sliced_region);
     }

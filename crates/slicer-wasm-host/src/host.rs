@@ -166,10 +166,6 @@ pub struct SliceRegionData {
     pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
-    /// Clean model boundary for the painted cell group (AC-22b bisector dedup).
-    /// `Some(boundary)` for painted regions; `None` for unpainted regions.
-    pub external_contour: Option<Vec<layer::slicer::types::geometry::ExPolygon>>,
-    /// Flat per-edge structural metadata for MMU per-color outer-wall fragmentation.
     /// Overhang area polygons. Populated from `SurfaceClassificationIR.overhang_quartile_polygons`
     /// at this region's global layer index, pre-filtered to overlap the region (packet 107).
     pub overhang_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
@@ -1852,7 +1848,6 @@ mod region_origin_tests {
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
                 held_claims: Vec::new(),
-                external_contour: None,
                 overhang_areas: Vec::new(),
                 overhang_quartile_polygons: Vec::new(),
                 surface_group: None,
@@ -2194,13 +2189,6 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn held_claims(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<String>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.held_claims.clone())
-    }
-    fn external_contour(
-        &mut self,
-        self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Option<Vec<ExPolygon>>> {
-        self.runtime_reads.push(String::from("SliceIR"));
-        Ok(self.table.get(&self_)?.external_contour.clone())
     }
     fn overhang_areas(
         &mut self,

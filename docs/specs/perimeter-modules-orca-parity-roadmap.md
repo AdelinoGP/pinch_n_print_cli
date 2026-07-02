@@ -43,7 +43,7 @@ Tasks that look like "implement overhang detection" therefore become "propagate 
 
 ## Milestone summary
 
-### M1 — Classic parity + delete iterative-inset fake-Arachne
+### M1 — Classic parity + delete iterative-inset fake-Arachne — ✅ COMPLETE (P102–P109, verified by P109, 2026-07-02)
 Outcomes:
 - `classic-perimeters` reaches feature parity with OrcaSlicer `process_classic()`.
 - The fake-Arachne `arachne-perimeters` module (iterative-inset, not real Arachne) is **deleted** under P108 (dir+tests+manifest removed; workspace member removed; doc refs removed). `variable-width-perimeters` never ships (D-110-DROP-VARIABLE-WIDTH). Rename tasks T-090/T-091/T-092 are cancelled and re-scoped to deletion.

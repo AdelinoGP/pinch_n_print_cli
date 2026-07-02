@@ -568,6 +568,40 @@ fn compute_xy_footprint(
     accum
 }
 
+/// XY footprint (union of per-facet triangle projections, transform applied)
+/// of every facet classified [`FacetClass::BottomSurface`] in `mesh`, using
+/// the per-triangle classification in `facet_classes` (as produced by
+/// [`execute_mesh_analysis`]).
+///
+/// Mirrors how overhang footprints are projected
+/// ([`OverhangRegion::xy_footprint`]). The pre-pass intersects this
+/// flat-bottom footprint with a layer's unsupported region to detect
+/// perfectly-horizontal ("flat") unsupported bridge spans — e.g. a beam
+/// spanning a gap between two supports. Such spans never enter the
+/// sloped-overhang bridge pipeline because their downward facets classify as
+/// `BottomSurface` (normal ≈ straight down), not `Overhang`, and
+/// [`crate::algos::prepass_slice::assemble_bridge_areas`] only consumes
+/// `Bridge`/`Overhang`-derived clusters.
+///
+/// Returns an empty vec when no facet is a `BottomSurface`.
+pub fn bottom_surface_footprint(
+    mesh: &IndexedTriangleSet,
+    transform: &Transform3d,
+    facet_classes: &[FacetClass],
+) -> Vec<ExPolygon> {
+    let tri_count = mesh.indices.len() / 3;
+    let bottom_facets: Vec<u32> = facet_classes
+        .iter()
+        .take(tri_count)
+        .enumerate()
+        .filter_map(|(i, class)| matches!(class, FacetClass::BottomSurface).then_some(i as u32))
+        .collect();
+    if bottom_facets.is_empty() {
+        return Vec::new();
+    }
+    compute_xy_footprint(mesh, transform, &bottom_facets)
+}
+
 /// Bridge span: extent of facet vertices projected along the axis perpendicular to bridge direction.
 fn compute_bridge_length_mm(
     mesh: &IndexedTriangleSet,

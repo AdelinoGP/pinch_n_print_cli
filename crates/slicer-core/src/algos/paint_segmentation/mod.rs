@@ -8,8 +8,6 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-/// AC-22b — per-edge bisector ownership tagging for classic-perimeters skip-mask.
-pub mod bisector_ownership;
 /// Paint-segmentation algorithm modules (ported from OrcaSlicer).
 ///
 /// Coordinate constants divided by 100 (OrcaSlicer: 1 nm, Pinch 'n Print: 100 nm).
@@ -943,17 +941,6 @@ pub fn execute_paint_segmentation(
             }
         }
     }
-
-    // ---- External-contour tagging (AC-22b bisector-edge dedup) ----------------
-    //
-    // Must run AFTER variant-composition writes working[i].regions (so the contour
-    // reflects the final pre-erosion polygons) and BEFORE Phase 5 width-limiting
-    // (which may clip or replace polygons). Per object, the union of the original
-    // (pre-segmentation) slice polygons is the gap-free model perimeter; it is
-    // attached to every painted cell so the guest can keep only the real perimeter
-    // edges of each cell and skip paint-cell interfaces. `union_ex` is computed
-    // here (host) because boolean polygon ops are unreliable in the WASM guest.
-    bisector_ownership::populate_external_contours(&mut working, &slice_ir);
 
     // ---- Phase 5 — width limiting / interlocking (OrcaSlicer parity) ----------
     //

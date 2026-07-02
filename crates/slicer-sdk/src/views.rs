@@ -63,10 +63,6 @@ pub struct SliceRegionView {
     /// the module holds no fill claims for this region (suppresses all fill
     /// emission via `should_emit`).
     held_claims: Vec<String>,
-    /// Clean model boundary for the painted cell group this region belongs to
-    /// (AC-22b). `Some(boundary)` for painted regions; `None` for unpainted regions
-    /// (the perimeter generator then traces the region's own polygon in full).
-    external_contour: Option<Vec<ExPolygon>>,
     /// Overhang area polygons for this region, flattened across all severity
     /// quartiles. Populated by the host populator from
     /// `SurfaceClassificationIR.overhang_quartile_polygons` at this region's
@@ -108,7 +104,6 @@ impl Default for SliceRegionView {
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
             held_claims: Vec::new(),
-            external_contour: None,
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
             surface_group: None,
@@ -431,22 +426,6 @@ impl SliceRegionView {
     /// `should_emit` returns false for all four fill roles.
     pub fn held_claims(&self) -> &[String] {
         &self.held_claims
-    }
-
-    /// Override the external contour (host-only, for testing).
-    ///
-    /// `Some(boundary)` for painted regions; `None` for unpainted regions.
-    #[doc(hidden)]
-    pub fn set_external_contour(&mut self, boundary: Option<Vec<ExPolygon>>) {
-        self.external_contour = boundary;
-    }
-
-    /// Returns the clean model boundary for this region's painted cell group
-    /// (AC-22b). The perimeter generator keeps an outer-wall edge only when it lies
-    /// on this boundary and skips edges interior to it (paint-cell interfaces).
-    /// `None` means no dedup: trace the region's own polygon in full.
-    pub fn external_contour(&self) -> Option<&Vec<ExPolygon>> {
-        self.external_contour.as_ref()
     }
 
     /// Returns the overhang area polygons for this region, flattened across

@@ -117,7 +117,6 @@ fn slice_ir_with_polygon(z_mm: f32, polygon: ExPolygon) -> SliceIR {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-            external_contour: None,
         }],
     }
 }

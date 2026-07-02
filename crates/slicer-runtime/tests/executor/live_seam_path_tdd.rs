@@ -74,7 +74,6 @@ fn stage_minimal_slice_ir(
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-            external_contour: None,
         })
         .collect();
 
@@ -1347,7 +1346,6 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
                 sparse_infill_area: Vec::new(),
-                external_contour: None,
             }],
             ..Default::default()
         })

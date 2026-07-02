@@ -33,6 +33,8 @@ mod overhang_classifier_refactor_regression_tdd;
 mod overhang_pipeline_e2e_tdd;
 mod painted_seam_enforcer_blocker_tdd;
 mod per_object_config_override_tdd;
+mod perimeter_edge_cases;
+mod perimeter_parity;
 mod perimeter_postprocess_preserve_tdd;
 mod pipeline_tdd;
 mod precise_outer_wall_tdd;

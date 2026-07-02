@@ -302,6 +302,74 @@ fn make_topfacing_only_mesh() -> MeshIR {
     }
 }
 
+/// Build an axis-aligned box `[x0,x1]×[y0,y1]×[z0,z1]` as a watertight
+/// `MeshIR` with correct outward normals: the bottom face (z0) points −Z
+/// (→ `FacetClass::BottomSurface`), the top face (z1) points +Z
+/// (→ `TopSurface`), and the four vertical sides are `Normal` (nz = 0).
+///
+/// NOTE: unlike `overhang_annotation::tests::flat_cube_mesh` (whose bottom
+/// winding yields a +Z normal — harmless there because only cross-sections
+/// are taken), this helper deliberately reverses the bottom winding so facet
+/// classification sees a genuine `BottomSurface`, which the flat-bridge path
+/// depends on.
+fn make_box(id: &str, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> MeshIR {
+    let pt3 = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+    let vertices = vec![
+        pt3(x0, y0, z0), // 0
+        pt3(x1, y0, z0), // 1
+        pt3(x1, y1, z0), // 2
+        pt3(x0, y1, z0), // 3
+        pt3(x0, y0, z1), // 4
+        pt3(x1, y0, z1), // 5
+        pt3(x1, y1, z1), // 6
+        pt3(x0, y1, z1), // 7
+    ];
+    #[rustfmt::skip]
+    let indices = vec![
+        // bottom (z0), outward normal −Z (CW from above)
+        0, 2, 1,  0, 3, 2,
+        // top (z1), outward normal +Z (CCW from above)
+        4, 5, 6,  4, 6, 7,
+        // sides (all vertical → Normal)
+        0, 1, 5,  0, 5, 4,
+        1, 2, 6,  1, 6, 5,
+        2, 3, 7,  2, 7, 6,
+        3, 0, 4,  3, 4, 7,
+    ];
+    let mesh = IndexedTriangleSet { vertices, indices };
+    let object_mesh = ObjectMesh {
+        id: id.to_string(),
+        mesh,
+        transform: identity_transform(),
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: vec![],
+        paint_data: None,
+        world_z_extent: None,
+    };
+    MeshIR {
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        objects: vec![object_mesh],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: x0 - 10.0,
+                y: y0 - 10.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: x1 + 10.0,
+                y: y1 + 10.0,
+                z: z1 + 10.0,
+            },
+        },
+    }
+}
+
 /// Builds a V-shaped ExPolygon footprint with two long arms of 20 mm each
 /// meeting at a sharp interior angle. Used for NEG-1 (sharp anchor pipeline).
 fn make_vshape_sharp_anchor_footprint(interior_angle_deg: f32) -> Vec<ExPolygon> {
@@ -695,7 +763,6 @@ fn expansion_margin_grows_polygon_observably() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
-        external_contour: None,
     };
 
     assemble_bridge_areas(&mut sliced_region, Some(&sc_ir));
@@ -803,7 +870,6 @@ fn vshape_sharp_anchor_pipeline_produces_simple_polygons() {
         bridge_areas: vec![],
         bridge_orientation_deg: 0.0,
         sparse_infill_area: Vec::new(),
-        external_contour: None,
     };
 
     // Must not panic.
@@ -965,5 +1031,151 @@ fn invalid_bridge_excluded_from_slice_areas() {
             region.bridge_areas.is_empty(),
             "invalid bridge must contribute nothing to bridge_areas"
         );
+    }
+}
+
+/// FLAT-BRIDGE POSITIVE (packet 109 defect fix): a perfectly horizontal
+/// unsupported span — a flat beam over a gap — must be flagged as a bridge.
+///
+/// The beam's underside is a `BottomSurface` facet, so it never enters the
+/// sloped-overhang bridge pipeline (`assemble_bridge_areas` only consumes
+/// `Overhang`/`Bridge` clusters). The discriminator is the overhang prepass's
+/// per-layer unsupported region. This test injects that region exactly as
+/// `PrePass::OverhangAnnotation` would populate
+/// `SurfaceClassificationIR.overhang_quartile_polygons`, then asserts the
+/// slice path now produces `bridge_areas` + `is_bridge` over the gap.
+///
+/// Before the fix this FAILS (bridge_areas empty, is_bridge false); after the
+/// fix it PASSES.
+#[test]
+fn flat_bridge_span_over_gap_flagged_via_overhang_prepass() {
+    // Flat slab (beam) spanning x∈[0,30], y∈[0,10], underside at z=10.
+    let slab = make_box("slab-obj", 0.0, 0.0, 10.0, 30.0, 10.0, 13.0);
+
+    let mut analysis = execute_mesh_analysis_with(&slab, MeshAnalysisConfig::default())
+        .expect("mesh analysis must succeed");
+
+    // Defect precondition: the flat underside yields NO sloped bridge_regions.
+    let obj = analysis.per_object.get("slab-obj").expect("slab present");
+    assert!(
+        obj.bridge_regions.is_empty(),
+        "flat slab must yield no sloped bridge_regions (the underside is BottomSurface, \
+         not Overhang) — this is the defect precondition"
+    );
+
+    // Inject the layer's unsupported region as the overhang prepass would: the
+    // gap span [5,25]×[0,10] under the beam is not supported by the layer below.
+    let global_layer_index = 5_u32;
+    analysis.overhang_quartile_polygons.insert(
+        global_layer_index,
+        vec![slicer_ir::slice_ir::QuartileBand {
+            quartile: 4,
+            polygons: vec![rect_expoly_mm(5.0, 0.0, 25.0, 10.0)],
+        }],
+    );
+
+    let layer = GlobalLayer {
+        index: global_layer_index,
+        z: 11.5,
+        active_regions: vec![ActiveRegion {
+            object_id: "slab-obj".to_string(),
+            region_id: RegionId::default(),
+            resolved_config: slicer_ir::ResolvedConfig::default(),
+            effective_layer_height: 0.2,
+            nonplanar_shell: None,
+            is_catchup_layer: false,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    let slice_ir = execute_prepass_slice_single_layer(&slab, &layer, Some(&analysis), None)
+        .expect("slice must succeed");
+
+    let region = slice_ir
+        .regions
+        .iter()
+        .find(|r| r.object_id == "slab-obj")
+        .expect("slab region present");
+
+    assert!(
+        !region.bridge_areas.is_empty(),
+        "flat unsupported span must produce non-empty bridge_areas (fix under test)"
+    );
+    assert!(
+        region.is_bridge,
+        "flat unsupported span must set is_bridge = true (fix under test)"
+    );
+
+    // The flat-bridge area must be ≈ the gap span (20×10 = 200 mm²), i.e. the
+    // flat-bottom footprint ∩ unsupported region — NOT the whole beam (300 mm²).
+    let total: f64 = region.bridge_areas.iter().map(expoly_area_mm2).sum();
+    assert!(
+        (total - 200.0).abs() / 200.0 <= 0.05,
+        "flat bridge_areas total ({:.2} mm²) must be within 5% of the 200 mm² gap span",
+        total
+    );
+}
+
+/// FLAT-BRIDGE NEGATIVE (packet 109 regression guard): a solid box on the
+/// build plate must NOT be flagged as a flat bridge on its first layer or any
+/// bottom layer.
+///
+/// This exercises the REAL overhang kernel (`annotate_overhangs`): a plate box
+/// never grows, so its unsupported region is empty at every layer (layer 0 is
+/// skipped outright). With no unsupported region, the flat-bridge path must be
+/// a no-op — proving the fix cannot mis-flag a genuinely-supported plate
+/// bottom (the naïve `difference(layer0, ∅)` = whole first layer failure mode).
+#[test]
+fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
+    let box_mesh = make_box("box-obj", 0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
+
+    let mut analysis = execute_mesh_analysis_with(&box_mesh, MeshAnalysisConfig::default())
+        .expect("mesh analysis must succeed");
+
+    // Real overhang annotation over a layer stack spanning the box height.
+    let obj = box_mesh.objects.first().unwrap();
+    let layer_zs: Vec<f32> = (0..50).map(|i| 0.1 + i as f32 * 0.2).collect();
+    let overhang =
+        slicer_core::algos::overhang_annotation::annotate_overhangs(&obj.mesh, &layer_zs, 0.4);
+    assert!(
+        overhang.is_empty(),
+        "a plate box must have NO overhang layers (guards the unsupported-region source signal)"
+    );
+    analysis.overhang_quartile_polygons = overhang;
+
+    // First layer (index 0) and a mid layer — neither may be flagged a bridge.
+    for (index, z) in [(0_u32, 0.1_f32), (10_u32, 2.1_f32)] {
+        let layer = GlobalLayer {
+            index,
+            z,
+            active_regions: vec![ActiveRegion {
+                object_id: "box-obj".to_string(),
+                region_id: RegionId::default(),
+                resolved_config: slicer_ir::ResolvedConfig::default(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        };
+        let slice_ir = execute_prepass_slice_single_layer(&box_mesh, &layer, Some(&analysis), None)
+            .expect("slice must succeed");
+        for region in &slice_ir.regions {
+            assert!(
+                region.bridge_areas.is_empty(),
+                "solid box layer {index} (z={z}) must have empty bridge_areas \
+                 (first-layer / plate-bottom guard)"
+            );
+            assert!(
+                !region.is_bridge,
+                "solid box layer {index} (z={z}) must not be flagged is_bridge"
+            );
+        }
     }
 }

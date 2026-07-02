@@ -26,7 +26,9 @@ use slicer_core::perimeter_utils::{
     generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
     WallSequence, BASE_SPEED,
 };
-use slicer_core::polygon_ops::{difference_ex, offset, offset2_ex, opening_ex, OffsetJoinType};
+use slicer_core::polygon_ops::{
+    difference_ex, offset, offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType,
+};
 use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::{
     units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
@@ -58,6 +60,16 @@ pub struct ClassicPerimeters {
     /// Arc tolerance for polygon offset operations (mm).
     perimeter_arc_tolerance: f32,
 }
+
+/// Minimum enclosed area (workspace-unit², 1 unit² = 10⁻⁸ mm²) for a contour to
+/// be treated as a real, offsettable island. A contour below this is degenerate:
+/// a `<3`-vertex ring or a collinear zero-area sliver (`signed_area` returns 0.0
+/// for `<3` vertices). Clipper's polygon offset does NOT make such a contour
+/// vanish — it emits a spurious ~0.4 mm wall from empty input — so these are
+/// dropped up front. The threshold is astronomically below any printable feature
+/// (a 0.4 mm wall spans millions of unit²), so no thin-but-valid island is
+/// touched; it rejects only genuinely degenerate contours.
+const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
 
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
@@ -488,6 +500,21 @@ impl ClassicPerimeters {
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
     ) -> Result<(), ModuleError> {
+        // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
+        // (strictly positive enclosed area) to be offsettable. Clipper's polygon
+        // offset of a degenerate contour (0-/2-vertex, or collinear zero-area)
+        // does NOT vanish — it emits a spurious ~0.4 mm sliver, leaking phantom
+        // Outer walls from empty input (mirrors the medial-axis
+        // `axis.points.len() < 2` guard's spirit). Drop those contours up front
+        // so BOTH the wall-offset loop and the thin-wall path below see only real
+        // geometry. `remove_small_and_small_holes` retains a contour iff
+        // |signed_area| >= min_area (and signed_area == 0 for <3 vertices); the
+        // sub-unit² threshold removes exactly the degenerate contours while
+        // leaving every thin-but-valid feature (millions of unit²) intact.
+        let mut valid_polygons = polygons.to_vec();
+        remove_small_and_small_holes(&mut valid_polygons, DEGENERATE_MIN_AREA_SQ_UNITS, 0.0);
+        let polygons: &[ExPolygon] = &valid_polygons;
+
         // Generate wall loops via iterative insets.
         let mut current_polygons = polygons.to_vec();
         let mut all_wall_polygons: Vec<(u32, Vec<ExPolygon>)> = Vec::new();

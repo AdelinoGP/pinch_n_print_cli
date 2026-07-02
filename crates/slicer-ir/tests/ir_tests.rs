@@ -441,7 +441,6 @@ mod tests {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-            external_contour: None,
         };
 
         test_serde_roundtrip!(region);
@@ -480,7 +479,6 @@ mod tests {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
             sparse_infill_area: Vec::new(),
-            external_contour: None,
         };
 
         test_serde_roundtrip!(region);
@@ -658,8 +656,8 @@ fn slice_ir_schema_version_is_one_one_zero() {
 /// AC-10 (packet 36-rev1): bridge_detector_schema_versions_are_constant_sourced
 ///
 /// Asserts that:
-///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 1, 0 }
-///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 2, 0 }
+///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 2, 0 }
+///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 6, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
 #[test]
@@ -669,10 +667,10 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
         slicer_ir::CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 1,
-            minor: 1,
+            minor: 2,
             patch: 0
         },
-        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 1, 0)"
+        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 2, 0)"
     );
 
     // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding);
@@ -684,14 +682,17 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       minor bump to 4.4.0 by packet 105 — additive `LoopType::GapFill` +
     //       `ExtrusionRole::GapFill` variants (this pin was left stale at 4.2.0
     //       by that change; corrected to track the constant).
+    //       minor bump to 4.6.0 by packet 109 — additive removal of the dead
+    //       `SlicedRegion.external_contour` field (4.5.0 was struck/reserved
+    //       by P106 per docs/02_ir_schemas.md version history).
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 4,
+            minor: 6,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 4, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 6, 0)"
     );
 
     // (c)

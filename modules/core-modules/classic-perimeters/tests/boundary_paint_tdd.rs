@@ -317,25 +317,8 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
 }
 
 // --------------------------------------------------------------------------
-// AC-22b — external-contour dedup (trace the model perimeter once per object)
+// Per-color fragmentation — each region of an object traces its own outer wall
 // --------------------------------------------------------------------------
-
-/// A painted cell of object `object_id` whose group carries the shared model
-/// `boundary` as its `external_contour`. `polys` is the cell's own area.
-fn painted_cell(
-    object_id: &str,
-    polys: Vec<slicer_ir::ExPolygon>,
-    boundary: Vec<slicer_ir::ExPolygon>,
-) -> SliceRegionView {
-    let mut r = SliceRegionView::default();
-    r.set_object_id(object_id.to_string());
-    r.set_region_id(0);
-    r.set_polygons(polys);
-    r.set_z(0.2);
-    r.set_effective_layer_height(0.2);
-    r.set_external_contour(Some(boundary));
-    r
-}
 
 fn count_outer(output: &PerimeterOutputBuilder) -> usize {
     output
@@ -345,60 +328,10 @@ fn count_outer(output: &PerimeterOutputBuilder) -> usize {
         .count()
 }
 
-/// Per-color fragmentation (Model A, `D-105-AC22-PARITY-RESHAPE`): the P96
-/// `external_contour` single-outer-wall dedup was RETIRED in packet 105 — the
-/// modules no longer consume `external_contour`, so each painted cell of an
-/// object traces its OWN outer wall. Two cells therefore emit two outer loops,
-/// even when an `external_contour` is present on the view. (The IR field remains
-/// per D-105; only its consumption was removed. This assertion was left stale by
-/// that reshape — it previously expected ONE shared wall — and is corrected here
-/// to the documented current behavior.)
-#[test]
-fn painted_cells_each_trace_own_outer_wall_external_contour_retired() {
-    let config = config_2_walls();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
-    let paint = PaintRegionLayerView::new(0);
-    let mut output = PerimeterOutputBuilder::new();
-
-    // Shared model boundary covering both cells, and the two cell halves.
-    let boundary = vec![square_polygon(5.0, 5.0, 10.0)];
-    let left = painted_cell(
-        "cube",
-        vec![square_polygon(2.5, 5.0, 5.0)],
-        boundary.clone(),
-    );
-    let right = painted_cell(
-        "cube",
-        vec![square_polygon(7.5, 5.0, 5.0)],
-        boundary.clone(),
-    );
-
-    module
-        .run_perimeters(0, &[left, right], &paint, &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        count_outer(&output),
-        2,
-        "external_contour consumption is retired (P105 / D-105-AC22-PARITY-RESHAPE): \
-         each of the two painted cells must trace its OWN outer wall; got {} outer loops",
-        count_outer(&output)
-    );
-    // Each cell still contributes its own inner wall.
-    let inner = output
-        .wall_loops()
-        .iter()
-        .filter(|w| w.loop_type == LoopType::Inner)
-        .count();
-    assert!(
-        inner >= 2,
-        "each cell should still emit an inner wall; got {inner}"
-    );
-}
-
-/// Contrast: with NO external_contour, each region traces its own outer wall —
-/// confirming the dedup above is doing real work (and that the unpainted path is
-/// unchanged).
+/// Per-color fragmentation (Model A, `D-105-AC22-PARITY-RESHAPE`): the perimeter
+/// generator does not dedup outer walls across an object's painted cells, so two
+/// regions of the same object each trace their OWN outer wall (two outer loops),
+/// and the unpainted path is unchanged.
 #[test]
 fn regions_without_external_contour_emit_outer_wall_each() {
     let config = config_2_walls();
@@ -427,7 +360,7 @@ fn regions_without_external_contour_emit_outer_wall_each() {
     assert_eq!(
         count_outer(&output),
         2,
-        "two regions without external_contour must each emit their own outer wall; \
+        "two regions of the same object must each emit their own outer wall; \
          got {} outer loops",
         count_outer(&output)
     );

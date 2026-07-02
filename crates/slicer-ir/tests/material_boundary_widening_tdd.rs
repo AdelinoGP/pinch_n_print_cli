@@ -12,17 +12,19 @@ use slicer_ir::{
 fn schema_version_is_current() {
     // The MaterialBoundary widening was an additive minor bump 4.1.0 -> 4.2.0
     // (packet 102 step 2). The shared SLICE_IR constant has since advanced to
-    // 4.4.0 (packet 105 — additive `LoopType::GapFill` + `ExtrusionRole::GapFill`).
-    // This pin was left stale at 4.2.0 by that change; corrected to track the
-    // live constant (the MaterialBoundary widening is still present at 4.4.0).
+    // 4.4.0 (packet 105 — additive `LoopType::GapFill` + `ExtrusionRole::GapFill`)
+    // and 4.6.0 (packet 109 — additive removal of the dead
+    // `SlicedRegion.external_contour` field; 4.5.0 was struck/reserved by P106).
+    // This pin tracks the live constant (the MaterialBoundary widening is still
+    // present at 4.6.0).
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {
             major: 4,
-            minor: 4,
+            minor: 6,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.4.0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must track the live constant (4.6.0)"
     );
 }
 

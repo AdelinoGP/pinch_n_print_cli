@@ -601,12 +601,14 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 20 core modules as of 2026-06-13 (packet 97 deleted the dead
-    // mesh-segmentation WASM-guest module; was 21 with overhang-classifier-default).
+    // We expect exactly 19 core modules as of 2026-07-02: packet 97 deleted the dead
+    // mesh-segmentation WASM-guest module (21 -> 20), and packet 108 deleted the fake
+    // iterative-inset `arachne-perimeters` module (20 -> 19, per D-110-DROP-VARIABLE-WIDTH;
+    // `classic-perimeters` is the sole perimeter generator until real Arachne lands in P110).
     assert_eq!(
         report.modules.len(),
-        20,
-        "expected 20 core modules, got {}: {:?}",
+        19,
+        "expected 19 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
