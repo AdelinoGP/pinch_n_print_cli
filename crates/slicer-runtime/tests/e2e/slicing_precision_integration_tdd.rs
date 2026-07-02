@@ -21,6 +21,12 @@
 //! Legacy mode = all 7 packet-60 keys at their legacy values (zero-cost path).
 //! If this golden breaks in a future packet, either restore byte-identity for
 //! legacy mode or update the golden with a documented justification.
+//!
+//! AC-10 uses its own `sparse_fill_holder = "gyroid-infill"` config pair
+//! (`AC10_DEFAULT_PRECISION_JSON` / `AC10_LEGACY_PRECISION_JSON`) rather than
+//! NEG-2's plain rectilinear-holder configs — see DEV-083 (`docs/DEVIATION_LOG.md`)
+//! for why straight rectilinear lines give D-P/min-segment simplification
+//! nothing to reduce.
 
 #![allow(missing_docs)]
 
@@ -53,17 +59,6 @@ fn core_module_dirs() -> Vec<PathBuf> {
     )
 }
 
-/// Default-precision config JSON: all 7 packet-60 keys at OrcaSlicer defaults.
-const DEFAULT_PRECISION_JSON: &str = r#"{
-  "gcode_resolution": 0.0125,
-  "infill_resolution": 0.04,
-  "support_resolution": 0.0375,
-  "min_segment_length": 0.05,
-  "gcode_xy_decimals": 3,
-  "perimeter_arc_tolerance": 0.0125,
-  "slice_closing_radius": 0.049
-}"#;
-
 /// Legacy zero-cost config JSON: all 7 packet-60 keys at legacy values.
 const LEGACY_PRECISION_JSON: &str = r#"{
   "gcode_resolution": 0.0,
@@ -73,6 +68,42 @@ const LEGACY_PRECISION_JSON: &str = r#"{
   "gcode_xy_decimals": 4,
   "perimeter_arc_tolerance": 0.0,
   "slice_closing_radius": 0.0
+}"#;
+
+/// AC-10-only default-precision config: identical to [`LEGACY_PRECISION_JSON`]'s
+/// sibling default-value set (all 7 packet-60 keys at OrcaSlicer defaults)
+/// plus `sparse_fill_holder = "gyroid-infill"`.
+///
+/// DEV-083: on the plain rectilinear-holder path (straight corner-to-corner
+/// lines, no curvature), D-P/min-segment simplification has nothing to
+/// simplify, so `default_count == legacy_count` regardless of code
+/// correctness — that regression was traced to `ea16e992` correctly fixing a
+/// duplicate gyroid/lightning fill-emission bug that used to (accidentally)
+/// give this fixture curved content. Forcing the gyroid holder restores
+/// genuine curved geometry for AC-10 to measure simplification against,
+/// without touching NEG-2's golden-backed rectilinear path.
+const AC10_DEFAULT_PRECISION_JSON: &str = r#"{
+  "gcode_resolution": 0.0125,
+  "infill_resolution": 0.04,
+  "support_resolution": 0.0375,
+  "min_segment_length": 0.05,
+  "gcode_xy_decimals": 3,
+  "perimeter_arc_tolerance": 0.0125,
+  "slice_closing_radius": 0.049,
+  "sparse_fill_holder": "gyroid-infill"
+}"#;
+
+/// AC-10-only legacy-precision config: identical to [`LEGACY_PRECISION_JSON`]
+/// plus `sparse_fill_holder = "gyroid-infill"`. See [`AC10_DEFAULT_PRECISION_JSON`].
+const AC10_LEGACY_PRECISION_JSON: &str = r#"{
+  "gcode_resolution": 0.0,
+  "infill_resolution": 0.0,
+  "support_resolution": 0.0,
+  "min_segment_length": 0.0,
+  "gcode_xy_decimals": 4,
+  "perimeter_arc_tolerance": 0.0,
+  "slice_closing_radius": 0.0,
+  "sparse_fill_holder": "gyroid-infill"
 }"#;
 
 /// Count G1 lines that contain both an X token and a Y token (XY move lines).
@@ -132,10 +163,16 @@ fn run_with_config(config_json: &str) -> Vec<u8> {
 ///
 /// This proves that the seven packet-60 config keys actually drive simplification
 /// through the emit path when set to their OrcaSlicer defaults.
+///
+/// Uses [`AC10_DEFAULT_PRECISION_JSON`] / [`AC10_LEGACY_PRECISION_JSON`]
+/// (gyroid sparse-fill holder) rather than the plain rectilinear-holder
+/// configs — see DEV-083: straight corner-to-corner rectilinear lines have no
+/// curvature for D-P/min-segment simplification to reduce, so this AC needs
+/// genuinely curved content to be meaningful.
 #[test]
 fn default_emits_fewer_lines_than_legacy() {
-    let default_bytes = run_with_config(DEFAULT_PRECISION_JSON);
-    let legacy_bytes = run_with_config(LEGACY_PRECISION_JSON);
+    let default_bytes = run_with_config(AC10_DEFAULT_PRECISION_JSON);
+    let legacy_bytes = run_with_config(AC10_LEGACY_PRECISION_JSON);
 
     let default_gcode = std::str::from_utf8(&default_bytes).expect("default gcode is utf-8");
     let legacy_gcode = std::str::from_utf8(&legacy_bytes).expect("legacy gcode is utf-8");
@@ -175,6 +212,10 @@ fn default_emits_fewer_lines_than_legacy() {
 /// This proves zero-impact of the packet-60 precision keys on the legacy
 /// (zero-cost) configuration path — any byte difference indicates a regression
 /// in the legacy path.
+///
+/// DEV-083: re-blessed 2026-07-02 after `ea16e992` fixed a real duplicate
+/// gyroid/lightning fill-emission bug that the previous golden had (unknowingly)
+/// baked in.
 ///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text
