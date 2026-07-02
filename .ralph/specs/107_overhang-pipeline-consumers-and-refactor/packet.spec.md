@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 107_overhang-pipeline-consumers-and-refactor
 task_ids:
   - O-T030
@@ -95,3 +95,18 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Closure Log
+
+- **Acceptance ceremony**: AC-1..AC-7 + AC-N1 all PASS; `cargo check --workspace --all-targets` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; `cargo xtask build-guests --check` clean.
+- **AC-6 summary**: 4 baseline entities reproduced exactly (max deviation 0.0); one intentional delta — quartile-4 is now honored (pre-refactor unconditionally skipped Q4, `overhang_4_4_speed` was dead config; post-refactor factor = `overhang_4_4_speed` / base).
+- **AC-5** took the documented-gap branch: no code writes `overhang_quartile = Some(_)` yet on the perimeter side. Follow-ups `T-024-WIRE-VIEW-CONSUMER` and `T-077-GUEST-ADAPTER-FIELDS` registered in the perimeter roadmap. A production-coupled tripwire plus a `#[ignore]`d full-propagation test are in place in `overhang_pipeline_e2e_tdd.rs`.
+- **Deviations**:
+  - (a) The populator lives in `crates/slicer-wasm-host/src/marshal/in_.rs`, not `host.rs` as the packet assumed (ADR-0021 relocation).
+  - (b) `sliced_region_to_data` gained a `global_layer_index` param, requiring an out-of-scope-but-mechanical edit to `dispatch.rs` and two `slicer-wasm-host` test files.
+  - (c) AC-3 LOC gate met at 78 LOC after trim.
+  - (d) Manifest narrowing uses the dual-entry form (see `task-map.md` O-T042 note) — a post-review fix after a critical finding that dotted-only reads silently lose the base-IR read fulfillment; regression test `overhang_classifier_manifest_dag_validation_tdd.rs` (unit bucket) now guards this.
+  - (e) AC-5/AC-6 integration tests mirror the 78-LOC classifier decision rule in-test rather than dispatching the WASM guest (sibling-test precedent); real-guest coverage = module crate tests + manifest DAG validation test + manual `pnp_cli slice` verification during review.
+  - (f) `docs/adr/0022-overhang-classification-at-prepass.md`, cited by this packet, does not exist in tree (P106 closure gap — flagged upstream, not fixed here).
+  - (g) Post-audit fix: the populator's per-region pre-filter was initially AABB-overlap only (over-inclusive vs AC-1's "pre-filtered to this region's polygon area"); replaced with exact boolean intersection via `slicer_core::polygon_ops::intersection_ex` (AABB retained as a cheap prefilter), and the AC-2 contract test strengthened with bbox-containment assertions.
+  - (h) `overhang_areas()` is sourced from the union of the region-clipped `QuartileBand` polygons (per AC-1's populator instruction naming `SurfaceClassificationIR.overhang_quartile_polygons`), not from `OverhangRegion.xy_footprint` as the roadmap O-T030 row implied — `xy_footprint` is per-object with no per-layer key; the quartile map is the per-layer aggregation of the same PrePass data.

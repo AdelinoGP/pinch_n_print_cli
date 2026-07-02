@@ -1340,15 +1340,32 @@ fn known_stage_ids() -> &'static [&'static str] {
 /// Every per-field key is always present: `Option<T>::None` → JSON `null`;
 /// `bool` → JSON `true`/`false`; `Vec<T>` → JSON array (`[]` when empty).
 /// The top-level `schema_version` is [`CONFIG_SCHEMA_WIRE_VERSION`].
+///
+/// Wildcard schema entries (`<prefix>:*`) are **excluded** from the wire:
+/// they are runtime key-access declarations, not user-configurable fields
+/// (see `is_wildcard_config_key`). A module whose schema consists solely of
+/// wildcard entries is omitted entirely.
 pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
     let schema_entries: Vec<serde_json::Value> = modules
         .iter()
-        .filter(|m| !m.config_schema.entries.is_empty())
+        .filter(|m| {
+            m.config_schema
+                .entries
+                .keys()
+                .any(|key| !is_wildcard_config_key(key))
+        })
         .map(|m| {
             let fields: Vec<serde_json::Value> = m
                 .config_schema
                 .entries
                 .iter()
+                // Wildcard entries (`<prefix>:*`, docs/03 "Config-Key
+                // Wildcard Syntax") declare runtime key-access patterns
+                // (e.g. `object_height:<uuid>`), not user-facing settings.
+                // They carry no display/group/default, which the GUI wire
+                // contract requires as strings, so they are excluded from
+                // the config-schema reply.
+                .filter(|(key, _)| !is_wildcard_config_key(key))
                 .map(|(key, entry)| {
                     serde_json::json!({
                         "key": key,
@@ -1382,6 +1399,18 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
         "schema_version": CONFIG_SCHEMA_WIRE_VERSION,
         "schema": schema_entries,
     })
+}
+
+/// Returns `true` for config-schema keys in the `<prefix>:*` wildcard form
+/// (docs/03_wit_and_manifest.md, "Config-Key Wildcard Syntax", Packet 76).
+///
+/// Wildcard keys declare runtime access patterns for dynamically-named keys
+/// (`object_height:<uuid>`, `paint_config:<semantic>:<key>`); they have no
+/// display/group/default and must not appear in the GUI-facing
+/// `module config-schema` reply. Matching mirrors the declaration syntax
+/// accepted by `execution_plan.rs::source_key_matches_declared`.
+fn is_wildcard_config_key(key: &str) -> bool {
+    key.ends_with(":*")
 }
 
 #[cfg(test)]
@@ -1599,5 +1628,75 @@ mod tests {
         assert!(field["unit"].is_null());
         assert!(field["description"].is_null());
         assert_eq!(field["advanced"], false);
+    }
+
+    /// Regression: wildcard schema entries (`<prefix>:*`, docs/03
+    /// "Config-Key Wildcard Syntax") are runtime key-access declarations,
+    /// not user-facing settings — they carry no display/group/default. The
+    /// GUI adapter requires `display` and `group` to be strings on every
+    /// wire field, so `layer-planner-default`'s `"layer_height:*"` /
+    /// `"object_height:*"` shorthand entries made the entire live
+    /// config-schema reply unparseable ("invalid type: null, expected a
+    /// string"). Wildcard entries must be excluded from the wire.
+    #[test]
+    fn build_config_schema_json_excludes_wildcard_entries() {
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "layer_height".to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                default: Some("0.2".to_string()),
+                display: Some("Layer Height".to_string()),
+                group: Some("Layer Planning".to_string()),
+                ..Default::default()
+            },
+        );
+        // Wildcard shorthand as declared in layer-planner-default.toml:
+        // `"layer_height:*" = "float"` — no display/group/default.
+        entries.insert(
+            "layer_height:*".to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
+        let module = synthetic_module("com.test.wildcard", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+
+        let fields = json["schema"][0]["fields"].as_array().unwrap();
+        assert_eq!(
+            fields.len(),
+            1,
+            "wildcard entry must be excluded from the wire; got: {fields:?}"
+        );
+        assert_eq!(fields[0]["key"], "layer_height");
+        assert!(
+            fields[0]["display"].is_string() && fields[0]["group"].is_string(),
+            "every emitted field must satisfy the wire contract's \
+             string-typed display/group"
+        );
+    }
+
+    /// A module whose `[config.schema]` consists solely of wildcard entries
+    /// contributes no user-facing fields and must be omitted from the wire
+    /// entirely (no `{"module": ..., "fields": []}` stub).
+    #[test]
+    fn build_config_schema_json_omits_wildcard_only_modules() {
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "object_height:*".to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
+        let module = synthetic_module("com.test.wildcard-only", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+
+        assert_eq!(
+            json["schema"].as_array().unwrap().len(),
+            0,
+            "a wildcard-only module must not appear in the wire schema"
+        );
     }
 }

@@ -170,8 +170,13 @@ pub struct SliceRegionData {
     /// `Some(boundary)` for painted regions; `None` for unpainted regions.
     pub external_contour: Option<Vec<layer::slicer::types::geometry::ExPolygon>>,
     /// Flat per-edge structural metadata for MMU per-color outer-wall fragmentation.
-    /// Overhang area polygons. Empty until packet 106 wires OverhangRegion.xy_footprint.
+    /// Overhang area polygons. Populated from `SurfaceClassificationIR.overhang_quartile_polygons`
+    /// at this region's global layer index, pre-filtered to overlap the region (packet 107).
     pub overhang_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Quartile-banded overhang polygons for this region's layer, pre-filtered to
+    /// overlap the region (packet 107). Mirrors `overhang_areas` but preserves the
+    /// per-quartile grouping for callers that need severity-aware handling.
+    pub overhang_quartile_polygons: Vec<layer::slicer::ir_handles::ir_handles::QuartileBand>,
     /// Surface group resolved from SurfaceClassificationIR. None when no group applies.
     pub surface_group: Option<layer::slicer::ir_handles::ir_handles::SurfaceGroup>,
 }
@@ -1844,6 +1849,7 @@ mod region_origin_tests {
                 held_claims: Vec::new(),
                 external_contour: None,
                 overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
                 surface_group: None,
             })
             .expect("push slice region");
@@ -2197,6 +2203,15 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads
             .push(String::from("SliceIR.regions.overhang-areas"));
         Ok(self.table.get(&self_)?.overhang_areas.clone())
+    }
+    fn overhang_quartile_polygons(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<layer::slicer::ir_handles::ir_handles::QuartileBand>> {
+        self.runtime_reads.push(String::from(
+            "SurfaceClassificationIR.overhang-quartile-polygons",
+        ));
+        Ok(self.table.get(&self_)?.overhang_quartile_polygons.clone())
     }
     fn surface_group(
         &mut self,

@@ -23,6 +23,12 @@ interface ir-handles {
     record segment-annotations-polygon { values: list<option<paint-value>> }
     record segment-annotations-entry { semantic: paint-semantic, polygons: list<segment-annotations-polygon> }
 
+    /// A quartile-banded subset of overhang polygons for a single layer,
+    /// mirrors `slicer_ir::QuartileBand` (quartile 1 = least severe, 4 = most
+    /// severe). Pre-filtered host-side to the owning `slice-region-view`'s
+    /// region area before crossing the WIT boundary (packet 107).
+    record quartile-band { quartile: u8, polygons: list<ex-polygon> }
+
     /// Unique identifier for a surface group (matches `SurfaceGroupId` in the IR).
     type surface-group-id = u64;
 
@@ -60,6 +66,7 @@ interface ir-handles {
         held-claims: func() -> list<string>;
         external-contour: func() -> option<list<ex-polygon>>;
         overhang-areas: func() -> list<ex-polygon>;
+        overhang-quartile-polygons: func() -> list<quartile-band>;
         surface-group: func() -> option<surface-group>;
         // Ordered (paint-semantic-name, value) pairs identifying this region's
         // paint variant. Carries the painted FuzzySkin signal

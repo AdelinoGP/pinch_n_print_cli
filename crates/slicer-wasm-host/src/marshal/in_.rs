@@ -185,11 +185,15 @@ pub fn project_support_geometry_view(
 /// `surface_classification` is used to resolve `region.nonplanar_surface` to a
 /// `SurfaceGroup` record. Pass `None` when the IR is unavailable (e.g. in tests
 /// that construct regions directly); the `surface_group` field will be `None`.
+/// `global_layer_index` is the layer this region was sliced at; used to key
+/// `SurfaceClassificationIR.overhang_quartile_polygons` (host-only aggregation
+/// populated by `PrePass::OverhangAnnotation`, packet 106/107).
 pub fn sliced_region_to_data(
     region: &slicer_ir::SlicedRegion,
     z: f32,
     held_claims: Vec<String>,
     surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+    global_layer_index: u32,
 ) -> SliceRegionData {
     let segment_annotations: Vec<SegmentAnnotationsEntry> = region
         .segment_annotations
@@ -236,6 +240,59 @@ pub fn sliced_region_to_data(
                 )
         });
 
+    // Clip this layer's overhang quartile bands to this region's own polygon
+    // area. AC-1 requires bands to be exactly pre-filtered to the region's
+    // polygon footprint, not merely AABB-adjacent to it. The AABB check below
+    // is retained only as a cheap prefilter (fast-reject candidates whose
+    // bounding boxes don't even overlap) — it is NOT the source of truth for
+    // inclusion. Bands surviving the prefilter are exactly intersected against
+    // `region.polygons` via `slicer_core::polygon_ops::intersection_ex`; any
+    // band whose clipped result is empty is dropped entirely. `overhang_areas`
+    // is then the union of the clipped bands, i.e. exactly the overhang
+    // footprint that actually covers this region (AC-2).
+    let region_bbox = expolygons_bbox(&region.polygons);
+    let overhang_quartile_polygons: Vec<
+        crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand,
+    > = surface_classification
+        .and_then(|sc| sc.overhang_quartile_polygons.get(&global_layer_index))
+        .map(|bands| {
+            bands
+                .iter()
+                .filter_map(|band| {
+                    let prefiltered: Vec<slicer_ir::ExPolygon> = band
+                        .polygons
+                        .iter()
+                        .filter(|poly| match region_bbox {
+                            Some(rb) => bbox_overlaps(rb, poly),
+                            None => false,
+                        })
+                        .cloned()
+                        .collect();
+                    if prefiltered.is_empty() {
+                        return None;
+                    }
+                    let clipped: Vec<slicer_ir::ExPolygon> =
+                        slicer_core::polygon_ops::intersection_ex(&prefiltered, &region.polygons);
+                    if clipped.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            crate::host::layer::slicer::ir_handles::ir_handles::QuartileBand {
+                                quartile: band.quartile,
+                                polygons: ir_to_wit_expolygons(&clipped),
+                            },
+                        )
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let overhang_areas: Vec<crate::host::layer::slicer::types::geometry::ExPolygon> =
+        overhang_quartile_polygons
+            .iter()
+            .flat_map(|band| band.polygons.clone())
+            .collect();
+
     SliceRegionData {
         object_id: region.object_id.clone(),
         region_id: region.region_id.to_string(),
@@ -260,9 +317,52 @@ pub fn sliced_region_to_data(
             .external_contour
             .as_ref()
             .map(|b| ir_to_wit_expolygons(b)),
-        overhang_areas: Vec::new(),
+        overhang_areas,
+        overhang_quartile_polygons,
         surface_group,
     }
+}
+
+/// Axis-aligned bounding box in slice-space units (1 unit = 100 nm). `None`
+/// when the polygon set is empty (e.g. an unsliced region).
+type Bbox = (i64, i64, i64, i64);
+
+/// Bounding box (min_x, min_y, max_x, max_y) over every contour/hole vertex
+/// across the given polygons. Returns `None` for an empty slice.
+fn expolygons_bbox(polys: &[slicer_ir::ExPolygon]) -> Option<Bbox> {
+    let mut acc: Option<Bbox> = None;
+    for poly in polys {
+        for pt in poly
+            .contour
+            .points
+            .iter()
+            .chain(poly.holes.iter().flat_map(|h| h.points.iter()))
+        {
+            acc = Some(match acc {
+                None => (pt.x, pt.y, pt.x, pt.y),
+                Some((min_x, min_y, max_x, max_y)) => (
+                    min_x.min(pt.x),
+                    min_y.min(pt.y),
+                    max_x.max(pt.x),
+                    max_y.max(pt.y),
+                ),
+            });
+        }
+    }
+    acc
+}
+
+/// Cheap AABB-overlap prefilter between a region's bounding box and a
+/// candidate overhang polygon. Not an exact boolean intersection — sufficient
+/// for gating which overhang quartile polygons are relevant to a region
+/// (AC-1, packet 107).
+fn bbox_overlaps(region_bbox: Bbox, poly: &slicer_ir::ExPolygon) -> bool {
+    let Some(poly_bbox) = expolygons_bbox(std::slice::from_ref(poly)) else {
+        return false;
+    };
+    let (r_min_x, r_min_y, r_max_x, r_max_y) = region_bbox;
+    let (p_min_x, p_min_y, p_max_x, p_max_y) = poly_bbox;
+    r_min_x <= p_max_x && p_min_x <= r_max_x && r_min_y <= p_max_y && p_min_y <= r_max_y
 }
 
 /// Convert a `PerimeterRegion` from the IR into a `PerimeterRegionData` WIT resource.

@@ -34,5 +34,6 @@ mod postpass_gcode_boundary_tdd;
 mod postpass_gcode_command_preservation_tdd;
 mod postpass_gcode_emit_contract_tdd;
 mod postpass_gcode_empty_list_tdd;
+mod slice_region_view_overhang_areas_non_empty_tdd;
 mod wit_drift_detection_tdd;
 mod wit_single_source_tdd;

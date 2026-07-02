@@ -1342,8 +1342,13 @@ fn push_slice_regions(
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())
             .to_vec();
-        let data =
-            host::sliced_region_to_data(region, layer_z, held_claims, surface_classification);
+        let data = host::sliced_region_to_data(
+            region,
+            layer_z,
+            held_claims,
+            surface_classification,
+            slice_ir.global_layer_index,
+        );
         let handle = store.data_mut().push_slice_region(data)?;
         handles.push(handle);
     }

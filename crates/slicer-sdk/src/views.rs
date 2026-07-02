@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth, RegionId,
     RegionKey, SeamCandidate, SeamPosition, SurfaceGroup, WallLoop,
@@ -66,10 +67,16 @@ pub struct SliceRegionView {
     /// (AC-22b). `Some(boundary)` for painted regions; `None` for unpainted regions
     /// (the perimeter generator then traces the region's own polygon in full).
     external_contour: Option<Vec<ExPolygon>>,
-    /// Flat per-edge structural metadata for MMU per-color outer-wall fragmentation.
-    /// `true` = shared bisector (this edge is the boundary between two per-color
-    /// Overhang area polygons for this region (packet 106 populates; empty until then).
+    /// Overhang area polygons for this region, flattened across all severity
+    /// quartiles. Populated by the host populator from
+    /// `SurfaceClassificationIR.overhang_quartile_polygons` at this region's
+    /// layer, pre-filtered to overlap the region (packet 107).
     overhang_areas: Vec<ExPolygon>,
+    /// Quartile-banded overhang polygons for this region's layer, pre-filtered
+    /// to overlap the region (packet 107). Preserves the per-quartile grouping
+    /// that `overhang_areas` flattens away, for callers that need
+    /// severity-aware handling (quartile 1 = least severe, 4 = most severe).
+    overhang_quartile_polygons: Vec<QuartileBand>,
     /// Surface group resolved from `SurfaceClassificationIR` for this region's
     /// `nonplanar_surface` ID. `None` when no surface group applies.
     surface_group: Option<SurfaceGroup>,
@@ -103,6 +110,7 @@ impl Default for SliceRegionView {
             held_claims: Vec::new(),
             external_contour: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
             surface_group: None,
         }
     }
@@ -429,13 +437,33 @@ impl SliceRegionView {
         self.external_contour.as_ref()
     }
 
-    /// Returns the overhang area polygons for this region.
+    /// Returns the overhang area polygons for this region, flattened across
+    /// all severity quartiles.
     ///
-    /// Empty until packet 106 wires `OverhangRegion.xy_footprint` into the
-    /// host populator. Safe to call at any stage; callers must handle the
-    /// empty case.
+    /// Populated by the host populator from
+    /// `SurfaceClassificationIR.overhang_quartile_polygons` for this region's
+    /// layer, pre-filtered to overlap the region (packet 107). Empty when the
+    /// PrePass has not yet run `PrePass::OverhangAnnotation`, or when this
+    /// region has no overlapping overhang polygons at its layer. Safe to call
+    /// at any stage; callers must handle the empty case.
     pub fn overhang_areas(&self) -> &[ExPolygon] {
         &self.overhang_areas
+    }
+
+    /// Override the overhang quartile polygons (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_overhang_quartile_polygons(&mut self, bands: Vec<QuartileBand>) {
+        self.overhang_quartile_polygons = bands;
+    }
+
+    /// Returns the quartile-banded overhang polygons for this region's layer,
+    /// pre-filtered to overlap the region (packet 107).
+    ///
+    /// Preserves the per-quartile grouping (1 = least severe, 4 = most
+    /// severe) that [`Self::overhang_areas`] flattens away. Empty under the
+    /// same conditions as `overhang_areas`.
+    pub fn overhang_quartile_polygons(&self) -> &[QuartileBand] {
+        &self.overhang_quartile_polygons
     }
 
     /// Returns the surface group resolved from `SurfaceClassificationIR` for

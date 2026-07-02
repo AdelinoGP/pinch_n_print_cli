@@ -451,6 +451,11 @@ pub struct SurfaceClassificationIR {
     /// is always absent. `#[serde(default)]`.
     pub overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>,
 }
+```
+
+**Consumer note (packet 107):** `overhang_quartile_polygons` is consumed by `SliceRegionView::overhang_areas()` and `SliceRegionView::overhang_quartile_polygons()` (both populated by the host marshaller, keyed by `global_layer_index`; see `docs/05_module_sdk.md` "SliceRegionView accessors (packet 107)"). Per-vertex propagation onto `Point3WithWidth.overhang_quartile` (perimeter-generation side) is still pending — tracked as follow-up task T-024-WIRE-VIEW-CONSUMER (see `docs/DEVIATION_LOG.md` D-104-OVERHANG-QUARTILE-NONE).
+
+```rust
 
 pub struct ObjectSurfaceData {
     /// Indexed parallel to ObjectMesh.mesh.triangles

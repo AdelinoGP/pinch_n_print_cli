@@ -766,8 +766,12 @@ Packet 79 added a batch of additive fixture surfaces — all re-exported through
 
 Two new read-only accessors are available on `SliceRegionView` from packet 104 onward:
 
-- `overhang_areas(&self) -> &[ExPolygon]` — returns the per-region overhang footprint polygons. **Currently returns an empty slice**; the field is forward-dependent on packet P106's `OverhangRegion.xy_footprint` net-new IR field. Callers that need overhang geometry before P106 lands must fall back to the full-region polygon + overhang-quartile stamps on `Point3WithWidth`.
+- `overhang_areas(&self) -> &[ExPolygon]` — returns the per-region overhang footprint polygons. Populated from packet 107 onward: the host populator fills this from `SurfaceClassificationIR.overhang_quartile_polygons`, keyed by `global_layer_index`.
 - `surface_group(&self) -> Option<&SurfaceGroup>` — resolves the region's `nonplanar_surface` reference to a `SurfaceGroup`. Returns `None` when the region has no nonplanar surface assignment (the common case for planar layers).
+
+### SliceRegionView accessors (packet 107)
+
+- `overhang_quartile_polygons(&self) -> &[QuartileBand]` — returns the per-layer overhang quartile bands for this region, host-pre-filtered so the module only sees bands relevant to its region; returns an empty slice when no overhang data exists for the layer. Populated by the same host populator as `overhang_areas()`, from `SurfaceClassificationIR.overhang_quartile_polygons` keyed by `global_layer_index` (`crates/slicer-wasm-host/src/marshal/in_.rs`). Backed by the WIT `quartile-band` record and the `overhang-quartile-polygons` function on `slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`). Note: the guest-side macro adapter (`crates/slicer-macros`) does not yet map this field (or `overhang_areas`/`surface_group`) into guest `SliceRegionView`s — only host-side/native consumers can read it today (tracked as follow-up T-077-GUEST-ADAPTER-FIELDS).
 
 ---
 

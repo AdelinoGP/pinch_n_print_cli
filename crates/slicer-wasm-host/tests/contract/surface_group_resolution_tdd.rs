@@ -65,7 +65,7 @@ fn surface_group_resolved_when_classification_matches() {
     let region = make_region("obj-1", Some(42));
     let classification = make_classification("obj-1", 42, 0.5, 2.5, 12.34, true, 3);
 
-    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification));
+    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification), 0);
 
     let sg = data.surface_group.expect("surface_group should be Some");
     assert_eq!(sg.id, 42, "surface group id must match");
@@ -83,7 +83,7 @@ fn surface_group_none_when_id_not_found() {
     let region = make_region("obj-1", Some(99));
     let classification = make_classification("obj-1", 42, 0.0, 1.0, 1.0, false, 1);
 
-    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification));
+    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification), 0);
 
     assert!(
         data.surface_group.is_none(),
@@ -98,7 +98,7 @@ fn surface_group_none_when_object_not_in_classification() {
     let region = make_region("obj-unknown", Some(42));
     let classification = make_classification("obj-1", 42, 0.0, 1.0, 1.0, false, 1);
 
-    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification));
+    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification), 0);
 
     assert!(
         data.surface_group.is_none(),
@@ -115,7 +115,7 @@ fn surface_group_none_when_region_has_no_nonplanar_surface() {
     let region = make_region("obj-1", None);
     let classification = make_classification("obj-1", 42, 0.0, 1.0, 1.0, true, 2);
 
-    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification));
+    let data = sliced_region_to_data(&region, 1.0, vec![], Some(&classification), 0);
 
     assert!(
         data.surface_group.is_none(),

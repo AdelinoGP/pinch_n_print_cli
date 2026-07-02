@@ -11,7 +11,11 @@ wit-world    = "slicer:world-finalization@1.0.0"
 id = "PostPass::LayerFinalization"
 
 [ir-access]
-reads  = ["LayerCollectionIR"]
+# DAG validation keys writers/readers by exact string match (see
+# crates/slicer-scheduler/src/validation.rs and dag.rs); field-level
+# enforcement is not yet supported, so the base IR name must be present
+# for the read to satisfy the cross-stage LayerCollectionIR writers.
+reads  = ["LayerCollectionIR", "LayerCollectionIR.overhang_quartile"]
 writes = ["LayerCollectionIR"]
 
 [claims]

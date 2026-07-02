@@ -25,6 +25,8 @@ mod medial_axis_failure_observable_tdd;
 mod mmu_per_color_fragmentation_tdd;
 mod multi_infill_holder_dispatch_tdd;
 mod outer_inner_width_and_spacing_tdd;
+mod overhang_classifier_refactor_regression_tdd;
+mod overhang_pipeline_e2e_tdd;
 mod per_object_config_override_tdd;
 mod perimeter_postprocess_preserve_tdd;
 mod pipeline_tdd;

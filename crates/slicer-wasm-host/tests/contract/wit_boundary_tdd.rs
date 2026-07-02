@@ -82,6 +82,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             held_claims: Vec::new(),
             external_contour: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
             surface_group: None,
         })
         .unwrap();
@@ -180,6 +181,7 @@ fn guest_reads_region_z_from_ir_view() {
             held_claims: Vec::new(),
             external_contour: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
             surface_group: None,
         })
         .unwrap();
@@ -256,6 +258,7 @@ fn guest_emits_output_via_infill_builder() {
             held_claims: Vec::new(),
             external_contour: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
             surface_group: None,
         })
         .unwrap();
@@ -340,6 +343,7 @@ fn guest_logs_via_host_services() {
             held_claims: Vec::new(),
             external_contour: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
             surface_group: None,
         })
         .unwrap();
@@ -421,6 +425,7 @@ fn repeated_calls_produce_independent_outputs() {
                 held_claims: Vec::new(),
                 external_contour: None,
                 overhang_areas: Vec::new(),
+                overhang_quartile_polygons: Vec::new(),
                 surface_group: None,
             })
             .unwrap();
