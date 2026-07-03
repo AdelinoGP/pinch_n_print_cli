@@ -872,6 +872,22 @@ converting parabolic Voronoi edges to polylines; host-algos gated. `arachne::pre
 ported from OrcaSlicer's `WallToolPaths.cpp`, plus `preprocess_per_color_inputs` for
 MMU per-color boundary validation; NOT host-algos gated (pure polygon math).
 
+Packet 111 added `beading` to `crates/slicer-core/src/`, completing the M2
+BeadingStrategy stack: the `BeadingStrategy` trait (`beading/mod.rs`, carrying
+`compute`, `optimal_bead_count`, `get_transition_thickness`, `optimal_thickness`)
+plus five decorator strategies — `DistributedBeadingStrategy` (Gaussian-weighted
+width distribution, the base of the chain), `RedistributeBeadingStrategy`
+(preserves outer-wall width consistency), `WideningBeadingStrategy` (thin-feature
+single-wall regime), `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset),
+and `LimitedBeadingStrategy` (max-bead-count cap with internal zero-width
+sentinel bookkeeping, stripped before external output via a separate
+`compute_and_strip` entry point — see `D-111-ARACHNE-SENTINEL-STRIP` in
+`docs/DEVIATION_LOG.md`) — composed in that order by
+`BeadingStrategyFactory::create_stack` (`beading/factory.rs`). Pure data in/out
+(`thickness`/`bead_count` → `Beading`); not yet wired into
+`arachne-perimeters::run_perimeters` (P112's T-230 connects per-edge bead-count
+assignments from the `SkeletalTrapezoidationGraph` to this stack).
+
 ---
 
 ## `PostPass::LayerFinalization` Module Constraint

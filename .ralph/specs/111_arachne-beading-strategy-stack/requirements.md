@@ -121,10 +121,13 @@ Recorded OrcaSlicer reference Beading outputs (for the 10-thickness Distributed 
 | `cargo test -p slicer-core limited_inserts_sentinels_at_cap 2>&1 \| tee target/test-output.log` | AC-6 | FACT pass/fail |
 | `cargo test -p slicer-core limited_compute_and_strip_no_zero_widths 2>&1 \| tee target/test-output.log` | AC-7 | FACT pass/fail |
 | `cargo test -p slicer-core limited_raw_compute_retains_sentinels 2>&1 \| tee target/test-output.log` | AC-N2 | FACT pass/fail |
-| `cargo test -p slicer-core factory_stack_composition_order 2>&1 \| tee target/test-output.log` | AC-8 (composition order) | FACT pass/fail |
-| `cargo test -p slicer-core factory_matches_orca_reference 2>&1 \| tee target/test-output.log` | AC-8 (Orca match) | FACT pass/fail |
+| `cargo test -p slicer-core factory_stack_composition_order 2>&1 \| tee target/test-output.log` | AC-8a (`detect_thin_wall`=true + nonzero `outer_wall_offset` → full 5-layer chain) | FACT pass/fail |
+| `cargo test -p slicer-core factory_stack_composition_order_default_skips_both_optional_layers 2>&1 \| tee target/test-output.log` | AC-8a (`Default()` → 3-layer chain, `Widening`/`OuterWallInset` both absent — gap-closure, closure-log.md §2b) | FACT pass/fail |
+| `cargo test -p slicer-core factory_stack_composition_order_widening_only_when_thin_walls_true 2>&1 \| tee target/test-output.log` | AC-8a (`detect_thin_wall`=true alone → 4-layer chain with `Widening`, no `OuterWallInset` — gap-closure, closure-log.md §2b) | FACT pass/fail |
+| `cargo test -p slicer-core factory_max_bead_count_le_2_selects_preferred_bead_width_outer 2>&1 \| tee target/test-output.log` | AC-9 (`max_bead_count <= 2` selects `preferred_bead_width_outer` — gap-closure, closure-log.md §2b) | FACT pass/fail |
+| `cargo test -p slicer-core factory_matches_orca_reference 2>&1 \| tee target/test-output.log` | AC-8b (Orca match) | FACT pass/fail |
 | `cargo test -p slicer-core beading_invariant_locations_len_eq_widths_len 2>&1 \| tee target/test-output.log` | AC-N1 | FACT pass/fail |
-| AC-9 shell loop from `packet.spec.md` (11 keys against both `docs/15_config_keys_reference.md` and `arachne-perimeters.toml`) | AC-9 | FACT pass per key |
+| AC-9 shell loop from `packet.spec.md` (13 keys — original 11 plus `detect_thin_wall`/`preferred_bead_width_outer` — against both `docs/15_config_keys_reference.md` and `arachne-perimeters.toml`) | AC-9 | FACT pass per key |
 
 ## Step Completion Expectations
 

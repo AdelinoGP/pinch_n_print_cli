@@ -1,0 +1,22 @@
+{
+  "provenance": "Re-derived analytically for packet 111 Step 4 fix (TRUE OrcaSlicer parity), directly from the verbatim WideningBeadingStrategy.cpp:48-68 compute() snippet supplied for this fix (3-way branch: thickness >= optimal_width delegates to parent unchanged; min_input_width <= thickness < optimal_width emits a single bead of thickness.max(min_output_width) with left_over = 0; thickness < min_input_width emits an empty bead_widths/toolpath_locations with left_over = thickness). Superseded the prior 2-case fixture, which gated only on min_input_width and forced a FIXED min_bead_width-width bead regardless of thickness -- that gating and formula were both wrong relative to upstream. Case values: optimal_width = 4000.0, min_input_width = 340.0, min_output_width = 200.0 (renamed from the prior fixture's min_bead_width to match upstream's actual field name; same numeric defaults retained). below_threshold: thickness = 170.0 (< min_input_width = 340.0) -> bead_widths = [] (empty, NOT a forced bead -- this is the key behavioral flip from the prior fixture), toolpath_locations = [], left_over = thickness = 170.0 (the entire thickness is unprinted), total_thickness = 170.0. middle_regime: thickness = 500.0 (>= min_input_width = 340.0, < optimal_width = 4000.0) -> bead_widths = [thickness.max(min_output_width)] = [max(500.0, 200.0)] = [500.0] (the bead is the thickness itself, NOT clamped down to min_output_width -- this is the second key behavioral flip from the prior fixture, which always forced a fixed 200.0-width bead), toolpath_locations = [thickness / 2.0] = [250.0], left_over = 0.0, total_thickness = 500.0. A third case (thickness = 4500.0 >= optimal_width, full delegation to a live RedistributeBeadingStrategy(DistributedBeadingStrategy) parent chain) is asserted inline in tests/beading/widening.rs by comparing the Widening wrapper's output against the same parent chain's raw compute() output for identical inputs, rather than encoded here as a third JSON entry -- matching the pattern the original (pre-fix) widening test used for its own delegation case. Hand-computed, no code executed.",
+  "optimal_width": 4000.0,
+  "min_input_width": 340.0,
+  "min_output_width": 200.0,
+  "below_threshold": {
+    "note": "thickness = 170.0 < min_input_width = 340.0: no beads at all, entire thickness is left_over, parent NOT called.",
+    "thickness": 170.0,
+    "total_thickness": 170.0,
+    "bead_widths": [],
+    "toolpath_locations": [],
+    "left_over": 170.0
+  },
+  "middle_regime": {
+    "note": "thickness = 500.0: min_input_width=340.0 <= thickness < optimal_width=4000.0: single bead at thickness.max(min_output_width) = max(500.0, 200.0) = 500.0, left_over = 0.0, parent NOT called.",
+    "thickness": 500.0,
+    "total_thickness": 500.0,
+    "bead_widths": [500.0],
+    "toolpath_locations": [250.0],
+    "left_over": 0.0
+  }
+}

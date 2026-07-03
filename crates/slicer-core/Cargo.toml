@@ -16,11 +16,11 @@ rayon = { version = "1.10", optional = true }
 boostvoronoi = { version = "0.12", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 slicer-scheduler = { path = "../slicer-scheduler" }
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
 serde_json = "1"
-serde = { version = "1", features = ["derive"] }
 
 [[bench]]
 name = "polygon_ops"
@@ -70,6 +70,30 @@ name = "wall_sequence_reorder_tdd"
 
 [[test]]
 name = "sharp_corner_seam_threshold_tdd"
+
+[[test]]
+name = "beading_distributed"
+path = "tests/beading/distributed.rs"
+
+[[test]]
+name = "beading_redistribute"
+path = "tests/beading/redistribute.rs"
+
+[[test]]
+name = "beading_widening"
+path = "tests/beading/widening.rs"
+
+[[test]]
+name = "beading_outer_wall_inset"
+path = "tests/beading/outer_wall_inset.rs"
+
+[[test]]
+name = "beading_limited"
+path = "tests/beading/limited.rs"
+
+[[test]]
+name = "beading_factory"
+path = "tests/beading/factory.rs"
 
 [lints]
 workspace = true

@@ -1,0 +1,41 @@
+{
+  "provenance": "Hand-derived (TDD RED-phase) by chaining this packet's current, corrected as-implemented per-strategy formulas end-to-end -- computed BEFORE running the composed Rust code -- against the CORRECTED BeadingFactoryParams defaults (packet 111 Step 7 integration fix: optimal_width=4000, min_input_width=1000 (min_feature_size), min_output_width=4000 (min_bead_width), distribution_count=1 (wall_distribution_count), default_transition_length=4000 (wall_transition_length), transition_filter_dist=1000 (wall_transition_filter_deviation), minimum_variable_line_ratio=0.5 (upstream minimum_variable_line_width factory default), outer_wall_offset=300 (nonzero, so OuterWallInsetBeadingStrategy is present in the chain per the now-conditional wrap), max_bead_count=3). thickness=20000, bead_count=5 so bead_count exceeds max_bead_count=3, exercising Limited's over-cap sentinel-insertion branch as well. Scope-gap-closure addendum: print_thin_walls=true (so WideningBeadingStrategy stays present in the chain, matching this fixture's original derivation) and preferred_bead_width_outer=4000.0 (== optimal_width) were added to BeadingFactoryParams. Since max_bead_count=3 is NOT <= 2, effective_optimal_width resolves to optimal_width=4000 regardless of preferred_bead_width_outer's value, and RedistributeBeadingStrategy's optimal_width_outer parameter -- now sourced from preferred_bead_width_outer instead of optimal_width -- is numerically identical (4000) either way, so all expected_raw/expected_stripped values below are UNCHANGED and were NOT recomputed.",
+  "params": {
+    "optimal_width": 4000.0,
+    "default_transition_length": 4000.0,
+    "transition_filter_dist": 1000.0,
+    "distribution_count": 1,
+    "min_input_width": 1000.0,
+    "min_output_width": 4000.0,
+    "outer_wall_offset": 300.0,
+    "max_bead_count": 3,
+    "minimum_variable_line_ratio": 0.5,
+    "print_thin_walls": true,
+    "preferred_bead_width_outer": 4000.0
+  },
+  "thickness": 20000.0,
+  "bead_count": 5,
+  "notes": [
+    "Limited.compute(20000, 5) with max_bead_count=3: bead_count(5) > max_bead_count(3) => over-cap branch; the parent chain (OuterWallInset(Widening(Redistribute(Distributed)))) is recomputed at the CAPPED bead_count=3, not 5.",
+    "Redistribute.compute(20000, 3): bead_count=3!= 0, thickness=20000 >= minimum_variable_line_ratio(0.5)*optimal_width_outer(4000)=2000 => proceed. inner_bead_count_signed=3-2=1 (>0), inner_thickness=20000-2*4000=12000 (>0) => Distributed.compute(12000, 1): bead_count==1 special case => bead_widths=[12000], toolpath_locations=[6000]. Shift by +optimal_width_outer(4000): toolpath_locations=[10000]. actual_outer_thickness: bead_count(3)>2 => min(thickness/2=10000, optimal_width_outer=4000)=4000. Insert front: bead_widths=[4000,12000], toolpath_locations=[2000,10000]. bead_count>1 => push back: bead_widths=[4000,12000,4000], toolpath_locations=[2000,10000,18000]. sum=20000 => left_over=0.",
+    "Widening.compute(20000, 3): thickness(20000) >= optimal_width(4000) => delegates to Redistribute's result unmodified.",
+    "OuterWallInset.compute(20000, 3) offset=300: parent (Widening) result = [4000,12000,4000]/[2000,10000,18000]. effective_bead_count=3 (all nonzero) >= 2 => proceed. toolpath_locations[0] = min(2000+300, 20000/2=10000) = 2300 (index 0 ONLY -- single-sided inset). Result: bead_widths=[4000,12000,4000], toolpath_locations=[2300,10000,18000], left_over=0.",
+    "This OuterWallInset(20000,3) result is Limited's parent.compute(20000,3): n=3 (bead_widths.len()). sentinel_count=bead_count(5)-max_bead_count(3)=2. left_index=n/2=1, right_index=n-left_index=2. left_location=toolpath_locations[left_index-1]=toolpath_locations[0]=2300. right_location=toolpath_locations[right_index]=toolpath_locations[2]=18000 (right_index=2<n=3).",
+    "Insert 2 zero-width sentinels at index 1 (left block): bead_widths [4000,12000,4000] -> [4000,0,0,12000,4000]; toolpath_locations [2300,10000,18000] -> [2300,2300,2300,10000,18000].",
+    "shifted_right_index = right_index(2)+sentinel_count(2) = 4. Insert 2 zero-width sentinels at index 4 (right block): bead_widths [4000,0,0,12000,4000] -> [4000,0,0,12000,0,0,4000]; toolpath_locations [2300,2300,2300,10000,18000] -> [2300,2300,2300,10000,18000,18000,18000].",
+    "RAW result (with sentinels): bead_widths=[4000,0,0,12000,0,0,4000], toolpath_locations=[2300,2300,2300,10000,18000,18000,18000], left_over=0, total_thickness=20000.",
+    "STRIPPED (compute_and_strip, drop zero-width beads in lockstep with their toolpath_locations entries): bead_widths=[4000,12000,4000], toolpath_locations=[2300,10000,18000], left_over=0, total_thickness=20000. total_thickness and left_over pass through unchanged (removed sentinels contributed exactly 0.0 width)."
+  ],
+  "expected_raw": {
+    "total_thickness": 20000.0,
+    "bead_widths": [4000.0, 0.0, 0.0, 12000.0, 0.0, 0.0, 4000.0],
+    "toolpath_locations": [2300.0, 2300.0, 2300.0, 10000.0, 18000.0, 18000.0, 18000.0],
+    "left_over": 0.0
+  },
+  "expected_stripped": {
+    "total_thickness": 20000.0,
+    "bead_widths": [4000.0, 12000.0, 4000.0],
+    "toolpath_locations": [2300.0, 10000.0, 18000.0],
+    "left_over": 0.0
+  }
+}

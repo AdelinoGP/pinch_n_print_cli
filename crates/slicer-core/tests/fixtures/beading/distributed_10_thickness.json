@@ -1,0 +1,101 @@
+{
+  "provenance": "Golden values are ANALYTICALLY DERIVED by hand from OrcaSlicer's documented Gaussian-decay formula (OrcaSlicerDocumented/src/libslic3r/Arachne/BeadingStrategy/DistributedBeadingStrategy.cpp: one_over_r_sq = (r>=2) ? 1/(r-1)^2 : 1; middle = (bead_count-1)/2; weight(i) = max(0, 1 - one_over_r_sq*(i-middle)^2); to_be_divided = thickness - bead_count*optimal_width; width(i) = optimal_width + to_be_divided*(weight(i)/sum(weights)), with bead_count==0/1/2 special-cased). No OrcaSlicer gtest/unit-test fixture exists for this class (confirmed absent by prior recon) so these values are NOT transcribed from an OrcaSlicer run and are NOT captured from this crate's own Rust implementation output — they were computed independently by hand before the Rust implementation was written (TDD RED phase).",
+  "params": {
+    "optimal_width": 4000.0,
+    "default_transition_length": 400.0,
+    "transition_filter_dist": 1000.0,
+    "distribution_count": 3
+  },
+  "cases": [
+    {
+      "note": "bead_count=1, thickness == optimal_width exactly (canonical single-bead case)",
+      "thickness": 4000.0,
+      "bead_count": 1,
+      "total_thickness": 4000.0,
+      "bead_widths": [4000.0],
+      "toolpath_locations": [2000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=1, underfull (thickness = 0.5x optimal_width)",
+      "thickness": 2000.0,
+      "bead_count": 1,
+      "total_thickness": 2000.0,
+      "bead_widths": [2000.0],
+      "toolpath_locations": [1000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=2, exact optimal (thickness = 2x optimal_width)",
+      "thickness": 8000.0,
+      "bead_count": 2,
+      "total_thickness": 8000.0,
+      "bead_widths": [4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=2, underfull (thickness = 1.5x optimal_width)",
+      "thickness": 6000.0,
+      "bead_count": 2,
+      "total_thickness": 6000.0,
+      "bead_widths": [3000.0, 3000.0],
+      "toolpath_locations": [1500.0, 4500.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=3, deficit (to_be_divided=-1000), first general-branch case",
+      "thickness": 11000.0,
+      "bead_count": 3,
+      "total_thickness": 11000.0,
+      "bead_widths": [3700.0, 3600.0, 3700.0],
+      "toolpath_locations": [1850.0, 5500.0, 9150.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=3, surplus (to_be_divided=+1000)",
+      "thickness": 13000.0,
+      "bead_count": 3,
+      "total_thickness": 13000.0,
+      "bead_widths": [4300.0, 4400.0, 4300.0],
+      "toolpath_locations": [2150.0, 6500.0, 10850.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=4 (even, non-integer middle=1.5), deficit (to_be_divided=-1000)",
+      "thickness": 15000.0,
+      "bead_count": 4,
+      "total_thickness": 15000.0,
+      "bead_widths": [3840.909091, 3659.090909, 3659.090909, 3840.909091],
+      "toolpath_locations": [1920.454545, 5670.454545, 9329.545455, 13079.545455],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=5 (odd, middle=2), surplus (to_be_divided=+1000); with distribution_count=3 the two outermost beads get zero Gaussian weight and stay exactly at optimal_width",
+      "thickness": 21000.0,
+      "bead_count": 5,
+      "total_thickness": 21000.0,
+      "bead_widths": [4000.0, 4300.0, 4400.0, 4300.0, 4000.0],
+      "toolpath_locations": [2000.0, 6150.0, 10500.0, 14850.0, 19000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=7 (middle=3), deficit (to_be_divided=-2000); outer 2 beads on each side clipped to zero weight",
+      "thickness": 26000.0,
+      "bead_count": 7,
+      "total_thickness": 26000.0,
+      "bead_widths": [4000.0, 4000.0, 3400.0, 3200.0, 3400.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 9700.0, 13000.0, 16300.0, 20000.0, 24000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "bead_count=10 (even, middle=4.5), surplus (to_be_divided=+2000); outer 3 beads on each side clipped to zero weight, only the 4 middle beads absorb the surplus",
+      "thickness": 42000.0,
+      "bead_count": 10,
+      "total_thickness": 42000.0,
+      "bead_widths": [4000.0, 4000.0, 4000.0, 4318.181818, 4681.818182, 4681.818182, 4318.181818, 4000.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 10000.0, 14159.090909, 18659.090909, 23340.909091, 27840.909091, 32000.0, 36000.0, 40000.0],
+      "left_over": 0.0
+    }
+  ]
+}

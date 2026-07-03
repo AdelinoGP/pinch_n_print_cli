@@ -1,0 +1,40 @@
+{
+  "provenance": "Derived analytically by hand for the RedistributeBeadingStrategy TRUE-parity fix (TDD RED phase, no code executed), following OrcaSlicer's src/libslic3r/Arachne/BeadingStrategy/RedistributeBeadingStrategy.cpp:99-141 verbatim: compute(thickness, bead_count) calls parent.compute(inner_thickness, inner_bead_count) on a REDUCED region (inner_thickness = thickness - 2*optimal_width_outer, inner_bead_count = bead_count - 2, signed) and then prepends/appends fresh outer beads of width actual_outer_thickness = min(thickness/2, optimal_width_outer) (bead_count > 2) or thickness/bead_count (bead_count in {1,2}) around the parent's result, shifting the parent's toolpath_locations by +optimal_width_outer. left_over is always recomputed from scratch as thickness - sum(bead_widths). parent_params below (optimal_width=4000.0, distribution_count=2) match DistributedBeadingStrategy::compute's documented Gaussian-weight formula (see crates/slicer-core/src/beading/distributed.rs); redistribute_optimal_width=4000.0 and minimum_variable_line_ratio=0.5 match upstream's factory default minimum_variable_line_width=0.5.",
+  "parent_params": {
+    "optimal_width": 4000.0,
+    "default_transition_length": 0.0,
+    "transition_filter_dist": 0.0,
+    "distribution_count": 2
+  },
+  "redistribute_optimal_width": 4000.0,
+  "minimum_variable_line_ratio": 0.5,
+  "cases": [
+    {
+      "note": "thickness = 5*optimal_width_outer, bead_count = 5 (bead_count > 2 branch): actual_outer_thickness = min(10000, 4000) = 4000. inner_bead_count_signed = 3, inner_thickness = 12000; parent.compute(12000, 3) has to_be_divided = 12000 - 3*4000 = 0, so the 3 inner beads are all exactly 4000.0 at locations [2000, 6000, 10000], shifted by +4000 to [6000, 10000, 14000]. Prepend outer bead (width 4000, loc 2000) and append outer bead (width 4000, loc 20000-2000=18000). Degenerate case: inner recursion's to_be_divided is 0, so this alone does not prove the reduced-thickness mechanism (see next case for that).",
+      "thickness": 20000.0,
+      "bead_count": 5,
+      "total_thickness": 20000.0,
+      "bead_widths": [4000.0, 4000.0, 4000.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 10000.0, 14000.0, 18000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "thickness = 21000, bead_count = 5 (bead_count > 2 branch): actual_outer_thickness = min(10500, 4000) = 4000. inner_bead_count_signed = 3, inner_thickness = 21000 - 8000 = 13000; parent.compute(13000, 3) has to_be_divided = 13000 - 3*4000 = 1000 != 0, so the Gaussian weights are non-trivial: distribution_count=2 gives one_over_r_sq = 1/(2-1)^2 = 1, middle = 1.0, weights = [max(1-1*1,0), max(1-0,0), max(1-1,0)] = [0, 1, 0], total_weight = 1. Inner widths: i=0 -> 4000 + 1000*(0/1) = 4000; i=1 -> 4000 + 1000*(1/1) = 5000; i=2 (last, absorbs remainder) -> 13000 - (4000+5000) = 4000. Inner bead_widths = [4000, 5000, 4000], locations = [2000, 6500, 11000], shifted by +4000 to [6000, 10500, 15000]. Prepend outer bead (width 4000, loc 2000) and append outer bead (width 4000, loc 21000-2000=19000). This case exercises a non-zero to_be_divided in the reduced-thickness recursive call, proving the redistribution mechanism (not just a degenerate all-equal case).",
+      "thickness": 21000.0,
+      "bead_count": 5,
+      "total_thickness": 21000.0,
+      "bead_widths": [4000.0, 4000.0, 5000.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 10500.0, 15000.0, 19000.0],
+      "left_over": 0.0
+    },
+    {
+      "note": "thickness = 8000, bead_count = 2 (bead_count == 2 special branch, no bead_count > 2 clamp): inner_bead_count_signed = 0, which is not > 0, so no inner recursion occurs (bead_widths/toolpath_locations start empty). actual_outer_thickness = thickness / bead_count = 8000 / 2 = 4000 (chosen to equal optimal_width_outer exactly by construction, so AC-3's outer==optimal_width assertion still holds for this branch). insert(0, 4000) at loc 2000; since bead_count > 1, push(4000) at loc 8000-2000=6000. This case proves the bead_count == 2 special branch (both beads computed directly with no inner recursion), a mechanism the old post-hoc-clamp implementation never distinguished from bead_count > 2.",
+      "thickness": 8000.0,
+      "bead_count": 2,
+      "total_thickness": 8000.0,
+      "bead_widths": [4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0],
+      "left_over": 0.0
+    }
+  ]
+}

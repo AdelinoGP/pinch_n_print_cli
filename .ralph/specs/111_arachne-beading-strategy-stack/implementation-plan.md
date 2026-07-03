@@ -126,7 +126,7 @@ The packet does not touch IR, WIT, host, or any other crate. All work is `slicer
 - All 9 ACs + 2 AC-Ns pass per their pipe-suffix commands.
 - `cargo check --workspace --all-targets` green.
 - `cargo clippy --workspace --all-targets -- -D warnings` green.
-- `cargo test -p slicer-core beading 2>&1 | tee target/test-output.log` shows all new tests passing.
+- `cargo test -p slicer-core --test beading_distributed --test beading_redistribute --test beading_widening --test beading_outer_wall_inset --test beading_limited --test beading_factory 2>&1 | tee target/test-output.log` shows all new tests passing.
 - AC-9 shell loop succeeds against both `docs/15_config_keys_reference.md` and `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
 - Closure log (`.ralph/specs/111_arachne-beading-strategy-stack/closure-log.md`) authored; records: any divergence between recorded `m_params.*` defaults and the translated-through-/100 values; D-9 closure rationale paragraph; any goldens that needed re-recording with a NOTE explaining why (regenerating during the packet is the closure-blocker — explain or split the regen into a follow-on).
 - Status flipped to `implemented` in `packet.spec.md` YAML frontmatter.

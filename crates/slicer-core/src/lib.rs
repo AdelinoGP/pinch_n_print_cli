@@ -20,6 +20,8 @@ pub mod aabb_tree;
 pub mod algos;
 /// Arachne input preprocessing (M2 Arachne port, packet 110 step 5).
 pub mod arachne;
+/// Arachne bead-width distribution strategies (M2 Arachne port, packet 111 step 1).
+pub mod beading;
 pub mod flow;
 pub mod geometry;
 #[cfg(feature = "host-algos")]

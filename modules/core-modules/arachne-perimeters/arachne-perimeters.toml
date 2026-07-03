@@ -27,6 +27,142 @@ max-ir-schema     = "5.0.0"
 
 [config.schema]
 
+  # ── BeadingStrategy stack (packet 111, T-218) ────────────────────────────
+  # Pure config registration only; not yet consumed by run_perimeters (P112's
+  # T-230 wires these into BeadingStrategyFactory::create_stack). Defaults are
+  # in slicer units (1 unit = 100 nm) unless noted; see
+  # docs/15_config_keys_reference.md "Arachne beading strategy stack" for the
+  # full per-key OrcaSlicer PrintConfig.cpp provenance and internal
+  # Rust-field mapping notes.
+
+  [config.schema.min_feature_size]
+  type        = "float"
+  default     = 1000
+  min         = 0
+  unit        = "units"
+  display     = "Minimum feature size"
+  description = "Below this thickness a region is too narrow for normal bead distribution and is widened instead. Maps to WideningBeadingStrategy's internal min_input_width field. OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.min_bead_width]
+  type        = "float"
+  default     = 4000
+  min         = 0
+  unit        = "units"
+  display     = "Minimum bead width"
+  description = "Fixed bead width WideningBeadingStrategy emits for regions below min_feature_size. OrcaSlicer coPercent default 100% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.wall_transition_filter_deviation]
+  type        = "float"
+  default     = 1000
+  min         = 0
+  unit        = "units"
+  display     = "Wall transition filter deviation"
+  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Maps to DistributedBeadingStrategy's internal transition_filter_dist field (reserved, not yet read by compute). OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.wall_transition_length]
+  type        = "float"
+  default     = 4000
+  min         = 0
+  unit        = "units"
+  display     = "Wall transition length"
+  description = "Space allotted to split/join wall segments when transitioning between wall counts. Maps to DistributedBeadingStrategy's internal default_transition_length field (reserved, not yet read by compute). OrcaSlicer coPercent default 100% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.wall_transition_angle]
+  type        = "float"
+  default     = 10.0
+  min         = 0.0
+  max         = 180.0
+  unit        = "deg"
+  display     = "Wall transition angle"
+  description = "Threshold wedge angle above which no wall-count transition occurs. Not yet consumed by any shipped strategy in this packet. Matches OrcaSlicer's coFloat default of 10.0 degrees exactly."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.wall_distribution_count]
+  type        = "int"
+  default     = 1
+  min         = 1
+  display     = "Wall distribution count"
+  description = "Gaussian decay radius, in bead-count units, used by DistributedBeadingStrategy's surplus/deficit redistribution (maps directly to its internal distribution_count field). Matches OrcaSlicer's coInt default of 1 exactly."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.min_length_factor]
+  type        = "float"
+  default     = 0.5
+  min         = 0.0
+  max         = 2.0
+  unit        = "ratio"
+  display     = "Minimum length factor"
+  description = "Dimensionless multiplier consumed by the not-yet-ported removeSmallLines step (T-227): drops odd, non-closed lines shorter than min_length_factor * min_width. Not yet consumed by any strategy in this packet."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.initial_layer_min_bead_width]
+  type        = "float"
+  default     = 3400
+  min         = 0
+  unit        = "units"
+  display     = "Initial layer minimum bead width"
+  description = "Minimum wall width for the first layer. Not yet consumed by any strategy in this packet. OrcaSlicer coPercent default 85% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.outer_wall_offset]
+  type        = "float"
+  default     = 0
+  min         = 0
+  unit        = "units"
+  display     = "Outer wall offset"
+  description = "Inward offset applied to the outer wall's toolpath location by OuterWallInsetBeadingStrategy; 0 disables the decorator's offset. Not a user-facing OrcaSlicer PrintConfig.cpp option — an internal Arachne algorithm parameter (coord_t) threaded through BeadingStrategyFactory."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.max_bead_count]
+  type        = "int"
+  default     = 9
+  min         = 1
+  display     = "Maximum bead count"
+  description = "Cap threshold consumed by LimitedBeadingStrategy. Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream computes it internally as 2 * inset_count (capped) in Arachne/WallToolPaths.cpp; no literal upstream constant exists to cite."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.optimal_width]
+  type        = "float"
+  default     = 4000
+  min         = 0
+  unit        = "units"
+  display     = "Optimal bead width"
+  description = "Target bead width used when there is no surplus/deficit thickness to redistribute. Maps directly to DistributedBeadingStrategy's internal optimal_width field (name matches verbatim). Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream sets it internally from preferred_bead_width_outer/preferred_bead_width_inner in BeadingStrategyFactory.cpp; default mirrors this codebase's common 0.4mm line_width. Refined role: now serves as upstream's preferred_bead_width_inner (used when max_bead_count > 2); see preferred_bead_width_outer for the max_bead_count <= 2 case."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.detect_thin_wall]
+  type        = "bool"
+  default     = false
+  display     = "Detect thin wall"
+  description = "Gates whether WideningBeadingStrategy is wrapped into the BeadingStrategyFactory::create_stack composition at all (maps to the internal Arachne print_thin_walls parameter). false means WideningBeadingStrategy is absent from the stack entirely, not merely a no-op. Matches OrcaSlicer's coBool default of false exactly (PrintConfig.cpp:6299-6305, label \"Detect thin wall\")."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.preferred_bead_width_outer]
+  type        = "float"
+  default     = 4000
+  min         = 0
+  unit        = "units"
+  display     = "Preferred bead width (outer)"
+  description = "Target width for the outermost/innermost bead. Used unconditionally by RedistributeBeadingStrategy's optimal_width_outer parameter, and conditionally (when max_bead_count <= 2) as DistributedBeadingStrategy's/WideningBeadingStrategy's base optimal_width instead of the optimal_width key. Maps to upstream's preferred_bead_width_outer (BeadingStrategyFactory.cpp:50-97). Default 4000 units (0.4mm) matches this codebase's optimal_width convention rather than upstream's raw factory default of scaled(0.0005)=0.5mm=5000 units."
+  group       = "Arachne"
+  advanced    = true
+
 [config.overridable-per-region]
 keys = []
 

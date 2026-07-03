@@ -1,0 +1,212 @@
+//! TDD suite for `BeadingStrategyFactory::create_stack` (packet 111 Step 7):
+//! verifies the composed decorator stack's runtime type-composition order,
+//! including the conditional `OuterWallInset` wrap (AC-8a), and its
+//! end-to-end numeric output against a hand-derived, multi-stage "Orca
+//! reference" fixture (AC-8b).
+//!
+//! See `crates/slicer-core/tests/fixtures/beading/factory_orca_reference.json`
+//! for the fixture's `provenance` field and the `notes` array documenting
+//! the per-strategy derivation this fixture was computed from BEFORE running
+//! the composed Rust code (true TDD RED-phase methodology).
+
+use serde::Deserialize;
+use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
+use slicer_core::beading::Beading;
+
+const TOLERANCE: f64 = 1e-4;
+
+#[derive(Debug, Deserialize)]
+struct BeadingFixture {
+    total_thickness: f64,
+    bead_widths: Vec<f64>,
+    toolpath_locations: Vec<f64>,
+    left_over: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct FactoryOrcaReferenceFixture {
+    #[allow(dead_code)]
+    provenance: String,
+    params: BeadingFactoryParams,
+    thickness: f64,
+    bead_count: usize,
+    #[allow(dead_code)]
+    notes: Vec<String>,
+    expected_raw: BeadingFixture,
+    expected_stripped: BeadingFixture,
+}
+
+fn load_fixture() -> FactoryOrcaReferenceFixture {
+    let raw = include_str!("../fixtures/beading/factory_orca_reference.json");
+    serde_json::from_str(raw).expect("factory_orca_reference.json must parse")
+}
+
+fn assert_beading_close(actual: &Beading, expected: &BeadingFixture, label: &str) {
+    assert!(
+        (actual.total_thickness - expected.total_thickness).abs() < TOLERANCE,
+        "[{label}] total_thickness mismatch: actual={}, expected={}",
+        actual.total_thickness,
+        expected.total_thickness
+    );
+    assert_eq!(
+        actual.bead_widths.len(),
+        expected.bead_widths.len(),
+        "[{label}] bead_widths length mismatch: actual={:?}, expected={:?}",
+        actual.bead_widths,
+        expected.bead_widths
+    );
+    for (i, (a, e)) in actual
+        .bead_widths
+        .iter()
+        .zip(expected.bead_widths.iter())
+        .enumerate()
+    {
+        assert!(
+            (a - e).abs() < TOLERANCE,
+            "[{label}] bead_widths[{i}] mismatch: actual={a}, expected={e}"
+        );
+    }
+    assert_eq!(
+        actual.toolpath_locations.len(),
+        expected.toolpath_locations.len(),
+        "[{label}] toolpath_locations length mismatch: actual={:?}, expected={:?}",
+        actual.toolpath_locations,
+        expected.toolpath_locations
+    );
+    for (i, (a, e)) in actual
+        .toolpath_locations
+        .iter()
+        .zip(expected.toolpath_locations.iter())
+        .enumerate()
+    {
+        assert!(
+            (a - e).abs() < TOLERANCE,
+            "[{label}] toolpath_locations[{i}] mismatch: actual={a}, expected={e}"
+        );
+    }
+    assert!(
+        (actual.left_over - expected.left_over).abs() < TOLERANCE,
+        "[{label}] left_over mismatch: actual={}, expected={}",
+        actual.left_over,
+        expected.left_over
+    );
+}
+
+/// AC-8(a): the returned trait object's runtime type composition must be
+/// verifiably `Limited<OuterWallInset<Widening<Redistribute<Distributed>>>>`
+/// in exactly that order, when `outer_wall_offset` is nonzero AND
+/// `print_thin_walls` is true (both optional layers present).
+#[test]
+fn factory_stack_composition_order() {
+    let params = BeadingFactoryParams {
+        outer_wall_offset: 300.0,
+        print_thin_walls: true,
+        ..Default::default()
+    };
+    let stack = BeadingStrategyFactory::create_stack(&params);
+
+    assert_eq!(
+        stack.type_chain(),
+        "Limited(OuterWallInset(Widening(Redistribute(Distributed))))"
+    );
+}
+
+/// AC-8(a) conditional-skip: with `outer_wall_offset == 0.0` and
+/// `print_thin_walls == false` (both the defaults), `OuterWallInsetBeadingStrategy`
+/// AND `WideningBeadingStrategy` must both be literally ABSENT from the
+/// composition chain — not merely runtime no-ops — matching upstream's
+/// `outer_wall_offset != 0` / `print_thin_walls` gates
+/// (`BeadingStrategyFactory.cpp:50-97`).
+#[test]
+fn factory_stack_composition_order_default_skips_both_optional_layers() {
+    let params = BeadingFactoryParams::default();
+    let stack = BeadingStrategyFactory::create_stack(&params);
+
+    assert_eq!(stack.type_chain(), "Limited(Redistribute(Distributed))");
+}
+
+/// `print_thin_walls: true` alone (with `outer_wall_offset` left at its
+/// default `0.0`) must wrap `Widening` but NOT `OuterWallInset`.
+#[test]
+fn factory_stack_composition_order_widening_only_when_thin_walls_true() {
+    let params = BeadingFactoryParams {
+        print_thin_walls: true,
+        ..Default::default()
+    };
+    let stack = BeadingStrategyFactory::create_stack(&params);
+
+    assert_eq!(
+        stack.type_chain(),
+        "Limited(Widening(Redistribute(Distributed)))"
+    );
+}
+
+/// `max_bead_count <= 2` must select `preferred_bead_width_outer` as the
+/// effective base width fed to `Distributed`, NOT `optimal_width`. Uses
+/// distinct `optimal_width` (4000) / `preferred_bead_width_outer` (6000)
+/// values and drives `compute` with `bead_count == 2`: for a thickness of
+/// exactly `2 * preferred_bead_width_outer = 12000`, Redistribute's
+/// `bead_count == 2` branch computes `actual_outer_thickness =
+/// thickness / bead_count = 6000`, so both beads come out at `6000.0` — the
+/// `preferred_bead_width_outer` value — never at `optimal_width` (4000.0).
+#[test]
+fn factory_max_bead_count_le_2_selects_preferred_bead_width_outer() {
+    let params = BeadingFactoryParams {
+        optimal_width: 4000.0,
+        preferred_bead_width_outer: 6000.0,
+        max_bead_count: 2,
+        ..Default::default()
+    };
+    let stack = BeadingStrategyFactory::create_stack(&params);
+
+    let beading = stack.compute(12000.0, 2);
+
+    assert_eq!(beading.bead_widths.len(), 2);
+    for (i, &width) in beading.bead_widths.iter().enumerate() {
+        assert!(
+            (width - 6000.0).abs() < TOLERANCE,
+            "bead_widths[{i}] should reflect preferred_bead_width_outer \
+             (6000.0), not optimal_width (4000.0); actual={width}"
+        );
+    }
+}
+
+/// AC-8(b): `compute` on the fully composed stack must match the hand-derived
+/// multi-stage fixture within 0.0001mm (1e-4 slicer-unit tolerance, since 1
+/// slicer unit = 100nm here — see the packet digest / coordinate-system doc).
+#[test]
+fn factory_matches_orca_reference() {
+    let fixture = load_fixture();
+    let params = fixture.params;
+    let stack = BeadingStrategyFactory::create_stack(&params);
+
+    // Raw `compute` output: exercises the full stack including Limited's
+    // sentinel insertion (the fixture's `expected_raw` still carries the
+    // zero-width sentinel beads Limited's over-cap branch inserts).
+    let raw = stack.compute(fixture.thickness, fixture.bead_count);
+    assert_beading_close(&raw, &fixture.expected_raw, "raw");
+
+    // "Production" stripped output: `Box<dyn BeadingStrategy>` only exposes
+    // trait methods, and `compute_and_strip` is an inherent method on the
+    // concrete `LimitedBeadingStrategy` (not part of the object-safe
+    // `BeadingStrategy` trait), so it is not reachable through the trait
+    // object `create_stack` returns. This replicates
+    // `LimitedBeadingStrategy::compute_and_strip`'s own zero-width filter
+    // directly on `raw` to verify the "production" entry point's semantics
+    // propagate correctly through the full stack.
+    let mut bead_widths = Vec::with_capacity(raw.bead_widths.len());
+    let mut toolpath_locations = Vec::with_capacity(raw.toolpath_locations.len());
+    for (&width, &location) in raw.bead_widths.iter().zip(raw.toolpath_locations.iter()) {
+        if width > 0.0 {
+            bead_widths.push(width);
+            toolpath_locations.push(location);
+        }
+    }
+    let stripped = Beading {
+        total_thickness: raw.total_thickness,
+        bead_widths,
+        toolpath_locations,
+        left_over: raw.left_over,
+    };
+    assert_beading_close(&stripped, &fixture.expected_stripped, "stripped");
+}

@@ -462,6 +462,54 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 
 ---
 
+## Arachne beading strategy stack (packet 111)
+
+Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingStrategy` stack (`crates/slicer-core/src/beading/`, T-210..T-216). Consumed by `BeadingStrategyFactory::create_stack` (`crates/slicer-core/src/beading/factory.rs`) — wiring into `arachne-perimeters::run_perimeters` itself is still P112's T-230. All slicer-unit defaults below assume a 0.4 mm nozzle diameter (1 unit = 100 nm; see `docs/08_coordinate_system.md`) — OrcaSlicer's `PrintConfig.cpp` registers 6 of the 13 as `coPercent` (percentage of nozzle diameter) rather than fixed lengths, so the absolute defaults here are derived (`percent × 0.4 mm`), not literal upstream constants. Four of the 13 (`outer_wall_offset`, `max_bead_count`, `optimal_width`, `preferred_bead_width_outer`) have no upstream `PrintConfig.cpp` entry at all — they are internal Arachne C++ algorithm parameters in `libslic3r/Arachne/`, exposed here as first-class config keys since this codebase's module boundary requires them to be configurable. The remaining new key, `detect_thin_wall`, is a real `PrintConfig.cpp` `coBool` option (not a `coPercent`), gating whether `WideningBeadingStrategy` is wrapped into the stack at all.
+
+| Key | Type | Default | Units | Module |
+|---|---|---|---|---|
+| `min_feature_size` | float | `1000` | slicer units (0.1 mm) | `arachne-perimeters` |
+| `min_bead_width` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `wall_transition_filter_deviation` | float | `1000` | slicer units (0.1 mm) | `arachne-perimeters` |
+| `wall_transition_length` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `wall_transition_angle` | float | `10.0` | degrees | `arachne-perimeters` |
+| `wall_distribution_count` | int | `1` | count (bead-index radius) | `arachne-perimeters` |
+| `min_length_factor` | float | `0.5` | dimensionless ratio | `arachne-perimeters` |
+| `initial_layer_min_bead_width` | float | `3400` | slicer units (0.34 mm) | `arachne-perimeters` |
+| `outer_wall_offset` | float | `0` | slicer units | `arachne-perimeters` |
+| `max_bead_count` | int | `9` | count | `arachne-perimeters` |
+| `optimal_width` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `detect_thin_wall` | bool | `false` | boolean | `arachne-perimeters` |
+| `preferred_bead_width_outer` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+
+**`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`; corrected here from the packet's original `25`-unit suggestion, which mistook the percentage for a raw slicer-unit value). Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
+
+**`min_bead_width`** — OrcaSlicer `min_bead_width` (`PrintConfig.cpp` ~line 6873-6879, `coPercent` of nozzle diameter, upstream default `100%`; corrected here from the packet's original `200`-unit suggestion). The fixed bead width `WideningBeadingStrategy` emits for regions below `min_feature_size`; maps to its internal `min_bead_width` field (name matches verbatim).
+
+**`wall_transition_filter_deviation`** — OrcaSlicer `wall_transition_filter_deviation` (`PrintConfig.cpp` ~line 6799-6812, `coPercent` of nozzle diameter, upstream default `25%`; corrected here from the packet's original `200`-unit suggestion). Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts; maps to `DistributedBeadingStrategy`'s internal `transition_filter_dist` field (`crates/slicer-core/src/beading/distributed.rs`) — reserved there for a later decorator step, not yet read by `compute`.
+
+**`wall_transition_length`** — OrcaSlicer `wall_transition_length` (`PrintConfig.cpp` ~line 6788-6797, `coPercent` of nozzle diameter, upstream default `100%` — matches the packet's original `4000`-unit suggestion). Space allotted to split/join wall segments when transitioning between wall counts; maps to `DistributedBeadingStrategy`'s internal `default_transition_length` field — also reserved for a later decorator step.
+
+**`wall_transition_angle`** — OrcaSlicer `wall_transition_angle` (`PrintConfig.cpp` ~line 6814-6825, `coFloat`, degrees, upstream default `10.0` — matches the packet's original suggestion exactly). Threshold wedge angle above which no wall-count transition occurs. Not yet consumed by any shipped strategy in this packet.
+
+**`wall_distribution_count`** — OrcaSlicer `wall_distribution_count` (`PrintConfig.cpp` ~line 6827-6834, `coInt`, dimensionless count, upstream default `1` — matches the packet's original suggestion exactly). Maps directly to `DistributedBeadingStrategy`'s internal `distribution_count` field — the Gaussian decay radius (in bead-count units) used by `compute`'s surplus/deficit redistribution.
+
+**`min_length_factor`** — dimensionless ratio (default `0.5`), the multiplier consumed by the not-yet-ported `removeSmallLines` step (roadmap T-227: drops odd, non-closed lines shorter than `min_length_factor * min_width`). The OrcaSlicer `PrintConfig.cpp` key found under this exact name registers as a `coFloat` in mm rather than a ratio, which may be a distinct UI-facing option sharing the name rather than the internal Arachne algorithm parameter T-227 targets; the ratio semantics here follow the well-documented CuraEngine/Orca Arachne source (`WallToolPaths.cpp`) that T-227 cites, so the packet's original suggestion is kept as-is pending T-227's own confirmation. Not yet consumed by any strategy in this packet.
+
+**`initial_layer_min_bead_width`** — OrcaSlicer `initial_layer_min_bead_width` (`PrintConfig.cpp` ~line 6863-6871, `coPercent` of nozzle diameter, upstream default `85%`; corrected here from the packet's original `850`-unit suggestion, which mistook the percentage for a raw slicer-unit value). Minimum wall width for the first layer. Not yet consumed by any strategy in this packet (P112 will likely wire it as an alternate `min_bead_width` on layer 0).
+
+**`outer_wall_offset`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; it is an internal Arachne algorithm parameter (`coord_t`) threaded through `BeadingStrategyFactory`/`OuterWallInsetBeadingStrategy`. Maps to `OuterWallInsetBeadingStrategy`'s offset amount; `0` (matches the packet's original suggestion) disables the decorator's inward offset.
+
+**`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold; `9` (the packet's original suggestion) is kept as a reasonable exposed default since no literal upstream constant exists to cite.
+
+**`optimal_width`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream sets it internally from `preferred_bead_width_outer`/`preferred_bead_width_inner` (effectively the target extrusion width) in `BeadingStrategyFactory.cpp`. Maps directly to `DistributedBeadingStrategy`'s internal `optimal_width` field (name matches verbatim); default `4000` (0.4 mm, matching the packet's original suggestion) mirrors this codebase's common `line_width` default. **Refined role (scope-gap closure):** now that the outer/inner split is implemented (see `preferred_bead_width_outer` below), this key specifically serves as upstream's `preferred_bead_width_inner` — the base width `DistributedBeadingStrategy`/`WideningBeadingStrategy` use when `max_bead_count > 2` (the common multi-wall case). See `preferred_bead_width_outer` for the `max_bead_count <= 2` case and for `RedistributeBeadingStrategy`'s unconditional use.
+
+**`detect_thin_wall`** — OrcaSlicer `detect_thin_wall` (`PrintConfig.cpp:6299-6305`, `coBool`, upstream default `false`, label "Detect thin wall", tooltip "Detect thin wall which can't contain two line width. And use single line to print."). Gates whether `WideningBeadingStrategy` is wrapped into the `BeadingStrategyFactory::create_stack` composition at all — maps to the internal Arachne `print_thin_walls` parameter passed into `BeadingStrategyFactory::makeStrategy`. `false` (the default, matching upstream exactly) means `WideningBeadingStrategy` is **absent from the stack entirely**, not merely a no-op — the same absent-vs-no-op convention already used for `OuterWallInsetBeadingStrategy`/`outer_wall_offset`.
+
+**`preferred_bead_width_outer`** — maps to upstream's `preferred_bead_width_outer` (`BeadingStrategyFactory.cpp:50-97`). Default `4000` (slicer units, 0.4 mm) is chosen to match this codebase's `optimal_width` convention rather than upstream's raw hardcoded factory default of `scaled(0.0005)` = 0.5 mm = 5000 units, for consistency with how `optimal_width`'s own default was chosen. Target width for the outermost/innermost bead: used **unconditionally** as `RedistributeBeadingStrategy`'s `optimal_width_outer` parameter, and **conditionally** — only when `max_bead_count <= 2` — as `DistributedBeadingStrategy`'s/`WideningBeadingStrategy`'s base width instead of the `optimal_width` key (see the refined `optimal_width` entry above).
+
+---
+
 ## Maintenance Notes
 
 - When adding a new config key:

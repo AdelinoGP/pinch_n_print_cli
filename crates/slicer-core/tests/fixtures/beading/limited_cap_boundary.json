@@ -1,0 +1,40 @@
+{
+  "provenance": "Analytically derived for packet 111 Step 6 — no OrcaSlicer ground-truth fixture exists for any BeadingStrategy class in OrcaSlicerDocumented (confirmed via sub-agent read of LimitedBeadingStrategy.cpp during this step). Parent (DistributedBeadingStrategy) output computed by hand from its documented Gaussian-redistribution formula, using optimal_width=4000 and a thickness chosen so to_be_divided == 0 (no surplus/deficit), which collapses the general-case formula to bead_widths == optimal_width for every bead — avoids depending on the Gaussian-weight arithmetic for this fixture. Sentinel placement follows this port's own faithful-equivalent generalization of OrcaSlicer's max_bead_count/2 cap-boundary insertion (see limited.rs doc comment): left block inserted at index n/2 of the parent's max_bead_count-sized beading with location duplicated from the real bead immediately before the cut; right block inserted at the mirrored index n - n/2 (shifted by sentinel_count to account for the left insertion) with location duplicated from the real bead immediately after the cut. max_bead_count=6 and bead_count=9 chosen to clearly exercise bead_count > max_bead_count (sentinel_count = 9 - 6 = 3); bead_count=4 case exercises the under-cap pass-through (sentinel_count = 0).",
+  "parent_params": {
+    "optimal_width": 4000.0,
+    "default_transition_length": 400.0,
+    "transition_filter_dist": 1000.0,
+    "distribution_count": 3
+  },
+  "max_bead_count": 6,
+  "optimal_bead_count_probe": {
+    "thickness": 40000.0,
+    "expected_bead_count": 6
+  },
+  "cases": [
+    {
+      "note": "over-cap: requested bead_count=9 > max_bead_count=6; parent computed at the capped count (6) over thickness=24000 (== 6*optimal_width, no surplus) produces six uniform 4000-wide beads; sentinel_count=3 zero-width sentinels inserted as two symmetric blocks (left block at index 3, right block at mirrored+shifted index 6) at the cap boundary.",
+      "thickness": 24000.0,
+      "bead_count": 9,
+      "sentinel_count": 3,
+      "total_thickness": 24000.0,
+      "bead_widths": [4000.0, 4000.0, 4000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 4000.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 10000.0, 10000.0, 10000.0, 10000.0, 14000.0, 14000.0, 14000.0, 14000.0, 18000.0, 22000.0],
+      "left_over": 0.0,
+      "stripped_bead_widths": [4000.0, 4000.0, 4000.0, 4000.0, 4000.0, 4000.0],
+      "stripped_toolpath_locations": [2000.0, 6000.0, 10000.0, 14000.0, 18000.0, 22000.0]
+    },
+    {
+      "note": "under-cap pass-through: requested bead_count=4 <= max_bead_count=6; compute delegates directly to parent.compute(16000, 4) unchanged, no sentinels inserted (sentinel_count=0). thickness=16000 == 4*optimal_width, no surplus, so all four beads are exactly 4000 wide.",
+      "thickness": 16000.0,
+      "bead_count": 4,
+      "sentinel_count": 0,
+      "total_thickness": 16000.0,
+      "bead_widths": [4000.0, 4000.0, 4000.0, 4000.0],
+      "toolpath_locations": [2000.0, 6000.0, 10000.0, 14000.0],
+      "left_over": 0.0,
+      "stripped_bead_widths": [4000.0, 4000.0, 4000.0, 4000.0],
+      "stripped_toolpath_locations": [2000.0, 6000.0, 10000.0, 14000.0]
+    }
+  ]
+}

@@ -8,15 +8,15 @@ Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md` Phase 11 (
 
 | Task ID | Roadmap Title | Roadmap Phase | Packet Step | Status |
 | --- | --- | --- | --- | --- |
-| T-210 | Define `BeadingStrategy` trait in `slicer-core::beading` (`compute`, `optimal_bead_count`, `get_transition_thickness`, `optimal_thickness`); define `Beading` struct | Phase 11 | Step 1 | pending |
-| T-211 | Port `DistributedBeadingStrategy` (Gaussian-weighted width distribution) | Phase 11 | Step 2 | pending |
-| T-212 | Port `RedistributeBeadingStrategy` (preserve outer-wall width consistency — decorator over Distributed) | Phase 11 | Step 3 | pending |
-| T-213 | Port `WideningBeadingStrategy` (thin-feature single-wall regime — decorator) | Phase 11 | Step 4 | pending |
-| T-214 | Port `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset — decorator) | Phase 11 | Step 5 | pending |
-| T-215 | Port `LimitedBeadingStrategy` (max-bead-count cap; internal 0-width sentinel insertion) | Phase 11 | Step 6 | pending |
-| T-215b | Implement strip-pass: `compute_and_strip` drops zero-width beads before `WallLoop` assembly per D-9; register `D-111-ARACHNE-SENTINEL-STRIP` in `docs/DEVIATION_LOG.md` | Phase 11 | Step 6 | pending |
-| T-216 | Port `BeadingStrategyFactory::create_stack` composing `Limited(OuterWallInset(Widening(Redistribute(Distributed))))` | Phase 11 | Step 7 | pending |
-| T-218 | Register all 11 Arachne `m_params.*` config keys in `docs/15_config_keys_reference.md` and `arachne-perimeters.toml` | Phase 11 | Step 8 | pending |
+| T-210 | Define `BeadingStrategy` trait in `slicer-core::beading` (`compute`, `optimal_bead_count`, `get_transition_thickness`, `optimal_thickness`); define `Beading` struct | Phase 11 | Step 1 | done |
+| T-211 | Port `DistributedBeadingStrategy` (Gaussian-weighted width distribution) | Phase 11 | Step 2 | done |
+| T-212 | Port `RedistributeBeadingStrategy` (preserve outer-wall width consistency — decorator over Distributed) | Phase 11 | Step 3 | done |
+| T-213 | Port `WideningBeadingStrategy` (thin-feature single-wall regime — decorator) | Phase 11 | Step 4 | done |
+| T-214 | Port `OuterWallInsetBeadingStrategy` (outer-wall toolpath offset — decorator) | Phase 11 | Step 5 | done |
+| T-215 | Port `LimitedBeadingStrategy` (max-bead-count cap; internal 0-width sentinel insertion) | Phase 11 | Step 6 | done |
+| T-215b | Implement strip-pass: `compute_and_strip` drops zero-width beads before `WallLoop` assembly per D-9; register `D-111-ARACHNE-SENTINEL-STRIP` in `docs/DEVIATION_LOG.md` | Phase 11 | Step 6 | done |
+| T-216 | Port `BeadingStrategyFactory::create_stack` composing `Limited(OuterWallInset(Widening(Redistribute(Distributed))))` | Phase 11 | Step 7 | done |
+| T-218 | Register all 11 Arachne `m_params.*` config keys in `docs/15_config_keys_reference.md` and `arachne-perimeters.toml` | Phase 11 | Step 8 | done |
 
 ## Cross-Packet Contracts
 
