@@ -1,5 +1,5 @@
 //! Pure consumer of the per-vertex `overhang_quartile` annotation written by
-//! the upstream PrePass::OverhangAnnotation pipeline (ADR-0022, packet 106):
+//! the upstream PrePass::OverhangAnnotation pipeline (ADR-0031, packet 106):
 //! applies speed-factor mutations. No local geometric computation.
 
 #![warn(missing_docs)]

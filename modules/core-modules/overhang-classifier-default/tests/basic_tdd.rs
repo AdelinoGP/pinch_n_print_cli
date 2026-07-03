@@ -2,7 +2,7 @@
 //!
 //! Post-refactor: this module is a pure consumer of the per-vertex
 //! `overhang_quartile` field already written onto `Point3WithWidth` by the
-//! upstream PrePass::OverhangAnnotation pipeline (packet 106 / ADR-0022). It
+//! upstream PrePass::OverhangAnnotation pipeline (packet 106 / ADR-0031). It
 //! performs NO local geometric computation, so these tests set
 //! `overhang_quartile` directly on fixture points rather than constructing
 //! two-layer geometry for a distance-based classifier.

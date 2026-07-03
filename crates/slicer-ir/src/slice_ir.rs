@@ -57,7 +57,7 @@ pub const UNITS_PER_MM: f64 = 10_000.0;
 /// Scaled integer units (1 unit = 100 nm = 10^-4 mm)
 #[inline]
 pub fn mm_to_units(mm: f32) -> i64 {
-    (mm * 10_000.0).round() as i64
+    (mm * UNITS_PER_MM as f32).round() as i64
 }
 
 /// Convert scaled integer units to millimeters
@@ -69,7 +69,7 @@ pub fn mm_to_units(mm: f32) -> i64 {
 /// Value in millimeters
 #[inline]
 pub fn units_to_mm(units: i64) -> f32 {
-    (units as f32) / 10_000.0
+    (units as f32) / UNITS_PER_MM as f32
 }
 
 /// 2D point using scaled integer coordinates

@@ -230,11 +230,17 @@ assert_eq!(SCALING_FACTOR, 10_000_i64);
 ```
 
 The implementations are trivial but centralizing them means a future
-precision change (if ever warranted) is a one-line fix in one file:
+precision change (if ever warranted) is a one-line fix in one file. The
+root constant is `slicer_ir::UNITS_PER_MM` (`crates/slicer-ir/src/slice_ir.rs`);
+the SDK's `SCALING_FACTOR` delegates to it, so slicer-ir is the single place
+to change:
 
 ```rust
-// crates/slicer-sdk/src/coords.rs
-pub const SCALING_FACTOR: i64 = 10_000;
+// crates/slicer-ir/src/slice_ir.rs — the single authoritative source
+pub const UNITS_PER_MM: f64 = 10_000.0;
+
+// crates/slicer-sdk/src/coords.rs — delegates, never diverges
+pub const SCALING_FACTOR: i64 = slicer_ir::UNITS_PER_MM as i64;
 
 #[inline(always)]
 pub fn mm_to_units(mm: f32) -> i64 {

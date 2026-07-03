@@ -1,3 +1,14 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: src/libslic3r/Flow.cpp
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
+
 //! Flow math for perimeter wall emission (T-050, packet 105).
 //!
 //! Ported from OrcaSlicer's `Flow::new_from_width_height` (a minimal subset).

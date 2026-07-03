@@ -66,7 +66,7 @@ Touches `slicer-core` (new files for `medial_axis`, `polygon_tree`, `geometry`; 
 
 This packet modifies the following doc sections:
 
-- `docs/01_system_architecture.md` §"Crate Responsibilities" (or equivalent) — note that `slicer-core` owns per-layer polygon ops including those ported in this packet — `rg -q 'offset2_ex\|medial_axis\|polygon_tree\|keep_largest_contour_only' docs/01_system_architecture.md`
+- `docs/01_system_architecture.md` §"Crate Responsibilities" (or equivalent) — note that `slicer-core` owns per-layer polygon ops including those ported in this packet — `rg -q 'offset2_ex|medial_axis|polygon_tree|keep_largest_contour_only' docs/01_system_architecture.md` *(corrected 2026-07-02: the original command escaped the pipes as `\|`, which rg treats as a literal `|`, so it could never match; the doc edit itself was done — the corrected command passes)*
 - `docs/02_ir_schemas.md` §"Variable-width geometry" — document the new `ThickPolyline` and `Point2WithWidth` types and the `variable_width` converter — `rg -q 'ThickPolyline.*Point2WithWidth' docs/02_ir_schemas.md`
 - `docs/02_ir_schemas.md` §"Schema Versioning" — record the additive bump for the new types (`4.2.0` → `4.3.0`) — `rg -q 'ThickPolyline.*additive' docs/02_ir_schemas.md`
 - `docs/DEVIATION_LOG.md` — add entry `D-103-API-PARITY-UPGRADE` recording "T-045 promoted with OrcaSlicer-faithful API redesign; behavior preserved at the one caller via `unwrap_or(0.0)`." — `rg -q 'D-103-API-PARITY-UPGRADE' docs/DEVIATION_LOG.md`
@@ -96,7 +96,7 @@ Aggregate context cost above is the sum of per-step costs in `implementation-pla
 
 ## Deviations
 
-The following deviations from the original spec were recorded during implementation. Each entry is also mirrored in `docs/DEVIATION_LOG.md`.
+The following deviations from the original spec were recorded during implementation. `D-103-API-PARITY-UPGRADE` (the entry the Doc Impact Statement requires) is mirrored in `docs/DEVIATION_LOG.md`; the rest are packet-local records. *(Corrected 2026-07-02: this section previously claimed every entry was mirrored, and the D-103-API-PARITY-UPGRADE log row itself was missing until the packets-102–109 review added it retroactively.)*
 
 - **D-103-T041-VORONOI-PORTED** — *Specified:* port `ExPolygon::medial_axis` with an out-param `&mut Vec<ThickPolyline>` signature. *Implemented:* real boostvoronoi-0.12 segment-VD + EP.cpp (extend/remove/reconnect) behind the `host-algos` cargo feature; signature changed to `pub fn medial_axis(input: &ExPolygon, min_width: f32, max_width: f32) -> Result<Vec<ThickPolyline>, MedialAxisError>`; degenerate input returns `Err(DegenerateInput)` (stricter than OrcaSlicer's silent-empty). *Reason:* typed error + value-return is idiomatic Rust; out-param dropped (no production callers). Validated against 6 closed-form analytic goldens passing per_vertex ≤ 0.005 mm / coverage ≤ 0.005 mm / width ≤ 0.01 mm to ~1e-6.
 

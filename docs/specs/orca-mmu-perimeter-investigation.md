@@ -4,6 +4,8 @@
 
 Verified 2026-06-22; supersedes prior draft (which incorrectly stated overlap-and-trace-both). Authoritative for packet 105 design.
 
+**Post-P105 note (2026-07-02):** the `bisector_edge_skip_mask` this document describes as "structural metadata" was a P105 *draft* design that never shipped — the mask, its host populator, and its WIT/SDK accessors were fully removed at P105 close because Model A (ADR-0013 as rewritten) needs no skip data and no consumer existed (see D-105-BISECTOR-MASK-DROPPED in `docs/DEVIATION_LOG.md`). The partition/both-sides-trace findings below remain authoritative; read the mask paragraphs as historical design context only.
+
 ## Files inspected
 
 - `MultiMaterialSegmentation.cpp:138-161` — NON_BORDER arc creation (color=-1, shared between colors)
@@ -22,11 +24,11 @@ Each per-region ExPolygon includes the bisector as part of its boundary. `Perime
 
 ## Skip-mask concept
 
-OrcaSlicer has **no skip-mask concept** (`rg` for `skip_mask|edge_skip|bisector_mask|shared_edge|perimeter_mask`: zero matches). The packet's `bisector_edge_skip_mask` is structural metadata, NOT a skip predicate.
+OrcaSlicer has **no skip-mask concept** (`rg` for `skip_mask|edge_skip|bisector_mask|shared_edge|perimeter_mask`: zero matches). The packet's *drafted* `bisector_edge_skip_mask` was framed as structural metadata, NOT a skip predicate — and was subsequently dropped entirely at P105 close (D-105-BISECTOR-MASK-DROPPED): nothing consumed it, so no mask exists in the shipped tree.
 
 ## Default for this packet
 
-At a shared bisector, BOTH cells trace their respective outer walls (OrcaSlicer parity). No tie-break is needed; OrcaSlicer parity is partition-based, both sides trace. The mask is set to `true` for edges that are shared bisectors (in BOTH cells' per-cell views), `false` for non-bisector edges. The mask is for downstream consumers (seam placement, role distinction) — it does NOT suppress emission.
+At a shared bisector, BOTH cells trace their respective outer walls (OrcaSlicer parity). No tie-break is needed; OrcaSlicer parity is partition-based, both sides trace. *(Historical draft, not shipped:)* the mask was to be set `true` for edges that are shared bisectors (in BOTH cells' per-cell views), `false` for non-bisector edges, for downstream consumers only (seam placement, role distinction) — never suppressing emission. As shipped, P105 dropped the mask entirely (D-105-BISECTOR-MASK-DROPPED); the both-sides-trace behavior stands without it.
 
 ## Single-color baseline
 

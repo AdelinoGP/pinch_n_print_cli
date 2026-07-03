@@ -138,7 +138,7 @@ PrePass::OverhangAnnotation  [introduced P106; owned by core-modules/overhang-an
            point-in-polygon without cross-layer access — the classification is pre-computed at
            PrePass time. See ADR-0012.
 
-           `overhang-classifier-default` (PostPass::LayerFinalization) reads per-vertex overhang_quartile from LayerCollectionIR entities (propagated from these quartile bands) and applies EntityMutation::SetSpeedFactor — it no longer computes wall distances itself; that algorithm was superseded by this PrePass classifier (P106/P107, ADR-0022).
+           `overhang-classifier-default` (PostPass::LayerFinalization) reads per-vertex overhang_quartile from LayerCollectionIR entities (propagated from these quartile bands) and applies EntityMutation::SetSpeedFactor — it no longer computes wall distances itself; that algorithm was superseded by this PrePass classifier (P106/P107, ADR-0031).
 
 PrePass::RegionMapping  [host-built-in, not a module stage]
   Input:  LayerPlanIR + LoadedModules + ResolvedConfig + MeshIR.paint_data

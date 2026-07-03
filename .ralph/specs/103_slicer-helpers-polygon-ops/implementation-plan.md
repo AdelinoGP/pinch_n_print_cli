@@ -153,7 +153,7 @@
 - Precondition: Step 4 exit condition met.
 - Postcondition: all four Doc Impact Statement greps return hits.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `docs/01_system_architecture.md` — range-read §"Crate Responsibilities" by `rg -n 'slicer-core\|crate.*responsib' docs/01_system_architecture.md` then ±20 lines.
+  - `docs/01_system_architecture.md` — range-read §"Crate Responsibilities" by `rg -n 'slicer-core|crate.*responsib' docs/01_system_architecture.md` then ±20 lines.
   - `docs/02_ir_schemas.md` — range-read by `rg -n 'Schema Versioning|Variable-width'` then ±30 lines.
   - `docs/DEVIATION_LOG.md` — read the last 30 lines to align entry format.
 - Files allowed to edit (≤ 3):
@@ -171,7 +171,7 @@
 - OrcaSlicer refs:
   - None.
 - Verification:
-  - `rg -q 'offset2_ex\|medial_axis\|polygon_tree\|keep_largest_contour_only' docs/01_system_architecture.md` — exit 0.
+  - `rg -q 'offset2_ex|medial_axis|polygon_tree|keep_largest_contour_only' docs/01_system_architecture.md` — exit 0. *(Corrected 2026-07-02: the original command escaped the pipes as `\|`, which rg treats as a literal `|` character, so it could never match.)*
   - `rg -q 'ThickPolyline.*Point2WithWidth' docs/02_ir_schemas.md` — exit 0.
   - `rg -q 'ThickPolyline.*additive' docs/02_ir_schemas.md` — exit 0.
   - `rg -q 'D-103-API-PARITY-UPGRADE' docs/DEVIATION_LOG.md` — exit 0.
