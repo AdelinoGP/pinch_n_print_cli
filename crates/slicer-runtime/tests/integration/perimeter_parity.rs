@@ -329,6 +329,14 @@ pub fn run_and_compare_fixture(
         &fixture.config_path,
         &fixture.module_dirs,
     )?;
+
+    // Structural-integrity gate (non-circular): reject malformed captured output
+    // before the self-capture comparison, so silent data loss is caught even
+    // where the recorded reference cannot help (see `structural_violation`).
+    if let Some(violation) = structural_violation(&actual) {
+        return Ok(PerimeterCompareResult::Mismatch(violation));
+    }
+
     let expected = load_expected_perimeters(&fixture.expected_output_path)?;
 
     if actual.len() != expected.len() {
@@ -516,6 +524,53 @@ pub fn compare_perimeter_ir(
     PerimeterCompareResult::Match
 }
 
+/// First structural-integrity violation in a freshly-captured `PerimeterIR`
+/// set, or `None` if the output is well-formed.
+///
+/// NON-CIRCULAR: this depends only on the captured output's own well-formedness,
+/// never on a recorded reference — so it catches silent data loss (empty
+/// capture, degenerate sub-2-point walls, non-finite coordinates) that a pure
+/// baseline-vs-baseline comparison cannot (a regression that corrupts the
+/// re-recorded reference and the live output identically would still slip a
+/// self-compare). Returned as a [`PerimeterFieldMismatch`] so callers report it
+/// exactly like a value drift.
+fn structural_violation(perimeters: &[PerimeterIR]) -> Option<PerimeterFieldMismatch> {
+    if perimeters.is_empty() {
+        return Some(PerimeterFieldMismatch {
+            field: "layer_count".to_string(),
+            actual: "0".to_string(),
+            expected: ">= 1 captured layer".to_string(),
+        });
+    }
+    for (li, p) in perimeters.iter().enumerate() {
+        for (ri, r) in p.regions.iter().enumerate() {
+            for (wi, w) in r.walls.iter().enumerate() {
+                if w.path.points.len() < 2 {
+                    return Some(PerimeterFieldMismatch {
+                        field: format!("[{li}].regions[{ri}].walls[{wi}].path.points.len()"),
+                        actual: w.path.points.len().to_string(),
+                        expected: ">= 2 (a wall loop needs at least two vertices)".to_string(),
+                    });
+                }
+                for (pi, pt) in w.path.points.iter().enumerate() {
+                    if !(pt.x.is_finite()
+                        && pt.y.is_finite()
+                        && pt.z.is_finite()
+                        && pt.width.is_finite())
+                    {
+                        return Some(PerimeterFieldMismatch {
+                            field: format!("[{li}].regions[{ri}].walls[{wi}].path.points[{pi}]"),
+                            actual: format!("({}, {}, {}, w={})", pt.x, pt.y, pt.z, pt.width),
+                            expected: "all coordinates finite".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 // ============================================================================
 // (d) Self-tests
 // ============================================================================
@@ -624,21 +679,95 @@ fn deliberate_mismatch_detection() {
     }
 }
 
+/// AC-N1 (full harness path): a deliberately-broken *fixture file* — solid_square's
+/// recorded reference with one vertex shifted 0.1 mm (> the 0.005 mm XYZ
+/// tolerance) — run through `run_and_compare_fixture` must NOT silently pass; it
+/// must return a `Mismatch` naming the differing vertex field. This exercises the
+/// end-to-end harness (capture -> load fixture FILE -> compare), which
+/// `deliberate_mismatch_detection` (comparator-only, in-memory) does not.
+#[test]
+fn deliberate_broken_fixture_file_is_detected() {
+    let dir = fixture_dir("solid_square");
+
+    // Load the real recorded reference and perturb the first wall vertex by 0.1 mm.
+    let mut broken = load_expected_perimeters(&dir.join("expected_perimeter_ir.json"))
+        .expect("solid_square reference must load");
+    let mut perturbed = false;
+    'outer: for p in broken.iter_mut() {
+        for r in p.regions.iter_mut() {
+            for w in r.walls.iter_mut() {
+                if let Some(pt) = w.path.points.first_mut() {
+                    pt.x += 0.1;
+                    perturbed = true;
+                    break 'outer;
+                }
+            }
+        }
+    }
+    assert!(
+        perturbed,
+        "solid_square reference must contain at least one wall vertex to perturb"
+    );
+
+    // Write the broken reference to a per-process temp file and point the fixture at it.
+    let broken_path = std::env::temp_dir().join(format!(
+        "pnp_perimeter_parity_broken_solid_square_{}.json",
+        std::process::id()
+    ));
+    let text = serde_json::to_string(&broken).expect("broken reference must serialize");
+    std::fs::write(&broken_path, text).expect("failed to write broken fixture file");
+
+    let fixture = PerimeterParityFixture {
+        mesh_path: dir.join("solid_square.stl"),
+        config_path: dir.join("config.json"),
+        module_dirs: vec![core_modules_dir()],
+        expected_output_path: broken_path.clone(),
+    };
+    let result = run_and_compare_fixture(&fixture).expect("solid_square pipeline run must succeed");
+    let _ = std::fs::remove_file(&broken_path);
+
+    match result {
+        PerimeterCompareResult::Mismatch(m) => {
+            assert!(
+                m.field.ends_with(".x"),
+                "AC-N1: harness must name the differing vertex field (got `{}`)",
+                m.field
+            );
+        }
+        PerimeterCompareResult::Match => {
+            panic!(
+                "AC-N1: harness silently PASSED a fixture file with a 0.1 mm vertex error \
+                 (fixture: solid_square)"
+            );
+        }
+    }
+}
+
 // ============================================================================
 // (e) M1 reference fixtures (packet 109, Step 2 / T-101).
 //
-// Methodology (user-approved, see packet.spec.md): no live OrcaSlicer binary
-// exists in this environment, so `expected_perimeter_ir.json` files are NOT
-// hand-authored. Instead: build mesh + config -> run the REAL pipeline via
-// `run_pipeline_capturing_perimeters` -> sanity-check the real output's SHAPE
-// (wall-loop count, role/loop_type distribution) against the
-// OrcaSlicer-documented expectation -> if it matches, the real captured
-// output IS the recorded reference (serialized as-is to
-// `expected_perimeter_ir.json`). The `#[ignore]`-marked `record_*` functions
-// below are the recording tool, kept for provenance (re-run them to
-// regenerate a fixture's mesh/config/expected-output after a deliberate
-// geometry/config change). The plain `#[test]` functions are the permanent
-// regression gate (AC-2), calling `run_and_compare_fixture`.
+// Methodology & HONEST SCOPE (user-approved, see packet.spec.md): no live
+// OrcaSlicer binary exists in this environment, so these fixtures are
+// SELF-CAPTURED regression baselines, NOT independently-derived OrcaSlicer
+// geometry. Recording (the `#[ignore]`-marked `record_*` functions below):
+// build mesh + config -> run the REAL pipeline via
+// `run_pipeline_capturing_perimeters` -> manually cross-check the output's
+// coarse SHAPE (wall-loop count, role/loop_type distribution — documented per
+// fixture in the module comments below) against the OrcaSlicer-documented
+// expectation -> serialize the captured output as-is to
+// `expected_perimeter_ir.json`.
+//
+// WHAT THE PERMANENT GATE (AC-2, the plain `#[test]` functions) ACTUALLY
+// PROVES: (1) self-regression — future pipeline drift away from today's
+// blessed output is caught to per-vertex tolerance; (2) structural integrity —
+// `run_and_compare_fixture` rejects malformed captured output (empty capture,
+// sub-2-point walls, non-finite coordinates) via `structural_violation` before
+// comparing. WHAT IT DOES NOT PROVE: per-vertex OrcaSlicer parity — the
+// reference is our OWN output, so the fine-grained 0.005/0.01 mm tolerances can
+// only detect drift from that baseline, never a divergence from OrcaSlicer.
+// True per-geometry Orca parity requires recording against a real OrcaSlicer
+// build (tracked as an M2 follow-up); this harness is the regression bed that
+// follow-up will re-bless.
 //
 // Layer-height choice (documented, applies to all 6 fixtures): `layer_height
 // = first_layer_height = 1.0mm` (classic-perimeters' schema max for

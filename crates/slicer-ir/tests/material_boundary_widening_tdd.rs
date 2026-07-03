@@ -13,10 +13,10 @@ fn schema_version_is_current() {
     // The MaterialBoundary widening was an additive minor bump 4.1.0 -> 4.2.0
     // (packet 102 step 2). The shared SLICE_IR constant has since advanced to
     // 4.4.0 (packet 105 — additive `LoopType::GapFill` + `ExtrusionRole::GapFill`)
-    // and 4.6.0 (packet 109 — additive removal of the dead
-    // `SlicedRegion.external_contour` field; 4.5.0 was struck/reserved by P106).
-    // This pin tracks the live constant (the MaterialBoundary widening is still
-    // present at 4.6.0).
+    // and 4.6.0 (packet 109 — compatible minor removal of the dead
+    // `SlicedRegion.external_contour` field + its WIT accessor; see the docs/02
+    // Contract note for why removal ships minor here). This pin tracks the live
+    // constant (the MaterialBoundary widening is still present at 4.6.0).
     assert_eq!(
         CURRENT_SLICE_IR_SCHEMA_VERSION,
         SemVer {

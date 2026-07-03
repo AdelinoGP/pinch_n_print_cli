@@ -682,9 +682,14 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       minor bump to 4.4.0 by packet 105 — additive `LoopType::GapFill` +
     //       `ExtrusionRole::GapFill` variants (this pin was left stale at 4.2.0
     //       by that change; corrected to track the constant).
-    //       minor bump to 4.6.0 by packet 109 — additive removal of the dead
-    //       `SlicedRegion.external_contour` field (4.5.0 was struck/reserved
-    //       by P106 per docs/02_ir_schemas.md version history).
+    //       minor bump to 4.6.0 by packet 109 — removal of the dead
+    //       `SlicedRegion.external_contour` field and its WIT `external-contour`
+    //       accessor. Field removal is *major* by default per docs/02_ir_schemas.md
+    //       §"IR Versioning Contract", but this removal ships COMPATIBLE as a minor:
+    //       no live consumer, serde ignores the absent field, and every module
+    //       declares `max_ir_schema = 5.0.0` so a 5.0.0 host would fail the
+    //       scheduler `validate_ir_versions` gate for all modules. (4.5.0 was
+    //       struck/reserved by P106; see the docs/02 Contract note.)
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {

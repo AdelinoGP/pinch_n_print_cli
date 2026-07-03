@@ -2465,15 +2465,26 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     // NOTE: `z` MUST be the layer-space z of the candidate, not a
                     // hardcoded 0.0. The host's `check_z_envelope` (see
                     // `crates/slicer-wasm-host/src/host.rs`) rejects any pushed Z
-                    // outside the current layer's [floor, ceiling] window, and — per
-                    // the `let _ =` convention shared by every WIT call in this drain
-                    // function — that rejection is silently swallowed here. A wrong
-                    // z therefore does not fail loudly; it just makes
-                    // `seam_candidates` silently empty on the host side.
-                    let _ = wit.push_seam_candidate(
-                        WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: pos.z as f32 },
-                        *score,
-                    );
+                    // outside the current layer's [floor, ceiling] window. A rejected
+                    // candidate would otherwise vanish silently and leave the
+                    // host-side seam-candidate set short — the exact failure mode
+                    // that emptied `seam_candidates` before commit 454964a7. Unlike
+                    // the other `let _ =` drain calls, we surface the rejection via
+                    // the host log facade instead of swallowing it, because a
+                    // silently-empty seam-candidate set is a documented correctness
+                    // hazard (it fed a fatal `SeamPlacerError` path in P108).
+                    if wit
+                        .push_seam_candidate(
+                            WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: pos.z as f32 },
+                            *score,
+                        )
+                        .is_err()
+                    {
+                        ::slicer_sdk::host::log_warn(&::std::format!(
+                            "seam candidate at ({}, {}, {}) rejected by host and dropped",
+                            pos.x, pos.y, pos.z
+                        ));
+                    }
                 }
                 let rotated_wall_loops = sdk.rotated_wall_loops();
                 let rotated_wall_loop_origins = sdk.rotated_wall_loop_origins();

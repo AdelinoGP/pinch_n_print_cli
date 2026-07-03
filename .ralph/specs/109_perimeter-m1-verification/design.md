@@ -83,7 +83,7 @@
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: `SlicedRegion.external_contour` removed; schema bump from live 4.3.0 by one minor, computed at activation (NOT hardcoded — P105 also bumps `SliceIR`, so the target is 4.4.0 or 4.5.0 depending on landing order; additive removal). WIT mirror removed.
+- IR or manifest contracts touched: `SlicedRegion.external_contour` removed; schema bump from live 4.3.0 by one minor, computed at activation (NOT hardcoded — P105 also bumps `SliceIR`, so the target is 4.4.0 or 4.5.0 depending on landing order; additive removal). WIT mirror removed. **CLARIFIED (in-review): shipped as `4.6.0` — a *compatible-removal* minor bump. Field removal is major by default per the IR Versioning Contract, but this is a documented exception (no consumer, serde-tolerant, and every module declares `max_ir_schema = 5.0.0` so a 5.0.0 host would fail the scheduler version gate). "Additive removal" was imprecise phrasing; the accurate term is "compatible removal". See `docs/02_ir_schemas.md`.**
 - WIT boundary considerations: per CLAUDE.md WIT/Type Changes Checklist, `cargo build --tests --workspace` must pass after the WIT edit before Step 5 closes.
 - Determinism or scheduler constraints: parity harness comparator must be deterministic (sorted iteration over walls + edges); recorded fixtures must be byte-stable (no timestamps in JSON, no random IDs).
 - cube_4color test rename: the renamed function MUST be the only `#[test]` in the executor file with the new name; the old function name is deleted, not deprecated.

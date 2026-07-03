@@ -198,6 +198,18 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// Minor bump to 4.4.0 (packet 105) adds the additive `LoopType::GapFill` and
 /// `ExtrusionRole::GapFill` enums (T-062b). `#[non_exhaustive]` on both enums
 /// preserves backward compatibility.
+/// Minor bump to 4.6.0 (packet 109) removes the dead external-contour field from
+/// `SlicedRegion` and its WIT `external-contour` accessor. The IR Versioning
+/// Contract (`docs/02_ir_schemas.md`) classifies field removal as *major* by
+/// default; this specific removal is a deliberate, documented exception that
+/// ships as a backward-COMPATIBLE minor bump because ALL THREE hold: (1) the
+/// field had no live consumer (superseded by ADR-0013 Model-A per-color
+/// fragmentation; consumption was already removed in P105, D-105-AC22-PARITY-RESHAPE),
+/// (2) serde ignores the now-absent field, so serialized 4.x fixtures still parse,
+/// and (3) every loaded module declares `max_ir_schema = 5.0.0`, so a 5.0.0 host
+/// would fail the scheduler's `validate_ir_versions` gate for EVERY module — a
+/// major bump would break the whole module ecosystem for a removal that changes
+/// no behaviour. Rationale recorded in the `docs/02_ir_schemas.md` Contract note.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
     minor: 6,
