@@ -33,7 +33,7 @@ Additionally, the xtask is invoked from the agentic build hook. Hook latency mat
 - **Hook latency stays low.** Cold xtask builds finish in single digits of seconds.
 - **Freshness is precise without being conservative.** Touching `slicer-core` does not trigger a guest rebuild storm; touching the WIT files does.
 - **Layout changes require xtask updates.** Moving the test-guests directory or renaming a tree-root requires editing `build_guests.rs`. This is a deliberate trade — `cargo_metadata` would be more flexible but unusable.
-- **A path drift exists between the original packet 70 spec and the on-disk layout.** The packet spec referenced a top-level `test-guests/` tree-root that was never materialised; the actual location is `crates/slicer-wasm-host/test-guests/`. The discrepancy is documented in `DEVIATION_LOG.md` DEV-072; the on-disk layout is authoritative.
+- **A path drift exists between the original packet 70 spec and the on-disk layout.** The packet spec referenced a top-level `test-guests/` tree-root that was never materialised; the actual location is `crates/slicer-wasm-host/test-guests/`. The discrepancy was resolved 2026-06-17 (see git history); the on-disk layout is authoritative.
 
 ## Rejected alternatives
 

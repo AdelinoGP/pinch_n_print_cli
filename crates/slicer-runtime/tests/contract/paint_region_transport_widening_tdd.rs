@@ -60,47 +60,7 @@ mod doc_grep_tests {
         );
     }
 
-    // ── AC-host-8 ─────────────────────────────────────────────────────────────
-    /// `docs/DEVIATION_LOG.md` DEV-025 entry must reference mismatches 4 and 5,
-    /// plus contain the phrases "paint value" and "hole-blind".
-    ///
-    /// GREEN after Step 1.
-    #[test]
-    fn dev_log_extends_dev025_with_4_and_5() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/DEVIATION_LOG.md");
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("cannot read DEVIATION_LOG.md: {e}"));
-
-        // Locate the DEV-025 entry row — search for the row-start delimiter
-        // `| DEV-025 |` to avoid false hits in rows that reference DEV-025.
-        let row_marker = "| DEV-025 |";
-        let dev025_start = src
-            .find(row_marker)
-            .expect("'| DEV-025 |' row not found in DEVIATION_LOG.md");
-        let after_start = &src[dev025_start..];
-        let dev025_end = after_start[row_marker.len()..] // skip past the row marker
-            .find("\n| DEV-") // find the next row boundary (newline + pipe)
-            .map(|off| dev025_start + row_marker.len() + off)
-            .unwrap_or(src.len());
-        let dev025_block = &src[dev025_start..dev025_end];
-
-        assert!(
-            dev025_block.contains("Mismatch 4"),
-            "DEV-025 must reference 'Mismatch 4'"
-        );
-        assert!(
-            dev025_block.contains("Mismatch 5"),
-            "DEV-025 must reference 'Mismatch 5'"
-        );
-        // Case-insensitive — "Paint value" and "paint value" are both valid.
-        let dev025_lower = dev025_block.to_lowercase();
-        assert!(
-            dev025_lower.contains("paint value"),
-            "DEV-025 must contain 'paint value' (mismatch 4 description)"
-        );
-        assert!(
-            dev025_block.contains("hole-blind"),
-            "DEV-025 must contain 'hole-blind' (mismatch 5 description)"
-        );
-    }
+    // AC-host-8 (`dev_log_extends_dev025_with_4_and_5`) asserted DEVIATION_LOG.md's
+    // DEV-025 row content directly; removed 2026-07-02 when DEV-025 was deleted
+    // from the log as a closed entry (history preserved in git).
 }

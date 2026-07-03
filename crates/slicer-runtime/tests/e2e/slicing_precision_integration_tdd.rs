@@ -24,7 +24,7 @@
 //!
 //! AC-10 uses its own `sparse_fill_holder = "gyroid-infill"` config pair
 //! (`AC10_DEFAULT_PRECISION_JSON` / `AC10_LEGACY_PRECISION_JSON`) rather than
-//! NEG-2's plain rectilinear-holder configs — see DEV-083 (`docs/DEVIATION_LOG.md`)
+//! NEG-2's plain rectilinear-holder configs — see DEV-083 (2026-07-02, git history)
 //! for why straight rectilinear lines give D-P/min-segment simplification
 //! nothing to reduce.
 

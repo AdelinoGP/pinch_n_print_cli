@@ -4,7 +4,7 @@
 
 Verified 2026-06-22; supersedes prior draft (which incorrectly stated overlap-and-trace-both). Authoritative for packet 105 design.
 
-**Post-P105 note (2026-07-02):** the `bisector_edge_skip_mask` this document describes as "structural metadata" was a P105 *draft* design that never shipped — the mask, its host populator, and its WIT/SDK accessors were fully removed at P105 close because Model A (ADR-0013 as rewritten) needs no skip data and no consumer existed (see D-105-BISECTOR-MASK-DROPPED in `docs/DEVIATION_LOG.md`). The partition/both-sides-trace findings below remain authoritative; read the mask paragraphs as historical design context only.
+**Post-P105 note (2026-07-02):** the `bisector_edge_skip_mask` this document describes as "structural metadata" was a P105 *draft* design that never shipped — the mask, its host populator, and its WIT/SDK accessors were fully removed at P105 close because Model A (ADR-0013 as rewritten) needs no skip data and no consumer existed (removed 2026-06-23, Packet 105; see git history). The partition/both-sides-trace findings below remain authoritative; read the mask paragraphs as historical design context only.
 
 ## Files inspected
 

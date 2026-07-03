@@ -34,7 +34,7 @@ Concretely:
 - **CLI complexity grows slightly.** `pnp-cli` gains a small format-detection + load step in `main.rs`. Acceptable trade-off — the CLI was the natural place for this logic anyway.
 - **`write_with_parents` and `OutputFormat` moved with the loader.** Helpers that were previously private to `slicer-runtime::cli` are now public in `pnp_cli::io`. They handle parent-directory creation for `--output` and `--report` paths (Packet 65 surface).
 - **Public API surface widened, deliberately.** `assemble_object` was promoted from `pub(crate)` to `pub` in Packet 81 so `pnp_cli::helpers_cmd` can call it. Other internal helpers that future tooling needs may follow.
-- **`helpers_cmd.rs` moved early.** Originally scoped to Packet 82, the helpers-command module had to move into `pnp-cli` during 81 to compile against the new public surface. DEV-001 in the packet's deviation block (and `DEVIATION_LOG.md`) records the cross-packet bleed.
+- **`helpers_cmd.rs` moved early.** Originally scoped to Packet 82, the helpers-command module had to move into `pnp-cli` during 81 to compile against the new public surface. DEV-001 in the packet's own deviation block records the cross-packet bleed.
 
 ## Rejected alternatives
 
