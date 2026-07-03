@@ -783,6 +783,20 @@ and dedups discovered modules by `module.id`. The first root's module
 wins, and later duplicates emit a `DiagnosticLevel::Warning` on stderr.
 This is independent of (and runs after) the canonical-path dedup above.
 
+### Per-root scan failures are non-fatal
+
+Tiers 3 and 4 pre-filter with `.is_dir()` before ever handing the path to
+the scanner (see above). Tiers 1 and 2 do **not** get that pre-filter —
+an explicit `--module-dir`/`SLICER_MODULE_PATH` entry is handed to the
+scanner as-is. If a root then turns out to be unreadable (nonexistent,
+permission denied, not a directory), `load_modules_from_roots` does not
+abort the whole load: it records a `DiagnosticLevel::Error` diagnostic
+naming that root and continues scanning the remaining roots. The load
+only returns a hard `Err` when a *manifest file* discovered inside an
+otherwise-readable root fails to ingest (malformed TOML, schema
+violation, missing companion `.wasm`) — a different, per-file failure
+class from a per-root scan failure.
+
 ### Per-root layout
 
 Each loadable module directory must contain:

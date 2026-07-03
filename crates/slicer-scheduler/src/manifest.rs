@@ -588,7 +588,19 @@ pub fn load_modules_from_roots(search_roots: &[PathBuf]) -> Result<LoadModulesRe
     let mut seen_ids = HashSet::new();
 
     for root in search_roots {
-        for manifest_path in discover_manifest_paths(root)? {
+        let manifest_paths = match discover_manifest_paths(root) {
+            Ok(paths) => paths,
+            Err(err) => {
+                report.diagnostics.push(LoadDiagnostic {
+                    level: DiagnosticLevel::Error,
+                    path: err.path,
+                    field: err.field,
+                    message: err.message,
+                });
+                continue;
+            }
+        };
+        for manifest_path in manifest_paths {
             let wasm_path = manifest_path.with_extension("wasm");
             let result = ingest_manifest(&manifest_path, &wasm_path)?;
 

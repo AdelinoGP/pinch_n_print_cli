@@ -163,6 +163,60 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
     );
 }
 
+#[test]
+fn bad_root_is_skipped_with_diagnostic_and_other_roots_still_load() {
+    let fixture = ModuleFixture::new("bad-root-skip");
+    let good = fixture.root().join("01-good-root");
+    let bad = fixture.root().join("02-does-not-exist");
+    fs::create_dir_all(&good).expect("create good root");
+
+    write_module_in(
+        &good,
+        "shared-module",
+        &valid_manifest_toml(
+            "com.community.good",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[good.clone(), bad.clone()])
+        .expect("a bad root must not abort the whole scan");
+
+    assert_eq!(
+        report.modules.len(),
+        1,
+        "the good root's module should still load"
+    );
+    assert_eq!(report.modules[0].id(), "com.community.good");
+
+    let error = report
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
+        .expect("the unreadable root should emit an error-level diagnostic");
+    assert_eq!(error.path, bad);
+}
+
+#[test]
+fn all_roots_bad_returns_ok_with_empty_modules_and_error_diagnostics() {
+    let fixture = ModuleFixture::new("all-roots-bad");
+    let bad = fixture.root().join("does-not-exist");
+
+    let report = load_modules_from_roots(&[bad.clone()])
+        .expect("an unreadable root must not turn into a hard Err");
+
+    assert!(report.modules.is_empty());
+    let error = report
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.level == DiagnosticLevel::Error)
+        .expect("the unreadable root should emit an error-level diagnostic");
+    assert_eq!(error.path, bad);
+}
+
 // â”€â”€ WIT world allowlist validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[test]

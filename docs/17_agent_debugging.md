@@ -104,9 +104,13 @@ tree and emit `{pass, modules_loaded, stages, diagnostics: [...]}` to
 stdout. Exit codes:
 
 - `0` — `pass: true`, no errors.
-- `1` — at least one `error`-level diagnostic.
-- `2` — unreadable / malformed manifest files (`load_modules_from_roots`
-  returned `LoadError`).
+- `1` — at least one `error`-level diagnostic. This includes an unreadable
+  `--module-dir` root (nonexistent, permission denied, not a directory):
+  that root is skipped and reported as an `error`-level diagnostic naming
+  it, not a hard failure — other roots are still scanned.
+- `2` — a malformed manifest **file** inside an otherwise-readable root
+  (bad TOML, schema violation, missing companion `.wasm`); `load_modules_from_roots`
+  returned `LoadError`.
 
 ```
 pnp_cli module diagnose --module-dir modules/core-modules

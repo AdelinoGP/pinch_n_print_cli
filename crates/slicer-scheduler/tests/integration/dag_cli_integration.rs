@@ -248,12 +248,11 @@ fn diagnose_clean_core_modules_returns_pass_true_exit_zero() {
 }
 
 #[test]
-fn diagnose_unreadable_module_dir_exits_two() {
-    // Pointing at a single non-existent path that the loader cannot scan
-    // should exit code 2 (unreadable files) per the spec exit-code contract.
-    // The CLI only fails with code 2 when load_modules_from_roots itself
-    // errors. assemble_search_roots silently drops nonexistent paths, so to
-    // force the LoadError path we craft a manifest that is malformed.
+fn diagnose_malformed_manifest_exits_two() {
+    // A malformed manifest *file* inside an otherwise-readable module root
+    // still goes through ingest_manifest's hard LoadError path (unaffected
+    // by the nonexistent-root graceful-skip fix below), so this stays a
+    // deterministic exit 2 per the spec exit-code contract.
     let tmp = std::env::temp_dir().join("dag_cli_unreadable");
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).unwrap();
@@ -270,15 +269,48 @@ fn diagnose_unreadable_module_dir_exits_two() {
         .arg("--no-default-module-paths")
         .output()
         .expect("spawn");
-    // Either 1 (diagnostics emitted with errors) or 2 (LoadError) is
-    // acceptable: a malformed manifest may surface either as a hard
-    // LoadError or as a diagnostic at the `Error` level depending on the
-    // failure mode. Both indicate a broken module tree per the spec.
-    let code = output.status.code().expect("exited");
-    assert!(
-        code == 1 || code == 2,
-        "expected exit 1 or 2 for malformed module dir, got {code}\nstdout: {}\nstderr: {}",
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected exit 2 for malformed module dir\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn diagnose_nonexistent_module_dir_exits_one() {
+    // A --module-dir root that doesn't exist on disk at all is no longer a
+    // hard LoadError: load_modules_from_roots downgrades an unreadable root
+    // to an error-level diagnostic and keeps scanning (empty result here,
+    // since it's the only root), so this now exits 1, not 2.
+    let tmp = std::env::temp_dir().join("dag_cli_nonexistent_root");
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let output = Command::new(bin())
+        .arg("module")
+        .arg("diagnose")
+        .arg("--module-dir")
+        .arg(&tmp)
+        .arg("--no-default-module-paths")
+        .output()
+        .expect("spawn");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "expected exit 1 for a nonexistent module root\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Value = serde_json::from_str(&stdout).expect("json");
+    assert_eq!(json["pass"].as_bool(), Some(false));
+    assert_eq!(json["modules_loaded"].as_u64(), Some(0));
+    let diagnostics = json["diagnostics"].as_array().unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d["level"].as_str() == Some("error")),
+        "expected an error-level diagnostic naming the bad root: {diagnostics:?}"
     );
 }
