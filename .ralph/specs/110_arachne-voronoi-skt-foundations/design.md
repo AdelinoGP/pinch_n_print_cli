@@ -37,6 +37,8 @@ Rejected alternatives:
 
 For T-P96-E: per-color preprocessing AT THE BOUNDARY (NOT per-edge mask, NOT post-VD edge skipping). The boundary contraction happens before `voronoi_from_segments` is called per color. This matches OrcaSlicer's MMU Arachne path per the T-P96-A0 investigation: Orca preprocesses per-color cells, then runs Arachne normally on each. Rejected: per-edge skip-mask reuse from Classic (T-P96-C0..C2). Reason: SkeletalTrapezoidation traces walls through the half-edge graph at runtime — there's no "edge to skip" at output time because the wall isn't a polygon edge anymore.
 
+> **Correction (post-closure):** the boundary-contraction design above was NOT what shipped. ADR-0013's current doctrine (lines 9, 29, 32, 40) states there is no skip mask, no per-edge ownership, and no tie-break rule — Arachne was brought in line with Classic so per-color isolation happens entirely upstream, during layer/region segmentation. Verification against OrcaSlicer's canonical `PerimeterGenerator.cpp:2600-2653` (`process_arachne()`) confirms Arachne itself contains zero color-aware logic. `preprocess_per_color_inputs` therefore ships as a validated pass-through (no contraction, no `TieBreakRule`) that trusts the upstream partition and only logs a warning on non-overlap violations. See `closure-log.md` §3 for full citations.
+
 ## Code Change Surface
 
 Primary files (≤ 3 per step; aggregate listed for the packet):
@@ -61,9 +63,12 @@ Primary files (≤ 3 per step; aggregate listed for the packet):
 | `crates/slicer-core/tests/preprocess_golden.rs` | NEW | Step 5 | AC-6 + AC-7 + AC-N3 |
 | `crates/slicer-core/tests/fixtures/arachne_preprocess/` | NEW | Step 5 | Raw-outline + 4-color cells |
 | `modules/core-modules/arachne-perimeters/` (new dir + manifest + src/lib.rs + Cargo.toml) | NEW (P108 emptied the path) | Step 6 | Fresh skeleton: `incompatible-with = ["com.core.classic-perimeters"]` only; empty `LayerModule` impl + `warn!`; add workspace member in root `Cargo.toml` |
+| `Cargo.toml` (workspace root) | EDIT | Step 6 | Add `modules/core-modules/arachne-perimeters` as an explicit workspace member |
+| `Cargo.lock` | EDIT | Steps 2,6 | Mechanical — new/changed dependency resolution from the boostvoronoi feature-gate change (Step 2) and the new arachne-perimeters workspace member (Step 6) |
 | `crates/slicer-runtime/tests/unit/dag_validation_tdd.rs` | EDIT | Step 6 | AC-N2 test `dag_rejects_arachne_and_classic_coexistence`; file already exists at `tests/unit/`; already registered in `tests/unit/main.rs:15`; use `--test unit` |
 | `docs/01_system_architecture.md` | EDIT | Step 7 | slicer-core sub-module entries |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | EDIT | Step 7 | Flip rows to DONE |
+| `docs/07_implementation_status.md` | EDIT | Step 7 | Flip the P110 checkbox to done — this file names this packet's task IDs (T-200..T-205) directly and would otherwise go stale after the roadmap's own DONE flip |
 
 ## Read-Only Context
 
@@ -111,6 +116,7 @@ The implementer MUST NOT directly read:
 - **`SkeletalTrapezoidationGraph`**: extends `HalfEdgeGraph` with per-edge `r_min: f64`, `r_max: f64`, `central: bool` (default false). R-values are slicer-unit distances.
 - **`PreprocessParams`**: bundles `epsilon_offset: f64`, `simplify_epsilon: f64`, `min_feature_size: f64`. Defaults match OrcaSlicer (translated through the /100 rule).
 - **`TieBreakRule`**: enum `{ LowerToolIndexWins, HigherToolIndexWins, Custom(fn(ToolIndex, ToolIndex) -> ToolIndex) }`. Default `LowerToolIndexWins` per ADR-0013.
+  > **Correction (post-closure):** no `TieBreakRule` type exists in the shipped code. ADR-0013 (lines 9, 29, 32, 40) retired the tie-break model; OrcaSlicer's `PerimeterGenerator.cpp:2600-2653` confirms Arachne has no color-aware logic. `preprocess_per_color_inputs` is a pass-through. See `closure-log.md` §3.
 - **`VoronoiError`**: `{ EmptyInput, DegenerateInput(String), InternalBoostError(String) }`. Not panicking — every error path returns `Err`.
 
 ## Locked Assumptions and Invariants

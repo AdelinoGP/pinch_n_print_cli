@@ -813,3 +813,46 @@ fn all_core_module_manifests_accept_current_host_ir_schema() {
         ir_errors
     );
 }
+
+// ============================================================================
+// P110 AC-N2: arachne-perimeters declares `incompatible-with =
+// ["com.core.classic-perimeters"]` in its manifest because both modules
+// hold the `perimeter-generator` claim for `Layer::Perimeters` and would
+// otherwise compete to produce `PerimeterIR` for the same stage. A DAG that
+// loads both must fail startup DAG validation via the
+// IncompatibilityDeclarations pass.
+// ============================================================================
+
+#[test]
+fn dag_rejects_arachne_and_classic_coexistence() {
+    let stage = "Layer::Perimeters";
+    let arachne = loaded_module("com.core.arachne-perimeters", stage)
+        .with_reads(&["SliceIR", "PaintRegionIR"])
+        .with_writes(&["PerimeterIR"])
+        .with_claims(&["perimeter-generator"])
+        .with_incompatible_with(&["com.core.classic-perimeters"]);
+    let classic = loaded_module("com.core.classic-perimeters", stage)
+        .with_reads(&["SliceIR", "PaintRegionIR"])
+        .with_writes(&["PerimeterIR"])
+        .with_claims(&["perimeter-generator"]);
+    let request = DagValidationRequest {
+        modules: vec![arachne.clone().build(), classic.clone().build()],
+        stage_dags: vec![stage_dag(stage, &[arachne, classic])],
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    assert!(
+        report.errors.iter().any(|diagnostic| {
+            diagnostic.pass == DagValidationPass::IncompatibilityDeclarations
+                && matches!(diagnostic.detail, SchedulerError::IncompatibleModules { .. })
+        }),
+        "expected IncompatibleModules error (IncompatibilityDeclarations pass) when both \
+         com.core.arachne-perimeters and com.core.classic-perimeters are loaded together; got: {:#?}",
+        report.errors
+    );
+}

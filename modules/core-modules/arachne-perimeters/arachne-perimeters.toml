@@ -1,0 +1,38 @@
+[module]
+id           = "com.core.arachne-perimeters"
+version      = "0.1.0"
+display-name = "Arachne Perimeters (skeleton)"
+description  = "Arachne variable-width perimeter generator (M2 foundations skeleton — walls not yet produced, see P112)"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::Perimeters"
+
+[ir-access]
+reads  = ["SliceIR", "PaintRegionIR"]
+writes = ["PerimeterIR"]
+
+[claims]
+holds    = ["perimeter-generator"]
+requires = []
+
+[compatibility]
+incompatible-with = ["com.core.classic-perimeters"]
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema]
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 10
+layer-parallel-safe    = true

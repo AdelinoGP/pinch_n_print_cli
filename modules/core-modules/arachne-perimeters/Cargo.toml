@@ -1,0 +1,26 @@
+[package]
+name = "arachne-perimeters"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Arachne variable-width perimeter generator skeleton implementing LayerModule for Layer::Perimeters stage (M2 foundations, P110)"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+# Required by the `#[slicer_module]` macro's wasm32-only component export
+# glue. On native builds the emitted `wit_bindgen::generate!` call is
+# gated behind `#[cfg(target_arch = "wasm32")]` and never expanded, so
+# wit-bindgen is only pulled into the dependency graph when compiling
+# this crate for the `wasm32-unknown-unknown` target via the companion
+# `wit-guest/` subcrate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen.workspace = true
+
+[dev-dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+
+[lints]
+workspace = true

@@ -860,6 +860,18 @@ generation order into the configured `wall_sequence` print order:
 own wall sequencing; the in-module wall tree is discarded after `wall_sequence_reorder`
 returns and the ordered `Vec<WallLoop>` is committed to `PerimeterIR`.
 
+Packet 110 added three further modules to `crates/slicer-core/src/`, laying the M2
+real-Arachne foundations:
+`voronoi` — thin wrapper around the `boostvoronoi` crate; `voronoi_from_segments`
+builds a `HalfEdgeGraph` from input segments; host-algos gated (not available in WASM
+guests). `skeletal_trapezoidation` — Orca-shaped half-edge graph
+(`SkeletalTrapezoidationGraph`) built on top of `voronoi`'s output, carrying per-edge
+`r_min`/`r_max`/`central` fields; also includes `discretize_parabolic_edge` for
+converting parabolic Voronoi edges to polylines; host-algos gated. `arachne::preprocess`
+— the 9-stage Arachne input-outline preprocessing pipeline (`preprocess_input_outline`)
+ported from OrcaSlicer's `WallToolPaths.cpp`, plus `preprocess_per_color_inputs` for
+MMU per-color boundary validation; NOT host-algos gated (pure polygon math).
+
 ---
 
 ## `PostPass::LayerFinalization` Module Constraint

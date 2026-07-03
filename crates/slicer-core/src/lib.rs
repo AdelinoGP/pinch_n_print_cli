@@ -18,6 +18,8 @@ pub mod aabb_tree;
 /// Pure algorithm modules (available only with the `host-algos` feature).
 #[cfg(feature = "host-algos")]
 pub mod algos;
+/// Arachne input preprocessing (M2 Arachne port, packet 110 step 5).
+pub mod arachne;
 pub mod flow;
 pub mod geometry;
 #[cfg(feature = "host-algos")]
@@ -25,9 +27,13 @@ pub mod medial_axis;
 pub mod perimeter_utils;
 pub mod polygon_ops;
 pub mod polygon_tree;
+#[cfg(feature = "host-algos")]
+pub mod skeletal_trapezoidation;
 pub mod stage_io;
 pub mod top_surface_split;
 pub mod triangle_mesh_slicer;
+#[cfg(feature = "host-algos")]
+pub mod voronoi;
 
 use slicer_ir::{Point2, Point3, Point3WithWidth};
 

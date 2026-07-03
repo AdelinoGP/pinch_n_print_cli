@@ -9,7 +9,7 @@
   - `T-203` — Discretize parabolic VD edges to line segments via `discretize_parabolic_edge(focus, line_a, line_b, max_segment_len)`.
   - `T-204` — Port the 9-stage pre-processing pipeline from `WallToolPaths.cpp:590-604` (triple-offset, simplify, fixSelfIntersections, removeSmallAreas, etc.) into `arachne::preprocess::preprocess_input_outline`.
   - `T-205` — CREATE the new `modules/core-modules/arachne-perimeters/` skeleton (NEW directory, manifest with `id = "com.core.arachne-perimeters"`, `incompatible-with = ["com.core.classic-perimeters"]`, empty `LayerModule` impl that returns `Ok(())` + emits a `warn!`). P108 (`implemented`) already DELETED the old fake `arachne-perimeters/`; the path is confirmed absent, so this is a clean create. Add as a new workspace member in root `Cargo.toml`.
-  - `T-P96-E` — `[blocked: D-15]` Arachne MMU dedup at boundary level (NOT per-edge wall mask). Preprocessing of per-color input contour before SkeletalTrapezoidation: each color's input cell has bisector edges with neighboring different-color cells contracted/removed per the tie-break rule. The result is per-color preprocessed input cells that Arachne ingests normally. Adds `preprocess_per_color_inputs` to `arachne/preprocess.rs`.
+  - `T-P96-E` — `[blocked: D-15]` Arachne MMU dedup at boundary level (NOT per-edge wall mask). Preprocessing of per-color input contour before SkeletalTrapezoidation: each color's input cell has bisector edges with neighboring different-color cells contracted/removed per the tie-break rule. The result is per-color preprocessed input cells that Arachne ingests normally. Adds `preprocess_per_color_inputs` to `arachne/preprocess.rs`. **CORRECTION (post-implementation):** the bisector-edge contraction / tie-break-rule mechanism described above was found to be based on a since-retired ADR-0013 model and was NOT what shipped. The shipped `preprocess_per_color_inputs` is a validated pass-through (no `TieBreakRule`, no contraction) — per-color isolation happens upstream in the paint/region-split pipeline, and Arachne itself is color-blind, confirmed against current ADR-0013 doctrine and canonical OrcaSlicer source. See `closure-log.md` item 3 for full detail.
 - Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -32,7 +32,7 @@ This is a NEW-CODE-HEAVY packet: every task creates files (ADR, voronoi.rs, skel
 - `crates/slicer-core/src/lib.rs` — `pub mod voronoi;` + `pub mod skeletal_trapezoidation;` + `pub mod arachne;` registration.
 - `crates/slicer-core/src/voronoi.rs` (NEW) — `voronoi_from_segments`, `Segment`, `HalfEdgeGraph`, `VoronoiError`. Uses `slicer_ir::Point2` (i64, `crates/slicer-ir/src/slice_ir.rs:81`).
 - `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` (NEW) + `graph.rs` (NEW) + `discretize.rs` (NEW).
-- `crates/slicer-core/src/arachne/mod.rs` (NEW) + `preprocess.rs` (NEW — both 9-stage pipeline + T-P96-E `preprocess_per_color_inputs`).
+- `crates/slicer-core/src/arachne/mod.rs` (NEW) + `preprocess.rs` (NEW — both 9-stage pipeline + T-P96-E `preprocess_per_color_inputs`). **CORRECTION (post-implementation):** shipped as a validated pass-through, not a tie-break contraction — see `closure-log.md` item 3.
 - `crates/slicer-core/tests/voronoi_stress.rs` (NEW) — 3 stress fixtures.
 - `crates/slicer-core/tests/skt_graph_golden.rs` (NEW) — square + wedge golden fixtures.
 - `crates/slicer-core/tests/preprocess_golden.rs` (NEW) — raw-outline fixture + per-color MMU dedup fixture.
@@ -92,9 +92,9 @@ Files to inspect for this packet:
 | --- | --- | --- |
 | `cargo check --workspace --all-targets` | Cross-crate compile after slicer-core additions + new module | FACT pass/fail; SNIPPETS ≤ 20 lines on fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clippy gate | FACT pass/fail |
-| `cargo test -p slicer-core voronoi 2>&1 \| tee target/test-output.log` | AC-2 + AC-3 + AC-N1 | FACT pass/fail per test |
-| `cargo test -p slicer-core skt_graph 2>&1 \| tee target/test-output.log` | AC-4 | FACT pass/fail |
-| `cargo test -p slicer-core parabolic_discretize 2>&1 \| tee target/test-output.log` | AC-5 | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos voronoi 2>&1 \| tee target/test-output.log` | AC-2 + AC-3 + AC-N1 | FACT pass/fail per test |
+| `cargo test -p slicer-core --features host-algos skt_graph 2>&1 \| tee target/test-output.log` | AC-4 | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos parabolic_discretize 2>&1 \| tee target/test-output.log` | AC-5 | FACT pass/fail |
 | `cargo test -p slicer-core preprocess 2>&1 \| tee target/test-output.log` | AC-6 + AC-7 + AC-N3 | FACT pass/fail |
 | `cargo xtask build-guests --check` | AC-8 WASM skeleton | FACT clean / STALE list |
 | `cargo test -p slicer-runtime --test unit dag_rejects_arachne_and_classic_coexistence 2>&1 \| tee target/test-output.log` | AC-N2 (DAG tests live in `tests/unit/dag_validation_tdd.rs`, not `tests/contract/`) | FACT pass/fail |

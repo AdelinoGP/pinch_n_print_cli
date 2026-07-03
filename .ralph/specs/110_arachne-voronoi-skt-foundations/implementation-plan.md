@@ -35,7 +35,7 @@ The packet does NOT activate any new IR fields, so schema versioning is untouche
 - **Context cost:** M.
 - **Authoritative docs:** `docs/adr/0023-arachne-port-strategy.md` (Step 1 output), https://docs.rs/boostvoronoi/.
 - **OrcaSlicer refs:** None this step (wrapper is boostvoronoi-shaped, not OrcaSlicer-shaped).
-- **Narrow verification:** `cargo test -p slicer-core voronoi_square_four_segments 2>&1 | tee target/test-output.log` + `cargo test -p slicer-core voronoi_stress 2>&1 | tee target/test-output.log` + `cargo test -p slicer-core voronoi_empty_input_returns_err 2>&1 | tee target/test-output.log`.
+- **Narrow verification:** `cargo test -p slicer-core --features host-algos voronoi_square_four_segments 2>&1 | tee target/test-output.log` + `cargo test -p slicer-core --features host-algos voronoi_stress 2>&1 | tee target/test-output.log` + `cargo test -p slicer-core --features host-algos voronoi_empty_input_returns_err 2>&1 | tee target/test-output.log`.
 - **Cheapest falsifying check:** AC-N1 first — run `voronoi_empty_input_returns_err`. If it panics (i.e., wrapper forwards empty input to boostvoronoi which panics), the error variant isn't being checked at the API boundary.
 
 ## Step 3 — Skeletal Trapezoidation Graph (T-202)
@@ -50,7 +50,7 @@ The packet does NOT activate any new IR fields, so schema versioning is untouche
 - **Context cost:** M.
 - **Authoritative docs:** OrcaSlicer SkeletalTrapezoidation.cpp half-edge layout (via dispatch).
 - **OrcaSlicer refs:** delegated per OrcaSlicer Reference Obligations.
-- **Narrow verification:** `cargo test -p slicer-core skt_graph_square_and_wedge 2>&1 | tee target/test-output.log`.
+- **Narrow verification:** `cargo test -p slicer-core --features host-algos skt_graph_square_and_wedge 2>&1 | tee target/test-output.log`.
 - **Cheapest falsifying check:** `rg -n 'r_min' crates/slicer-core/src/skeletal_trapezoidation/graph.rs && rg -n 'r_max' crates/slicer-core/src/skeletal_trapezoidation/graph.rs && rg -n 'central' crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — three matches expected.
 
 ## Step 4 — Parabolic Edge Discretization (T-203)
@@ -65,7 +65,7 @@ The packet does NOT activate any new IR fields, so schema versioning is untouche
 - **Context cost:** S.
 - **Authoritative docs:** OrcaSlicer parabolic discretization math (via dispatch).
 - **OrcaSlicer refs:** delegated.
-- **Narrow verification:** `cargo test -p slicer-core parabolic_discretize_matches_orca 2>&1 | tee target/test-output.log`.
+- **Narrow verification:** `cargo test -p slicer-core --features host-algos parabolic_discretize_matches_orca 2>&1 | tee target/test-output.log`.
 - **Cheapest falsifying check:** Hausdorff distance between output polyline and recorded OrcaSlicer reference ≤ 0.005 mm (50 units).
 
 ## Step 5 — 9-Stage Preprocess + T-P96-E Per-Color MMU Dedup (T-204, T-P96-E)

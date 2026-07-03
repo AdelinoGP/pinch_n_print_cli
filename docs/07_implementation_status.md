@@ -311,7 +311,7 @@ Packets implementing the [`docs/specs/perimeter-modules-orca-parity-roadmap.md`]
 
 ### M2 — Real Arachne
 
-- [ ] **P110 — Voronoi + SKT foundations** (T-200..T-205). `boostvoronoi` integration, SkeletalTrapezoidation graph, discretization, pre-processing.
+- [x] **P110 — Voronoi + SKT foundations** (T-200..T-205). `boostvoronoi` integration, SkeletalTrapezoidation graph, discretization, pre-processing. All 7 implementation steps, 8 ACs + 3 negative ACs green; full workspace check/clippy/build-guests passed — implemented, see `.ralph/specs/110_arachne-voronoi-skt-foundations/closure-log.md`. Closed 2026-07-03.
 - [ ] **P111 — BeadingStrategy stack** (T-210..T-218). 5-strategy beading, junction width assignment, bead-count propagation.
 - [ ] **P112 — Extrusion + wire-up** (T-220..T-233). ExtrusionLine/Junction types, variable-width wall emission, MMU dedup, parity harness extension.
 
