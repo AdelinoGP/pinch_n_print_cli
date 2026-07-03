@@ -30,6 +30,7 @@ use slicer_core::polygon_ops::{
     difference_ex, offset, offset2_ex, opening_ex, remove_small_and_small_holes, OffsetJoinType,
 };
 use slicer_core::top_surface_split::split_top_surfaces;
+use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
     ExtrusionRole, LoopType, PaintSemantic, PaintValue, WallLoop, WidthProfile,
@@ -297,6 +298,7 @@ impl LayerModule for ClassicPerimeters {
                 .iter()
                 .any(|(sem, val)| sem == "fuzzy_skin" && matches!(val, PaintValue::Flag(true)));
             let overhang_areas = region.overhang_areas();
+            let overhang_bands = region.overhang_quartile_polygons();
             if extra_perimeters_on_overhangs && !overhang_areas.is_empty() {
                 // T-077 (P108): one extra wall loop inside the overhang
                 // footprint, base wall count elsewhere. Reuses the
@@ -328,6 +330,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
+                        overhang_bands,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -354,6 +357,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
+                        overhang_bands,
                     )?;
                 }
             } else if only_one_wall_top && matches!(top_shell, Some(n) if n > 0) {
@@ -382,6 +386,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
+                        overhang_bands,
                     )?;
                 }
                 if !split.non_top_portion.is_empty() {
@@ -408,6 +413,7 @@ impl LayerModule for ClassicPerimeters {
                         rid,
                         medial_axis_enabled,
                         seam_candidate_angle_threshold_deg,
+                        overhang_bands,
                     )?;
                 }
             } else {
@@ -434,6 +440,7 @@ impl LayerModule for ClassicPerimeters {
                     rid,
                     medial_axis_enabled,
                     seam_candidate_angle_threshold_deg,
+                    overhang_bands,
                 )?;
             }
         }
@@ -499,6 +506,7 @@ impl ClassicPerimeters {
         region_id: u64,
         medial_axis_enabled: bool,
         seam_candidate_angle_threshold_deg: f32,
+        overhang_bands: &[QuartileBand],
     ) -> Result<(), ModuleError> {
         // P109 degeneracy guard: a contour needs >=3 non-collinear vertices
         // (strictly positive enclosed area) to be offsettable. Clipper's polygon
@@ -638,6 +646,7 @@ impl ClassicPerimeters {
                         outer_wall_line_width,
                         inner_wall_line_width,
                     ),
+                    overhang_bands,
                 );
                 if points.is_empty() {
                     continue;
@@ -958,7 +967,9 @@ impl ClassicPerimeters {
                 ExtrusionRole::InnerWall
             };
             for poly in &inset_result {
-                let points = expolygon_to_path3d(&poly.contour, z, width);
+                // Non-planar shells are an explicitly separate concern (D-3); never
+                // stamp overhang_quartile here.
+                let points = expolygon_to_path3d(&poly.contour, z, width, &[]);
                 if points.is_empty() {
                     continue;
                 }

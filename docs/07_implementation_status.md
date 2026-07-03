@@ -185,7 +185,7 @@ Last updated: 2026-06-02
 - [ ] TASK-141a Update docs/07 dependency ordering and workstream sequencing whenever a remediation task is added, split, or closed. Supports DEV-030.
 - [ ] TASK-141b Keep `docs/DEVIATION_LOG.md` synchronized with every open architectural deviation, linked task IDs, and close status. Supports DEV-030 and live-registry hygiene for the acceptance gate.
 - [ ] TASK-141c Remove stale blocker summaries and closure notes from docs/11 and docs/12 as their owning tasks land. Supports DEV-030.
-- [ ] TASK-154 Enforce `min_host_version` at startup and add semver pass/fail coverage for compatible and incompatible manifests. Covers DEV-026.
+- [x] TASK-154 Enforce `min_host_version` at startup and add semver pass/fail coverage for compatible and incompatible manifests. Covers DEV-026. **Closed 2026-07-03 — corrects stale status, not new work: `DagValidationPass::HostVersionCompatibility` (`crates/slicer-scheduler/src/validation.rs:346,649,647`) and `run.rs:412-418` landed in an earlier commit (`ca8fe483`) but this checkbox and the DEV-026 log row were never updated to reflect it until now.**
 - [ ] TASK-155 Make manifest-schema validation surface a real `Schema` failure for missing or invalid schema declarations, with CLI and host regression tests. Continues DEV-026.
 - [ ] TASK-156 Add runtime-budget evidence collection for docs/12 memory, host-call, and full-slice time thresholds, plus reproducible benchmark/report hooks. Continues DEV-026.
 - [x] TASK-200 Workspace-wide `Default` / builder ergonomics migration per [`docs/specs/default-builder-migration.md`](./specs/default-builder-migration.md) — 271 production structs classified into 71 Bucket A (`#[derive(Default)]`), 28 Bucket B (manual `impl Default`), 5 Bucket C (consuming-style builders), 167 Bucket D (untouched). Spec status: ready for implementation; all §11 open questions resolved 2026-05-17. Next worker starts on TASK-200a (no gating questions remain). Land chunks in order: each chunk is a separate PR, independently mergeable with green `cargo check --workspace` and the chunk's narrow tests; full `cargo test --workspace` runs at chunk close via sub-agent dispatch per CLAUDE.md test discipline.
@@ -256,10 +256,9 @@ below is a **generated snapshot** of the open set — do not hand-edit it. Run
 For closed deviations and their closure detail, read the log directly.
 
 <!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->
-- **DEV-009** (Open — 2026-07-03: seam placement, retract/unretract, and top/bottom-surface evidence confirmed closed; remaining open items are smoothed-speed mode, six-band schedule parity, ADD_INTERSECTIONS splitting, curled-edge slowdown (not yet re-verified)) — The Phase H Benchy run is only partially correct on the live path: .gcode is produced, but top/bottom fill, supports, seam placement, retract/unretract behavio…
-- **DEV-010** (Open) — The implementation is past MVP, but the Architecture Acceptance Gate has not yet been evaluated and the remaining governance closure work is still open.
-- **DEV-026** (Open — 2026-07-03: narrowed to (1) min_host_version never compared at startup and (3) gate-evidence fixtures still unmaterialised; (2) manifest Schema error path is closed) — Startup validation still misses several compatibility and governance checks beyond the WIT-source/version problem tracked in DEV-014.
-- **DEV-039** (Open — packet-local fallback; future packets 36/37 inherit the same XY-containment guard; file moved to slicer-core (2026-07-03)) — Packet 35 — bounding-box fallback for empty slice polygons.
+- **DEV-009** (Open — 2026-07-03: seam placement, retract/unretract, top/bottom-surface evidence, T-024/T-077 overhang-quartile propagation, and curled-edge slowdown are all closed; six-band schedule is an accepted permanent deviation (not open work); remaining open items are smoothed-speed mode and ADD_INTERSECTIONS mid-segment splitting) — The Phase H Benchy run is only partially correct on the live path: .gcode is produced, but top/bottom fill, supports, seam placement, retract/unretract behavio…
+- **DEV-026** (Open — 2026-07-03: narrowed to the peak-RSS/500-layer half of gap (3) only; the 50-layer time-budget half now has reproducible evidence (~438ms, well under 10s); (1) min_host_version startup check and (2) manifest Schema error path are both closed) — Startup validation still misses several compatibility and governance checks beyond the WIT-source/version problem tracked in DEV-014.
+- **DEV-039** (Open — packet-local fallback; future packets 36/37 inherit the same XY-containment guard; file moved to slicer-core (2026-07-03); text corrected 2026-07-03 (line range, real consumer, real test)) — Packet 35 — bounding-box fallback for empty slice polygons.
 - **DEV-070** (Open — 2026-07-03: manifest deregistration + classic-perimeters ownership landed in P105, but path-optimization-default's src/lib.rs still internally reads wall_sequence for its own NN priority; doc07 TASK-054 overclaims full closure) — Packet 61 — wall_sequence config registered in path-optimization-default despite ADR-0011 mandating perimeter-module ownership.
 - **DEV-081** (Open — closes at packet 140 (lightning module rewrite per ADR-0029)) — Infill-parity effort (transitional).
 - **DEV-082** (Open — 2026-07-03: manifest never declared the required claims (dead-on-arrival bug, not a shipped divergence); fix scoped in packet 135_gyroid-raw-emit) — Infill-parity effort — intended as a deliberate divergence, but shipped incomplete.
@@ -333,7 +332,7 @@ These commits are upstream prerequisites for spec packets and must land before t
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-120c, TASK-136, TASK-140, TASK-154, TASK-155, TASK-156
+- Blocking tasks: TASK-120c, TASK-136, TASK-140, TASK-155, TASK-156
 
 ### Evidence Links
 

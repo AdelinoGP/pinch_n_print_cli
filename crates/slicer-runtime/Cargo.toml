@@ -86,5 +86,9 @@ harness = false
 name = "shell_classification"
 harness = false
 
+[[bench]]
+name = "gate_evidence"
+harness = false
+
 [lints]
 workspace = true

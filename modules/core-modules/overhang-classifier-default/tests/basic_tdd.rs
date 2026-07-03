@@ -54,7 +54,10 @@ fn wall_square_with_quartile(
     )
 }
 
-/// Config with non-zero overhang speeds and base wall speeds.
+/// Config with non-zero overhang speeds and base wall speeds. Also sets
+/// `line_width` (matches `wall_square_with_quartile`'s hardcoded 0.4mm point
+/// width) — required for the curl pathway to activate at all; without it
+/// `flow_width` resolves to 0.0 and curl computation is a defensive no-op.
 fn overhang_config() -> slicer_ir::ConfigView {
     ConfigViewBuilder::new()
         .float("outer_wall_speed", 60.0)
@@ -64,6 +67,7 @@ fn overhang_config() -> slicer_ir::ConfigView {
         .float("overhang_2_4_speed", 40.0)
         .float("overhang_3_4_speed", 50.0)
         .float("overhang_4_4_speed", 60.0)
+        .float("line_width", 0.4)
         .build()
 }
 
@@ -175,6 +179,142 @@ fn quartile_four_is_honored() {
         speed_factors,
         vec![60.0_f32 / 60.0_f32],
         "expected a SetSpeedFactor mutation matching overhang_4_4_speed / outer_wall_speed"
+    );
+}
+
+/// DEV-009 curled-edge slowdown: a wall directly above a previous-layer wall
+/// that itself curled (via a small lateral offset from ITS OWN previous
+/// layer) receives a `SetSpeedFactor` mutation driven purely by curl — every
+/// vertex on all three layers carries `overhang_quartile: None`, isolating
+/// the curl-only pathway from the pre-existing overhang pathway.
+///
+/// Three layers: layer 0 is the (curl-free, since it has no layer below)
+/// reference geometry; layer 1 is offset 0.3mm in X from layer 0, which
+/// falls inside the malformation distance band `(0.2, 1.1) * line_width`
+/// (line_width = 0.4mm), so its own curled_height comes out positive; layer 2
+/// sits at the SAME XY position as layer 1, well within `dist_limit = 10 *
+/// line_width`, so it must observe layer 1's curl and slow down.
+#[module_test]
+fn curled_edge_triggers_slowdown_on_next_layer() {
+    let cfg = overhang_config();
+    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+
+    let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
+    let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
+    let layer2 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.4, 0, 2, None);
+
+    let views = vec![
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(0)
+            .z(0.0)
+            .add_entity(layer0)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(1)
+            .z(0.2)
+            .add_entity(layer1)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(2)
+            .z(0.4)
+            .add_entity(layer2)
+            .build(),
+    ]
+    .into_iter()
+    .map(LayerCollectionView::new)
+    .collect::<Vec<_>>();
+
+    let mut output = FinalizationOutputBuilder::new();
+    classifier
+        .run_finalization(&views, &mut output, &cfg)
+        .expect("run_finalization must succeed");
+
+    // Layer 0 and layer 1 must NOT receive a curl-driven mutation: layer 0 has
+    // no layer below (curled_height forced to 0.0), and layer 1's only
+    // reference (layer 0) has curled_height 0.0, so layer 1's own consumption
+    // sees no curl signal either.
+    let layer0_and_1_mutations: Vec<_> = output
+        .merge_ops()
+        .filter(|op| matches!(op, MergeOp::ModifyEntity { layer: 0 | 1, .. }))
+        .collect();
+    assert!(
+        layer0_and_1_mutations.is_empty(),
+        "expected no mutations on layers 0/1 (no curl to react to yet), got: {:?}",
+        layer0_and_1_mutations
+    );
+
+    // Layer 2 must receive a SetSpeedFactor mutation driven by layer 1's curl.
+    let layer2_speed_factors: Vec<f32> = output
+        .merge_ops()
+        .filter_map(|op| match op {
+            MergeOp::ModifyEntity {
+                layer: 2,
+                entity_id: 1,
+                mutation: EntityMutation::SetSpeedFactor(f),
+            } => Some(*f),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        layer2_speed_factors.len(),
+        1,
+        "expected exactly one curl-driven SetSpeedFactor mutation on layer 2"
+    );
+    assert!(
+        layer2_speed_factors[0] < 1.0,
+        "curl-driven speed factor must slow down the entity (factor < 1.0), got {}",
+        layer2_speed_factors[0]
+    );
+}
+
+/// Control for [`curled_edge_triggers_slowdown_on_next_layer`]: a wall far
+/// away in XY from any curled geometry (well outside `dist_limit`) receives
+/// no curl-driven mutation, even though a curled layer exists below it.
+#[module_test]
+fn curled_edge_out_of_range_emits_no_mutation() {
+    let cfg = overhang_config();
+    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+
+    let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
+    let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
+    // Layer 2 is far away in X (100mm offset) — well outside dist_limit
+    // (10 * 0.4mm line width = 4.0mm).
+    let layer2 = wall_square_with_quartile(1, 100.0, 0.0, 110.0, 10.0, 0.4, 0, 2, None);
+
+    let views = vec![
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(0)
+            .z(0.0)
+            .add_entity(layer0)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(1)
+            .z(0.2)
+            .add_entity(layer1)
+            .build(),
+        LayerCollectionFixtureBuilder::new()
+            .global_layer_index(2)
+            .z(0.4)
+            .add_entity(layer2)
+            .build(),
+    ]
+    .into_iter()
+    .map(LayerCollectionView::new)
+    .collect::<Vec<_>>();
+
+    let mut output = FinalizationOutputBuilder::new();
+    classifier
+        .run_finalization(&views, &mut output, &cfg)
+        .expect("run_finalization must succeed");
+
+    let layer2_mutations: Vec<_> = output
+        .merge_ops()
+        .filter(|op| matches!(op, MergeOp::ModifyEntity { layer: 2, .. }))
+        .collect();
+    assert!(
+        layer2_mutations.is_empty(),
+        "expected no mutation on a layer-2 wall far outside dist_limit, got: {:?}",
+        layer2_mutations
     );
 }
 

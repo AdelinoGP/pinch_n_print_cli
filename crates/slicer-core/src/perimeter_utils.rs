@@ -292,23 +292,44 @@ pub fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
 /// (`ExtrusionPath::is_closed()` at `ExtrusionEntity.hpp:269`). Downstream
 /// consumers (seam-placer, fuzzy-skin, G-code emitter) rely on this so the
 /// final closing edge is processed exactly like every other wall segment.
+///
+/// `overhang_bands` classifies each vertex's `overhang_quartile` by winding-number
+/// membership against the region's quartile-band polygons (T-024-WIRE-VIEW-CONSUMER):
+/// a vertex falling in more than one band (only possible at a shared boundary, since
+/// bands are otherwise a distance-based partition) takes the most severe (highest)
+/// matching quartile, mirroring `overhang-classifier-default`'s own MAX-per-entity
+/// convention. Pass `&[]` for callers with no band data (e.g. non-planar shells,
+/// which are an explicitly separate concern — see `docs/specs/perimeter-modules-orca-parity-roadmap.md`
+/// D-3) to get the prior all-`None` behavior.
 pub fn expolygon_to_path3d(
     contour: &slicer_ir::Polygon,
     z: f32,
     width: f32,
+    overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
 ) -> Vec<Point3WithWidth> {
     let mut pts: Vec<Point3WithWidth> = contour
         .points
         .iter()
-        .map(|p| Point3WithWidth {
-            x: slicer_ir::units_to_mm(p.x),
-            y: slicer_ir::units_to_mm(p.y),
-            z,
-            width,
-            flow_factor: 1.0,
-            // overhang_quartile: None — placeholder; sibling roadmap item O-T031 in
-            // docs/specs/overhang-pipeline-restructuring.md is the future producer.
-            overhang_quartile: None,
+        .map(|p| {
+            let x = slicer_ir::units_to_mm(p.x);
+            let y = slicer_ir::units_to_mm(p.y);
+            let overhang_quartile = overhang_bands
+                .iter()
+                .filter(|band| {
+                    band.polygons.iter().any(|poly| {
+                        slicer_ir::point_in_polygon_winding(poly, f64::from(x), f64::from(y), 0.0)
+                    })
+                })
+                .map(|band| band.quartile)
+                .max();
+            Point3WithWidth {
+                x,
+                y,
+                z,
+                width,
+                flow_factor: 1.0,
+                overhang_quartile,
+            }
         })
         .collect();
     close_loop(&mut pts);

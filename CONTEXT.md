@@ -215,6 +215,29 @@ partition) as a Clipper2 offset on the wall-inset polygon before re-clipping
 raw segments. OrcaSlicer applies it inside the fill class. PnP centralizes it
 in the linker so infill modules emit geometry only.
 
+### Overhang quartile
+The discrete severity band (1 = least severe, 4 = most severe) classifying
+how far a wall vertex sits from the nearest supported edge on the layer
+below, measured in multiples of line width. Absent (`None`) means the vertex
+is fully supported — quartile 0 is not a valid state.
+_Avoid_: overhang band, overhang level
+
+### Curled height
+The estimated vertical distance (mm) a wall segment has lifted away from the
+layer below during printing, computed once per segment by comparing the
+current layer's outer wall to the previous layer's boundary and curvature.
+`None` where no previous layer exists (layer 0) or no curling was detected.
+_Avoid_: curl amount, warp height
+
+### Artificial curl distance
+A synthesized "distance from support" value derived from a nearby segment's
+**curled height** and proximity, expressed in the same units as overhang
+distance so it can be classified through the same **overhang quartile**
+bands and slowed via the same overhang speed configuration. Lets
+curl-avoidance reuse the overhang speed table on the layer above a curled
+segment, instead of a separate curl-specific one.
+_Avoid_: curl distance, synthetic distance
+
 ## Flagged ambiguities
 
 ### "region"

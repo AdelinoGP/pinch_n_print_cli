@@ -1,26 +1,27 @@
-//! Packet 107 (O-T050): end-to-end overhang-quartile propagation integration.
+//! Packet 107 (O-T050) + T-024-WIRE-VIEW-CONSUMER: end-to-end overhang-quartile
+//! propagation integration.
 //!
 //! Exercises the REAL upstream half of the pipeline (P106's
 //! `PrePass::OverhangAnnotation` builtin, via
 //! `execute_prepass_with_builtins_configured_instr` — the same production
 //! entry point `run_pipeline` uses) against an overhang-ramp mesh, and the
-//! REAL downstream half (P104's `slicer_core::perimeter_utils::expolygon_to_path3d`,
+//! REAL downstream half (P104/T-024's `slicer_core::perimeter_utils::expolygon_to_path3d`,
 //! the exact function every `Layer::Perimeters` wall-emission path calls to
-//! build `Point3WithWidth` vertices) to prove the documented AC-5 partial-state
-//! gap: PrePass produces real quartile-banded overhang data, but nothing yet
-//! copies it onto per-vertex `overhang_quartile` — that wiring is tracked as a
-//! separate follow-up (T-024-WIRE-VIEW-CONSUMER).
+//! build `Point3WithWidth` vertices) to prove full propagation: PrePass produces
+//! real quartile-banded overhang data, and `expolygon_to_path3d` — given that
+//! layer's bands — now stamps `Some(1..=4)` onto overhanging wall vertices.
 //!
 //! `overhang-classifier-default` (see
 //! `modules/core-modules/overhang-classifier-default/src/lib.rs`) is a WASM
 //! guest module; invoking it here would require full instance-pool dispatch
 //! plumbing outside this packet's context budget. Per this packet's execution
-//! rules, assertion (c) instead mirrors the classifier's exact, already-read
-//! per-entity governing rule (max per-vertex quartile over `entity.path.points`,
-//! `lib.rs` line ~63) directly against the real `expolygon_to_path3d` output —
-//! this is not a fabricated re-implementation of unrelated logic, it is the
-//! same one-line `Option<u8>` reduction the guest performs, applied to
-//! production-real vertex data instead of a mocked struct.
+//! rules, the propagation assertions instead mirror the classifier's exact,
+//! already-read per-entity governing rule (max per-vertex quartile over
+//! `entity.path.points`, `lib.rs` line ~63) directly against the real
+//! `expolygon_to_path3d` output — this is not a fabricated re-implementation
+//! of unrelated logic, it is the same one-line `Option<u8>` reduction the
+//! guest performs, applied to production-real vertex data instead of a mocked
+//! struct.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -337,13 +338,17 @@ fn run_real_overhang_prepass(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> B
 /// Builds one `PrintEntity` (an outer-wall loop) using the REAL production
 /// function `slicer_core::perimeter_utils::expolygon_to_path3d` — the exact
 /// call every `Layer::Perimeters` wall-emission path uses to turn a polygon
-/// contour into `Point3WithWidth` vertices. As of packet 104/106,
-/// `expolygon_to_path3d` (crates/slicer-core/src/perimeter_utils.rs:311)
-/// unconditionally writes `overhang_quartile: None` — this helper does NOT
-/// hand-construct that `None`; it comes from calling the real function, so
-/// this test breaks the moment that function starts propagating
-/// `Some(quartile)` (tracked as T-024-WIRE-VIEW-CONSUMER).
-fn real_wall_entity(entity_id: u64, square_mm: (f32, f32, f32, f32), z: f32) -> PrintEntity {
+/// contour into `Point3WithWidth` vertices. `overhang_bands` should be the
+/// real `SurfaceClassificationIR.overhang_quartile_polygons` entry for the
+/// wall's own layer (empty slice for layers with no overhang), so this helper
+/// does NOT hand-construct any `overhang_quartile` value — it comes entirely
+/// from calling the real function with real band data.
+fn real_wall_entity(
+    entity_id: u64,
+    square_mm: (f32, f32, f32, f32),
+    z: f32,
+    overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
+) -> PrintEntity {
     let (x0, y0, x1, y1) = square_mm;
     let contour = Polygon {
         points: vec![
@@ -353,7 +358,8 @@ fn real_wall_entity(entity_id: u64, square_mm: (f32, f32, f32, f32), z: f32) -> 
             Point2::from_mm(x0, y1),
         ],
     };
-    let points = slicer_core::perimeter_utils::expolygon_to_path3d(&contour, z, 0.4);
+    let points =
+        slicer_core::perimeter_utils::expolygon_to_path3d(&contour, z, 0.4, overhang_bands);
     PrintEntity {
         entity_id,
         path: ExtrusionPath3D {
@@ -383,13 +389,18 @@ fn classifier_governing_quartile(entity: &PrintEntity) -> Option<u8> {
 }
 
 // ============================================================================
-// AC-5: documented partial-state gap (P106 half works, P104 half doesn't yet)
+// AC-5 / T-024-WIRE-VIEW-CONSUMER: full propagation (P106 + P104 both wired)
 // ============================================================================
 
+/// Supersedes the old `overhang_pipeline_partial_state_quartile_none` gap
+/// tripwire, retired per its own instructions now that T-024-WIRE-VIEW-CONSUMER
+/// has landed: `expolygon_to_path3d` no longer unconditionally writes `None` —
+/// given the real per-layer quartile bands, it stamps `Some(1..=4)` on
+/// overhanging wall vertices.
 #[test]
-fn overhang_pipeline_partial_state_quartile_none() {
+fn overhang_pipeline_full_propagation() {
     // (a) Real PrePass::OverhangAnnotation builtin produces non-empty
-    // quartile-banded overhang data for the ramp mesh — the P106 half works.
+    // quartile-banded overhang data for the ramp mesh.
     let blackboard = run_real_overhang_prepass(overhang_ramp_mesh(), two_global_layers());
     let surface_classification = blackboard
         .surface_classification()
@@ -401,76 +412,35 @@ fn overhang_pipeline_partial_state_quartile_none() {
         surface_classification.overhang_quartile_polygons
     );
 
-    // (b) DOCUMENTED GAP (P104 side): the real `expolygon_to_path3d` function
-    // that every wall-emission path calls still writes `overhang_quartile:
-    // None` unconditionally (crates/slicer-core/src/perimeter_utils.rs:311).
-    // Follow-up: T-024-WIRE-VIEW-CONSUMER is the tracked roadmap item that
-    // will make P104 read `overhang_quartile_polygons` (from (a) above) and
-    // stamp `Some(quartile)` onto these same vertices.
-    //
-    // TRIPWIRE: if T-024-WIRE-VIEW-CONSUMER lands and `expolygon_to_path3d`
-    // (or its caller) starts writing `Some(_)`, THIS ASSERTION WILL FAIL.
-    // That failure is expected and correct — when it happens, flip this test
-    // to the full-propagation assertions in the `#[ignore]`d
-    // `overhang_pipeline_full_propagation` test below (remove the
-    // `#[ignore]`, delete this test's now-stale gap assertions).
-    let upper_wall = real_wall_entity(1, (5.0, 0.0, 15.0, 10.0), 1.5);
+    // (b) The upper box occupies global_layer_index 1 (z=1.5 in
+    // `two_global_layers()`) and its footprint (x:[5,15]) extends beyond the
+    // lower box's footprint (x:[0,10]) — the x:[10,15] strip is a real
+    // overhang region annotated against layer 1's own index. Feed that
+    // layer's real bands into `expolygon_to_path3d` via `real_wall_entity`,
+    // exactly as `classic-perimeters::emit_walls` does in production.
+    let bands = surface_classification
+        .overhang_quartile_polygons
+        .get(&1)
+        .cloned()
+        .unwrap_or_default();
+    let upper_wall = real_wall_entity(1, (5.0, 0.0, 15.0, 10.0), 1.5, &bands);
+    let quartile = classifier_governing_quartile(&upper_wall);
     assert!(
-        upper_wall
-            .path
-            .points
-            .iter()
-            .all(|p| p.overhang_quartile.is_none()),
-        "GAP TRIPWIRE FIRED: expolygon_to_path3d now writes Some(_) for overhang_quartile. \
-         This means T-024-WIRE-VIEW-CONSUMER has landed — flip \
-         overhang_pipeline_partial_state_quartile_none's assertions to match \
-         overhang_pipeline_full_propagation (un-#[ignore] it) and delete this gap test. \
-         Points: {:?}",
+        matches!(quartile, Some(1..=4)),
+        "expected an overhang wall vertex to carry Some(1..=4) once T-024 propagation \
+         is wired, got {:?}. Points: {:?}",
+        quartile,
         upper_wall.path.points
     );
 
     // (c) Consequently: the classifier's governing rule (max per-vertex
-    // quartile) yields None for this entity, so it would emit zero
-    // SetSpeedFactor mutations — even with overhang speeds configured
-    // non-zero, there is nothing for the classifier to act on yet.
-    assert_eq!(
+    // quartile) yields a real SetSpeedFactor deviation, not a no-op.
+    assert_ne!(
         classifier_governing_quartile(&upper_wall),
         None,
-        "with no vertex carrying overhang_quartile, the classifier's max-reduction \
-         must yield None, meaning zero SetSpeedFactor deviations would be emitted"
+        "with a vertex carrying overhang_quartile, the classifier's max-reduction \
+         must yield Some, meaning a real SetSpeedFactor deviation would be emitted"
     );
-}
-
-/// Full-propagation target state for `overhang_pipeline_partial_state_quartile_none`'s
-/// gap tripwire, once T-024-WIRE-VIEW-CONSUMER wires P104 to read
-/// `SurfaceClassificationIR.overhang_quartile_polygons` and stamp
-/// `Point3WithWidth.overhang_quartile = Some(1..=4)` onto overhanging wall
-/// vertices. Currently ignored: the wiring does not exist yet, so this would
-/// fail for the right reason (not yet a bug).
-#[test]
-#[ignore = "T-024-WIRE-VIEW-CONSUMER not yet implemented: no code path writes Some(_) to overhang_quartile"]
-fn overhang_pipeline_full_propagation() {
-    let blackboard = run_real_overhang_prepass(overhang_ramp_mesh(), two_global_layers());
-    let surface_classification = blackboard
-        .surface_classification()
-        .expect("SurfaceClassificationIR must be committed");
-    assert!(!surface_classification.overhang_quartile_polygons.is_empty());
-
-    // TODO(T-024-WIRE-VIEW-CONSUMER): once P104 stamps overhang_quartile from
-    // surface_classification.overhang_quartile_polygons, build the real
-    // upper-box wall entity through that wired path (not `real_wall_entity`,
-    // which calls the still-placeholder `expolygon_to_path3d`) and assert:
-    let upper_wall = real_wall_entity(1, (5.0, 0.0, 15.0, 10.0), 1.5);
-    let quartile = classifier_governing_quartile(&upper_wall);
-    assert!(
-        matches!(quartile, Some(1..=4)),
-        "expected an overhang wall vertex to carry Some(1..=4) once P104 propagation \
-         is wired, got {:?}",
-        quartile
-    );
-    // And: the classifier would then compute a non-1.0 speed factor
-    // (overhang_speed(q) / base_speed) for this entity — i.e. a real
-    // SetSpeedFactor deviation, not the no-op from the gap state above.
 }
 
 // ============================================================================
@@ -495,9 +465,14 @@ fn no_overhang_case() {
         surface_classification.overhang_quartile_polygons
     );
 
-    // Wall vertices carry overhang_quartile = None (same placeholder state as
-    // the gap test above — real expolygon_to_path3d output, not mocked).
-    let wall = real_wall_entity(1, (0.0, 0.0, 10.0, 10.0), 1.5);
+    // Wall vertices carry overhang_quartile = None: real expolygon_to_path3d
+    // output fed the real (empty) bands for this layer, not mocked.
+    let bands = surface_classification
+        .overhang_quartile_polygons
+        .get(&1)
+        .cloned()
+        .unwrap_or_default();
+    let wall = real_wall_entity(1, (0.0, 0.0, 10.0, 10.0), 1.5, &bands);
     assert!(
         wall.path
             .points

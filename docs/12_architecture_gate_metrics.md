@@ -29,8 +29,21 @@ Canonical hash method (normative):
 
 ## Resource Bounds
 
-- Memory budget: peak RSS <= 512 MB on 500-layer reference fixture.
-- Time budget: full slice <= 10 seconds on 50-layer benchy reference fixture.
+- Memory budget: peak RSS <= 512 MB on 500-layer reference fixture. **Not measurable with existing
+  instrumentation** — `AccountingAllocator` (`crates/slicer-runtime/src/report/allocator.rs`) only
+  tracks host-heap allocations and explicitly excludes WASM linear memory (wasmtime mmaps it
+  directly, bypassing `GlobalAlloc`). Deferred indefinitely per 2026-07-03 maintainer decision
+  (tracked under `TASK-156`); would need new OS-level RSS sampling around a subprocess `pnp_cli` run
+  to produce real evidence for this bound. See `docs/DEVIATION_LOG.md` DEV-026.
+- Time budget: full slice <= 10 seconds on 50-layer benchy reference fixture. **Reproducible evidence
+  exists** (2026-07-03, downgraded scope): `cargo bench -p slicer-runtime --bench gate_evidence`
+  times a real `pnp_cli slice` subprocess run against `resources/regression_wedge.stl` +
+  `resources/test_config/gate_evidence_50l.json` (a `layer_height`/`first_layer_height` override that
+  coerces the 40mm-tall fixture to exactly 50 layers, verified empirically via `;LAYER_CHANGE` count —
+  not the normatively-named `benchy_50l_0p2_single_tool` fixture below, which still doesn't exist).
+  The bench measures and reports rather than hard-failing, matching this repo's other benches
+  ("slow; not in CI" per `CLAUDE.md`) — compare the reported number against the 10-second bound
+  manually.
 - Layer budget: host rejects plans with `GlobalLayer.index >= 100_000`.
 
 ## Reference Fixture Set (Normative)
@@ -41,12 +54,15 @@ Canonical hash method (normative):
 - `high_region_count_modifier_stress_500l`
 - `support_enforcer_blocker_conflict_80l`
 
-<!-- VERIFY: at the time of writing, none of these named fixtures are
-     materialised under `resources/`. The only Benchy-family fixtures present
-     are `benchy.stl`, `cube_4color.3mf`, and `cube_cilindrical_modifier.3mf`. The
-     named-fixture set above is the gate-evidence target; the fixtures (with
-     deterministic config snapshots) must be added before a gate run can
-     produce evidence matching these IDs. -->
+<!-- VERIFY: at the time of writing (2026-07-03), none of these named fixtures are materialised
+     under `resources/`. The Benchy-family fixture originally named here (`benchy.stl`) was retired
+     under a later packet (TASK-240) in favour of the smaller `regression_wedge.stl`; the fixtures
+     present are `regression_wedge.stl`, `cube_4color.3mf`, `cube_cilindrical_modifier.3mf`,
+     `cube_fuzzyPainted.3mf`, `bridge_support_enforcers.3mf`, and `cube_positive_n_negative.3mf`. The
+     named-fixture set above remains the long-term gate-evidence target for a full scored docs/11
+     rubric pass; the time-budget bound now has a pragmatic, reproducible alternative via
+     `regression_wedge.stl` + a config override (see "Resource Bounds" above) rather than these
+     named fixtures. -->
 
 Fixture governance:
 

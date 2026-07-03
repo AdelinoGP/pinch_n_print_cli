@@ -1948,10 +1948,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 GcodeMoveCmd as WitGcodeMoveCmd,
                 OrderedEntityView as WitOrderedEntityView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                QuartileBand as WitQuartileBand,
                 RegionKey as WitRegionKey,
                 RetractMode as WitRetractMode,
                 SeamCandidate as WitSeamCandidate,
                 SeamPosition as WitSeamPosition,
+                SurfaceGroup as WitSurfaceGroup,
                 WallFeatureFlag as WitWallFeatureFlag,
                 WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
             };
@@ -1970,6 +1972,23 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 ::slicer_ir::ExPolygon {
                     contour: __slicer_wit_polygon_to_ir(&ep.contour),
                     holes: ep.holes.iter().map(__slicer_wit_polygon_to_ir).collect(),
+                }
+            }
+            fn __slicer_wit_quartileband_to_ir(qb: &WitQuartileBand) -> ::slicer_ir::slice_ir::QuartileBand {
+                ::slicer_ir::slice_ir::QuartileBand {
+                    quartile: qb.quartile,
+                    polygons: qb.polygons.iter().map(__slicer_wit_expolygon_to_ir).collect(),
+                }
+            }
+            fn __slicer_wit_surfacegroup_to_ir(sg: &WitSurfaceGroup) -> ::slicer_ir::SurfaceGroup {
+                ::slicer_ir::SurfaceGroup {
+                    id: sg.id,
+                    facet_indices: sg.facet_indices.clone(),
+                    z_min: sg.z_min,
+                    z_max: sg.z_max,
+                    area_mm2: sg.area_mm2,
+                    printable: sg.printable,
+                    shell_count: sg.shell_count,
                 }
             }
             fn __slicer_wit_role_to_ir(r: &WitExtrusionRole) -> ::slicer_ir::ExtrusionRole {
@@ -2144,6 +2163,16 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
                     sdk_view.set_sparse_infill_area(sparse_infill_area);
                     sdk_view.set_held_claims(r.held_claims());
+                    let overhang_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.overhang_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let overhang_quartile_polygons: ::std::vec::Vec<::slicer_ir::slice_ir::QuartileBand> = r
+                        .overhang_quartile_polygons()
+                        .iter()
+                        .map(__slicer_wit_quartileband_to_ir)
+                        .collect();
+                    sdk_view.set_overhang_areas(overhang_areas);
+                    sdk_view.set_overhang_quartile_polygons(overhang_quartile_polygons);
+                    sdk_view.set_surface_group(r.surface_group().as_ref().map(__slicer_wit_surfacegroup_to_ir));
                     out.push(sdk_view);
                 }
                 out
