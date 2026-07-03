@@ -168,6 +168,15 @@ pub enum SchedulerError {
         /// Host-provided version.
         available: SemVer,
     },
+    /// A module declares `min-host-version` newer than the running host.
+    HostVersionIncompatible {
+        /// Module with the incompatible requirement.
+        module: ModuleId,
+        /// Minimum host version the module requires.
+        required: SemVer,
+        /// Host version actually running.
+        available: SemVer,
+    },
     /// The exported runtime entrypoint does not match the declared stage.
     StageMismatch {
         /// Module with the mismatch.
@@ -286,7 +295,7 @@ pub struct ModuleAccessAudit {
     pub runtime_writes: Vec<String>,
 }
 
-/// Startup validation input spanning all 13 documented passes.
+/// Startup validation input spanning all 14 documented passes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DagValidationRequest {
     /// Loaded modules to validate.
@@ -295,13 +304,16 @@ pub struct DagValidationRequest {
     pub stage_dags: Vec<StageDag>,
     /// Host IR schema version available to loaded modules.
     pub host_ir_schema_version: SemVer,
+    /// Host semver of the running host, checked against each module's
+    /// declared `min-host-version` by pass 14.
+    pub host_version: SemVer,
     /// Effective claim holder snapshots for global and region scopes.
     pub claim_holders: Vec<ClaimHolder>,
     /// Optional runtime/static access audits used by pass 11.
     pub access_audits: Vec<ModuleAccessAudit>,
 }
 
-/// One of the 13 startup DAG validation passes from the scheduler contract.
+/// One of the 14 startup DAG validation passes from the scheduler contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DagValidationPass {
     /// Pass 1.
@@ -330,6 +342,8 @@ pub enum DagValidationPass {
     CrossStageDependencyLegality,
     /// Pass 13.
     TransitiveDependencyLegality,
+    /// Pass 14.
+    HostVersionCompatibility,
 }
 
 /// One structured startup validation diagnostic.
@@ -377,7 +391,7 @@ impl DagValidationReport {
     }
 }
 
-/// Runs all 13 startup DAG validation passes and aggregates diagnostics.
+/// Runs all 14 startup DAG validation passes and aggregates diagnostics.
 pub fn validate_startup_dag(request: &DagValidationRequest) -> DagValidationReport {
     let mut report = DagValidationReport::default();
     let modules_by_id: BTreeMap<_, _> = request
@@ -403,6 +417,7 @@ pub fn validate_startup_dag(request: &DagValidationRequest) -> DagValidationRepo
     validate_incompatibilities(&modules_by_id, &mut report);
     validate_missing_dependencies(request, &modules_by_id, &mut report);
     validate_ir_versions(request, &mut report);
+    validate_host_version(request, &mut report);
     validate_cycles(request, &mut report);
     validate_write_conflicts(request, &mut report);
     validate_unfulfilled_reads(request, &stage_order, &mut report);
@@ -621,6 +636,21 @@ fn validate_ir_versions(request: &DagValidationRequest, report: &mut DagValidati
                     ir_type: String::from("host-ir-schema"),
                     required: module.min_ir_schema,
                     available: request.host_ir_schema_version,
+                },
+            );
+        }
+    }
+}
+
+fn validate_host_version(request: &DagValidationRequest, report: &mut DagValidationReport) {
+    for module in &request.modules {
+        if semver_lt(request.host_version, module.min_host_version) {
+            report.push_error(
+                DagValidationPass::HostVersionCompatibility,
+                SchedulerError::HostVersionIncompatible {
+                    module: module.id.clone(),
+                    required: module.min_host_version,
+                    available: request.host_version,
                 },
             );
         }

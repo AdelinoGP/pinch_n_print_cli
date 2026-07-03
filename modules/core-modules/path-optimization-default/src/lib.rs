@@ -41,10 +41,6 @@ const DEFAULT_RETRACT_LENGTH: f32 = 0.8;
 const DEFAULT_RETRACT_SPEED: f32 = 25.0;
 const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
 
-/// Controls the order in which wall perimeters are printed.
-/// Re-exported from `slicer_core::perimeter_utils::WallSequence` per ADR-0011.
-pub use slicer_core::perimeter_utils::WallSequence;
-
 /// Deterministically permutes `entities` using a greedy nearest-neighbor
 /// heuristic starting from position (0.0, 0.0).
 ///
@@ -135,7 +131,6 @@ pub struct PathOptimizationDefault {
     retract_speed: f32,
     travel_z_hop: f32,
     retract_mode: RetractMode,
-    wall_sequence: WallSequence,
 }
 
 impl Default for PathOptimizationDefault {
@@ -146,22 +141,18 @@ impl Default for PathOptimizationDefault {
             retract_speed: DEFAULT_RETRACT_SPEED,
             travel_z_hop: DEFAULT_TRAVEL_Z_HOP,
             retract_mode: RetractMode::default(),
-            wall_sequence: WallSequence::InnerOuter,
         }
     }
 }
 
 impl PathOptimizationDefault {
+    /// Wall-loop print order (inner-before-outer vs. outer-before-inner) is owned by
+    /// the perimeter modules per ADR-0011; this priority is fixed, not config-driven.
     fn role_group(&self, role: &ExtrusionRole) -> u32 {
-        let (inner_group, outer_group) = match self.wall_sequence {
-            WallSequence::InnerOuter => (1, 2),
-            WallSequence::OuterInner => (2, 1),
-            WallSequence::InnerOuterInner => (1, 2),
-        };
         match role {
             ExtrusionRole::Skirt => 0,
-            ExtrusionRole::InnerWall => inner_group,
-            ExtrusionRole::OuterWall => outer_group,
+            ExtrusionRole::InnerWall => 1,
+            ExtrusionRole::OuterWall => 2,
             ExtrusionRole::ThinWall => 3,
             ExtrusionRole::BottomSolidInfill
             | ExtrusionRole::TopSolidInfill
@@ -271,27 +262,12 @@ impl LayerModule for PathOptimizationDefault {
             },
             _ => RetractMode::default(),
         };
-        let wall_sequence = match config.get("wall_sequence") {
-            Some(ConfigValue::String(s)) => match s.as_str() {
-                "inner_outer" => WallSequence::InnerOuter,
-                "outer_inner" => WallSequence::OuterInner,
-                "inner_outer_inner" => WallSequence::InnerOuterInner,
-                other => {
-                    return Err(ModuleError::fatal(
-                        9,
-                        format!("invalid wall_sequence '{other}'"),
-                    ));
-                }
-            },
-            _ => WallSequence::InnerOuter,
-        };
         Ok(Self {
             emit_layer_markers,
             retract_length,
             retract_speed,
             travel_z_hop,
             retract_mode,
-            wall_sequence,
         })
     }
 
@@ -532,26 +508,6 @@ mod tests {
     }
 
     #[test]
-    fn role_orders_outer_before_inner() {
-        let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-        fields.insert(
-            "wall_sequence".into(),
-            ConfigValue::String("outer_inner".into()),
-        );
-        let config = ConfigView::from_map(fields);
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
-        let entities = vec![
-            make_entity(0, ExtrusionRole::OuterWall, 0.0, 100.0),
-            make_entity(1, ExtrusionRole::InnerWall, 0.0, 10.0),
-        ];
-        let (perm, _changes) = module.group_then_nearest_neighbor(&entities);
-        assert!(
-            entities[perm[0].0 as usize].role == ExtrusionRole::OuterWall,
-            "OuterWall must precede InnerWall (outer-inner mode)"
-        );
-    }
-
-    #[test]
     fn role_orders_walls_before_infill() {
         let entities = vec![
             make_entity(0, ExtrusionRole::InnerWall, 0.0, 100.0),
@@ -656,25 +612,6 @@ mod tests {
                 i
             );
         }
-    }
-
-    #[test]
-    fn role_rejects_invalid_wall_sequence() {
-        let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-        fields.insert(
-            "wall_sequence".into(),
-            ConfigValue::String("invalid_value".into()),
-        );
-        let config = ConfigView::from_map(fields);
-        let result = PathOptimizationDefault::on_print_start(&config);
-        let err = match result {
-            Err(e) => format!("{}", e),
-            Ok(_) => panic!("invalid wall_sequence must be rejected"),
-        };
-        assert!(
-            err.contains("invalid_value"),
-            "error must contain the rejected value, got: {err}"
-        );
     }
 
     #[test]

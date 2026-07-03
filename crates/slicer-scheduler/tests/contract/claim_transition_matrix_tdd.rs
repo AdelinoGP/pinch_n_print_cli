@@ -114,6 +114,7 @@ fn request_with_per_layer_transition(
         modules: vec![module_a.clone(), module_b.clone()],
         stage_dags: vec![stage_dag_for(stage, &[module_a.clone(), module_b.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders,
         access_audits: Vec::new(),
     }
@@ -254,6 +255,7 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
         modules: vec![alpha.clone()],
         stage_dags: vec![stage_dag_for("Layer::Perimeters", &[alpha.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: vec![
             ClaimHolder {
                 claim: String::from("perimeter-generator"),

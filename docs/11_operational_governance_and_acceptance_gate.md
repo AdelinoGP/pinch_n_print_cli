@@ -52,6 +52,7 @@ Compatibility decisions must use all four dimensions:
 - Rename/remove/type change: major bump.
 - Host must reject incompatible modules at startup with explicit diagnostics.
 - Compatibility shims are allowed only for one major host line and must be documented.
+- Host semver (dimension 1) is enforced: startup DAG validation pass 14 (`HostVersionCompatibility`, `crates/slicer-scheduler/src/validation.rs`) compares each loaded module's declared `min-host-version` against the running host version and fails fatally (`SchedulerError::HostVersionIncompatible`) if the host is older than required — see `docs/04_host_scheduler.md` §"Validation Passes (in order)" pass 14. Closes DEV-026 gap (1).
 
 ### Required startup diagnostics
 

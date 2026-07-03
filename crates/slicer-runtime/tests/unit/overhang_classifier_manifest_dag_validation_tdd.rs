@@ -76,6 +76,8 @@ fn validation_request(modules: Vec<LoadedModule>) -> DagValidationRequest {
         modules,
         stage_dags,
         host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        host_version: slicer_runtime::manifest::parse_semver(env!("CARGO_PKG_VERSION"))
+            .expect("slicer-runtime CARGO_PKG_VERSION must be valid semver"),
         claim_holders,
         access_audits: Vec::new(),
     }

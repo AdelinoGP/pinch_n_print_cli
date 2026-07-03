@@ -63,6 +63,7 @@ fn dag_request(modules: Vec<LoadedModule>, audits: Vec<ModuleAccessAudit>) -> Da
         modules,
         stage_dags: vec![StageDag { stage, nodes }],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: audits,
     }

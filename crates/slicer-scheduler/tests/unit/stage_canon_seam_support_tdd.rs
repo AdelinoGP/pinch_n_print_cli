@@ -82,6 +82,11 @@ fn prepass_seam_planning_module_is_not_unknown_stage() {
             minor: 0,
             patch: 0,
         },
+        host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -107,6 +112,11 @@ fn prepass_support_geometry_module_is_not_unknown_stage() {
         host_ir_schema_version: SemVer {
             major: 1,
             minor: 0,
+            patch: 0,
+        },
+        host_version: SemVer {
+            major: 0,
+            minor: 1,
             patch: 0,
         },
         claim_holders: Vec::new(),
@@ -136,6 +146,11 @@ fn layer_paint_region_annotation_module_is_not_unknown_stage() {
             minor: 0,
             patch: 0,
         },
+        host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -161,6 +176,11 @@ fn genuinely_unknown_stage_is_still_rejected() {
         host_ir_schema_version: SemVer {
             major: 1,
             minor: 0,
+            patch: 0,
+        },
+        host_version: SemVer {
+            major: 0,
+            minor: 1,
             patch: 0,
         },
         claim_holders: Vec::new(),

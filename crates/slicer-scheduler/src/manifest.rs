@@ -1249,7 +1249,9 @@ fn required_semver(
     })
 }
 
-fn parse_semver(text: &str) -> Option<SemVer> {
+/// Parses a `"major.minor.patch"` string into a [`SemVer`]. Returns `None` on
+/// any malformed input (wrong segment count, non-numeric segment).
+pub fn parse_semver(text: &str) -> Option<SemVer> {
     let mut parts = text.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;

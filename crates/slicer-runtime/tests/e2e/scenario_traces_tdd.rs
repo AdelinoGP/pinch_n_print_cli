@@ -61,6 +61,7 @@ fn dag_request_for(host_ir: SemVer, modules: Vec<LoadedModule>) -> DagValidation
         modules,
         stage_dags: vec![StageDag { stage, nodes }],
         host_ir_schema_version: host_ir,
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     }

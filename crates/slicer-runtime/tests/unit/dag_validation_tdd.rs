@@ -9,7 +9,7 @@ use slicer_runtime::{
 };
 
 #[test]
-fn report_contract_exposes_all_thirteen_documented_validation_passes() {
+fn report_contract_exposes_all_fourteen_documented_validation_passes() {
     let passes = [
         DagValidationPass::StageIdValidation,
         DagValidationPass::GlobalClaimConflicts,
@@ -24,9 +24,10 @@ fn report_contract_exposes_all_thirteen_documented_validation_passes() {
         DagValidationPass::UndeclaredAccess,
         DagValidationPass::CrossStageDependencyLegality,
         DagValidationPass::TransitiveDependencyLegality,
+        DagValidationPass::HostVersionCompatibility,
     ];
 
-    assert_eq!(passes.len(), 13);
+    assert_eq!(passes.len(), 14);
 }
 
 #[test]
@@ -40,6 +41,7 @@ fn validates_claim_conflicts_for_global_and_per_region_resolution_contracts() {
         modules: vec![alpha_module, beta_module],
         stage_dags: vec![stage_dag(stage, &[alpha.clone(), beta.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: vec![
             ClaimHolder {
                 claim: String::from("infill-generator"),
@@ -114,6 +116,7 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
         ],
         stage_dags: vec![stage_dag(stage, &[alpha, beta, gamma])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -138,6 +141,68 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
                 SchedulerError::IrVersionIncompatible { .. }
             )
     }));
+}
+
+#[test]
+fn module_requiring_newer_host_than_running_produces_host_version_incompatible_error() {
+    let stage = "Layer::Support";
+    let module = slicer_runtime::manifest::LoadedModuleBuilder::new(
+        "com.example.future",
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("fixtures/com.example.future.wasm"),
+    )
+    .ir_writes(vec![String::from("SharedIR.placeholder")])
+    .min_host_version(semver(99, 0, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
+    let producers: Vec<&dyn Producer> = vec![&module];
+    let nodes = build_intra_stage_dag(stage.to_string(), &producers).expect("dag should build");
+    let request = DagValidationRequest {
+        modules: vec![module],
+        stage_dags: vec![StageDag {
+            stage: stage.to_string(),
+            nodes,
+        }],
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    assert!(report.errors.iter().any(|diagnostic| {
+        diagnostic.pass == DagValidationPass::HostVersionCompatibility
+            && matches!(
+                diagnostic.detail,
+                SchedulerError::HostVersionIncompatible { .. }
+            )
+    }));
+}
+
+#[test]
+fn module_compatible_with_running_host_produces_no_host_version_error() {
+    let stage = "Layer::Support";
+    let alpha = loaded_module("com.example.alpha", stage);
+    let request = DagValidationRequest {
+        modules: vec![alpha.clone().build()],
+        stage_dags: vec![stage_dag(stage, &[alpha])],
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    assert!(!report
+        .errors
+        .iter()
+        .any(|diagnostic| { diagnostic.pass == DagValidationPass::HostVersionCompatibility }));
 }
 
 #[test]
@@ -166,6 +231,7 @@ fn validates_cycles_write_conflicts_unfulfilled_reads_and_dead_write_warnings() 
         ],
         stage_dags: vec![stage_dag(stage, &[alpha, beta, orphan_reader, dead_writer])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -203,6 +269,7 @@ fn write_conflict_orderable_is_false_when_neither_module_reads_conflicting_field
         modules: vec![alpha.clone().build(), beta.clone().build()],
         stage_dags: vec![stage_dag(stage, &[alpha, beta])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -245,6 +312,7 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
         modules: vec![alpha.clone().build(), beta.clone().build()],
         stage_dags: vec![stage_dag(stage, &[alpha, beta])],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -424,6 +492,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             stage_dag("Layer::Support", &[later]),
         ],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: vec![earlier_live_audit],
     };
@@ -490,6 +559,7 @@ fn validates_transitive_dependencies_that_reach_later_stages() {
             stage_dag("Layer::Support", &[gamma]),
         ],
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };
@@ -724,6 +794,7 @@ fn all_core_module_manifests_accept_current_host_ir_schema() {
         modules,
         stage_dags: Vec::new(),
         host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: Vec::new(),
     };

@@ -387,6 +387,7 @@ pub enum SchedulerError {
 11. **Undeclared access** — module runtime read/write masks must be strict subsets of manifest declarations
 12. **Cross-stage dependency legality** — module may not require a module from a later stage
 13. **Transitive dependency legality** — transitive `requires` closure may not include later-stage modules
+14. **Host version compatibility** — module's declared `min-host-version` must be `<=` the running host version (`env!("CARGO_PKG_VERSION")` of `slicer-runtime`). Fatal, same blocking tier as pass 6 (IR version compatibility); see `SchedulerError::HostVersionIncompatible` and `docs/11_operational_governance_and_acceptance_gate.md` §2 "Compatibility Policy" dimension 1. Closes DEV-026 gap (1).
 
 ### Call-Time Access Enforcement (Normative)
 

@@ -360,7 +360,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     #[cfg(feature = "report")]
     let mut dag_snapshot: Option<crate::report::ReportDagSnapshot> = None;
 
-    // 13-pass startup DAG validation.
+    // 14-pass startup DAG validation.
     {
         use slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION;
 
@@ -409,31 +409,47 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
                     })
             })
             .collect();
+        let host_version = crate::manifest::parse_semver(env!("CARGO_PKG_VERSION"))
+            .expect("slicer-runtime CARGO_PKG_VERSION must be valid semver");
         let request = crate::validation::DagValidationRequest {
             modules: dag_modules,
             stage_dags,
             host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            host_version,
             claim_holders,
             access_audits: Vec::new(),
         };
         let report = validate_startup_dag(&request);
 
-        let ir_errors: Vec<_> = report
+        let version_errors: Vec<_> = report
             .errors
             .iter()
-            .filter(|d| matches!(d.pass, DagValidationPass::IrVersionCompatibility))
+            .filter(|d| {
+                matches!(
+                    d.pass,
+                    DagValidationPass::IrVersionCompatibility
+                        | DagValidationPass::HostVersionCompatibility
+                )
+            })
             .collect();
-        if !ir_errors.is_empty() {
-            let detail = ir_errors
+        if !version_errors.is_empty() {
+            let detail = version_errors
                 .iter()
                 .map(|d| format!("{:?}", d.detail))
                 .collect::<Vec<_>>()
                 .join("; ");
-            bail!("startup DAG IR-version validation failed: {}", detail);
+            bail!(
+                "startup DAG version-compatibility validation failed: {}",
+                detail
+            );
         }
 
         for diag in &report.errors {
-            if matches!(diag.pass, DagValidationPass::IrVersionCompatibility) {
+            if matches!(
+                diag.pass,
+                DagValidationPass::IrVersionCompatibility
+                    | DagValidationPass::HostVersionCompatibility
+            ) {
                 continue;
             }
             eprintln!(

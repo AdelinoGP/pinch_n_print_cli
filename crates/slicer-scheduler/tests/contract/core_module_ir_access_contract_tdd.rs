@@ -402,6 +402,7 @@ fn seam_placer_narrow_manifest_write_validates() {
         modules: vec![seam_placer],
         stage_dags: Vec::new(),
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: vec![audit],
     };
@@ -461,6 +462,7 @@ fn coarse_write_rejected_against_narrow_manifest() {
         modules: vec![perimeter_module],
         stage_dags: Vec::new(),
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: vec![audit],
     };
@@ -514,6 +516,7 @@ fn perimeter_narrow_write_audit() {
         modules: vec![perimeter_module],
         stage_dags: Vec::new(),
         host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
         claim_holders: Vec::new(),
         access_audits: vec![audit],
     };
