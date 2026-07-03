@@ -22,7 +22,7 @@ OrcaSlicer's Arachne wall generator selects per-segment bead widths through a st
 
 The zero-width sentinels from `Limited` are an internal book-keeping mechanism: downstream centrality propagation reads them to keep bead-index alignment, but the wall-loop output should never carry zero-width entries. P96 originally surfaced this as D-9 (Arachne zero-width-sentinel handling) with two options: (a) coordinate with infill modules to recognize and skip sentinels, (b) strip sentinels before external output. D-9 closed via option (b) — T-215b implements the strip-pass at `LimitedBeadingStrategy::compute_and_strip`, and the deviation closure entry records the rationale.
 
-T-218 registers the 11 `m_params.*` config keys both in `docs/15_config_keys_reference.md` (descriptions + defaults + units) and in `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (manifest schema blocks). The `arachne-perimeters` manifest (`arachne-perimeters.toml`) already exists and carries 5 keys (`wall_count`, `line_width`, `outer_wall_speed`, `inner_wall_speed`, `perimeter_arc_tolerance`). The 11 new keys are disjoint from those 5 — no collision. The module's 512-line `run_perimeters` impl is NOT a stub and is NOT modified; only the manifest receives the 11 new schema blocks. Their values are passed into `BeadingStrategyFactory::create_stack` at P112's T-230 wire-up time.
+T-218 registers the 11 `m_params.*` config keys both in `docs/15_config_keys_reference.md` (descriptions + defaults + units) and in `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (manifest schema blocks). **That manifest does NOT exist yet:** P108 (`implemented`) deleted the old fake `arachne-perimeters` module (its manifest + its 512-line iterative-inset impl), and P110/T-205 CREATES a fresh skeleton manifest — so AC-9 forward-deps on P110. P111 adds ONLY the 11 new schema blocks to the P110-created manifest; the implementer reads P110's skeleton manifest at activation and confirms no key collides before adding. The 11 keys' values are passed into `BeadingStrategyFactory::create_stack` at P112's T-230 wire-up time (P111 does not touch any `run_perimeters` code path).
 
 This is a pure-data packet — no IR changes, no WIT changes, no host changes. Every test runs as a `slicer-core` unit test against recorded OrcaSlicer reference outputs.
 
@@ -40,7 +40,7 @@ This is a pure-data packet — no IR changes, no WIT changes, no host changes. E
 - `crates/slicer-core/Cargo.toml` (EDIT) — add 6 `[[test]]` entries (one per test file in Steps 2–7).
 - `crates/slicer-core/tests/fixtures/beading/` (NEW) — recorded OrcaSlicer reference Beading outputs in JSON.
 - `docs/15_config_keys_reference.md` (EDIT) — 11 new key entries (no collision with existing 5 arachne-perimeters keys).
-- `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (EDIT) — 11 new `[config.schema.*]` blocks (5 existing keys unchanged).
+- `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (EDIT — created by P110/T-205; forward-dep) — add the 11 new `[config.schema.*]` blocks; leave whatever keys P110's skeleton already declares unchanged (confirm no collision at activation).
 - `docs/01_system_architecture.md` (EDIT) — register `beading` sub-module.
 - `docs/DEVIATION_LOG.md` (EDIT) — add `D-111-ARACHNE-SENTINEL-STRIP` entry (not `D-9` — D-9 is a roadmap ID).
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` (EDIT) — flip T-210..T-218 to DONE.
@@ -51,20 +51,20 @@ This is a pure-data packet — no IR changes, no WIT changes, no host changes. E
 - Centrality filtering and bead-count assignment (P112 / T-220, T-221) — these will read the trait/factory built here but live in a separate sub-module.
 - Wire-up of `BeadingStrategyFactory::create_stack` into `arachne-perimeters::run_perimeters` (P112 / T-230).
 - `ExtrusionLine` / `ExtrusionJunction` IR types (P112 / T-224) — this packet produces `Beading` data; IR conversion is downstream.
-- Real `arachne-perimeters` run_perimeters logic — the 512-line working impl in `modules/core-modules/arachne-perimeters/src/lib.rs` is NOT a stub; this packet adds 11 config schema keys to the manifest only, not to the run path.
+- Real `arachne-perimeters` run_perimeters logic — the old 512-line fake was DELETED by P108; P110/T-205 creates a `warn!`-only skeleton and P112/T-230 implements the real path. This packet adds 11 config schema keys to the P110-created manifest only, not to any run path.
 - Non-Arachne config keys.
 - M1 packets.
 
 ## Forward Dependencies (explicit — S1/S5)
 
-These symbols do NOT exist in the tree; they are produced by still-draft packets. Do NOT read or import them — use inline equivalents where needed.
+The P110 symbols below do NOT exist in the tree yet (P110 is a draft sibling). The P105 `flow` row is the exception — P105 shipped `flow.rs`, but the specific `to_slicer_units` symbol was never added. Do NOT read or import any of these — use inline equivalents where needed.
 
 | Symbol | Producing packet | Status | Action if needed |
 | --- | --- | --- | --- |
 | `crates/slicer-core/src/voronoi.rs` (`voronoi_from_segments`, `HalfEdgeGraph`, `VoronoiError`, `Segment`) | P110 | `draft` | Not consumed by P111; reference only for pattern |
 | `crates/slicer-core/src/skeletal_trapezoidation/` (`SkeletalTrapezoidationGraph`) | P110 | `draft` | Not consumed by P111 |
 | `crates/slicer-core/src/arachne/preprocess.rs` (`preprocess_input_outline`) | P110 | `draft` | Not consumed by P111 |
-| `crates/slicer-core/src/flow.rs` (`to_slicer_units`) | P105 | `draft` | Not consumed — use inline `/100` division per `docs/08_coordinate_system.md` |
+| `crates/slicer-core/src/flow.rs::to_slicer_units` (module exists post-P105; this symbol was never added) | P105 | `implemented` | Not consumed — use inline `/100` division per `docs/08_coordinate_system.md` |
 | `crates/slicer-core/tests/voronoi_stress.rs`, `skt_graph_golden.rs`, `preprocess_golden.rs` | P110 | `draft` | Not pre-existing; test pattern described only for reference |
 
 ## Authoritative Docs

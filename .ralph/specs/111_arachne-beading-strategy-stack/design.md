@@ -61,7 +61,7 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 | `docs/15_config_keys_reference.md` | EDIT | Step 8 | 11 new key entries |
 | `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` | EDIT | Step 8 | 11 new schema blocks |
 | `docs/01_system_architecture.md` | EDIT | Step 8 | `beading` sub-module entry |
-| `docs/DEVIATION_LOG.md` | EDIT | Step 8 | D-9 closure |
+| `docs/DEVIATION_LOG.md` | EDIT | Step 8 | Add `D-111-ARACHNE-SENTINEL-STRIP` (D-9 itself lives in the roadmap) |
 | `docs/specs/perimeter-modules-orca-parity-roadmap.md` | EDIT | Step 8 | Flip rows to DONE |
 
 ## Read-Only Context
@@ -74,7 +74,7 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 | `docs/01_system_architecture.md` | full | Sub-module registration pattern |
 | `crates/slicer-core/src/lib.rs` | full | Existing `pub mod` set (extended from P110) |
 | `crates/slicer-core/src/voronoi.rs` | header + module structure | FORWARD-DEP on draft P110 — does not exist yet; read only after P110 lands |
-| `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` | full | Current state (skeleton from P110) |
+| `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` | full — FORWARD-DEP on P110/T-205 (does not exist until P110 creates it) | P110 skeleton manifest; AC-9 appends the 11 keys after confirming no collision |
 
 ## Out-of-Bounds Files
 
@@ -139,6 +139,6 @@ For T-215b (strip-pass): TWO entry points (`compute` retains sentinels for invar
 
 ## Open Questions
 
-- **[FWD — RESOLVED]** `slicer_core::flow` module (from P105/T-050) does NOT exist yet — P105 is `draft`. `flow_correction` currently lives in `crates/slicer-core/src/lib.rs` (not a `flow` sub-module). `slicer_core::flow::to_slicer_units` is a FORWARD-DEP on draft P105. **Action for Step 8:** do NOT call `slicer_core::flow::to_slicer_units` — implement the default translation inline in `beading/factory.rs::BeadingFactoryParams::default` using the `/100` rule from `docs/08_coordinate_system.md`. If P105 later ships `flow::to_slicer_units`, a follow-on can migrate the call.
+- **[FWD — RESOLVED]** `slicer_core::flow` module (from P105) now EXISTS (`crates/slicer-core/src/flow.rs`, carrying `line_width_to_spacing`), but `to_slicer_units` specifically was never added; `flow_correction` still lives in `crates/slicer-core/src/lib.rs`. **Action for Step 8:** do NOT call `slicer_core::flow::to_slicer_units` (it doesn't exist) — implement the default translation inline in `beading/factory.rs::BeadingFactoryParams::default` using the `/100` rule from `docs/08_coordinate_system.md`. If a `to_slicer_units` helper is later added, a follow-on can migrate the call.
 - **Resolved.** `BeadingFactoryParams` derives `serde::{Deserialize, Serialize}` to support the `factory_orca_reference.json` golden, matching the `BeadingForTest` test-helper pattern.
 - **None [BLOCK].** D-9 is closed (T-215b implements the closed decision); no other gates.

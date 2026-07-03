@@ -28,7 +28,7 @@
       pub is_closed: bool,
   }
   ```
-  Plus a converter `pub fn extrusion_line_to_extrusion_path3d(line: &ExtrusionLine, role: ExtrusionRole) -> ExtrusionPath3D` that wraps junctions into an `ExtrusionPath3D` (`.points: Vec<Point3WithWidth>`, `.role`, `.speed_factor`) for assignment to `WallLoop.path: ExtrusionPath3D`. Do NOT produce a bare `Vec<Point3WithWidth>` — the field type is `ExtrusionPath3D`. Schema version bumps minor: implementer reads `CURRENT_SLICE_IR_SCHEMA_VERSION` at activation (live value = `4.3.0`; intervening P105/P106/P109 bumps are unshipped) and increments minor by 1. Do NOT hardcode the target version.
+  Plus a converter `pub fn extrusion_line_to_extrusion_path3d(line: &ExtrusionLine, role: ExtrusionRole) -> ExtrusionPath3D` that wraps junctions into an `ExtrusionPath3D` (`.points: Vec<Point3WithWidth>`, `.role`, `.speed_factor`) for assignment to `WallLoop.path: ExtrusionPath3D`. Do NOT produce a bare `Vec<Point3WithWidth>` — the field type is `ExtrusionPath3D`. Schema version bumps minor: implementer re-reads `CURRENT_SLICE_IR_SCHEMA_VERSION` at activation (live value = `4.6.0` per `slice_ir.rs:213`; P105 carried it to 4.4.0 for `GapFill`) and increments minor by 1 (→ `4.7.0`). Do NOT hardcode the target if a parallel branch bumps first.
 - **Real wire-up.** `modules/core-modules/arachne-perimeters/src/lib.rs` — IMPLEMENT `run_perimeters` in the P110-created empty skeleton (which returns `Ok(())` + `warn!` only; the old 512-line iterative-inset fake was DELETED by P108/T-090) with the Voronoi/beading-based pipeline:
   1. Build `BeadingFactoryParams` from `_config` reads (11 `m_params.*` keys registered in P111 — FORWARD-DEP on P111).
   2. For each `SlicedRegion`:
@@ -44,7 +44,7 @@
      j. `let lines = stitch_extrusions(lines, bead_width_x - 100);` (slicer units; bead_width_x reads from beading params).
      k. `let lines = simplify_toolpaths(lines, dp_epsilon);`
      l. `let lines = remove_small_lines(lines, min_length_factor, min_width);`
-     m. Per line, convert via `extrusion_line_to_extrusion_path3d(line, role)` and assign the resulting `ExtrusionPath3D` to `WallLoop.path` — the field type is `ExtrusionPath3D`, NOT `Vec<Point3WithWidth>`. Emit a `WallLoop` with `loop_type` per `inset_idx` (0 → `LoopType::Outer`, ≥1 → `LoopType::Inner`) — note: `LoopType::GapFill` is FORWARD-DEP on P105 and does NOT exist yet; use only `Outer`/`Inner`/`ThinWall` from the current enum. Count walls via `walls.len()` — `PerimeterRegion` has no `wall_count` field; the count is `walls: Vec<WallLoop>`.
+     m. Per line, convert via `extrusion_line_to_extrusion_path3d(line, role)` and assign the resulting `ExtrusionPath3D` to `WallLoop.path` — the field type is `ExtrusionPath3D`, NOT `Vec<Point3WithWidth>`. Emit a `WallLoop` with `loop_type` per `inset_idx` (0 → `LoopType::Outer`, ≥1 → `LoopType::Inner`; `LoopType::GapFill` IS available — P105/T-062b added it additively at 4.4.0 — so odd/gap-fill lines may map to `GapFill` where appropriate). Count walls via `walls.len()` — `PerimeterRegion` has no `wall_count` field; the count is `walls: Vec<WallLoop>`.
   3. Return `Ok(())`. The P110 skeleton's `warn!`-only path is replaced by the above pipeline (no `generate_arachne_walls` — that was in the P108-deleted fake, which is gone).
 
 ## Neighboring Tests & Fixtures
@@ -61,7 +61,7 @@
 <!-- snippet: wasm-staleness -->
 - **Guest WASM staleness.** T-224 edits IR (adds `ExtrusionLine` + `ExtrusionJunction`), and T-230 edits `arachne-perimeters/src/lib.rs`. Both invalidate guest WASM. After every IR edit AND after Step 9 (T-230 wire-up), the implementer MUST run `cargo xtask build-guests --check`; if STALE, rebuild without `--check` BEFORE running any host/executor test. Failure to rebuild causes Arachne parity tests (AC-10) to fail with a typed-instantiation error masquerading as a wire-up bug.
 
-- **Schema additive change.** T-224 adds new IR types but does NOT remove or rename existing ones. `#[serde(default)]` on all new optional fields keeps round-trip safety with pre-bump fixtures (AC-N2). Schema bump is minor-version — the implementer reads the actual `CURRENT_SLICE_IR_SCHEMA_VERSION` at activation (live value at authoring = `4.3.0`; intervening P105/P106/P109 bumps are unshipped/draft) and increments minor by 1. Do NOT hardcode a target version.
+- **Schema additive change.** T-224 adds new IR types but does NOT remove or rename existing ones. `#[serde(default)]` on all new optional fields keeps round-trip safety with pre-bump fixtures (AC-N2). Schema bump is minor-version — the implementer re-reads the actual `CURRENT_SLICE_IR_SCHEMA_VERSION` at activation (live value at refinement = `4.6.0`; P105/P106/P109 shipped, P105 carried it to 4.4.0 for `GapFill`) and increments minor by 1 (→ `4.7.0`). Do NOT hardcode a target if a parallel branch bumps first.
 - **No mid-pipeline panics.** Every `slicer-core::arachne::*` and `skeletal_trapezoidation::*` function returns `Result<_, _>`. Internal `unwrap()` is forbidden; debug-asserts are allowed for invariant checks.
 - **No floating-point HashMap keys.** Same as P111 — determinism is required. Stitch's gap-comparison uses sorted Vec, not HashMap-by-distance.
 
@@ -101,7 +101,7 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 | `crates/slicer-wasm-host/src/host.rs` | EDIT | Step 8 | Populate new types if exposed to guests |
 | `crates/slicer-sdk/src/views.rs` | EDIT (maybe) | Step 8 | Read accessor for new types if exposed; defer to follow-on otherwise |
 | `crates/slicer-ir/tests/extrusion_line_roundtrip.rs` | NEW | Step 8 | AC-5 + AC-N2 |
-| `modules/core-modules/arachne-perimeters/src/lib.rs` | EDIT | Step 9 | T-230 real wire-up (REWRITE of iterative-inset impl) |
+| `modules/core-modules/arachne-perimeters/src/lib.rs` | EDIT | Step 9 | T-230 real wire-up (IMPLEMENT into the P110 empty skeleton; the old iterative-inset impl was DELETED by P108, not rewritten) |
 | `crates/slicer-runtime/tests/executor/arachne_perimeters_simple_square.rs` | NEW | Step 9 | AC-9 |
 | `crates/slicer-runtime/tests/executor/main.rs` | EDIT | Step 9 | S7 REQUIRED: add `mod arachne_perimeters_simple_square;` |
 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/tapered_wedge/` | NEW | Step 10 | T-231 fixture 1 |
@@ -163,7 +163,7 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 | Step 9 | `cargo xtask build-guests` | n/a | FACT clean / STALE list (must be CLEAN after) |
 | Step 10 | OrcaSlicer SUMMARY ×4 — per Arachne fixture | various | ≤ 100 words per fixture: expected PerimeterIR shape |
 | Step 11 | None (docs work) | n/a | n/a |
-| Step 12 | `cargo test --workspace 2>&1 \| tee target/test-output.log \| tail -5` | n/a | FACT pass/fail + summary line + count |
+| Step 12 | `cargo xtask test --workspace --summary 2>&1 \| tee target/test-output.log \| tail -20` | n/a | FACT pass/fail + summary line + count (gated entry point — fires guest-WASM freshness check) |
 | All steps | `cargo test -p <crate>` narrow | n/a | FACT pass/fail; SNIPPETS ≤ 20 lines on fail |
 
 ## Data & Contract Notes
@@ -181,14 +181,14 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 - `generate_toolpaths` output's `inset_idx` is monotone: lines at lower indices are outer; the outer Vec is sorted by inset_idx ascending.
 - `stitch_extrusions`'s primary preservation: any `ExtrusionLine` where `is_closed == true && inset_idx == 0` is NEVER touched. This is the invariant under AC-6.
 - `remove_small_lines`'s primary preservation: same invariant under AC-8 (and AC-N3 negative test). The function MUST check `is_closed && inset_idx == 0` BEFORE the length check.
-- Schema bump is minor (`#[serde(default)]` on new optional fields). Live value at authoring = `4.3.0`; intervening bumps from P105/P106/P109 are unshipped (all draft). Implementer reads the actual constant at activation and increments minor by 1 — the target is NOT hardcoded here. The implementer MUST run AC-N2 (legacy deserialization) before flipping status — if the test fails, the migration adapter is wrong.
+- Schema bump is minor (`#[serde(default)]` on new optional fields). Live value at refinement = `4.6.0`; P105/P106/P109 shipped (P105 carried it to 4.4.0 for `GapFill`). Implementer re-reads the actual constant at activation and increments minor by 1 (→ `4.7.0`) — the target is NOT hardcoded here. The implementer MUST run AC-N2 (legacy deserialization) before flipping status — if the test fails, the migration adapter is wrong.
 - centrality, bead-count, propagation, generate_toolpaths, stitch, simplify, remove_small placed in `slicer-core` (extending P110/P111 surfaces). `ExtrusionLine`/`ExtrusionJunction` IR additions remain in `slicer-ir` (no rename). Part of roadmap-wide correction `D-ROADMAP-CRATE-PLACEMENT`.
 
 ## Risks and Tradeoffs
 
 - **Real wire-up surface.** T-230 replaces the placeholder with ~50+ lines of pipeline call chain. Risk: edge cases in MMU (per-color iteration) or in degenerate inputs (empty polygons after preprocess). Mitigation: AC-9 (simple square) catches the happy path; AC-10's 4 fixtures + cube_4color cover MMU + edge cases.
-- **Schema bump cross-cuts.** T-224 bumps `CURRENT_SLICE_IR_SCHEMA_VERSION`. Live value at authoring = `4.3.0`; intervening P105/P106/P109 bumps are unshipped (all draft). If any parallel branch also bumps before activation, the implementer reconciles by reading the actual constant first and incrementing minor by 1 from that value.
-- **Workspace test ceremony surface.** T-234 (cargo test --workspace) takes >11 minutes; the dispatch returns only the summary line + count. If a regression surfaces, the implementer runs targeted re-checks against the specific failing test — does NOT re-run --workspace.
+- **Schema bump cross-cuts.** T-224 bumps `CURRENT_SLICE_IR_SCHEMA_VERSION`. Live value at refinement = `4.6.0` (P105/P106/P109 shipped). If any parallel branch also bumps before activation, the implementer reconciles by reading the actual constant first and incrementing minor by 1 from that value.
+- **Workspace test ceremony surface.** T-234 (gated `cargo xtask test --workspace`) takes >11 minutes; the dispatch returns only the summary line + count. If a regression surfaces, the implementer runs targeted re-checks against the specific failing test — does NOT re-run the whole suite.
 - **OrcaSlicer SUMMARY drift.** SUMMARYs ≤ 200 words may omit subtleties (e.g., `propagateBeadingsUpward`'s tie-break when an edge has two upstream beadings). Mitigation: the per-fixture goldens are the source of truth; if a function can't make a golden green after 2 attempts, re-dispatch a tighter SUMMARY for that specific edge case.
 - **boostvoronoi version drift.** This packet doesn't change `Cargo.toml`'s `boostvoronoi` pin from P110; if a major boostvoronoi update lands during M2 work and breaks the wrapper, the implementer pins forward via a follow-on (NOT in this packet).
 
@@ -201,7 +201,7 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 
 ## Open Questions
 
-- **[FWD]** At activation, what is `CURRENT_SLICE_IR_SCHEMA_VERSION`? Resolve at Step 8 via `rg -n 'pub const CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs`. Live value at authoring = `4.3.0`. Bump minor by 1 from whatever the activation-time value is. Do NOT target `4.7.0` or any other pre-reserved value.
+- **[FWD]** At activation, what is `CURRENT_SLICE_IR_SCHEMA_VERSION`? Resolve at Step 8 via `rg -n 'pub const CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs`. Live value at refinement = `4.6.0` (→ target `4.7.0`). Bump minor by 1 from whatever the activation-time value is; do NOT assume `4.7.0` if another branch bumps first.
 - **[FWD]** Should `ExtrusionLine`/`ExtrusionJunction` be exposed via WIT/view accessors to OTHER modules besides `arachne-perimeters`? Likely not in this packet — defer to a follow-on if any consumer surfaces. Update `crates/slicer-sdk/src/views.rs` ONLY if a consumer exists at activation time.
 - **[FWD]** Cube_4color Arachne reference: does it reuse the same `.gcode` file recorded by P109 / T-P96-C3 (Classic) or does Arachne need its own reference because per-color preprocessing diverges from per-edge skip-mask? Per the roadmap's T-P96-E acceptance ("Cube_4color parity test (T-P96-C3) passes for Arachne"), the SAME reference applies — Arachne's per-color preprocessing should produce parity-equivalent output to Classic's per-edge skip-mask. Confirm at Step 10 by running the test and reading the diff; if reference must be Arachne-specific, the implementer records `cube_4color_arachne.gcode` alongside the M1 reference.
-- **None [BLOCK].** Every blocking question is resolved by P105's investigation (D-13, D-15) or by P110's ADR-0010 (D-7) or by P111's T-215b (D-9).
+- **None [BLOCK].** Every blocking question is resolved by P105's investigation (D-13, D-15) or by P110's ADR-0023 (D-7) or by P111's T-215b (D-9).

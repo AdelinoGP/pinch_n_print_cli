@@ -20,7 +20,7 @@ Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md` Phase 11 (
 
 ## Cross-Packet Contracts
 
-- **P110 prerequisite (pattern only)**: P111 does NOT consume any symbols from P110. The beading stack is pure-data (`slicer-core`-internal); P112 connects it to the SKT graph.
+- **P110 prerequisite**: P111 consumes no P110 *code* symbols (the beading stack is pure-data, `slicer-core`-internal; P112 connects it to the SKT graph). BUT AC-9 forward-deps on P110/T-205 CREATING `arachne-perimeters.toml` — the 11 config-schema blocks have nowhere to land until that manifest exists.
 - **P112 consumer**: `BeadingStrategyFactory::create_stack(params)` is the entry point P112's T-221 (`assign_bead_counts`) will call per-edge.
 - **D-9 closure**: the strip-pass decision (D-9) lives in `docs/specs/perimeter-modules-orca-parity-roadmap.md`, NOT in `docs/DEVIATION_LOG.md`. T-215b implements it and registers a new `D-111-ARACHNE-SENTINEL-STRIP` log entry; the AC greps the log for the new ID.
 

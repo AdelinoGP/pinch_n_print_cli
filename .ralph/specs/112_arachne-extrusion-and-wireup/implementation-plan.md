@@ -110,7 +110,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 
 - **Tasks:** T-224 + AC-5 + AC-N2.
 - **Objective:** Add `ExtrusionLine` + `ExtrusionJunction` to `crates/slicer-ir/src/slice_ir.rs` with `#[serde(default)]` on new optional fields. Bump `CURRENT_SLICE_IR_SCHEMA_VERSION` minor version. Declare WIT records in `crates/slicer-schema/wit/deps/ir-types.wit`. Update host populator if needed. Write AC-5 round-trip + AC-N2 legacy deserialization tests.
-- **Precondition:** Steps 1–7 done. MUST read current `CURRENT_SLICE_IR_SCHEMA_VERSION` via `rg -n 'pub const CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs` before editing. Live value at authoring = `4.3.0` (intervening P105/P106/P109 unshipped). Target = activation-time value with minor+1. Do NOT hardcode `4.7.0` or any future-reservation value.
+- **Precondition:** Steps 1–7 done. MUST read current `CURRENT_SLICE_IR_SCHEMA_VERSION` via `rg -n 'pub const CURRENT_SLICE_IR_SCHEMA_VERSION' crates/slicer-ir/src/slice_ir.rs` before editing. Live value at refinement = `4.6.0` (P105/P106/P109 shipped; P105 carried it to 4.4.0 for `GapFill`), so target = `4.7.0`. Target = activation-time value with minor+1. Do NOT hardcode `4.7.0` if a parallel branch bumps first.
 - **Postcondition:** `cargo test -p slicer-ir extrusion_line_roundtrip` + `cargo test -p slicer-ir extrusion_line_legacy_deserialization` green. `cargo xtask build-guests --check` CLEAN after rebuild.
 - **Files allowed to read:** `crates/slicer-ir/src/slice_ir.rs` (range-read by `rg -n 'ExtrusionLine\|ExtrusionJunction\|Point3WithWidth\|CURRENT_SLICE_IR_SCHEMA_VERSION'`); `crates/slicer-schema/wit/deps/ir-types.wit` (full ≤ 300 LOC); `docs/02_ir_schemas.md` (schema-versioning section).
 - **Files allowed to edit:** `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-schema/wit/deps/ir-types.wit`, `crates/slicer-wasm-host/src/host.rs` (if host populator needs the new types), `crates/slicer-sdk/src/views.rs` (only if a consumer requires the accessor — see Open Questions), `crates/slicer-ir/tests/extrusion_line_roundtrip.rs` (NEW).
@@ -123,7 +123,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 ## Step 9 — Real `arachne-perimeters::run_perimeters` Wire-Up (T-230)
 
 - **Tasks:** T-230 + AC-9.
-- **Objective:** IMPLEMENT `run_perimeters` in the P110-created empty skeleton (`arachne-perimeters/src/lib.rs` at P112 activation contains only `Ok(())` + `warn!` — the old 512-line iterative-inset fake was DELETED by P108/T-090). Pipeline: preprocess → voronoi → SKT → centrality → bead_count → propagation → generate_toolpaths → stitch → simplify → remove_small → emit WallLoops with variable widths. Handle MMU via T-P96-E per-color iteration. Write AC-9 test (simple square produces walls). IMPORTANT: `WallLoop.path` is `ExtrusionPath3D`, NOT `Vec<Point3WithWidth>` — use `extrusion_line_to_extrusion_path3d()` converter. `PerimeterRegion` has NO `wall_count` field — count is `walls.len()`. `LoopType::GapFill` does NOT exist — use `Outer`/`Inner`/`ThinWall` only (FORWARD-DEP P105 for GapFill).
+- **Objective:** IMPLEMENT `run_perimeters` in the P110-created empty skeleton (`arachne-perimeters/src/lib.rs` at P112 activation contains only `Ok(())` + `warn!` — the old 512-line iterative-inset fake was DELETED by P108/T-090). Pipeline: preprocess → voronoi → SKT → centrality → bead_count → propagation → generate_toolpaths → stitch → simplify → remove_small → emit WallLoops with variable widths. Handle MMU via T-P96-E per-color iteration. Write AC-9 test (simple square produces walls). IMPORTANT: `WallLoop.path` is `ExtrusionPath3D`, NOT `Vec<Point3WithWidth>` — use `extrusion_line_to_extrusion_path3d()` converter. `PerimeterRegion` has NO `wall_count` field — count is `walls.len()`. `LoopType::GapFill` IS available (P105/T-062b added it at 4.4.0) — map inset_idx 0→`Outer`, ≥1→`Inner`, and use `GapFill` for odd/gap-fill lines where appropriate.
 - **Precondition:** Steps 1–8 done. `cargo xtask build-guests --check` CLEAN.
 - **Postcondition:** `cargo test -p slicer-runtime --test executor arachne_perimeters_simple_square_produces_walls` green. The skeleton's `warn!`-only path is replaced with the real SKT pipeline. `cargo xtask build-guests --check` CLEAN after rebuild.
 - **Files allowed to read:** Steps 1–8 outputs (all `slicer-core/src/{arachne,skeletal_trapezoidation,beading}/*` + `slicer-core/src/voronoi.rs`); `modules/core-modules/arachne-perimeters/src/lib.rs` (the P110 skeleton — empty `LayerModule` + `warn!`); `modules/core-modules/classic-perimeters/src/lib.rs` (range — emission pattern only, ≤ 100 lines); `docs/05_module_sdk.md` (`PerimeterOutputBuilder` API).
@@ -141,7 +141,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - **Precondition:** Step 9 done. P109's `perimeter_parity.rs` exists.
 - **Postcondition:** `cargo test -p slicer-runtime --test integration arachne_perimeter_parity` green; all 4 + 1 fixtures pass within calibrated tolerances.
 - **Files allowed to read:** `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (full, ≤ 200 LOC from P109); `docs/specs/orca-mmu-perimeter-investigation.md` (full, for cube_4color Arachne); P109's `cube_4color_orca.gcode` reference path.
-- **Files allowed to edit:** `crates/slicer-runtime/tests/fixtures/perimeter_parity/{tapered_wedge,narrow_strip_widening,max_bead_count_cap,complex_multi_feature,cube_4color_arachne}/` (NEW directories with `mesh.stl`/`config.toml`/`expected_perimeter_ir.json`), `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (EDIT — add Arachne suite — FORWARD-DEP on P109: this file doesn't exist until P109 ships), `crates/slicer-runtime/tests/integration/main.rs` (EDIT — add `mod perimeter_parity;` — S7 REQUIRED: the integration binary is aggregated; P109 owns this registration but if P112 extends the file, it must ensure the mod declaration is present in main.rs).
+- **Files allowed to edit:** `crates/slicer-runtime/tests/fixtures/perimeter_parity/{tapered_wedge,narrow_strip_widening,max_bead_count_cap,complex_multi_feature,cube_4color_arachne}/` (NEW directories with `mesh.stl`/`config.toml`/`expected_perimeter_ir.json`), `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (EDIT — add Arachne suite — P109 (`implemented`) already ships this file; it is PRESENT), `crates/slicer-runtime/tests/integration/main.rs` (EDIT — add `mod perimeter_parity;` — S7 REQUIRED: the integration binary is aggregated; P109 owns this registration but if P112 extends the file, it must ensure the mod declaration is present in main.rs).
 - **Expected sub-agent dispatches:** FOUR OrcaSlicer SUMMARYs (≤ 100 words each, one per fixture) describing expected `PerimeterIR` shape. ONE `cargo test`.
 - **Context cost:** M.
 - **Authoritative docs:** `docs/specs/orca-mmu-perimeter-investigation.md` (for cube_4color Arachne); P109 parity harness.
@@ -151,7 +151,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 ## Step 11 — Deviation Walk + Docs (T-232, T-233)
 
 - **Tasks:** T-232 + T-233 + Doc Impact Statement.
-- **Objective:** Walk every M2 deviation entry (D-7, D-9, D-15, plus any new) and close or justify with target follow-on packet IDs. **IMPORTANT:** D-7/D-9/D-15 live in `docs/specs/perimeter-modules-orca-parity-roadmap.md` (NOT `docs/DEVIATION_LOG.md`). The AC-11 verification grep targets the roadmap, not the deviation log. Any new deviations created during M2 work that go into `docs/DEVIATION_LOG.md` MUST use the `D-112-<SLUG>` format per the log's live convention. Update `docs/01_system_architecture.md` Tier-2 caveat (drop "iterative-inset approximation", add real-Arachne line citing P112). Update `docs/02_ir_schemas.md` with `ExtrusionLine`/`ExtrusionJunction` entries + schema-bump rationale. Update `docs/07_implementation_status.md` M2 complete entry. Flip Phase 12 + 13 + M2 rows in roadmap.
+- **Objective:** Walk every M2 deviation entry (D-7, D-9, D-15, plus any new) and close or justify with target follow-on packet IDs. **IMPORTANT:** D-7/D-9/D-15 live in `docs/specs/perimeter-modules-orca-parity-roadmap.md` (NOT `docs/DEVIATION_LOG.md`). The AC-11 verification grep targets the roadmap, not the deviation log. Any new deviations created during M2 work that go into `docs/DEVIATION_LOG.md` MUST use the `D-112-<SLUG>` format per the log's live convention. Update `docs/01_system_architecture.md` Tier-2 `Layer::Perimeters` to name the real Arachne pipeline (Voronoi + SkeletalTrapezoidation + BeadingStrategy) citing P112 — there is no "iterative-inset" caveat to drop (P108 already cleaned it). Update `docs/02_ir_schemas.md` with `ExtrusionLine`/`ExtrusionJunction` entries + schema-bump rationale. Update `docs/07_implementation_status.md` M2 complete entry. Flip Phase 12 + 13 + M2 rows in roadmap.
 - **Precondition:** Step 10 done. All ACs except AC-11/AC-12/AC-13 already green.
 - **Postcondition:** AC-11 + AC-12 green; Doc Impact Statement assertions all green.
 - **Files allowed to read:** `docs/specs/perimeter-modules-orca-parity-roadmap.md` (D-7/D-9/D-15 closure entries live here, Phases 12 + 13 + M2 marker), `docs/DEVIATION_LOG.md` (for format reference + any new M2 deviations), `docs/01_system_architecture.md` (Tier-2 section), `docs/02_ir_schemas.md` (schema-versioning + existing-types format), `docs/07_implementation_status.md` (M2 status section).
@@ -160,17 +160,17 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - **Context cost:** S.
 - **Authoritative docs:** the five doc files themselves.
 - **Narrow verification:** AC-11's shell loop (targeting `docs/specs/perimeter-modules-orca-parity-roadmap.md` for D-7/D-9/D-15) + AC-12's grep — both deterministic.
-- **Cheapest falsifying check:** `! rg -q 'iterative-inset width approximation' docs/01_system_architecture.md` — if the caveat string remains, T-233 didn't land.
+- **Cheapest falsifying check:** `rg -q 'Voronoi' docs/01_system_architecture.md && rg -q 'SkeletalTrapezoidation' docs/01_system_architecture.md && rg -q 'BeadingStrategy' docs/01_system_architecture.md` — if the real-Arachne naming is absent, T-233 didn't land.
 
 ## Step 12 — Workspace Closure Ceremony (T-234)
 
 - **Tasks:** T-234 + AC-13.
-- **Objective:** Run `cargo test --workspace` as the M2 closure gate per CLAUDE.md §"Test Discipline" workspace-test exception. Dispatch the run to a sub-agent that returns FACT pass/fail + summary line + count.
+- **Objective:** Run the full suite via the gated entry point `cargo xtask test --workspace --summary` (NOT bare `cargo test --workspace`) as the M2 closure gate per CLAUDE.md §"Test Discipline" workspace-test exception; the gate fires the guest-WASM freshness check first (this packet rebuilt the `arachne-perimeters` guest). Dispatch the run to a sub-agent that returns FACT pass/fail + summary line + count.
 - **Precondition:** Steps 1–11 done. All other ACs green. `cargo xtask build-guests --check` CLEAN.
 - **Postcondition:** Full workspace suite green. Closure log authored. `status: implemented` flipped.
 - **Files allowed to read:** `CLAUDE.md` §"Test Discipline" (re-confirm the exception applies).
 - **Files allowed to edit:** `.ralph/specs/112_arachne-extrusion-and-wireup/closure-log.md` (NEW), `.ralph/specs/112_arachne-extrusion-and-wireup/packet.spec.md` (status flip).
-- **Expected sub-agent dispatches:** ONE `cargo test --workspace 2>&1 | tee target/test-output.log | tail -5` — return FACT pass/fail + summary line + count. The implementer does NOT absorb the full output.
+- **Expected sub-agent dispatches:** ONE `cargo xtask test --workspace --summary 2>&1 | tee target/test-output.log | tail -20` — return FACT pass/fail + summary line + count. The implementer does NOT absorb the full output.
 - **Context cost:** S.
 - **Authoritative docs:** `CLAUDE.md` §"Test Discipline".
 - **Narrow verification:** `tail -5 target/test-output.log` after the dispatch.
@@ -184,7 +184,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - `cargo xtask build-guests --check` CLEAN.
 - `cargo test -p slicer-core 2>&1 | tee target/test-output.log` shows all new tests passing.
 - `cargo test -p slicer-runtime --test integration arachne_perimeter_parity` green (4 fixtures + cube_4color Arachne).
-- `cargo test --workspace 2>&1 | tee target/test-output.log` green (T-234 closure ceremony — sub-agent dispatched).
+- `cargo xtask test --workspace --summary 2>&1 | tee target/test-output.log` green (T-234 closure ceremony — gated entry point, sub-agent dispatched).
 - Doc Impact Statement assertions verified by `rg` checks.
 - Closure log authored before status flip; records: schema-version values pre/post bump; any goldens that needed re-recording with NOTE explaining why; D-7/D-9/D-15 closure rationale paragraphs; cube_4color Arachne reference decision (same-as-Classic OR Arachne-specific); any new M2 deviations registered + their target follow-on packet IDs.
 - Status flipped to `implemented` in `packet.spec.md` YAML frontmatter.

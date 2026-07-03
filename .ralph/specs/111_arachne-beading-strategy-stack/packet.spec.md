@@ -28,9 +28,9 @@ Touches `crates/slicer-core/src/beading/` (NEW sub-module with `mod.rs` + 5 stra
 ## Prerequisites and Blockers
 
 - Depends on:
-  - **P110** (`draft`) — FORWARD-DEP. P110 provides the infrastructure pattern (Voronoi + SKT foundations) and the `arachne-perimeters` module skeleton that receives the 11 config keys. P110's symbols (`voronoi.rs`, `skeletal_trapezoidation/`, `arachne/preprocess.rs`) are NOT consumed by this packet. P111 can activate independently of P110 shipping, because P111 is pure-data with no imports from P110 sources.
-  - **P105** (`draft`) — FORWARD-DEP. `slicer_core::flow::to_slicer_units` does not exist (P105 ships it as net-new; `flow_correction` is in `lib.rs` today, not a `flow` module). P111 uses inline `/100` division; no call to P105 symbols.
-  - **P109** — M1 verification closed so M1 regressions don't drown M2 noise.
+  - **P110** (`draft` — sibling M2 packet) — FORWARD-DEP. P110 provides the infrastructure pattern (Voronoi + SKT foundations) and, via T-205, CREATES the `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` manifest that AC-9's 11 config-schema blocks are written into. P110's beading-unrelated symbols (`voronoi.rs`, `skeletal_trapezoidation/`, `arachne/preprocess.rs`) are NOT consumed by this packet. **Split dependency:** the pure-data beading code (AC-1..AC-8) can be written independently of P110, but **AC-9 forward-deps on P110's T-205 skeleton manifest existing** — the `[config.schema.*]` blocks have nowhere to land until P110 creates that file. Do NOT close AC-9 until P110 is `implemented`.
+  - **P105** (`implemented`) — the `slicer_core::flow` module now exists (`crates/slicer-core/src/flow.rs`, carrying `line_width_to_spacing`), but `to_slicer_units` specifically was never added; `flow_correction` remains in `lib.rs`. P111 uses inline `/100` division and calls NO `flow` symbol, so this is moot either way.
+  - **P109** (`implemented`) — M1 verification closed so M1 regressions don't drown M2 noise.
 - Unblocks:
   - **P112** — `BeadingStrategyFactory::create_stack` is the entry point P112's T-220+ (centrality + bead-count) will call to derive per-edge `Beading` outputs.
 - Activation blockers: The D-9 decision (zero-width sentinel strip-pass) was made pre-packet — the decision lives in the roadmap (D-9 is a roadmap ID, not a `DEVIATION_LOG.md` entry). T-215b implements that decision and registers `D-111-ARACHNE-SENTINEL-STRIP` in the log. No open questions remain.
@@ -42,7 +42,7 @@ Touches `crates/slicer-core/src/beading/` (NEW sub-module with `mod.rs` + 5 stra
 | `crates/slicer-core/src/voronoi.rs` (`voronoi_from_segments`, `HalfEdgeGraph`, `VoronoiError`, `Segment`) | draft P110 | NOT consumed — reference pattern only ✓ |
 | `crates/slicer-core/src/skeletal_trapezoidation/` (`SkeletalTrapezoidationGraph`) | draft P110 | NOT consumed ✓ |
 | `crates/slicer-core/src/arachne/preprocess.rs` (`preprocess_input_outline`) | draft P110 | NOT consumed ✓ |
-| `slicer_core::flow::to_slicer_units` | draft P105 | NOT consumed — inline `/100` used instead ✓ |
+| `slicer_core::flow` (module exists post-P105; `to_slicer_units` never added) | implemented P105 | NOT consumed — inline `/100` used instead ✓ |
 
 ## Acceptance Criteria
 
