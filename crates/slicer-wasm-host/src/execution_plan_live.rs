@@ -13,9 +13,9 @@ use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, ModuleId, RegionKey, Region
 
 use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
-    bind_module_config_view, build_execution_plan, dedup_same_claim_modules_for_test,
+    bind_module_config_view, build_execution_plan, dedup_same_claim_modules_with_wall_generator,
     ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest,
-    SortedStageModules, STAGE_ORDER,
+    SortedStageModules, STAGE_ORDER, WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
     load_modules_from_roots, DiagnosticLevel, LoadDiagnostic, LoadError, LoadedModule,
@@ -169,15 +169,55 @@ impl From<LoadError> for Box<LiveModuleLoadError> {
 /// `host_parallelism` controls the pool size for `layer-parallel-safe`
 /// modules; other modules use a serialised pool of size 1 per
 /// `build_wasm_instance_pool`.
+///
+/// Equivalent to [`load_live_modules_for_plan_with_config`] with an empty
+/// config source — the `perimeter-generator` claim (contested by
+/// `com.core.classic-perimeters` / `com.core.arachne-perimeters`) resolves to
+/// `DEFAULT_WALL_GENERATOR` (`"classic"`) rather than alphabetical order.
+/// Callers that need to honor a user's `wall_generator` config (i.e. the
+/// production `run_slice` path) MUST use
+/// [`load_live_modules_for_plan_with_config`] instead.
 pub fn load_live_modules_for_plan(
     search_roots: &[PathBuf],
     host_parallelism: usize,
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
+    load_live_modules_for_plan_with_config(search_roots, host_parallelism, &HashMap::new())
+}
+
+/// Same as [`load_live_modules_for_plan`], except the `perimeter-generator`
+/// claim collision between `com.core.classic-perimeters` and
+/// `com.core.arachne-perimeters` is resolved by the `wall_generator` key in
+/// `config_source` (`"classic"` | `"arachne"`, default `"classic"` when
+/// absent — see `slicer_scheduler::execution_plan::WALL_GENERATOR_CONFIG_KEY`
+/// / `DEFAULT_WALL_GENERATOR`) instead of alphabetical module-id order.
+///
+/// This is the entry point the production `run_slice` path
+/// (`crates/slicer-runtime/src/run.rs`) uses so a user's config can express
+/// intent; see docs/04 §2 "Global claim conflicts" and packet 112 Step 10 for
+/// the production defect this closes (the two-arg `load_live_modules_for_plan`
+/// silently selected `arachne-perimeters` — alphabetically first — with no
+/// config input, and `incompatible-with` never fired because dedup runs
+/// before `validate_startup_dag`).
+pub fn load_live_modules_for_plan_with_config(
+    search_roots: &[PathBuf],
+    host_parallelism: usize,
+    config_source: &HashMap<ConfigKey, ConfigValue>,
+) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
     let mut report = load_modules_from_roots(search_roots)?;
 
-    // Claim-uniqueness enforcement via the public test shim (same dedup logic).
-    let filtered_modules =
-        dedup_same_claim_modules_for_test(&mut report.modules, &mut report.diagnostics);
+    let wall_generator = config_source
+        .get(WALL_GENERATOR_CONFIG_KEY)
+        .and_then(|v| match v {
+            ConfigValue::String(s) => Some(s.as_str()),
+            _ => None,
+        });
+
+    // Claim-uniqueness enforcement, config-aware for `perimeter-generator`.
+    let filtered_modules = dedup_same_claim_modules_with_wall_generator(
+        &mut report.modules,
+        &mut report.diagnostics,
+        wall_generator,
+    );
     report.modules = filtered_modules;
 
     // Build per-stage topological orderings in canonical STAGE_ORDER.

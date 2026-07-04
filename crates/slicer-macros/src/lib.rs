@@ -475,12 +475,7 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
 /// produced by wit-bindgen for that world (e.g. `world_postpass`,
 /// `world_layer`). Caller supplies the inline WIT and the
 /// world-specific `impl Guest` body.
-fn emit_world_preamble(
-    world_name: &str,
-    _world_namespace: &str,
-    inline_wit: &str,
-    include_ir_handles: bool,
-) -> TokenStream2 {
+fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &str) -> TokenStream2 {
     // Canonical dep packages — single source of truth in slicer-schema/wit/.
     // Option A (nested-package inline): the world file is the TOP-LEVEL statement
     // header; dep packages are nested as `package slicer:X { <body> }` blocks.
@@ -542,12 +537,17 @@ fn emit_world_preamble(
     // - World file is the top-level statement (begins with "package slicer:world-X@1.0.0;")
     // - Dep packages are nested `package slicer:X { ... }` blocks (UNVERSIONED)
     // - Cross-package `use slicer:...` in the world file resolve over the whole group
-    // - ir-handles dep only included for worlds that import slicer:ir-handles/ir-handles
-    let ir_block = if include_ir_handles {
-        format!("\n\n{}", nest_dep(IR_TYPES_WIT))
-    } else {
-        String::new()
-    };
+    // - ir-handles is nested unconditionally for every world: `COMMON_WIT`'s
+    //   `host-services` interface (nested below, also unconditionally, into
+    //   every world) itself does `use slicer:ir-handles/ir-handles.{extrusion-line}`
+    //   for `generate-arachne-walls` (packet 112, Step 9A) — so every world that
+    //   nests `COMMON_WIT` transitively needs the `slicer:ir-handles` package
+    //   present, not just `world-layer`. Previously this was conditional
+    //   per-world (`world-layer` only); that broke `world-prepass`/
+    //   `world-postpass`/`world-finalization` guest builds the moment
+    //   `common.wit`'s shared interface picked up the ir-handles `use` (P112
+    //   Step 9B fix).
+    let ir_block = format!("\n\n{}", nest_dep(IR_TYPES_WIT));
 
     let expanded_inline_wit = format!(
         "{}\n\n{}\n\n{}{}\n\n{}",
@@ -617,7 +617,7 @@ fn emit_world_preamble(
 fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-postpass/world-postpass.wit");
 
-    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline, false);
+    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline);
 
     // Decide which stage method routes into the user's trait: the
     // detected stage for this impl. The other arm returns a benign
@@ -886,12 +886,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
     let wit_inline =
         include_str!("../../slicer-schema/wit/deps/world-finalization/world-finalization.wit");
 
-    let preamble = emit_world_preamble(
-        "finalization-module",
-        "world_finalization",
-        wit_inline,
-        false,
-    );
+    let preamble = emit_world_preamble("finalization-module", "world_finalization", wit_inline);
 
     quote! {
         #[cfg(target_arch = "wasm32")]
@@ -1199,7 +1194,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-prepass/world-prepass.wit");
 
-    let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline, false);
+    let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
     let segmentation_helpers = quote! {
         // `polygon` / `point2` are brought into scope by the flat type
         // aliases that `wit_bindgen::generate!` (>= 0.57) emits at the
@@ -1687,7 +1682,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 /// `build_finalization_world_glue`.
 fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = LAYER_WORLD_WIT;
-    let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline, true);
+    let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline);
 
     // Real deep-copy IN (from wit-bindgen resources to SDK views).
     let adapt_slice = quote! {

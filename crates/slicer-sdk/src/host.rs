@@ -426,6 +426,262 @@ world sdk-medial-axis {
     }
 }
 
+// ── Arachne wall generation (host-only Voronoi/SKT; cfg-split native vs wasm32) ─
+
+/// Parameters for [`generate_arachne_walls`], mirroring
+/// `slicer_core::arachne::pipeline::ArachneParams` field-for-field.
+///
+/// Defined locally rather than re-exported from `slicer_core`:
+/// `slicer_core::arachne::pipeline` (and the `skeletal_trapezoidation`/
+/// `beading` stack it orchestrates) is gated behind the `host-algos`
+/// feature, which `crates/slicer-sdk/Cargo.toml` enables only for this
+/// crate's native target (`cfg(not(target_arch = "wasm32"))`) — the wasm32
+/// guest build has no such type to alias. Matches [`medial_axis`]'s own
+/// native-vs-wasm32 type-boundary handling (that function's inputs/outputs
+/// happen to be plain `slicer_ir` types available on both targets, so it
+/// needed no equivalent mirror struct; `ArachneParams` does, since its
+/// canonical home is host-algos-gated).
+///
+/// Every distance/width field is in millimeters, matching
+/// `slicer_core::arachne::pipeline::ArachneParams`'s own convention.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ArachneParams {
+    /// Nominal wall width (mm).
+    pub optimal_width: f64,
+    /// Target width for the outermost/innermost bead (mm).
+    pub preferred_bead_width_outer: f64,
+    /// Maximum bead count the composed beading strategy will ever request.
+    pub max_bead_count: u32,
+    /// Gaussian decay radius (bead-count units) for the base distribution
+    /// strategy.
+    pub distribution_count: u32,
+    /// Whisker-dissolve length budget (mm) for the centrality filter.
+    pub transition_filter_dist: f64,
+    /// Depth floor (mm) for the centrality filter.
+    pub min_central_distance: f64,
+    /// Douglas-Peucker tolerance (mm) for toolpath simplification.
+    pub dp_epsilon: f64,
+    /// Length-factor multiplier for the small-line removal threshold.
+    pub min_length_factor: f64,
+    /// Nominal width (mm) used by the small-line removal threshold.
+    pub min_width: f64,
+    /// Gates whether the composed beading-strategy stack's thin-wall
+    /// decorator (`WideningBeadingStrategy`) is wrapped in at all. Maps to
+    /// the `detect_thin_wall` config key (packet 112, Step 9C).
+    pub print_thin_walls: bool,
+    /// Threshold (mm) below which the thin-wall decorator reports no beads
+    /// at all. Maps to the `min_feature_size` config key.
+    pub min_feature_size: f64,
+    /// Minimum bead width (mm) the thin-wall decorator clamps its emitted
+    /// bead up to. Maps to the `min_bead_width` config key.
+    pub min_bead_width: f64,
+}
+
+impl Default for ArachneParams {
+    /// Mirrors `slicer_core::arachne::pipeline::ArachneParams::default()`
+    /// exactly (see that type's own doc comment for the rationale behind
+    /// each default value).
+    fn default() -> Self {
+        Self {
+            optimal_width: 0.4,
+            preferred_bead_width_outer: 0.4,
+            max_bead_count: 9,
+            distribution_count: 1,
+            transition_filter_dist: 0.1,
+            min_central_distance: 0.0,
+            dp_epsilon: 0.025,
+            min_length_factor: 0.5,
+            min_width: 0.4,
+            print_thin_walls: false,
+            min_feature_size: 0.1,
+            min_bead_width: 0.4,
+        }
+    }
+}
+
+/// Runs the full Arachne beading-strategy pipeline over `polygons`, producing
+/// variable-width wall [`slicer_ir::ExtrusionLine`]s.
+///
+/// On native targets this delegates directly to
+/// `slicer_core::arachne::pipeline::run_arachne_pipeline` (host-algos
+/// feature). On wasm32 targets the voronoi/SKT stack is unavailable so the
+/// call is forwarded to the host through the
+/// `slicer:common/host-services#generate-arachne-walls` WIT import —
+/// mirroring [`medial_axis`]'s own native-vs-wasm32 split.
+pub fn generate_arachne_walls(
+    polygons: &[ExPolygon],
+    params: &ArachneParams,
+) -> Result<Vec<slicer_ir::ExtrusionLine>, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let core_params = slicer_core::arachne::pipeline::ArachneParams {
+            optimal_width: params.optimal_width,
+            preferred_bead_width_outer: params.preferred_bead_width_outer,
+            max_bead_count: params.max_bead_count,
+            distribution_count: params.distribution_count,
+            transition_filter_dist: params.transition_filter_dist,
+            min_central_distance: params.min_central_distance,
+            dp_epsilon: params.dp_epsilon,
+            min_length_factor: params.min_length_factor,
+            min_width: params.min_width,
+            print_thin_walls: params.print_thin_walls,
+            min_feature_size: params.min_feature_size,
+            min_bead_width: params.min_bead_width,
+        };
+        slicer_core::arachne::pipeline::run_arachne_pipeline(polygons, &core_params)
+            .map_err(|e| format!("{:?}", e))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        // On wasm32, invoke the host import generated by wit-bindgen. As with
+        // `medial_axis`'s equivalent inline binding, this is a self-contained
+        // mini WIT world scoped to just this one function — it does not
+        // depend on the full world generated by the `#[slicer_module]` macro
+        // (private inner module, not accessible from this crate). Component
+        // imports resolve structurally against the real host runtime's
+        // `slicer:common/host-services` interface, so this mini world's
+        // internal organization (e.g. placing `extrusion-line` under
+        // `slicer:types/geometry` here vs. `slicer:ir-handles/ir-handles` in
+        // the canonical schema) does not need to match — only the wire shape
+        // does.
+        #[allow(dead_code)]
+        mod __sdk_host_arachne_import {
+            ::wit_bindgen::generate!({
+                inline: r#"
+package slicer:sdk-arachne-helper;
+
+package slicer:types {
+    interface geometry {
+        record point2 { x: s64, y: s64 }
+        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
+        record polygon       { points: list<point2> }
+        record ex-polygon    { contour: polygon, holes: list<polygon> }
+        record extrusion-junction { p: point3-with-width, perimeter-index: u32 }
+        record extrusion-line { junctions: list<extrusion-junction>, inset-idx: u32, is-odd: bool, is-closed: bool }
+    }
+}
+
+package slicer:common {
+    interface host-services {
+        use slicer:types/geometry.{ex-polygon, extrusion-line};
+        record arachne-params {
+            optimal-width: f32,
+            preferred-bead-width-outer: f32,
+            max-bead-count: u32,
+            distribution-count: u32,
+            transition-filter-dist: f32,
+            min-central-distance: f32,
+            dp-epsilon: f32,
+            min-length-factor: f32,
+            min-width: f32,
+            print-thin-walls: bool,
+            min-feature-size: f32,
+            min-bead-width: f32,
+        }
+        generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
+    }
+}
+
+world sdk-arachne {
+    import slicer:common/host-services;
+}
+"#,
+                world: "sdk-arachne",
+                generate_all,
+            });
+        }
+
+        let wit_polygons: Vec<__sdk_host_arachne_import::slicer::types::geometry::ExPolygon> =
+            polygons
+                .iter()
+                .map(
+                    |input| __sdk_host_arachne_import::slicer::types::geometry::ExPolygon {
+                        contour: __sdk_host_arachne_import::slicer::types::geometry::Polygon {
+                            points: input
+                                .contour
+                                .points
+                                .iter()
+                                .map(|p| {
+                                    __sdk_host_arachne_import::slicer::types::geometry::Point2 {
+                                        x: p.x,
+                                        y: p.y,
+                                    }
+                                })
+                                .collect(),
+                        },
+                        holes: input
+                            .holes
+                            .iter()
+                            .map(
+                                |h| {
+                                    __sdk_host_arachne_import::slicer::types::geometry::Polygon {
+                                points: h
+                                    .points
+                                    .iter()
+                                    .map(|p| {
+                                        __sdk_host_arachne_import::slicer::types::geometry::Point2 {
+                                            x: p.x,
+                                            y: p.y,
+                                        }
+                                    })
+                                    .collect(),
+                            }
+                                },
+                            )
+                            .collect(),
+                    },
+                )
+                .collect();
+
+        let wit_params = __sdk_host_arachne_import::slicer::common::host_services::ArachneParams {
+            optimal_width: params.optimal_width as f32,
+            preferred_bead_width_outer: params.preferred_bead_width_outer as f32,
+            max_bead_count: params.max_bead_count,
+            distribution_count: params.distribution_count,
+            transition_filter_dist: params.transition_filter_dist as f32,
+            min_central_distance: params.min_central_distance as f32,
+            dp_epsilon: params.dp_epsilon as f32,
+            min_length_factor: params.min_length_factor as f32,
+            min_width: params.min_width as f32,
+            print_thin_walls: params.print_thin_walls,
+            min_feature_size: params.min_feature_size as f32,
+            min_bead_width: params.min_bead_width as f32,
+        };
+
+        let result =
+            __sdk_host_arachne_import::slicer::common::host_services::generate_arachne_walls(
+                &wit_polygons,
+                wit_params,
+            );
+
+        result.map(|lines| {
+            lines
+                .into_iter()
+                .map(|line| slicer_ir::ExtrusionLine {
+                    junctions: line
+                        .junctions
+                        .into_iter()
+                        .map(|j| slicer_ir::ExtrusionJunction {
+                            p: slicer_ir::Point3WithWidth {
+                                x: j.p.x,
+                                y: j.p.y,
+                                z: j.p.z,
+                                width: j.p.width,
+                                flow_factor: j.p.flow_factor,
+                                overhang_quartile: j.p.overhang_quartile,
+                            },
+                            perimeter_index: j.perimeter_index,
+                        })
+                        .collect(),
+                    inset_idx: line.inset_idx,
+                    is_odd: line.is_odd,
+                    is_closed: line.is_closed,
+                })
+                .collect()
+        })
+    }
+}
+
 // ── Time ────────────────────────────────────────────────────────────────
 
 fn process_start() -> Instant {

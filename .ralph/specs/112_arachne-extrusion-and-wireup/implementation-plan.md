@@ -29,7 +29,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - **Precondition:** Step 1 done.
 - **Postcondition:** `cargo test -p slicer-core bead_count_tapered_wedge` + `cargo test -p slicer-core bead_count_requires_centrality` green.
 - **Files allowed to read:** `crates/slicer-core/src/beading/mod.rs` (P111 trait), `crates/slicer-core/src/beading/distributed.rs` (P111 base strategy), `crates/slicer-core/src/skeletal_trapezoidation/graph.rs`.
-- **Files allowed to edit:** `crates/slicer-core/src/skeletal_trapezoidation/bead_count.rs` (NEW), `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` (add `pub mod bead_count;`), `crates/slicer-core/tests/bead_count.rs` (NEW), `crates/slicer-core/tests/fixtures/arachne/bead_count_tapered_wedge.json` (NEW).
+- **Files allowed to edit:** `crates/slicer-core/src/skeletal_trapezoidation/bead_count.rs` (NEW), `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` (add `pub mod bead_count;`), `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` (EDIT — add `STHalfEdge.bead_count: Option<u32>` field), `crates/slicer-core/tests/bead_count.rs` (NEW), `crates/slicer-core/tests/fixtures/arachne/bead_count_tapered_wedge.json` (NEW).
 - **Expected sub-agent dispatches:** ONE OrcaSlicer SUMMARY for `optimal_bead_count` call site + R-derivation (≤ 100 words). ONE `cargo test`.
 - **Context cost:** S.
 - **Authoritative docs:** OrcaSlicer SkeletalTrapezoidation.cpp (via SUMMARY).
@@ -43,7 +43,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - **Precondition:** Step 2 done.
 - **Postcondition:** `cargo test -p slicer-core propagation_three_fixtures` green.
 - **Files allowed to read:** Steps 1–2 outputs; `crates/slicer-core/src/skeletal_trapezoidation/graph.rs`.
-- **Files allowed to edit:** `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs` (NEW), `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` (add `pub mod propagation;`), `crates/slicer-core/tests/propagation.rs` (NEW), `crates/slicer-core/tests/fixtures/arachne/propagation_*.json` (NEW).
+- **Files allowed to edit:** `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs` (NEW), `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` (add `pub mod propagation;`), `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` (EDIT — add `STHalfEdge.is_transition_middle: bool` + `is_transition_end: bool` fields), `crates/slicer-core/tests/propagation.rs` (NEW), `crates/slicer-core/tests/fixtures/arachne/propagation_*.json` (NEW).
 - **Expected sub-agent dispatches:** ONE OrcaSlicer SUMMARY for `propagateBeadingsUpward / Downward` (≤ 200 words). ONE `cargo test`.
 - **Context cost:** M.
 - **Authoritative docs:** OrcaSlicer SkeletalTrapezoidation.cpp (via SUMMARY).
@@ -132,7 +132,7 @@ The packet is the heaviest M2 packet (12 steps, ~13 tasks). The implementer MUST
 - **Context cost:** M (most likely overflow point — pipeline call chain is dense).
 - **Authoritative docs:** `docs/05_module_sdk.md` (`PerimeterOutputBuilder`); `docs/03_wit_and_manifest.md` (guest WASM patterns).
 - **Narrow verification:** `cargo xtask build-guests --check 2>&1 | tee target/test-output.log && cargo test -p slicer-runtime --test executor arachne_perimeters_simple_square_produces_walls 2>&1 | tee target/test-output.log`.
-- **Cheapest falsifying check:** `rg -q 'voronoi_from_segments\|filter_central\|assign_bead_counts' modules/core-modules/arachne-perimeters/src/lib.rs` — the real SKT pipeline calls must be present. The skeleton's `warn!` must be absent from the final version (`! rg -q 'no walls produced' modules/core-modules/arachne-perimeters/src/lib.rs`).
+- **Cheapest falsifying check:** `rg -q 'generate_arachne_walls\|run_arachne_pipeline' modules/core-modules/arachne-perimeters/src/lib.rs` — NOT `voronoi_from_segments` (that symbol never appears in the guest module; the guest calls the WIT host-service bridge `generate_arachne_walls`, which dispatches to `slicer_core::arachne::pipeline::run_arachne_pipeline` host-side — see the Step 9 design-note correction in `design.md` and `D-112-HOSTSVC-BRIDGE`). The skeleton's `warn!` must be absent from the final version (`! rg -q 'no walls produced' modules/core-modules/arachne-perimeters/src/lib.rs`).
 
 ## Step 10 — Parity Fixtures (T-231)
 

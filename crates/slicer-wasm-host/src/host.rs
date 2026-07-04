@@ -342,6 +342,15 @@ pub mod prepass {
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            // `host-services#generate-arachne-walls` (packet 112, Step 9A) now
+            // `use`s `extrusion-line` from `slicer:ir-handles/ir-handles`,
+            // which transitively pulls that whole interface into every world
+            // that imports `host-services`. Alias it to the layer world's
+            // already-`impl`'d `ir_handles` module (the trivial empty
+            // `impl ir::Host for HostExecutionContext {}` at
+            // `crates/slicer-wasm-host/src/host.rs`) rather than requiring a
+            // second, separate `Host` impl for this world's own bindgen copy.
+            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -526,6 +535,10 @@ pub mod finalization {
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            // See the identical note in the `prepass` bindgen! block above:
+            // `host-services#generate-arachne-walls` (packet 112, Step 9A)
+            // transitively pulls in `slicer:ir-handles/ir-handles`.
+            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -551,6 +564,10 @@ pub mod postpass {
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            // See the identical note in the `prepass` bindgen! block above:
+            // `host-services#generate-arachne-walls` (packet 112, Step 9A)
+            // transitively pulls in `slicer:ir-handles/ir-handles`.
+            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -1742,6 +1759,58 @@ impl hs::Host for HostExecutionContext {
                     })
                     .collect();
                 Ok(Ok(wit_polylines))
+            }
+            Err(e) => Ok(Err(format!("{:?}", e))),
+        }
+    }
+
+    fn generate_arachne_walls(
+        &mut self,
+        polygons: Vec<ExPolygon>,
+        params: hs::ArachneParams,
+    ) -> wasmtime::Result<Result<Vec<ir::ExtrusionLine>, String>> {
+        let ir_polygons = wit_to_ir_expolygons(&polygons);
+        let core_params = slicer_core::arachne::pipeline::ArachneParams {
+            optimal_width: params.optimal_width as f64,
+            preferred_bead_width_outer: params.preferred_bead_width_outer as f64,
+            max_bead_count: params.max_bead_count,
+            distribution_count: params.distribution_count,
+            transition_filter_dist: params.transition_filter_dist as f64,
+            min_central_distance: params.min_central_distance as f64,
+            dp_epsilon: params.dp_epsilon as f64,
+            min_length_factor: params.min_length_factor as f64,
+            min_width: params.min_width as f64,
+            print_thin_walls: params.print_thin_walls,
+            min_feature_size: params.min_feature_size as f64,
+            min_bead_width: params.min_bead_width as f64,
+        };
+
+        match slicer_core::arachne::pipeline::run_arachne_pipeline(&ir_polygons, &core_params) {
+            Ok(lines) => {
+                let wit_lines: Vec<ir::ExtrusionLine> = lines
+                    .into_iter()
+                    .map(|line| ir::ExtrusionLine {
+                        junctions: line
+                            .junctions
+                            .into_iter()
+                            .map(|j| ir::ExtrusionJunction {
+                                p: Point3WithWidth {
+                                    x: j.p.x,
+                                    y: j.p.y,
+                                    z: j.p.z,
+                                    width: j.p.width,
+                                    flow_factor: j.p.flow_factor,
+                                    overhang_quartile: j.p.overhang_quartile,
+                                },
+                                perimeter_index: j.perimeter_index,
+                            })
+                            .collect(),
+                        inset_idx: line.inset_idx,
+                        is_odd: line.is_odd,
+                        is_closed: line.is_closed,
+                    })
+                    .collect();
+                Ok(Ok(wit_lines))
             }
             Err(e) => Ok(Err(format!("{:?}", e))),
         }

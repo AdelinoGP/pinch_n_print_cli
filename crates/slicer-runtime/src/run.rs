@@ -34,7 +34,7 @@ use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_wasm_host::WasmRuntimeDispatcher;
-use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan};
+use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
 /// Validated runtime options derived from CLI arguments.
 ///
@@ -337,13 +337,20 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
 
     // Discover and plan every module under --module-dir.
     let search_roots = assemble_search_roots(&opts.module_dirs, opts.no_default_module_paths);
-    let mut loaded = load_live_modules_for_plan(&search_roots, num_cpus_guess()).map_err(|e| {
-        SliceRunError(format!(
-            "failed to load modules from {} root(s) {:?}: {e}",
-            search_roots.len(),
-            search_roots
-        ))
-    })?;
+    // Config-aware loader: resolves the `perimeter-generator` claim
+    // collision (classic-perimeters vs arachne-perimeters) via the user's
+    // `wall_generator` config key rather than alphabetical module-id order
+    // (packet 112 Step 10 — see `load_live_modules_for_plan_with_config`'s
+    // doc comment for the production defect this closes).
+    let mut loaded =
+        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
+            .map_err(|e| {
+                SliceRunError(format!(
+                    "failed to load modules from {} root(s) {:?}: {e}",
+                    search_roots.len(),
+                    search_roots
+                ))
+            })?;
     for diag in &loaded.diagnostics {
         eprintln!(
             "{level:?}: {path}: {msg}",

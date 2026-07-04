@@ -496,6 +496,7 @@ dependencies = [
  "log",
  "rayon",
  "rstar",
+ "serde",
  "slicer-ir",
  "slicer-scheduler",
 ]

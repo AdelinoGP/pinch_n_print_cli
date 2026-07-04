@@ -43,6 +43,19 @@ is the authoritative catalog of their defaults and ranges.
 <!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Module |
 |---|---|---|---|---|
+| `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
+| `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
+| `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
+| `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `min_feature_size` | float | `1000` | >= 0.0 | `arachne-perimeters` |
+| `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
+| `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
+| `preferred_bead_width_outer` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
+| `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
+| `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
+| `wall_transition_length` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters` |
@@ -213,6 +226,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `top_shell_layers` | int | `3` | [1, 10] (deviates from OrcaSlicer's 4) | `resolved_config.rs::ResolvedConfig` |
 | `thumbnail_path` | string | `""` | — (absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)) | `pipeline.rs::DEFAULT_THUMBNAIL_PATH` |
 | `use_relative_e_distances` | bool | `true` | — (false selects M82; serializer issues G92 E0 on mode change (packet 54)) | `run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES` |
+| `wall_generator` | string | `"classic"` | — (values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)) | `slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR` |
 <!-- END GENERATED: host-speeds -->
 
 `filament_ironing_speed > 0.0` overrides `ironing_speed` for the `Ironing` role.

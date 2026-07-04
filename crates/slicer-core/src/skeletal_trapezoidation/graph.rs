@@ -116,6 +116,16 @@ pub struct STHalfEdge {
     /// [`crate::voronoi::HalfEdge::is_curved`]; consumed by Step 4's
     /// parabolic edge discretization.
     pub is_curved: bool,
+    /// The number of extrusion beads (walls) this edge should carry, as
+    /// decided by Step 2's `assign_bead_counts` pass. `None` until that pass
+    /// runs.
+    pub bead_count: Option<u32>,
+    /// Whether this edge sits in the middle of a bead-count transition
+    /// region. Set by Step 3's transition-region propagation pass.
+    pub is_transition_middle: bool,
+    /// Whether this edge sits at the end of a bead-count transition region.
+    /// Set by Step 3's transition-region propagation pass.
+    pub is_transition_end: bool,
 }
 
 /// The Orca-shaped skeletal trapezoidation half-edge graph.
@@ -130,6 +140,18 @@ pub struct SkeletalTrapezoidationGraph {
     pub vertices: Vec<STVertex>,
     /// All half-edges, indexed by [`STHalfEdge::twin`]/`next`/`prev`.
     pub edges: Vec<STHalfEdge>,
+    /// Whether [`super::centrality::filter_central`] has been run on this
+    /// graph yet. Always `false` immediately after
+    /// [`SkeletalTrapezoidationGraph::from_polygons`]; `filter_central` sets
+    /// it `true` on completion.
+    ///
+    /// Exists to disambiguate, for
+    /// [`super::bead_count::assign_bead_counts`] (AC-N1), "centrality was
+    /// never computed" from "centrality was computed and genuinely found no
+    /// central edges" — both look identical if you only inspect
+    /// [`STHalfEdge::central`], since a fresh graph's edges already default
+    /// `central` to `false`.
+    pub centrality_filtered: bool,
 }
 
 /// Errors from [`SkeletalTrapezoidationGraph::from_polygons`].
@@ -242,11 +264,18 @@ impl SkeletalTrapezoidationGraph {
                     r_max,
                     central: false,
                     is_curved: e.is_curved,
+                    bead_count: None,
+                    is_transition_middle: false,
+                    is_transition_end: false,
                 }
             })
             .collect();
 
-        Ok(Self { vertices, edges })
+        Ok(Self {
+            vertices,
+            edges,
+            centrality_filtered: false,
+        })
     }
 }
 

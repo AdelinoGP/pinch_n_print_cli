@@ -67,3 +67,4 @@ sparse_fill_holder      = { default = "rectilinear-infill", note = "holder of cl
 [host_runtime]
 use_relative_e_distances = { default = true, owner = "run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES", note = "false selects M82; serializer issues G92 E0 on mode change (packet 54)" }
 thumbnail_path           = { default = "", owner = "pipeline.rs::DEFAULT_THUMBNAIL_PATH", note = "absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)" }
+wall_generator            = { default = "classic", owner = "slicer-scheduler::execution_plan::DEFAULT_WALL_GENERATOR", note = "values classic or arachne; selects the perimeter-generator claim holder (com.core.classic-perimeters vs com.core.arachne-perimeters) at module-load time, before ResolvedConfig exists (packet 112 Step 10)" }

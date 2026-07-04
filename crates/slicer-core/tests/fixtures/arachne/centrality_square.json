@@ -1,0 +1,33 @@
+{
+  "provenance": "Self-captured regression baseline: serialized from this crate's own filter_central implementation (packet 112 Step 1 / T-220). NOT derived from, and not a substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step (see centrality.rs's module-level doc comment). Locks in current behavior for regression purposes only.",
+  "fixture": "square",
+  "transition_filter_dist": 200.0,
+  "min_central_distance": 0.0,
+  "edge_count": 24,
+  "central": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ]
+}

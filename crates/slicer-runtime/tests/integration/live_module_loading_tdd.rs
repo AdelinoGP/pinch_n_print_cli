@@ -612,16 +612,19 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
 #[test]
 fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
     // Source-level regression guard: run.rs (the library entry point after
-    // pnp-cli-unification) must use `load_live_modules_for_plan` and
-    // `build_live_execution_plan`, and must read the CLI's --config via
-    // `parse_cli_config_source`. If any of these vanish, real module
-    // bindings no longer flow through `bind_module_config_view` on the
-    // production entry path.
+    // pnp-cli-unification) must use the live module loader (base
+    // `load_live_modules_for_plan` or its config-aware
+    // `load_live_modules_for_plan_with_config` variant — packet 112 Step 10
+    // switched run.rs to the latter to resolve the perimeter-generator claim
+    // collision via `wall_generator`) and `build_live_execution_plan`, and
+    // must read the CLI's --config via `parse_cli_config_source`. If any of
+    // these vanish, real module bindings no longer flow through
+    // `bind_module_config_view` on the production entry path.
     let run_src =
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/run.rs")).unwrap();
     assert!(
-        run_src.contains("load_live_modules_for_plan("),
-        "run.rs must call load_live_modules_for_plan"
+        run_src.contains("load_live_modules_for_plan"),
+        "run.rs must call the live config-aware module loader (load_live_modules_for_plan or load_live_modules_for_plan_with_config)"
     );
     assert!(
         run_src.contains("build_live_execution_plan("),

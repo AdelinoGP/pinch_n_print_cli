@@ -8,7 +8,7 @@
   - `T-222` — Port bead-count upward + downward propagation (`propagateBeadingsUpward`, `propagateBeadingsDownward`) — marks `TransitionMiddle` / `TransitionEnd`.
   - `T-223` — Port `generateToolpaths()` — emits `Vec<VariableWidthLines>` (sorted by `inset_idx`).
   - `T-224` — Define `ExtrusionLine` + `ExtrusionJunction` IR types; `Point3WithWidth` round-trips via converter.
-  - `T-225` — Port `stitch_extrusions` (join open polylines within `bead_width_x - 1nm`).
+  - `T-225` — Port `stitch_extrusions` (join open polylines within `preferred_bead_width_outer - 1nm`; `BeadingFactoryParams` has no `bead_width_x` field — the outer width comes from `preferred_bead_width_outer`, inner from `optimal_width`).
   - `T-226` — Port `simplifyToolPaths` (DP simplification per `ExtrusionLine`).
   - `T-227` — Port `removeSmallLines` (drop odd, non-closed lines shorter than `min_length_factor * min_width`).
   - `T-230` — Wire `slicer-core::{arachne, beading, skeletal_trapezoidation}` into `arachne-perimeters::run_perimeters`. Module produces WallLoops with per-junction width; pre-processing + SKT + beading + extrusion-gen runs end-to-end on golden fixture.
@@ -115,7 +115,7 @@ For T-231's cube_4color Arachne extension: NO direct OrcaSlicer read needed. Use
 - Negative cases: `AC-N1` (bead_count requires centrality), `AC-N2` (ExtrusionLine pre-bump JSON deserializes), `AC-N3` (removeSmall all-primary invariant).
 - Refinements not captured in Given/When/Then:
   - The schema-version bump in AC-5 is additive (`#[serde(default)]` on new optional fields). Live value at refinement = `4.6.0` (P105/P106/P109 shipped; P105 carried it to 4.4.0 for `GapFill`). Implementer re-reads the actual constant at activation and bumps minor by 1 (→ `4.7.0`).
-  - The cube_4color Arachne extension fixture under T-231 reuses `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_orca.gcode` (recorded by P109 / T-P96-C3) — Arachne wired against this fixture MUST produce the same parity result, validating the per-color preprocessing chain from P110 + this packet's wire-up.
+  - The cube_4color Arachne extension fixture under T-231 is a NEW self-captured baseline — no `cube_4color_orca.gcode` (nor any `cube_4color*` directory) exists under `crates/slicer-runtime/tests/fixtures/perimeter_parity/` today (existing dirs: bridge, holed_square, multi_tool_triangle, overhang_ramp, solid_square, spiral_vase_cone); P109's cube_4color coverage lives in the executor test suite (T-P96-C3), not as a perimeter_parity gcode reference. The implementer records a fresh self-captured golden per the repo's parity-harness convention, validating that the per-color preprocessing chain from P110 + this packet's wire-up produces per-color fragmented walls consistent with Classic's cube_4color behavior.
   - T-234 (workspace ceremony) is dispatched to a sub-agent per CLAUDE.md (`FACT pass/fail` return). The implementer does NOT absorb the full output.
 
 ## Verification Commands
@@ -150,7 +150,7 @@ For T-231's cube_4color Arachne extension: NO direct OrcaSlicer read needed. Use
 
 - This packet has 12 steps — the heaviest M2 packet. The largest is Step 9 (real wire-up + the arachne_perimeters_simple_square test).
 - `crates/slicer-ir/src/slice_ir.rs` is ~1700 LOC — range-read by `rg -n 'ExtrusionLine\|ExtrusionJunction\|Point3WithWidth\|CURRENT_SLICE_IR_SCHEMA_VERSION'`.
-- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (from P109) — read full at Step 10 to extend; the file is small (≤ 200 LOC at P109 close).
+- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (from P109) — range-read at Step 10 to extend; the file is ~1554 LOC — range-read, do not full-read.
 - `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp` (~3000 LOC) — multiple SUMMARY dispatches across Steps 1–4. Each capped at 200 words.
 - `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp` (~2500 LOC) — SUMMARY dispatches at Steps 5–7. Each capped at 150 words.
 - Likely temptation: re-read OrcaSlicer source to disambiguate generateToolpaths edge cases. **Use the SUMMARY dispatch + the recorded golden fixtures** — the goldens are the source of truth for parity. If a function can't make a golden green after 2 attempts, re-dispatch a tighter SUMMARY for that specific edge case.

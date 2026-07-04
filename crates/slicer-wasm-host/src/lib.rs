@@ -41,6 +41,6 @@ pub use traits::{
 pub use dispatch::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
 
 pub use execution_plan_live::{
-    build_live_execution_plan, load_live_modules_for_plan, LiveModuleBinding, LiveModuleLoadError,
-    LiveModuleLoadOutput,
+    build_live_execution_plan, load_live_modules_for_plan, load_live_modules_for_plan_with_config,
+    LiveModuleBinding, LiveModuleLoadError, LiveModuleLoadOutput,
 };

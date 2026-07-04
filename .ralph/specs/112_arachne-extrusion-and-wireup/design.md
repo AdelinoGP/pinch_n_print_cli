@@ -34,29 +34,30 @@
   2. For each `SlicedRegion`:
      a. `let preprocessed = preprocess_input_outline(region.polygons(), &params)?;` — FORWARD-DEP on P110: `preprocess_input_outline` is in `crates/slicer-core/src/arachne/preprocess.rs`.
      b. If MMU: `let per_color = preprocess_per_color_inputs(painted_cells, tie_break)?;` then process each color's preprocessed cell separately.
-     c. `let voronoi_graph = voronoi_from_segments(&polygon_to_segments(&preprocessed))?;` — FORWARD-DEP on P110.
-     d. `let mut skt = SkeletalTrapezoidationGraph::from_voronoi(&voronoi_graph, &preprocessed);` — FORWARD-DEP on P110.
+     c. `let mut skt = SkeletalTrapezoidationGraph::from_polygons(&preprocessed)?;` — FORWARD-DEP on P110. Voronoi construction is internal to `from_polygons` (which takes `&[ExPolygon]`); there is no standalone `voronoi_from_segments`/`polygon_to_segments`/`from_voronoi` API — those symbols do not exist.
      e. `filter_central(&mut skt, &centrality_params);` — defined in this packet (T-220).
      f. `let strategy = BeadingStrategyFactory::create_stack(&beading_params);` — FORWARD-DEP on P111.
      g. `assign_bead_counts(&mut skt, &*strategy)?;` — defined in this packet (T-221).
      h. `propagate_beadings_upward(&mut skt); propagate_beadings_downward(&mut skt);` — defined in this packet (T-222).
      i. `let lines = generate_toolpaths(&skt);` — defined in this packet (T-223).
-     j. `let lines = stitch_extrusions(lines, bead_width_x - 100);` (slicer units; bead_width_x reads from beading params).
+     j. `let lines = stitch_extrusions(lines, preferred_bead_width_outer - 100);` (slicer units; `preferred_bead_width_outer` is the real `BeadingFactoryParams` field — there is no `bead_width_x` field; inner-wall joins may instead derive the gap from `optimal_width`).
      k. `let lines = simplify_toolpaths(lines, dp_epsilon);`
      l. `let lines = remove_small_lines(lines, min_length_factor, min_width);`
      m. Per line, convert via `extrusion_line_to_extrusion_path3d(line, role)` and assign the resulting `ExtrusionPath3D` to `WallLoop.path` — the field type is `ExtrusionPath3D`, NOT `Vec<Point3WithWidth>`. Emit a `WallLoop` with `loop_type` per `inset_idx` (0 → `LoopType::Outer`, ≥1 → `LoopType::Inner`; `LoopType::GapFill` IS available — P105/T-062b added it additively at 4.4.0 — so odd/gap-fill lines may map to `GapFill` where appropriate). Count walls via `walls.len()` — `PerimeterRegion` has no `wall_count` field; the count is `walls: Vec<WallLoop>`.
-  3. Return `Ok(())`. The P110 skeleton's `warn!`-only path is replaced by the above pipeline (no `generate_arachne_walls` — that was in the P108-deleted fake, which is gone).
+  3. Return `Ok(())`. The P110 skeleton's `warn!`-only path is replaced by the above pipeline.
+
+**Correction (post-implementation): real architecture is a WIT host-service bridge, not an in-guest call chain.** The step-by-step pipeline (a)-(m) above cannot run inside `arachne-perimeters` as written, because that module compiles to a `wasm32` guest component and `slicer-core`'s Voronoi/SkeletalTrapezoidation/beading code is gated behind the host-only `host-algos` feature (rayon + boostvoronoi are not WASM-portable) — a WASM guest cannot call it directly. This design section's original premise ("no `generate_arachne_walls` — that was in the P108-deleted fake, which is gone") was wrong on that point: the real implementation introduces a NEW WIT host-service, also named `generate-arachne-walls` (coincidental name reuse with the deleted P108 in-guest function — a different mechanism entirely), mirroring the existing `medial-axis` host service. `arachne-perimeters::run_perimeters` calls `slicer_sdk::host::generate_arachne_walls(polygons, &params)`, which on native targets calls `slicer_core::arachne::pipeline::run_arachne_pipeline` directly, and on `wasm32` guest builds marshals the call across the WIT boundary to the host, which runs the identical native pipeline on the guest's behalf and returns `Vec<ExtrusionLine>`. The guest module then does only steps (m) (classify + convert to `ExtrusionPath3D` + assemble `WallLoop`s) — steps (a)-(l) execute host-side inside the bridge. See `D-112-HOSTSVC-BRIDGE` in `docs/DEVIATION_LOG.md` and `modules/core-modules/arachne-perimeters/src/lib.rs`'s own module doc comment.
 
 ## Neighboring Tests & Fixtures
 
-- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` exists from P109. T-231 extends it with an `arachne_perimeter_parity` test function that iterates the 4 new fixture directories. The cube_4color Arachne extension reuses P109's recorded `cube_4color_orca.gcode` (no new reference recording).
+- `crates/slicer-runtime/tests/integration/perimeter_parity.rs` exists from P109. T-231 extends it with an `arachne_perimeter_parity` test function that iterates the 4 new fixture directories. The cube_4color Arachne fixture is NEW and self-captured — no `cube_4color_orca.gcode` (nor any `cube_4color*` directory) exists under `perimeter_parity/` today (existing dirs: bridge, holed_square, multi_tool_triangle, overhang_ramp, solid_square, spiral_vase_cone); P109's cube_4color coverage lives in the executor test suite, not as a perimeter_parity fixture. The implementer records a fresh self-captured baseline per the repo's parity-harness convention.
 - `crates/slicer-runtime/tests/executor/` already carries `cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes` from P109. The new `arachne_perimeters_simple_square_produces_walls` test (AC-9) lives in the same dir, mirroring the patterns established by M1 executor tests.
 - Per-function unit fixtures (centrality, bead_count, propagation, generate_toolpaths, stitch, simplify, remove_small) live under `crates/slicer-core/tests/fixtures/arachne/`. Recorded JSON; small files; committed; never regenerated within this packet.
 
 ## Architecture Constraints
 
 <!-- snippet: coord-system -->
-- **Coordinate system hazard.** Every constant translated from OrcaSlicer in the centrality / bead-count / propagation / generate_toolpaths code passes through `/100` (1 unit = 100 nm vs OrcaSlicer's 1 unit = 1 nm). `bead_width_x - 100` (slicer units) is the stitch gap (OrcaSlicer uses `bead_width_x - 1nm`, which is `bead_width_x_slicer - 100` after the /100 conversion). Any constant > 1000000 in geometry code is a red flag.
+- **Coordinate system hazard.** Every constant translated from OrcaSlicer in the centrality / bead-count / propagation / generate_toolpaths code passes through `/100` (1 unit = 100 nm vs OrcaSlicer's 1 unit = 1 nm). `preferred_bead_width_outer - 100` (slicer units) is the stitch gap (OrcaSlicer's `bead_width_x - 1nm` maps to `BeadingFactoryParams::preferred_bead_width_outer - 100` after the /100 conversion; `BeadingFactoryParams` has no `bead_width_x` field). Any constant > 1000000 in geometry code is a red flag.
 
 <!-- snippet: wasm-staleness -->
 - **Guest WASM staleness.** T-224 edits IR (adds `ExtrusionLine` + `ExtrusionJunction`), and T-230 edits `arachne-perimeters/src/lib.rs`. Both invalidate guest WASM. After every IR edit AND after Step 9 (T-230 wire-up), the implementer MUST run `cargo xtask build-guests --check`; if STALE, rebuild without `--check` BEFORE running any host/executor test. Failure to rebuild causes Arachne parity tests (AC-10) to fail with a typed-instantiation error masquerading as a wire-up bug.
@@ -95,6 +96,7 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 | `crates/slicer-core/src/arachne/remove_small.rs` | NEW | Step 7 | T-227 |
 | `crates/slicer-core/tests/remove_small.rs` | NEW | Step 7 | AC-8 + AC-N3 |
 | `crates/slicer-core/src/skeletal_trapezoidation/mod.rs` | EDIT | Steps 1–3 | `pub mod` registrations |
+| `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` | EDIT | Steps 2–3 | add `STHalfEdge` fields: `bead_count: Option<u32>` [Step 2], `is_transition_middle: bool` + `is_transition_end: bool` [Step 3] |
 | `crates/slicer-core/src/arachne/mod.rs` | EDIT | Steps 4–7 | `pub mod` registrations |
 | `crates/slicer-ir/src/slice_ir.rs` | EDIT | Step 8 | T-224 — ExtrusionLine + ExtrusionJunction + schema bump |
 | `crates/slicer-schema/wit/deps/ir-types.wit` | EDIT | Step 8 | WIT records |
@@ -108,7 +110,7 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/narrow_strip_widening/` | NEW | Step 10 | T-231 fixture 2 |
 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/max_bead_count_cap/` | NEW | Step 10 | T-231 fixture 3 |
 | `crates/slicer-runtime/tests/fixtures/perimeter_parity/complex_multi_feature/` | NEW | Step 10 | T-231 fixture 4 |
-| `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_arachne/` | NEW | Step 10 | Arachne extension of P109 reference |
+| `crates/slicer-runtime/tests/fixtures/perimeter_parity/cube_4color_arachne/` | NEW | Step 10 | NEW self-captured baseline — no pre-existing `cube_4color_orca.gcode`/dir in `perimeter_parity/` to extend |
 | `crates/slicer-runtime/tests/integration/perimeter_parity.rs` | EDIT | Step 10 | Arachne suite entry (FORWARD-DEP on P109) |
 | `crates/slicer-runtime/tests/integration/main.rs` | EDIT | Step 10 | S7 REQUIRED: ensure `mod perimeter_parity;` present (may land in P109) |
 | `docs/DEVIATION_LOG.md` | EDIT | Step 11 | T-232 — D-7/D-9/D-15 closures |
@@ -133,11 +135,11 @@ For T-231 fixtures: 4 fresh fixtures + cube_4color Arachne extension. Rejected: 
 | `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` | full (post-P110) | Centrality / bead_count / propagation operate on this graph |
 | `crates/slicer-core/src/beading/mod.rs` | full (post-P111) | T-221 calls `BeadingStrategy::optimal_bead_count` |
 | `crates/slicer-core/src/beading/factory.rs` | full (post-P111) | T-230 calls `BeadingStrategyFactory::create_stack` |
-| `crates/slicer-core/src/voronoi.rs` | full (post-P110) | T-230 calls `voronoi_from_segments` |
+| `crates/slicer-core/src/voronoi.rs` | full (post-P110) | Internal to `SkeletalTrapezoidationGraph::from_polygons`; T-230 does NOT call it directly (no `voronoi_from_segments` API) |
 | `crates/slicer-core/src/arachne/preprocess.rs` | full (post-P110) | T-230 calls `preprocess_input_outline` + `preprocess_per_color_inputs` |
 | `modules/core-modules/classic-perimeters/src/lib.rs` | range — `WallLoop` emission pattern only | T-230 mirrors emission patterns |
 | `modules/core-modules/arachne-perimeters/src/lib.rs` | full (P110 skeleton — empty `LayerModule` impl + `warn!`) | Implement in Step 9 |
-| `crates/slicer-runtime/tests/integration/perimeter_parity.rs` | full (≤ 200 LOC at P109 close) | T-231 extension |
+| `crates/slicer-runtime/tests/integration/perimeter_parity.rs` | range-read (~1554 LOC — do not full-read) | T-231 extension |
 
 ## Out-of-Bounds Files
 

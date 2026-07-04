@@ -28,6 +28,24 @@
 //! the [`crate::voronoi`] / [`crate::skeletal_trapezoidation`] SKT graph
 //! (this module does not build on either).
 //!
+//! Packet 112 (Track B, Steps 5-7) adds three post-process transforms over
+//! `Vec<ExtrusionLine>` output — also independent of the SKT graph:
+//!
+//! - [`stitch::stitch_extrusions`] (T-225) — joins open polylines across
+//!   small gaps.
+//! - [`simplify::simplify_toolpaths`] (T-226) — Douglas-Peucker polyline
+//!   simplification, width-preserving.
+//! - [`remove_small::remove_small_lines`] (T-227) — drops degenerate odd,
+//!   non-closed transition slivers.
+//!
+//! Packet 112 (Track B, Step 4) additionally adds
+//! [`generate_toolpaths::generate_toolpaths`] (T-223) — variable-width inset
+//! emission *from* the SKT graph (unlike the pass-through/post-process
+//! modules above, this one does depend on
+//! [`crate::skeletal_trapezoidation`], hence the narrower `host-algos` gate
+//! on that one submodule; see its own module doc comment for the full
+//! ADAPTATION contract).
+//!
 //! # Host availability (default features, not `host-algos`-gated)
 //!
 //! Unlike [`crate::voronoi`], [`crate::skeletal_trapezoidation`], and
@@ -37,10 +55,36 @@
 //! therefore compiled under default features rather than gated behind
 //! `host-algos`, so it stays available to any caller that only needs
 //! polygon-level preprocessing without pulling in the voronoi/SKT stack.
+//! [`generate_toolpaths`] is the one exception (see above): it is gated
+//! behind `host-algos` individually, since it takes a
+//! [`crate::skeletal_trapezoidation::SkeletalTrapezoidationGraph`] which only
+//! exists under that feature.
+//!
+//! Packet 112 (Step 9A) adds [`pipeline::run_arachne_pipeline`], which chains
+//! every stage above (plus the `skeletal_trapezoidation`/`beading` modules)
+//! end to end. Gated behind `host-algos` like [`generate_toolpaths`], for the
+//! same reason. This is the native pipeline the `generate-arachne-walls`
+//! host-service bridge calls (mirroring the existing `medial-axis` bridge)
+//! so a WASM guest — which cannot link `host-algos` itself — can still reach
+//! the Arachne beading-strategy stack.
 
+#[cfg(feature = "host-algos")]
+pub mod generate_toolpaths;
+#[cfg(feature = "host-algos")]
+pub mod pipeline;
 pub mod preprocess;
+pub mod remove_small;
+pub mod simplify;
+pub mod stitch;
 
+#[cfg(feature = "host-algos")]
+pub use generate_toolpaths::generate_toolpaths;
+#[cfg(feature = "host-algos")]
+pub use pipeline::{run_arachne_pipeline, ArachneParams, ArachnePipelineError};
 pub use preprocess::{preprocess_input_outline, preprocess_per_color_inputs, PreprocessParams};
+pub use remove_small::remove_small_lines;
+pub use simplify::simplify_toolpaths;
+pub use stitch::stitch_extrusions;
 
 /// Identifies the paint/MMU tool (extruder or color) a per-color Arachne
 /// input cell belongs to.

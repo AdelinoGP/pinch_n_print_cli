@@ -13,7 +13,7 @@ Backlog source: `docs/specs/perimeter-modules-orca-parity-roadmap.md` Phase 12 (
 | T-222 | Port bead-count upward + downward propagation (`propagateBeadingsUpward`, `propagateBeadingsDownward`); marks `TransitionMiddle` / `TransitionEnd` | Phase 12 | Step 3 | pending |
 | T-223 | Port `generateToolpaths()` — emits `Vec<VariableWidthLines>` sorted by `inset_idx` — in `arachne/generate_toolpaths.rs` | Phase 12 | Step 4 | pending |
 | T-224 | Define `ExtrusionLine { junctions, inset_idx, is_odd, is_closed }` + `ExtrusionJunction { p, perimeter_index }` IR types; bump `CURRENT_SLICE_IR_SCHEMA_VERSION` minor by 1 | Phase 12 | Step 8 | pending |
-| T-225 | Port `stitch_extrusions` (join open polylines within `bead_width_x - 1 nm`) into `arachne/stitch.rs` | Phase 12 | Step 5 | pending |
+| T-225 | Port `stitch_extrusions` (join open polylines within `preferred_bead_width_outer - 1 nm`; `BeadingFactoryParams` has no `bead_width_x` field) into `arachne/stitch.rs` | Phase 12 | Step 5 | pending |
 | T-226 | Port `simplifyToolPaths` (DP simplification per `ExtrusionLine`) into `arachne/simplify.rs` | Phase 12 | Step 6 | pending |
 | T-227 | Port `removeSmallLines` (drop odd non-closed lines shorter than `min_length_factor * min_width`) into `arachne/remove_small.rs` | Phase 12 | Step 7 | pending |
 

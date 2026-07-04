@@ -42,6 +42,8 @@ pub use slice_ir::{
     ConfigView,
 
     ExPolygon,
+    ExtrusionJunction,
+    ExtrusionLine,
     ExtrusionPath3D,
     ExtrusionRole,
 
@@ -140,6 +142,7 @@ pub use slice_ir::{
     Transform3d,
     TravelMove,
     TravelRetract,
+    VariableWidthLines,
     WallBoundaryType,
     WallFeatureFlags,
     // Wall generator
@@ -153,6 +156,8 @@ pub use slice_ir::{
 };
 
 pub use slice_ir::{
+    // ExtrusionLine -> ExtrusionPath3D conversion helper
+    extrusion_line_to_extrusion_path3d,
     // Helper functions for Point2 coordinate conversion
     mm_to_units,
     units_to_mm,

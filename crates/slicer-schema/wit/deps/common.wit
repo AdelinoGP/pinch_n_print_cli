@@ -6,6 +6,7 @@ interface module-errors {
 
 interface host-services {
     use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon, thick-polyline};
+    use slicer:ir-handles/ir-handles.{extrusion-line};
     type object-id = string;
     enum log-level { trace, debug, info, warn, error }
     log: func(level: log-level, message: string);
@@ -18,5 +19,29 @@ interface host-services {
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
     medial-axis:      func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
+    /// Parameters for `generate-arachne-walls`, mirroring
+    /// `slicer_core::arachne::pipeline::ArachneParams` field-for-field
+    /// (packet 112, Step 9A). Every distance/width field is in millimeters,
+    /// matching `medial-axis`'s `min-width`/`max-width` convention above.
+    record arachne-params {
+        optimal-width: f32,
+        preferred-bead-width-outer: f32,
+        max-bead-count: u32,
+        distribution-count: u32,
+        transition-filter-dist: f32,
+        min-central-distance: f32,
+        dp-epsilon: f32,
+        min-length-factor: f32,
+        min-width: f32,
+        print-thin-walls: bool,
+        min-feature-size: f32,
+        min-bead-width: f32,
+    }
+    /// Runs the full Arachne beading-strategy pipeline
+    /// (`slicer_core::arachne::pipeline::run_arachne_pipeline`) host-side, for
+    /// a WASM guest that cannot itself link the `host-algos` feature
+    /// (rayon + boostvoronoi are native-only) — mirrors the `medial-axis`
+    /// bridge above.
+    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
     now-us: func() -> u64;
 }

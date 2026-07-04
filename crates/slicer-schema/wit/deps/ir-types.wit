@@ -76,6 +76,18 @@ interface ir-handles {
 
     record seam-position { point: point3-with-width, wall-index: u32 }
 
+    /// A single junction (vertex) of an `extrusion-line`, mirroring
+    /// `slicer_ir::ExtrusionJunction` (Arachne beading-strategy stack,
+    /// packet 112, T-224). Additive record only — not yet wired into any
+    /// resource or world; no consumer this packet.
+    record extrusion-junction { p: point3-with-width, perimeter-index: u32 }
+
+    /// A variable-width extrusion line produced by the Arachne
+    /// beading-strategy stack, mirroring `slicer_ir::ExtrusionLine`
+    /// (packet 112, T-224). Additive record only — not yet wired into any
+    /// resource or world; no consumer this packet.
+    record extrusion-line { junctions: list<extrusion-junction>, inset-idx: u32, is-odd: bool, is-closed: bool }
+
     /// Read-side seam candidate record, mirroring the `(pos, score)` shape
     /// written by `perimeter-output-builder.push-seam-candidate` below. Lets
     /// `Layer::PerimetersPostProcess` consumers (e.g. com.core.seam-placer)

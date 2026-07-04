@@ -111,15 +111,16 @@ pub use dag_cli::{
 };
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_for_test,
-    parse_cli_config_source, CompiledModuleBuilder, CompiledModuleStatic, CompiledStage,
-    ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
-    ExecutionPlanRequest, IrAccessMask, SortedStageModules, DEFAULT_REGION_MAP_CAP,
-    MAX_LAYER_INDEX, STAGE_ORDER,
+    dedup_same_claim_modules_with_wall_generator, parse_cli_config_source, CompiledModuleBuilder,
+    CompiledModuleStatic, CompiledStage, ConfigSourceParseError, ExecutionModuleBinding,
+    ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, SortedStageModules,
+    DEFAULT_REGION_MAP_CAP, DEFAULT_WALL_GENERATOR, MAX_LAYER_INDEX, STAGE_ORDER,
+    WALL_GENERATOR_CONFIG_KEY,
 };
 // Live-path symbols moved to slicer-wasm-host (Step 3.5).
 pub use slicer_wasm_host::{
-    build_live_execution_plan, load_live_modules_for_plan, LiveModuleBinding, LiveModuleLoadError,
-    LiveModuleLoadOutput,
+    build_live_execution_plan, load_live_modules_for_plan, load_live_modules_for_plan_with_config,
+    LiveModuleBinding, LiveModuleLoadError, LiveModuleLoadOutput,
 };
 // CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
 pub use crate::builtins::region_mapping_producer::{

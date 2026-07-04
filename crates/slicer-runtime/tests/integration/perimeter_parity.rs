@@ -41,7 +41,7 @@ use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };
 use slicer_runtime::{
-    assemble_search_roots, build_live_execution_plan, load_live_modules_for_plan,
+    assemble_search_roots, build_live_execution_plan, load_live_modules_for_plan_with_config,
     resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
     validate_support_layer_heights, CompiledModuleLive, ConfigBoundsIndex, LayerStageError,
     LayerStageInput, LayerStageRunner, NoopLayerProgressSink, WasmComponent, WasmInstancePool,
@@ -200,8 +200,14 @@ pub fn run_pipeline_capturing_perimeters(
     }
 
     let search_roots = assemble_search_roots(module_dirs, true);
-    let mut loaded = load_live_modules_for_plan(&search_roots, num_cpus_guess())
-        .map_err(|e| CapturePipelineError(format!("failed to load modules: {e}")))?;
+    // Config-aware loader: resolves the `perimeter-generator` claim
+    // collision (classic-perimeters vs arachne-perimeters) via `config_source`'s
+    // `wall_generator` key (packet 112 Step 10), mirroring the production
+    // `run_slice` path exactly instead of relying on directory-exclusion
+    // workarounds.
+    let mut loaded =
+        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
+            .map_err(|e| CapturePipelineError(format!("failed to load modules: {e}")))?;
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
 
@@ -720,6 +726,11 @@ fn deliberate_broken_fixture_file_is_detected() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("solid_square.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir() loads both classic-perimeters and
+        // arachne-perimeters; the `perimeter-generator` claim collision
+        // resolves to classic-perimeters by default (`wall_generator`
+        // config key absent — see `dedup_same_claim_modules`, packet 112
+        // Step 10), matching this fixture's recorded baseline.
         module_dirs: vec![core_modules_dir()],
         expected_output_path: broken_path.clone(),
     };
@@ -1107,6 +1118,10 @@ fn solid_square_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("solid_square.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // (classic-perimeters vs arachne-perimeters) resolves to classic by
+        // default (no `wall_generator` config key set — packet 112 Step 10),
+        // matching this fixture's recorded baseline.
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
@@ -1168,6 +1183,8 @@ fn holed_square_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("holed_square.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // resolves to classic by default (packet 112 Step 10).
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
@@ -1219,6 +1236,8 @@ fn bridge_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("bridge.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // resolves to classic by default (packet 112 Step 10).
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
@@ -1283,6 +1302,8 @@ fn overhang_ramp_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("overhang_ramp.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // resolves to classic by default (packet 112 Step 10).
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
@@ -1474,6 +1495,8 @@ fn multi_tool_triangle_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("multi_tool_triangle.3mf"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // resolves to classic by default (packet 112 Step 10).
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
@@ -1544,10 +1567,378 @@ fn spiral_vase_cone_perimeter_parity() {
     let fixture = PerimeterParityFixture {
         mesh_path: dir.join("spiral_vase_cone.stl"),
         config_path: dir.join("config.json"),
+        // core_modules_dir(): the `perimeter-generator` claim collision
+        // resolves to classic by default (packet 112 Step 10).
         module_dirs: vec![core_modules_dir()],
         expected_output_path: dir.join("expected_perimeter_ir.json"),
     };
     let result =
         run_and_compare_fixture(&fixture).expect("spiral_vase_cone pipeline run must succeed");
     assert_eq!(result, PerimeterCompareResult::Match, "{result:?}");
+}
+
+// ============================================================================
+// (f) M2 Arachne fixtures (packet 112, Step 10A / T-231, AC-10).
+//
+// HONEST SCOPE (same convention as section (e) above): no live OrcaSlicer
+// oracle exists in this environment. These 4 fixtures' `expected_perimeter_ir.json`
+// baselines are SELF-CAPTURED regression baselines — this pipeline's own
+// output, recorded once via the `#[ignore]`-marked `record_*` functions below
+// and committed — NOT independently-derived OrcaSlicer geometry. The
+// permanent gate (`arachne_perimeter_parity`) proves two independent things
+// per fixture: (1) self-regression (today's captured output matches the
+// committed baseline to per-vertex/per-junction tolerance), and (2) a
+// BEHAVIORAL assertion specific to the Arachne feature each fixture targets
+// (variable widths / thin-wall widening / bead-count cap / multi-wall-loop
+// SKT graph). The behavioral assertions are the real correctness signal here
+// — the baseline alone can only ever detect drift from itself, never a
+// divergence from OrcaSlicer (see `slicer_core::arachne::pipeline`'s own
+// module doc comment for the same caveat at the native-pipeline level).
+//
+// Module selection: both `com.core.classic-perimeters` and
+// `com.core.arachne-perimeters` claim `perimeter-generator` on
+// `Layer::Perimeters`, and `arachne-perimeters.toml`'s `[compatibility]`
+// declares `incompatible-with = ["com.core.classic-perimeters"]`. This
+// harness's `run_pipeline_capturing_perimeters` deliberately skips the full
+// startup DAG validation (`validate_startup_dag`, which is what enforces
+// `incompatible-with` — see this file's own top-of-file doc comment), relying
+// only on `load_live_modules_for_plan_with_config`'s internal claim-uniqueness
+// dedup (`dedup_same_claim_modules` in
+// `crates/slicer-scheduler/src/execution_plan.rs`), which resolves the
+// `perimeter-generator` collision via the `wall_generator` config key
+// (packet 112 Step 10) rather than alphabetical module-id order. Each of
+// these 4 fixtures' committed `config.json` sets `"wall_generator": "arachne"`
+// explicitly, so all core modules load from the plain `core_modules_dir()`
+// (matching production) and arachne selection is guaranteed by config, not by
+// excluding `classic-perimeters` from the search roots.
+// ============================================================================
+
+/// Run `mesh_filename` + `<dir>/config.json` through the real pipeline (all
+/// core modules loaded from `core_modules_dir()`; `<dir>/config.json` sets
+/// `"wall_generator": "arachne"` so `arachne-perimeters` is guaranteed to
+/// handle `Layer::Perimeters` via config, not directory exclusion), assert
+/// the captured output is structurally sound and matches
+/// `<dir>/expected_perimeter_ir.json` within the standard per-vertex
+/// tolerances, then return the captured `Vec<PerimeterIR>` so the caller can
+/// run its fixture-specific behavioral assertion on top.
+fn run_and_check_arachne_fixture(dir: &Path, mesh_filename: &str) -> Vec<PerimeterIR> {
+    let mesh_path = dir.join(mesh_filename);
+    let config_path = dir.join("config.json");
+
+    let actual = run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+        .unwrap_or_else(|e| panic!("{}: real pipeline run must succeed: {e}", dir.display()));
+
+    if let Some(violation) = structural_violation(&actual) {
+        panic!(
+            "{}: captured output failed structural-integrity check: {violation}",
+            dir.display()
+        );
+    }
+
+    let expected = load_expected_perimeters(&dir.join("expected_perimeter_ir.json"))
+        .unwrap_or_else(|e| panic!("{}: failed to load expected baseline: {e}", dir.display()));
+    assert_eq!(
+        actual.len(),
+        expected.len(),
+        "{}: captured layer count does not match the committed baseline",
+        dir.display()
+    );
+    for (a, e) in actual.iter().zip(expected.iter()) {
+        match compare_perimeter_ir(a, e) {
+            PerimeterCompareResult::Match => {}
+            PerimeterCompareResult::Mismatch(m) => {
+                panic!("{}: baseline comparison failed: {m}", dir.display())
+            }
+        }
+    }
+
+    actual
+}
+
+// ----------------------------------------------------------------------------
+// Arachne fixture 1: tapered_wedge — a trapezoid tapering from an 8mm-wide
+// base (x=0, y in [-4,4]) down to a 2mm-wide tip (x=10mm, y in [-1,1]),
+// extruded z:[0,3]. A single convex region whose local thickness varies
+// continuously along its length, exercising per-vertex variable bead widths
+// across the SKT graph (T-231's "tapered_wedge" fixture).
+// ----------------------------------------------------------------------------
+
+fn tapered_wedge_mesh() -> Vec<Tri> {
+    prism(
+        [
+            [0.0, -4.0, 0.0],
+            [10.0, -1.0, 0.0],
+            [10.0, 1.0, 0.0],
+            [0.0, 4.0, 0.0],
+        ],
+        [
+            [0.0, -4.0, 3.0],
+            [10.0, -1.0, 3.0],
+            [10.0, 1.0, 3.0],
+            [0.0, 4.0, 3.0],
+        ],
+    )
+}
+
+fn tapered_wedge_config() -> serde_json::Value {
+    serde_json::json!({
+        "layer_height": 1.0,
+        "first_layer_height": 1.0,
+        "wall_generator": "arachne"
+    })
+}
+
+#[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
+#[test]
+fn record_tapered_wedge() {
+    let dir = fixture_dir("tapered_wedge");
+    let mesh_path = dir.join("tapered_wedge.stl");
+    let config_path = dir.join("config.json");
+    write_binary_stl(&mesh_path, &tapered_wedge_mesh());
+    write_config_json(&config_path, &tapered_wedge_config());
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("tapered_wedge real pipeline run must succeed");
+    print_perimeter_summary("tapered_wedge", &perimeters);
+    write_expected_perimeters(&dir, &perimeters);
+}
+
+// ----------------------------------------------------------------------------
+// Arachne fixture 2: narrow_strip_widening — a 0.25mm x 10mm x 3mm strip,
+// with `detect_thin_wall=true`. 0.25mm sits strictly between the manifest's
+// `min_feature_size` default (0.1mm) and `optimal_width`/`min_bead_width`
+// defaults (0.4mm each), landing WideningBeadingStrategy's "middle regime"
+// (see `crates/slicer-core/src/beading/widening.rs`'s `compute`): it emits a
+// SINGLE bead of `thickness.max(min_output_width)` — since `min_output_width`
+// (`min_bead_width`) == `optimal_width` == 0.4mm by default, this evaluates to
+// exactly 0.4mm regardless of the 0.25mm input thickness, i.e. the feature is
+// RESCUED (not dropped) and its width is clamped up to ~0.4mm. Without
+// `detect_thin_wall=true`, `WideningBeadingStrategy` is absent from the stack
+// entirely and this feature would legitimately produce zero walls.
+// ----------------------------------------------------------------------------
+
+fn narrow_strip_widening_mesh() -> Vec<Tri> {
+    solid_box([0.0, -0.125, 0.0], [10.0, 0.125, 3.0])
+}
+
+fn narrow_strip_widening_config() -> serde_json::Value {
+    serde_json::json!({
+        "layer_height": 1.0,
+        "first_layer_height": 1.0,
+        "detect_thin_wall": true,
+        "wall_generator": "arachne"
+    })
+}
+
+#[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
+#[test]
+fn record_narrow_strip_widening() {
+    let dir = fixture_dir("narrow_strip_widening");
+    let mesh_path = dir.join("narrow_strip_widening.stl");
+    let config_path = dir.join("config.json");
+    write_binary_stl(&mesh_path, &narrow_strip_widening_mesh());
+    write_config_json(&config_path, &narrow_strip_widening_config());
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("narrow_strip_widening real pipeline run must succeed");
+    print_perimeter_summary("narrow_strip_widening", &perimeters);
+    write_expected_perimeters(&dir, &perimeters);
+}
+
+// ----------------------------------------------------------------------------
+// Arachne fixture 3: max_bead_count_cap — a thick 15mm x 15mm x 3mm block.
+// Center-of-block local thickness (~7.5mm half-width) divided by
+// `optimal_width` (0.4mm default) implies ~18 beads absent capping, well past
+// `max_bead_count`'s default of 9 — exercising `LimitedBeadingStrategy`'s cap
+// (`crates/slicer-core/src/beading/limited.rs`).
+// ----------------------------------------------------------------------------
+
+fn max_bead_count_cap_mesh() -> Vec<Tri> {
+    solid_box([0.0, 0.0, 0.0], [15.0, 15.0, 3.0])
+}
+
+fn max_bead_count_cap_config() -> serde_json::Value {
+    serde_json::json!({
+        "layer_height": 1.0,
+        "first_layer_height": 1.0,
+        "max_bead_count": 9,
+        "wall_generator": "arachne"
+    })
+}
+
+#[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
+#[test]
+fn record_max_bead_count_cap() {
+    let dir = fixture_dir("max_bead_count_cap");
+    let mesh_path = dir.join("max_bead_count_cap.stl");
+    let config_path = dir.join("config.json");
+    write_binary_stl(&mesh_path, &max_bead_count_cap_mesh());
+    write_config_json(&config_path, &max_bead_count_cap_config());
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("max_bead_count_cap real pipeline run must succeed");
+    print_perimeter_summary("max_bead_count_cap", &perimeters);
+    write_expected_perimeters(&dir, &perimeters);
+}
+
+// ----------------------------------------------------------------------------
+// Arachne fixture 4: complex_multi_feature — an L-shaped footprint built from
+// two axis-aligned, edge-adjoining (non-overlapping) boxes: a 10mm x 4mm long
+// arm and a 4mm x 5mm short arm sharing the segment x in [0,4], y=4 (mirrors
+// the M1 `holed_square` fixture's adjoining-box union technique). Deliberately
+// asymmetric arm lengths/widths (10x4 vs 4x5) to avoid an exact-symmetry
+// degenerate Voronoi vertex at the reflex corner (see `multi_tool_triangle`'s
+// own fixture comment for the same hazard with an equilateral triangle).
+// Exercises the whole SKT graph over a polygon with both convex and reflex
+// corners, producing multiple wall loops.
+// ----------------------------------------------------------------------------
+
+fn complex_multi_feature_mesh() -> Vec<Tri> {
+    let mut tris = Vec::new();
+    tris.extend(solid_box([0.0, 0.0, 0.0], [10.0, 4.0, 3.0])); // long arm
+    tris.extend(solid_box([0.0, 4.0, 0.0], [4.0, 9.0, 3.0])); // short arm
+    tris
+}
+
+fn complex_multi_feature_config() -> serde_json::Value {
+    serde_json::json!({
+        "layer_height": 1.0,
+        "first_layer_height": 1.0,
+        "wall_generator": "arachne"
+    })
+}
+
+#[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
+#[test]
+fn record_complex_multi_feature() {
+    let dir = fixture_dir("complex_multi_feature");
+    let mesh_path = dir.join("complex_multi_feature.stl");
+    let config_path = dir.join("config.json");
+    write_binary_stl(&mesh_path, &complex_multi_feature_mesh());
+    write_config_json(&config_path, &complex_multi_feature_config());
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("complex_multi_feature real pipeline run must succeed");
+    print_perimeter_summary("complex_multi_feature", &perimeters);
+    write_expected_perimeters(&dir, &perimeters);
+}
+
+/// AC-10: the 4 Arachne fixtures, each checked against its committed
+/// self-captured baseline (regression signal) AND a fixture-specific
+/// behavioral assertion (the real correctness signal — see this file's
+/// section (f) header comment for the honest-scope caveat both signals
+/// share).
+#[test]
+fn arachne_perimeter_parity() {
+    // Fixture 1: tapered_wedge — variable widths observable across walls.
+    {
+        let dir = fixture_dir("tapered_wedge");
+        let perimeters = run_and_check_arachne_fixture(&dir, "tapered_wedge.stl");
+        let region = perimeters
+            .iter()
+            .flat_map(|p| p.regions.iter())
+            .find(|r| !r.walls.is_empty())
+            .expect("tapered_wedge: at least one region with walls must be captured");
+        assert!(
+            region.walls.len() > 1,
+            "tapered_wedge: expected more than one WallLoop to compare widths across, got {}",
+            region.walls.len()
+        );
+        let all_widths: Vec<f32> = region
+            .walls
+            .iter()
+            .flat_map(|w| w.width_profile.widths.iter().copied())
+            .collect();
+        let min_w = all_widths.iter().copied().fold(f32::INFINITY, f32::min);
+        let max_w = all_widths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        assert!(
+            (max_w - min_w) > 0.05,
+            "tapered_wedge: expected observable width variation across the tapering wedge \
+             (spread > 0.05mm), got min={min_w} max={max_w} (spread={})",
+            max_w - min_w
+        );
+    }
+
+    // Fixture 2: narrow_strip_widening — the feature is rescued (>= 1 wall,
+    // not dropped) and its width is clamped toward min_bead_width (~0.4mm).
+    {
+        let dir = fixture_dir("narrow_strip_widening");
+        let perimeters = run_and_check_arachne_fixture(&dir, "narrow_strip_widening.stl");
+        let region = perimeters
+            .iter()
+            .flat_map(|p| p.regions.iter())
+            .find(|r| !r.walls.is_empty())
+            .expect(
+                "narrow_strip_widening: expected >= 1 rescued wall (Widening strategy), got 0 \
+                 walls across all layers — the thin feature was dropped instead of widened",
+            );
+
+        const MIN_BEAD_WIDTH_MM: f32 = 0.4; // arachne-perimeters.toml `min_bead_width` default.
+        const CLAMP_TOLERANCE_MM: f32 = 0.05;
+        let widths = &region.walls[0].width_profile.widths;
+        assert!(
+            !widths.is_empty(),
+            "narrow_strip_widening: rescued wall must carry >= 1 width sample"
+        );
+        for &w in widths {
+            assert!(
+                (w - MIN_BEAD_WIDTH_MM).abs() < CLAMP_TOLERANCE_MM,
+                "narrow_strip_widening: expected width clamped toward min_bead_width \
+                 ({MIN_BEAD_WIDTH_MM}mm +/- {CLAMP_TOLERANCE_MM}mm), got {w}mm — Widening \
+                 strategy did not engage as expected"
+            );
+        }
+    }
+
+    // Fixture 3: max_bead_count_cap — no wall exceeds max_bead_count, AND the
+    // cap is demonstrably exercised (not merely never reached).
+    {
+        let dir = fixture_dir("max_bead_count_cap");
+        let perimeters = run_and_check_arachne_fixture(&dir, "max_bead_count_cap.stl");
+        const MAX_BEAD_COUNT: u32 = 9; // arachne-perimeters.toml default.
+        let mut max_seen: u32 = 0;
+        for p in &perimeters {
+            for r in &p.regions {
+                for w in &r.walls {
+                    assert!(
+                        w.perimeter_index <= MAX_BEAD_COUNT,
+                        "max_bead_count_cap: wall perimeter_index {} exceeds max_bead_count {}",
+                        w.perimeter_index,
+                        MAX_BEAD_COUNT
+                    );
+                    max_seen = max_seen.max(w.perimeter_index);
+                }
+            }
+        }
+        assert!(
+            max_seen >= MAX_BEAD_COUNT - 1,
+            "max_bead_count_cap: expected the cap to actually engage (max observed \
+             perimeter_index >= {}), got max_seen={} — the block may not be thick enough to \
+             exercise LimitedBeadingStrategy's cap",
+            MAX_BEAD_COUNT - 1,
+            max_seen
+        );
+    }
+
+    // Fixture 4: complex_multi_feature — multiple wall loops from the whole
+    // (convex + reflex corner) SKT graph.
+    {
+        let dir = fixture_dir("complex_multi_feature");
+        let perimeters = run_and_check_arachne_fixture(&dir, "complex_multi_feature.stl");
+        let region = perimeters
+            .iter()
+            .flat_map(|p| p.regions.iter())
+            .find(|r| !r.walls.is_empty())
+            .expect("complex_multi_feature: at least one region with walls must be captured");
+        assert!(
+            region.walls.len() > 1,
+            "complex_multi_feature: expected multiple wall loops from the L-shaped SKT graph, \
+             got {}",
+            region.walls.len()
+        );
+    }
 }

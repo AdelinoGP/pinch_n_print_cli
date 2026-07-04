@@ -655,14 +655,16 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 19 core modules as of 2026-07-02: packet 97 deleted the dead
-    // mesh-segmentation WASM-guest module (21 -> 20), and packet 108 deleted the fake
+    // We expect exactly 20 core modules as of 2026-07-03: packet 97 deleted the dead
+    // mesh-segmentation WASM-guest module (21 -> 20), packet 108 deleted the fake
     // iterative-inset `arachne-perimeters` module (20 -> 19, per D-110-DROP-VARIABLE-WIDTH;
-    // `classic-perimeters` is the sole perimeter generator until real Arachne lands in P110).
+    // `classic-perimeters` was the sole perimeter generator until real Arachne landed), and
+    // packet 112 re-added `arachne-perimeters` as a real module backed by the true Arachne
+    // BeadingStrategy pipeline via the host-service bridge (19 -> 20).
     assert_eq!(
         report.modules.len(),
-        19,
-        "expected 19 core modules, got {}: {:?}",
+        20,
+        "expected 20 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -859,11 +861,16 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     // `paint-segmentation` and `paint-region-annotator` .wasm still
     // exist on disk (deletion is Step 7), so they remain non-placeholder
     // until that step removes the build artifacts.
+    // `arachne-perimeters` became a real module in packet 112 (true
+    // Arachne BeadingStrategy stack wired through the host-service
+    // bridge, no longer a skeleton stub), so it now builds a real
+    // component-model .wasm and is non-placeholder too.
     const NON_PLACEHOLDER: &[&str] = &[
         "com.core.layer-planner-default",
         "com.core.paint-segmentation",
         "com.core.path-optimization-default",
         "com.core.classic-perimeters",
+        "com.core.arachne-perimeters",
         "com.core.rectilinear-infill",
         "com.core.gyroid-infill",
         "com.core.lightning-infill",

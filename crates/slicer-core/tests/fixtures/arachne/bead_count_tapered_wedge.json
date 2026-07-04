@@ -1,0 +1,24 @@
+{
+  "provenance": "Self-captured regression baseline: serialized from this crate's own assign_bead_counts implementation (packet 112 Step 2 / T-221). NOT derived from, and not a substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step (see bead_count.rs's module-level doc comment). Locks in current behavior for regression purposes only.",
+  "edge_count": 18,
+  "bead_counts": [
+    null,
+    null,
+    null,
+    null,
+    5,
+    5,
+    null,
+    null,
+    null,
+    null,
+    5,
+    5,
+    5,
+    5,
+    null,
+    null,
+    null,
+    null
+  ]
+}

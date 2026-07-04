@@ -1088,6 +1088,70 @@ pub struct Point3WithWidth {
 }
 ```
 
+#### Arachne extrusion-line geometry (Packet 112 — additive, schema 4.7.0)
+
+`ExtrusionLine` and `ExtrusionJunction` are the variable-width polyline types
+produced by the real Arachne beading-strategy pipeline (packets 110–112:
+Voronoi → `SkeletalTrapezoidation` → centrality → per-edge bead-count →
+propagation → `generate_toolpaths` → stitch → simplify → remove-small),
+mirroring OrcaSlicer's Arachne `ExtrusionLine`/`ExtrusionJunction`
+(`libslic3r/PerimeterGenerator.hpp`). They sit upstream of the existing
+`ExtrusionPath3D`/`Point3WithWidth` pair above — `ExtrusionLine` is the
+Arachne-native shape (ordered junctions + per-line topology flags);
+`extrusion_line_to_extrusion_path3d(line, role) -> ExtrusionPath3D` converts
+one into the other for assignment to `WallLoop.path`, the same way
+`variable_width()` converts a `ThickPolyline`.
+
+```rust
+/// A single junction (vertex) of an `ExtrusionLine`.
+pub struct ExtrusionJunction {
+    /// 3D position, local width, flow factor, and overhang classification.
+    pub p: Point3WithWidth,
+    /// Perimeter index this junction was generated for (0 = outermost).
+    #[serde(default)]
+    pub perimeter_index: u32,
+}
+
+/// A variable-width extrusion line produced by the Arachne beading-strategy
+/// stack, prior to conversion into `ExtrusionPath3D`.
+pub struct ExtrusionLine {
+    /// Ordered junctions (vertices) making up this line.
+    pub junctions: Vec<ExtrusionJunction>,
+    /// Inset index this line belongs to (0 = outermost wall).
+    pub inset_idx: u32,
+    /// True if this line was generated as part of an odd-width transition
+    /// region rather than a uniform-bead perimeter.
+    #[serde(default)]
+    pub is_odd: bool,
+    /// True when this line forms a closed loop (first and last junction
+    /// coincide in XY).
+    #[serde(default)]
+    pub is_closed: bool,
+}
+```
+
+Both new fields (`perimeter_index`, `is_odd`, `is_closed`) carry
+`#[serde(default)]`, making the addition backward-compatible: a pre-bump
+JSON fixture with neither field present still deserializes (`is_odd` and
+`is_closed` default to `false`), which is what the schema-version table
+below classifies as an **additive** (minor) bump rather than a breaking one.
+`CURRENT_SLICE_IR_SCHEMA_VERSION` moves **4.6.0 → 4.7.0** for this addition
+— see the Reservation Table entry below.
+
+**WIT boundary.** `ExtrusionLine`/`ExtrusionJunction` mirror onto WIT
+`extrusion-line`/`extrusion-junction` records in
+`crates/slicer-schema/wit/deps/ir-types.wit`. Unlike most IR additions,
+these do NOT round-trip through a `SliceRegionView` accessor read by an
+arbitrary guest module — the only production consumer is the new
+`host-services::generate-arachne-walls` WIT function
+(`crates/slicer-schema/wit/deps/common.wit`), which returns
+`result<list<extrusion-line>, string>` from a host-side call to
+`slicer_core::arachne::pipeline::run_arachne_pipeline`. `arachne-perimeters`
+(the WASM guest) calls this host service because it cannot link the
+`host-algos`-gated Voronoi/SkeletalTrapezoidation/beading code itself
+(`rayon` + `boostvoronoi` are native-only) — see `D-112-HOSTSVC-BRIDGE` in
+`docs/DEVIATION_LOG.md` for the full architecture rationale.
+
 #### Overhang quartile bucketization (Normative — Packet 57)
 
 The four overhang speed bands map to signed-distance thresholds from

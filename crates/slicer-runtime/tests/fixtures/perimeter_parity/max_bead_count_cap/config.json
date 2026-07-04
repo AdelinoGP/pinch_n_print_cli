@@ -1,0 +1,6 @@
+{
+  "first_layer_height": 1.0,
+  "layer_height": 1.0,
+  "max_bead_count": 9,
+  "wall_generator": "arachne"
+}

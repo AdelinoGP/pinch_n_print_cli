@@ -210,9 +210,15 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// would fail the scheduler's `validate_ir_versions` gate for EVERY module — a
 /// major bump would break the whole module ecosystem for a removal that changes
 /// no behaviour. Rationale recorded in the `docs/02_ir_schemas.md` Contract note.
+/// Minor bump to 4.7.0 (packet 112, T-224) adds the additive `ExtrusionJunction`
+/// and `ExtrusionLine` types (Arachne beading-strategy-stack variable-width wall
+/// representation) plus the `extrusion_line_to_extrusion_path3d` converter to the
+/// existing `ExtrusionPath3D` wall surface. No existing field or type changed;
+/// `#[serde(default)]` on the new optional fields preserves backward
+/// compatibility with 4.6.0 fixtures that predate these types.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 4,
-    minor: 6,
+    minor: 7,
     patch: 0,
 };
 
@@ -1719,6 +1725,69 @@ impl ExtrusionPath3D {
             }
             _ => false,
         }
+    }
+}
+
+/// A single junction (vertex) of an `ExtrusionLine`.
+///
+/// Mirrors OrcaSlicer's Arachne `ExtrusionJunction`
+/// (`OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.hpp`): a
+/// beading-strategy vertex carrying its own local width plus the perimeter
+/// index it was generated for. Part of the Arachne beading-strategy-stack
+/// (packet 112, T-224); no consumer wires this into the WASM boundary yet.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ExtrusionJunction {
+    /// 3D position, local width, flow factor, and overhang classification.
+    pub p: Point3WithWidth,
+    /// Perimeter index this junction was generated for (0 = outermost).
+    #[serde(default)]
+    pub perimeter_index: u32,
+}
+
+/// A variable-width extrusion line produced by the Arachne beading-strategy
+/// stack, prior to conversion into the existing `ExtrusionPath3D` wall
+/// surface via [`extrusion_line_to_extrusion_path3d`].
+///
+/// Mirrors OrcaSlicer's Arachne `ExtrusionLine`
+/// (`OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.hpp`). Part of the
+/// Arachne beading-strategy-stack (packet 112, T-224); no consumer wires this
+/// into the WASM boundary yet.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ExtrusionLine {
+    /// Ordered junctions (vertices) making up this line.
+    pub junctions: Vec<ExtrusionJunction>,
+    /// Inset index this line belongs to (0 = outermost wall).
+    pub inset_idx: u32,
+    /// True if this line was generated as part of an odd-width transition
+    /// region rather than a uniform-bead perimeter.
+    #[serde(default)]
+    pub is_odd: bool,
+    /// True when this line forms a closed loop (first and last junction
+    /// coincide in XY), mirroring `ExtrusionPath3D::is_closed()`.
+    #[serde(default)]
+    pub is_closed: bool,
+}
+
+/// Type alias for a collection of Arachne beading-strategy `ExtrusionLine`s,
+/// mirroring OrcaSlicer's `VariableWidthLines` (a `vector<ExtrusionLine>`).
+/// Used by later Arachne beading-strategy-stack steps (packet 112, Steps 4-7).
+pub type VariableWidthLines = Vec<ExtrusionLine>;
+
+/// Convert an `ExtrusionLine` into the existing `ExtrusionPath3D` wall surface.
+///
+/// Bridges the Arachne beading-strategy stack's variable-width line
+/// representation onto the established `ExtrusionPath3D` consumed by
+/// downstream wall/G-code emission. `speed_factor` is set to the canonical
+/// default `1.0`; callers that need per-line speed overrides should adjust
+/// the returned value.
+pub fn extrusion_line_to_extrusion_path3d(
+    line: &ExtrusionLine,
+    role: ExtrusionRole,
+) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: line.junctions.iter().map(|j| j.p).collect(),
+        role,
+        speed_factor: 1.0,
     }
 }
 

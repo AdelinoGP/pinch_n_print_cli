@@ -20,8 +20,14 @@
 //! Host-only: gated behind the `host-algos` feature, matching
 //! [`crate::voronoi`], [`crate::algos`], and [`crate::medial_axis`].
 
+pub mod bead_count;
+pub mod centrality;
 pub mod discretize;
 pub mod graph;
+pub mod propagation;
 
+pub use bead_count::{assign_bead_counts, BeadCountError};
+pub use centrality::{filter_central, CentralityParams};
 pub use discretize::discretize_parabolic_edge;
 pub use graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, SktError};
+pub use propagation::{propagate_beadings_downward, propagate_beadings_upward};

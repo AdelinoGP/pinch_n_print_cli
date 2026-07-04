@@ -264,7 +264,20 @@ Layer::Perimeters
    Input:  SliceIR (including segment_annotations from SlicePostProcess)
           PaintRegionLayerView (read-only, for paint-driven boundary detection)
   Output: PerimeterIR
-  Purpose: Wall generation (Arachne variable-width or classic fixed-width).
+  Purpose: Wall generation — `classic-perimeters` (fixed-width polygon
+           offsetting) or `arachne-perimeters` (real variable-width Arachne
+           pipeline: Voronoi → SkeletalTrapezoidation → per-edge centrality
+           → bead-count propagation → BeadingStrategy-driven toolpath
+           generation, packets 110-112). The `wall_generator` config key
+           (`classic` default | `arachne`) selects which module wins the
+           shared `perimeter-generator` claim at module-load dedup time
+           (packet 112; see D-112-WALL-GENERATOR-SELECT in
+           docs/DEVIATION_LOG.md). `arachne-perimeters` itself runs as a
+           WASM guest and cannot link the host-algos-gated Voronoi/
+           SkeletalTrapezoidation/BeadingStrategy code directly, so it calls
+           the real pipeline through a WIT host-service bridge,
+           `generate-arachne-walls` (mirrors the existing `medial-axis`
+           bridge; see D-112-HOSTSVC-BRIDGE).
            Seam candidate collection.
            Thin-wall detection.
            Propagates segment_annotations from SlicedRegion polygon

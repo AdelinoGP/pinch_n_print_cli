@@ -38,10 +38,11 @@ pub use dag_cli::{
 };
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_for_test,
-    parse_cli_config_source, CompiledModuleBuilder, CompiledModuleStatic, CompiledStage,
-    ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
-    ExecutionPlanRequest, IrAccessMask, SortedStageModules, DEFAULT_REGION_MAP_CAP,
-    MAX_LAYER_INDEX, STAGE_ORDER,
+    dedup_same_claim_modules_with_wall_generator, parse_cli_config_source, CompiledModuleBuilder,
+    CompiledModuleStatic, CompiledStage, ConfigSourceParseError, ExecutionModuleBinding,
+    ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, SortedStageModules,
+    DEFAULT_REGION_MAP_CAP, DEFAULT_WALL_GENERATOR, MAX_LAYER_INDEX, STAGE_ORDER,
+    WALL_GENERATOR_CONFIG_KEY,
 };
 pub use instrumentation::{compute_serial_edges_for_stage, EdgeReason, SerialEdge};
 pub use manifest::{

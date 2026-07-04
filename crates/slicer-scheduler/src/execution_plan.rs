@@ -177,12 +177,55 @@ fn config_key_declared(
         .any(|declared_key| source_key_matches_declared(declared_key, key))
 }
 
+/// Config key selecting which perimeter-generator module wins the
+/// `perimeter-generator` claim when more than one module declares it.
+/// Mirrors OrcaSlicer's `wall_generator` setting (`"classic"` | `"arachne"`).
+///
+/// Read directly from the raw CLI/JSON config source at module-load time —
+/// like `use_relative_e_distances` / `thumbnail_path`
+/// (`docs/config/host-keys.toml` `[host_runtime]`) — rather than through
+/// `ResolvedConfig`, because this selection has to happen before
+/// `ResolvedConfig` is built (module loading / claim dedup runs first; see
+/// `crates/slicer-runtime/src/run.rs`).
+pub const WALL_GENERATOR_CONFIG_KEY: &str = "wall_generator";
+
+/// Default `wall_generator` value used when the config key is absent.
+/// Keeps every existing golden/regression test slicing with
+/// `classic-perimeters` unchanged (packet 112 Step 10).
+pub const DEFAULT_WALL_GENERATOR: &str = "classic";
+
+const PERIMETER_GENERATOR_CLAIM: &str = "perimeter-generator";
+const CLASSIC_PERIMETERS_MODULE_ID: &str = "com.core.classic-perimeters";
+const ARACHNE_PERIMETERS_MODULE_ID: &str = "com.core.arachne-perimeters";
+
+/// Resolve a raw `wall_generator` config value (`config_source.get("wall_generator")`,
+/// e.g. `Some("arachne")`) to the module id it selects for the
+/// `perimeter-generator` claim. Absent (`None`) or unrecognized values fall
+/// back to [`DEFAULT_WALL_GENERATOR`] (`"classic"`).
+fn wall_generator_preferred_module_id(wall_generator: Option<&str>) -> &'static str {
+    match wall_generator {
+        Some("arachne") => ARACHNE_PERIMETERS_MODULE_ID,
+        _ => CLASSIC_PERIMETERS_MODULE_ID,
+    }
+}
+
 /// Enforce claim uniqueness across modules in the same stage.
 ///
-/// For each `(stage, claim)` pair, keeps the alphabetically-first
-/// `module_id` and drops the rest. Emits one `LoadDiagnostic` per
-/// dropped module so operators can see which module "won" each claim.
-/// Modules with no `claims.holds` entries are kept unchanged.
+/// For each `(stage, claim)` pair, resolves exactly one winning `module_id`
+/// and drops the rest. Emits one `LoadDiagnostic` per dropped module so
+/// operators can see which module "won" each claim. Modules with no
+/// `claims.holds` entries are kept unchanged.
+///
+/// The winner is normally the alphabetically-first candidate. The
+/// `perimeter-generator` claim is a documented exception (packet 112 Step
+/// 10): when both `com.core.classic-perimeters` and
+/// `com.core.arachne-perimeters` are candidates, the winner is resolved by
+/// `wall_generator` (see [`wall_generator_preferred_module_id`]) instead —
+/// this closes a production defect where the production loader called this
+/// dedup with no config input and silently selected `arachne-perimeters`
+/// (alphabetically first) with no way for a user's config to express intent,
+/// and `incompatible-with` never fired because dedup runs before
+/// `validate_startup_dag`.
 ///
 /// Matches docs/04 §2 "Global claim conflicts" (exactly one holder
 /// globally per claim) and docs/10 §Glossary ("Exactly one holder per
@@ -191,25 +234,85 @@ fn config_key_declared(
 /// enforce the global/stage constraint.
 /// Test-only wrapper around [`dedup_same_claim_modules`] so integration
 /// tests can exercise the claim dedup path without building a full
-/// `LoadModulesReport`. Behaviour is identical to the private helper.
+/// `LoadModulesReport`. Behaviour is identical to the private helper with
+/// `wall_generator` absent (`None`), i.e. [`DEFAULT_WALL_GENERATOR`]
+/// (`"classic"`) applies if a `perimeter-generator` collision is present.
+/// See [`dedup_same_claim_modules_with_wall_generator`] for the config-aware
+/// entry point the production live-loader uses.
 #[doc(hidden)]
 pub fn dedup_same_claim_modules_for_test(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
 ) -> Vec<LoadedModule> {
-    dedup_same_claim_modules(modules, diagnostics)
+    dedup_same_claim_modules(modules, diagnostics, None)
+}
+
+/// Config-aware claim dedup: identical to [`dedup_same_claim_modules_for_test`]
+/// except `wall_generator` (the raw `config_source.get("wall_generator")`
+/// string value, or `None` if the key is absent) is threaded through to
+/// resolve the `perimeter-generator` claim. This is the entry point
+/// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
+/// production live-loader) uses.
+pub fn dedup_same_claim_modules_with_wall_generator(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&str>,
+) -> Vec<LoadedModule> {
+    dedup_same_claim_modules(modules, diagnostics, wall_generator)
 }
 
 fn dedup_same_claim_modules(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
+    wall_generator: Option<&str>,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
 
-    let mut winner_for: BTreeMap<(StageId, String), ModuleId> = BTreeMap::new();
     let mut sorted: Vec<LoadedModule> = std::mem::take(modules);
     sorted.sort_by(|a, b| a.id.cmp(&b.id));
 
+    // ── Pass 1: collect (stage, claim) -> candidate module ids ──────────
+    // `sorted` is already alphabetical by id, so each `candidate_ids` Vec
+    // built below is too. Fill-role claims (packet 37) are excluded here —
+    // see the rationale on the skip below in pass 3.
+    let mut candidates_for: BTreeMap<(StageId, String), Vec<ModuleId>> = BTreeMap::new();
+    for module in &sorted {
+        for claim in &module.claims {
+            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
+                continue;
+            }
+            candidates_for
+                .entry((module.stage.clone(), claim.clone()))
+                .or_default()
+                .push(module.id.clone());
+        }
+    }
+
+    // ── Pass 2: resolve exactly one winner per contested (stage, claim) ──
+    // Computed BEFORE the per-module pass below so `perimeter-generator`
+    // can be resolved by `wall_generator` config rather than by iteration
+    // order (packet 112 Step 10 — see this function's doc comment).
+    let mut winner_for: BTreeMap<(StageId, String), ModuleId> = BTreeMap::new();
+    for ((stage, claim), candidate_ids) in &candidates_for {
+        if candidate_ids.len() < 2 {
+            continue; // sole holder; nothing to resolve
+        }
+        if claim == PERIMETER_GENERATOR_CLAIM {
+            let preferred = wall_generator_preferred_module_id(wall_generator);
+            if candidate_ids.iter().any(|id| id == preferred) {
+                winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
+                continue;
+            }
+            // Preferred module isn't actually among the candidates (e.g. a
+            // community module reusing this claim name) — fall through to
+            // the alphabetical default below.
+        }
+        // Default: alphabetically-first candidate wins (docs/04 §2 "Global
+        // claim conflicts").
+        winner_for.insert((stage.clone(), claim.clone()), candidate_ids[0].clone());
+    }
+
+    // ── Pass 3: keep every module whose claims all match their winner ───
     let mut kept: Vec<LoadedModule> = Vec::with_capacity(sorted.len());
     for module in sorted {
         let mut losing_claim: Option<(String, ModuleId)> = None;
@@ -228,8 +331,10 @@ fn dedup_same_claim_modules(
             }
             let key = (module.stage.clone(), claim.clone());
             if let Some(winner) = winner_for.get(&key) {
-                losing_claim = Some((claim.clone(), winner.clone()));
-                break;
+                if winner != &module.id {
+                    losing_claim = Some((claim.clone(), winner.clone()));
+                    break;
+                }
             }
         }
         if let Some((claim, winner)) = losing_claim {
@@ -247,12 +352,6 @@ fn dedup_same_claim_modules(
                 ),
             });
             continue;
-        }
-        for claim in &module.claims {
-            if crate::validation::FILL_CLAIM_IDS.contains(&claim.as_str()) {
-                continue;
-            }
-            winner_for.insert((module.stage.clone(), claim.clone()), module.id.clone());
         }
         kept.push(module);
     }
@@ -919,12 +1018,20 @@ mod dedup_tests {
     }
 
     #[test]
-    fn same_claim_same_stage_keeps_alphabetically_first_and_emits_diagnostic() {
+    fn same_claim_same_stage_defaults_to_classic_wall_generator_and_emits_diagnostic() {
         // Regression guard for the pre-2026-04 Benchy MVP failure mode:
         // classic-perimeters and arachne-perimeters both held
         // `perimeter-generator` in `Layer::Perimeters` and both committed
         // to the arena, producing a `LayerArenaError::SlotAlreadyOccupied`
         // masked as the generic string "arena commit failed".
+        //
+        // Packet 112 Step 10: with no `wall_generator` config supplied
+        // (`None`), the winner must be `classic-perimeters` — the documented
+        // [`DEFAULT_WALL_GENERATOR`] — NOT whichever module happens to sort
+        // first alphabetically. Before this fix, `arachne-perimeters` won by
+        // alphabetical accident with no way for a user's config to override
+        // it, and this silently changed production behaviour the moment
+        // `arachne-perimeters` became functional.
         let mut modules = vec![
             loaded(
                 "com.core.classic-perimeters",
@@ -938,10 +1045,10 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
 
         assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
-        assert_eq!(kept[0].id, "com.core.arachne-perimeters");
+        assert_eq!(kept[0].id, "com.core.classic-perimeters");
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("perimeter-generator"));
         assert!(diagnostics[0]
@@ -953,6 +1060,57 @@ mod dedup_tests {
     }
 
     #[test]
+    fn wall_generator_config_selects_arachne_despite_default_classic() {
+        // Packet 112 Step 10: an explicit `wall_generator = "arachne"` must
+        // flip the winner even though classic is the documented default.
+        let mut modules = vec![
+            loaded(
+                "com.core.classic-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+            loaded(
+                "com.core.arachne-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("arachne"));
+
+        assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
+        assert_eq!(kept[0].id, "com.core.arachne-perimeters");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0]
+            .message
+            .contains("com.core.arachne-perimeters"));
+    }
+
+    #[test]
+    fn wall_generator_unrecognized_value_falls_back_to_classic_default() {
+        // An unrecognized `wall_generator` string (typo, unsupported value)
+        // must not panic or drop both candidates — it falls back to the
+        // documented default rather than silently keeping neither.
+        let mut modules = vec![
+            loaded(
+                "com.core.classic-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+            loaded(
+                "com.core.arachne-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+        ];
+        let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("bogus"));
+
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, "com.core.classic-perimeters");
+    }
+
+    #[test]
     fn different_stages_same_claim_name_do_not_collide() {
         // Claims are scoped by stage: two modules can legitimately both
         // declare the same claim name across different stages.
@@ -961,7 +1119,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Infill", &["x"]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -973,7 +1131,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Perimeters", &[]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -1058,8 +1216,10 @@ mod dedup_tests {
         // every infill manifest in favour of packet-37's four granular
         // fill-role claims (`claim:{top,bottom,bridge,sparse}-fill`). Those
         // are per-region-configurable and intentionally exempt from startup
-        // dedup. The remaining non-fill claims (perimeter-generator,
-        // support-generator) keep the first-winner-wins behaviour.
+        // dedup. The remaining non-fill claims (support-generator) keep the
+        // first-winner-wins behaviour; `perimeter-generator` resolves by
+        // `wall_generator` (packet 112 Step 10) — `None` here defaults to
+        // classic.
         let mut modules = vec![
             loaded(
                 "com.core.arachne-perimeters",
@@ -1103,7 +1263,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // All three infill modules survive — per-region resolution picks the
@@ -1112,15 +1272,16 @@ mod dedup_tests {
         assert_eq!(
             ids,
             [
-                "com.core.arachne-perimeters",
+                "com.core.classic-perimeters",
                 "com.core.gyroid-infill",
                 "com.core.lightning-infill",
                 "com.core.rectilinear-infill",
                 "com.core.traditional-support",
             ]
         );
-        // Two drops: classic-perimeters (loses to arachne) and tree-support
-        // (loses to traditional). Fill-role drops are NOT emitted.
+        // Two drops: arachne-perimeters (loses to classic, the default
+        // wall_generator) and tree-support (loses to traditional). Fill-role
+        // drops are NOT emitted.
         assert_eq!(diagnostics.len(), 2);
         assert!(diagnostics.iter().all(|d| !d.message.contains("fill")));
     }

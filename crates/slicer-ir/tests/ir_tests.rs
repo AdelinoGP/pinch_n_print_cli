@@ -690,14 +690,16 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     //       declares `max_ir_schema = 5.0.0` so a 5.0.0 host would fail the
     //       scheduler `validate_ir_versions` gate for all modules. (4.5.0 was
     //       struck/reserved by P106; see the docs/02 Contract note.)
+    //       minor bump to 4.7.0 by packet 112 (AC-5) — additive new
+    //       ExtrusionLine/ExtrusionJunction IR for Arachne extrusion wireup.
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
             major: 4,
-            minor: 6,
+            minor: 7,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 6, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 7, 0)"
     );
 
     // (c)
