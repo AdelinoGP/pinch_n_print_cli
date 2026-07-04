@@ -126,6 +126,36 @@ max-ir-schema     = "5.0.0"
   group       = "Arachne"
   advanced    = true
 
+  [config.schema.min_central_distance]
+  type        = "float"
+  default     = 0
+  min         = 0
+  unit        = "units"
+  display     = "Minimum central distance"
+  description = "Depth floor (mm) for filter_central's stage 1: an edge whose deepest endpoint never reaches this distance from the boundary is never central. Maps to ArachneParams::min_central_distance. Not a user-facing OrcaSlicer PrintConfig.cpp option — an internal Arachne algorithm parameter threaded through the pipeline."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.visvalingam_area_threshold]
+  type        = "float"
+  default     = 100
+  min         = 0
+  unit        = "units"
+  display     = "Visvalingam area threshold"
+  description = "Visvalingam-Whyatt width-weighted area threshold (mm²) for simplify_toolpaths. Maps to ArachneParams::visvalingam_area_threshold. Default 100 units = 0.01 mm², matching the pipeline's post-process default."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.min_width]
+  type        = "float"
+  default     = 4000
+  min         = 0
+  unit        = "units"
+  display     = "Minimum width"
+  description = "Nominal width (mm) used by remove_small_lines' length threshold. Maps to ArachneParams::min_width. Default 4000 units = 0.4mm, matching this codebase's common line_width / optimal_width convention."
+  group       = "Arachne"
+  advanced    = true
+
   [config.schema.max_bead_count]
   type        = "int"
   default     = 9

@@ -49,6 +49,10 @@ pub struct DistributedBeadingStrategy {
     /// `distribution_radius`. Beads more than roughly this many indices away
     /// from the middle bead get zero weight and stay at `optimal_width`.
     distribution_count: usize,
+    /// Wall-transition angle (radians) exposed by the beading strategy. This
+    /// value is not used by `compute` itself, but it is read by callers that
+    /// need to know the configured transition-angle threshold.
+    wall_transition_angle: f64,
 }
 
 impl DistributedBeadingStrategy {
@@ -60,12 +64,14 @@ impl DistributedBeadingStrategy {
         default_transition_length: f64,
         transition_filter_dist: f64,
         distribution_count: usize,
+        wall_transition_angle: f64,
     ) -> Self {
         Self {
             optimal_width,
             default_transition_length,
             transition_filter_dist,
             distribution_count,
+            wall_transition_angle,
         }
     }
 }
@@ -184,5 +190,9 @@ impl BeadingStrategy for DistributedBeadingStrategy {
 
     fn type_label(&self) -> &'static str {
         "Distributed"
+    }
+
+    fn wall_transition_angle(&self) -> f64 {
+        self.wall_transition_angle
     }
 }

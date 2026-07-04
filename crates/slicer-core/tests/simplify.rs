@@ -21,15 +21,15 @@ fn junction(x: f32, y: f32, width: f32) -> ExtrusionJunction {
     }
 }
 
-/// AC-7: a nearly-straight line (small collinear wobble under the DP
-/// epsilon) simplifies to fewer junctions, and each retained junction keeps
-/// its original width value untouched.
+/// AC-7: a nearly-straight line (small collinear wobble under the
+/// Visvalingam area threshold) simplifies to fewer junctions, and each
+/// retained junction keeps its original width value untouched.
 #[test]
 fn simplify_toolpaths_vertex_count() {
     let line = ExtrusionLine {
         junctions: vec![
             junction(0.0, 0.0, 0.40),
-            junction(2.0, 0.001, 0.41), // ~1um off the chord -- well under epsilon
+            junction(2.0, 0.001, 0.41), // ~1um off the chord -- well under threshold
             junction(4.0, -0.001, 0.42),
             junction(6.0, 0.0005, 0.43),
             junction(8.0, 0.0, 0.44),
@@ -41,8 +41,8 @@ fn simplify_toolpaths_vertex_count() {
     };
     let original_len = line.junctions.len();
 
-    let dp_epsilon = 0.025; // mm -- matches OrcaSlicer/Cura's default maximum_deviation
-    let result = simplify_toolpaths(vec![line], dp_epsilon);
+    let visvalingam_area_threshold = 0.01; // mm² -- typical bead-width-weighted default
+    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
@@ -74,4 +74,46 @@ fn simplify_toolpaths_vertex_count() {
             j.p.width
         );
     }
+}
+
+/// AC-N1 (NEW): a junction whose removal would produce a width-weighted area
+/// deviation above the threshold is preserved. This is the negative case for
+/// the Visvalingam gate: the middle vertex is *not* dropped because its
+/// deviation exceeds `visvalingam_area_threshold`.
+#[test]
+fn simplify_toolpaths_width_weighted_gate_preserves_junctions() {
+    // A-B-C form a right triangle with legs 2 mm and 0.2 mm.
+    // Area = 0.5 * 2.0 * 0.2 = 0.2 mm².
+    // With B's width = 0.4 mm, the width-weighted deviation is
+    // 0.5 * 0.4 * |cross(AB, AC)| / |AC| = 0.2 * 0.4 / |AC|.
+    // |AC| = sqrt(2.0² + 0.2²) ≈ 2.00998, so deviation ≈ 0.0398 mm²,
+    // well above a 0.01 mm² threshold. The middle vertex must survive.
+    let line = ExtrusionLine {
+        junctions: vec![
+            junction(0.0, 0.0, 0.40),
+            junction(2.0, 0.2, 0.40),
+            junction(4.0, 0.0, 0.40),
+        ],
+        inset_idx: 0,
+        is_odd: false,
+        is_closed: false,
+    };
+    let original_len = line.junctions.len();
+
+    let visvalingam_area_threshold = 0.01; // mm²
+    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold);
+
+    assert_eq!(result.len(), 1);
+    let simplified = &result[0];
+
+    assert_eq!(
+        simplified.junctions.len(),
+        original_len,
+        "width-weighted area deviation exceeds threshold; middle junction must be kept"
+    );
+
+    // Endpoints and the kept middle junction must retain original widths.
+    assert_eq!(simplified.junctions[0].p.width, 0.40);
+    assert_eq!(simplified.junctions[1].p.width, 0.40);
+    assert_eq!(simplified.junctions[2].p.width, 0.40);
 }

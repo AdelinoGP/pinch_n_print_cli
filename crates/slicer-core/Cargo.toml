@@ -21,6 +21,7 @@ serde = { version = "1", features = ["derive"] }
 [dev-dependencies]
 criterion = { workspace = true }
 serde_json = "1"
+slicer-model-io = { path = "../slicer-model-io" }
 
 [[bench]]
 name = "polygon_ops"

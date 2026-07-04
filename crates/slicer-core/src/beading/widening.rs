@@ -62,6 +62,10 @@ pub struct WideningBeadingStrategy {
     /// `min_input_width <= thickness < optimal_width` regime; the emitted
     /// bead is `thickness.max(min_output_width)`.
     min_output_width: f64,
+    /// Layer-specific minimum bead width (slicer units) applied on the initial
+    /// layer, overriding `min_output_width` when the caller indicates a layer
+    /// is the first layer.
+    initial_layer_min_bead_width: f64,
 }
 
 impl WideningBeadingStrategy {
@@ -83,7 +87,15 @@ impl WideningBeadingStrategy {
             optimal_width,
             min_input_width,
             min_output_width,
+            initial_layer_min_bead_width: min_output_width,
         }
+    }
+
+    /// Sets the layer-specific minimum bead width override used for the
+    /// initial layer. Returns `self` for chained construction.
+    pub fn with_initial_layer_min_bead_width(mut self, width: f64) -> Self {
+        self.initial_layer_min_bead_width = width;
+        self
     }
 }
 
@@ -147,5 +159,9 @@ impl BeadingStrategy for WideningBeadingStrategy {
 
     fn type_chain(&self) -> String {
         format!("{}({})", self.type_label(), self.parent.type_chain())
+    }
+
+    fn wall_transition_angle(&self) -> f64 {
+        self.parent.wall_transition_angle()
     }
 }

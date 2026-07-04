@@ -1777,15 +1777,24 @@ impl hs::Host for HostExecutionContext {
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist as f64,
             min_central_distance: params.min_central_distance as f64,
-            dp_epsilon: params.dp_epsilon as f64,
+            visvalingam_area_threshold: params.visvalingam_area_threshold as f64,
             min_length_factor: params.min_length_factor as f64,
             min_width: params.min_width as f64,
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f64,
             min_bead_width: params.min_bead_width as f64,
+            wall_transition_length: params.wall_transition_length as f64,
+            wall_transition_angle: params.wall_transition_angle as f64,
+            initial_layer_min_bead_width: params.initial_layer_min_bead_width as f64,
+            outer_wall_offset: params.outer_wall_offset as f64,
+            is_initial_layer: params.is_initial_layer,
         };
 
-        match slicer_core::arachne::pipeline::run_arachne_pipeline(&ir_polygons, &core_params) {
+        match slicer_core::arachne::pipeline::run_arachne_pipeline(
+            &ir_polygons,
+            &core_params,
+            core_params.is_initial_layer,
+        ) {
             Ok(lines) => {
                 let wit_lines: Vec<ir::ExtrusionLine> = lines
                     .into_iter()

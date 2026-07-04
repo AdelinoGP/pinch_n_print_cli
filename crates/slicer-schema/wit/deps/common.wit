@@ -30,12 +30,17 @@ interface host-services {
         distribution-count: u32,
         transition-filter-dist: f32,
         min-central-distance: f32,
-        dp-epsilon: f32,
+        visvalingam-area-threshold: f32,
         min-length-factor: f32,
         min-width: f32,
         print-thin-walls: bool,
         min-feature-size: f32,
         min-bead-width: f32,
+        wall-transition-length: f32,
+        wall-transition-angle: f32,
+        initial-layer-min-bead-width: f32,
+        outer-wall-offset: f32,
+        is-initial-layer: bool,
     }
     /// Runs the full Arachne beading-strategy pipeline
     /// (`slicer_core::arachne::pipeline::run_arachne_pipeline`) host-side, for

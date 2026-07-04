@@ -44,6 +44,7 @@ struct FixtureParentParams {
     default_transition_length: f64,
     transition_filter_dist: f64,
     distribution_count: usize,
+    wall_transition_angle: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +82,7 @@ fn redistribute_outer_consistent() {
         fixture.parent_params.default_transition_length,
         fixture.parent_params.transition_filter_dist,
         fixture.parent_params.distribution_count,
+        fixture.parent_params.wall_transition_angle,
     );
     let strategy = RedistributeBeadingStrategy::new(
         Box::new(parent),

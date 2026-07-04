@@ -42,6 +42,7 @@ struct FixtureParams {
     default_transition_length: f64,
     transition_filter_dist: f64,
     distribution_count: usize,
+    wall_transition_angle: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +81,7 @@ fn distributed_beading_strategy_orca_table() {
         fixture.params.default_transition_length,
         fixture.params.transition_filter_dist,
         fixture.params.distribution_count,
+        fixture.params.wall_transition_angle,
     );
 
     assert_eq!(fixture.cases.len(), 10, "fixture must contain 10 cases");

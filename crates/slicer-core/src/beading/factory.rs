@@ -85,6 +85,15 @@ pub struct BeadingFactoryParams {
     /// Minimum bead width `WideningBeadingStrategy` clamps its emitted bead
     /// up to, in the `min_input_width <= thickness < optimal_width` regime.
     pub min_output_width: f64,
+    /// Maximum angle (radians) used by transition-aware beading strategies to
+    /// reject a transition when the turn exceeds this value. Has no registered
+    /// config key in this packet's T-218 scope and mirrors the factory's own
+    /// internal default.
+    pub wall_transition_angle: f64,
+    /// Minimum bead width applied on the initial layer, overriding the general
+    /// thin-wall output clamp where the strategy supports layer-specific
+    /// output. Has no registered config key in this packet's T-218 scope.
+    pub initial_layer_min_bead_width: f64,
     /// Inward offset `OuterWallInsetBeadingStrategy` applies to the outer
     /// wall's toolpath location. Wrapped into the stack only when nonzero
     /// (see the module doc comment) — `0.0` means the layer is absent
@@ -145,6 +154,8 @@ impl Default for BeadingFactoryParams {
             minimum_variable_line_ratio: 0.5,
             print_thin_walls: false,
             preferred_bead_width_outer: 4000.0,
+            wall_transition_angle: 10.0_f64.to_radians(),
+            initial_layer_min_bead_width: 3400.0,
         }
     }
 }
@@ -178,6 +189,7 @@ impl BeadingStrategyFactory {
             params.default_transition_length,
             params.transition_filter_dist,
             params.distribution_count,
+            params.wall_transition_angle,
         ));
 
         let redistribute: Box<dyn BeadingStrategy> = Box::new(RedistributeBeadingStrategy::new(
@@ -187,12 +199,15 @@ impl BeadingStrategyFactory {
         ));
 
         let pre_outer_wall: Box<dyn BeadingStrategy> = if params.print_thin_walls {
-            Box::new(WideningBeadingStrategy::new(
-                redistribute,
-                effective_optimal_width,
-                params.min_input_width,
-                params.min_output_width,
-            ))
+            Box::new(
+                WideningBeadingStrategy::new(
+                    redistribute,
+                    effective_optimal_width,
+                    params.min_input_width,
+                    params.min_output_width,
+                )
+                .with_initial_layer_min_bead_width(params.initial_layer_min_bead_width),
+            )
         } else {
             redistribute
         };

@@ -4,7 +4,8 @@
     "optimal_width": 4000.0,
     "default_transition_length": 0.0,
     "transition_filter_dist": 0.0,
-    "distribution_count": 2
+    "distribution_count": 2,
+    "wall_transition_angle": 0.17453292519943295
   },
   "redistribute_optimal_width": 4000.0,
   "minimum_variable_line_ratio": 0.5,

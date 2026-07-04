@@ -11,7 +11,9 @@
     "max_bead_count": 3,
     "minimum_variable_line_ratio": 0.5,
     "print_thin_walls": true,
-    "preferred_bead_width_outer": 4000.0
+    "preferred_bead_width_outer": 4000.0,
+    "wall_transition_angle": 0.17453292519943295,
+    "initial_layer_min_bead_width": 3400.0
   },
   "thickness": 20000.0,
   "bead_count": 5,

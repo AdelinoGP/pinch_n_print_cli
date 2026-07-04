@@ -4,7 +4,8 @@
     "optimal_width": 4000.0,
     "default_transition_length": 400.0,
     "transition_filter_dist": 1000.0,
-    "distribution_count": 3
+    "distribution_count": 3,
+    "wall_transition_angle": 0.17453292519943295
   },
   "cases": [
     {

@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 113a-arachne-parity-closures
 task_ids: []
 backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md (M2 follow-up)

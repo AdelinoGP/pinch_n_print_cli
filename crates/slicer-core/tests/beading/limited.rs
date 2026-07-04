@@ -58,6 +58,7 @@ struct ParentParams {
     default_transition_length: f64,
     transition_filter_dist: f64,
     distribution_count: usize,
+    wall_transition_angle: f64,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +93,7 @@ fn build_strategy(fixture: &Fixture) -> LimitedBeadingStrategy {
         fixture.parent_params.default_transition_length,
         fixture.parent_params.transition_filter_dist,
         fixture.parent_params.distribution_count,
+        fixture.parent_params.wall_transition_angle,
     );
     LimitedBeadingStrategy::new(Box::new(parent), fixture.max_bead_count)
 }

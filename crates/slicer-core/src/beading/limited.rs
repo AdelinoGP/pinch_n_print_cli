@@ -166,4 +166,8 @@ impl BeadingStrategy for LimitedBeadingStrategy {
     fn type_chain(&self) -> String {
         format!("{}({})", self.type_label(), self.parent.type_chain())
     }
+
+    fn wall_transition_angle(&self) -> f64 {
+        self.parent.wall_transition_angle()
+    }
 }

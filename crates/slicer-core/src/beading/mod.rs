@@ -83,6 +83,17 @@ pub trait BeadingStrategy: Send + Sync {
     /// packet to verify decorator composition order.
     fn type_label(&self) -> &'static str;
 
+    /// Returns the wall-transition angle (radians) this strategy uses when
+    /// deciding whether a bead-count transition is geometrically allowable.
+    ///
+    /// The default implementation returns `f64::MAX`, i.e. no transition-angle
+    /// gating. `DistributedBeadingStrategy` overrides this with the value
+    /// supplied to its constructor so that it is exposed to downstream tooling
+    /// that composes strategy chains.
+    fn wall_transition_angle(&self) -> f64 {
+        f64::MAX
+    }
+
     /// Returns a string describing the full decorator composition chain from
     /// this strategy down to its innermost (base) parent, e.g.
     /// `"Limited(OuterWallInset(Widening(Redistribute(Distributed))))"`.

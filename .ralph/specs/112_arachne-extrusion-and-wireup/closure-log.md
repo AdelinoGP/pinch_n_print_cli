@@ -26,6 +26,11 @@
 - Justified residuals (with follow-on targets): `D-112-CENTRALITY-ADAPT` (adaptation, not literal port; bead_count per-edge not per-node), `D-112-PROPAGATION-ADAPT`, `D-112-SIMPLIFY-DP` (Douglas-Peucker vs Visvalingam), `D-112-HOSTSVC-BRIDGE`, `D-112-SELFCAPTURED-BASELINES`, `D-112-MMU-TOPOLOGY`.
 - Roadmap closures (T-232, in the roadmap doc not DEVIATION_LOG.md): D-7 (ADR-0023 / P110), D-9 (T-215b / P111), D-15 (orca-mmu-perimeter-investigation.md / P105).
 
+## M2 — Real Arachne
+- Commit: d9466fd7
+- Diff stat: 148 files, +13,981/−206
+- Status: implemented 2026-07-03; P113a follow-up packet covers residual D-112-* deviations and audit findings (T-226 DP→VW; T-218 config wiring residuals; T-231 MMU unit test; loader guard; cube_4color_arachne/ fixture; closure-log commit diff stat).
+
 ## Follow-ups
 - True independent OrcaSlicer geometric parity for the self-captured fixtures.
 - Per-node (vs per-edge) bead_count for faithful transition interpolation.

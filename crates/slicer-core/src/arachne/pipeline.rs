@@ -90,8 +90,9 @@ pub struct ArachneParams {
     /// endpoint never reaches this distance from the boundary is never
     /// central.
     pub min_central_distance: f64,
-    /// Douglas-Peucker tolerance (mm) for `simplify_toolpaths`.
-    pub dp_epsilon: f64,
+    /// Visvalingam-Whyatt width-weighted area threshold (mm²) for
+    /// `simplify_toolpaths`.
+    pub visvalingam_area_threshold: f64,
     /// Length-factor multiplier for `remove_small_lines`'s removal threshold
     /// (`min_length_factor * min_width`).
     pub min_length_factor: f64,
@@ -113,6 +114,28 @@ pub struct ArachneParams {
     /// regime. Feeds `BeadingFactoryParams::min_output_width` (converted to
     /// units). Maps to the `min_bead_width` config key.
     pub min_bead_width: f64,
+    /// Transition-ramp length (mm) for `DistributedBeadingStrategy`. Feeds
+    /// `BeadingFactoryParams::default_transition_length` (converted to units).
+    /// Maps to the `wall_transition_length` config key.
+    pub wall_transition_length: f64,
+    /// Transition angle (radians) used by beading strategies that reject a
+    /// transition when the turn exceeds this angle. Converted from the
+    /// `wall_transition_angle` config key (degrees) by
+    /// `arachne_params_from_config`.
+    pub wall_transition_angle: f64,
+    /// Minimum bead width (mm) for the initial layer, overriding the general
+    /// thin-wall clamp where the strategy supports layer-specific output.
+    /// Maps to the `initial_layer_min_bead_width` config key.
+    pub initial_layer_min_bead_width: f64,
+    /// Inward offset (mm) applied to the outer wall's toolpath location by
+    /// `OuterWallInsetBeadingStrategy`. Feeds
+    /// `BeadingFactoryParams::outer_wall_offset` (converted to units). Maps
+    /// to the `outer_wall_offset` config key.
+    pub outer_wall_offset: f64,
+    /// Whether this run corresponds to the initial layer, which lets layer-
+    /// aware beading strategies override `min_output_width` with
+    /// `initial_layer_min_bead_width`.
+    pub is_initial_layer: bool,
 }
 
 impl Default for ArachneParams {
@@ -122,9 +145,9 @@ impl Default for ArachneParams {
     /// `distribution_count` = 1, `transition_filter_dist` = 0.1mm — the
     /// factory's own `1000.0`-unit default), plus this pipeline's own
     /// post-process defaults: `min_central_distance` = 0.0mm (no floor,
-    /// matching `CentralityParams::default()`), `dp_epsilon` = 0.025mm
-    /// (matching OrcaSlicer/Cura's `maximum_deviation` default, also reused by
-    /// `PreprocessParams::default()`'s `allowed_distance_mm`),
+    /// matching `CentralityParams::default()`), `visvalingam_area_threshold` =
+    /// 0.01 mm² (matching a typical bead-width-weighted area default derived
+    /// from OrcaSlicer's `maximum_deviation` × typical 0.4 mm width),
     /// `min_length_factor` = 0.5 (matching OrcaSlicer's `removeSmallLines`
     /// default multiplier, also reused by this crate's own
     /// `tests/remove_small.rs`), `min_width` = 0.4mm (matching
@@ -142,12 +165,17 @@ impl Default for ArachneParams {
             distribution_count: 1,
             transition_filter_dist: 0.1,
             min_central_distance: 0.0,
-            dp_epsilon: 0.025,
+            visvalingam_area_threshold: 0.01,
             min_length_factor: 0.5,
             min_width: 0.4,
             print_thin_walls: false,
             min_feature_size: 0.1,
             min_bead_width: 0.4,
+            wall_transition_length: 0.4,
+            wall_transition_angle: 10.0_f64.to_radians(),
+            initial_layer_min_bead_width: 0.34,
+            outer_wall_offset: 0.0,
+            is_initial_layer: false,
         }
     }
 }
@@ -201,15 +229,26 @@ impl From<BeadCountError> for ArachnePipelineError {
 /// `min_feature_size`/`min_bead_width` feed `min_input_width`/
 /// `min_output_width` respectively (packet 112, Step 9C).
 fn to_beading_factory_params(params: &ArachneParams) -> BeadingFactoryParams {
+    let base_min_output_width = params.min_bead_width * UNITS_PER_MM;
+    let initial_layer_min_output_width = params.initial_layer_min_bead_width * UNITS_PER_MM;
+
     BeadingFactoryParams {
         optimal_width: params.optimal_width * UNITS_PER_MM,
         preferred_bead_width_outer: params.preferred_bead_width_outer * UNITS_PER_MM,
         max_bead_count: params.max_bead_count as usize,
         distribution_count: params.distribution_count as usize,
         transition_filter_dist: params.transition_filter_dist * UNITS_PER_MM,
+        default_transition_length: params.wall_transition_length * UNITS_PER_MM,
         min_input_width: params.min_feature_size * UNITS_PER_MM,
-        min_output_width: params.min_bead_width * UNITS_PER_MM,
+        min_output_width: if params.is_initial_layer {
+            initial_layer_min_output_width
+        } else {
+            base_min_output_width
+        },
+        outer_wall_offset: params.outer_wall_offset * UNITS_PER_MM,
         print_thin_walls: params.print_thin_walls,
+        wall_transition_angle: params.wall_transition_angle,
+        initial_layer_min_bead_width: initial_layer_min_output_width,
         ..BeadingFactoryParams::default()
     }
 }
@@ -244,7 +283,10 @@ fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
 pub fn run_arachne_pipeline(
     polygons: &[ExPolygon],
     params: &ArachneParams,
+    is_initial_layer: bool,
 ) -> Result<Vec<ExtrusionLine>, ArachnePipelineError> {
+    let mut params = params.clone();
+    params.is_initial_layer = is_initial_layer;
     let preprocess_params = PreprocessParams::default();
     let cleaned = preprocess_input_outline(polygons, &preprocess_params);
     if cleaned.is_empty() {
@@ -253,10 +295,10 @@ pub fn run_arachne_pipeline(
 
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
 
-    let centrality_params = to_centrality_params(params);
+    let centrality_params = to_centrality_params(&params);
     filter_central(&mut graph, &centrality_params);
 
-    let beading_params = to_beading_factory_params(params);
+    let beading_params = to_beading_factory_params(&params);
     let strategy = BeadingStrategyFactory::create_stack(&beading_params);
     assign_bead_counts(&mut graph, strategy.as_ref())?;
 
@@ -272,7 +314,7 @@ pub fn run_arachne_pipeline(
     // never produces a negative gap threshold.
     let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
     let stitched = stitch_extrusions(lines, max_gap);
-    let simplified = simplify_toolpaths(stitched, params.dp_epsilon);
+    let simplified = simplify_toolpaths(stitched, params.visvalingam_area_threshold);
     let final_lines = remove_small_lines(simplified, params.min_length_factor, params.min_width);
 
     Ok(final_lines)
@@ -313,7 +355,11 @@ mod tests {
     #[test]
     fn run_arachne_pipeline_square_produces_lines() {
         let square = square_10mm();
-        let result = run_arachne_pipeline(std::slice::from_ref(&square), &ArachneParams::default());
+        let result = run_arachne_pipeline(
+            std::slice::from_ref(&square),
+            &ArachneParams::default(),
+            false,
+        );
         let lines = result.expect("10mm square should produce Ok(lines)");
         assert!(!lines.is_empty(), "expected at least one ExtrusionLine");
     }
@@ -322,9 +368,9 @@ mod tests {
     fn run_arachne_pipeline_is_deterministic() {
         let square = square_10mm();
         let params = ArachneParams::default();
-        let first = run_arachne_pipeline(std::slice::from_ref(&square), &params)
+        let first = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
             .expect("first run should succeed");
-        let second = run_arachne_pipeline(std::slice::from_ref(&square), &params)
+        let second = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
             .expect("second run should succeed");
         assert_eq!(first, second, "pipeline must be deterministic");
     }

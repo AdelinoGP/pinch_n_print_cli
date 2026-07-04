@@ -42,41 +42,12 @@
 //!
 //! # Bounded deviation from the classic test's "self-closure" property
 //!
-//! The classic cube_4color test additionally asserts that each per-color
-//! outer-wall fragment is a single CLOSED loop (first extrusion point ≈ last
-//! extrusion point). That property does **not** carry over to
-//! `arachne-perimeters`' current output, and asserting it verbatim would be
-//! dishonest: Arachne's wall representation is a JUNCTION GRAPH, not a set of
-//! simple closed rings — `crates/slicer-core/src/arachne/stitch.rs`'s own doc
-//! comment describes `stitch_extrusions` as only nearest-endpoint-joining
-//! *open* polylines within a small gap, and the existing
-//! `arachne_perimeters_simple_square.rs` (AC-9) test already documents that
-//! even a single unpainted square legitimately emits "both the outer wall (a
-//! 3-junction line closing back on itself per spoke) and multiple deeper
-//! insets (2-junction lines)" — i.e. plain 2-endpoint bead segments that are
-//! open BY DESIGN (a proper 3+-way junction cannot be a simple 2-degree
-//! cycle). Empirically capturing `wall_generator=arachne` gcode for
-//! `cube_4color.3mf` (2026-07-03) confirmed this: per-color outer-wall
-//! travel-hop-delimited fragments routinely fail a literal
-//! seam-point-≈-final-point closure check by many mm, at every granularity
-//! tried (per travel-hop sub-run and per `;TYPE:Outer wall` header
-//! aggregate) — not a bug, but Arachne's genuine junction topology.
-//!
-//! A follow-up attempt tried a bounding-box-extent substitute (each header's
-//! traced points must span a plausible-for-the-25mm-cube 2D extent). That
-//! ALSO does not hold robustly: several genuine (finite, non-NaN, no parsing
-//! artifact — confirmed by hand-tracing raw gcode) extrusion points on the
-//! `+X`/`-Y` "banded by height"/hex-subdivided painted faces
-//! (`docs/12_architecture_gate_metrics.md`'s fixture catalog) land tens of mm
-//! outside the naively-expected per-face footprint on some layers, for
-//! reasons this packet's scope did not have budget to run down further (most
-//! likely the per-color polygon construction for those specific painted
-//! faces producing a non-trivial multi-island or non-convex cell whose true
-//! extent is larger than a naive single-face bound — an upstream
-//! `paint_segmentation`/geometry question, not an `arachne-perimeters`
-//! wire-up question). Asserting a bound tight enough to be meaningful would
-//! either be flaky or require deeper investigation out of this packet's
-//! scope, so this test does NOT assert one.
+//! Geometric partition invariant (per-color ExPolygon sets form a non-overlapping
+//! Voronoi partition of cube_4color's painted face) is asserted in
+//! `crates/slicer-core/tests/paint_segmentation_mmu_partition_tdd.rs`.
+//! The "extrusion-points-in-footprint" investigation is tracked as
+//! D-112-MMU-TOPOLOGY (Open) and is out of scope for this packet; see the
+//! deviation log.
 //!
 //! What this test DOES assert as the honestly-supportable substitute: every
 //! per-color header's extrusion points are **finite** (no NaN/Infinity) and

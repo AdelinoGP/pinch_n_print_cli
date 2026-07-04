@@ -459,8 +459,9 @@ pub struct ArachneParams {
     pub transition_filter_dist: f64,
     /// Depth floor (mm) for the centrality filter.
     pub min_central_distance: f64,
-    /// Douglas-Peucker tolerance (mm) for toolpath simplification.
-    pub dp_epsilon: f64,
+    /// Visvalingam-Whyatt width-weighted area threshold (mm²) for toolpath
+    /// simplification.
+    pub visvalingam_area_threshold: f64,
     /// Length-factor multiplier for the small-line removal threshold.
     pub min_length_factor: f64,
     /// Nominal width (mm) used by the small-line removal threshold.
@@ -475,6 +476,25 @@ pub struct ArachneParams {
     /// Minimum bead width (mm) the thin-wall decorator clamps its emitted
     /// bead up to. Maps to the `min_bead_width` config key.
     pub min_bead_width: f64,
+    /// Transition-ramp length (mm) for the base distribution strategy. Maps
+    /// to the `wall_transition_length` config key.
+    pub wall_transition_length: f64,
+    /// Transition angle (radians) used by beading strategies that reject a
+    /// transition when the turn exceeds this angle. Converted from the
+    /// `wall_transition_angle` config key (degrees) by
+    /// `arachne_params_from_config`.
+    pub wall_transition_angle: f64,
+    /// Minimum bead width (mm) for the initial layer, overriding the general
+    /// thin-wall clamp where the strategy supports layer-specific output.
+    /// Maps to the `initial_layer_min_bead_width` config key.
+    pub initial_layer_min_bead_width: f64,
+    /// Inward offset (mm) applied to the outer wall's toolpath location.
+    /// Maps to the `outer_wall_offset` config key.
+    pub outer_wall_offset: f64,
+    /// Whether this run corresponds to the initial layer, which lets layer-
+    /// aware beading strategies override `min_output_width` with
+    /// `initial_layer_min_bead_width`.
+    pub is_initial_layer: bool,
 }
 
 impl Default for ArachneParams {
@@ -489,12 +509,17 @@ impl Default for ArachneParams {
             distribution_count: 1,
             transition_filter_dist: 0.1,
             min_central_distance: 0.0,
-            dp_epsilon: 0.025,
+            visvalingam_area_threshold: 0.01,
             min_length_factor: 0.5,
             min_width: 0.4,
             print_thin_walls: false,
             min_feature_size: 0.1,
             min_bead_width: 0.4,
+            wall_transition_length: 0.4,
+            wall_transition_angle: 10.0_f64.to_radians(),
+            initial_layer_min_bead_width: 0.34,
+            outer_wall_offset: 0.0,
+            is_initial_layer: false,
         }
     }
 }
@@ -521,15 +546,24 @@ pub fn generate_arachne_walls(
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist,
             min_central_distance: params.min_central_distance,
-            dp_epsilon: params.dp_epsilon,
+            visvalingam_area_threshold: params.visvalingam_area_threshold,
             min_length_factor: params.min_length_factor,
             min_width: params.min_width,
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size,
             min_bead_width: params.min_bead_width,
+            wall_transition_length: params.wall_transition_length,
+            wall_transition_angle: params.wall_transition_angle,
+            initial_layer_min_bead_width: params.initial_layer_min_bead_width,
+            outer_wall_offset: params.outer_wall_offset,
+            is_initial_layer: params.is_initial_layer,
         };
-        slicer_core::arachne::pipeline::run_arachne_pipeline(polygons, &core_params)
-            .map_err(|e| format!("{:?}", e))
+        slicer_core::arachne::pipeline::run_arachne_pipeline(
+            polygons,
+            &core_params,
+            core_params.is_initial_layer,
+        )
+        .map_err(|e| format!("{:?}", e))
     }
     #[cfg(target_arch = "wasm32")]
     {
@@ -571,12 +605,17 @@ package slicer:common {
             distribution-count: u32,
             transition-filter-dist: f32,
             min-central-distance: f32,
-            dp-epsilon: f32,
+            visvalingam-area-threshold: f32,
             min-length-factor: f32,
             min-width: f32,
             print-thin-walls: bool,
             min-feature-size: f32,
             min-bead-width: f32,
+            wall-transition-length: f32,
+            wall-transition-angle: f32,
+            initial-layer-min-bead-width: f32,
+            outer-wall-offset: f32,
+            is-initial-layer: bool,
         }
         generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
     }
@@ -640,12 +679,17 @@ world sdk-arachne {
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist as f32,
             min_central_distance: params.min_central_distance as f32,
-            dp_epsilon: params.dp_epsilon as f32,
+            visvalingam_area_threshold: params.visvalingam_area_threshold as f32,
             min_length_factor: params.min_length_factor as f32,
             min_width: params.min_width as f32,
             print_thin_walls: params.print_thin_walls,
             min_feature_size: params.min_feature_size as f32,
             min_bead_width: params.min_bead_width as f32,
+            wall_transition_length: params.wall_transition_length as f32,
+            wall_transition_angle: params.wall_transition_angle as f32,
+            initial_layer_min_bead_width: params.initial_layer_min_bead_width as f32,
+            outer_wall_offset: params.outer_wall_offset as f32,
+            is_initial_layer: params.is_initial_layer,
         };
 
         let result =

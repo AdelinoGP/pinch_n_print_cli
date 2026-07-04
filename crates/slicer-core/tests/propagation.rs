@@ -78,6 +78,8 @@ fn factory_params() -> BeadingFactoryParams {
         minimum_variable_line_ratio: 0.5,
         print_thin_walls: false,
         preferred_bead_width_outer: 20.0,
+        wall_transition_angle: 0.17453292519943295,
+        initial_layer_min_bead_width: 20.0,
     }
 }
 

@@ -623,8 +623,8 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
     let run_src =
         std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/run.rs")).unwrap();
     assert!(
-        run_src.contains("load_live_modules_for_plan"),
-        "run.rs must call the live config-aware module loader (load_live_modules_for_plan or load_live_modules_for_plan_with_config)"
+        run_src.contains("load_live_modules_for_plan_with_config"),
+        "run.rs must call the live config-aware module loader (load_live_modules_for_plan_with_config)"
     );
     assert!(
         run_src.contains("build_live_execution_plan("),

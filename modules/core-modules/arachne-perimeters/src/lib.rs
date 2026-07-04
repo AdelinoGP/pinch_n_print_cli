@@ -101,6 +101,7 @@ pub struct ArachnePerimeters;
 /// space, 1 unit = 100 nm) are converted to the millimeter space
 /// `ArachneParams` expects via [`units_to_mm`]; `min_length_factor` is a
 /// dimensionless ratio and needs no conversion.
+#[rustfmt::skip]
 fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let defaults = ArachneParams::default();
 
@@ -139,17 +140,40 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         .get_bool("detect_thin_wall")
         .unwrap_or(defaults.print_thin_walls);
 
-    ArachneParams {
-        optimal_width,
-        preferred_bead_width_outer,
-        max_bead_count,
-        distribution_count,
-        transition_filter_dist,
-        min_length_factor,
-        min_feature_size,
-        min_bead_width,
-        print_thin_walls,
-        ..defaults
+    // The three closure-parity keys below now have SDK mirror fields. The
+    // four legacy keys (wall_transition_length, wall_transition_angle,
+    // initial_layer_min_bead_width, outer_wall_offset) are still registered in
+    // the manifest and validated by reading them, but the SDK mirror has not
+    // yet grown fields for them, so their values are read and discarded here.
+    {
+        let min_central_distance = config.get_float("min_central_distance").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.min_central_distance);
+        let visvalingam_area_threshold = config.get_float("visvalingam_area_threshold").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.visvalingam_area_threshold);
+        let min_width = config.get_float("min_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.min_width);
+
+        let wall_transition_length = config.get_float("wall_transition_length").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.wall_transition_length);
+        let wall_transition_angle = config.get_float("wall_transition_angle").map(|v| v.to_radians()).unwrap_or(defaults.wall_transition_angle);
+        let initial_layer_min_bead_width = config.get_float("initial_layer_min_bead_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.initial_layer_min_bead_width);
+        let outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
+
+        ArachneParams {
+            optimal_width,
+            preferred_bead_width_outer,
+            max_bead_count,
+            distribution_count,
+            transition_filter_dist,
+            min_length_factor,
+            min_feature_size,
+            min_bead_width,
+            print_thin_walls,
+            min_central_distance,
+            visvalingam_area_threshold,
+            min_width,
+            wall_transition_length,
+            wall_transition_angle,
+            initial_layer_min_bead_width,
+            outer_wall_offset,
+            is_initial_layer: false,
+        }
     }
 }
 
@@ -192,13 +216,14 @@ impl LayerModule for ArachnePerimeters {
     /// each paint color already arrived as its own region).
     fn run_perimeters(
         &self,
-        _layer_index: u32,
+        layer_index: u32,
         regions: &[SliceRegionView],
         _paint_regions: &PaintRegionLayerView,
         output: &mut PerimeterOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let params = arachne_params_from_config(config);
+        let mut params = arachne_params_from_config(config);
+        params.is_initial_layer = layer_index == 0;
 
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
