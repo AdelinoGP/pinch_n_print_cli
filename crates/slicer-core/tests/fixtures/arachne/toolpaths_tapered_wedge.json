@@ -1,23 +1,95 @@
 {
-  "provenance": "Self-captured regression baseline: serialized from this crate's own generate_toolpaths implementation (packet 112 Step 4 / T-223; re-recorded in Step 9D when width/offset derivation switched from a geometric approximation to BeadingStrategy::compute()). NOT derived from, and not a substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step, and the per-edge width/offset/bead- placement/dedup rules are an intentional from-first-principles adaptation (see generate_toolpaths.rs's module-level doc comment). Locks in current behavior for regression purposes only.",
-  "inset_count": 1,
+  "provenance": "Self-captured regression baseline: serialized from this crate's own generate_toolpaths implementation (packet 112 Step 4 / T-223; re-recorded in Step 9D when width/offset derivation switched from a geometric approximation to BeadingStrategy::compute(); re-recorded again in the D-112-MMU-TOPOLOGY busy-hub fix (skeletal_trapezoidation::propagation's apply_transitions/insert_node DCEL + position-rescale + mirror-target corrections) since the prior baseline's inset_count=1 was itself a symptom of the same graph-construction bug this fix corrects — see docs/DEVIATION_LOG.md D-112-MMU-TOPOLOGY for the full evidence trail). NOT derived from, and not a substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step, and the per-edge width/offset/bead- placement/dedup rules are an intentional from-first-principles adaptation (see generate_toolpaths.rs's module-level doc comment). Locks in current behavior for regression purposes only.",
+  "inset_count": 9,
   "line_counts": [
-    6
+    6,
+    3,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
   ],
   "junction_widths_mm": [
     [
       0.0198,
       0.0198,
+      0.0099,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
       0.0198,
       0.0198,
+      0.0099,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
       0.0198,
       0.0198,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001,
-      0.001
+      0.0099,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.002,
+      0.0005,
+      0.0005,
+      0.002,
+      0.0005,
+      0.0005,
+      0.002,
+      0.0005,
+      0.002
+    ],
+    [
+      0.0005,
+      0.0005,
+      0.002,
+      0.0005,
+      0.0005,
+      0.002,
+      0.0005,
+      0.002
+    ],
+    [
+      0.002,
+      0.002
+    ],
+    [
+      0.002,
+      0.002
+    ],
+    [
+      0.0038,
+      0.0038
+    ],
+    [
+      0.002,
+      0.002
+    ],
+    [
+      0.002,
+      0.002
+    ],
+    [
+      0.002,
+      0.002
+    ],
+    [
+      0.002,
+      0.002
     ]
   ]
 }

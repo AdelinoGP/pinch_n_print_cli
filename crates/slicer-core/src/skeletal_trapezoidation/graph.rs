@@ -53,7 +53,7 @@
 
 use std::fmt;
 
-use slicer_ir::{ExPolygon, Point2, Polygon};
+use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
 use crate::voronoi::{self, Segment, Vertex, VoronoiError, NO_INDEX};
 
@@ -299,14 +299,24 @@ impl SkeletalTrapezoidationGraph {
 
         let he_graph = voronoi::voronoi_from_segments(&segments)?;
 
+        // Defensive bounds-check on raw `boostvoronoi` vertex positions
+        // (D-112-MMU-TOPOLOGY / D-113B-WIDE-REGION-COORD-INSTABILITY). See
+        // `clamp_implausible_vertex`'s doc comment for the full rationale and
+        // the empirical data backing the threshold.
+        let input_bbox = segments_bbox(&segments);
         let vertices: Vec<STVertex> = he_graph
             .vertices
             .iter()
-            .map(|v| STVertex {
-                position: *v,
-                distance_to_boundary: nearest_boundary_distance(v.x, v.y, &segments),
-                bead_count: None,
-                transition_ratio: 0.0,
+            .map(|v| {
+                let position = clamp_implausible_vertex(*v, input_bbox);
+                STVertex {
+                    position,
+                    distance_to_boundary: nearest_boundary_distance(
+                        position.x, position.y, &segments,
+                    ),
+                    bead_count: None,
+                    transition_ratio: 0.0,
+                }
             })
             .collect();
 
@@ -373,6 +383,120 @@ fn ring_segments(ring: &Polygon) -> Result<Vec<Segment>, SktError> {
     Ok(segments)
 }
 
+/// Minimum allowed clamp margin around an input polygon's bounding box, as a
+/// fraction of that bbox's diagonal length. See [`clamp_implausible_vertex`]
+/// for the full rationale and the empirical data this threshold is grounded
+/// in.
+const IMPLAUSIBLE_VERTEX_MARGIN_RATIO: f64 = 0.05;
+
+/// Absolute floor (mm) for [`clamp_implausible_vertex`]'s margin, so a tiny
+/// input polygon (small bbox diagonal) still gets a sane minimum allowance.
+const IMPLAUSIBLE_VERTEX_MARGIN_FLOOR_MM: f64 = 1.0;
+
+/// Bounding box (`min_x, min_y, max_x, max_y`) of a segment set, in
+/// scaled-integer units represented as `f64` for direct comparison against
+/// `f64` Voronoi vertex coordinates. `segments` is assumed non-empty (all
+/// call sites in this module already guard on that via
+/// [`SkeletalTrapezoidationGraph::from_polygons`]'s `EmptyInput` check).
+fn segments_bbox(segments: &[Segment]) -> (f64, f64, f64, f64) {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for s in segments {
+        for p in [s.a, s.b] {
+            min_x = min_x.min(p.x as f64);
+            min_y = min_y.min(p.y as f64);
+            max_x = max_x.max(p.x as f64);
+            max_y = max_y.max(p.y as f64);
+        }
+    }
+    (min_x, min_y, max_x, max_y)
+}
+
+/// Clamps a raw `boostvoronoi` vertex position back into a generous, bounded
+/// margin around the input polygon's own bounding box (`bbox`).
+///
+/// # Why this exists (D-112-MMU-TOPOLOGY / D-113B-WIDE-REGION-COORD-INSTABILITY)
+///
+/// Direct instrumentation of the `cube_4color_arachne_per_color_footprint_within_bbox`
+/// regression (see `docs/DEVIATION_LOG.md`) proved that `boostvoronoi`
+/// occasionally reports a vertex tens to hundreds of thousands of mm away
+/// from a small (~10-40mm bbox diagonal), sharp-cornered input polygon — the
+/// same 2-D cell produces a clean graph on most layers and a corrupted one
+/// (one wildly-misplaced vertex, an "x≈y runaway along a ~45° bisector"
+/// signature) on a minority of layers whose cross-section develops a
+/// slightly different near-degenerate corner/segment configuration.
+/// `crate::voronoi::voronoi_from_segments` passes `boostvoronoi`'s own
+/// `diagram.vertices()` output through verbatim (confirmed no scaling bug on
+/// this crate's side), and per `docs/adr/0023-arachne-port-strategy.md`'s
+/// degeneracy table, resolving the specific near-collinear/near-duplicate
+/// multi-segment configurations that trigger this class of `boostvoronoi`
+/// numerical instability is `preprocess.rs`'s (T-204) pre-snap
+/// responsibility — but a captured reproduction (a per-color paint cell
+/// fragmented into two disjoint quads, one carrying a ~17µm near-duplicate
+/// wraparound vertex that survives pre-snapping intact) showed the
+/// corruption is a multi-segment *interaction* across sites from both
+/// fragments, not a single ring's own local near-collinearity, so it does
+/// not reduce to one simple, provably-complete pre-snap rule. This
+/// defensive check is the narrowly-scoped downstream safety net: it cannot
+/// recover the numerically-correct vertex position (that information is
+/// already lost once `boostvoronoi`'s internal arithmetic diverges), so it
+/// clamps the implausible position back to a bounded region instead,
+/// preventing the corrupted vertex from propagating into emitted wall
+/// geometry tens to hundreds of thousands of mm away. This mirrors
+/// `rib.rs`'s existing precedent of defensively filtering out other
+/// `boostvoronoi` quirks (zero-length degenerate edges at segment endpoints)
+/// rather than trying to "fix" the underlying sweep-line computation.
+///
+/// # Threshold derivation (not an arbitrary number)
+///
+/// A direct empirical sweep of every `SkeletalTrapezoidationGraph::from_polygons`
+/// call made while re-running `cube_4color_arachne_per_color_footprint_within_bbox`
+/// (temporary instrumentation, reverted — not part of this fix) measured, for
+/// every produced vertex, how far (if at all) it fell outside its own input
+/// polygon's raw bounding box, as a fraction of that bbox's diagonal length.
+/// The result was a clean bimodal split with a wide gap and no borderline
+/// cases: ordinary floating-point noise in legitimately-placed vertices never
+/// exceeded ~0.47% of the bbox diagonal (worst observed: 0.1167mm on a
+/// 25.0mm-diagonal cell), while every genuinely corrupted vertex escaped by
+/// at least ~18.5% of the bbox diagonal (smallest observed: 6.27mm on a
+/// 33.9mm-diagonal cell) — a ~40x gap between the two populations, and every
+/// sample fell cleanly on one side or the other (no vertex was observed
+/// escaping by an intermediate 1-15% fraction). [`IMPLAUSIBLE_VERTEX_MARGIN_RATIO`]
+/// (5% of the bbox diagonal) sits centrally in that gap: roughly 10x above
+/// the largest observed noise and comfortably (3.7x) below the smallest
+/// observed real corruption, so it clamps every reproduced corruption case
+/// while leaving every legitimately-placed vertex, even ones close to this
+/// margin's boundary, untouched.
+/// [`IMPLAUSIBLE_VERTEX_MARGIN_FLOOR_MM`] (1mm) exists only so a very small
+/// input polygon's own bbox diagonal can't shrink the allowed margin below a
+/// sane absolute minimum; it is not itself load-bearing for the reproduced
+/// cases above (their 5%-of-diagonal margins, ~1.25-1.75mm, already exceed
+/// it).
+///
+/// # Behavior
+///
+/// Clamps `v`'s `x`/`y` independently to `[bbox.min - margin, bbox.max +
+/// margin]`. This is a lossy, best-effort recovery — the clamped position is
+/// not claimed to be the numerically "correct" vertex position `boostvoronoi`
+/// should have produced, only a bounded, plausible stand-in that keeps
+/// downstream passes (bead-count assignment, centrality filtering, toolpath
+/// emission) from ever seeing a wildly implausible coordinate. Topology
+/// (vertex/edge indices, `next`/`prev`/`twin`) is untouched — only the
+/// position of this one vertex slot changes. A no-op for every vertex
+/// already within bounds (i.e. every legitimately-placed vertex).
+fn clamp_implausible_vertex(v: Vertex, bbox: (f64, f64, f64, f64)) -> Vertex {
+    let (min_x, min_y, max_x, max_y) = bbox;
+    let diag = ((max_x - min_x).powi(2) + (max_y - min_y).powi(2)).sqrt();
+    let margin = (IMPLAUSIBLE_VERTEX_MARGIN_RATIO * diag)
+        .max(IMPLAUSIBLE_VERTEX_MARGIN_FLOOR_MM * UNITS_PER_MM);
+    Vertex {
+        x: v.x.clamp(min_x - margin, max_x + margin),
+        y: v.y.clamp(min_y - margin, max_y + margin),
+    }
+}
+
 /// Nearest distance from floating-point point `(x, y)` to any segment in
 /// `segments`, via point-to-segment distance. `segments` is assumed
 /// non-empty by all call sites in this module.
@@ -434,5 +558,144 @@ pub fn edge_radius_bounds(vertices: &[STVertex], from_idx: usize, to_idx: usize)
         (Some(a), Some(b)) => (a.min(b), a.max(b)),
         (Some(a), None) | (None, Some(a)) => (a, a),
         (None, None) => (0.0, 0.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A vertex already within the input bbox is untouched.
+    #[test]
+    fn clamp_implausible_vertex_is_noop_inside_bbox() {
+        let bbox = (0.0, 0.0, 1_000_000.0, 1_000_000.0);
+        let v = Vertex {
+            x: 500_000.0,
+            y: 500_000.0,
+        };
+        let clamped = clamp_implausible_vertex(v, bbox);
+        assert_eq!(clamped, v, "an in-bounds vertex must be returned unchanged");
+    }
+
+    /// A vertex within the allowed margin (5% of the bbox diagonal, floored
+    /// at 1mm) just outside the raw bbox is also left untouched — this fix
+    /// must not clip legitimately-placed medial-axis vertices that spill a
+    /// small amount past the input polygon's own bbox.
+    #[test]
+    fn clamp_implausible_vertex_preserves_small_legitimate_overshoot() {
+        // 1mm x 1mm bbox in units (UNITS_PER_MM = 10_000).
+        let bbox = (0.0, 0.0, 1.0 * UNITS_PER_MM, 1.0 * UNITS_PER_MM);
+        // Diagonal ~1.414mm; 5% of that (~0.0707mm) is smaller than the 1mm
+        // floor, so the effective margin here is the 1mm floor.
+        let v = Vertex {
+            x: -0.5 * UNITS_PER_MM, // 0.5mm past the left edge: within the 1mm floor.
+            y: 0.5 * UNITS_PER_MM,  // vertically centered in the bbox.
+        };
+        let clamped = clamp_implausible_vertex(v, bbox);
+        assert_eq!(
+            clamped, v,
+            "a small overshoot within the margin must not be clamped"
+        );
+    }
+
+    /// A `boostvoronoi`-style runaway vertex (matching the captured
+    /// D-113B-WIDE-REGION-COORD-INSTABILITY reproduction: a vertex tens of
+    /// thousands of units away from a ~25mm-diagonal input cell) is pulled
+    /// back to within the allowed margin.
+    #[test]
+    fn clamp_implausible_vertex_clamps_wild_escape() {
+        // Matches this fix's captured repro scale: a ~25mm x 25mm bbox.
+        let side = 25.0 * UNITS_PER_MM;
+        let bbox = (0.0, 0.0, side, side);
+        let diag = (side * side + side * side).sqrt();
+        let margin = (0.05 * diag).max(1.0 * UNITS_PER_MM);
+
+        // A captured-scale runaway: escapes by ~65mm in x, matching the
+        // reproduction's ~64.4mm worst-case escape.
+        let v = Vertex {
+            x: side + 65.0 * UNITS_PER_MM,
+            y: -20.0 * UNITS_PER_MM,
+        };
+        let clamped = clamp_implausible_vertex(v, bbox);
+
+        assert!(
+            clamped.x <= side + margin + 1e-6,
+            "x must be clamped to within the allowed margin: got {}, bound {}",
+            clamped.x,
+            side + margin
+        );
+        assert!(
+            clamped.y >= 0.0 - margin - 1e-6,
+            "y must be clamped to within the allowed margin: got {}, bound {}",
+            clamped.y,
+            -margin
+        );
+    }
+
+    /// Regression test for the exact D-112-MMU-TOPOLOGY / D-113B reproduction
+    /// captured this session: a per-color paint cell fragmented into two
+    /// disjoint quads (one carrying a ~17µm near-duplicate wraparound vertex)
+    /// that, before this fix, made `boostvoronoi` report a vertex tens of mm
+    /// away (captured worst case: (1_125_000.0, -218_820.06), a ~64.4mm
+    /// escape from the combined input bbox). After this fix, every vertex in
+    /// the resulting graph must stay within a generous, bounded margin of the
+    /// input polygons' own bbox.
+    #[test]
+    fn from_polygons_clamps_captured_runaway_reproduction() {
+        let ring1 = expoly_from_units(vec![
+            (1_374_998, 925_217),
+            (1_374_998, 1_174_758),
+            (1_249_998, 1_049_998),
+            (1_374_843, 925_152),
+        ]);
+        let ring2 = expoly_from_units(vec![
+            (1_246_202, 1_046_200),
+            (1_125_000, 1_046_355),
+            (1_125_000, 952_117),
+            (1_152_119, 952_117),
+        ]);
+
+        let graph = SkeletalTrapezoidationGraph::from_polygons(&[ring1, ring2])
+            .expect("captured reproduction cells should build a skeletal graph");
+
+        let (min_x, min_y, max_x, max_y): (f64, f64, f64, f64) =
+            (1_125_000.0, 925_152.0, 1_374_998.0, 1_174_758.0);
+        let diag = ((max_x - min_x).powi(2) + (max_y - min_y).powi(2)).sqrt();
+        // Generous bound: comfortably above the fix's own margin*sqrt(2)
+        // worst case, comfortably below the captured pre-fix escape (~64mm).
+        let bound_units = (0.10 * diag).max(3.0 * UNITS_PER_MM);
+
+        for (i, v) in graph.vertices.iter().enumerate() {
+            let dx = if v.position.x < min_x - bound_units {
+                min_x - bound_units - v.position.x
+            } else if v.position.x > max_x + bound_units {
+                v.position.x - (max_x + bound_units)
+            } else {
+                0.0
+            };
+            let dy = if v.position.y < min_y - bound_units {
+                min_y - bound_units - v.position.y
+            } else if v.position.y > max_y + bound_units {
+                v.position.y - (max_y + bound_units)
+            } else {
+                0.0
+            };
+            let escape = (dx * dx + dy * dy).sqrt();
+            assert!(
+                escape <= 1e-6,
+                "vertex {i} at {:?} escapes the bounded margin by {escape} units \
+                 (pre-fix this reproduction produced an escape of ~644770 units / 64.4mm)",
+                v.position
+            );
+        }
+    }
+
+    fn expoly_from_units(points: Vec<(i64, i64)>) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: points.into_iter().map(|(x, y)| Point2 { x, y }).collect(),
+            },
+            holes: Vec::new(),
+        }
     }
 }

@@ -45,22 +45,28 @@
 //! Geometric partition invariant (per-color ExPolygon sets form a non-overlapping
 //! Voronoi partition of cube_4color's painted face) is asserted in
 //! `crates/slicer-core/tests/paint_segmentation_mmu_partition_tdd.rs`.
-//! The "extrusion-points-in-footprint" investigation is tracked as
-//! D-112-MMU-TOPOLOGY (Open). The P113b re-verification test
-//! `cube_4color_arachne_per_color_footprint_within_bbox` asserts per-color
-//! outer-wall header bboxes stay inside the corresponding per-color
-//! `paint_segmentation` ExPolygon bbox + 2 mm tolerance. It currently FAILS:
-//! worst case layer 37 tool 2 by 15.264 mm, with 113 mid-body headers escaping
-//! their cell. Symptom re-attributed to `arachne-perimeters` geometry crossing
-//! paint-segmentation cell bisectors; see D-112-MMU-TOPOLOGY.
+//! The "extrusion-points-in-footprint" investigation was tracked as
+//! D-112-MMU-TOPOLOGY (now Closed — see `docs/DEVIATION_LOG.md`). The P113b
+//! re-verification test `cube_4color_arachne_per_color_footprint_within_bbox`
+//! asserts per-color outer-wall header bboxes stay inside the corresponding
+//! per-color `paint_segmentation` ExPolygon bbox + 2 mm tolerance.
 //!
-//! What this test DOES assert as the honestly-supportable substitute: every
-//! per-color header's extrusion points are **finite** (no NaN/Infinity) and
-//! every header contains a real, non-trivial number of extrusion moves. This
-//! is weaker than "closes" or "stays in bounds", but it is unambiguously true
-//! and still rules out the failure modes that would actually indicate broken
-//! MMU wiring (a silently-empty or corrupted per-color fragment). The primary,
-//! strong claim this test makes is property (1) below (per-color
+//! **2026-07-05 closure status:** after six production fixes (busy-hub DCEL
+//! bug, `connectJunctions` quad-chain generalization, junction-position
+//! faithful port, a `layer_executor` tool-attribution precedence fix, and a
+//! `boostvoronoi` wild-vertex clamp) plus two test-harness pairing fixes —
+//! nearest-Z lookup (10th pass: 113 → 10 escaping headers) and finally
+//! rebuilding the reference `paint_segmentation` plan directly from the real
+//! gcode's own per-layer Z values (11th pass, see `build_initial_slice_ir`'s
+//! doc comment), eliminating the aliasing that caused the residual 10-header
+//! failure — this test and the full executor suite are green (180/180).
+//!
+//! This test asserts, per per-color outer-wall header: (1) all extrusion
+//! points are **finite** (no NaN/Infinity); (2) each header traces a
+//! non-trivial amount of real geometry; and (3) each header's bbox stays
+//! within its per-color `paint_segmentation` cell bbox + 2 mm tolerance. The
+//! primary, strong claim this test makes is property (1) in the other test in
+//! this file, `cube_4color_arachne_fragments_walls_by_color` (per-color
 //! fragmentation count) — verified robustly (every sampled mid-body layer
 //! shows all 4 painted tools as 4 distinct outer-wall headers).
 
@@ -95,9 +101,6 @@ fn cube_4color_path() -> PathBuf {
 fn core_modules_dir() -> PathBuf {
     workspace_root().join("modules").join("core-modules")
 }
-
-const LAYER_COUNT: u32 = 50;
-const LAYER_HEIGHT_MM: f32 = 0.5;
 
 /// Run `cube_4color.3mf` through the real pipeline with
 /// `wall_generator = "arachne"` forced via `config_overrides`, so
@@ -167,65 +170,51 @@ fn load_cube_4color_mesh() -> slicer_ir::MeshIR {
     slicer_model_io::load_model(&path).expect("load cube_4color.3mf should succeed")
 }
 
-fn build_50_layer_plan(object_id: &str) -> Arc<slicer_ir::LayerPlanIR> {
-    use slicer_ir::{
-        ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer,
-    };
-    let global_layer_indices: Vec<u32> = (0..LAYER_COUNT).collect();
-    let layers: Vec<GlobalLayer> = global_layer_indices
-        .iter()
-        .map(|idx| GlobalLayer {
-            index: *idx,
-            z: LAYER_HEIGHT_MM * (*idx as f32 + 0.5),
-            active_regions: vec![ActiveRegion {
-                object_id: object_id.to_string(),
-                region_id: 0,
-                resolved_config: ResolvedConfig::default(),
-                effective_layer_height: LAYER_HEIGHT_MM,
-                nonplanar_shell: None,
-                is_catchup_layer: false,
-                catchup_z_bottom: 0.0,
-                tool_index: 0,
-            }],
-            has_nonplanar: false,
-            is_sync_layer: false,
-        })
-        .collect();
-    Arc::new(LayerPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layers: layers,
-        object_participation: std::collections::HashMap::from([(
-            object_id.to_string(),
-            global_layer_indices
-                .iter()
-                .copied()
-                .enumerate()
-                .map(|(local_idx, global_idx)| ObjectLayerRef {
-                    local_layer_index: local_idx as u32,
-                    global_layer_index: global_idx,
-                    effective_layer_height: LAYER_HEIGHT_MM,
-                })
-                .collect(),
-        )]),
-    })
-}
-
+/// Build the initial (pre-paint-segmentation) `SliceIR` sequence directly from
+/// `layer_zs_mm` — the REAL per-layer Z values (mm) parsed from the real
+/// `wall_generator=arachne` gcode's own `;Z:` headers (`parse_layer_z_values`)
+/// — rather than an independently-synthesized fixed-step reference grid.
+///
+/// # Why not a synthesized `LayerPlanIR` (D-112-MMU-TOPOLOGY, 11th pass)
+///
+/// `execute_paint_segmentation` (the function this feeds) does not consume a
+/// `LayerPlanIR` at all — only a `Vec<SliceIR>` (for its Z values and input
+/// polygons) and a `RegionMapIR` (for layer count / variant-chain keys). The
+/// previous `build_50_layer_plan` synthesized a full `LayerPlanIR` purely to
+/// extract a `Vec<f32>` of Z values from it, at an independent, coarser
+/// 50-layer/0.5mm step unrelated to the real pipeline's own resolved layer
+/// height. That mismatch aliased the true tool1/tool3 paint-color boundary —
+/// see this file's module doc comment and D-112-MMU-TOPOLOGY's closing note.
+/// Building the `zs` directly from the real gcode's own Z sequence gives
+/// `paint_segmentation` one sample per real layer, at the real layer's exact
+/// Z, eliminating both the layer-count mismatch and the aliasing.
+///
+/// `effective_layer_height` per region is derived from consecutective real Z
+/// deltas (`layer_zs_mm[idx] - layer_zs_mm[idx - 1]`, or `layer_zs_mm[0]` for
+/// the first layer) rather than a hardcoded constant — real gcode layers are
+/// not perfectly uniform (e.g. first-layer-height overrides). This value is
+/// not read anywhere in `execute_paint_segmentation`'s current pipeline (only
+/// `region_map.configs[0].layer_height` — a separate, config-level scalar —
+/// feeds the Phase 6 top/bottom shell-window math), so this is cosmetic
+/// correctness, not a functional requirement, but it costs nothing to keep
+/// honest.
 fn build_initial_slice_ir(
     object_id: &str,
     object_mesh: &slicer_ir::IndexedTriangleSet,
-    layer_plan: &slicer_ir::LayerPlanIR,
+    layer_zs_mm: &[f32],
 ) -> Vec<slicer_ir::SliceIR> {
     use slicer_ir::SlicedRegion;
-    let zs: Vec<f32> = layer_plan.global_layers.iter().map(|l| l.z).collect();
-    let slabs = slicer_core::slice_mesh_ex(object_mesh, &zs);
-    zs.iter()
+    let slabs = slicer_core::slice_mesh_ex(object_mesh, layer_zs_mm);
+    layer_zs_mm
+        .iter()
         .enumerate()
         .map(|(idx, &z)| {
             let polys = slabs.get(idx).cloned().unwrap_or_default();
+            let effective_layer_height = if idx == 0 {
+                z
+            } else {
+                z - layer_zs_mm[idx - 1]
+            };
             slicer_ir::SliceIR {
                 global_layer_index: idx as u32,
                 z,
@@ -234,7 +223,7 @@ fn build_initial_slice_ir(
                     region_id: 0,
                     polygons: polys.clone(),
                     infill_areas: polys,
-                    effective_layer_height: LAYER_HEIGHT_MM,
+                    effective_layer_height,
                     segment_annotations: std::collections::HashMap::new(),
                     ..Default::default()
                 }],
@@ -267,13 +256,21 @@ fn build_region_map(object_id: &str, layer_count: u32) -> Arc<slicer_ir::RegionM
     })
 }
 
-/// Run `paint_segmentation` directly to obtain the per-layer per-color cells.
-fn run_paint_segmentation(mesh: Arc<slicer_ir::MeshIR>) -> Arc<Vec<slicer_ir::SliceIR>> {
+/// Run `paint_segmentation` directly to obtain the per-layer per-color cells,
+/// sampled at exactly `layer_zs_mm` — the real per-layer Z values (mm) parsed
+/// from the real `wall_generator=arachne` gcode (`parse_layer_z_values`). The
+/// returned `Vec<SliceIR>` therefore has the same length and Z ordering as the
+/// gcode's own layer sequence, so callers can index it directly by real layer
+/// index instead of nearest-Z matching against an independent reference plan
+/// (see `build_initial_slice_ir`'s doc comment / D-112-MMU-TOPOLOGY).
+fn run_paint_segmentation(
+    mesh: Arc<slicer_ir::MeshIR>,
+    layer_zs_mm: &[f32],
+) -> Arc<Vec<slicer_ir::SliceIR>> {
     let object_id = &mesh.objects[0].id;
     let object_mesh = mesh.objects[0].mesh.clone();
-    let layer_plan = build_50_layer_plan(object_id);
-    let initial = build_initial_slice_ir(object_id, &object_mesh, &layer_plan);
-    let region_map = build_region_map(object_id, LAYER_COUNT);
+    let initial = build_initial_slice_ir(object_id, &object_mesh, layer_zs_mm);
+    let region_map = build_region_map(object_id, layer_zs_mm.len() as u32);
     slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         mesh,
         Arc::new(initial),
@@ -581,6 +578,54 @@ fn parse_outer_wall_headers_per_layer(gcode: &str) -> Vec<Vec<HeaderFragment>> {
     layers
 }
 
+/// Parse each `;LAYER_CHANGE`-delimited layer's own Z (mm) from its `;Z:`
+/// header comment, emitted immediately after `;LAYER_CHANGE` by
+/// `crates/slicer-gcode/src/emit.rs` (`;LAYER_CHANGE` / `;Z:{...}` /
+/// `;HEIGHT:{...}`, in that fixed order, once per layer — see that file's
+/// `LayerFinalization` emission loop). Buckets 1:1 with
+/// `parse_outer_wall_headers_per_layer` / `tool_changes_per_layer` (same
+/// `;LAYER_CHANGE`-delimited layer indexing), so `parse_layer_z_values(gcode)
+/// [li]` is li's real Z, independent of any reference plan's own layer
+/// indexing.
+fn parse_layer_z_values(gcode: &str) -> Vec<f32> {
+    let marker = ";LAYER_CHANGE";
+    let z_prefix = ";Z:";
+    let mut out: Vec<f32> = Vec::new();
+    let mut layer_started = false;
+    let mut current_z: Option<f32> = None;
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(marker) {
+            if layer_started {
+                out.push(current_z.unwrap_or_else(|| {
+                    panic!(
+                        "cube_4color (wall_generator=arachne): layer {} ended with no ;Z: header \
+                         (expected immediately after ;LAYER_CHANGE)",
+                        out.len()
+                    )
+                }));
+            }
+            layer_started = true;
+            current_z = None;
+            continue;
+        }
+        if layer_started && current_z.is_none() {
+            if let Some(z_str) = trimmed.strip_prefix(z_prefix) {
+                current_z = z_str.trim().parse::<f32>().ok();
+            }
+        }
+    }
+    if layer_started {
+        out.push(current_z.unwrap_or_else(|| {
+            panic!(
+                "cube_4color (wall_generator=arachne): last layer ended with no ;Z: header \
+                 (expected immediately after ;LAYER_CHANGE)"
+            )
+        }));
+    }
+    out
+}
+
 // --------------------------------------------------------------------------
 // Test — arachne per-color (MMU) outer-wall fragmentation (T-231 extension)
 // --------------------------------------------------------------------------
@@ -743,12 +788,30 @@ fn cube_4color_arachne_fragments_walls_by_color() {
 /// outside the naive per-face footprint" — is caught by even the coarser model
 /// XY bbox bound (a header that escapes its per-color cell by tens of mm will
 /// also escape the whole model).
+///
+/// # Real-Z reference plan (D-112-MMU-TOPOLOGY, 11th / closing pass)
+///
+/// `painted_ir` is built by feeding `run_paint_segmentation` the REAL
+/// per-layer Z values parsed from the real `wall_generator=arachne` gcode's
+/// own `;Z:` headers (`parse_layer_z_values`), one entry per real layer, at
+/// the real layer's exact Z — see `build_initial_slice_ir`'s doc comment for
+/// why this replaces the prior independent, hardcoded 50-layer/0.5mm-step
+/// reference plan (`build_50_layer_plan`, removed).
+///
+/// Two prior passes investigated pairing: raw array-index pairing (dominant
+/// cause of the original 113-header failure) was replaced by nearest-Z
+/// lookup (10th pass: 113 → 10 escaping headers), which in turn was found to
+/// alias the true tool1/tool3 paint-color boundary because the reference grid
+/// was independently coarser than the real pipeline's own layer height (see
+/// this file's module doc comment, "Per-color footprint bound", and
+/// D-112-MMU-TOPOLOGY's closing note in `docs/DEVIATION_LOG.md` for the full
+/// arc). Building `painted_ir` directly from the real Z sequence makes
+/// `painted_ir` and `per_layer` the same length with matching Z ordering, so
+/// `painted_ir[li]` is now an exact (not nearest-Z) pairing.
 #[test]
 fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let outcome = slice_cube_4color_with_arachne();
     let mesh = Arc::new(load_cube_4color_mesh());
-    let painted_ir = run_paint_segmentation(mesh.clone());
-    let model_bbox = model_xy_bounding_box(&mesh);
 
     assert!(
         !outcome.gcode_text.is_empty(),
@@ -762,6 +825,33 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
          Rebuild guests (cargo xtask build-guests) and re-run."
     );
 
+    // Real per-layer Z (mm), parsed from each layer's own `;Z:` gcode header.
+    // Fed directly into `run_paint_segmentation` below so `painted_ir` is
+    // built at these exact Z values (see this test's doc comment /
+    // D-112-MMU-TOPOLOGY).
+    let layer_zs = parse_layer_z_values(&outcome.gcode_text);
+    assert_eq!(
+        layer_zs.len(),
+        per_layer.len(),
+        "cube_4color (wall_generator=arachne): parsed {} layer Z values but {} outer-wall header \
+         layer buckets — ;LAYER_CHANGE bucketing mismatch between parse_layer_z_values and \
+         parse_outer_wall_headers_per_layer",
+        layer_zs.len(),
+        per_layer.len()
+    );
+
+    let painted_ir = run_paint_segmentation(mesh.clone(), &layer_zs);
+    let model_bbox = model_xy_bounding_box(&mesh);
+    assert_eq!(
+        painted_ir.len(),
+        per_layer.len(),
+        "cube_4color (wall_generator=arachne): painted_ir built from the real per-layer Z \
+         sequence must have one entry per real gcode layer, got {} painted_ir entries vs {} \
+         gcode layers",
+        painted_ir.len(),
+        per_layer.len()
+    );
+
     // Tolerance: 2 mm in scaled units.
     const FOOTPRINT_TOLERANCE_MM: f32 = 2.0;
     let tol = slicer_ir::mm_to_units(FOOTPRINT_TOLERANCE_MM);
@@ -773,15 +863,19 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let mut worst_header_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
     let mut worst_cell_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
 
-    let n = per_layer.len().min(painted_ir.len());
+    let n = per_layer.len();
     let lo = n * 15 / 100;
     let hi = n * 80 / 100;
 
-    for li in lo..hi.min(n) {
+    for li in lo..hi {
         let layer_headers = &per_layer[li];
         if layer_headers.is_empty() {
             continue;
         }
+        // `painted_ir` was built from the real per-layer Z sequence, so it
+        // shares indexing and Z ordering with `per_layer` — direct index, no
+        // nearest-Z lookup needed (see this test's doc comment /
+        // D-112-MMU-TOPOLOGY).
         let slice_ir = &painted_ir[li];
         let cells = cells_by_color(slice_ir);
 

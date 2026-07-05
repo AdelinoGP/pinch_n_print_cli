@@ -9,7 +9,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
     ConfigValue, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, LayerStageCommit,
@@ -681,6 +681,25 @@ pub(crate) fn assemble_ordered_entities(
             v
         })
         .unwrap_or_default();
+    // D-112-MMU-TOPOLOGY closure: build a parallel set of (object_id,
+    // region_id) keys for BASE (unpainted) SlicedRegions. The wall/infill
+    // tool resolver below uses this set to *skip* the spatial fallback for
+    // BASE walls — a BASE outer wall's first vertex may sit inside a
+    // per-color cell (the bisector is shared), and the previous
+    // `spatial_tool.or(variant_tool)` chain reattributed the BASE wall to
+    // that per-color tool, producing a wall whose geometry (the full model
+    // outer outline) escapes its attributed per-color cell. BASE walls
+    // must stay on `DEFAULT_TOOL` and not pick up a per-color attribution
+    // from the spatial point-in-polygon test.
+    let base_region_keys: HashSet<(String, u64)> = slice
+        .map(|s| {
+            s.regions
+                .iter()
+                .filter(|r| r.variant_chain.is_empty())
+                .map(|r| (r.object_id.clone(), r.region_id))
+                .collect()
+        })
+        .unwrap_or_default();
 
     // Spatial fallback: find the painted SlicedRegion whose polygons contain
     // the given (x, y) point (mm). Returns the painted variant's ToolIndex
@@ -741,6 +760,30 @@ pub(crate) fn assemble_ordered_entities(
                 .copied();
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
+                // D-112-MMU-TOPOLOGY closure: prefer `variant_tool` (the
+                // per-region paint-derived tool, looked up from the source
+                // `SlicedRegion`'s variant chain) over the spatial fallback.
+                // The previous chain (`paint.or(spatial).or(variant)`) let
+                // the spatial fallback re-attribute a per-color region's
+                // walls to whichever per-color cell the wall's FIRST vertex
+                // happened to land in — producing walls that escape their
+                // own per-color cell when the first vertex sits on an
+                // adjacent cell's bisector.
+                //
+                // The spatial fallback is reserved for the LIFO-touch case
+                // (when a PerimeterRegion was emitted with the wrong region
+                // id by the guest): when `variant_tool` is None for this
+                // (object_id, region_id) — i.e. the region has no material
+                // variant chain (BASE) or the SDK adapter lost the origin
+                // (untagged) — fall through to spatial classification. BASE
+                // regions are explicitly excluded: their walls are the
+                // full-model outer outline, never a per-color cell wall,
+                // and reattributing them to a per-color tool produces
+                // per-color headers that escape their own per-color cells
+                // (D-112-MMU-TOPOLOGY closure).
+                let region_key = (region.object_id.clone(), region.region_id);
+                let region_is_base = base_region_keys.contains(&region_key);
+                let region_is_tagged = variant_tool_by_region.contains_key(&region_key);
                 // Spatial fallback: when the host's per-region bucketing
                 // collapsed all wall_loops under a single PerimeterRegion
                 // (SDK adapter LIFO touch — see comment on `painted_regions`
@@ -753,8 +796,12 @@ pub(crate) fn assemble_ordered_entities(
                     .first()
                     .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
                 let resolved_tool = paint_tool
-                    .or(spatial_tool)
                     .or(variant_tool)
+                    .or(if region_is_base || region_is_tagged {
+                        None
+                    } else {
+                        spatial_tool
+                    })
                     .or(modifier_tool)
                     .unwrap_or(DEFAULT_TOOL);
                 let entity_key = RegionKey {
@@ -787,6 +834,8 @@ pub(crate) fn assemble_ordered_entities(
             // Per-path spatial fallback (same reasoning as the wall loop).
             // Infill paths are likely emitted in a single guest batch and
             // need per-path tool resolution when host bucketing collapsed.
+            let infill_region_key = (region.object_id.clone(), region.region_id);
+            let infill_region_is_tagged = variant_tool_by_region.contains_key(&infill_region_key);
             let infill_push = |path: &slicer_ir::ExtrusionPath3D,
                                role: slicer_ir::ExtrusionRole,
                                acc: &mut Vec<PrintEntity>| {
@@ -794,7 +843,16 @@ pub(crate) fn assemble_ordered_entities(
                     .points
                     .first()
                     .and_then(|p| lookup_tool_by_point_mm(p.x, p.y));
-                let resolved_tool = spatial_tool.or(variant_tool).unwrap_or(DEFAULT_TOOL);
+                // D-112-MMU-TOPOLOGY closure: prefer `variant_tool` over the
+                // spatial fallback for tagged regions, matching the wall-loop
+                // resolver above.
+                let resolved_tool = variant_tool
+                    .or(if infill_region_is_tagged {
+                        None
+                    } else {
+                        spatial_tool
+                    })
+                    .unwrap_or(DEFAULT_TOOL);
                 let key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),

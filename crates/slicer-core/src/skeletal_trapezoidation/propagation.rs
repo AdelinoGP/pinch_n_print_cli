@@ -35,6 +35,7 @@
 //! rather than assuming a `NaN` can't occur) and panic-free.
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use super::graph::{STVertex, SkeletalTrapezoidationGraph, TransitionMiddle};
 use crate::beading::BeadingStrategy;
@@ -234,9 +235,41 @@ struct TransitionEnd {
 /// Splits edge `edge_idx` at position `pos` (fraction of edge length) and
 /// inserts a new vertex with the given `bead_count` and `transition_ratio`.
 ///
-/// Returns the index of the new vertex. The original edge keeps its index and
-/// its `start_vertex`; a new twin-pair half-edge is appended to represent the
-/// segment from the split point to the original `to` vertex.
+/// Returns the index of the new vertex. The original edge (`orig`) keeps its
+/// index and its `start_vertex`, now ending at the new split vertex; a new
+/// half-edge (`new_edge`) is appended representing the segment from the split
+/// point onward to `orig`'s original "to" vertex.
+///
+/// # DCEL repair (`D-112-MMU-TOPOLOGY` busy-hub fix)
+///
+/// Splitting a half-edge must rewire *three* link families, not just
+/// geometry:
+///
+/// - `twin` (this crate's `resolve_to_vertex` convention, not a spatial
+///   opposite-direction edge): `orig.twin` is repointed to `new_edge_idx` so
+///   `resolve_to_vertex(orig)` now resolves to the split vertex. `new_edge`
+///   must **keep** its cloned-from-`orig` twin value (`orig`'s *original*
+///   twin, captured before mutation) so `resolve_to_vertex(new_edge)` still
+///   resolves to `orig`'s original far endpoint — overwriting it to
+///   `edge_idx` (as a prior version of this function did) makes every
+///   `new_edge` resolve back to `orig`'s *start* vertex instead, which is the
+///   root cause this doc comment exists to prevent (see this module's
+///   `apply_transitions` doc comment for the full failure chain).
+/// - `next`/`prev`: `orig.next` must become `new_edge_idx` and `new_edge.prev`
+///   must become `edge_idx` so the two pieces chain correctly; the edge that
+///   used to follow `orig` (at `orig`'s pre-mutation `.next`) must have its
+///   `.prev` repointed to `new_edge_idx`. Previously neither half of this was
+///   done at all — every split's `new_edge` silently kept `orig`'s stale
+///   pre-split `next`/`prev` verbatim (via `.clone()`), so
+///   `generate_toolpaths::walk_domain_chain`'s DCEL traversal would treat
+///   every split-off edge as claiming the *same* next/prev pointers as the
+///   original edge, corrupting the domain walk.
+///
+/// Both repairs generalize correctly across repeated splits along the same
+/// physical `edge_idx` (each call further shrinks `orig`'s effective span and
+/// correctly re-chains onto whatever the previous split's `new_edge` already
+/// was), because `resolve_to_vertex`/`next`/`prev` are always read fresh from
+/// the graph's *current* state at the top of each call.
 fn insert_node(
     graph: &mut SkeletalTrapezoidationGraph,
     edge_idx: usize,
@@ -272,12 +305,14 @@ fn insert_node(
     });
 
     let new_edge_idx = graph.edges.len();
-    // New edge: from split vertex to original `to` vertex. Twin points back to
-    // the original edge's logical forward direction (the original edge now
-    // goes from original start to split vertex).
+    let old_next = edge.next; // captured before any mutation, see doc comment.
+                              // New edge: from split vertex onward to `orig`'s original "to" vertex.
+                              // `new_edge.twin` and `.next` are deliberately left as the values
+                              // inherited from `edge.clone()` (see doc comment) — only `start_vertex`,
+                              // `prev`, `r_min`/`r_max` need overwriting.
     let mut new_edge = edge.clone();
     new_edge.start_vertex = new_vertex_idx;
-    new_edge.twin = edge_idx;
+    new_edge.prev = edge_idx;
     // r_min/r_max stay on the same edge geometry; recalc from the new bounds.
     let (r_min, r_max) = super::graph::edge_radius_bounds(&graph.vertices, new_vertex_idx, to_idx);
     new_edge.r_min = r_min;
@@ -291,49 +326,91 @@ fn insert_node(
         orig.r_min = r_min;
         orig.r_max = r_max;
         orig.twin = new_edge_idx;
+        orig.next = new_edge_idx;
+    }
+    // Whatever used to follow `orig` in the DCEL chain now follows `new_edge`
+    // instead.
+    if old_next != NO_INDEX {
+        if let Some(follower) = graph.edges.get_mut(old_next) {
+            follower.prev = new_edge_idx;
+        }
     }
 
     new_vertex_idx
 }
 
 /// For each edge carrying [`super::graph::STHalfEdge::transition_mids`],
-/// generates corresponding transition ends (at `pos` and at `length - pos` on
-/// the twin), sorts them by position, then inserts new vertices (or snaps to
-/// existing endpoints) carrying the correct `bead_count` and
-/// `transition_ratio`.
+/// generates corresponding transition ends (at `pos` on the edge itself, and
+/// at `1 - pos` on its twin), sorts each target edge's own ends by position,
+/// then inserts new vertices (or snaps to existing endpoints) carrying the
+/// correct `bead_count` and `transition_ratio`.
 ///
 /// Snapped existing endpoints receive `transition_ratio = 0.0`. New vertices
 /// receive `transition_ratio` derived from the transition step's `mid_r`.
+///
+/// # Two bugs fixed here (`D-112-MMU-TOPOLOGY` busy-hub root cause)
+///
+/// 1. **Mirror ends were pushed onto the wrong edge.** The mirrored
+///    `1 - pos` transition ends are, by construction and by this function's
+///    own original doc comment, meant for the *twin* edge (which walks the
+///    opposite direction and so needs the same physical split points
+///    expressed in its own position frame) — but the previous implementation
+///    appended them to the *same* `edge_idx`'s own end list instead of
+///    `edge.twin`'s. For any edge with N of its own transition ends this
+///    silently doubled its split count with a second, incorrectly-mirrored
+///    set (positions running back toward this edge's own start), which
+///    compounds with bug 2 below into a runaway vertex cluster.
+/// 2. **Repeated splits along the same `edge_idx` reused a stale position
+///    fraction.** [`insert_node`] always operates on `edge_idx`'s *current*
+///    span (`edge.start_vertex` to `resolve_to_vertex(edge_idx)`, which
+///    shrinks after each split — see that function's doc comment). But
+///    `end.pos` values are fractions of the edge's *original*, pre-split
+///    length. Passing them straight through for the second, third, ... split
+///    on the same `edge_idx` re-interprets an original-frame fraction as a
+///    fraction of an already-shrunk sub-edge, landing closer and closer to
+///    the shrinking edge's start vertex on every subsequent split — a
+///    geometric convergence that produced degenerate clusters of near-
+///    identical vertices near sharp polygon corners (confirmed by instrumenting
+///    a `cube_4color` MMU triangular cell: 12+ vertices converging to within
+///    sub-micron distance of a single corner). Fixed by rescaling each
+///    successive `end.pos` (sorted ascending, so monotonically increasing)
+///    onto the *remaining* fraction of the edge not yet consumed by prior
+///    splits on this same `edge_idx`.
 pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
-    // Collect transition ends from every edge. We mirror across twins using the
-    // *current* edge length; after any split the twin still points at the same
-    // physical edge, so the mirrored end lands at `length - pos`.
-    let mut per_edge_ends: Vec<(usize, Vec<TransitionEnd>)> = Vec::new();
+    // Collect transition ends per *target* edge (own ends plus, for edges
+    // with a twin, this edge's ends mirrored onto that twin — see doc
+    // comment bug 1). Keyed by a `BTreeMap` (not the source edge's own
+    // iteration index) precisely so an edge's list combines both its own
+    // contributions and any mirrored-in contribution from its twin.
+    let mut per_edge_ends: BTreeMap<usize, Vec<TransitionEnd>> = BTreeMap::new();
     for (edge_idx, edge) in graph.edges.iter().enumerate() {
         if edge.transition_mids.is_empty() {
             continue;
         }
-        let mut ends: Vec<TransitionEnd> = edge
-            .transition_mids
-            .iter()
-            .map(|tm| TransitionEnd {
+        let bucket = per_edge_ends.entry(edge_idx).or_default();
+        for tm in &edge.transition_mids {
+            bucket.push(TransitionEnd {
                 pos: tm.pos,
                 bead_count: tm.lower_bead_count,
                 mid_r: tm.mid_r,
-            })
-            .collect();
-        // Mirror onto twin: twin's end position is `length - pos` with the same
-        // lower bead count (the twin walks the opposite direction).
-        let len = edge_length(graph, edge_idx);
-        if edge.twin != NO_INDEX && len > 0.0 && len.is_finite() {
+            });
+        }
+        // Mirror onto the twin: the twin walks the opposite direction, so
+        // the same physical split point sits at `1 - pos` in the twin's own
+        // frame. Pushed onto `edge.twin`'s bucket, not this edge's own.
+        if edge.twin != NO_INDEX {
+            let twin_bucket = per_edge_ends.entry(edge.twin).or_default();
             for tm in &edge.transition_mids {
-                ends.push(TransitionEnd {
+                twin_bucket.push(TransitionEnd {
                     pos: 1.0 - tm.pos,
                     bead_count: tm.lower_bead_count,
                     mid_r: tm.mid_r,
                 });
             }
         }
+    }
+
+    for ends in per_edge_ends.values_mut() {
         ends.sort_by(|a, b| {
             a.pos
                 .partial_cmp(&b.pos)
@@ -344,20 +421,31 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
         // Deduplicate ends that land at effectively the same position and bead
         // count (common when pos == 0.5 and its mirror coincide).
         ends.dedup_by(|a, b| (a.pos - b.pos).abs() < SNAP_FRAC && a.bead_count == b.bead_count);
-        per_edge_ends.push((edge_idx, ends));
     }
 
-    // Apply splits. We process in edge-index order so newly inserted edges do
-    // not participate in this pass (their transition_mids are empty).
+    // Apply splits. We process in edge-index order (BTreeMap iteration) so
+    // newly inserted edges (appended after every edge this loop started
+    // with) do not participate in this pass — their transition_mids are
+    // empty.
     for (edge_idx, ends) in per_edge_ends {
-        let len = edge_length(graph, edge_idx);
-        let snap_dist = len * SNAP_FRAC;
+        // Tracks how much of the *original* edge (position-fraction terms)
+        // has already been consumed by an earlier split on this same
+        // `edge_idx` within this loop iteration — see doc comment bug 2.
+        let mut consumed_pos = 0.0_f64;
         for end in ends {
+            let remaining = 1.0 - consumed_pos;
+            let local_pos = if remaining > f64::EPSILON {
+                ((end.pos - consumed_pos) / remaining).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+            consumed_pos = end.pos.max(consumed_pos);
+
             let edge = match graph.edges.get(edge_idx) {
                 Some(e) => e.clone(),
                 None => continue,
             };
-            if end.pos < snap_dist {
+            if local_pos < SNAP_FRAC {
                 // Snap to the start vertex.
                 if let Some(v) = graph.vertices.get_mut(edge.start_vertex) {
                     v.bead_count = Some(end.bead_count);
@@ -365,7 +453,7 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
                 }
                 continue;
             }
-            if end.pos > 1.0 - snap_dist {
+            if local_pos > 1.0 - SNAP_FRAC {
                 // Snap to the end vertex.
                 let to_v = resolve_to_vertex(graph, edge_idx);
                 if let Some(v) = graph.vertices.get_mut(to_v) {
@@ -380,7 +468,7 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
             // midpoint; downstream `generate_toolpaths` will refine this per
             // its own `Beading` computation.
             let ratio = 0.5_f64;
-            insert_node(graph, edge_idx, end.pos, end.bead_count, ratio);
+            insert_node(graph, edge_idx, local_pos, end.bead_count, ratio);
         }
     }
 }
