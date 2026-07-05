@@ -25,9 +25,14 @@ pub mod centrality;
 pub mod discretize;
 pub mod graph;
 pub mod propagation;
+pub mod rib;
 
 pub use bead_count::{assign_bead_counts, BeadCountError};
 pub use centrality::{filter_central, CentralityParams};
 pub use discretize::discretize_parabolic_edge;
-pub use graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, SktError};
-pub use propagation::{propagate_beadings_downward, propagate_beadings_upward};
+pub use graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, SktError, TransitionMiddle};
+pub use propagation::{
+    apply_transitions, generate_transition_mids, propagate_beadings_downward,
+    propagate_beadings_upward,
+};
+pub use rib::{build_quad_rib_topology, EdgeType, QuadCell, QuadCellId, RibData, RibError};

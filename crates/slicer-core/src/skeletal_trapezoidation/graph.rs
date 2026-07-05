@@ -76,6 +76,19 @@ pub struct STVertex {
     /// via point-to-segment distance rather than trusted algebraically from
     /// `boostvoronoi`'s internal state.
     pub distance_to_boundary: f64,
+    /// The number of extrusion beads (walls) this vertex should carry, as
+    /// decided by the `assign_bead_counts` pass. `None` until that pass
+    /// runs.
+    pub bead_count: Option<u32>,
+    /// Fractional position within a bead-count transition region, in the
+    /// range `[0, 1]`. `0.0` for a vertex that is not on a transition
+    /// boundary (or was snapped to an existing endpoint). Set by the
+    /// `apply_transitions` pass and consumed by downstream propagation /
+    /// toolpath emission to blend beadings across a transition ramp.
+    ///
+    /// Mirrors OrcaSlicer's per-node `transition_ratio` field
+    /// (`SkeletalTrapezoidation.cpp`, `applyTransitions` L1487+).
+    pub transition_ratio: f64,
 }
 
 /// A `SkeletalTrapezoidationGraph` half-edge: a Voronoi half-edge annotated
@@ -86,7 +99,7 @@ pub struct STVertex {
 /// `prev`) are a direct, unmodified copy of the corresponding
 /// [`crate::voronoi::HalfEdge`] fields — same index space, same sentinel
 /// convention ([`crate::voronoi::NO_INDEX`] for "no value").
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct STHalfEdge {
     /// Index into [`SkeletalTrapezoidationGraph::vertices`] for this
     /// half-edge's start point, or [`crate::voronoi::NO_INDEX`] if absent.
@@ -116,16 +129,67 @@ pub struct STHalfEdge {
     /// [`crate::voronoi::HalfEdge::is_curved`]; consumed by Step 4's
     /// parabolic edge discretization.
     pub is_curved: bool,
-    /// The number of extrusion beads (walls) this edge should carry, as
-    /// decided by Step 2's `assign_bead_counts` pass. `None` until that pass
-    /// runs.
-    pub bead_count: Option<u32>,
     /// Whether this edge sits in the middle of a bead-count transition
     /// region. Set by Step 3's transition-region propagation pass.
     pub is_transition_middle: bool,
     /// Whether this edge sits at the end of a bead-count transition region.
     /// Set by Step 3's transition-region propagation pass.
     pub is_transition_end: bool,
+    /// For rib edges (`EdgeType::EXTRA_VD`), the synthetic twin edge in the
+    /// quad cell that points back toward the spine side. This is the existing
+    /// graph `twin` relationship recorded from the rib edge's perspective.
+    pub rib_twin: Option<usize>,
+    /// The quad cell this edge belongs to, if any. Populated by Step 1's
+    /// [`super::rib::build_quad_rib_topology`] pass.
+    pub quad_cell: Option<u32>,
+    /// Classification of this edge: normal skeleton edge, synthetic rib edge,
+    /// or transition end. Populated by [`super::rib::build_quad_rib_topology`].
+    pub edge_type: super::rib::EdgeType,
+    /// Transition-mid annotations placed by
+    /// [`super::propagation::generate_transition_mids`] before `apply_transitions`
+    /// splits edges at these positions. Each entry records the split position
+    /// along this half-edge, the bead count below the split, and the radius at
+    /// which the transition occurs.
+    pub transition_mids: Vec<TransitionMiddle>,
+}
+
+/// A single transition-middle annotation on a half-edge, placed by
+/// [`generate_transition_mids`].
+///
+/// Mirrors OrcaSlicer's `TransitionMiddle` struct
+/// (`SkeletalTrapezoidation.cpp:925-994`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TransitionMiddle {
+    /// Position along the half-edge at which the transition from
+    /// `lower_bead_count` to `lower_bead_count + 1` occurs, expressed as a
+    /// fraction of the edge length (`0.0..=1.0`).
+    pub pos: f64,
+    /// The bead count on the lower-R side of the transition. The higher-R
+    /// side implicitly carries `lower_bead_count + 1`.
+    pub lower_bead_count: u32,
+    /// Radius (`distance_to_boundary`) at which the transition occurs.
+    pub mid_r: f64,
+}
+
+impl Default for STHalfEdge {
+    fn default() -> Self {
+        Self {
+            start_vertex: NO_INDEX,
+            twin: NO_INDEX,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            r_min: 0.0,
+            r_max: 0.0,
+            central: false,
+            is_curved: false,
+            is_transition_middle: false,
+            is_transition_end: false,
+            rib_twin: None,
+            quad_cell: None,
+            edge_type: super::rib::EdgeType::NORMAL,
+            transition_mids: Vec::new(),
+        }
+    }
 }
 
 /// The Orca-shaped skeletal trapezoidation half-edge graph.
@@ -152,6 +216,9 @@ pub struct SkeletalTrapezoidationGraph {
     /// [`STHalfEdge::central`], since a fresh graph's edges already default
     /// `central` to `false`.
     pub centrality_filtered: bool,
+    /// Synthetic rib/quad-cell topology produced by
+    /// [`super::rib::build_quad_rib_topology`]. Empty until that pass runs.
+    pub rib: super::rib::RibData,
 }
 
 /// Errors from [`SkeletalTrapezoidationGraph::from_polygons`].
@@ -238,6 +305,8 @@ impl SkeletalTrapezoidationGraph {
             .map(|v| STVertex {
                 position: *v,
                 distance_to_boundary: nearest_boundary_distance(v.x, v.y, &segments),
+                bead_count: None,
+                transition_ratio: 0.0,
             })
             .collect();
 
@@ -264,9 +333,12 @@ impl SkeletalTrapezoidationGraph {
                     r_max,
                     central: false,
                     is_curved: e.is_curved,
-                    bead_count: None,
                     is_transition_middle: false,
                     is_transition_end: false,
+                    rib_twin: None,
+                    quad_cell: None,
+                    edge_type: super::rib::EdgeType::NORMAL,
+                    transition_mids: Vec::new(),
                 }
             })
             .collect();
@@ -275,6 +347,7 @@ impl SkeletalTrapezoidationGraph {
             vertices,
             edges,
             centrality_filtered: false,
+            rib: super::rib::RibData::default(),
         })
     }
 }
@@ -349,7 +422,7 @@ fn point_to_segment_distance_f64(px: f64, py: f64, a: Point2, b: Point2) -> f64 
 /// - Neither resolvable (a fully unbounded line edge): `(0.0, 0.0)`.
 ///
 /// Always returns finite, non-negative values with `r_min <= r_max`.
-fn edge_radius_bounds(vertices: &[STVertex], from_idx: usize, to_idx: usize) -> (f64, f64) {
+pub fn edge_radius_bounds(vertices: &[STVertex], from_idx: usize, to_idx: usize) -> (f64, f64) {
     let from_d = (from_idx != NO_INDEX)
         .then(|| vertices.get(from_idx).map(|v| v.distance_to_boundary))
         .flatten();

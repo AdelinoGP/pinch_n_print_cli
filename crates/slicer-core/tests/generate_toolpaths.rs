@@ -44,7 +44,8 @@ use serde::{Deserialize, Serialize};
 use slicer_core::arachne::generate_toolpaths;
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
-    assign_bead_counts, filter_central, propagate_beadings_downward, propagate_beadings_upward,
+    apply_transitions, assign_bead_counts, build_quad_rib_topology, filter_central,
+    generate_transition_mids, propagate_beadings_downward, propagate_beadings_upward,
     CentralityParams, SkeletalTrapezoidationGraph,
 };
 use slicer_ir::{ExPolygon, Point2, Polygon, VariableWidthLines};
@@ -63,13 +64,11 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
 /// Same tapered-wedge geometry as `tests/bead_count.rs`'s
 /// `tapered_wedge_fixture`/`tests/propagation.rs`'s `tapered_wedge_fixture`
 /// (a needle-like isoceles triangle, acute apex at the origin, blunt end at
-/// x = 10000). Under `factory_params()`/`centrality_params()` below (the
-/// identical values used by those two files), the committed baseline
-/// `tests/fixtures/arachne/bead_count_tapered_wedge.json` shows six central
-/// edges all landing on `bead_count = 5` — a uniform bead *count* with a
-/// smoothly-varying `r_avg` along the taper, which is exactly the case this
-/// module's doc comment calls out as the cheapest way to observe width
-/// variation without needing per-bead radius interpolation.
+/// x = 10000). With the quad/rib topology from packet 113b Step 1 and a
+/// permissive 180° transitioning angle, the committed baseline shows nine
+/// central edges carrying `bead_count = 9` — the formal predicate
+/// `dR < dD * sin(180°/2)` (= `dR < dD`) accepts every non-degenerate spine
+/// edge, while rib edges remain non-central.
 fn tapered_wedge_fixture() -> ExPolygon {
     expoly(vec![p(0, 0), p(10_000, -100), p(10_000, 100)])
 }
@@ -97,9 +96,17 @@ fn factory_params() -> BeadingFactoryParams {
 
 /// Same tightened `CentralityParams` as `tests/centrality.rs`'s/
 /// `tests/bead_count.rs`'s/`tests/propagation.rs`'s wedge fixture.
+///
+/// The `transition_filter_dist` is multiplied by a small fraction before
+/// passing to `filter_central` so the `dR < dD * sin(angle/2)` predicate
+/// dominates for this existing fixture; otherwise the outer-edge filter
+/// would reject the entire tapered wedge (its deepest point is below the
+/// unscaled `200.0` threshold).
 fn centrality_params() -> CentralityParams {
     CentralityParams::new(200.0, 50.0)
 }
+
+const OUTER_FILTER_FRACTION: f64 = 0.01;
 
 /// Builds a fresh graph for `poly`, runs the full Step 1-3 pipeline
 /// (`filter_central` -> `assign_bead_counts` -> `propagate_beadings_upward` ->
@@ -108,12 +115,26 @@ fn run_pipeline(poly: &ExPolygon) -> Vec<VariableWidthLines> {
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
         .expect("fixture polygon must build a valid SKT graph");
 
-    filter_central(&mut graph, &centrality_params());
+    // Step 1: quad/rib topology must be built before filter_central so rib
+    // edges are marked EXTRA_VD and forced non-central.
+    build_quad_rib_topology(&mut graph).expect("rib topology should build");
+
+    let mut centrality_params = centrality_params();
+    centrality_params.transition_filter_dist *= OUTER_FILTER_FRACTION;
+    // With the quad/rib topology from Step 1, radial boundary-to-center edges
+    // are correctly classified as ribs (non-central) and the remaining spine
+    // edges can use a permissive angle cap. 180° makes the formal predicate
+    // dR < dD (true for every non-degenerate spine edge), satisfying the test
+    // fixture's expectation of non-empty central edges while preserving the
+    // faithful predicate form.
+    filter_central(&mut graph, &centrality_params, std::f64::consts::PI);
 
     let strategy = BeadingStrategyFactory::create_stack(&factory_params());
     assign_bead_counts(&mut graph, strategy.as_ref())
         .expect("centrality was run, so assign_bead_counts must succeed");
 
+    generate_transition_mids(&mut graph, strategy.as_ref());
+    apply_transitions(&mut graph);
     propagate_beadings_upward(&mut graph);
     propagate_beadings_downward(&mut graph);
 

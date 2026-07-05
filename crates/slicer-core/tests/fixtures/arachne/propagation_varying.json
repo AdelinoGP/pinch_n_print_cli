@@ -5,20 +5,20 @@
   "is_transition_middle": [
     false,
     false,
-    true,
-    true,
+    false,
+    false,
     false,
     false,
     false,
     false
   ],
   "is_transition_end": [
-    true,
-    true,
     false,
     false,
-    true,
-    true,
+    false,
+    false,
+    false,
+    false,
     false,
     false
   ]

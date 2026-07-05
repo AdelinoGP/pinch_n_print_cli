@@ -5,18 +5,16 @@
 //!
 //! Packet 112 has no OrcaSlicer oracle for this step (see
 //! `crates/slicer-core/src/skeletal_trapezoidation/bead_count.rs`'s
-//! module-level doc comment for why `r_avg = (r_min + r_max) / 2.0` is a
-//! from-first-principles adaptation of OrcaSlicer's single-scalar-per-node
-//! `getOptimalBeadCount(distance_to_boundary * 2)` call, not a literal port).
-//! `tests/fixtures/arachne/bead_count_tapered_wedge.json` is a **self-captured
-//! regression baseline**: on first run, `bead_count_tapered_wedge` writes this
-//! implementation's own per-edge `bead_count` output to disk; on every
-//! subsequent run, it compares against the committed file and fails on any
-//! drift. This locks in *this* implementation's behavior for regression
-//! purposes only — it is not, and must never be described as,
-//! independently-derived OrcaSlicer ground truth. The real correctness
-//! signal is the invariant assertions (central ⇔ `Some`, non-central ⇔
-//! `None`, bounds, determinism) documented inline below.
+//! module-level doc comment). `tests/fixtures/arachne/bead_count_tapered_wedge.json`
+//! is a **self-captured regression baseline**: on first run,
+//! `bead_count_tapered_wedge` writes this implementation's own per-vertex
+//! `bead_count` output to disk; on every subsequent run, it compares against
+//! the committed file and fails on any drift. This locks in *this*
+//! implementation's behavior for regression purposes only — it is not, and
+//! must never be described as, independently-derived OrcaSlicer ground truth.
+//! The real correctness signal is the invariant assertions
+//! (central-adjacent vertex ⇔ `Some`, otherwise `None`, bounds,
+//! determinism) documented inline below.
 //!
 //! Host-only: `skeletal_trapezoidation` is gated behind the `host-algos`
 //! feature (matching `voronoi`, `algos`, `medial_axis`), so this whole file
@@ -33,6 +31,7 @@ use slicer_core::skeletal_trapezoidation::{
     assign_bead_counts, filter_central, BeadCountError, CentralityParams,
     SkeletalTrapezoidationGraph,
 };
+use slicer_core::voronoi::NO_INDEX;
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
 fn p(x: i64, y: i64) -> Point2 {
@@ -84,9 +83,18 @@ fn factory_params() -> BeadingFactoryParams {
 /// a nonzero `min_central_distance` floor so the wedge's shallow
 /// boundary-adjacent structure is rejected while its genuine medial-axis
 /// hub stays central, giving this test a real mix of both.
+///
+/// The `transition_filter_dist` is multiplied by a small fraction before
+/// passing to `filter_central` so the `dR < dD * sin(angle/2)` predicate
+/// dominates for this existing fixture; otherwise the outer-edge filter
+/// would reject the entire tapered wedge (its deepest point is below the
+/// unscaled `200.0` threshold).
 fn centrality_params() -> CentralityParams {
     CentralityParams::new(200.0, 50.0)
 }
+
+const CENTRALITY_TRANSITIONING_ANGLE_RAD: f64 = 0.17453292519943295; // 10°
+const OUTER_FILTER_FRACTION: f64 = 0.01;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct BeadCountFixture {
@@ -94,8 +102,10 @@ struct BeadCountFixture {
     /// (this implementation's own output), not an OrcaSlicer golden — see
     /// this file's module-level doc comment.
     provenance: String,
+    /// Renamed from `edge_count` in Step 3; kept as `edge_count` for JSON
+    /// backward compatibility with the fixture file.
     edge_count: usize,
-    /// `bead_count` per edge index, in `graph.edges` order.
+    /// `bead_count` per vertex index, in `graph.vertices` order.
     bead_counts: Vec<Option<u32>>,
 }
 
@@ -151,21 +161,43 @@ fn write_or_compare_baseline(fixture: &BeadCountFixture) {
 
 /// Builds a fresh graph for `poly`, runs `filter_central` then
 /// `assign_bead_counts` with a freshly-built strategy instance, and returns
-/// the per-edge `bead_count` markers alongside the `central` markers used to
-/// check the central ⇔ `Some` / non-central ⇔ `None` invariant.
+/// the per-vertex `bead_count` markers alongside the `central` markers used
+/// to check that every vertex touched by a central edge carries a `Some(_).
 fn build_and_assign(poly: &ExPolygon) -> (Vec<bool>, Vec<Option<u32>>) {
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
         .expect("fixture polygon must build a valid SKT graph");
 
-    filter_central(&mut graph, &centrality_params());
+    let mut centrality_params = centrality_params();
+    centrality_params.transition_filter_dist *= OUTER_FILTER_FRACTION;
+    filter_central(
+        &mut graph,
+        &centrality_params,
+        CENTRALITY_TRANSITIONING_ANGLE_RAD,
+    );
 
     let strategy = BeadingStrategyFactory::create_stack(&factory_params());
     assign_bead_counts(&mut graph, strategy.as_ref())
         .expect("centrality was run, so assign_bead_counts must succeed");
 
-    let central: Vec<bool> = graph.edges.iter().map(|e| e.central).collect();
-    let bead_counts: Vec<Option<u32>> = graph.edges.iter().map(|e| e.bead_count).collect();
-    (central, bead_counts)
+    let central_vertex: Vec<bool> = graph
+        .vertices
+        .iter()
+        .enumerate()
+        .map(|(v_idx, _)| {
+            graph.edges.iter().any(|e| {
+                e.central
+                    && (e.start_vertex == v_idx
+                        || (e.twin != NO_INDEX
+                            && graph
+                                .edges
+                                .get(e.twin)
+                                .map(|twin| twin.start_vertex == v_idx)
+                                .unwrap_or(false)))
+            })
+        })
+        .collect();
+    let bead_counts: Vec<Option<u32>> = graph.vertices.iter().map(|v| v.bead_count).collect();
+    (central_vertex, bead_counts)
 }
 
 #[test]
@@ -182,7 +214,7 @@ fn bead_count_tapered_wedge() {
 
     assert_eq!(
         central_a, central_b,
-        "filter_central must be deterministic across independent builds of the same input"
+        "centrality must be deterministic across independent builds of the same input"
     );
     assert_eq!(
         bead_counts_a, bead_counts_b,
@@ -196,24 +228,24 @@ fn bead_count_tapered_wedge() {
     // only one side.
     assert!(
         central_a.iter().any(|&c| c),
-        "tapered wedge: expected at least one central edge, got none: {central_a:?}"
+        "tapered wedge: expected at least one central-adjacent vertex, got none: {central_a:?}"
     );
     assert!(
         central_a.iter().any(|&c| !c),
-        "tapered wedge: expected at least one non-central edge, got none: {central_a:?}"
+        "tapered wedge: expected at least one non-central vertex, got none: {central_a:?}"
     );
 
-    // --- Invariant: central ⇔ bead_count is Some, non-central ⇔ None ---
+    // --- Invariant: central-adjacent vertex ⇔ bead_count is Some, otherwise None ---
     for (i, (&is_central, &bead_count)) in central_a.iter().zip(bead_counts_a.iter()).enumerate() {
         if is_central {
             assert!(
                 bead_count.is_some(),
-                "edge {i}: central edge must have bead_count == Some(_), got None"
+                "vertex {i}: central-adjacent vertex must have bead_count == Some(_), got None"
             );
         } else {
             assert!(
                 bead_count.is_none(),
-                "edge {i}: non-central edge must have bead_count == None, got {bead_count:?}"
+                "vertex {i}: non-central vertex must have bead_count == None, got {bead_count:?}"
             );
         }
     }
@@ -223,7 +255,7 @@ fn bead_count_tapered_wedge() {
         if let Some(n) = bead_count {
             assert!(
                 *n <= max_bead_count,
-                "edge {i}: bead_count {n} exceeds max_bead_count {max_bead_count}"
+                "vertex {i}: bead_count {n} exceeds max_bead_count {max_bead_count}"
             );
         }
     }

@@ -3,63 +3,48 @@
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
 //
-// Original C++ source path: src/libslic3r/Arachne/SkeletalTrapezoidation.cpp
-// (`updateIsCentral`, `filterCentral` entry + recursive overloads,
-// `isEndOfCentral`, `STHalfEdgeNode::isLocalMaximum`).
+// Original C++ source path:
+// OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:672
+// (`updateIsCentral`).
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Centrality filtering (T-220, packet 112 Step 1 of the M2 Arachne port).
+//! Centrality filtering (packet 113b Step 2 — Arachne topology faithfulness).
 //!
-//! # Honesty note (no OrcaSlicer oracle)
+//! Implements the `updateIsCentral` predicate from
+//! `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:672`:
 //!
-//! This module does **not** claim numeric parity with OrcaSlicer. OrcaSlicer's
-//! `SkeletalTrapezoidationGraph` is built with a substantially richer topology
-//! than ours (explicit "rib" edges from `graph.makeRib()`, synthetic
-//! `EXTRA_VD` edges, point-vs-segment cell bookkeeping) — see
-//! [`crate::skeletal_trapezoidation::graph`]'s own design notes: our graph is
-//! a direct 1:1 wrap of the raw (unclipped) `boostvoronoi` segment diagram,
-//! including exterior half-edges (rays to infinity) and degenerate
-//! zero-length primary edges at input-segment endpoints that OrcaSlicer's
-//! richer construction never produces in the first place. A literal
-//! byte-for-byte port of `updateIsCentral`'s `dR < dD * sin(angle/2)` test
-//! onto *this* topology is not well-defined (our single-hop corner→spine
-//! edges play a different structural role than OrcaSlicer's chain of quad
-//! ribs). What follows is a **from-first-principles predicate**, inspired by
-//! OrcaSlicer's two real (documented) mechanisms, adapted to fit the fields
-//! this graph actually has:
+//! > `bool is_central = dR < dD * sin(transitioning_angle / 2);`
 //!
-//! 1. **Depth floor** (mirrors `updateIsCentral`'s
-//!    `max(from.R, to.R) < outer_edge_filter_length → non-central` rule): an
-//!    edge whose deeper endpoint never reaches `min_central_distance` from
-//!    the boundary is never central — it's a shallow rib, not skeleton.
-//! 2. **Whisker dissolve** (the *fixed*, actually-invoked form of
-//!    `filterCentral`'s recursive overload — see below): a chain of central
-//!    edges that dead-ends within `transition_filter_dist` of accumulated
-//!    length, and whose terminal vertex is not a local distance-to-boundary
-//!    maximum, gets dissolved back to non-central. This mirrors the
-//!    recursive `filterCentral(edge_t*, traveled_dist, max_length)` overload
-//!    verbatim; only the outer seeding condition changes.
+//! where `dR = |to.R - from.R|`, `dD = (to.p - from.p).cast<int64_t>().norm()`,
+//! and `transitioning_angle` is the configured wall-transition angle in
+//! radians (`beading_strategy.getTransitioningAngle()` upstream). Edges with
+//! `max(from.R, to.R) < outer_edge_filter_length` are forced non-central, and
+//! `EXTRA_VD` (synthetic rib) edges are always non-central. Twin edges share the
+//! same centrality marker.
 //!
-//! **Research flag inherited from the OrcaSlicer source**: the public
-//! `filterCentral(coord_t max_length)` entry overload in OrcaSlicer guards
-//! the recursive call with `edge.to->isLocalMaximum() &&
-//! !edge.to->isLocalMaximum()` — always false, so upstream's recursive
-//! whisker-dissolve pass is dead code and never runs in practice (upstream
-//! ships relying solely on `filterNoncentralRegions` for the equivalent
-//! cleanup). Per this packet's brief, `filter_central` here implements the
-//! *intended* behavior (seed from genuine whisker tips via [`is_end_of_central`],
-//! recurse for real) rather than porting the dead guard.
+//! # Note on topology differences
+//!
+//! This crate's `SkeletalTrapezoidationGraph` is a direct 1:1 wrap of the raw
+//! `boostvoronoi` segment diagram (see [`crate::skeletal_trapezoidation::graph`]
+//! for the design rationale), so it includes exterior half-edges (rays to
+//! infinity) and degenerate zero-length primary edges that OrcaSlicer's richer
+//! graph construction never produces. The predicate below applies the documented
+//! OrcaSlicer rule to every half-edge that has resolvable endpoints; unbounded
+//! edges and `EXTRA_VD` ribs are handled as non-central by construction.
+//!
+//! # Fixtures
 //!
 //! The three regression fixtures in `tests/centrality.rs` are **self-captured
-//! baselines**: they lock in this implementation's own output for regression
+//! baselines** that lock in this implementation's own output for regression
 //! purposes. They are not derived from, and must not be described as,
 //! OrcaSlicer ground truth.
 
 use std::collections::HashSet;
 
 use super::graph::SkeletalTrapezoidationGraph;
+use super::rib::EdgeType;
 use crate::voronoi::NO_INDEX;
 
 /// Tolerance for floating-point boundary-distance / length comparisons.
@@ -70,31 +55,26 @@ use crate::voronoi::NO_INDEX;
 /// (1 unit = 100 nm).
 const EPS: f64 = 1e-6;
 
-/// Parameters governing [`filter_central`]'s two-stage centrality predicate.
+/// Parameters governing [`filter_central`]'s centrality predicate.
 ///
-/// Both fields are in the same scaled-integer unit space as the rest of the
-/// slicer (1 unit = 100 nm = 10⁻⁴ mm, see `docs/08_coordinate_system.md`),
+/// All length fields are in the same scaled-integer unit space as the rest of
+/// the slicer (1 unit = 100 nm = 10⁻⁴ mm, see `docs/08_coordinate_system.md`),
 /// even though they're stored as `f64` to match [`super::graph::STVertex`]'s
-/// `distance_to_boundary` representation.
-///
-/// These are placeholder defaults for this packet; a later packet is
-/// expected to derive both from `BeadingFactoryParams` (analogous to
-/// OrcaSlicer's `beading_strategy.getTransitionThickness(0)` and
-/// `central_filter_dist()` respectively) rather than using fixed constants.
+/// `distance_to_boundary` representation. `transitioning_angle_rad` is in
+/// radians and feeds the `sin(angle/2)` term directly.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CentralityParams {
-    /// Maximum accumulated whisker length (see [`filter_central`]'s
-    /// module-level doc) a chain of central edges may span and still be
-    /// dissolved to non-central, provided none of its terminal vertices is a
-    /// local distance-to-boundary maximum. Mirrors OrcaSlicer's
-    /// `central_filter_dist()` (hardcoded `scaled<coord_t>(0.02)` = 0.02 mm
-    /// there; 0.02 mm = 200 units here).
+    /// `outer_edge_filter_length` proxy: an edge whose deepest endpoint has
+    /// `distance_to_boundary` below this threshold is forced non-central.
+    /// Mirrors OrcaSlicer's
+    /// `outer_edge_filter_length = beading_strategy.getTransitionThickness(0) / 2`.
+    /// Upstream this is a derived beading-strategy value; here it is an
+    /// explicit parameter so `filter_central` stays strategy-agnostic.
     pub transition_filter_dist: f64,
     /// Minimum `distance_to_boundary` an edge's deeper endpoint must reach
-    /// to ever be considered central. Mirrors OrcaSlicer's
-    /// `outer_edge_filter_length = beading_strategy.getTransitionThickness(0) / 2`.
-    /// Defaults to `0.0` (no floor) until a later packet wires this to
-    /// `BeadingFactoryParams`.
+    /// to ever be considered central. Kept for backward compatibility with
+    /// existing tests; in the upstream predicate this is folded into the
+    /// `outer_edge_filter_length` rule above.
     pub min_central_distance: f64,
 }
 
@@ -124,44 +104,90 @@ impl CentralityParams {
 /// invariants) degrades to "not resolvable" rather than indexing out of
 /// bounds.
 ///
-/// See the module-level doc comment for the two-stage predicate this
-/// implements and why it is a from-first-principles adaptation rather than
-/// a literal OrcaSlicer port.
-pub fn filter_central(graph: &mut SkeletalTrapezoidationGraph, params: &CentralityParams) {
-    // --- Stage 1: depth floor (mirrors `updateIsCentral`'s R-threshold rule) ---
-    // `r_max` is the deeper of an edge's two endpoints (see
-    // `STHalfEdge::r_max`'s doc comment); an edge whose deepest point never
-    // reaches `min_central_distance` is never central. Twin symmetry holds
-    // automatically because `r_min`/`r_max` are computed order-independently
-    // per edge/twin pair in `graph.rs`'s `edge_radius_bounds`.
-    for edge in graph.edges.iter_mut() {
-        edge.central = edge.r_max >= params.min_central_distance;
-    }
+/// Implements the `updateIsCentral` predicate from
+/// `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:672`:
+/// `central = dR < dD * sin(transitioning_angle/2)`, subject to the
+/// `EXTRA_VD` / `outer_edge_filter_length` overrides described in the
+/// module-level doc.
+pub fn filter_central(
+    graph: &mut SkeletalTrapezoidationGraph,
+    params: &CentralityParams,
+    transitioning_angle_rad: f64,
+) {
+    // `updateIsCentral` computes one value per edge pair: if a twin exists,
+    // the second half-edge mirrors the first half-edge's result. We process
+    // every half-edge but only resolve endpoints once per edge.
+    let cap = (transitioning_angle_rad / 2.0).sin();
 
-    // --- Stage 2: whisker dissolve (the real, non-dead `filterCentral`) ---
-    // Seed from every genuine whisker tip (`is_end_of_central`) and recurse
-    // backward into the chain, exactly mirroring OrcaSlicer's
-    // `filterCentral(edge_t*, traveled_dist, max_length)` recursive overload.
-    let edge_count = graph.edges.len();
-    for edge_idx in 0..edge_count {
-        if !is_end_of_central(graph, edge_idx) {
-            continue;
-        }
-        let Some(twin) = graph.edges.get(edge_idx).map(|e| e.twin) else {
+    for edge_idx in 0..graph.edges.len() {
+        let Some(edge) = graph.edges.get(edge_idx) else {
             continue;
         };
-        if twin == NO_INDEX {
-            debug_assert!(false, "central edge {edge_idx} has no twin");
+
+        // EXTRA_VD ribs are always non-central.
+        if edge.edge_type == EdgeType::EXTRA_VD {
+            graph.edges[edge_idx].central = false;
             continue;
         }
-        let mut visited = HashSet::new();
-        try_dissolve(
-            graph,
-            twin,
-            0.0,
-            params.transition_filter_dist,
-            &mut visited,
-        );
+
+        let Some(from_v) = graph.vertices.get(edge.start_vertex) else {
+            graph.edges[edge_idx].central = false;
+            continue;
+        };
+        let to_idx = resolve_to_vertex(graph, edge_idx);
+        let to_d = if to_idx == NO_INDEX {
+            0.0
+        } else {
+            graph
+                .vertices
+                .get(to_idx)
+                .map(|v| v.distance_to_boundary)
+                .unwrap_or(0.0)
+        };
+        let from_d = from_v.distance_to_boundary;
+
+        let d_r = (to_d - from_d).abs();
+        let d_d = edge_length(graph, edge_idx);
+
+        // Edges with at least one endpoint on the boundary and max R below the
+        // outer-edge filter are forced non-central. For unbounded rays (to_idx
+        // == NO_INDEX) we use from_d as the only resolvable radius.
+        let r_max = if to_idx == NO_INDEX {
+            from_d
+        } else {
+            from_d.max(to_d)
+        };
+        let outer_filter = params.transition_filter_dist;
+        let passes_outer_filter = r_max >= outer_filter;
+
+        // A finite edge is central when the radius swing across it is smaller
+        // than the geometric length times sin(angle/2). Infinite-length or
+        // unresolvable edges default to non-central.
+        let passes_predicate =
+            d_d.is_finite() && d_d > EPS && passes_outer_filter && d_r < d_d * cap;
+
+        // Also honor the legacy min_central_distance floor if it is stricter
+        // than the outer-filter proxy.
+        let passes_floor = r_max >= params.min_central_distance;
+
+        graph.edges[edge_idx].central = passes_predicate && passes_floor;
+    }
+
+    // Twin symmetry: the second half-edge of a pair mirrors the first. Orca
+    // does this implicitly by sharing the edge-pair data structure; here we
+    // copy the value from the lower-indexed half-edge to its twin.
+    for edge_idx in 0..graph.edges.len() {
+        let Some(edge) = graph.edges.get(edge_idx) else {
+            continue;
+        };
+        let edge_twin = edge.twin;
+        if edge_twin == NO_INDEX || edge_twin <= edge_idx {
+            continue;
+        }
+        let twin_value = graph.edges[edge_idx].central;
+        if let Some(twin) = graph.edges.get_mut(edge_twin) {
+            twin.central = twin_value;
+        }
     }
 
     // Marks that centrality has been computed on this graph, so
@@ -175,7 +201,7 @@ pub fn filter_central(graph: &mut SkeletalTrapezoidationGraph, params: &Centrali
 /// matching [`super::graph`]'s own convention (see that module's doc comment
 /// on why the "to" vertex isn't stored directly). Returns [`NO_INDEX`] if
 /// unresolvable (missing/out-of-range twin).
-fn resolve_to_vertex(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> usize {
+pub(super) fn resolve_to_vertex(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> usize {
     let Some(edge) = graph.edges.get(edge_idx) else {
         return NO_INDEX;
     };
@@ -195,7 +221,7 @@ fn resolve_to_vertex(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> us
 /// `f64` Voronoi vertex positions this graph stores (see
 /// [`crate::voronoi::Vertex`]) rather than rounding through integer
 /// coordinates.
-fn edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> f64 {
+pub(super) fn edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> f64 {
     let Some(edge) = graph.edges.get(edge_idx) else {
         return f64::INFINITY;
     };
@@ -229,6 +255,12 @@ fn edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> f64 {
 /// golden tests already assert (`skt_graph_golden.rs`), both enumerate the
 /// identical *set* of outgoing half-edges — order doesn't matter here since
 /// every outgoing edge is inspected regardless of order.
+// The recursive whisker-dissolve helpers below are no longer used by the
+// current `updateIsCentral` implementation, but they are retained (marked
+// `#[allow(dead_code)]`) so a future packet that wires in the real
+// `filterCentral`/`filterOuterCentral` passes can reuse the existing helpers
+// without re-porting them.
+#[allow(dead_code)]
 fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> bool {
     if vertex_idx == NO_INDEX {
         return false;
@@ -263,6 +295,7 @@ fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> b
 /// including the "no next" boundary case, which here falls out naturally
 /// (an unresolvable "to" vertex vacuously has no other outgoing edges to
 /// find, so it's trivially an end).
+#[allow(dead_code)]
 fn is_end_of_central(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> bool {
     let Some(edge) = graph.edges.get(edge_idx) else {
         return false;
@@ -296,6 +329,7 @@ fn is_end_of_central(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> bo
 /// central subgraph to terminate); it's added defensively here so a
 /// pathological zero-length-edge cycle degrades to "don't dissolve" rather
 /// than an unbounded recursion.
+#[allow(dead_code)]
 fn try_dissolve(
     graph: &mut SkeletalTrapezoidationGraph,
     edge_idx: usize,
@@ -312,9 +346,10 @@ fn try_dissolve(
         return false;
     }
 
-    let Some(edge) = graph.edges.get(edge_idx).copied() else {
+    let Some(edge_ref) = graph.edges.get(edge_idx) else {
         return false;
     };
+    let edge = edge_ref.clone();
     let to_v = resolve_to_vertex(graph, edge_idx);
 
     let mut should_dissolve = true;

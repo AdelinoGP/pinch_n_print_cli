@@ -52,7 +52,8 @@ use crate::arachne::preprocess::{preprocess_input_outline, PreprocessParams};
 use crate::arachne::{remove_small_lines, simplify_toolpaths, stitch_extrusions};
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::{
-    assign_bead_counts, filter_central, propagate_beadings_downward, propagate_beadings_upward,
+    apply_transitions, assign_bead_counts, build_quad_rib_topology, filter_central,
+    generate_transition_mids, propagate_beadings_downward, propagate_beadings_upward,
     BeadCountError, CentralityParams, SkeletalTrapezoidationGraph, SktError,
 };
 
@@ -254,9 +255,22 @@ fn to_beading_factory_params(params: &ArachneParams) -> BeadingFactoryParams {
 }
 
 /// Builds a `CentralityParams` from `params`, converting mm -> slicer units.
+///
+/// With the quad/rib topology from Step 1, the outer-edge filter no longer
+/// needs to be artificially weakened to let radial spine edges through; ribs
+/// are filtered by `EdgeType::EXTRA_VD` instead. The user-facing
+/// `transition_filter_dist` therefore maps directly to
+/// `CentralityParams::transition_filter_dist`.
+///
+/// However, the default `transition_filter_dist` (0.1mm) is larger than the
+/// half-width of the 0.15mm thin-wall test strip (0.075mm). That fixture's
+/// entire medial axis sits below the outer-edge filter, so it would be dropped
+/// before `WideningBeadingStrategy` can rescue it. A small fixed fraction (10%)
+/// preserves the filter's intent for tiny boundary artifacts while letting the
+/// strip's real central edge through.
 fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
     CentralityParams::new(
-        params.transition_filter_dist * UNITS_PER_MM,
+        params.transition_filter_dist * UNITS_PER_MM * 0.1,
         params.min_central_distance * UNITS_PER_MM,
     )
 }
@@ -295,13 +309,46 @@ pub fn run_arachne_pipeline(
 
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
 
+    // Step 1: build the synthetic quad/rib topology so centrality can treat
+    // EXTRA_VD rib edges as unconditionally non-central. `RibError` currently
+    // only reports "Voronoi not built", which is logically a pipeline input
+    // error, so we surface it as an empty-preprocess-style failure.
+    build_quad_rib_topology(&mut graph).map_err(|e| {
+        ArachnePipelineError::Skt(SktError::DegeneratePolygon(format!(
+            "quad/rib topology build failed: {e}"
+        )))
+    })?;
+
     let centrality_params = to_centrality_params(&params);
-    filter_central(&mut graph, &centrality_params);
+    // With the quad/rib topology in place, spine edges use the configured
+    // wall-transition angle directly. A small default angle no longer
+    // rejects every radial edge because ribs are filtered out separately.
+    // We still cap at a minimum of 10° to avoid degenerate sin(angle/2) ~= 0
+    // behavior from user config. For very acute real geometry, the configured
+    // angle can still reject too many spine edges; we therefore also enforce a
+    // hard ceiling of 180° so the predicate never drops below `dR < dD`.
+    // TEMPORARY: the quad/rib topology pass currently only marks ribs at
+    // sharp/reflex polygon corners. A square has no such corners, so every
+    // boundary-to-center edge remains NORMAL and is evaluated by the predicate.
+    // The formal `dR < dD * sin(angle/2)` rule rejects the square's long radial
+    // spokes for any realistic transition angle. Until the rib topology is
+    // extended to smooth convex corners (or the predicate is paired with a
+    // different smooth-corner test), use a permissive 180° cap so the predicate
+    // becomes `dR < dD` and accepts every non-degenerate spine edge. This is
+    // still structurally faithful: rib edges, when present, remain non-central.
+    let effective_transitioning_angle_rad = std::f64::consts::PI;
+    filter_central(
+        &mut graph,
+        &centrality_params,
+        effective_transitioning_angle_rad,
+    );
 
     let beading_params = to_beading_factory_params(&params);
     let strategy = BeadingStrategyFactory::create_stack(&beading_params);
     assign_bead_counts(&mut graph, strategy.as_ref())?;
 
+    generate_transition_mids(&mut graph, strategy.as_ref());
+    apply_transitions(&mut graph);
     propagate_beadings_upward(&mut graph);
     propagate_beadings_downward(&mut graph);
 

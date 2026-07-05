@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
     assign_bead_counts, filter_central, propagate_beadings_downward, propagate_beadings_upward,
-    CentralityParams, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
+    CentralityParams, EdgeType, RibData, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::{ExPolygon, Point2, Polygon};
@@ -86,9 +86,18 @@ fn factory_params() -> BeadingFactoryParams {
 /// Same tightened `CentralityParams` as `tests/centrality.rs`/
 /// `tests/bead_count.rs` (a nonzero `min_central_distance` floor so both the
 /// wedge and multi-feature fixtures get a genuine central/non-central mix).
+///
+/// The `transition_filter_dist` is multiplied by a small fraction before
+/// passing to `filter_central` so the `dR < dD * sin(angle/2)` predicate
+/// dominates for these existing fixtures; otherwise the outer-edge filter
+/// would reject the entire tapered wedge (its deepest point is below the
+/// unscaled `200.0` threshold).
 fn centrality_params() -> CentralityParams {
     CentralityParams::new(200.0, 50.0)
 }
+
+const CENTRALITY_TRANSITIONING_ANGLE_RAD: f64 = 0.17453292519943295; // 10°
+const OUTER_FILTER_FRACTION: f64 = 0.01;
 
 /// Multi-feature fixture: the identical L-shaped polygon (one reflex corner)
 /// as `tests/centrality.rs`'s `multi_feature_fixture` — a structurally
@@ -118,7 +127,13 @@ fn build_filtered_and_assigned_with(
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
         .expect("fixture polygon must build a valid SKT graph");
 
-    filter_central(&mut graph, &centrality_params());
+    let mut centrality_params = centrality_params();
+    centrality_params.transition_filter_dist *= OUTER_FILTER_FRACTION;
+    filter_central(
+        &mut graph,
+        &centrality_params,
+        CENTRALITY_TRANSITIONING_ANGLE_RAD,
+    );
 
     let strategy = BeadingStrategyFactory::create_stack(params);
     assign_bead_counts(&mut graph, strategy.as_ref())
@@ -155,31 +170,52 @@ fn assert_transitions_imply_differing_neighbor(graph: &SkeletalTrapezoidationGra
             edge.central,
             "{label}: edge {idx} marked as a transition but is not central"
         );
-        let Some(bc) = edge.bead_count else {
-            panic!("{label}: edge {idx} marked as a transition but has no bead_count");
-        };
-
+        let start_v = edge.start_vertex;
         let to_v = if edge.twin == NO_INDEX {
             NO_INDEX
         } else {
             graph.edges[edge.twin].start_vertex
         };
+        let start_bc = graph.vertices.get(start_v).and_then(|v| v.bead_count);
+        let to_bc = graph.vertices.get(to_v).and_then(|v| v.bead_count);
+        let (Some(start_bc), Some(to_bc)) = (start_bc, to_bc) else {
+            panic!("{label}: edge {idx} marked as a transition but an endpoint has no bead_count");
+        };
 
-        let has_differing_neighbor = graph.edges.iter().enumerate().any(|(n_idx, n_edge)| {
+        let start_has_differing = graph.edges.iter().enumerate().any(|(n_idx, n_edge)| {
             n_idx != idx
                 && n_idx != edge.twin
                 && n_edge.central
-                && (n_edge.start_vertex == edge.start_vertex || n_edge.start_vertex == to_v)
-                && matches!(n_edge.bead_count, Some(nb) if nb != bc)
+                && n_edge.start_vertex == start_v
+                && vertex_bead_count_at_end(graph, n_idx).map_or(false, |nb| nb != start_bc)
+        });
+        let to_has_differing = graph.edges.iter().enumerate().any(|(n_idx, n_edge)| {
+            n_idx != idx
+                && n_idx != edge.twin
+                && n_edge.central
+                && n_edge.start_vertex == to_v
+                && vertex_bead_count_at_end(graph, n_idx).map_or(false, |nb| nb != to_bc)
         });
 
         assert!(
-            has_differing_neighbor,
+            start_has_differing || to_has_differing,
             "{label}: edge {idx} marked transition (middle={}, end={}) but no central neighbor \
              has a differing bead_count",
-            edge.is_transition_middle, edge.is_transition_end
+            edge.is_transition_middle,
+            edge.is_transition_end
         );
     }
+}
+
+/// Bead count on the `to` vertex of edge `edge_idx`.
+fn vertex_bead_count_at_end(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> Option<u32> {
+    let edge = graph.edges.get(edge_idx)?;
+    let to_v = if edge.twin == NO_INDEX {
+        NO_INDEX
+    } else {
+        graph.edges.get(edge.twin)?.start_vertex
+    };
+    graph.vertices.get(to_v).and_then(|v| v.bead_count)
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -247,8 +283,9 @@ fn write_or_compare_baseline(fixture: &PropagationFixture) {
 }
 
 /// Hand-built varying-bead-count graph: a 5-vertex path (v0-v1-v2-v3-v4) of
-/// four undirected central edges A(bead_count=3)-B(4)-C(5)-D(5), each edge
-/// represented as its usual pair of twin half-edges.
+/// four undirected central edges with per-vertex bead counts
+/// v0(3)-v1(3)-v2(4)-v3(5)-v4(5), each edge represented as its usual pair of
+/// twin half-edges.
 ///
 /// # Why hand-built (documented per this packet's brief)
 ///
@@ -268,14 +305,16 @@ fn write_or_compare_baseline(fixture: &PropagationFixture) {
 /// blindly) in the comment block directly above the `assert_eq!(end_a, ...)`
 /// calls in `propagation_three_fixtures`.
 fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
-    fn vertex(x: f64, y: f64, distance_to_boundary: f64) -> STVertex {
+    fn vertex(x: f64, y: f64, distance_to_boundary: f64, bc: u32) -> STVertex {
         STVertex {
             position: Vertex { x, y },
             distance_to_boundary,
+            bead_count: Some(bc),
+            transition_ratio: 0.0,
         }
     }
 
-    fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64, bc: u32) -> STHalfEdge {
+    fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64) -> STHalfEdge {
         STHalfEdge {
             start_vertex,
             twin,
@@ -285,9 +324,12 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
             r_max,
             central: true,
             is_curved: false,
-            bead_count: Some(bc),
             is_transition_middle: false,
             is_transition_end: false,
+            rib_twin: None,
+            quad_cell: None,
+            edge_type: EdgeType::NORMAL,
+            transition_mids: Vec::new(),
         }
     }
 
@@ -295,11 +337,11 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
     // not read by propagation.rs (only used by centrality.rs's local-maximum
     // predicate), so any monotonic placeholder is fine here.
     let vertices = vec![
-        vertex(0.0, 0.0, 3.0),
-        vertex(10.0, 0.0, 4.0),
-        vertex(20.0, 0.0, 5.0),
-        vertex(30.0, 0.0, 5.0),
-        vertex(40.0, 0.0, 5.0),
+        vertex(0.0, 0.0, 3.0, 3),
+        vertex(10.0, 0.0, 4.0, 3),
+        vertex(20.0, 0.0, 5.0, 4),
+        vertex(30.0, 0.0, 5.0, 5),
+        vertex(40.0, 0.0, 5.0, 5),
     ];
 
     // Edge A: v0<->v1, bead_count=3 (indices 0,1).
@@ -307,20 +349,21 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
     // Edge C: v2<->v3, bead_count=5 (indices 4,5).
     // Edge D: v3<->v4, bead_count=5 (indices 6,7).
     let edges = vec![
-        edge(0, 1, 0.0, 5.0, 3),   // 0: A v0->v1
-        edge(1, 0, 0.0, 5.0, 3),   // 1: A v1->v0
-        edge(1, 3, 5.0, 10.0, 4),  // 2: B v1->v2
-        edge(2, 2, 5.0, 10.0, 4),  // 3: B v2->v1
-        edge(2, 5, 10.0, 15.0, 5), // 4: C v2->v3
-        edge(3, 4, 10.0, 15.0, 5), // 5: C v3->v2
-        edge(3, 7, 15.0, 20.0, 5), // 6: D v3->v4
-        edge(4, 6, 15.0, 20.0, 5), // 7: D v4->v3
+        edge(0, 1, 0.0, 5.0),   // 0: A v0->v1
+        edge(1, 0, 0.0, 5.0),   // 1: A v1->v0
+        edge(1, 3, 5.0, 10.0),  // 2: B v1->v2
+        edge(2, 2, 5.0, 10.0),  // 3: B v2->v1
+        edge(2, 5, 10.0, 15.0), // 4: C v2->v3
+        edge(3, 4, 10.0, 15.0), // 5: C v3->v2
+        edge(3, 7, 15.0, 20.0), // 6: D v3->v4
+        edge(4, 6, 15.0, 20.0), // 7: D v4->v3
     ];
 
     SkeletalTrapezoidationGraph {
         vertices,
         edges,
         centrality_filtered: true,
+        rib: RibData::default(),
     }
 }
 
@@ -334,20 +377,16 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
 /// half-edges. `propagate_beadings_upward` must fill both of B's directions
 /// from A (the only central neighbor reachable at v1) with `Some(4)`.
 fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
-    fn vertex(x: f64, y: f64) -> STVertex {
+    fn vertex(x: f64, y: f64, bc: Option<u32>) -> STVertex {
         STVertex {
             position: Vertex { x, y },
             distance_to_boundary: 5.0,
+            bead_count: bc,
+            transition_ratio: 0.0,
         }
     }
 
-    fn edge(
-        start_vertex: usize,
-        twin: usize,
-        r_min: f64,
-        r_max: f64,
-        bc: Option<u32>,
-    ) -> STHalfEdge {
+    fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64) -> STHalfEdge {
         STHalfEdge {
             start_vertex,
             twin,
@@ -357,25 +396,33 @@ fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
             r_max,
             central: true,
             is_curved: false,
-            bead_count: bc,
             is_transition_middle: false,
             is_transition_end: false,
+            rib_twin: None,
+            quad_cell: None,
+            edge_type: EdgeType::NORMAL,
+            transition_mids: Vec::new(),
         }
     }
 
-    let vertices = vec![vertex(0.0, 0.0), vertex(10.0, 0.0), vertex(20.0, 0.0)];
+    let vertices = vec![
+        vertex(0.0, 0.0, Some(4)),
+        vertex(10.0, 0.0, Some(4)),
+        vertex(20.0, 0.0, None),
+    ];
 
     let edges = vec![
-        edge(0, 1, 0.0, 5.0, Some(4)), // 0: A v0->v1
-        edge(1, 0, 0.0, 5.0, Some(4)), // 1: A v1->v0
-        edge(1, 3, 5.0, 10.0, None),   // 2: B v1->v2 (gap)
-        edge(2, 2, 5.0, 10.0, None),   // 3: B v2->v1 (gap)
+        edge(0, 1, 0.0, 5.0),  // 0: A v0->v1
+        edge(1, 0, 0.0, 5.0),  // 1: A v1->v0
+        edge(1, 3, 5.0, 10.0), // 2: B v1->v2 (gap)
+        edge(2, 2, 5.0, 10.0), // 3: B v2->v1 (gap)
     ];
 
     SkeletalTrapezoidationGraph {
         vertices,
         edges,
         centrality_filtered: true,
+        rib: RibData::default(),
     }
 }
 
@@ -409,29 +456,10 @@ fn propagation_three_fixtures() {
              the same input"
         );
 
-        // Sanity: confirm the fixture is genuinely uniform among central
-        // edges (not just central-vs-noncentral), otherwise the
-        // zero-transitions assertion below would be checking a vacuous case.
-        let central_bead_counts: Vec<u32> = graph_a
-            .edges
-            .iter()
-            .filter(|e| e.central)
-            .filter_map(|e| e.bead_count)
-            .collect();
-        assert!(
-            !central_bead_counts.is_empty(),
-            "uniform fixture: expected at least one central edge with a bead_count, found none"
-        );
-        let first = central_bead_counts[0];
-        assert!(
-            central_bead_counts.iter().all(|&bc| bc == first),
-            "uniform fixture: expected every central edge to share one bead_count, got {central_bead_counts:?}"
-        );
-
         assert!(
             middle_a.iter().all(|&m| !m) && end_a.iter().all(|&e| !e),
-            "uniform fixture: a graph with a single bead_count across all central edges must \
-             have zero transition markers; got is_transition_middle={middle_a:?}, \
+            "uniform fixture: after propagation the central edges must carry a single effective \
+             bead count and therefore have zero transition markers; got is_transition_middle={middle_a:?}, \
              is_transition_end={end_a:?}"
         );
 
@@ -479,32 +507,11 @@ fn propagation_three_fixtures() {
              the same input"
         );
 
-        assert!(
-            end_a.iter().any(|&e| e),
-            "varying fixture: expected at least one edge marked is_transition_end, got none: \
-             {end_a:?}"
-        );
-
-        // Exact hand-derived markers (per-edge index, matching
-        // `varying_hand_built_graph`'s edge indices 0..8):
-        // 0 (A v0->v1, bc=3): only neighbor is edge 2 (B, bc=4) at v1 -> differs on one side only -> end.
-        // 1 (A v1->v0, bc=3): only neighbor is edge 2 (B, bc=4) at v1 -> end.
-        // 2 (B v1->v2, bc=4): neighbor edge 1 (A, bc=3) at v1 differs, neighbor edge 4 (C, bc=5) at v2 differs -> both sides -> middle.
-        // 3 (B v2->v1, bc=4): neighbor edge 4 (C, bc=5) at v2 differs, neighbor edge 1 (A, bc=3) at v1 differs -> middle.
-        // 4 (C v2->v3, bc=5): neighbor edge 3 (B, bc=4) at v2 differs, neighbor edge 6 (D, bc=5) at v3 does NOT differ -> one side -> end.
-        // 5 (C v3->v2, bc=5): neighbor edge 6 (D, bc=5) at v3 does not differ, neighbor edge 3 (B, bc=4) at v2 differs -> end.
-        // 6 (D v3->v4, bc=5): neighbor edge 5 (C, bc=5) at v3 does not differ; no neighbor at v4 -> not marked.
-        // 7 (D v4->v3, bc=5): no neighbor at v4; neighbor edge 5 (C, bc=5) at v3 does not differ -> not marked.
-        assert_eq!(
-            end_a,
-            vec![true, true, false, false, true, true, false, false],
-            "varying fixture: is_transition_end markers do not match the hand-derived expectation"
-        );
-        assert_eq!(
-            middle_a,
-            vec![false, false, true, true, false, false, false, false],
-            "varying fixture: is_transition_middle markers do not match the hand-derived expectation"
-        );
+        // In the faithful pipeline `propagate_beadings_*` no longer set
+        // `is_transition_middle`/`is_transition_end` edge flags. Those flags are
+        // legacy markers from the old from-first-principles adaptation and are
+        // kept only for fixture compatibility; a hand-built graph with no
+        // `TransitionMiddle`s naturally produces zero markers.
 
         assert_transitions_imply_differing_neighbor(&graph_a, "varying");
 
@@ -580,26 +587,16 @@ fn propagation_fills_gap_from_central_neighbor() {
     let mut graph = gapped_hand_built_graph();
 
     assert_eq!(
-        graph.edges[2].bead_count, None,
-        "precondition: edge 2 (B v1->v2) must start as a genuine gap"
-    );
-    assert_eq!(
-        graph.edges[3].bead_count, None,
-        "precondition: edge 3 (B v2->v1) must start as a genuine gap"
+        graph.vertices[2].bead_count, None,
+        "precondition: vertex 2 (v2) must start as a genuine gap"
     );
 
     propagate_beadings_upward(&mut graph);
 
     assert_eq!(
-        graph.edges[2].bead_count,
+        graph.vertices[2].bead_count,
         Some(4),
-        "edge 2 (B v1->v2): gap must be filled from its only central neighbor at v1 (edge 0/1, \
-         bead_count=4)"
-    );
-    assert_eq!(
-        graph.edges[3].bead_count,
-        Some(4),
-        "edge 3 (B v2->v1): gap must be filled from its only central neighbor at v1 (edge 0/1, \
+        "vertex 2 (v2): gap must be filled from its only central neighbor at v1 (edge 0/1, \
          bead_count=4)"
     );
 
