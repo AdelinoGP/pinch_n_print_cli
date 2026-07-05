@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 113b-arachne-topology-faithfulness
 task_ids: []
 backlog_source: docs/specs/perimeter-modules-orca-parity-roadmap.md (M2 follow-up)

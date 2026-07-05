@@ -40,14 +40,19 @@
 //! exercises the *existing* per-region loop, not any new per-color splitting
 //! logic — there is none to add.
 //!
-//! # Bounded deviation from the classic test's "self-closure" property
+//! # Per-color footprint bound (P113b re-verification)
 //!
 //! Geometric partition invariant (per-color ExPolygon sets form a non-overlapping
 //! Voronoi partition of cube_4color's painted face) is asserted in
 //! `crates/slicer-core/tests/paint_segmentation_mmu_partition_tdd.rs`.
 //! The "extrusion-points-in-footprint" investigation is tracked as
-//! D-112-MMU-TOPOLOGY (Open) and is out of scope for this packet; see the
-//! deviation log.
+//! D-112-MMU-TOPOLOGY (Open). The P113b re-verification test
+//! `cube_4color_arachne_per_color_footprint_within_bbox` asserts per-color
+//! outer-wall header bboxes stay inside the corresponding per-color
+//! `paint_segmentation` ExPolygon bbox + 2 mm tolerance. It currently FAILS:
+//! worst case layer 37 tool 2 by 15.264 mm, with 113 mid-body headers escaping
+//! their cell. Symptom re-attributed to `arachne-perimeters` geometry crossing
+//! paint-segmentation cell bisectors; see D-112-MMU-TOPOLOGY.
 //!
 //! What this test DOES assert as the honestly-supportable substitute: every
 //! per-color header's extrusion points are **finite** (no NaN/Infinity) and
@@ -62,11 +67,11 @@
 #![allow(missing_docs)]
 #![allow(dead_code)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::ConfigValue;
+use slicer_ir::{slice_ir::BoundingBox2, ConfigValue, ExPolygon, PaintValue, Point2};
 use slicer_runtime::{run_slice, SliceOutcome, SliceRunOptions};
 
 // --------------------------------------------------------------------------
@@ -91,6 +96,9 @@ fn core_modules_dir() -> PathBuf {
     workspace_root().join("modules").join("core-modules")
 }
 
+const LAYER_COUNT: u32 = 50;
+const LAYER_HEIGHT_MM: f32 = 0.5;
+
 /// Run `cube_4color.3mf` through the real pipeline with
 /// `wall_generator = "arachne"` forced via `config_overrides`, so
 /// `arachne-perimeters` (not `classic-perimeters`) claims `Layer::Perimeters`
@@ -114,8 +122,21 @@ fn slice_cube_4color_with_arachne() -> SliceOutcome {
         module_dir.display()
     );
 
+    let opts = slice_cube_4color_with_arachne_options(&model_path, module_dir);
+    run_slice(opts).unwrap_or_else(|e| {
+        panic!(
+            "run_slice (wall_generator=arachne) failed against {}: {e}",
+            model_path.display()
+        )
+    })
+}
+
+fn slice_cube_4color_with_arachne_options(
+    model_path: &PathBuf,
+    module_dir: PathBuf,
+) -> SliceRunOptions {
     let mesh = Arc::new(
-        slicer_model_io::load_model(&model_path)
+        slicer_model_io::load_model(model_path)
             .unwrap_or_else(|e| panic!("load_model({}) failed: {e}", model_path.display())),
     );
 
@@ -125,7 +146,7 @@ fn slice_cube_4color_with_arachne() -> SliceOutcome {
         ConfigValue::String("arachne".to_string()),
     );
 
-    let opts = SliceRunOptions {
+    SliceRunOptions {
         mesh,
         model_label: model_path.to_string_lossy().into_owned(),
         config_path: None,
@@ -137,12 +158,207 @@ fn slice_cube_4color_with_arachne() -> SliceOutcome {
         report_verbose: false,
         instrument_stderr: false,
         config_overrides,
+    }
+}
+
+fn load_cube_4color_mesh() -> slicer_ir::MeshIR {
+    let path = cube_4color_path();
+    assert!(path.exists(), "fixture missing: {}", path.display());
+    slicer_model_io::load_model(&path).expect("load cube_4color.3mf should succeed")
+}
+
+fn build_50_layer_plan(object_id: &str) -> Arc<slicer_ir::LayerPlanIR> {
+    use slicer_ir::{
+        ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer,
     };
-    run_slice(opts).unwrap_or_else(|e| {
-        panic!(
-            "run_slice (wall_generator=arachne) failed against {}: {e}",
-            model_path.display()
-        )
+    let global_layer_indices: Vec<u32> = (0..LAYER_COUNT).collect();
+    let layers: Vec<GlobalLayer> = global_layer_indices
+        .iter()
+        .map(|idx| GlobalLayer {
+            index: *idx,
+            z: LAYER_HEIGHT_MM * (*idx as f32 + 0.5),
+            active_regions: vec![ActiveRegion {
+                object_id: object_id.to_string(),
+                region_id: 0,
+                resolved_config: ResolvedConfig::default(),
+                effective_layer_height: LAYER_HEIGHT_MM,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        })
+        .collect();
+    Arc::new(LayerPlanIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layers: layers,
+        object_participation: std::collections::HashMap::from([(
+            object_id.to_string(),
+            global_layer_indices
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(local_idx, global_idx)| ObjectLayerRef {
+                    local_layer_index: local_idx as u32,
+                    global_layer_index: global_idx,
+                    effective_layer_height: LAYER_HEIGHT_MM,
+                })
+                .collect(),
+        )]),
+    })
+}
+
+fn build_initial_slice_ir(
+    object_id: &str,
+    object_mesh: &slicer_ir::IndexedTriangleSet,
+    layer_plan: &slicer_ir::LayerPlanIR,
+) -> Vec<slicer_ir::SliceIR> {
+    use slicer_ir::SlicedRegion;
+    let zs: Vec<f32> = layer_plan.global_layers.iter().map(|l| l.z).collect();
+    let slabs = slicer_core::slice_mesh_ex(object_mesh, &zs);
+    zs.iter()
+        .enumerate()
+        .map(|(idx, &z)| {
+            let polys = slabs.get(idx).cloned().unwrap_or_default();
+            slicer_ir::SliceIR {
+                global_layer_index: idx as u32,
+                z,
+                regions: vec![SlicedRegion {
+                    object_id: object_id.to_string(),
+                    region_id: 0,
+                    polygons: polys.clone(),
+                    infill_areas: polys,
+                    effective_layer_height: LAYER_HEIGHT_MM,
+                    segment_annotations: std::collections::HashMap::new(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }
+        })
+        .collect()
+}
+
+fn build_region_map(object_id: &str, layer_count: u32) -> Arc<slicer_ir::RegionMapIR> {
+    use slicer_ir::{
+        RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+    };
+    let mut entries = std::collections::HashMap::new();
+    for i in 0..layer_count {
+        entries.insert(
+            RegionKey {
+                global_layer_index: i,
+                object_id: object_id.to_string(),
+                region_id: 0,
+                variant_chain: vec![],
+            },
+            RegionPlan::default(),
+        );
+    }
+    Arc::new(RegionMapIR {
+        schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+        entries,
+        configs: vec![ResolvedConfig::default()],
+    })
+}
+
+/// Run `paint_segmentation` directly to obtain the per-layer per-color cells.
+fn run_paint_segmentation(mesh: Arc<slicer_ir::MeshIR>) -> Arc<Vec<slicer_ir::SliceIR>> {
+    let object_id = &mesh.objects[0].id;
+    let object_mesh = mesh.objects[0].mesh.clone();
+    let layer_plan = build_50_layer_plan(object_id);
+    let initial = build_initial_slice_ir(object_id, &object_mesh, &layer_plan);
+    let region_map = build_region_map(object_id, LAYER_COUNT);
+    slicer_core::algos::paint_segmentation::execute_paint_segmentation(
+        mesh,
+        Arc::new(initial),
+        region_map,
+    )
+    .expect("execute_paint_segmentation must succeed")
+}
+
+/// World-space XY bounding box of the first object, in scaled units.
+fn model_xy_bounding_box(mesh: &slicer_ir::MeshIR) -> BoundingBox2 {
+    let obj = &mesh.objects[0];
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    for v in &obj.mesh.vertices {
+        let p = slicer_core::transform_point3(&obj.transform.matrix, *v);
+        let x = slicer_ir::mm_to_units(p.x);
+        let y = slicer_ir::mm_to_units(p.y);
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    BoundingBox2 {
+        min: Point2 { x: min_x, y: min_y },
+        max: Point2 { x: max_x, y: max_y },
+    }
+}
+
+/// Group per-layer per-color cells. The BASE (empty variant_chain) cell is
+/// keyed by `None`; painted Material/ToolIndex cells are keyed by `Some(t)`.
+fn cells_by_color(slice_ir: &slicer_ir::SliceIR) -> BTreeMap<Option<u32>, Vec<ExPolygon>> {
+    let mut out: BTreeMap<Option<u32>, Vec<ExPolygon>> = BTreeMap::new();
+    for region in &slice_ir.regions {
+        let color = region
+            .variant_chain
+            .iter()
+            .find(|(sem, _)| sem == "material")
+            .and_then(|(_, pv)| {
+                if let PaintValue::ToolIndex(t) = pv {
+                    Some(*t)
+                } else {
+                    None
+                }
+            });
+        let entry = out.entry(color).or_default();
+        for ep in &region.polygons {
+            entry.push(ep.clone());
+        }
+    }
+    out
+}
+
+/// Tight bounding box of a set of `ExPolygon`s, in scaled units.
+fn polys_bbox(polys: &[ExPolygon]) -> Option<BoundingBox2> {
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    let mut any = false;
+    for ep in polys {
+        for p in &ep.contour.points {
+            any = true;
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+        for hole in &ep.holes {
+            for p in &hole.points {
+                any = true;
+                min_x = min_x.min(p.x);
+                min_y = min_y.min(p.y);
+                max_x = max_x.max(p.x);
+                max_y = max_y.max(p.y);
+            }
+        }
+    }
+    if !any {
+        return None;
+    }
+    Some(BoundingBox2 {
+        min: Point2 { x: min_x, y: min_y },
+        max: Point2 { x: max_x, y: max_y },
     })
 }
 
@@ -511,5 +727,167 @@ fn cube_4color_arachne_fragments_walls_by_color() {
          none of the {mid_body_layers} mid-body layers reached 3 — max fragments seen on any \
          single layer was {max_fragments_seen}. tool_changes_per_layer[{lo}..{hi}]={:?}",
         &tc_per_layer[lo..hi.min(tc_per_layer.len())]
+    );
+}
+
+/// T-231 / P113b closure: every per-color outer-wall header's extrusion points
+/// fall within the corresponding per-color ExPolygon cell's bounding box, padded
+/// by a small tolerance.
+///
+/// The tolerance accounts for:
+///   - one half extrusion width bead offset from the cell boundary;
+///   - rounding in mm↔unit conversion;
+///   - a single outer-wall fragment tracing near (but inside) the cell boundary.
+///
+/// The original D-112-MMU-TOPOLOGY symptom — "extrusion points land tens of mm
+/// outside the naive per-face footprint" — is caught by even the coarser model
+/// XY bbox bound (a header that escapes its per-color cell by tens of mm will
+/// also escape the whole model).
+#[test]
+fn cube_4color_arachne_per_color_footprint_within_bbox() {
+    let outcome = slice_cube_4color_with_arachne();
+    let mesh = Arc::new(load_cube_4color_mesh());
+    let painted_ir = run_paint_segmentation(mesh.clone());
+    let model_bbox = model_xy_bounding_box(&mesh);
+
+    assert!(
+        !outcome.gcode_text.is_empty(),
+        "cube_4color (wall_generator=arachne) produced empty gcode"
+    );
+
+    let per_layer = parse_outer_wall_headers_per_layer(&outcome.gcode_text);
+    assert!(
+        !per_layer.is_empty(),
+        "cube_4color (wall_generator=arachne): 0 ;LAYER_CHANGE markers found. \
+         Rebuild guests (cargo xtask build-guests) and re-run."
+    );
+
+    // Tolerance: 2 mm in scaled units.
+    const FOOTPRINT_TOLERANCE_MM: f32 = 2.0;
+    let tol = slicer_ir::mm_to_units(FOOTPRINT_TOLERANCE_MM);
+
+    let mut violations: Vec<String> = Vec::new();
+    let mut worst_delta_mm: f32 = 0.0;
+    let mut worst_layer: usize = 0;
+    let mut worst_tool: u32 = 0;
+    let mut worst_header_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
+    let mut worst_cell_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
+
+    let n = per_layer.len().min(painted_ir.len());
+    let lo = n * 15 / 100;
+    let hi = n * 80 / 100;
+
+    for li in lo..hi.min(n) {
+        let layer_headers = &per_layer[li];
+        if layer_headers.is_empty() {
+            continue;
+        }
+        let slice_ir = &painted_ir[li];
+        let cells = cells_by_color(slice_ir);
+
+        for (i, h) in layer_headers.iter().enumerate() {
+            if h.pts.len() < 2 {
+                continue;
+            }
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            let mut max_x = f32::NEG_INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+            for &(x, y) in &h.pts {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+            let header_bbox_units = BoundingBox2 {
+                min: Point2 {
+                    x: slicer_ir::mm_to_units(min_x),
+                    y: slicer_ir::mm_to_units(min_y),
+                },
+                max: Point2 {
+                    x: slicer_ir::mm_to_units(max_x),
+                    y: slicer_ir::mm_to_units(max_y),
+                },
+            };
+
+            // Prefer per-color cell bbox; fall back to full model bbox if this
+            // tool has no matching cell on this layer.
+            let bounds_units = cells
+                .get(&Some(h.tool))
+                .and_then(|polys| polys_bbox(polys))
+                .unwrap_or(model_bbox);
+
+            let expanded = BoundingBox2 {
+                min: Point2 {
+                    x: bounds_units.min.x - tol,
+                    y: bounds_units.min.y - tol,
+                },
+                max: Point2 {
+                    x: bounds_units.max.x + tol,
+                    y: bounds_units.max.y + tol,
+                },
+            };
+
+            let mut header_violation = false;
+            let mut header_worst_delta_units: i64 = 0;
+            let corners = [
+                header_bbox_units.min,
+                Point2 {
+                    x: header_bbox_units.max.x,
+                    y: header_bbox_units.min.y,
+                },
+                Point2 {
+                    x: header_bbox_units.min.x,
+                    y: header_bbox_units.max.y,
+                },
+                header_bbox_units.max,
+            ];
+            for p in corners {
+                let dx_min = (expanded.min.x - p.x).max(0);
+                let dx_max = (p.x - expanded.max.x).max(0);
+                let dy_min = (expanded.min.y - p.y).max(0);
+                let dy_max = (p.y - expanded.max.y).max(0);
+                let d = dx_min.max(dx_max).max(dy_min).max(dy_max);
+                if d > 0 {
+                    header_violation = true;
+                    header_worst_delta_units = header_worst_delta_units.max(d);
+                }
+            }
+
+            let header_worst_delta_mm = slicer_ir::units_to_mm(header_worst_delta_units);
+            if header_violation {
+                let is_worst = header_worst_delta_mm > worst_delta_mm;
+                if is_worst {
+                    worst_delta_mm = header_worst_delta_mm;
+                    worst_layer = li;
+                    worst_tool = h.tool;
+                    worst_header_bbox_mm = (min_x, min_y, max_x, max_y);
+                    worst_cell_bbox_mm = (
+                        slicer_ir::units_to_mm(bounds_units.min.x),
+                        slicer_ir::units_to_mm(bounds_units.min.y),
+                        slicer_ir::units_to_mm(bounds_units.max.x),
+                        slicer_ir::units_to_mm(bounds_units.max.y),
+                    );
+                }
+                violations.push(format!(
+                    "layer {li} header {i} (tool {}): bbox {:?} exceeds per-color cell bbox \
+                     {:?} by {header_worst_delta_mm:.3}mm",
+                    h.tool,
+                    (min_x, min_y, max_x, max_y),
+                    worst_cell_bbox_mm
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "cube_4color_arachne_per_color_footprint_within_bbox: {} outer-wall header(s) escape \
+         the per-color cell bbox (+/-{FOOTPRINT_TOLERANCE_MM}mm tolerance). \
+         Worst case: layer {worst_layer} tool {worst_tool} by {worst_delta_mm:.3}mm; \
+         header bbox {worst_header_bbox_mm:?} vs cell bbox {worst_cell_bbox_mm:?}. \
+         Full list:\n{}",
+        violations.len(),
+        violations.join("\n")
     );
 }
