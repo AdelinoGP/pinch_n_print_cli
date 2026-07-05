@@ -238,6 +238,50 @@ curl-avoidance reuse the overhang speed table on the layer above a curled
 segment, instead of a separate curl-specific one.
 _Avoid_: curl distance, synthetic distance
 
+### Central/spine edge
+An edge of the Arachne skeletal-trapezoidation graph classified as lying on
+the medial axis of the input polygon — the locus a variable-width toolpath
+walks along, as opposed to a **rib edge**, which runs perpendicular out to
+the polygon boundary. Marked by the faithful `dR < dD * sin(transitioning_angle/2)`
+predicate; the sequence of central edges within one topological domain is
+what `connectJunctions` stitches into a single toolpath.
+
+### Rib edge
+An `EdgeType::EXTRA_VD` perpendicular-foot edge pair inserted after every
+transferred spine edge during Arachne graph construction, connecting a
+spine node to the polygon boundary. Ubiquitous — inserted at every
+transferred edge, not just at reflex corners — and unconditionally
+non-central; it delimits one side of a **quad**, but is never itself
+walked by `connectJunctions`.
+
+### Quad (Arachne)
+The unit cell of the Arachne skeletal-trapezoidation graph: a
+four-sided region bounded by two **central/spine edges** and two
+**rib edges**, produced per-cell during graph construction from the
+underlying Voronoi diagram. Centrality, bead-count assignment, and
+propagation all operate over the quad/rib topology rather than raw
+Voronoi cells.
+
+### Junction fan
+The set of per-bead extrusion points (`ExtrusionJunction`s) placed at one
+end of a central edge, one per bead the `BeadingStrategy` stack assigns to
+that edge's radius. `connectJunctions` links each domain's junction fans,
+endpoint to endpoint, into continuous per-bead toolpaths.
+
+### Domain-start
+A central edge with no predecessor in its topological domain (the
+`!prev`-equivalent condition) — the point from which `connectJunctions`'s
+quad-chain walk begins for that domain, mirroring OrcaSlicer's
+`unprocessed_quad_starts` bookkeeping.
+
+### `getNextUnconnected`
+The traversal step `connectJunctions` uses to advance from one central
+edge to the next unprocessed edge in the same domain, via a
+`next`-then-`twin`-hop continuation. Requires the graph's `next`/`prev`/
+`twin` pointers to be topologically faithful to the domain structure
+(not copied verbatim from the raw per-cell Voronoi DCEL) for the walk to
+terminate correctly and cover every edge exactly once.
+
 ## Flagged ambiguities
 
 ### "region"

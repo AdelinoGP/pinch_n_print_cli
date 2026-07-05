@@ -370,16 +370,100 @@ index) but Step 2's spike must confirm this empirically before Step 3 relies on 
   `makeRib`, `compute_segment_cell_range`/`compute_point_cell_range`) — their code excerpts
   drive the design of the new `from_polygons`, which gates everything else.
 
+## Step 2 Spike Findings
+
+**(a) Does a raw `incident_edge → next → …` cycle walk suffice for cell-range determination?**
+
+No. Confirmed via direct read of `OrcaSlicerDocumented/src/libslic3r/Geometry/VoronoiUtils.cpp`'s
+`compute_segment_cell_range`/`compute_point_cell_range` (`VoronoiUtils.cpp:292-317`). Both
+functions internally perform the same do-while ring traversal a naive cycle walk would use, but
+layer three things on top a bare walk lacks:
+
+1. **Filtering**: infinite edges are skipped (segment-cell case) or reject the whole cell
+   (point-cell case, if the first edge is infinite or has out-of-range coords).
+2. **Polygon-membership gate (point-cells only)**: `is_point_inside_polygon_corner()`
+   geometrically tests whether the cell is inside the input polygon using the source point's
+   polygon-neighbor vertices; cells outside the polygon return an empty range — a raw walk has
+   no such concept.
+3. **Boundary sub-arc selection, not full enumeration**: the loop's actual job is finding two
+   specific edges (`edge_begin`/`edge_end`) via vertex-coordinate comparison against the source
+   segment's endpoints, with `seen_possible_start`/`after_start`/`ending_edge_is_set_before_start`
+   bookkeeping to disambiguate duplicate/degenerate vertex matches. The returned range is a
+   strict sub-arc excluding the side edges coincident with the input segment/point, not the
+   cell's whole edge cycle.
+
+```cpp
+bool                 seen_possible_start             = false;
+bool                 after_start                     = false;
+bool                 ending_edge_is_set_before_start = false;
+const VD::edge_type* edge                            = cell.incident_edge();
+do {
+    if (edge->is_infinite())
+        continue;
+    Vec2i64 v0 = Geometry::VoronoiUtils::to_point(edge->vertex0());
+    Vec2i64 v1 = Geometry::VoronoiUtils::to_point(edge->vertex1());
+    if (v0 == to_i64 && !after_start) {
+        cell_range.edge_begin = edge;
+        seen_possible_start   = true;
+    } else if (seen_possible_start) {
+        after_start = true;
+    }
+    if (v1 == from_i64 && (!cell_range.edge_end || ending_edge_is_set_before_start)) {
+        ending_edge_is_set_before_start = !after_start;
+        cell_range.edge_end             = edge;
+    }
+} while (edge = edge->next(), edge != cell.incident_edge());
+```
+
+`constructFromPolygons` calls one of these functions once per cell (each doing its own full
+internal ring traversal), then calls `transferEdge()` only across the narrowed
+`edge_begin..edge_end` sub-range — not the full ring.
+
+**Design consequence for Step 3:** Step 3's per-cell walk MUST replicate this narrowing logic
+(vertex-coordinate boundary matching against the source segment/point's own endpoints, plus the
+point-cell polygon-membership gate), not a bare `get_incident_edge()`-cycle enumeration. A raw
+cycle walk over-includes edges (the "side" edges of the cell coincident with the input geometry)
+that real OrcaSlicer deliberately excludes from the transferred range.
+
+**(b) Does the `source_index()` shared-vertex dedup ambiguity break provenance resolution?**
+
+Confirmed empirically on the 10mm square fixture (4 segments, 4 shared vertices), and the
+ambiguity is non-uniform in a specific, predictable way: `init_sites_queue()`'s dedup collapses
+each shared-vertex pair of point-site events into one surviving cell (4 point-cells observed for
+4 vertices, not 8), and the surviving `source_index()`/`source_category()` always resolves to the
+**lower of the two adjacent segment indices** — NOT "always the previous segment" or "always the
+next segment" in ring-adjacency terms. For 3 of 4 vertices this coincides with "the previous
+(ending) segment wins" (`SegmentEnd`), but at the wraparound vertex `(0,0)`, the "previous"
+segment (seg3, higher index) loses to the "next" segment (seg0, lower index, `SegmentStart`) —
+because raw input-array index, not ring position, determines the winner. Code assuming a uniform
+"previous segment always wins at a shared vertex" rule would silently misresolve exactly at the
+polygon's wraparound seam.
+
+Per-cell cycle shape also confirmed on this fixture: point-cells have cycle length 2 (100%
+curved edges), segment-cells have cycle length 4 (2 primary + 2 curved), totaling 24 edges across
+8 cells with zero double-counting.
+
+**Design consequence for Step 3:** the flatten-time provenance side table (mapping
+flattened-segment-index → ring id / point id) MUST NOT assume "point-cell `source_index()` ==
+previous-segment-index-in-ring-order" as a blanket rule. It must either (i) special-case the
+wraparound seam explicitly (compare `source_index()` against both ring-adjacent segment indices
+and accept whichever matches), or (ii) resolve point-cell provenance by coordinate match against
+ring vertices (matching real OrcaSlicer's own point-cell-range resolution strategy, which
+navigates by coordinate + polygon-neighbor, not by trusting a specific segment index) rather than
+by `source_index()` alone. **Option (ii) is recommended** since it sidesteps the ambiguity
+entirely rather than special-casing it.
+
+Both open questions below are resolved by the above; Step 3 may proceed.
+
 ## Open Questions
 
-- [FWD] Does a raw `incident_edge → next → …` cycle walk on this crate's `boostvoronoi` wrapper
-  give an equivalent cell-range to OrcaSlicer's `compute_point_cell_range`/
-  `compute_segment_cell_range`, or is additional logic required? Resolve via Step 2's spike
-  before Step 3's implementation begins.
-- [FWD] Does the `source_index()` shared-vertex dedup ambiguity (documented in §Verified
-  Algorithm Mechanics) actually surface in practice for this crate's fixtures, and does the
-  side-table design need an explicit multi-valued lookup to tolerate it? Resolve via Step 2's
-  spike.
+- [RESOLVED — see §Step 2 Spike Findings (a)] Does a raw `incident_edge → next → …` cycle walk on
+  this crate's `boostvoronoi` wrapper give an equivalent cell-range to OrcaSlicer's
+  `compute_point_cell_range`/`compute_segment_cell_range`, or is additional logic required?
+- [RESOLVED — see §Step 2 Spike Findings (b)] Does the `source_index()` shared-vertex dedup
+  ambiguity (documented in §Verified Algorithm Mechanics) actually surface in practice for this
+  crate's fixtures, and does the side-table design need an explicit multi-valued lookup to
+  tolerate it?
 - [FWD] Which (if any) of `test_voronoi.cpp`'s degenerate-input Catch2 cases are worth porting
   as `voronoi.rs`/`preprocess.rs` regression fixtures? Resolve during Step 8's triage — this is
   explicitly NOT required for connectJunctions faithfulness (that layer has zero OrcaSlicer unit

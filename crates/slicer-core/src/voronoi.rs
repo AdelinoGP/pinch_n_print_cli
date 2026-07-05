@@ -29,6 +29,7 @@
 //! errors (e.g. unresolved self-intersection) as [`VoronoiError`].
 
 use boostvoronoi::builder::Builder;
+use boostvoronoi::diagram::SourceCategory as BvSourceCategory;
 use boostvoronoi::geometry::{Line as BvLine, Point as BvPoint};
 use boostvoronoi::BvError;
 use slicer_ir::Point2;
@@ -100,6 +101,61 @@ pub struct HalfEdge {
     pub is_curved: bool,
 }
 
+/// Which part of a Voronoi cell's originating input site this cell was
+/// generated from.
+///
+/// Mirrors `boostvoronoi::diagram::SourceCategory`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceCategory {
+    /// The site was a standalone point (not part of a segment).
+    SinglePoint,
+    /// The site was a segment's start point.
+    SegmentStart,
+    /// The site was a segment's end point.
+    SegmentEnd,
+    /// The site was a full segment.
+    Segment,
+}
+
+/// One Voronoi diagram cell, mirroring `boostvoronoi::diagram::Cell`'s
+/// per-cell metadata 1:1 by index (cell `i` in the source diagram becomes
+/// `cells[i]` here).
+///
+/// This is the per-cell metadata the faithful port of Arachne's
+/// `transferEdge`/`makeRib` graph construction walks (per-cell, not just at
+/// reflex corners) — see `docs/adr/0023-arachne-port-strategy.md` and
+/// packet 113c.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VCell {
+    /// `true` if this cell's site is a standalone point.
+    /// Mirrors `boostvoronoi::diagram::Cell::contains_point`.
+    pub contains_point: bool,
+    /// `true` if this cell's site is a segment.
+    /// Mirrors `boostvoronoi::diagram::Cell::contains_segment`.
+    pub contains_segment: bool,
+    /// `true` if this cell's site is a segment's start point.
+    /// Mirrors `boostvoronoi::diagram::Cell::contains_segment_startpoint`.
+    pub contains_segment_startpoint: bool,
+    /// `true` if this cell's site is a segment's end point.
+    /// Mirrors `boostvoronoi::diagram::Cell::contains_segment_endpoint`.
+    pub contains_segment_endpoint: bool,
+    /// Index of this cell's site within the original input (the `segments`
+    /// slice passed to [`voronoi_from_segments`]).
+    /// Mirrors `boostvoronoi::diagram::Cell::source_index`.
+    pub source_index: usize,
+    /// Which part of the input site this cell was generated from.
+    /// Mirrors `boostvoronoi::diagram::Cell::source_category`.
+    pub source_category: SourceCategory,
+    /// Index into [`HalfEdgeGraph::edges`] for a half-edge incident to this
+    /// cell, or [`NO_INDEX`] if the cell has no incident edges (see
+    /// `is_degenerate`). Mirrors
+    /// `boostvoronoi::diagram::Cell::get_incident_edge`.
+    pub incident_edge: usize,
+    /// `true` if this cell has no incident edges.
+    /// Mirrors `boostvoronoi::diagram::Cell::is_degenerate`.
+    pub is_degenerate: bool,
+}
+
 /// A segment Voronoi diagram, half-edge indexed.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HalfEdgeGraph {
@@ -107,6 +163,9 @@ pub struct HalfEdgeGraph {
     pub vertices: Vec<Vertex>,
     /// All half-edges, indexed by [`HalfEdge::twin`]/`next`/`prev`.
     pub edges: Vec<HalfEdge>,
+    /// All Voronoi cells, indexed by [`HalfEdge::cell`]. Mirrors
+    /// `boostvoronoi::diagram::Diagram::cells`.
+    pub cells: Vec<VCell>,
 }
 
 /// Errors from [`voronoi_from_segments`].
@@ -147,6 +206,16 @@ fn map_bv_error(err: BvError) -> VoronoiError {
     match err {
         BvError::SelfIntersecting(msg) => VoronoiError::DegenerateInput(msg),
         other => VoronoiError::InternalBoostError(other.to_string()),
+    }
+}
+
+/// Maps a `boostvoronoi` source category onto [`SourceCategory`].
+fn map_source_category(cat: BvSourceCategory) -> SourceCategory {
+    match cat {
+        BvSourceCategory::SinglePoint => SourceCategory::SinglePoint,
+        BvSourceCategory::SegmentStart => SourceCategory::SegmentStart,
+        BvSourceCategory::SegmentEnd => SourceCategory::SegmentEnd,
+        BvSourceCategory::Segment => SourceCategory::Segment,
     }
 }
 
@@ -206,7 +275,26 @@ pub fn voronoi_from_segments(segments: &[Segment]) -> Result<HalfEdgeGraph, Voro
         })
         .collect();
 
-    Ok(HalfEdgeGraph { vertices, edges })
+    let cells = diagram
+        .cells()
+        .iter()
+        .map(|c| VCell {
+            contains_point: c.contains_point(),
+            contains_segment: c.contains_segment(),
+            contains_segment_startpoint: c.contains_segment_startpoint(),
+            contains_segment_endpoint: c.contains_segment_endpoint(),
+            source_index: c.source_index().usize(),
+            source_category: map_source_category(c.source_category()),
+            incident_edge: c.get_incident_edge().map(|e| e.usize()).unwrap_or(NO_INDEX),
+            is_degenerate: c.is_degenerate(),
+        })
+        .collect();
+
+    Ok(HalfEdgeGraph {
+        vertices,
+        edges,
+        cells,
+    })
 }
 
 #[cfg(test)]

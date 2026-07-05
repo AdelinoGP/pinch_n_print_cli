@@ -266,10 +266,24 @@ Layer::Perimeters
   Output: PerimeterIR
    Purpose: Wall generation — `classic-perimeters` (fixed-width polygon
             offsetting) or `arachne-perimeters` (real variable-width Arachne
-            pipeline: Voronoi → SkeletalTrapezoidation with quad/rib topology
-            → per-node centrality + bead-count assignment + transition
-            propagation → faithful `connectJunctions` BeadingStrategy-driven
-            toolpath generation, packets 110-112 + 113b). The `wall_generator` config key
+            pipeline: Voronoi → per-cell faithful graph construction (spine
+            edges + interleaved rib edges after every transferred edge, not
+            just at reflex corners) → per-node centrality + bead-count
+            assignment + transition propagation → faithful `connectJunctions`
+            quad-chain BeadingStrategy-driven toolpath generation, packets
+            110-112 + 113a/b + 113c). Packet 113b's own "faithful
+            `connectJunctions`" claim was incomplete — it stitched junction
+            fans correctly but still walked a graph whose `next`/`prev`/`twin`
+            pointers were copied verbatim from the raw per-cell Voronoi DCEL,
+            which is topologically wrong for spine-walking at junctions
+            (100% of outer-wall gcode segments failed to close on
+            `resources/cube_4color.3mf`). Packet 113c replaced graph
+            construction itself with a faithful per-cell port of OrcaSlicer's
+            `constructFromPolygons`/`transferEdge`/`makeRib`, which is what
+            actually closes M2's structural-parity claim — see
+            `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` in `docs/DEVIATION_LOG.md`,
+            which supersedes `D-112-MMU-TOPOLOGY` and
+            `D-113B-CONNECTJUNCTIONS`. The `wall_generator` config key
            (`classic` default | `arachne`) selects which module wins the
            shared `perimeter-generator` claim at module-load dedup time
            (packet 112; see D-112-WALL-GENERATOR-SELECT in
@@ -901,7 +915,17 @@ sentinel bookkeeping, stripped before external output via a separate
 (`thickness`/`bead_count` → `Beading`). Packet 112 wired the stack end-to-end through
 `skeletal_trapezoidation::assign_bead_counts` and `arachne::generate_toolpaths`, and
 Packet 113b tightened the topology with the quad/rib pass and faithful
-`generateTransitionMids`/`applyTransitions` propagation. M2 topology chain complete — P110/P111/P112/P113a/P113b.
+`generateTransitionMids`/`applyTransitions` propagation, but its own
+"faithful `connectJunctions`" claim did not actually cover graph
+construction — the underlying `next`/`prev`/`twin` topology was still a
+verbatim per-cell Voronoi DCEL copy, wrong for spine-walking at junctions.
+Packet 113c superseded that with a faithful per-cell graph-construction
+port (`constructFromPolygons`/`transferEdge`/`makeRib`) plus a real
+quad-chain `connectJunctions` stitch in `generate_toolpaths.rs`, and is
+what actually closes M2's structural-parity claim (see
+`D-113C-FAITHFUL-GRAPH-CONSTRUCTION`, which supersedes `D-112-MMU-TOPOLOGY`
+and `D-113B-CONNECTJUNCTIONS` in `docs/DEVIATION_LOG.md`). M2 topology
+chain complete — P110/P111/P112/P113a/P113b/P113c.
 
 ---
 

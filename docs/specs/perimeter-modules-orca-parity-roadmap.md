@@ -99,6 +99,37 @@ Self-captured regression fixtures (`centrality_*`, `bead_count_*`,
 new topology changed edge counts. See `D-113B-CONNECTJUNCTIONS` in
 `docs/DEVIATION_LOG.md`.
 
+### P113c — correction to 113b's incomplete quad/rib topology pass
+
+P113b's quad/rib topology and faithful `connectJunctions` stitch (above)
+were real improvements, but they were built on top of a graph whose
+`next`/`prev`/`twin` pointers were still copied verbatim from the raw
+per-cell `boostvoronoi` DCEL — topologically wrong for spine-walking at
+junctions. This was confirmed as a systemic defect, not an edge case:
+100% of outer-wall gcode segments failed to close (283/283, mean gap
+18.7mm) on `resources/cube_4color.3mf`, reproduced even on a bare 10mm
+square. `rib.rs`'s `build_quad_rib_topology` compounded the defect by
+only inserting ribs at reflex corners, instead of after every transferred
+edge as OrcaSlicer's real `constructFromPolygons`/`transferEdge`/`makeRib`
+does.
+
+P113c replaces graph construction itself with a faithful per-cell port of
+that real algorithm (Steps 1-3), reworks `connectJunctions` in
+`generate_toolpaths.rs` into a faithful quad-by-quad stitch over the new
+topology (Step 4, also fixing a latent `emit_chain_lines` max-beads bug
+that dropped inner-wall beads), re-validates centrality/bead-count/stitch/
+simplify/remove-small against the new ubiquitous-rib topology (Steps 5, 7),
+and finds + fixes two further DCEL-adjacent bugs in `propagation.rs`
+beyond either prior packet's scope (Steps 6, 8b) via a new faithfulness
+invariant suite (Step 8). This is what actually closes M2's structural
+graph-construction parity claim — P113b's own "faithful connectJunctions"
+framing above should be read as superseded by P113c for the
+graph-construction layer specifically (the quad/rib classification and
+centrality/bead-count/propagation adaptations it introduced remain valid
+and are reused, not redone). See `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` in
+`docs/DEVIATION_LOG.md`, which supersedes and closes-for-real both
+`D-112-MMU-TOPOLOGY` and `D-113B-CONNECTJUNCTIONS`.
+
 ---
 
 ## Open decision points (must resolve before tasks marked `[blocked: D-N]`)

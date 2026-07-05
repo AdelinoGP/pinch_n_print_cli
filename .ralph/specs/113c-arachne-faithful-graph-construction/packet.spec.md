@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 113c-arachne-faithful-graph-construction
 task_ids: []
 backlog_source: docs/DEVIATION_LOG.md D-112-MMU-TOPOLOGY (line 50), D-113B-CONNECTJUNCTIONS (line 56); /diagnose session 2026-07-05 on resources/cube_4color.3mf visual artifacts

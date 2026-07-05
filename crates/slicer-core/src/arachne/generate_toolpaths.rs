@@ -11,57 +11,92 @@
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 //! Toolpath (variable-width inset) emission from the skeletal trapezoidation
-//! graph (packet 113b Step 5 — faithful `connectJunctions`).
+//! graph (packet 113c Step 4 — faithful `connectJunctions`, replacing packet
+//! 113b's central-only-hop `walk_domain_chain` approximation now that packet
+//! 113c Step 3 builds the real interleaved-rib graph topology).
 //!
 //! # Honesty note (no OrcaSlicer oracle; ADAPTATION, not a literal port)
 //!
-//! This module implements a **faithful Rust adaptation** of OrcaSlicer's
-//! `connectJunctions`, generalized to walk over every central-edge domain
-//! rather than only edges covered by a
-//! [`QuadCell`](crate::skeletal_trapezoidation::rib::QuadCell) (revised for
-//! `D-112-MMU-TOPOLOGY`: a `QuadCell` only exists at reflex/sharp polygon
-//! corners where a Voronoi vertex sits exactly on the boundary — a convex
-//! cell like a square produces zero of them, so gating the walk on
-//! `graph.rib.quad_cells` left almost every central spine edge to the naive
-//! 2-junction fallback, which downstream `stitch_extrusions` could then
-//! bridge across unrelated regions via pure proximity):
+//! `connectJunctions` itself has zero OrcaSlicer unit-test coverage
+//! (confirmed by direct search of `OrcaSlicerDocumented/tests/` during this
+//! packet's design), so this module remains a **faithful adaptation** of its
+//! documented mechanics (`SkeletalTrapezoidation.cpp:2260-2368`), not a
+//! byte-for-byte port:
 //!
-//! - For every central `NORMAL` spine half-edge, it builds a
-//!   `from_junctions` / `to_junctions` fan by calling
+//! - For every central `NORMAL` spine half-edge, [`generate_junctions`]
+//!   builds a `from_junctions` / `to_junctions` fan by calling
 //!   `BeadingStrategy::compute()` once per endpoint and reading each bead's
-//!   width/offset from the returned `Beading`.
-//! - The outer loop walks every **domain** of central, junction-bearing
-//!   half-edges: a domain start is any such edge whose `.prev` does not
-//!   continue the domain (missing, non-central, or already visited),
-//!   mirroring OrcaSlicer's `unprocessed_quad_starts = edges with
-//!   !edge.prev` (`SkeletalTrapezoidation.cpp:2265-2269`). A second pass
-//!   force-starts any edge left unvisited by the first (a fully closed
-//!   central ring, where every edge's `.prev` is itself a valid domain
-//!   edge), so every domain is still walked exactly once.
-//! - For each domain start, [`get_domain_max_r_edge`] finds the max-R edge
-//!   (the edge whose two endpoints have the largest combined
-//!   `distance_to_boundary`) among the edges reachable from it, and
-//!   [`walk_domain_chain`] traverses the DCEL `prev`/`next` chain from that
-//!   peak — hopping once through `.twin` when a plain `.next`/`.prev` link
-//!   would otherwise exit the domain, mirroring OrcaSlicer's
-//!   `getNextUnconnected()` continuation
-//!   (`SkeletalTrapezoidationGraph.cpp:183-193`).
-//! - At shared vertices it merges adjacent edge junction fans by removing
-//!   overlapping `perimeter_index` values, keeping the wider surviving
-//!   junction.
-//! - It then pairs junctions innermost-to-outermost, producing one open
-//!   multi-junction `ExtrusionLine` per bead index (inset ring) for each
-//!   domain-chain walk. Odd single-bead segments are gated by
-//!   `passed_odd_edges` (an actual membership check, not just bookkeeping)
-//!   so the twin half-edge of the same physical edge is never duplicated,
-//!   matching OrcaSlicer's `quad_start->next->twin` check
-//!   (`SkeletalTrapezoidation.cpp:2354-2358`).
-//! - Because the two-pass domain walk provably visits every central,
-//!   junction-bearing edge, the naive 2-junction fallback is no longer
-//!   reachable and has been removed rather than kept as dead code.
-//! - Every emitted line has `is_closed = false` — real ring closure is left
-//!   to [`super::stitch::stitch_extrusions`], matching upstream's own
-//!   division of labor (`PolylineStitcher::stitch` closes open lines later).
+//!   width/offset from the returned `Beading` — unchanged from the prior
+//!   implementation.
+//! - The outer walk seeds `unprocessed_quad_starts` from every edge whose
+//!   `.prev` is absent (`STHalfEdge::prev == NO_INDEX`) — per packet 113c
+//!   Step 3's graph construction, this is naturally every rib `back_edge`
+//!   (`makeRib` never assigns it a `.prev`) plus each cell's first
+//!   transferred edge, mirroring OrcaSlicer's
+//!   `unprocessed_quad_starts = edges with !edge.prev`
+//!   (`SkeletalTrapezoidation.cpp:2265-2269`).
+//! - [`find_quad`] walks `.next` from a popped start to its dead end (an
+//!   edge whose own `.next` is absent) — the short 2-3 edge run
+//!   (`back_rib -> spine -> forth_rib`, or `back_rib -> spine_closing` for a
+//!   cell's un-ribbed closing edge) OrcaSlicer calls "the quad."
+//! - [`quad_peak_position`] finds the edge within that quad landing on the
+//!   node with the largest `distance_to_boundary` — the quad's peak/widest
+//!   point — mirroring `getQuadMaxRedgeTo`, and splits the quad into a
+//!   start-side arm (`quad[..=peak]`) and an end-side arm
+//!   (`quad[peak + 1..]`). In this crate's topology at most one edge per
+//!   quad is ever central + `NORMAL` (every rib is `EXTRA_VD` and excluded
+//!   from `edge_junctions`), so concatenating the two arms back together
+//!   reproduces the quad's own `.next` order; the split exists for fidelity
+//!   to the documented algorithm and to correctly bound a quad that (in a
+//!   future topology change) contained more than one contributing edge, not
+//!   to reorder anything in today's common case.
+//! - The quad's dead-end edge's own `.twin` is the next quad's start
+//!   (mirroring `getNextUnconnected()`,
+//!   `SkeletalTrapezoidationGraph.cpp:183-193`): walking `.next` to a dead
+//!   end, then hopping through `.twin`, is exactly what lets this traversal
+//!   continue across a junction/branch vertex of any degree — unlike the
+//!   prior `walk_domain_chain`, which filtered every hop by domain
+//!   membership and broke at every rib once ribs became ubiquitous
+//!   (packet 113c Step 3).
+//! - Each freshly popped `poly_domain_start` begins a fresh, empty
+//!   contributing-edge chain (`full_chain`) — this crate's structural
+//!   equivalent of OrcaSlicer's `new_domain_start` flag ("start a new
+//!   `ExtrusionLine` only on the first quad of a fresh domain"): there is
+//!   exactly one flush point (this domain's own [`emit_chain_lines`] call)
+//!   at the end of its walk, so no separate boolean is needed to gate it.
+//! - The walk advances quad-by-quad (`quad_start = <dead end>.twin`),
+//!   erasing each visited start from `unprocessed_quad_starts`, until it
+//!   returns to `poly_domain_start` (ring closed) or `.twin` is absent /
+//!   already claimed by another domain (open chain, exhausted). The outer
+//!   loop then pops any remaining unprocessed start and repeats, so multiple
+//!   disjoint rings/chains are all handled in one [`generate_toolpaths`]
+//!   call.
+//! - At shared vertices, [`chain_junctions_for_bead`] merges adjacent edges'
+//!   junction fans by keeping the wider surviving junction — unchanged from
+//!   the prior implementation.
+//! - Odd single-bead segments are still gated by `passed_odd_edges` (an
+//!   actual membership check, not just bookkeeping) so a physical edge
+//!   walked from both directions in the same overall traversal never
+//!   double-emits its lone symmetric innermost bead, matching OrcaSlicer's
+//!   `quad_start->next->twin` check (`SkeletalTrapezoidation.cpp:2354-2358`).
+//! - A domain whose walk wraps back through at least one other edge to its
+//!   own starting quad produces a genuinely closed `ExtrusionLine` directly
+//!   from this stage. Because the chain's own first (`chain[0]`'s
+//!   from-junction) and last (`chain[chain.len() - 1]`'s to-junction) points
+//!   are each independently interpolated along their own edge, they land
+//!   near — not exactly on — the shared wrap-around vertex, so
+//!   [`emit_chain_lines`] merges them (keeping the wider, the same rule used
+//!   at every intermediate shared vertex) and writes the merged junction
+//!   into both slots, mirroring `stitch_extrusions`'s own `finalize_chain`
+//!   convention (`first.xy == last.xy` for `is_closed = true`) rather than
+//!   relying on incidental geometric coincidence. A single-edge chain is
+//!   never treated as a ring this way (its own two ends are inherently
+//!   distinct physical points, not a shared loop-back vertex) even if the
+//!   quad-topology walk trivially returns to its start. Unlike the prior
+//!   implementation, real ring closure is no longer deferred to
+//!   [`super::stitch::stitch_extrusions`] for every case; an exhausted open
+//!   chain still leaves `is_closed = false` for that later stage to close
+//!   via proximity.
 //!
 //! Width/offset source: every bead's width and toolpath offset comes from the
 //! composed `BeadingStrategy` stack (called once per endpoint), not from any
@@ -292,135 +327,58 @@ fn generate_junctions(
     edge_junctions
 }
 
-/// Returns the edge among `candidates` whose two endpoints have the largest
-/// combined `distance_to_boundary`, or `None` if `candidates` is empty.
+/// Finds the "quad" starting at `start`: the edge run obtained by walking
+/// `.next` until reaching a dead end (an edge whose own `.next` is absent).
 ///
-/// Generalizes upstream's `getQuadMaxRedgeTo` (previously scoped to a single
-/// [`QuadCell`](crate::skeletal_trapezoidation::rib::QuadCell)'s four edges)
-/// to an arbitrary candidate list: the max-R edge is the "widest" point of
-/// whatever central-edge domain is being walked, from which the junction-fan
-/// chain radiates outward toward the domain's narrower ends.
-fn get_domain_max_r_edge(
-    graph: &SkeletalTrapezoidationGraph,
-    candidates: &[usize],
-) -> Option<usize> {
-    let mut best_edge = None;
-    let mut best_sum = -1.0_f64;
+/// Mirrors OrcaSlicer's short 2-3 edge quad run
+/// (`back_rib -> spine -> forth_rib`, or `back_rib -> spine_closing` for a
+/// cell's un-ribbed closing edge — `SkeletalTrapezoidation.cpp:2260-2368`).
+/// Always returns at least one edge (`start` itself, when
+/// `start.next == NO_INDEX`). Bounded by `graph.edges.len()` steps so a
+/// malformed `.next` cycle can never loop forever.
+fn find_quad(graph: &SkeletalTrapezoidationGraph, start: usize) -> Vec<usize> {
+    let mut quad = vec![start];
+    let max_len = graph.edges.len().saturating_add(1);
 
-    for &edge_idx in candidates {
-        let Some(edge) = graph.edges.get(edge_idx) else {
-            continue;
-        };
+    loop {
+        if quad.len() > max_len {
+            break;
+        }
+        let current = *quad
+            .last()
+            .expect("quad always has at least one edge (seeded with `start`)");
+        let next = graph.edges.get(current).map(|e| e.next).unwrap_or(NO_INDEX);
+        if next == NO_INDEX {
+            break;
+        }
+        quad.push(next);
+    }
+
+    quad
+}
+
+/// Returns the position within `quad` of the edge whose "to" vertex has the
+/// largest `distance_to_boundary` — the quad's peak/widest point, mirroring
+/// `getQuadMaxRedgeTo`. Ties keep the lowest (first-found) position, for
+/// determinism. `quad` is assumed non-empty (guaranteed by [`find_quad`]).
+fn quad_peak_position(graph: &SkeletalTrapezoidationGraph, quad: &[usize]) -> usize {
+    let mut best_pos = 0;
+    let mut best_r = f64::NEG_INFINITY;
+
+    for (pos, &edge_idx) in quad.iter().enumerate() {
         let to_idx = resolve_to_vertex(graph, edge_idx);
-        let from_d = graph
-            .vertices
-            .get(edge.start_vertex)
-            .map(|v| v.distance_to_boundary)
-            .unwrap_or(0.0);
-        let to_d = graph
+        let r = graph
             .vertices
             .get(to_idx)
             .map(|v| v.distance_to_boundary)
             .unwrap_or(0.0);
-        let sum = from_d + to_d;
-        if sum > best_sum {
-            best_sum = sum;
-            best_edge = Some(edge_idx);
+        if r > best_r {
+            best_r = r;
+            best_pos = pos;
         }
     }
 
-    best_edge
-}
-
-/// Direction of a [`walk_domain_chain`] traversal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WalkDir {
-    /// Follow `STHalfEdge::next`.
-    Next,
-    /// Follow `STHalfEdge::prev`.
-    Prev,
-}
-
-/// Reads the raw `next`/`prev` link off `edge_idx` for the given direction,
-/// or [`NO_INDEX`] if `edge_idx` is out of range.
-fn domain_link(graph: &SkeletalTrapezoidationGraph, edge_idx: usize, dir: WalkDir) -> usize {
-    graph
-        .edges
-        .get(edge_idx)
-        .map(|e| match dir {
-            WalkDir::Next => e.next,
-            WalkDir::Prev => e.prev,
-        })
-        .unwrap_or(NO_INDEX)
-}
-
-/// Walks a DCEL chain in direction `dir` starting from `start_edge`, staying
-/// within the connected central-edge domain (edges present in
-/// `edge_junctions`) that no *other* domain walk has already claimed
-/// (`visited_edges`).
-///
-/// Following the plain `next`/`prev` link is preferred; when that link is
-/// missing or exits the domain (lands on a non-central/no-junction edge, an
-/// already-claimed edge — e.g. a rib or the source boundary segment), this
-/// hops once through that edge's `twin` to try to resume on the far side,
-/// mirroring OrcaSlicer's `getNextUnconnected()` continuation
-/// (`SkeletalTrapezoidationGraph.cpp:183-193`). Stops on a true dead end, a
-/// failed twin-hop, or ring closure back to `start_edge`. Returns the
-/// visited edge indices in walk order (`start_edge` first).
-///
-/// `visited_edges` matters here, not just at the outer domain-start level:
-/// this crate's simplified transition-insertion pass can leave a *direct*
-/// (non-hopped) `next`/`prev` link from an edge with no independent domain
-/// membership straight onto an edge another domain has already fully
-/// consumed (observed on the tapered-wedge fixture — edge `18`'s plain
-/// `next` is edge `13`, with no twin-hop involved, even though `13` is
-/// itself a separate, already-processed domain start). Without this check, a
-/// later domain could silently re-emit an earlier domain's data by chain-
-/// walking straight onto it, while its own distinct junction fan is dropped.
-fn walk_domain_chain(
-    graph: &SkeletalTrapezoidationGraph,
-    edge_junctions: &BTreeMap<usize, EdgeJunctions>,
-    visited_edges: &BTreeSet<usize>,
-    start_edge: usize,
-    dir: WalkDir,
-) -> Vec<usize> {
-    let mut chain = Vec::new();
-    let mut seen: BTreeSet<usize> = BTreeSet::new();
-    let mut current = start_edge;
-    let max_steps = graph.edges.len();
-
-    let is_available = |edge_idx: usize, seen: &BTreeSet<usize>| {
-        edge_junctions.contains_key(&edge_idx)
-            && !visited_edges.contains(&edge_idx)
-            && !seen.contains(&edge_idx)
-    };
-
-    loop {
-        if !seen.insert(current) || chain.len() > max_steps {
-            break;
-        }
-        chain.push(current);
-
-        let plain = domain_link(graph, current, dir);
-        let advance = if plain != NO_INDEX && is_available(plain, &seen) {
-            Some(plain)
-        } else if plain != NO_INDEX {
-            graph
-                .edges
-                .get(plain)
-                .map(|e| e.twin)
-                .filter(|&t| t != NO_INDEX && is_available(t, &seen))
-        } else {
-            None
-        };
-
-        match advance {
-            Some(next) => current = next,
-            None => break,
-        }
-    }
-
-    chain
+    best_pos
 }
 
 /// Collects, for each bead index along an edge chain, the sequence of
@@ -526,206 +484,167 @@ fn is_odd_single_bead(
 /// Emits one multi-junction `ExtrusionLine` per bead index for the given edge
 /// chain, using `passed_odd_edges` to suppress twin duplication for odd
 /// single-bead segments.
+///
+/// A domain can span regions of different local depth (e.g. a corner-
+/// adjacent edge with a shallow `bead_count` next to a deeper spine edge
+/// further from the boundary): rather than clamping the whole chain's emitted
+/// bead range to whichever edge supports the *fewest* beads (which would
+/// silently drop every inner wall for the entire domain because of one
+/// shallow edge), each bead index `b` is emitted only over `chain`'s maximal
+/// contiguous sub-runs of edges that all actually carry bead `b`.
+///
+/// `ring_closed` reports whether the domain-walk that produced `chain`
+/// returned to its own starting quad (mirroring `connectJunctions`'s own
+/// ring-closure detection, [`generate_toolpaths`]'s doc comment). A "ring"
+/// only makes physical sense when the walk wraps back through at least one
+/// *other* edge, and only for the sub-run spanning `chain` in its entirety
+/// (a partial sub-run, by construction, does not reach back to `chain`'s own
+/// start): a single-edge chain's own two ends are inherently distinct
+/// physical points (an isolated central edge whose only neighbor is
+/// non-central can trivially satisfy the quad-topology closure check without
+/// representing a real loop), so a sub-run length of at least 2 is required
+/// in addition to `ring_closed` before this function forces closure.
 fn emit_chain_lines(
     graph: &SkeletalTrapezoidationGraph,
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
     buckets: &mut BTreeMap<u32, Vec<ExtrusionLine>>,
     passed_odd_edges: &mut BTreeSet<(u32, usize, usize)>,
     chain: &[usize],
+    ring_closed: bool,
 ) {
     if chain.is_empty() {
         return;
     }
 
-    // Determine the bead range we can emit from this chain: the minimum fan
-    // length across all edges (after merge) so every emitted polyline is
-    // complete.
-    let mut max_beads: usize = usize::MAX;
+    // The overall bead range this chain could ever emit: the *largest* fan
+    // length found on any edge, not the smallest -- see this function's doc
+    // comment for why a uniform minimum across the whole domain is wrong.
+    let mut max_beads: usize = 0;
     for &edge_idx in chain {
         if let Some((from_j, to_j)) = edge_junctions.get(&edge_idx) {
-            max_beads = max_beads.min(from_j.len().min(to_j.len()));
+            max_beads = max_beads.max(from_j.len().min(to_j.len()));
         }
     }
-    if max_beads == usize::MAX || max_beads == 0 {
+    if max_beads == 0 {
         return;
     }
+
+    let has_bead = |edge_idx: usize, bead: usize| {
+        edge_junctions
+            .get(&edge_idx)
+            .map(|(from_j, to_j)| bead < from_j.len().min(to_j.len()))
+            .unwrap_or(false)
+    };
 
     for bead in 0..max_beads {
         let bead_idx = bead as u32;
 
-        // Odd single-bead dedup: only emit from the lower-indexed half-edge
-        // of a twin pair when the segment is the lone odd innermost bead.
-        let first_edge = chain[0];
-        let first_edge_obj = graph.edges.get(first_edge);
-        if let Some(edge) = first_edge_obj {
-            if edge.twin != NO_INDEX
-                && is_odd_single_bead(graph, edge_junctions, first_edge, bead_idx)
-            {
-                let lower = first_edge.min(edge.twin);
-                let higher = first_edge.max(edge.twin);
-                let key = (bead_idx, lower, higher);
-                // Actual membership gate (not just bookkeeping): whichever
-                // direction/chain reaches this odd single-bead segment first
-                // claims it; the other half-edge of the same physical twin
-                // pair is suppressed on any later attempt. Matches upstream's
-                // `quad_start->next->twin` check
-                // (`SkeletalTrapezoidation.cpp:2354-2358`).
-                if passed_odd_edges.contains(&key) {
-                    continue;
+        // Split `chain` into maximal contiguous sub-runs that all carry
+        // `bead_idx`.
+        let mut sub_runs: Vec<&[usize]> = Vec::new();
+        let mut run_start: Option<usize> = None;
+        for (i, &edge_idx) in chain.iter().enumerate() {
+            if has_bead(edge_idx, bead) {
+                if run_start.is_none() {
+                    run_start = Some(i);
                 }
-                passed_odd_edges.insert(key);
+            } else if let Some(start) = run_start.take() {
+                sub_runs.push(&chain[start..i]);
             }
         }
-
-        let junctions = chain_junctions_for_bead(edge_junctions, chain, bead);
-        if junctions.len() < 2 {
-            continue;
+        if let Some(start) = run_start {
+            sub_runs.push(&chain[start..]);
         }
 
-        let start = junctions[0].p;
-        let end = junctions[junctions.len() - 1].p;
-        let is_closed = dist_sq_xy(start, end) <= CLOSURE_EPS_MM * CLOSURE_EPS_MM;
+        // Only a sub-run spanning `chain` in its entirety can represent the
+        // ring-closure the outer domain-walk detected.
+        let whole_chain_run = sub_runs.len() == 1 && sub_runs[0].len() == chain.len();
 
-        buckets.entry(bead_idx).or_default().push(ExtrusionLine {
-            junctions,
-            inset_idx: bead_idx,
-            is_odd: bead_idx % 2 == 1,
-            is_closed,
-        });
+        for sub_run in sub_runs {
+            // Odd single-bead dedup: only emit from the lower-indexed
+            // half-edge of a twin pair when the segment is the lone odd
+            // innermost bead.
+            let first_edge = sub_run[0];
+            if let Some(edge) = graph.edges.get(first_edge) {
+                if edge.twin != NO_INDEX
+                    && is_odd_single_bead(graph, edge_junctions, first_edge, bead_idx)
+                {
+                    let lower = first_edge.min(edge.twin);
+                    let higher = first_edge.max(edge.twin);
+                    let key = (bead_idx, lower, higher);
+                    // Actual membership gate (not just bookkeeping):
+                    // whichever direction/chain reaches this odd single-bead
+                    // segment first claims it; the other half-edge of the
+                    // same physical twin pair is suppressed on any later
+                    // attempt. Matches upstream's `quad_start->next->twin`
+                    // check (`SkeletalTrapezoidation.cpp:2354-2358`).
+                    if passed_odd_edges.contains(&key) {
+                        continue;
+                    }
+                    passed_odd_edges.insert(key);
+                }
+            }
+
+            let mut junctions = chain_junctions_for_bead(edge_junctions, sub_run, bead);
+            if junctions.len() < 2 {
+                continue;
+            }
+
+            let close_ring = ring_closed && whole_chain_run && sub_run.len() >= 2;
+            if close_ring {
+                // The sub-run's own first (from-junction of its first edge)
+                // and last (to-junction of its last edge) entries are each
+                // independently interpolated along their own edge and
+                // generally land at different points near the shared
+                // wrap-around vertex, not exactly on it -- so, mirroring
+                // `stitch_extrusions`'s own `finalize_chain` convention
+                // (`first.xy == last.xy` for a genuinely closed loop), merge
+                // them (keeping the wider of the two, the same rule
+                // `chain_junctions_for_bead` already applies at every
+                // intermediate shared vertex) and write the merged junction
+                // into both the first and last slots so the two positions
+                // coincide exactly, not just approximately.
+                let n = junctions.len();
+                let first = junctions[0].clone();
+                let last = junctions[n - 1].clone();
+                let merged = if first.p.width >= last.p.width {
+                    first
+                } else {
+                    last
+                };
+                junctions[0] = merged.clone();
+                junctions[n - 1] = merged;
+            }
+
+            let start = junctions[0].p;
+            let end = junctions[junctions.len() - 1].p;
+            let is_closed = dist_sq_xy(start, end) <= CLOSURE_EPS_MM * CLOSURE_EPS_MM;
+
+            buckets.entry(bead_idx).or_default().push(ExtrusionLine {
+                junctions,
+                inset_idx: bead_idx,
+                is_odd: bead_idx % 2 == 1,
+                is_closed,
+            });
+        }
     }
-}
-
-/// Returns `true` if `edge_idx` is a central, junction-bearing edge —
-/// i.e. a member of the domain that [`walk_domain_chain`] can traverse.
-fn is_domain_edge(edge_junctions: &BTreeMap<usize, EdgeJunctions>, edge_idx: usize) -> bool {
-    edge_junctions.contains_key(&edge_idx)
-}
-
-/// Returns `true` if `edge_idx`'s `.prev` does not continue the domain —
-/// i.e. `edge_idx` is a valid starting point for a domain walk.
-///
-/// Mirrors OrcaSlicer's `unprocessed_quad_starts = edges with !edge.prev`
-/// (`SkeletalTrapezoidation.cpp:2265-2269`): a domain start is an edge whose
-/// previous half-edge is missing, non-central, or already claimed by an
-/// earlier walk (the last case lets a second pass force a start inside any
-/// fully closed central ring, where every edge's `.prev` is itself a valid,
-/// not-yet-visited domain edge).
-fn is_domain_start(
-    graph: &SkeletalTrapezoidationGraph,
-    edge_junctions: &BTreeMap<usize, EdgeJunctions>,
-    visited: &BTreeSet<usize>,
-    edge_idx: usize,
-) -> bool {
-    let prev = domain_link(graph, edge_idx, WalkDir::Prev);
-    prev == NO_INDEX || !is_domain_edge(edge_junctions, prev) || visited.contains(&prev)
-}
-
-/// Processes one central-edge domain starting at `start_edge`: finds the
-/// max-R "peak" edge among everything reachable from `start_edge` (probed in
-/// both directions), then walks the `next` and `prev` chains from that peak,
-/// emitting one open multi-junction `ExtrusionLine` per bead index for each
-/// chain and marking every visited edge so it is never walked twice.
-fn process_central_domain(
-    graph: &SkeletalTrapezoidationGraph,
-    edge_junctions: &BTreeMap<usize, EdgeJunctions>,
-    buckets: &mut BTreeMap<u32, Vec<ExtrusionLine>>,
-    passed_odd_edges: &mut BTreeSet<(u32, usize, usize)>,
-    visited_edges: &mut BTreeSet<usize>,
-    start_edge: usize,
-) {
-    let mut probe = walk_domain_chain(
-        graph,
-        edge_junctions,
-        &*visited_edges,
-        start_edge,
-        WalkDir::Next,
-    );
-    probe.extend(walk_domain_chain(
-        graph,
-        edge_junctions,
-        &*visited_edges,
-        start_edge,
-        WalkDir::Prev,
-    ));
-    // If the peak search (which itself skips already-visited edges) still
-    // lands on something visited — e.g. `start_edge` was the only probe
-    // candidate and got claimed by a concurrent-looking domain in between —
-    // fall back to `start_edge` so this domain's own junction data is never
-    // silently dropped.
-    let peak_edge = get_domain_max_r_edge(graph, &probe)
-        .filter(|e| !visited_edges.contains(e))
-        .unwrap_or(start_edge);
-
-    let next_chain = walk_domain_chain(
-        graph,
-        edge_junctions,
-        &*visited_edges,
-        peak_edge,
-        WalkDir::Next,
-    );
-    let prev_chain = walk_domain_chain(
-        graph,
-        edge_junctions,
-        &*visited_edges,
-        peak_edge,
-        WalkDir::Prev,
-    );
-
-    for &e in &next_chain {
-        visited_edges.insert(e);
-    }
-    for &e in &prev_chain {
-        visited_edges.insert(e);
-    }
-    // The domain start itself is always reachable from the peak by
-    // construction, but insert it defensively so a peak search that (for any
-    // reason) fails to rediscover `start_edge` still guarantees forward
-    // progress for the outer loop.
-    visited_edges.insert(start_edge);
-
-    // `next_chain` and `prev_chain` both start at `peak_edge` by construction
-    // (each is a fresh `walk_domain_chain` call rooted there). Emitting them
-    // as two independent calls to `emit_chain_lines` — as this function used
-    // to do — fragments what should be ONE continuous per-bead polyline
-    // spanning the whole domain into two disjoint lines that both include
-    // `peak_edge`: every single-edge domain (the common case for a plain,
-    // non-reflex quad's lone central spine edge, where neither direction can
-    // extend past the peak) then emits the *same* two-junction segment
-    // twice, and any multi-edge domain gets an artificial split at its
-    // widest point instead of one line from end to end. This is the
-    // regression this packet's fix targets (many spurious sub-1mm
-    // `ExtrusionLine`s in `cube_4color_arachne_fragments_walls_by_color`).
-    //
-    // Fix: splice `prev_chain` (reversed, dropping its shared leading
-    // `peak_edge`) in front of `next_chain` (which already starts with
-    // `peak_edge`) to form one domain-order edge chain, and emit it once.
-    // This mirrors OrcaSlicer's `connectJunctions`, which concatenates
-    // segments onto a single running path per bead rather than starting a
-    // fresh `ExtrusionLine` at every quad-max-r edge
-    // (`SkeletalTrapezoidation.cpp:2210-2234`).
-    let mut full_chain: Vec<usize> = prev_chain.iter().skip(1).rev().copied().collect();
-    full_chain.extend(next_chain.iter().copied());
-
-    emit_chain_lines(
-        graph,
-        edge_junctions,
-        buckets,
-        passed_odd_edges,
-        &full_chain,
-    );
 }
 
 /// Emits variable-width toolpath insets from `graph`'s central, bead-counted
 /// edges, sourcing every bead's width and toolpath offset from `strategy`.
 ///
-/// This is the packet-113b faithful `connectJunctions` implementation: it
-/// precomputes per-edge junction fans, then walks every central-edge domain
-/// (a maximal run of connected central, junction-bearing half-edges) from
-/// its max-R peak, merging adjacent junction fans and emitting one open
-/// multi-junction `ExtrusionLine` per bead index for each chain. All lines
-/// remain open (`is_closed = false` except for degenerate coincident
-/// endpoints); real ring closure is performed later by
-/// [`super::stitch::stitch_extrusions`].
+/// This is the packet-113c faithful `connectJunctions` implementation (see
+/// this module's doc comment): it precomputes per-edge junction fans, seeds
+/// `unprocessed_quad_starts` from every edge with no `.prev`, and walks each
+/// domain quad-by-quad ([`find_quad`] plus a `.twin`-hop off the quad's dead
+/// end, mirroring `getNextUnconnected`), collecting every central,
+/// junction-bearing edge crossed into one ordered chain per domain, then
+/// emitting one multi-junction `ExtrusionLine` per bead index for that chain
+/// via [`emit_chain_lines`]. A domain whose walk returns to its own start
+/// closes its lines (`is_closed = true`, once the chain's own first/last
+/// junction positions coincide); an exhausted open chain remains open
+/// (`is_closed = false`) for [`super::stitch::stitch_extrusions`] to close
+/// later.
 ///
 /// Returns one [`VariableWidthLines`] bucket per distinct `inset_idx`, sorted
 /// ascending (`0` = outermost).
@@ -735,47 +654,97 @@ pub fn generate_toolpaths(
 ) -> Vec<VariableWidthLines> {
     let mut buckets: BTreeMap<u32, Vec<ExtrusionLine>> = BTreeMap::new();
     let mut passed_odd_edges: BTreeSet<(u32, usize, usize)> = BTreeSet::new();
-    let mut visited_edges: BTreeSet<usize> = BTreeSet::new();
 
     let edge_junctions = generate_junctions(graph, strategy);
-    let domain_edge_ids: Vec<usize> = edge_junctions.keys().copied().collect();
 
-    // Pass 1: natural domain starts (open chains — edges whose `.prev` does
-    // not continue the domain).
-    for &edge_idx in &domain_edge_ids {
-        if visited_edges.contains(&edge_idx) {
-            continue;
+    // Seed `unprocessed_quad_starts` per `connectJunctions`
+    // (`SkeletalTrapezoidation.cpp:2265-2269`): every edge whose `.prev` is
+    // absent. Packet 113c Step 3's construction guarantees this is every rib
+    // `back_edge` (`makeRib` never assigns it a `.prev`) plus each cell's
+    // first transferred edge.
+    let mut unprocessed_quad_starts: BTreeSet<usize> = graph
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(_, edge)| edge.prev == NO_INDEX)
+        .map(|(idx, _)| idx)
+        .collect();
+
+    // Bounds the outer loop so a malformed graph (unexpected orphaned starts
+    // that never converge) cannot spin forever; a well-formed graph visits
+    // every seeded start exactly once via the inner walk, so this is never
+    // reached in practice.
+    let max_domains = graph.edges.len().saturating_add(1);
+    let mut domains_processed = 0usize;
+
+    while let Some(&poly_domain_start) = unprocessed_quad_starts.iter().next() {
+        domains_processed += 1;
+        if domains_processed > max_domains {
+            break;
         }
-        if !is_domain_start(graph, &edge_junctions, &visited_edges, edge_idx) {
-            continue;
+
+        // A fresh, empty chain per popped domain start is this crate's
+        // structural equivalent of OrcaSlicer's `new_domain_start` flag: see
+        // this module's doc comment for why no separate boolean is needed.
+        let mut full_chain: Vec<usize> = Vec::new();
+        let mut quad_start = poly_domain_start;
+        let mut ring_closed = false;
+
+        loop {
+            if !unprocessed_quad_starts.remove(&quad_start) {
+                // Already claimed by an earlier domain walk -- stop rather
+                // than re-emitting or looping forever (should not happen on
+                // well-formed topology; defensive only).
+                break;
+            }
+
+            let quad = find_quad(graph, quad_start);
+            let quad_end = *quad
+                .last()
+                .expect("find_quad always returns at least one edge");
+            let peak_pos = quad_peak_position(graph, &quad);
+            // Split at the peak (see this module's doc comment on
+            // `quad_peak_position` for why concatenating the two arms back
+            // together reproduces `quad`'s own order in this crate's
+            // topology) and collect every edge that actually carries
+            // junction data (ribs never do).
+            let (arm_before, arm_after) = quad.split_at(peak_pos + 1);
+            for &edge_idx in arm_before.iter().chain(arm_after.iter()) {
+                if edge_junctions.contains_key(&edge_idx) {
+                    full_chain.push(edge_idx);
+                }
+            }
+
+            let next_start = graph
+                .edges
+                .get(quad_end)
+                .map(|e| e.twin)
+                .unwrap_or(NO_INDEX);
+
+            if next_start == NO_INDEX {
+                // Open chain exhausted.
+                break;
+            }
+            if next_start == poly_domain_start {
+                // Ring closed back to this domain's own start.
+                ring_closed = true;
+                break;
+            }
+            if !unprocessed_quad_starts.contains(&next_start) {
+                // Already visited by (or belongs to) a different domain --
+                // stop rather than walking into someone else's territory.
+                break;
+            }
+            quad_start = next_start;
         }
-        process_central_domain(
+
+        emit_chain_lines(
             graph,
             &edge_junctions,
             &mut buckets,
             &mut passed_odd_edges,
-            &mut visited_edges,
-            edge_idx,
-        );
-    }
-
-    // Pass 2: any edge still unvisited belongs to a fully closed central
-    // ring (every edge's `.prev` is itself a valid, not-yet-visited domain
-    // edge, so pass 1 never recognized a start there) — force a start at the
-    // lowest-indexed remaining edge of each such ring. Combined with pass 1,
-    // this guarantees every central, junction-bearing edge is visited
-    // exactly once, so no post-hoc 2-junction fallback pass is reachable.
-    for &edge_idx in &domain_edge_ids {
-        if visited_edges.contains(&edge_idx) {
-            continue;
-        }
-        process_central_domain(
-            graph,
-            &edge_junctions,
-            &mut buckets,
-            &mut passed_odd_edges,
-            &mut visited_edges,
-            edge_idx,
+            &full_chain,
+            ring_closed,
         );
     }
 
@@ -837,16 +806,19 @@ mod tests {
     /// Builds the smallest possible single central-edge domain: two vertices
     /// (`v0` at the origin, `distance_to_boundary` = 30mm; `v1` at (100mm,
     /// 0), `distance_to_boundary` = 10mm) joined by exactly one central
-    /// half-edge (`edge 0`) whose `next`/`prev` are both absent, so
-    /// `process_central_domain` walks it as a one-edge domain in both
-    /// directions from its own peak (itself) — the exact shape of upstream's
-    /// "lone central spine edge of a plain, non-reflex quad" case called out
-    /// in `process_central_domain`'s doc comment. `edge 0`'s twin (`edge 1`)
-    /// is present (so `resolve_to_vertex` can resolve `v1` as `edge 0`'s "to"
-    /// vertex) but marked non-central so it contributes no junction fan of
-    /// its own and does not form a second domain — this fixture is
-    /// deliberately scoped to exercise exactly one `process_central_domain`
-    /// call.
+    /// half-edge (`edge 0`) whose `next` is absent (so `find_quad` returns
+    /// the single-edge quad `[0]`) and `prev` is also absent (so `edge 0` is
+    /// itself a seeded domain start). `edge 0`'s twin (`edge 1`) is present
+    /// (so `resolve_to_vertex` can resolve `v1` as `edge 0`'s "to" vertex,
+    /// and the domain walk's `.twin`-hop off `edge 0`'s own dead end lands
+    /// back on `edge 0` via `edge 1`'s own dead-end `.twin`, closing this
+    /// domain immediately) but marked non-central so it contributes no
+    /// junction fan of its own — this fixture is deliberately scoped to
+    /// exercise exactly one domain walk emitting exactly once per bead
+    /// (the packet-113b regression this test was written to catch: a
+    /// pre-fix implementation that walked `next`/`prev` as two independent
+    /// chains from a "peak" edge emitted this same single-edge domain's
+    /// bead segment twice).
     fn single_edge_domain_graph() -> SkeletalTrapezoidationGraph {
         let v0 = STVertex {
             position: Vertex { x: 0.0, y: 0.0 },
@@ -878,8 +850,8 @@ mod tests {
             twin: 0,
             next: NO_INDEX,
             prev: NO_INDEX,
-            // Deliberately non-central: only edge 0 forms a domain, so this
-            // fixture exercises exactly one process_central_domain call.
+            // Deliberately non-central: only edge 0 carries junction data,
+            // so this fixture exercises exactly one domain-walk emission.
             central: false,
             edge_type: EdgeType::NORMAL,
             ..STHalfEdge::default()
@@ -893,18 +865,19 @@ mod tests {
         }
     }
 
-    /// Regression test for the packet-113b `process_central_domain` fix
-    /// (see this module's doc comment and the inline comment above the
-    /// `full_chain` splice in `process_central_domain`): before the fix, a
-    /// single-edge central domain's `next_chain` and `prev_chain` — both
-    /// freshly rooted at the same peak edge, and for a one-edge domain both
-    /// trivially equal to `[peak_edge]` — were each passed to a separate
-    /// `emit_chain_lines` call, so the domain's lone 2-point bead segment was
-    /// emitted twice per bead instead of once. The fix splices the reversed
-    /// `prev_chain` (minus its shared leading peak edge, which is empty here
-    /// since `peak_edge` has no `prev`) onto `next_chain` and calls
-    /// `emit_chain_lines` exactly once, so a single central edge with N beads
-    /// must produce exactly N `ExtrusionLine`s (one per bead), not 2N.
+    /// Regression test carried forward from the packet-113b
+    /// `process_central_domain` double-emission bug (that function no
+    /// longer exists — packet 113c replaced it with the quad-by-quad
+    /// `connectJunctions` walk in [`generate_toolpaths`]): before the 113b
+    /// fix, a single-edge central domain's `next_chain` and `prev_chain` —
+    /// both freshly rooted at the same peak edge, and for a one-edge domain
+    /// both trivially equal to `[peak_edge]` — were each passed to a
+    /// separate `emit_chain_lines` call, so the domain's lone 2-point bead
+    /// segment was emitted twice per bead instead of once. This test still
+    /// guards that regression under the new implementation: `edge 0`'s own
+    /// quad walk closes immediately (via `edge 1`'s dead-end `.twin` landing
+    /// back on `edge 0`), so a single central edge with N beads must
+    /// produce exactly N `ExtrusionLine`s (one per bead), not 2N.
     #[test]
     fn single_edge_domain_emits_each_bead_line_exactly_once() {
         let graph = single_edge_domain_graph();

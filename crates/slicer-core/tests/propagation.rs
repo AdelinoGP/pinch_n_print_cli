@@ -49,8 +49,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
-    assign_bead_counts, filter_central, propagate_beadings_downward, propagate_beadings_upward,
-    CentralityParams, EdgeType, RibData, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
+    apply_transitions, assign_bead_counts, filter_central, propagate_beadings_downward,
+    propagate_beadings_upward, CentralityParams, EdgeType, RibData, STHalfEdge, STVertex,
+    SkeletalTrapezoidationGraph, TransitionMiddle,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::{ExPolygon, Point2, Polygon};
@@ -626,5 +627,328 @@ fn propagation_fills_gap_from_central_neighbor() {
          does not populate them); got edge0={:?}, edge2={:?}",
         graph.edges[0].transition_mids,
         graph.edges[2].transition_mids
+    );
+}
+
+/// Hand-built graph exercising `insert_node`'s DCEL rewiring under the packet
+/// 113c interleaved-rib topology: a single central edge `E0` (v0 -> v1, along
+/// y=0 from x=0 to x=100) carries *two* `transition_mids` (so `apply_transitions`
+/// performs two same-edge splits on `E0` — the exact repeated-same-edge-split
+/// shape from `D-112-MMU-TOPOLOGY`'s 6th-pass "busy-hub" bug history), and `v1`
+/// is immediately followed by a rib pair (`E2` forth / `E3` back, `EdgeType::
+/// EXTRA_VD`) built with the *exact* wiring `SkeletalTrapezoidationGraph::
+/// make_rib` produces: `E0.next = E2`, `E2.prev = E0`, `E2.twin = E3`,
+/// `E3.twin = E2`, and `E3.prev = NO_INDEX` (never assigned — the domain/quad-
+/// start marker). `E1` is `E0`'s cross-cell mirror twin (`E0.twin = E1`,
+/// `E1.twin = E0`), carrying no `transition_mids` of its own so its own splits
+/// come *only* from `apply_transitions`'s twin-mirroring step.
+///
+/// Vertices: v0 (x=0, r=0, bead_count=2), v1 (x=100, r=10, bead_count=5,
+/// the rib's spine anchor), v2 (x=100,y=-10, rib foot, r=0).
+fn rib_adjacent_two_split_graph() -> SkeletalTrapezoidationGraph {
+    fn vertex(x: f64, y: f64, r: f64, bc: Option<u32>) -> STVertex {
+        STVertex {
+            position: Vertex { x, y },
+            distance_to_boundary: r,
+            bead_count: bc,
+            transition_ratio: 0.0,
+        }
+    }
+
+    let vertices = vec![
+        vertex(0.0, 0.0, 0.0, Some(2)),    // 0: v0 (edge start)
+        vertex(100.0, 0.0, 10.0, Some(5)), // 1: v1 (edge end / rib spine anchor)
+        vertex(100.0, -10.0, 0.0, None),   // 2: v2 (rib foot)
+    ];
+
+    fn edge(
+        start_vertex: usize,
+        twin: usize,
+        next: usize,
+        prev: usize,
+        central: bool,
+        edge_type: EdgeType,
+        transition_mids: Vec<TransitionMiddle>,
+    ) -> STHalfEdge {
+        STHalfEdge {
+            start_vertex,
+            twin,
+            next,
+            prev,
+            r_min: 0.0,
+            r_max: 10.0,
+            central,
+            is_curved: false,
+            rib_twin: None,
+            quad_cell: None,
+            edge_type,
+            transition_mids,
+        }
+    }
+
+    // E0: orig (v0 -> v1), central, carrying the two transition ends that
+    // drive the same-edge repeated splits under test. `next = 2` (the rib's
+    // forth edge), matching real `make_rib` wiring exactly.
+    let e0 = edge(
+        0,
+        1,
+        2,
+        NO_INDEX,
+        true,
+        EdgeType::NORMAL,
+        vec![
+            TransitionMiddle {
+                pos: 0.3,
+                lower_bead_count: 2,
+                mid_r: 3.0,
+            },
+            TransitionMiddle {
+                pos: 0.7,
+                lower_bead_count: 3,
+                mid_r: 7.0,
+            },
+        ],
+    );
+    // E1: T, E0's cross-cell mirror twin (v1 -> v0 in T's own frame). No
+    // trailing rib of its own (`next = NO_INDEX`) — a distinct, valid chain
+    // shape (this cell's final closing edge never gets a rib either).
+    let e1 = edge(1, 0, NO_INDEX, NO_INDEX, true, EdgeType::NORMAL, Vec::new());
+    // E2: rib forth edge (v1 -> rib foot), non-central, dead end (`next =
+    // NO_INDEX`), `prev = 0` matching `make_rib`'s `edges[forth].prev = pe`.
+    let e2 = edge(1, 3, NO_INDEX, 0, false, EdgeType::EXTRA_VD, Vec::new());
+    // E3: rib back edge (rib foot -> v1), non-central, `prev = NO_INDEX`
+    // permanently (the domain/quad-start marker — never assigned by
+    // `make_rib`), `next = NO_INDEX` (no further spine edge follows in this
+    // minimal test cell).
+    let e3 = edge(
+        2,
+        2,
+        NO_INDEX,
+        NO_INDEX,
+        false,
+        EdgeType::EXTRA_VD,
+        Vec::new(),
+    );
+
+    SkeletalTrapezoidationGraph {
+        vertices,
+        edges: vec![e0, e1, e2, e3],
+        centrality_filtered: true,
+        rib: RibData::default(),
+    }
+}
+
+/// AC-6 dedicated regression test (packet 113c Step 6). Re-derives
+/// `insert_node`/`apply_transitions`'s same-edge-repeated-split correctness
+/// against the NEW interleaved-rib topology from first principles, rather
+/// than assuming the `D-112-MMU-TOPOLOGY` 6th-pass (old-topology) fix
+/// generalizes — see that deviation log entry's 6th-pass section for the
+/// original 3-bug shape this guards against.
+///
+/// This test caught a genuine, distinct 4th bug in `apply_transitions`
+/// (not a regression of the 3 already-fixed ones, and not topology-specific
+/// — it would misbehave under either topology): the same-edge rescale loop
+/// sorted transition ends *ascending* and rescaled each successive `pos`
+/// onto the "remaining fraction toward `B`" — but `insert_node` always keeps
+/// `edge_idx`'s *original* `start_vertex` and only moves its far endpoint
+/// (via `.twin`) inward on every call, so `edge_idx`'s current span actually
+/// shrinks from the far/`B` side toward `A`, not the other way. Ascending
+/// processing therefore rescaled the *second* (and any later) same-edge split
+/// against the wrong span, walking it back toward `A` instead of landing at
+/// its intended absolute position. Fixed by sorting descending and tracking a
+/// shrinking `far_boundary` (see `apply_transitions`'s doc comment and "Apply
+/// splits" loop for the full derivation).
+#[test]
+fn same_edge_splits_near_rib_insertion() {
+    let mut graph = rib_adjacent_two_split_graph();
+
+    apply_transitions(&mut graph);
+
+    // (c) Twin-mirroring must land on E1 (E0's twin)'s own bucket, not back
+    // onto E0's: 4 original edges + 2 new fragments from E0's own splitting +
+    // 2 new fragments from E1's *mirrored* splitting = 8. If bug 1 from the
+    // OLD topology (mirror pushed onto the wrong edge) had regressed, E0
+    // would instead accumulate 4 ends (doubling to 4 splits) while E1 stayed
+    // entirely unsplit — a different, distinguishable edge count and shape.
+    assert_eq!(
+        graph.edges.len(),
+        8,
+        "expected exactly 2 new fragments from E0's own splitting plus 2 from E1's mirrored \
+         splitting; got {} edges total: {:#?}",
+        graph.edges.len(),
+        graph.edges
+    );
+
+    // Walk E0's forward chain via `.next`, recording each hop's start-vertex
+    // (x position, bead_count) plus its own edge_type, until we reach a dead
+    // end (`.next == NO_INDEX`) — the rib's forth edge, `E2`.
+    let mut walk = Vec::new();
+    let mut cur = 0usize;
+    loop {
+        let e = &graph.edges[cur];
+        let v = &graph.vertices[e.start_vertex];
+        walk.push((cur, v.position.x, v.bead_count, e.edge_type));
+        if e.next == NO_INDEX {
+            break;
+        }
+        cur = e.next;
+        assert!(walk.len() <= 8, "chain walk did not terminate: {walk:?}");
+    }
+
+    // (b) Correct (not stale) endpoints on both sides of every split, in
+    // *absolute* position terms: the walk must visit x=0 (v0, bc=2), then
+    // the two new split vertices at their true absolute positions x=30
+    // (bc=2, the pos=0.3 transition) and x=70 (bc=3, the pos=0.7
+    // transition) — NOT the old-bug value of x≈17.14 that ascending-order
+    // rescaling against the wrong span would have produced — then finally
+    // reach E2 (the rib forth edge, non-central/EXTRA_VD, dead end) whose own
+    // start vertex is v1 (x=100, bc=5, untouched — neither transition end
+    // snapped to a boundary vertex in this fixture).
+    let xs: Vec<f64> = walk.iter().map(|(_, x, _, _)| *x).collect();
+    let bcs: Vec<Option<u32>> = walk.iter().map(|(_, _, bc, _)| *bc).collect();
+    assert_eq!(
+        walk.len(),
+        4,
+        "expected v0 -> split(0.3) -> split(0.7) -> v1(rib anchor): {walk:?}"
+    );
+    assert!(
+        (xs[0] - 0.0).abs() < 1e-9,
+        "hop 0 must be v0 at x=0, got walk={walk:?}"
+    );
+    assert!(
+        (xs[1] - 30.0).abs() < 1e-6,
+        "hop 1 (pos=0.3 transition) must land at absolute x=30, got {} — walk={walk:?} (the old \
+         ascending-order rescale bug would have produced x≈17.14 here on the *second* hop, or \
+         mis-ordered the first)",
+        xs[1]
+    );
+    assert!(
+        (xs[2] - 70.0).abs() < 1e-6,
+        "hop 2 (pos=0.7 transition) must land at absolute x=70, got {} — walk={walk:?} (the old \
+         ascending-order rescale bug produced x≈17.14 instead, closer to v0 than the pos=0.3 \
+         split — a non-monotonic inversion)",
+        xs[2]
+    );
+    assert!(
+        (xs[3] - 100.0).abs() < 1e-9,
+        "hop 3 must be v1 (rib spine anchor) at x=100, untouched: {walk:?}"
+    );
+    assert_eq!(
+        bcs,
+        vec![Some(2), Some(2), Some(3), Some(5)],
+        "bead_count must be monotonically non-decreasing along the walk (v0=2 unchanged, \
+         pos=0.3 split=2, pos=0.7 split=3, v1=5 unchanged): {walk:?}"
+    );
+    assert_eq!(
+        walk[3].3,
+        EdgeType::EXTRA_VD,
+        "the walk must terminate at the rib's forth edge (E2), reached via E0's original \
+         `.next` chain, preserved verbatim across both splits: {walk:?}"
+    );
+
+    // (d) transition_ratio initialized on both new mid-nodes (not left at a
+    // stray default).
+    let split_1_vertex = &graph.vertices[graph.edges[walk[1].0].start_vertex];
+    let split_2_vertex = &graph.vertices[graph.edges[walk[2].0].start_vertex];
+    assert_eq!(
+        split_1_vertex.transition_ratio, 0.5,
+        "pos=0.3 split's transition_ratio must be initialized (got {})",
+        split_1_vertex.transition_ratio
+    );
+    assert_eq!(
+        split_2_vertex.transition_ratio, 0.5,
+        "pos=0.7 split's transition_ratio must be initialized (got {})",
+        split_2_vertex.transition_ratio
+    );
+
+    // Chain integrity: `.prev` must retrace the exact same path in reverse.
+    let mut back_walk = Vec::new();
+    let mut cur = walk.last().unwrap().0; // E2, the rib forth edge.
+    loop {
+        back_walk.push(cur);
+        let p = graph.edges[cur].prev;
+        if p == NO_INDEX {
+            break;
+        }
+        cur = p;
+        assert!(
+            back_walk.len() <= 8,
+            "prev walk did not terminate: {back_walk:?}"
+        );
+    }
+    let mut forward_indices: Vec<usize> = walk.iter().map(|(idx, ..)| *idx).collect();
+    forward_indices.reverse();
+    assert_eq!(
+        back_walk, forward_indices,
+        "`.prev` must retrace the forward `.next` walk exactly in reverse — a stale `.prev` \
+         left over from an earlier split (the D-112-MMU-TOPOLOGY 6th-pass bug 1 shape) would \
+         desync these"
+    );
+
+    // Rib invariants must be untouched by `insert_node`'s repeated splits on
+    // the central edge feeding into it.
+    let forth_idx = walk[3].0; // E2, by construction/index-stability (index 2).
+    assert_eq!(forth_idx, 2, "E2 (rib forth) must keep its original index");
+    let forth = &graph.edges[forth_idx];
+    assert_eq!(
+        forth.next, NO_INDEX,
+        "rib forth_edge must remain a dead end"
+    );
+    let back_idx = forth.twin;
+    let back = &graph.edges[back_idx];
+    assert_eq!(
+        back.prev, NO_INDEX,
+        "rib back_edge.prev must remain NO_INDEX (the domain/quad-start marker) — never \
+         assigned by makeRib and must not be corrupted by insert_node's rewiring of an \
+         unrelated central edge's fragments"
+    );
+    assert_eq!(
+        back.twin, forth_idx,
+        "rib twin pairing must remain mutually consistent"
+    );
+
+    // (a)+(b) cross-consistency: E1 (E0's twin) independently splits itself
+    // via the mirrored ends. Its own walk (via `.next`, recording each hop's
+    // own start-vertex) must visit the *same* absolute positions/bead-counts
+    // as E0's walk, in reverse (v1 -> x=70(bc=3) -> x=30(bc=2)) — proving
+    // neither side's twin points at a stale or wrong endpoint. Unlike E0's
+    // walk (which "free-rides" one extra hop into the rib's forth edge,
+    // whose start_vertex happens to be v1), E1 has no trailing rib, so this
+    // walk dead-ends one hop short of v0 itself — checked separately below
+    // via `resolve_to_vertex`'s twin-based resolution of the last fragment.
+    let mut twin_walk = Vec::new();
+    let mut cur = 1usize; // E1
+    let last_twin_edge = loop {
+        let e = &graph.edges[cur];
+        let v = &graph.vertices[e.start_vertex];
+        twin_walk.push((v.position.x, v.bead_count));
+        if e.next == NO_INDEX {
+            break cur;
+        }
+        cur = e.next;
+        assert!(
+            twin_walk.len() <= 8,
+            "twin chain walk did not terminate: {twin_walk:?}"
+        );
+    };
+    assert_eq!(
+        twin_walk,
+        vec![(100.0, Some(5)), (70.0, Some(3)), (30.0, Some(2))],
+        "E1 (E0's twin)'s independent mirrored splitting must land on the identical physical \
+         positions/bead-counts as E0's own splitting, in reverse: {twin_walk:?}"
+    );
+    // The last T-side fragment's `.twin` must resolve to v0 (x=0) — E0's
+    // original, unmoved start_vertex — closing the loop back to the same
+    // physical endpoint E0's own walk started from.
+    let last_twin = &graph.edges[last_twin_edge];
+    assert_ne!(
+        last_twin.twin, NO_INDEX,
+        "last T-side fragment must still resolve a twin (to close the loop back to v0)"
+    );
+    let resolved_v0 = &graph.vertices[graph.edges[last_twin.twin].start_vertex];
+    assert!(
+        (resolved_v0.position.x - 0.0).abs() < 1e-9,
+        "last T-side fragment's twin must resolve to v0 (x=0), got x={}",
+        resolved_v0.position.x
     );
 }

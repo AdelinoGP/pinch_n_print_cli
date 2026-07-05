@@ -51,10 +51,11 @@ use crate::arachne::generate_toolpaths::generate_toolpaths;
 use crate::arachne::preprocess::{preprocess_input_outline, PreprocessParams};
 use crate::arachne::{remove_small_lines, simplify_toolpaths, stitch_extrusions};
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
+use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
-    apply_transitions, assign_bead_counts, build_quad_rib_topology, filter_central,
-    generate_transition_mids, propagate_beadings_downward, propagate_beadings_upward,
-    BeadCountError, CentralityParams, SkeletalTrapezoidationGraph, SktError,
+    apply_transitions, assign_bead_counts, filter_central, generate_transition_mids,
+    propagate_beadings_upward, BeadCountError, CentralityParams, SkeletalTrapezoidationGraph,
+    SktError,
 };
 
 /// Parameters controlling the end-to-end Arachne pipeline.
@@ -307,17 +308,11 @@ pub fn run_arachne_pipeline(
         return Err(ArachnePipelineError::EmptyAfterPreprocess);
     }
 
+    // Packet 113c Step 3: `from_polygons` now builds the real interleaved
+    // rib/spine topology directly (faithful `transferEdge`/`makeRib` port),
+    // so the separate `build_quad_rib_topology` pass (packet 113b's
+    // reflex-corner-only approximation) is no longer needed here.
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
-
-    // Step 1: build the synthetic quad/rib topology so centrality can treat
-    // EXTRA_VD rib edges as unconditionally non-central. `RibError` currently
-    // only reports "Voronoi not built", which is logically a pipeline input
-    // error, so we surface it as an empty-preprocess-style failure.
-    build_quad_rib_topology(&mut graph).map_err(|e| {
-        ArachnePipelineError::Skt(SktError::DegeneratePolygon(format!(
-            "quad/rib topology build failed: {e}"
-        )))
-    })?;
 
     let centrality_params = to_centrality_params(&params);
     // With the quad/rib topology in place, spine edges use the configured
@@ -350,7 +345,17 @@ pub fn run_arachne_pipeline(
     generate_transition_mids(&mut graph, strategy.as_ref());
     apply_transitions(&mut graph);
     propagate_beadings_upward(&mut graph);
-    propagate_beadings_downward(&mut graph);
+    // Packet 113c Step 8b: thread the pipeline's *actual* configured
+    // beading-propagation transition distance (`wall_transition_length`,
+    // already converted to slicer units in `beading_params`) rather than
+    // `propagate_beadings_downward`'s no-argument default — see
+    // `propagation.rs`'s doc comments for why the frozen no-arg entry point
+    // exists at all (every existing test call site invokes it directly) and
+    // why this pipeline uses the richer variant instead.
+    propagate_beadings_downward_with_transition_dist(
+        &mut graph,
+        beading_params.default_transition_length,
+    );
 
     let buckets = generate_toolpaths(&graph, strategy.as_ref());
     let lines: Vec<ExtrusionLine> = buckets.into_iter().flatten().collect();

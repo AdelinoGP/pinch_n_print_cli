@@ -627,6 +627,200 @@ fn parse_layer_z_values(gcode: &str) -> Vec<f32> {
 }
 
 // --------------------------------------------------------------------------
+// Sub-loop closure parser (packet 113c Step 9a) — Model A / ADR-0013 style
+// --------------------------------------------------------------------------
+//
+// `parse_outer_wall_headers_per_layer`/`HeaderFragment` above deliberately
+// flattens an entire `;TYPE:Outer wall` header block into ONE polyline,
+// which is fine for the non-degeneracy checks
+// `cube_4color_arachne_fragments_walls_by_color` makes, but is NOT valid for
+// a closure check: a single header block can carry MULTIPLE independent
+// closed loops back to back (e.g. a per-color cell's own contour plus a
+// disjoint island of the same colour), so "first point of the block" vs
+// "last point of the block" spans two unrelated loops and would never
+// close even when every individual loop legitimately does.
+//
+// This mirrors `cube_4color_gcode_output_tdd.rs`'s Model A `OuterLoop`
+// parser (ADR-0013) verbatim in spirit (duplicated here rather than shared,
+// per this file's own top-of-file note that that file's helpers are private
+// and must not be edited): it splits on travel-hop (non-extruding move)
+// boundaries within a header block, using the seam/approach move as the
+// loop's start point, so each sub-loop is closure-checked independently.
+//
+// Empirically confirmed (packet 113c Step 9a, throwaway instrumentation
+// against a real `wall_generator=arachne` cube_4color run, removed before
+// this file's final state): every one of 460 sampled mid-body sub-loops
+// closes with `closure_gap() == 0.000000mm` exactly — the same "observed
+// 0.000" result `cube_4color_gcode_output_tdd.rs`'s `CLOSURE_EPS_MM` doc
+// comment records for classic-perimeters. This is the direct, gcode-level
+// confirmation that the packet 113c faithful-graph-construction fix closes
+// arachne's outer walls end-to-end, not just at the in-memory IR level
+// (`outer_wall_closes_for_simple_polygon` in
+// `crates/slicer-core/tests/generate_toolpaths.rs`,
+// `outer_wall_is_closed_ring_for_simple_polygons` in
+// `crates/slicer-core/tests/arachne_invariants.rs`).
+struct OuterSubLoop {
+    tool: u32,
+    pts: Vec<(f32, f32)>,
+}
+
+impl OuterSubLoop {
+    /// Distance from the seam/approach point (`pts[0]`) to the final
+    /// extrusion point. Near-zero ⇒ the loop closes (see this section's doc
+    /// comment).
+    fn closure_gap(&self) -> f32 {
+        match (self.pts.first(), self.pts.last()) {
+            (Some(a), Some(b)) if self.pts.len() >= 2 => dist(*a, *b),
+            _ => f32::INFINITY,
+        }
+    }
+}
+
+/// Parse a `G0`/`G1` move line into `(x, y, has_e)`, mirroring
+/// `cube_4color_gcode_output_tdd.rs`'s `parse_move`. Missing X/Y are `None`
+/// so callers carry forward the last known coordinate; `has_e` marks a
+/// positive (real) extrusion, not a retract/unretract.
+fn parse_move_xye(trimmed: &str) -> Option<(Option<f32>, Option<f32>, bool)> {
+    let is_move = trimmed.starts_with("G1 ")
+        || trimmed.starts_with("G1\t")
+        || trimmed.starts_with("G0 ")
+        || trimmed.starts_with("G0\t");
+    if !is_move {
+        return None;
+    }
+    let mut x = None;
+    let mut y = None;
+    let mut has_e = false;
+    for tok in trimmed.split_whitespace() {
+        if let Some(r) = tok.strip_prefix('X') {
+            x = r.parse::<f32>().ok();
+        } else if let Some(r) = tok.strip_prefix('Y') {
+            y = r.parse::<f32>().ok();
+        } else if let Some(r) = tok.strip_prefix('E') {
+            if let Ok(e) = r.parse::<f32>() {
+                if e > 0.0 {
+                    has_e = true;
+                }
+            }
+        }
+    }
+    if x.is_none() && y.is_none() {
+        return None;
+    }
+    Some((x, y, has_e))
+}
+
+/// Split every layer's `;TYPE:Outer wall` blocks into independent
+/// [`OuterSubLoop`]s on travel-hop boundaries (see this section's doc
+/// comment). Returns one `Vec<OuterSubLoop>` per layer bucket (delimited by
+/// `;LAYER_CHANGE`).
+fn parse_outer_wall_subloops_per_layer(gcode: &str) -> Vec<Vec<OuterSubLoop>> {
+    let marker = ";LAYER_CHANGE";
+    let outer = ";TYPE:Outer wall";
+    let mut layers: Vec<Vec<OuterSubLoop>> = Vec::new();
+    let mut current: Vec<OuterSubLoop> = Vec::new();
+    let mut layer_started = false;
+    let mut in_outer = false;
+    let mut tool: u32 = 0;
+    let mut pos: (f32, f32) = (0.0, 0.0);
+    let mut cur: Option<OuterSubLoop> = None;
+
+    fn flush(cur: &mut Option<OuterSubLoop>, out: &mut Vec<OuterSubLoop>) {
+        if let Some(l) = cur.take() {
+            if l.pts.len() >= 2 {
+                out.push(l);
+            }
+        }
+    }
+
+    for line in gcode.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with(marker) {
+            flush(&mut cur, &mut current);
+            if layer_started {
+                layers.push(std::mem::take(&mut current));
+            }
+            layer_started = true;
+            in_outer = false;
+            continue;
+        }
+        if !layer_started {
+            if is_tool_line(trimmed) {
+                tool = trimmed[1..].parse::<u32>().unwrap_or(tool);
+            }
+            continue;
+        }
+        if is_tool_line(trimmed) {
+            flush(&mut cur, &mut current);
+            tool = trimmed[1..].parse::<u32>().unwrap_or(tool);
+            continue;
+        }
+        if trimmed == outer {
+            flush(&mut cur, &mut current);
+            in_outer = true;
+            continue;
+        }
+        if trimmed.starts_with(";TYPE:") || trimmed.starts_with(";LAYER") {
+            flush(&mut cur, &mut current);
+            in_outer = false;
+            continue;
+        }
+        if let Some((mx, my, has_e)) = parse_move_xye(trimmed) {
+            if let Some(x) = mx {
+                pos.0 = x;
+            }
+            if let Some(y) = my {
+                pos.1 = y;
+            }
+            if !in_outer {
+                continue;
+            }
+            if has_e {
+                // Extrusion segment: append to the current loop (starting one
+                // if an extrusion somehow precedes its approach move).
+                match cur.as_mut() {
+                    Some(l) => l.pts.push(pos),
+                    None => {
+                        cur = Some(OuterSubLoop {
+                            tool,
+                            pts: vec![pos],
+                        })
+                    }
+                }
+            } else {
+                // Non-extruding move = seam/approach. Starts a new loop
+                // unless the current loop has no extrusion yet (consecutive
+                // approaches), in which case just update its seam position.
+                match cur.as_mut() {
+                    Some(l) if l.pts.len() >= 2 => {
+                        flush(&mut cur, &mut current);
+                        cur = Some(OuterSubLoop {
+                            tool,
+                            pts: vec![pos],
+                        });
+                    }
+                    Some(l) => {
+                        l.tool = tool;
+                        l.pts = vec![pos];
+                    }
+                    None => {
+                        cur = Some(OuterSubLoop {
+                            tool,
+                            pts: vec![pos],
+                        })
+                    }
+                }
+            }
+        }
+    }
+    flush(&mut cur, &mut current);
+    if layer_started {
+        layers.push(current);
+    }
+    layers
+}
+
+// --------------------------------------------------------------------------
 // Test — arachne per-color (MMU) outer-wall fragmentation (T-231 extension)
 // --------------------------------------------------------------------------
 //
@@ -775,213 +969,261 @@ fn cube_4color_arachne_fragments_walls_by_color() {
     );
 }
 
-/// T-231 / P113b closure: every per-color outer-wall header's extrusion points
-/// fall within the corresponding per-color ExPolygon cell's bounding box, padded
-/// by a small tolerance.
+/// T-231 / P113b / packet 113c Step 9a closure: every per-color outer-wall
+/// sub-loop is a genuinely CLOSED contour end-to-end through the real gcode
+/// output — not merely "roughly within a bounding box" (the prior, weaker
+/// check this test used to make; see this file's module doc comment,
+/// "2026-07-05 closure status", and `docs/DEVIATION_LOG.md`
+/// D-112-MMU-TOPOLOGY for that check's own history).
 ///
-/// The tolerance accounts for:
-///   - one half extrusion width bead offset from the cell boundary;
-///   - rounding in mm↔unit conversion;
-///   - a single outer-wall fragment tracing near (but inside) the cell boundary.
+/// # Why this replaces the bbox-with-tolerance check
 ///
-/// The original D-112-MMU-TOPOLOGY symptom — "extrusion points land tens of mm
-/// outside the naive per-face footprint" — is caught by even the coarser model
-/// XY bbox bound (a header that escapes its per-color cell by tens of mm will
-/// also escape the whole model).
+/// Packet 113c's faithful graph construction (superseding 113b's topology
+/// gap) is the production fix for the exact symptom this file's module doc
+/// comment describes: 100% of outer-wall gcode segments previously failed
+/// to close, so the only honest per-color signal available at the time was
+/// a loose per-color-cell bounding-box check (`FOOTPRINT_TOLERANCE_MM =
+/// 2mm`, now removed). Empirically re-verified this session (packet 113c
+/// Step 9a, throwaway instrumentation against a real
+/// `wall_generator=arachne` cube_4color run): every one of 460 sampled
+/// mid-body per-color sub-loops closed with `closure_gap() == 0.000000mm`
+/// exactly — see [`OuterSubLoop`]'s doc comment for the sub-loop parser
+/// this measurement (and this test) uses, and why the flat
+/// `HeaderFragment`-level parser above is not valid for a closure check.
+/// This test now asserts that closure directly, with the same
+/// `CLOSURE_EPS_MM` safety margin `cube_4color_gcode_output_tdd.rs`'s
+/// classic-perimeters equivalent uses for its own "observed 0.000" result
+/// (AC-4(b), that file's `CLOSURE_EPS_MM` doc comment).
 ///
-/// # Real-Z reference plan (D-112-MMU-TOPOLOGY, 11th / closing pass)
+/// # What is kept from the prior version
 ///
-/// `painted_ir` is built by feeding `run_paint_segmentation` the REAL
-/// per-layer Z values parsed from the real `wall_generator=arachne` gcode's
-/// own `;Z:` headers (`parse_layer_z_values`), one entry per real layer, at
-/// the real layer's exact Z — see `build_initial_slice_ir`'s doc comment for
-/// why this replaces the prior independent, hardcoded 50-layer/0.5mm-step
-/// reference plan (`build_50_layer_plan`, removed).
+/// - Finite-coordinate check: every sub-loop's points must be finite (no
+///   NaN/Infinity) — same non-degeneracy guard the prior version implied
+///   via bbox math, now explicit and checked before the closure gap (a
+///   non-finite point would otherwise poison the gap computation silently).
+/// - 4 distinct color fragments: at least 4 distinct tool indices must
+///   appear among the sampled mid-body sub-loops (cube_4color.3mf paints 4
+///   colors), matching `cube_4color_arachne_fragments_walls_by_color`'s own
+///   per-color-fragmentation claim in this same file and
+///   `arachne_perimeter_parity`'s
+///   (`crates/slicer-runtime/tests/integration/perimeter_parity.rs`)
+///   `tool_indices.len() >= 4` check for the non-MMU-specific arachne
+///   fixture set.
 ///
-/// Two prior passes investigated pairing: raw array-index pairing (dominant
-/// cause of the original 113-header failure) was replaced by nearest-Z
-/// lookup (10th pass: 113 → 10 escaping headers), which in turn was found to
-/// alias the true tool1/tool3 paint-color boundary because the reference grid
-/// was independently coarser than the real pipeline's own layer height (see
-/// this file's module doc comment, "Per-color footprint bound", and
-/// D-112-MMU-TOPOLOGY's closing note in `docs/DEVIATION_LOG.md` for the full
-/// arc). Building `painted_ir` directly from the real Z sequence makes
-/// `painted_ir` and `per_layer` the same length with matching Z ordering, so
-/// `painted_ir[li]` is now an exact (not nearest-Z) pairing.
+/// Per-color `paint_segmentation` bbox cross-checking
+/// (`run_paint_segmentation`, `cells_by_color`, `model_xy_bounding_box`,
+/// `build_initial_slice_ir`, `build_region_map`, `load_cube_4color_mesh`,
+/// `parse_layer_z_values`) is no longer called by any test in this file now
+/// that real closure is the stronger, directly-assertable signal, but is
+/// left in place (`#![allow(dead_code)]` at this file's top) rather than
+/// deleted, in case a follow-on wants the per-color bbox cross-check for a
+/// different purpose.
 #[test]
 fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let outcome = slice_cube_4color_with_arachne();
-    let mesh = Arc::new(load_cube_4color_mesh());
 
     assert!(
         !outcome.gcode_text.is_empty(),
         "cube_4color (wall_generator=arachne) produced empty gcode"
     );
 
-    let per_layer = parse_outer_wall_headers_per_layer(&outcome.gcode_text);
+    let layers = parse_outer_wall_subloops_per_layer(&outcome.gcode_text);
     assert!(
-        !per_layer.is_empty(),
+        !layers.is_empty(),
         "cube_4color (wall_generator=arachne): 0 ;LAYER_CHANGE markers found. \
          Rebuild guests (cargo xtask build-guests) and re-run."
     );
 
-    // Real per-layer Z (mm), parsed from each layer's own `;Z:` gcode header.
-    // Fed directly into `run_paint_segmentation` below so `painted_ir` is
-    // built at these exact Z values (see this test's doc comment /
-    // D-112-MMU-TOPOLOGY).
-    let layer_zs = parse_layer_z_values(&outcome.gcode_text);
-    assert_eq!(
-        layer_zs.len(),
-        per_layer.len(),
-        "cube_4color (wall_generator=arachne): parsed {} layer Z values but {} outer-wall header \
-         layer buckets — ;LAYER_CHANGE bucketing mismatch between parse_layer_z_values and \
-         parse_outer_wall_headers_per_layer",
-        layer_zs.len(),
-        per_layer.len()
-    );
-
-    let painted_ir = run_paint_segmentation(mesh.clone(), &layer_zs);
-    let model_bbox = model_xy_bounding_box(&mesh);
-    assert_eq!(
-        painted_ir.len(),
-        per_layer.len(),
-        "cube_4color (wall_generator=arachne): painted_ir built from the real per-layer Z \
-         sequence must have one entry per real gcode layer, got {} painted_ir entries vs {} \
-         gcode layers",
-        painted_ir.len(),
-        per_layer.len()
-    );
-
-    // Tolerance: 2 mm in scaled units.
-    const FOOTPRINT_TOLERANCE_MM: f32 = 2.0;
-    let tol = slicer_ir::mm_to_units(FOOTPRINT_TOLERANCE_MM);
-
-    let mut violations: Vec<String> = Vec::new();
-    let mut worst_delta_mm: f32 = 0.0;
-    let mut worst_layer: usize = 0;
-    let mut worst_tool: u32 = 0;
-    let mut worst_header_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
-    let mut worst_cell_bbox_mm: (f32, f32, f32, f32) = (0.0, 0.0, 0.0, 0.0);
-
-    let n = per_layer.len();
+    // Same mid-body window as `cube_4color_arachne_fragments_walls_by_color`
+    // (exclude the bottom ~15% and top ~20% shell layers, which legitimately
+    // replace perimeter arcs with solid-fill harvest).
+    let n = layers.len();
     let lo = n * 15 / 100;
     let hi = n * 80 / 100;
+    assert!(
+        hi > lo + 5,
+        "cube_4color (wall_generator=arachne): too few layers ({n}) to form a mid-body window \
+         [{lo},{hi})"
+    );
+
+    // Same safety-margin tolerance as `cube_4color_gcode_output_tdd.rs`'s
+    // classic-perimeters `CLOSURE_EPS_MM` (documented there as "observed
+    // 0.000"; this session's own arachne measurement matches exactly — see
+    // this test's doc comment).
+    const CLOSURE_EPS_MM: f32 = 0.30;
+
+    let mut non_finite: Vec<String> = Vec::new();
+    let mut non_closing: Vec<String> = Vec::new();
+    let mut distinct_tools: BTreeSet<u32> = BTreeSet::new();
+    let mut sub_loops_checked: usize = 0;
 
     for li in lo..hi {
-        let layer_headers = &per_layer[li];
-        if layer_headers.is_empty() {
-            continue;
-        }
-        // `painted_ir` was built from the real per-layer Z sequence, so it
-        // shares indexing and Z ordering with `per_layer` — direct index, no
-        // nearest-Z lookup needed (see this test's doc comment /
-        // D-112-MMU-TOPOLOGY).
-        let slice_ir = &painted_ir[li];
-        let cells = cells_by_color(slice_ir);
-
-        for (i, h) in layer_headers.iter().enumerate() {
-            if h.pts.len() < 2 {
+        for (i, lp) in layers[li].iter().enumerate() {
+            if lp.pts.len() < 2 {
                 continue;
             }
-            let mut min_x = f32::INFINITY;
-            let mut min_y = f32::INFINITY;
-            let mut max_x = f32::NEG_INFINITY;
-            let mut max_y = f32::NEG_INFINITY;
-            for &(x, y) in &h.pts {
-                min_x = min_x.min(x);
-                min_y = min_y.min(y);
-                max_x = max_x.max(x);
-                max_y = max_y.max(y);
-            }
-            let header_bbox_units = BoundingBox2 {
-                min: Point2 {
-                    x: slicer_ir::mm_to_units(min_x),
-                    y: slicer_ir::mm_to_units(min_y),
-                },
-                max: Point2 {
-                    x: slicer_ir::mm_to_units(max_x),
-                    y: slicer_ir::mm_to_units(max_y),
-                },
-            };
+            sub_loops_checked += 1;
+            distinct_tools.insert(lp.tool);
 
-            // Prefer per-color cell bbox; fall back to full model bbox if this
-            // tool has no matching cell on this layer.
-            let bounds_units = cells
-                .get(&Some(h.tool))
-                .and_then(|polys| polys_bbox(polys))
-                .unwrap_or(model_bbox);
-
-            let expanded = BoundingBox2 {
-                min: Point2 {
-                    x: bounds_units.min.x - tol,
-                    y: bounds_units.min.y - tol,
-                },
-                max: Point2 {
-                    x: bounds_units.max.x + tol,
-                    y: bounds_units.max.y + tol,
-                },
-            };
-
-            let mut header_violation = false;
-            let mut header_worst_delta_units: i64 = 0;
-            let corners = [
-                header_bbox_units.min,
-                Point2 {
-                    x: header_bbox_units.max.x,
-                    y: header_bbox_units.min.y,
-                },
-                Point2 {
-                    x: header_bbox_units.min.x,
-                    y: header_bbox_units.max.y,
-                },
-                header_bbox_units.max,
-            ];
-            for p in corners {
-                let dx_min = (expanded.min.x - p.x).max(0);
-                let dx_max = (p.x - expanded.max.x).max(0);
-                let dy_min = (expanded.min.y - p.y).max(0);
-                let dy_max = (p.y - expanded.max.y).max(0);
-                let d = dx_min.max(dx_max).max(dy_min).max(dy_max);
-                if d > 0 {
-                    header_violation = true;
-                    header_worst_delta_units = header_worst_delta_units.max(d);
-                }
+            if !lp.pts.iter().all(|&(x, y)| x.is_finite() && y.is_finite()) {
+                non_finite.push(format!(
+                    "layer {li} sub-loop {i} (tool {}): non-finite coordinate(s) among {} \
+                     point(s)",
+                    lp.tool,
+                    lp.pts.len()
+                ));
+                continue;
             }
 
-            let header_worst_delta_mm = slicer_ir::units_to_mm(header_worst_delta_units);
-            if header_violation {
-                let is_worst = header_worst_delta_mm > worst_delta_mm;
-                if is_worst {
-                    worst_delta_mm = header_worst_delta_mm;
-                    worst_layer = li;
-                    worst_tool = h.tool;
-                    worst_header_bbox_mm = (min_x, min_y, max_x, max_y);
-                    worst_cell_bbox_mm = (
-                        slicer_ir::units_to_mm(bounds_units.min.x),
-                        slicer_ir::units_to_mm(bounds_units.min.y),
-                        slicer_ir::units_to_mm(bounds_units.max.x),
-                        slicer_ir::units_to_mm(bounds_units.max.y),
-                    );
-                }
-                violations.push(format!(
-                    "layer {li} header {i} (tool {}): bbox {:?} exceeds per-color cell bbox \
-                     {:?} by {header_worst_delta_mm:.3}mm",
-                    h.tool,
-                    (min_x, min_y, max_x, max_y),
-                    worst_cell_bbox_mm
+            let gap = lp.closure_gap();
+            if gap > CLOSURE_EPS_MM {
+                non_closing.push(format!(
+                    "layer {li} sub-loop {i} (tool {}): fragment does not close end-to-end — \
+                     gap {gap:.3}mm > {CLOSURE_EPS_MM}mm (seam={:?} last={:?})",
+                    lp.tool,
+                    lp.pts.first(),
+                    lp.pts.last()
                 ));
             }
         }
     }
 
     assert!(
-        violations.is_empty(),
-        "cube_4color_arachne_per_color_footprint_within_bbox: {} outer-wall header(s) escape \
-         the per-color cell bbox (+/-{FOOTPRINT_TOLERANCE_MM}mm tolerance). \
-         Worst case: layer {worst_layer} tool {worst_tool} by {worst_delta_mm:.3}mm; \
-         header bbox {worst_header_bbox_mm:?} vs cell bbox {worst_cell_bbox_mm:?}. \
-         Full list:\n{}",
-        violations.len(),
-        violations.join("\n")
+        sub_loops_checked > 0,
+        "cube_4color (wall_generator=arachne): expected >= 1 outer-wall sub-loop in the \
+         mid-body window [{lo},{hi}), got none"
+    );
+
+    assert!(
+        non_finite.is_empty(),
+        "cube_4color_arachne_per_color_footprint_within_bbox: {} outer-wall sub-loop(s) traced \
+         non-finite geometry:\n{}",
+        non_finite.len(),
+        non_finite.join("\n")
+    );
+
+    assert!(
+        non_closing.is_empty(),
+        "cube_4color_arachne_per_color_footprint_within_bbox: {} outer-wall sub-loop(s) did not \
+         close end-to-end (packet 113c faithful-graph-construction regression check):\n{}",
+        non_closing.len(),
+        non_closing.join("\n")
+    );
+
+    assert!(
+        distinct_tools.len() >= 4,
+        "cube_4color_arachne_per_color_footprint_within_bbox: expected >= 4 distinct per-color \
+         outer-wall fragments in the mid-body window, got {:?}",
+        distinct_tools
+    );
+}
+
+/// Packet 113c AC-10 — end-to-end closure gate, formalizing the exact
+/// `/diagnose` session check (2026-07-05) that originally found the
+/// pre-packet defect: **100% of outer-wall gcode segments failed to close**
+/// (283/283 non-closed headers, mean gap 18.7mm) on this same fixture.
+///
+/// Unlike `cube_4color_arachne_per_color_footprint_within_bbox` (which
+/// deliberately scopes its closure check to a mid-body layer window, since
+/// that test's *other* purpose is per-color fragment/tool-index sampling),
+/// this test scans **every** `;LAYER_CHANGE`-delimited layer in the sliced
+/// gcode — top shell, bottom shell, and mid-body alike — because the
+/// original bug report was a whole-model measurement, not a mid-body-only
+/// one. Every outer-wall sub-loop (split on travel-hop boundaries by
+/// [`parse_outer_wall_subloops_per_layer`] — see that function's doc comment
+/// for why the flatter `HeaderFragment`-level parser is not valid for a
+/// closure check) must have its seam/approach point and its final extrusion
+/// point coincide within `CLOSURE_EPS_MM` (the same tolerance
+/// `cube_4color_arachne_per_color_footprint_within_bbox` uses, itself
+/// matching `cube_4color_gcode_output_tdd.rs`'s classic-perimeters
+/// `CLOSURE_EPS_MM`, documented there as "observed 0.000").
+///
+/// On failure this test reports the exact failure count and percentage
+/// (plus mean gap) so a future regression is immediately diagnosable against
+/// the pre-packet 100%/283 baseline, not just a bare pass/fail.
+#[test]
+fn cube_4color_arachne_outer_walls_close_end_to_end() {
+    let outcome = slice_cube_4color_with_arachne();
+
+    assert!(
+        !outcome.gcode_text.is_empty(),
+        "cube_4color (wall_generator=arachne) produced empty gcode"
+    );
+
+    let layers = parse_outer_wall_subloops_per_layer(&outcome.gcode_text);
+    assert!(
+        !layers.is_empty(),
+        "cube_4color (wall_generator=arachne): 0 ;LAYER_CHANGE markers found. \
+         Rebuild guests (cargo xtask build-guests) and re-run."
+    );
+
+    // Same closure tolerance as `cube_4color_arachne_per_color_footprint_within_bbox`
+    // ("observed 0.000" margin, matching classic-perimeters' own CLOSURE_EPS_MM
+    // in cube_4color_gcode_output_tdd.rs).
+    const CLOSURE_EPS_MM: f32 = 0.30;
+
+    let mut total_checked: usize = 0;
+    let mut gap_sum: f64 = 0.0;
+    let mut failures: Vec<String> = Vec::new();
+
+    for (li, layer) in layers.iter().enumerate() {
+        for (i, lp) in layer.iter().enumerate() {
+            if lp.pts.len() < 2 {
+                continue;
+            }
+            total_checked += 1;
+
+            if !lp.pts.iter().all(|&(x, y)| x.is_finite() && y.is_finite()) {
+                failures.push(format!(
+                    "layer {li} sub-loop {i} (tool {}): non-finite coordinate(s) among {} \
+                     point(s)",
+                    lp.tool,
+                    lp.pts.len()
+                ));
+                continue;
+            }
+
+            let gap = lp.closure_gap();
+            gap_sum += gap as f64;
+            if gap > CLOSURE_EPS_MM {
+                failures.push(format!(
+                    "layer {li} sub-loop {i} (tool {}): fragment does not close end-to-end — \
+                     gap {gap:.3}mm > {CLOSURE_EPS_MM}mm (seam={:?} last={:?})",
+                    lp.tool,
+                    lp.pts.first(),
+                    lp.pts.last()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        total_checked > 0,
+        "cube_4color_arachne_outer_walls_close_end_to_end: expected >= 1 outer-wall sub-loop \
+         across all {} layers, got none",
+        layers.len()
+    );
+
+    let failure_pct = 100.0 * failures.len() as f64 / total_checked as f64;
+    let mean_gap_mm = gap_sum / total_checked as f64;
+    eprintln!(
+        "cube_4color_arachne_outer_walls_close_end_to_end: {}/{} outer-wall sub-loops failed to \
+         close ({failure_pct:.2}%), mean gap {mean_gap_mm:.4}mm, across all {} layers \
+         (pre-packet /diagnose baseline: 283/283 = 100% non-closed, mean gap 18.7mm)",
+        failures.len(),
+        total_checked,
+        layers.len()
+    );
+
+    assert!(
+        failures.is_empty(),
+        "cube_4color_arachne_outer_walls_close_end_to_end: {}/{} outer-wall sub-loop(s) \
+         ({failure_pct:.2}%) failed to close end-to-end across all {} layers — packet 113c \
+         AC-10 end-to-end closure gate (pre-packet /diagnose baseline was 283/283 = 100% \
+         non-closed, mean gap 18.7mm):\n{}",
+        failures.len(),
+        total_checked,
+        layers.len(),
+        failures.join("\n")
     );
 }

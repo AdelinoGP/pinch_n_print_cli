@@ -109,19 +109,25 @@ fn square_fixture_wiring_and_radius_invariants() {
     assert_next_prev_consistent(&graph);
     assert_all_central_false(&graph);
 
-    // Golden counts, observed empirically from this constructor (mirrors
-    // Step 2's own observed 5 vertices / 24 edges for the same square
-    // segment input into `voronoi_from_segments` directly).
+    // Golden counts, observed empirically from this constructor under the
+    // rib-interleaved topology (packet 113c): a rib foot is now inserted
+    // after every transferred edge, not just at reflex corners, so for this
+    // convex square there are 9 vertices — the 4 input corners, 1 interior
+    // center vertex equidistant from all 4 sides, and 4 rib feet (the
+    // midpoints of each side) — and 16 half-edges connecting them (this
+    // supersedes the pre-113c raw-DCEL-shaped golden of 5 vertices / 24
+    // edges, which mirrored Step 2's `voronoi_from_segments` output
+    // directly and predates rib interleaving).
     assert_eq!(
         graph.vertices.len(),
-        5,
+        9,
         "square fixture: unexpected vertex count (update this golden if the \
          construction intentionally changes, but verify against a fresh \
          empirical run first)"
     );
     assert_eq!(
         graph.edges.len(),
-        24,
+        16,
         "square fixture: unexpected edge count (update this golden if the \
          construction intentionally changes, but verify against a fresh \
          empirical run first)"
@@ -158,17 +164,23 @@ fn wedge_fixture_wiring_invariants_and_radius_variation() {
     assert_next_prev_consistent(&graph);
     assert_all_central_false(&graph);
 
-    // Golden counts, observed empirically from this constructor.
+    // Golden counts, observed empirically from this constructor under the
+    // rib-interleaved topology (packet 113c): this convex 3-sided wedge has
+    // 7 vertices — the 3 input corners, 1 interior branch vertex (the
+    // incenter-like point equidistant from all 3 sides), and 3 rib feet
+    // (one per side) — and 12 half-edges connecting them (this supersedes
+    // the pre-113c golden of 4 vertices / 18 edges, from before rib
+    // interleaving existed).
     assert_eq!(
         graph.vertices.len(),
-        4,
+        7,
         "wedge fixture: unexpected vertex count (update this golden if the \
          construction intentionally changes, but verify against a fresh \
          empirical run first)"
     );
     assert_eq!(
         graph.edges.len(),
-        18,
+        12,
         "wedge fixture: unexpected edge count (update this golden if the \
          construction intentionally changes, but verify against a fresh \
          empirical run first)"
@@ -176,6 +188,27 @@ fn wedge_fixture_wiring_invariants_and_radius_variation() {
 
     // Qualitative property: distance-to-boundary must grow as we move away
     // from the acute apex at (0, 0) toward the wide end at x = 10000.
+    //
+    // Under the rib-interleaved topology (packet 113c), a rib foot is
+    // inserted after every transferred edge, not just at reflex corners.
+    // For this convex 3-sided wedge that means every polygon corner AND
+    // every rib foot is now a graph vertex sitting exactly on the input
+    // boundary, and per `STVertex::distance_to_boundary`'s contract such
+    // boundary-anchored vertices always carry the sentinel `0.0` — only the
+    // wedge's single interior branch vertex (the incenter-like point
+    // equidistant from all 3 sides) carries a positive radius. A plain
+    // "nearest vertex in Euclidean space" search is no longer a reliable
+    // proxy for "the medial-axis radius near this boundary location": a rib
+    // foot now sits exactly at the wide-end query point `(10_000, 0)` (on
+    // the boundary segment between the two wide-end corners) and would
+    // trivially win that search with `distance_to_boundary == 0.0`, even
+    // though the wide end plainly has *larger* local medial radius than the
+    // needle-thin apex. The apex-side search is unaffected by this: the
+    // nearest vertex to `(0, 0)` is, both before and after this topology
+    // change, the acute apex corner itself (also always `0.0`). So only the
+    // wide-end search needs to explicitly restrict its candidates to
+    // interior (non-boundary-anchored) vertices to keep measuring the
+    // intended quantity.
     let apex = (0.0_f64, 0.0_f64);
     let wide_end = (10_000.0_f64, 0.0_f64);
 
@@ -192,12 +225,16 @@ fn wedge_fixture_wiring_invariants_and_radius_variation() {
     let nearest_to_wide_end = graph
         .vertices
         .iter()
+        .filter(|v| v.distance_to_boundary > 0.0)
         .min_by(|a, b| {
             dist_sq(a.position.x, a.position.y, wide_end)
                 .partial_cmp(&dist_sq(b.position.x, b.position.y, wide_end))
                 .expect("distances are always finite, non-NaN")
         })
-        .expect("wedge fixture must produce at least one vertex");
+        .expect(
+            "wedge fixture must produce at least one interior (non-boundary) \
+             vertex to represent the medial-axis radius near the wide end",
+        );
 
     assert!(
         nearest_to_apex.distance_to_boundary < nearest_to_wide_end.distance_to_boundary,

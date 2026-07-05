@@ -35,4 +35,4 @@ pub use propagation::{
     apply_transitions, generate_transition_mids, propagate_beadings_downward,
     propagate_beadings_upward,
 };
-pub use rib::{build_quad_rib_topology, EdgeType, QuadCell, QuadCellId, RibData, RibError};
+pub use rib::{build_quad_rib_topology, EdgeType, RibData, RibError};

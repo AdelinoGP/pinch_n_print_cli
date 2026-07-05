@@ -44,9 +44,9 @@ use serde::{Deserialize, Serialize};
 use slicer_core::arachne::generate_toolpaths;
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
-    apply_transitions, assign_bead_counts, build_quad_rib_topology, filter_central,
-    generate_transition_mids, propagate_beadings_downward, propagate_beadings_upward,
-    CentralityParams, SkeletalTrapezoidationGraph,
+    apply_transitions, assign_bead_counts, filter_central, generate_transition_mids,
+    propagate_beadings_downward, propagate_beadings_upward, CentralityParams,
+    SkeletalTrapezoidationGraph,
 };
 use slicer_ir::{ExPolygon, Point2, Polygon, VariableWidthLines};
 
@@ -112,12 +112,13 @@ const OUTER_FILTER_FRACTION: f64 = 0.01;
 /// (`filter_central` -> `assign_bead_counts` -> `propagate_beadings_upward` ->
 /// `propagate_beadings_downward`), then `generate_toolpaths` (Step 4).
 fn run_pipeline(poly: &ExPolygon) -> Vec<VariableWidthLines> {
+    // Packet 113c Step 3: `from_polygons` now builds the real interleaved
+    // rib/spine topology directly, so the separate `build_quad_rib_topology`
+    // pass (packet 113b's reflex-corner-only approximation) is no longer
+    // needed here -- rib edges are already marked EXTRA_VD before
+    // filter_central runs.
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
         .expect("fixture polygon must build a valid SKT graph");
-
-    // Step 1: quad/rib topology must be built before filter_central so rib
-    // edges are marked EXTRA_VD and forced non-central.
-    build_quad_rib_topology(&mut graph).expect("rib topology should build");
 
     let mut centrality_params = centrality_params();
     centrality_params.transition_filter_dist *= OUTER_FILTER_FRACTION;
@@ -363,4 +364,76 @@ fn generate_toolpaths_tapered_wedge() {
     );
 
     write_or_compare_baseline(&build_fixture(&output_a));
+}
+
+/// A plain axis-aligned square: the "simple closed polygon" fixture for
+/// AC-4 (`outer_wall_closes_for_simple_polygon`, packet 113c Step 4). Sized
+/// well above every threshold this file's `centrality_params()` /
+/// `factory_params()` already establish (`min_central_distance` = 50 units,
+/// `optimal_width` = 20 units): the square's medial-axis depth (half its
+/// side length, 1000 units) comfortably clears both, so its outer wall gets
+/// a real, non-zero bead count.
+fn simple_square_fixture() -> ExPolygon {
+    expoly(vec![p(0, 0), p(2_000, 0), p(2_000, 2_000), p(0, 2_000)])
+}
+
+/// AC-4 (packet 113c Step 4): a simple closed polygon's outer wall
+/// (`inset_idx == 0`) must close (`is_closed == true`) directly out of
+/// `generate_toolpaths`'s faithful `connectJunctions` quad-by-quad domain
+/// walk. Unlike the prior central-only-hop implementation (which always
+/// emitted `is_closed = false` and deferred every ring closure to
+/// `stitch_extrusions`), the faithful `unprocessed_quad_starts` /
+/// `getNextUnconnected` walk detects a domain that returns to its own start
+/// and closes its lines directly here — see `generate_toolpaths.rs`'s
+/// module doc comment.
+#[test]
+fn outer_wall_closes_for_simple_polygon() {
+    let square = simple_square_fixture();
+    let output = run_pipeline(&square);
+
+    assert!(
+        !output.is_empty(),
+        "simple square: expected at least one inset bucket, got none"
+    );
+
+    let outer_bucket = output
+        .iter()
+        .find(|bucket| bucket.first().map(|line| line.inset_idx) == Some(0))
+        .unwrap_or_else(|| {
+            panic!(
+                "simple square: expected an inset_idx == 0 (outer wall) bucket among {} \
+                 buckets",
+                output.len()
+            )
+        });
+
+    assert!(
+        !outer_bucket.is_empty(),
+        "simple square: outer wall (inset_idx == 0) bucket must not be empty"
+    );
+
+    // AC-4 verbatim: "a simple closed polygon's outer wall (inset_idx == 0)
+    // has is_closed == true". A plain square's outer wall is a single
+    // uninterrupted ring (the faithful quad-by-quad domain walk traces the
+    // whole boundary in one pass), so this asserts the literal AC-4 shape --
+    // exactly one line, closed -- not merely "at least one closed line
+    // among several", which would be a weaker signal than what AC-4 states.
+    assert_eq!(
+        outer_bucket.len(),
+        1,
+        "simple square: expected exactly one outer wall (inset_idx == 0) ExtrusionLine, got {}: \
+         {:?}",
+        outer_bucket.len(),
+        outer_bucket
+            .iter()
+            .map(|line| (line.junctions.len(), line.is_closed))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        outer_bucket[0].is_closed,
+        "simple square: expected the outer wall (inset_idx == 0) ExtrusionLine to have \
+         is_closed == true directly out of generate_toolpaths (AC-4), got is_closed == false \
+         ({} junctions)",
+        outer_bucket[0].junctions.len()
+    );
 }
