@@ -21,6 +21,22 @@
 //! genuinely differing bead count, determinism) documented per-fixture
 //! below.
 //!
+//! # `transition_flags`/`STHalfEdge::transition_mids` (packet 113b onward)
+//!
+//! This file originally checked two now-removed `STHalfEdge` booleans
+//! (`is_transition_middle`/`is_transition_end`) that `propagate_beadings_*`
+//! stopped setting once packet 113b introduced the real transition mechanism
+//! (`transition_mids`, populated by `generate_transition_mids` — a separate
+//! pass this file's fixtures do not call). [`transition_flags`] reads the
+//! real field, but none of the three fixtures below currently populate it, so
+//! [`assert_transitions_imply_differing_neighbor`] remains dormant (its body
+//! never executes past the empty-check) — same as it always has been in this
+//! file. Wiring `generate_transition_mids` into these fixtures to make that
+//! check non-trivial is left to a follow-on: it surfaces real geometric edge
+//! cases (e.g. a leaf/tip vertex with no other central-edge neighbor to
+//! cross-check against) that this helper's current design does not yet
+//! account for.
+//!
 //! Host-only: `skeletal_trapezoidation` is gated behind the `host-algos`
 //! feature (matching `voronoi`, `algos`, `medial_axis`), so this whole file
 //! is a no-op under default features.
@@ -117,7 +133,8 @@ fn multi_feature_fixture() -> ExPolygon {
 
 /// Builds a fresh graph for `poly`, runs `filter_central` then
 /// `assign_bead_counts` with a freshly-built strategy instance from `params`.
-/// Does *not* run propagation yet — callers apply
+/// Does *not* run `generate_transition_mids`/`apply_transitions` or
+/// propagation yet — callers apply
 /// `propagate_beadings_upward`/`_downward` themselves so tests can inspect
 /// intermediate state.
 fn build_filtered_and_assigned_with(
@@ -148,12 +165,20 @@ fn build_filtered_and_assigned(poly: &ExPolygon) -> SkeletalTrapezoidationGraph 
     build_filtered_and_assigned_with(poly, &factory_params())
 }
 
-/// Per-edge `(is_transition_middle, is_transition_end)` marker vectors, in
-/// `graph.edges` order.
-fn markers(graph: &SkeletalTrapezoidationGraph) -> (Vec<bool>, Vec<bool>) {
-    let middle = graph.edges.iter().map(|e| e.is_transition_middle).collect();
-    let end = graph.edges.iter().map(|e| e.is_transition_end).collect();
-    (middle, end)
+/// Per-edge "does this edge carry at least one transition split point"
+/// vector, in `graph.edges` order. Reflects the real transition-marking
+/// mechanism (`STHalfEdge::transition_mids`, populated by
+/// `generate_transition_mids` and consumed by `apply_transitions`) — the
+/// coarser `is_transition_middle`/`is_transition_end` booleans this helper
+/// used before packet 113b's topology-faithfulness rework were removed once
+/// `propagate_beadings_*` stopped setting them (see this file's module doc
+/// comment).
+fn transition_flags(graph: &SkeletalTrapezoidationGraph) -> Vec<bool> {
+    graph
+        .edges
+        .iter()
+        .map(|e| !e.transition_mids.is_empty())
+        .collect()
 }
 
 /// Independently verifies "a transition edge only exists between differing
@@ -163,7 +188,7 @@ fn markers(graph: &SkeletalTrapezoidationGraph) -> (Vec<bool>, Vec<bool>) {
 /// under test.
 fn assert_transitions_imply_differing_neighbor(graph: &SkeletalTrapezoidationGraph, label: &str) {
     for (idx, edge) in graph.edges.iter().enumerate() {
-        if !edge.is_transition_middle && !edge.is_transition_end {
+        if edge.transition_mids.is_empty() {
             continue;
         }
         assert!(
@@ -199,10 +224,9 @@ fn assert_transitions_imply_differing_neighbor(graph: &SkeletalTrapezoidationGra
 
         assert!(
             start_has_differing || to_has_differing,
-            "{label}: edge {idx} marked transition (middle={}, end={}) but no central neighbor \
-             has a differing bead_count",
-            edge.is_transition_middle,
-            edge.is_transition_end
+            "{label}: edge {idx} has {} transition_mids but no central neighbor has a \
+             differing bead_count",
+            edge.transition_mids.len()
         );
     }
 }
@@ -226,8 +250,10 @@ struct PropagationFixture {
     provenance: String,
     fixture: String,
     edge_count: usize,
-    is_transition_middle: Vec<bool>,
-    is_transition_end: Vec<bool>,
+    /// Per-edge "carries at least one transition split point"
+    /// (`!edge.transition_mids.is_empty()`), in `graph.edges` order — see
+    /// [`transition_flags`].
+    has_transition: Vec<bool>,
 }
 
 const PROVENANCE: &str = "Self-captured regression baseline: serialized from this crate's own \
@@ -324,8 +350,6 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
             r_max,
             central: true,
             is_curved: false,
-            is_transition_middle: false,
-            is_transition_end: false,
             rib_twin: None,
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
@@ -334,8 +358,11 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
     }
 
     // Vertices 0..4 along a straight chain; distance_to_boundary values are
-    // not read by propagation.rs (only used by centrality.rs's local-maximum
-    // predicate), so any monotonic placeholder is fine here.
+    // not read by `propagate_beadings_upward`/`_downward` themselves (only by
+    // centrality.rs's local-maximum predicate and, upstream of this test,
+    // `generate_transition_mids` — not called against this hand-built graph;
+    // see `propagation_three_fixtures`'s fixture-2 block), so any monotonic
+    // placeholder is fine here.
     let vertices = vec![
         vertex(0.0, 0.0, 3.0, 3),
         vertex(10.0, 0.0, 4.0, 3),
@@ -396,8 +423,6 @@ fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
             r_max,
             central: true,
             is_curved: false,
-            is_transition_middle: false,
-            is_transition_end: false,
             rib_twin: None,
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
@@ -446,21 +471,19 @@ fn propagation_three_fixtures() {
         propagate_beadings_upward(&mut graph_b);
         propagate_beadings_downward(&mut graph_b);
 
-        let (middle_a, end_a) = markers(&graph_a);
-        let (middle_b, end_b) = markers(&graph_b);
+        let flags_a = transition_flags(&graph_a);
+        let flags_b = transition_flags(&graph_b);
 
         assert_eq!(
-            (&middle_a, &end_a),
-            (&middle_b, &end_b),
+            flags_a, flags_b,
             "uniform fixture: propagation must be deterministic across independent builds of \
              the same input"
         );
 
         assert!(
-            middle_a.iter().all(|&m| !m) && end_a.iter().all(|&e| !e),
+            flags_a.iter().all(|&f| !f),
             "uniform fixture: after propagation the central edges must carry a single effective \
-             bead count and therefore have zero transition markers; got is_transition_middle={middle_a:?}, \
-             is_transition_end={end_a:?}"
+             bead count and therefore have zero transition markers; got has_transition={flags_a:?}"
         );
 
         assert_transitions_imply_differing_neighbor(&graph_a, "uniform");
@@ -469,26 +492,28 @@ fn propagation_three_fixtures() {
             provenance: PROVENANCE.to_string(),
             fixture: "uniform".to_string(),
             edge_count: graph_a.edges.len(),
-            is_transition_middle: middle_a,
-            is_transition_end: end_a,
+            has_transition: flags_a,
         });
     }
 
     // --- Fixture 2: varying (AC-3.2) — hand-built graph literal. ---
     // See `varying_hand_built_graph`'s doc comment for why this is
-    // hand-built rather than tuned from polygon geometry. The exact expected
-    // per-edge markers are worked out and asserted further down (see the
-    // comment block above the `assert_eq!(end_a, ...)` calls below).
+    // hand-built rather than tuned from polygon geometry. This graph is built
+    // directly (bypassing `build_filtered_and_assigned*`, and so bypassing
+    // `generate_transition_mids` too), so `transition_mids` — and therefore
+    // `transition_flags` — is trivially empty here; the fixture instead
+    // exercises `propagate_beadings_upward`/`_downward`'s own
+    // order-independence and determinism directly against known per-vertex
+    // bead counts.
     {
         let mut graph_a = varying_hand_built_graph();
         propagate_beadings_upward(&mut graph_a);
-        let (middle_upward_only, end_upward_only) = markers(&graph_a);
+        let flags_upward_only = transition_flags(&graph_a);
         propagate_beadings_downward(&mut graph_a);
-        let (middle_a, end_a) = markers(&graph_a);
+        let flags_a = transition_flags(&graph_a);
 
         assert_eq!(
-            (&middle_upward_only, &end_upward_only),
-            (&middle_a, &end_a),
+            flags_upward_only, flags_a,
             "varying fixture: transition marking must be order-independent — running \
              propagate_beadings_downward after propagate_beadings_upward must not change \
              markers already settled by the final bead_count state (see propagation.rs's \
@@ -498,20 +523,13 @@ fn propagation_three_fixtures() {
         let mut graph_b = varying_hand_built_graph();
         propagate_beadings_upward(&mut graph_b);
         propagate_beadings_downward(&mut graph_b);
-        let (middle_b, end_b) = markers(&graph_b);
+        let flags_b = transition_flags(&graph_b);
 
         assert_eq!(
-            (&middle_a, &end_a),
-            (&middle_b, &end_b),
+            flags_a, flags_b,
             "varying fixture: propagation must be deterministic across independent builds of \
              the same input"
         );
-
-        // In the faithful pipeline `propagate_beadings_*` no longer set
-        // `is_transition_middle`/`is_transition_end` edge flags. Those flags are
-        // legacy markers from the old from-first-principles adaptation and are
-        // kept only for fixture compatibility; a hand-built graph with no
-        // `TransitionMiddle`s naturally produces zero markers.
 
         assert_transitions_imply_differing_neighbor(&graph_a, "varying");
 
@@ -519,8 +537,7 @@ fn propagation_three_fixtures() {
             provenance: PROVENANCE.to_string(),
             fixture: "varying".to_string(),
             edge_count: graph_a.edges.len(),
-            is_transition_middle: middle_a,
-            is_transition_end: end_a,
+            has_transition: flags_a,
         });
     }
 
@@ -553,12 +570,11 @@ fn propagation_three_fixtures() {
         propagate_beadings_upward(&mut graph_b);
         propagate_beadings_downward(&mut graph_b);
 
-        let (middle_a, end_a) = markers(&graph_a);
-        let (middle_b, end_b) = markers(&graph_b);
+        let flags_a = transition_flags(&graph_a);
+        let flags_b = transition_flags(&graph_b);
 
         assert_eq!(
-            (&middle_a, &end_a),
-            (&middle_b, &end_b),
+            flags_a, flags_b,
             "multi-feature fixture: propagation must be deterministic across independent builds \
              of the same input"
         );
@@ -569,8 +585,7 @@ fn propagation_three_fixtures() {
             provenance: PROVENANCE.to_string(),
             fixture: "multi_feature".to_string(),
             edge_count: graph_a.edges.len(),
-            is_transition_middle: middle_a,
-            is_transition_end: end_a,
+            has_transition: flags_a,
         });
     }
 }
@@ -601,17 +616,15 @@ fn propagation_fills_gap_from_central_neighbor() {
     );
 
     // Filling a gap so both sides now agree (4 == 4) must not spuriously
-    // mark a transition.
+    // populate transition_mids — `propagate_beadings_upward` only ever
+    // touches `bead_count`/`transition_ratio` on vertices, never
+    // `transition_mids` on edges (that's `generate_transition_mids`'s job,
+    // not called in this gap-filling-only test).
     assert!(
-        !graph.edges[0].is_transition_middle
-            && !graph.edges[0].is_transition_end
-            && !graph.edges[2].is_transition_middle
-            && !graph.edges[2].is_transition_end,
-        "gap-filled graph with a single resulting bead_count must have zero transition markers; \
-         got edge0=(middle={}, end={}), edge2=(middle={}, end={})",
-        graph.edges[0].is_transition_middle,
-        graph.edges[0].is_transition_end,
-        graph.edges[2].is_transition_middle,
-        graph.edges[2].is_transition_end
+        graph.edges[0].transition_mids.is_empty() && graph.edges[2].transition_mids.is_empty(),
+        "gap-filled graph must have zero transition_mids entries (propagate_beadings_upward \
+         does not populate them); got edge0={:?}, edge2={:?}",
+        graph.edges[0].transition_mids,
+        graph.edges[2].transition_mids
     );
 }

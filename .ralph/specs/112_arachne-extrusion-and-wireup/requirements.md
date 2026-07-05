@@ -22,9 +22,9 @@
 
 ## Problem Statement
 
-**FORWARD-DEP BLOCKERS (the two remaining are `draft` sibling M2 packets P110 + P111; the M1 predecessors P105 + P109 have shipped):**
-- **FORWARD-DEP on P110 (`draft` — sibling M2 packet):** `SkeletalTrapezoidationGraph`, `voronoi_from_segments`, `arachne/preprocess.rs` (`preprocess_input_outline`, `preprocess_per_color_inputs`), and the NEW `arachne-perimeters` skeleton (empty `LayerModule` impl + `warn!`) do NOT exist in the tree yet. Steps 1–9 assume these symbols will be produced by P110. If P110 is not `status: implemented` at activation time, this packet cannot activate. NOTE: the old 512-line iterative-inset fake was DELETED by P108; P110 creates the fresh skeleton.
-- **FORWARD-DEP on P111 (`draft` — sibling M2 packet):** `BeadingStrategy` trait, `BeadingStrategyFactory`, `BeadingFactoryParams`, and `crates/slicer-core/src/beading/` do NOT exist in the tree yet. Step 2 (bead-count assignment) and Step 9 (wire-up) assume these symbols. If P111 is not `status: implemented` at activation time, this packet cannot activate.
+**FORWARD-DEPS RESOLVED (both P110 and P111 were `draft` sibling M2 packets at refinement time; both are `implemented` as of this packet's activation, alongside the M1 predecessors P105 + P109):**
+- **P110 (`implemented`):** `SkeletalTrapezoidationGraph`, `voronoi_from_segments`, `arachne/preprocess.rs` (`preprocess_input_outline`, `preprocess_per_color_inputs`), and the `arachne-perimeters` skeleton were forward-deps at refinement time; all shipped before Steps 1-9 needed them. NOTE: the old 512-line iterative-inset fake was DELETED by P108; P110 created the fresh skeleton.
+- **P111 (`implemented`):** `BeadingStrategy` trait, `BeadingStrategyFactory`, `BeadingFactoryParams`, and `crates/slicer-core/src/beading/` were forward-deps at refinement time; all shipped before Step 2 (bead-count assignment) and Step 9 (wire-up) needed them.
 - **P109 (`implemented`):** The `perimeter_parity.rs` harness (`crates/slicer-runtime/tests/integration/perimeter_parity.rs`) and the `cube_4color` fixtures from P109's T-100 are PRESENT and green. Step 10 (T-231 fixtures) extends this harness.
 - **P105 (`implemented`):** `LoopType::GapFill` (and `ExtrusionRole::GapFill`) ALREADY exist — P105/T-062b added them additively at schema 4.4.0, both `#[non_exhaustive]`. Gap-fill loops may be emitted directly; there is no longer a forward-dep here.
 

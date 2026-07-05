@@ -204,8 +204,6 @@ fn generate_junctions(
         let mut to_junctions = Vec::with_capacity(effective_count);
 
         for bead in 0..effective_count {
-            let bead_idx = bead as u32;
-
             let (width_start_units, loc_start_units) = if bead < start_len {
                 (
                     beading_start.bead_widths[bead],
@@ -257,6 +255,13 @@ fn generate_junctions(
                 0.0
             };
 
+            // `perimeter_index` is a placeholder here — `bead_idx` duplicates
+            // `ExtrusionLine::inset_idx` and doesn't survive `stitch_extrusions`/
+            // `simplify_toolpaths` reordering junctions anyway. The real
+            // "index within the wall sequence at that vertex" value is
+            // assigned once, pipeline-wide, by
+            // `arachne::pipeline::assign_perimeter_indices` after every
+            // junction-count/order-changing stage has run.
             from_junctions.push(ExtrusionJunction {
                 p: Point3WithWidth {
                     x: sx + (ex - sx) * t_from,
@@ -266,7 +271,7 @@ fn generate_junctions(
                     flow_factor: 1.0,
                     overhang_quartile: None,
                 },
-                perimeter_index: bead_idx,
+                perimeter_index: 0,
             });
             to_junctions.push(ExtrusionJunction {
                 p: Point3WithWidth {
@@ -277,7 +282,7 @@ fn generate_junctions(
                     flow_factor: 1.0,
                     overhang_quartile: None,
                 },
-                perimeter_index: bead_idx,
+                perimeter_index: 0,
             });
         }
 

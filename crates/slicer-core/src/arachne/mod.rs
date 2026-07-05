@@ -33,7 +33,7 @@
 //!
 //! - [`stitch::stitch_extrusions`] (T-225) — joins open polylines across
 //!   small gaps.
-//! - [`simplify::simplify_toolpaths`] (T-226) — Douglas-Peucker polyline
+//! - [`simplify::simplify_toolpaths`] (T-226) — Visvalingam-Whyatt polyline
 //!   simplification, width-preserving.
 //! - [`remove_small::remove_small_lines`] (T-227) — drops degenerate odd,
 //!   non-closed transition slivers.

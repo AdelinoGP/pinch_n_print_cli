@@ -129,12 +129,6 @@ pub struct STHalfEdge {
     /// [`crate::voronoi::HalfEdge::is_curved`]; consumed by Step 4's
     /// parabolic edge discretization.
     pub is_curved: bool,
-    /// Whether this edge sits in the middle of a bead-count transition
-    /// region. Set by Step 3's transition-region propagation pass.
-    pub is_transition_middle: bool,
-    /// Whether this edge sits at the end of a bead-count transition region.
-    /// Set by Step 3's transition-region propagation pass.
-    pub is_transition_end: bool,
     /// For rib edges (`EdgeType::EXTRA_VD`), the synthetic twin edge in the
     /// quad cell that points back toward the spine side. This is the existing
     /// graph `twin` relationship recorded from the rib edge's perspective.
@@ -182,8 +176,6 @@ impl Default for STHalfEdge {
             r_max: 0.0,
             central: false,
             is_curved: false,
-            is_transition_middle: false,
-            is_transition_end: false,
             rib_twin: None,
             quad_cell: None,
             edge_type: super::rib::EdgeType::NORMAL,
@@ -343,8 +335,6 @@ impl SkeletalTrapezoidationGraph {
                     r_max,
                     central: false,
                     is_curved: e.is_curved,
-                    is_transition_middle: false,
-                    is_transition_end: false,
                     rib_twin: None,
                     quad_cell: None,
                     edge_type: super::rib::EdgeType::NORMAL,

@@ -291,8 +291,6 @@ fn centrality_stage_two_whisker_dissolve_is_exercised() {
             r_max,
             central: false,
             is_curved: false,
-            is_transition_middle: false,
-            is_transition_end: false,
             rib_twin: None,
             quad_cell: None,
             edge_type: EdgeType::NORMAL,

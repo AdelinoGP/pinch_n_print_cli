@@ -362,9 +362,26 @@ pub fn run_arachne_pipeline(
     let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
     let stitched = stitch_extrusions(lines, max_gap);
     let simplified = simplify_toolpaths(stitched, params.visvalingam_area_threshold);
-    let final_lines = remove_small_lines(simplified, params.min_length_factor, params.min_width);
+    let mut final_lines =
+        remove_small_lines(simplified, params.min_length_factor, params.min_width);
+
+    assign_perimeter_indices(&mut final_lines);
 
     Ok(final_lines)
+}
+
+/// Assigns each junction's zero-based sequential position within its own
+/// line's `junctions` Vec — `design.md`'s "index within the wall sequence at
+/// that vertex" for `ExtrusionJunction::perimeter_index`. Runs last, after
+/// `stitch_extrusions`/`simplify_toolpaths` have finished changing a line's
+/// junction count and order, so the index is always accurate regardless of
+/// which stages touched a given line.
+fn assign_perimeter_indices(lines: &mut [ExtrusionLine]) {
+    for line in lines.iter_mut() {
+        for (idx, junction) in line.junctions.iter_mut().enumerate() {
+            junction.perimeter_index = idx as u32;
+        }
+    }
 }
 
 #[cfg(test)]

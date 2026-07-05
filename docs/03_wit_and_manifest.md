@@ -402,7 +402,7 @@ package slicer:host-api@1.0.0;
 
 interface host-services {
     use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
-    use slicer:ir-types/ir-handles.{object-id};
+    use slicer:ir-types/ir-handles.{object-id, thick-polyline, extrusion-line, arachne-params};
 
     enum log-level { trace, debug, info, warn, error }
     log: func(level: log-level, message: string);
@@ -420,6 +420,15 @@ interface host-services {
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+
+    // Host-only-algorithm bridges — a guest module cannot link `host-algos`
+    // code (rayon + boostvoronoi are `cfg(not(target_arch = "wasm32"))`
+    // only), so these functions run the real algorithm host-side and marshal
+    // just the result across the WASM boundary. `generate-arachne-walls`
+    // (packet 112) mirrors this same bridge pattern established by
+    // `medial-axis`.
+    medial-axis: func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
+    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
 
     // Monotonic timestamp in microseconds for profiling.
     now-us: func() -> u64;

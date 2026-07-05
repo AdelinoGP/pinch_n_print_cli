@@ -2,17 +2,7 @@
   "provenance": "Self-captured regression baseline: serialized from this crate's own propagate_beadings_upward/propagate_beadings_downward implementation (packet 112 Step 3 / T-222). NOT derived from, and not a substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step, and the transition-marking behavior itself is an intentional from-first-principles adaptation (see propagation.rs's module-level doc comment). Locks in current behavior for regression purposes only.",
   "fixture": "varying",
   "edge_count": 8,
-  "is_transition_middle": [
-    false,
-    false,
-    false,
-    false,
-    false,
-    false,
-    false,
-    false
-  ],
-  "is_transition_end": [
+  "has_transition": [
     false,
     false,
     false,

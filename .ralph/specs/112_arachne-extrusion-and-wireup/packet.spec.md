@@ -31,9 +31,9 @@ Touches `crates/slicer-core/src/skeletal_trapezoidation/` (extend with `centrali
 
 ## Prerequisites and Blockers
 
-- Depends on (the two remaining forward-deps are `draft` **sibling** M2 packets; the M1 predecessor P109 has shipped):
-  - **FORWARD-DEP P110 (`draft` — sibling M2 packet)** — Voronoi wrapper, SkeletalTrapezoidationGraph, parabolic discretization, 9-stage preprocess + T-P96-E per-color MMU, `arachne-perimeters` skeleton. `crates/slicer-core/src/skeletal_trapezoidation/` and `crates/slicer-core/src/arachne/preprocess.rs` do NOT exist in tree until P110 ships.
-  - **FORWARD-DEP P111 (`draft` — sibling M2 packet)** — BeadingStrategy trait + 5 strategies + factory + 11 config keys. `crates/slicer-core/src/beading/` does NOT exist in tree until P111 ships.
+- Depended on at refinement time (both are now `implemented` — resolved before this packet's own activation):
+  - **P110 (`implemented`)** — Voronoi wrapper, SkeletalTrapezoidationGraph, parabolic discretization, 9-stage preprocess + T-P96-E per-color MMU, `arachne-perimeters` skeleton. `crates/slicer-core/src/skeletal_trapezoidation/` and `crates/slicer-core/src/arachne/preprocess.rs` were forward-deps at refinement time; both shipped before this packet activated.
+  - **P111 (`implemented`)** — BeadingStrategy trait + 5 strategies + factory + 11 config keys. `crates/slicer-core/src/beading/` was a forward-dep at refinement time; shipped before this packet activated.
   - **P109 (`implemented`)** — M1 parity harness (`crates/slicer-runtime/tests/integration/perimeter_parity.rs`) is PRESENT and green; T-231's Arachne fixtures extend it.
 - Unblocks:
   - **Perimeter parity at OrcaSlicer M2 level** — this packet is the last M2 implementation packet. M2-DONE flips after T-234 green.
@@ -86,6 +86,7 @@ Touches `crates/slicer-core/src/skeletal_trapezoidation/` (extend with `centrali
 - `docs/02_ir_schemas.md` — record schema bump rationale for `ExtrusionLine` + `ExtrusionJunction` additions — `rg -q 'ExtrusionLine\|ExtrusionJunction' docs/02_ir_schemas.md`
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — D-7/D-9/D-15 closure notes recorded (these IDs live in the roadmap, not `docs/DEVIATION_LOG.md`) — verified by AC-11 shell loop targeting the roadmap. Any NEW M2 deviations added to `docs/DEVIATION_LOG.md` use `D-112-<SLUG>` format per live log convention.
 - `docs/specs/perimeter-modules-orca-parity-roadmap.md` — flip T-220..T-227 + T-230..T-234 rows to DONE; flip M2 milestone marker to DONE — `rg -q 'T-220.*DONE' docs/specs/perimeter-modules-orca-parity-roadmap.md && rg -q 'M2.*DONE\|M2.*shipped\|M2.*complete' docs/specs/perimeter-modules-orca-parity-roadmap.md`
+- `docs/03_wit_and_manifest.md` — `host-services` interface listing names the new `generate-arachne-walls` host-service bridge (added post-refinement, alongside the pre-existing `medial-axis` bridge it mirrors — both were previously undocumented here) — `rg -q 'generate-arachne-walls' docs/03_wit_and_manifest.md && rg -q 'medial-axis' docs/03_wit_and_manifest.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

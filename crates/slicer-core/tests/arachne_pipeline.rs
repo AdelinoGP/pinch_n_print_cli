@@ -111,6 +111,43 @@ fn arachne_pipeline_is_deterministic() {
     assert_eq!(first, second, "pipeline must be deterministic");
 }
 
+/// AC: `ExtrusionJunction::perimeter_index` — "zero-based index within the
+/// wall sequence at that vertex" (`design.md`, packet 112) — is a real,
+/// per-line sequential position, not the placeholder-0 the field carried
+/// before this was implemented. Every line's junctions must read
+/// `0, 1, 2, ...` in order, and (since a square's medial axis produces
+/// several beads) at least one line must have more than one junction so the
+/// assertion is non-trivial.
+#[test]
+fn arachne_pipeline_perimeter_index_is_sequential_per_line() {
+    let square = square_10mm();
+    let params = ArachneParams::default();
+
+    let lines = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
+        .expect("10mm square should produce Ok(lines)");
+
+    assert!(!lines.is_empty(), "expected at least one ExtrusionLine");
+
+    let mut saw_multi_junction_line = false;
+    for line in &lines {
+        if line.junctions.len() > 1 {
+            saw_multi_junction_line = true;
+        }
+        for (expected_idx, junction) in line.junctions.iter().enumerate() {
+            assert_eq!(
+                junction.perimeter_index, expected_idx as u32,
+                "junction {expected_idx} in a line of {} should carry perimeter_index {expected_idx}, got {}",
+                line.junctions.len(),
+                junction.perimeter_index
+            );
+        }
+    }
+    assert!(
+        saw_multi_junction_line,
+        "expected at least one line with >1 junction to make the sequential-index assertion non-trivial"
+    );
+}
+
 /// A long, narrow strip: half-width `half_width_mm` (so full width
 /// `2 * half_width_mm`), running from `x = 0` to `x = length_mm` along the
 /// x-axis, centered on `y = 0`.
