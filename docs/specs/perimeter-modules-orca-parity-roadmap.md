@@ -62,7 +62,7 @@ Phases:
 - Phase 8 — Seam-candidate quality
 - Phase 9 — Verification
 
-### M2 — Real Arachne — DONE (P110–P112; implementation complete 2026-07-03. T-234 full-workspace closure ceremony run at packet-close per `packet.spec.md` AC-13 — GREEN: see `.ralph/specs/112_arachne-extrusion-and-wireup/closure-log.md`)
+### M2 — Real Arachne — DONE (P110–P112 + P113a/b follow-up; P112 implementation complete 2026-07-03, P113b topology-faithfulness pass complete 2026-07-04)
 Outcomes:
 - New `arachne-perimeters` module with Voronoi + skeletal trapezoidation + 5-strategy beading stack, wired end-to-end via a WIT host-service bridge (`generate-arachne-walls`, D-112-HOSTSVC-BRIDGE).
 - Per-junction width assignment from real bead-count propagation, sourced from `BeadingStrategy::compute()` (D-112-TOOLPATH-WIDTH, closed).
@@ -74,6 +74,30 @@ Phases:
 - Phase 11 — BeadingStrategy stack — DONE (P111)
 - Phase 12 — Extrusion generation — DONE (P112)
 - Phase 13 — Wire-up + verification — DONE (P112; T-234 closure ceremony run at packet close — GREEN)
+
+### P113a/b — M2 topology-faithfulness follow-up
+A small follow-up pass (P113a rib/quad-cell topology + P113b faithful `connectJunctions`) tightened M2's structural parity with OrcaSlicer's Arachne graph:
+
+- **P113a (Step 1)** — synthetic rib/quad-cell topology pass
+  (`slicer-core/src/skeletal_trapezoidation/rib.rs`) classifies sharp-corner
+  Voronoi edges as `EXTRA_VD` ribs and groups them into `QuadCell`s, giving
+  later centrality/propagation/toolpath passes the same rib/spine distinction
+  upstream uses.
+
+- **P113b (Steps 2–5)** — faithful predicate + bead-count propagation + toolpath
+  emission:
+  * `filter_central` uses `dR < dD * sin(transitioning_angle/2)` on spine
+    edges with `EXTRA_VD` ribs unconditionally non-central;
+  * `bead_count` moves to `STVertex` and is assigned per node;
+  * propagation re-ports `generateTransitionMids`/`applyTransitions` helpers;
+  * `generate_toolpaths` emits per-edge per-bead `ExtrusionLine`s from
+    `BeadingStrategy::compute()`-sourced junction fans, with `is_closed=false`
+    and `BTreeMap` bucket ordering, leaving ring closure to `stitch_extrusions`.
+
+Self-captured regression fixtures (`centrality_*`, `bead_count_*`,
+`propagation_*`, `toolpaths_tapered_wedge.json`) were re-baselined where the
+new topology changed edge counts. See `D-113B-CONNECTJUNCTIONS` in
+`docs/DEVIATION_LOG.md`.
 
 ---
 

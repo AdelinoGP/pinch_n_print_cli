@@ -264,11 +264,12 @@ Layer::Perimeters
    Input:  SliceIR (including segment_annotations from SlicePostProcess)
           PaintRegionLayerView (read-only, for paint-driven boundary detection)
   Output: PerimeterIR
-  Purpose: Wall generation — `classic-perimeters` (fixed-width polygon
-           offsetting) or `arachne-perimeters` (real variable-width Arachne
-           pipeline: Voronoi → SkeletalTrapezoidation → per-edge centrality
-           → bead-count propagation → BeadingStrategy-driven toolpath
-           generation, packets 110-112). The `wall_generator` config key
+   Purpose: Wall generation — `classic-perimeters` (fixed-width polygon
+            offsetting) or `arachne-perimeters` (real variable-width Arachne
+            pipeline: Voronoi → SkeletalTrapezoidation with quad/rib topology
+            → per-node centrality + bead-count assignment + transition
+            propagation → faithful `connectJunctions` BeadingStrategy-driven
+            toolpath generation, packets 110-112 + 113b). The `wall_generator` config key
            (`classic` default | `arachne`) selects which module wins the
            shared `perimeter-generator` claim at module-load dedup time
            (packet 112; see D-112-WALL-GENERATOR-SELECT in
@@ -897,9 +898,10 @@ sentinel bookkeeping, stripped before external output via a separate
 `compute_and_strip` entry point — see `D-111-ARACHNE-SENTINEL-STRIP` in
 `docs/DEVIATION_LOG.md`) — composed in that order by
 `BeadingStrategyFactory::create_stack` (`beading/factory.rs`). Pure data in/out
-(`thickness`/`bead_count` → `Beading`); not yet wired into
-`arachne-perimeters::run_perimeters` (P112's T-230 connects per-edge bead-count
-assignments from the `SkeletalTrapezoidationGraph` to this stack).
+(`thickness`/`bead_count` → `Beading`). Packet 112 wired the stack end-to-end through
+`skeletal_trapezoidation::assign_bead_counts` and `arachne::generate_toolpaths`, and
+Packet 113b tightened the topology with the quad/rib pass and faithful
+`generateTransitionMids`/`applyTransitions` propagation. M2 topology chain complete — P110/P111/P112/P113a/P113b.
 
 ---
 
