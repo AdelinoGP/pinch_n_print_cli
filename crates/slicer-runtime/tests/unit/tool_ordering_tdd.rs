@@ -97,6 +97,10 @@ fn entity_with_tool(
 /// travel cost rather than tool grouping.
 #[test]
 fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
+    // Serializes against sibling live-dispatch tests sharing
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
+
     // Raw assembly order has tools interleaved:
     // [tool0@30, tool2@10, tool1@0, tool0@20, tool2@15, tool1@5]
     let ordered_entities = vec![
@@ -220,6 +224,10 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
 /// NN behavior with no tool-change emission.
 #[test]
 fn single_tool_layer_emits_no_synthetic_tool_changes() {
+    // Serializes against sibling live-dispatch tests sharing
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
+
     // All entities are tool 0 â€" no tool boundary exists.
     let ordered_entities = vec![
         entity_with_tool(0.0, 0.0, 0, "test-object", 0),
@@ -307,6 +315,10 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
 /// are produced.
 #[test]
 fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
+    // Serializes against sibling live-dispatch tests sharing
+    // HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS. See D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+    let _ordered_entities_guard = crate::common::ordered_entities_counter_lock();
+
     // Already in canonical tool-ascending order: [tool0, tool0, tool1, tool1]
     let ordered_entities = vec![
         entity_with_tool(30.0, 0.0, 0, "test-object", 0), // tool 0

@@ -16,7 +16,7 @@ pub mod wasm_cache;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
@@ -119,6 +119,23 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
         paint_data: None,
         world_z_extent: None,
     }
+}
+
+// ── Ordered-entities counter serialization (D-113B) ───────────────────────
+// `slicer_wasm_host::host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` is a single
+// process-wide `AtomicU32` shared by every test in this binary that drives a
+// real `Layer::PathOptimization` WASM dispatch. Rust's default test harness
+// runs `#[test]` fns concurrently on multiple threads, so a reset+read pair
+// in one test races against increments from unrelated sibling tests unless
+// all of them serialize through this lock for their dispatch critical
+// section. See docs/DEVIATION_LOG.md D-113B-ORDERED-ENTITIES-COUNTER-RACE.
+static ORDERED_ENTITIES_COUNTER_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+pub fn ordered_entities_counter_lock() -> MutexGuard<'static, ()> {
+    ORDERED_ENTITIES_COUNTER_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 pub fn assert_close(actual: f32, expected: f32, label: &str) {
