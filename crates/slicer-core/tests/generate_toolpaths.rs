@@ -336,16 +336,13 @@ fn generate_toolpaths_tapered_wedge() {
     }
 
     // --- (c) Variable widths observable: not every junction width across
-    // the whole output is identical. Per generate_toolpaths.rs's module doc
-    // comment, an earlier per-edge-uniform r_avg width formula collapsed to
-    // a constant across every central edge on *this exact* wedge fixture
-    // (its three surviving central spokes all share nearly identical
-    // r_avg), so width is instead derived per-junction from
-    // `strategy.compute()` called on each endpoint's own local
-    // distance_to_boundary (r_start != r_end along the same tapering spoke
-    // edge, e.g. the apex spoke's r=0 at the tip vs r~99 at the incenter) —
-    // genuine, non-fabricated variation within a single line, not merely
-    // line-to-line.
+    // the whole output is identical. Each edge's junctions carry the width
+    // from its own resolved peak beading's `bead_widths[idx]`
+    // (`generate_junctions`), and different edges along the tapering wedge
+    // have different peak `distance_to_boundary` values (e.g. the apex
+    // spoke's peak near the tip vs a spoke near the incenter), so their
+    // beadings -- and hence their junction widths -- genuinely differ from
+    // edge to edge.
     let all_widths: Vec<f32> = output_a
         .iter()
         .flat_map(|bucket| bucket.iter())

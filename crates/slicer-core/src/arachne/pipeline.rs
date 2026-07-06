@@ -54,8 +54,8 @@ use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
     apply_transitions, assign_bead_counts, filter_central, generate_transition_mids,
-    propagate_beadings_upward, BeadCountError, CentralityParams, SkeletalTrapezoidationGraph,
-    SktError,
+    populate_beading_propagation, propagate_beadings_upward, BeadCountError, CentralityParams,
+    SkeletalTrapezoidationGraph, SktError,
 };
 
 /// Parameters controlling the end-to-end Arachne pipeline.
@@ -356,6 +356,12 @@ pub fn run_arachne_pipeline(
         &mut graph,
         beading_params.default_transition_length,
     );
+
+    // Packet 141 (N7): populate the `BeadingPropagation` side table so
+    // `generate_junctions`'s `get_beding`/`get_nearest_beding` lookups
+    // resolve a real, propagated beading at each peak vertex instead of
+    // falling through to a fresh `strategy.compute()` call every time.
+    populate_beading_propagation(&mut graph, strategy.as_ref());
 
     let buckets = generate_toolpaths(&graph, strategy.as_ref());
     let lines: Vec<ExtrusionLine> = buckets.into_iter().flatten().collect();

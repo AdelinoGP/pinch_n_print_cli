@@ -23,11 +23,14 @@
 //! documented mechanics (`SkeletalTrapezoidation.cpp:2260-2368`), not a
 //! byte-for-byte port:
 //!
-//! - For every central `NORMAL` spine half-edge, [`generate_junctions`]
-//!   builds a `from_junctions` / `to_junctions` fan by calling
-//!   `BeadingStrategy::compute()` once per endpoint and reading each bead's
-//!   width/offset from the returned `Beading` — unchanged from the prior
-//!   implementation.
+//! - For every upward half-edge (ribs included — no type/centrality gate,
+//!   matching canonical `generateJunctions`), [`generate_junctions`] resolves
+//!   ONE `Beading` at the edge's peak (`to`, the higher-`distance_to_boundary`
+//!   endpoint) via the `BeadingPropagation` side table
+//!   ([`crate::skeletal_trapezoidation::SkeletalTrapezoidationGraph::get_beding`]/
+//!   `get_nearest_beding`, falling back to `BeadingStrategy::compute()`), and
+//!   emits only the in-band beads of that single beading, reading each
+//!   junction's width directly from the beading's own `bead_widths[idx]`.
 //! - The outer walk seeds `unprocessed_quad_starts` from every edge whose
 //!   `.prev` is absent (`STHalfEdge::prev == NO_INDEX`) — per packet 113c
 //!   Step 3's graph construction, this is naturally every rib `back_edge`
@@ -43,13 +46,11 @@
 //!   node with the largest `distance_to_boundary` — the quad's peak/widest
 //!   point — mirroring `getQuadMaxRedgeTo`, and splits the quad into a
 //!   start-side arm (`quad[..=peak]`) and an end-side arm
-//!   (`quad[peak + 1..]`). In this crate's topology at most one edge per
-//!   quad is ever central + `NORMAL` (every rib is `EXTRA_VD` and excluded
-//!   from `edge_junctions`), so concatenating the two arms back together
+//!   (`quad[peak + 1..]`). Concatenating the two arms back together
 //!   reproduces the quad's own `.next` order; the split exists for fidelity
-//!   to the documented algorithm and to correctly bound a quad that (in a
-//!   future topology change) contained more than one contributing edge, not
-//!   to reorder anything in today's common case.
+//!   to the documented algorithm and to correctly bound a quad containing
+//!   more than one contributing edge (now the common case: ribs carry real
+//!   junction fans just like spine edges), not to reorder anything.
 //! - The quad's dead-end edge's own `.twin` is the next quad's start
 //!   (mirroring `getNextUnconnected()`,
 //!   `SkeletalTrapezoidationGraph.cpp:183-193`): walking `.next` to a dead
@@ -127,7 +128,7 @@ use slicer_ir::{
 };
 
 use crate::beading::BeadingStrategy;
-use crate::skeletal_trapezoidation::{EdgeType, SkeletalTrapezoidationGraph};
+use crate::skeletal_trapezoidation::SkeletalTrapezoidationGraph;
 use crate::voronoi::{Vertex, NO_INDEX};
 
 /// XY distance below which a generated 2-junction line's own endpoints are
@@ -178,25 +179,34 @@ fn dist_sq_xy(a: Point3WithWidth, b: Point3WithWidth) -> f32 {
 /// Mirrors OrcaSlicer's `generateJunctions`
 /// (`OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2013-2079`):
 ///
-/// - Iterates ALL graph edges with NO centrality gate (ribs included);
-///   the caller's `connectJunctions` quad-chain walk is the one that
-///   filters to contributing edges (`generate_toolpaths.rs:719`).
-/// - For each edge, picks the upward half-edge by `from.R < to.R` (the
-///   `start_vertex`'s `distance_to_boundary` is strictly less than the
-///   resolved `to` vertex's). If neither direction is upward (flat /
-///   downward), `continue` — the OTHER half-edge of the twin will own
-///   the emission (or neither will, for a flat edge).
-/// - Skips flat / same-bead-count edges
-///   (`SkeletalTrapezoidation.cpp:2024-2027`).
-/// - Resolves ONE `Beading` per upward edge at its peak (the `to` vertex)
-///   via [`SkeletalTrapezoidationGraph::get_beding`], falling back to
-///   `strategy.compute(2R, bead_count)` when the side table has no entry
-///   (vertex with a `bead_count` but no propagated beading yet).
-/// - Emits ONLY in-band beads: loop starts at the middle bead index
-///   `(max(1, n) - 1) / 2` (`:2046`); breaks when
-///   `bead_R < end_R` (`:2068`); out-of-band beads are skipped, never
-///   clamped. Beads within `[end_R, start_R]` are interpolated along the
-///   edge; beads near `start_R` snap to the start vertex.
+/// - Iterates ALL graph edges — canonical's own loop (`:2015`,
+///   `for (edge_t& edge_ : graph.edges)`) has NO edge-type or centrality
+///   check anywhere in the function; ribs (`EdgeType::EXTRA_VD`) are genuine
+///   junction carriers, not excluded (finding N1 of the second-pass audit —
+///   the previous implementation's retained `edge.central`/`EXTRA_VD` gates
+///   here were themselves the bug, not a faithful adaptation of one).
+/// - Skips the downward half of each twin pair: `from.R > to.R` continues
+///   (`:2017-2019`) — the OTHER half-edge owns the emission. A flat edge
+///   (both endpoints equal R) has neither half upward, so it is silently
+///   dropped.
+/// - Skips flat / same-bead-count edges (`:2024-2027`): if the from-end
+///   already carries the SAME bead count as the to-end, there is no
+///   transition crossing this edge and hence no in-band bead to emit.
+/// - Resolves ONE `Beading` per upward edge at its **peak** (`to_idx`, the
+///   HIGHER-R endpoint) — `getBeading(edge->to, ...)` at `:2029` — via
+///   [`SkeletalTrapezoidationGraph::get_beding`], falling back to
+///   [`SkeletalTrapezoidationGraph::get_nearest_beding`] and finally to
+///   `strategy.compute(2 * to_r, bead_count)` when the N7 side table has no
+///   entry yet for that vertex.
+/// - Emits ONLY in-band beads: the scan starts at the middle bead index
+///   `(max(1, n) - 1) / 2` (`:2046`) and searches toward index 0 for the
+///   outermost bead whose radius is within the peak's `distance_to_boundary`
+///   (`:2046-2055`), then walks outward from there; the loop breaks once a
+///   bead's radius falls below the edge's lower-R end (`:2068`) — out-of-band
+///   beads are skipped entirely, never clamped onto an endpoint.
+/// - Each emitted junction's width is the resolved beading's OWN
+///   `bead_widths[idx]` (`:2076`, `beading->bead_widths[junction_idx]`) —
+///   never recomputed per bead from a fresh `strategy.compute()` call.
 ///
 /// This entry point is `pub` (not `pub(crate)`) so the
 /// `arachne_junction_upward_half_edge_only` integration test can pin the
@@ -210,9 +220,15 @@ pub fn generate_junctions(
 ) -> BTreeMap<usize, EdgeJunctions> {
     let mut edge_junctions: BTreeMap<usize, EdgeJunctions> = BTreeMap::new();
 
+    // Radius (slicer units) `get_nearest_beding` searches when the peak
+    // vertex has no populated `BeadingPropagation` side-table entry of its
+    // own. Matches OrcaSlicer's `getNearestBeading` 0.1 mm default
+    // (`SkeletalTrapezoidation.cpp:2098-2127`).
+    const NEAREST_BEDING_RADIUS_UNITS: f64 = 0.1 * UNITS_PER_MM;
+
     // Near-start-R snap tolerance: a bead whose `bead_R` lands within this
     // many slicer units of the edge's `start_R` (the peak's
-    // `distance_to_boundary`) snaps its junction to the start vertex
+    // `distance_to_boundary`) snaps its junction to the peak vertex
     // (matching OrcaSlicer's `if (bead_R > start_R - epsilon)` clamp at
     // `SkeletalTrapezoidation.cpp:2064-2077`). 0.01 mm = 100 slicer units at
     // `UNITS_PER_MM = 10_000`. Expressed in the same units as
@@ -221,31 +237,10 @@ pub fn generate_junctions(
     const NEAR_START_R_TOL_UNITS: f64 = 0.01 * UNITS_PER_MM;
 
     for (edge_idx, edge) in graph.edges.iter().enumerate() {
-        // (a) Iterate ALL edges with no centrality gate at the ITERATION
-        // level — the brief's canonical contract is "no centrality gate".
-        // However, the canonical `generateJunctions` only EMITS junction
-        // fans for edges that participate in the `connectJunctions` chain
-        // walk, which is central `NORMAL` edges. Non-central edges and
-        // `EXTRA_VD` ribs visit the loop body (so the upward-half-edge
-        // selection and the beading lookup are exercised on every edge)
-        // but contribute no stored fans — this is the practical
-        // equivalent of "iterate all, emit only contributing" and keeps
-        // the downstream chain walk's domain-start seed and quad walk
-        // correct without inflating the emitted line count.
-        //
-        // The centrality/edge_type gate below is the structural
-        // equivalent of the pre-rewrite gate at `generate_toolpaths.rs:
-        // 198-201` (finding N1), preserved here so the existing
-        // `connectJunctions` chain walk — which seeds
-        // `unprocessed_quad_starts` from `!prev` edges (rib
-        // `back_edge`s) and walks `.next` per quad — still produces
-        // exactly the canonical ring/chain shape.
-        if !edge.central {
-            continue;
-        }
-        if edge.edge_type == EdgeType::EXTRA_VD {
-            continue;
-        }
+        // No type/centrality gate here — see this function's doc comment.
+        // Ribs and non-central edges walk the same selection/beading logic
+        // as any other edge; the downstream domain walk in
+        // `generate_toolpaths` is what threads them into one chain.
         let to_idx = resolve_to_vertex(graph, edge_idx);
         let Some(end_vertex) = graph.vertices.get(to_idx) else {
             continue;
@@ -260,33 +255,21 @@ pub fn generate_junctions(
             continue;
         }
 
-        // (b) Upward half-edge selection: the half-edge that walks from
-        // the LOWER-R vertex to the HIGHER-R vertex. The DOWNWARD
-        // half-edge (whose start_R is the higher R) is `continue`d — the
-        // OTHER half of the twin owns the emission. If both endpoints
-        // share the same R (flat / same-bead-count edge), neither half
-        // is upward and both skip, so the edge is silently dropped from
-        // the result (the per-edge check below also handles the
-        // canonical "skip flat / same-bead-count" early-out at
-        // `SkeletalTrapezoidation.cpp:2024-2027`).
+        // Upward half-edge selection: the half-edge that walks from the
+        // LOWER-R vertex to the HIGHER-R vertex. The DOWNWARD half-edge
+        // (whose start_R is the higher R) is `continue`d — the OTHER half
+        // of the twin owns the emission. A flat edge (equal R) has neither
+        // half upward, so both skip and the edge is silently dropped.
         let from_r = start_vertex.distance_to_boundary;
         let to_r = end_vertex.distance_to_boundary;
         if from_r >= to_r {
             continue;
         }
 
-        // (c) Skip flat / same-bead-count edges
-        // (`SkeletalTrapezoidation.cpp:2024-2027`): the from-end's
-        // `distance_to_boundary` lies on the boundary-side, the to-end's
-        // on the peak-side, and the beading is computed at the peak (the
-        // to-end). If the two endpoints share the same bead count (no
-        // transition crossing this edge), there is no in-band bead to
-        // emit — every bead of the peak's beading is either entirely
-        // above the to-end or entirely below the from-end, and the loop
-        // will break on the first iteration. We short-circuit here to
-        // avoid the per-bead work for the common flat-spine case
-        // (AC-1's 20x4 mm rectangle has a long flat horizontal spine
-        // edge that the canonical algorithm skips).
+        // Skip flat / same-bead-count edges
+        // (`SkeletalTrapezoidation.cpp:2024-2027`): if the from-end already
+        // carries the same bead count as the to-end (peak), there is no
+        // transition crossing this edge and hence no in-band bead to emit.
         let from_bc = start_vertex.bead_count;
         if let Some(from_bc_val) = from_bc {
             if from_bc_val == bead_count {
@@ -294,41 +277,18 @@ pub fn generate_junctions(
             }
         }
 
-        // (d) Compute ONE beading at the boundary-side vertex
-        // (`edge.from`, the lower-R endpoint) via the N7-side-table
-        // accessor `get_beding(from.id)`, falling back to
-        // `strategy.compute(2 * from_r, bead_count)` when the side
-        // table has no entry.
-        //
-        // **Packet 141 Step 2 (N1) second-pass audit fix:** if the
-        // boundary-side beading is empty (the boundary-side vertex
-        // has `distance_to_boundary == 0`, so `strategy.compute(0,
-        // bc)` returns the early-out "no beads" beading), fall back
-        // to the **peak-side beading** (`strategy.compute(2 *
-        // to_r, bead_count)`). The peak-side beading is non-empty
-        // (the peak vertex has a real `distance_to_boundary > 0`)
-        // and its `toolpath_locations` span the edge's `[from_r,
-        // to_r]` band, so the in-band loop below emits one junction
-        // per in-band bead — the same junctions the canonical
-        // `generateJunctions` would emit by reading the peak's
-        // beading directly. The per-junction width is then derived
-        // from `strategy.compute()` on the junction's own
-        // interpolated R (see the in-band loop below), producing
-        // genuine within-line variation as `r_start != r_end` along
-        // the same spoke — matching the
-        // `generate_toolpaths_tapered_wedge` oracle's
-        // "observable width variation across junctions" requirement.
-        let from_idx = edge.start_vertex;
-        let boundary_beding = match graph.get_beding(from_idx) {
+        // Resolve ONE beading at the peak (`to_idx`, the higher-R vertex) —
+        // matches canonical's `getBeading(edge->to, ...)`. The N7 side table
+        // is checked first (exact populated entry, then a bounded nearest-
+        // neighbor search); `strategy.compute()` is the last-resort fallback
+        // for a graph whose side table was never populated (e.g. a caller
+        // that skips `populate_beading_propagation`).
+        let peak_beading = match graph.get_beding(to_idx) {
             Some(b) if !b.bead_widths.is_empty() => b.clone(),
-            _ => {
-                // Boundary-side beading is empty (or absent) — fall
-                // back to the peak-side beading. The peak vertex's
-                // own `get_beding` is also typically empty (the
-                // test pipeline doesn't call `populate_beading_`
-                // `propagation`), so call the strategy directly.
-                strategy.compute(2.0 * to_r, bead_count as usize)
-            }
+            _ => match graph.get_nearest_beding(to_idx, NEAREST_BEDING_RADIUS_UNITS) {
+                Some(b) if !b.bead_widths.is_empty() => b.clone(),
+                _ => strategy.compute(2.0 * to_r, bead_count as usize),
+            },
         };
 
         // Hot-path invariant from `Beading`'s doc: `bead_widths` and
@@ -339,38 +299,22 @@ pub fn generate_junctions(
         // regression in either surfaces here, on the first `generate_`
         // call after the bug lands, not deep in a downstream consumer.
         debug_assert_eq!(
-            boundary_beding.bead_widths.len(),
-            boundary_beding.toolpath_locations.len(),
-            "peak beading at vertex {to_idx} violates bead_widths.len() == toolpath_locations.len()"
+            peak_beading.bead_widths.len(),
+            peak_beading.toolpath_locations.len(),
+            "beading at peak vertex {to_idx} violates bead_widths.len() == toolpath_locations.len()"
         );
-        let n = boundary_beding.bead_widths.len();
+        let n = peak_beading.bead_widths.len();
         if n == 0 {
             continue;
         }
 
-        // (e) In-band bead emission. Loop from the middle bead index
-        // (`(max(1, n) - 1) / 2`, matching `SkeletalTrapezoidation.cpp:
-        // 2046`) and walk OUTWARD (toward smaller indices / lower
-        // toolpath_locations, i.e. toward the model boundary). For each
-        // bead, `bead_R = boundary_beding.toolpath_locations[bead_idx]` is
-        // the bead's center-line offset from the model's outer wall
-        // (see `Beading::toolpath_locations`'s doc); if it lies in the
-        // edge's `[end_R, start_R]` band (here `end_R = from_R`, the
-        // lower-R endpoint, and `start_R = to_R`, the peak), emit one
-        // `from_junction` and one `to_junction` placed on the edge
-        // segment at the same parametric position. Out-of-band beads
-        // are SKIPPED (no clamping, no extrapolation past the edge's
-        // endpoints — this is the fix for finding N1, the PNP
-        // per-endpoint interpolation's `clamp(0.0, 1.0)` on
-        // out-of-band beads).
-        //
-        // The loop terminates when `bead_R < from_r` (the lower-R end
-        // of the edge — we've moved past the band toward the model
-        // boundary). The `(max(1, n) - 1) / 2` start means single-bead
-        // beadings (n = 1) start at index 0, two-bead beadings (n = 2)
-        // also start at 0, and larger beadings start at the middle.
-        let start_r = to_r; // peak side, "start" in the brief's nomenclature
-        let end_r = from_r; // boundary side, "end" in the brief's nomenclature
+        // In-band bead emission. `start_r` = peak (this edge's `to_r`);
+        // `end_r` = boundary-side (this edge's `from_r`) — matching
+        // canonical's own `start_R`/`end_R` naming in `generateJunctions`
+        // (the snap-to-`a` "start node" in the C++ source is the peak, per
+        // the interpolation below).
+        let start_r = to_r;
+        let end_r = from_r;
         let start_r_mm = start_r / UNITS_PER_MM;
         let end_r_mm = end_r / UNITS_PER_MM;
         let from_pos = start_vertex.position;
@@ -380,31 +324,12 @@ pub fn generate_junctions(
         let mut from_junctions: Vec<ExtrusionJunction> = Vec::new();
         let mut to_junctions: Vec<ExtrusionJunction> = Vec::new();
 
-        // Walk from the OUTERMOST bead (index 0, nearest the model
-        // boundary) toward the middle (index `mid`), and stop early
-        // when the next bead's radius falls below the edge's
-        // lower-R end (out of band). The downstream
-        // `chain_junctions_for_bead` indexes this vector by bead
-        // index (`from_j.get(bead)`), so the ordering MUST be
-        // outermost-first to match OrcaSlicer's
-        // `toolpath_locations` ordering (`Beading::toolpath_locations`
-        // doc: "ordered outermost to innermost, index 0 is the bead
-        // closest to the region's outer edge").
-        //
-        // We use the canonical mid-to-outer scan
-        // (`SkeletalTrapezoidation.cpp:2046-2055`) to find the first
-        // in-band index, then walk outward from there so the first
-        // emitted junction is the outermost in-band bead (index 0 in
-        // the output vector). Beads strictly below `end_R` (past the
-        // edge's lower-R end toward the model boundary) are skipped —
-        // they would land OFF the edge if emitted, so the canonical
-        // algorithm drops them (`:2068`).
-        let num_junctions = boundary_beding.toolpath_locations.len();
-        // First pass: find the smallest `bead_idx` whose `bead_R` is
-        // within `start_R` (the peak's `distance_to_boundary`). This
-        // is the outermost bead that should be emitted; beads below
-        // it (smaller indices, closer to the boundary) are out of
-        // band for this edge.
+        // First pass: find the outermost in-band bead index via the
+        // canonical mid-to-outer scan (`SkeletalTrapezoidation.cpp:
+        // 2046-2055`) — start at the middle bead index and walk toward 0
+        // (outward) until a bead's radius is within 1 slicer unit of the
+        // peak's own R.
+        let num_junctions = peak_beading.toolpath_locations.len();
         let mut start_idx: Option<usize> = None;
         {
             let mut scan: isize = (num_junctions.max(1) - 1) as isize / 2;
@@ -413,11 +338,7 @@ pub fn generate_junctions(
                     break;
                 }
                 let idx = scan as usize;
-                let bead_r = boundary_beding.toolpath_locations[idx];
-                // Canonical start-finding loop
-                // (`SkeletalTrapezoidation.cpp:2046-2055`): the
-                // first bead whose radius is within 1 slicer unit of
-                // the peak's R is the outermost in-band bead.
+                let bead_r = peak_beading.toolpath_locations[idx];
                 if bead_r <= start_r + 1.0 {
                     start_idx = Some(idx);
                     break;
@@ -429,168 +350,87 @@ pub fn generate_junctions(
             }
         }
         let Some(start_idx) = start_idx else {
-            // No bead in the peak's beading lies within the edge's
-            // band — e.g. the peak is a single-bead beading whose
-            // only bead sits well below `end_R`. This is a legitimate
-            // "no in-band beads" outcome (the edge contributes no
-            // junctions); store an empty entry so the downstream
-            // chain walk's `contains_key` check correctly skips it.
+            // No bead in the peak's beading lies within the edge's band.
+            // Legitimate "no in-band beads" outcome; store an empty entry
+            // so the downstream chain walk's `contains_key` check skips it.
             edge_junctions.insert(edge_idx, (Vec::new(), Vec::new()));
             continue;
         };
-        // Second pass: emit beads from 0 (outermost) up to
-        // `start_idx` (the outermost in-band bead), in
-        // outermost-to-innermost order. The output vector's
-        // positional index MUST match the bead's index in the
-        // peak beading's `toolpath_locations` so the downstream
-        // `chain_junctions_for_bead`'s `from_j.get(bead)` lookup
-        // returns the correct junction for each `inset_idx =
-        // bead` line. Out-of-band beads (those with `bead_R <
-        // end_R`) are skipped during this walk, leaving the
-        // corresponding positional slot empty in the output
-        // vector (the canonical algorithm drops them entirely
-        // rather than emitting a placeholder).
-        for idx in 0..=start_idx {
-            let bead_r_units = boundary_beding.toolpath_locations[idx];
+
+        // Second pass: walk DOWNWARD from `start_idx` (the outermost
+        // in-band bead) toward index 0 — matching canonical's own
+        // direction ("the loop walks junction_idx downward and breaks once
+        // bead_R < end_R", `SkeletalTrapezoidation.cpp:2064-2077`). Since
+        // `toolpath_locations` is monotonically increasing with index
+        // (outermost-to-innermost ordering), walking DOWN from `start_idx`
+        // moves toward smaller radii; the walk breaks the first time a
+        // bead's radius drops below the edge's lower-R end (out of band) —
+        // the canonical algorithm drops such beads entirely rather than
+        // clamping them onto an endpoint (`:2068`). Collected in
+        // descending-index order, then reversed so the stored vector is
+        // outermost-first (ascending), matching every other consumer's
+        // "index 0 = outermost" convention.
+        let mut collected: Vec<ExtrusionJunction> = Vec::new();
+        for idx in (0..=start_idx).rev() {
+            let bead_r_units = peak_beading.toolpath_locations[idx];
             let bead_r_mm = bead_r_units / UNITS_PER_MM;
 
-            // Termination: the next-outer bead's radius is below
-            // `end_R` (the boundary-side endpoint's
-            // `distance_to_boundary`). The canonical algorithm
-            // breaks here (`:2068`) — out-of-band beads are
-            // skipped, not clamped to the endpoint.
             if bead_r_mm < end_r_mm {
                 break;
             }
 
-            // In-band check: `bead_R` lies within `[end_R, start_R]`.
-            if bead_r_mm >= end_r_mm && bead_r_mm <= start_r_mm {
-                // Per-junction width derivation (packet 141 Step 2 N1
-                // second-pass audit fix): width is sourced from
-                // `strategy.compute()` called on the junction's own
-                // endpoint R, NOT from the single per-edge
-                // `boundary_beding.bead_widths[idx]`. The previous
-                // per-edge-uniform formula collapsed to a constant
-                // across every central edge on the tapered-wedge
-                // fixture (its three surviving central spokes all
-                // share nearly identical r_avg, so a single
-                // per-edge beading produced identical widths for
-                // every junction on the wedge). Per-junction
-                // `strategy.compute()` on each endpoint's own
-                // local `distance_to_boundary` produces genuine
-                // within-line variation (r_start != r_end along the
-                // same tapering spoke), matching the test's
-                // observable-width-variation oracle.
-                //
-                // The `from_junction` is anchored at the from-end
-                // (boundary side, `r = from_r`); the `to_junction`
-                // is anchored at the to-end (peak side,
-                // `r = to_r`). Their widths come from
-                // `strategy.compute()` on their own endpoint R, so
-                // a multi-edge chain (e.g. the tapered wedge's
-                // ~10-edge spoke ring) sees per-edge width
-                // variation, not a single constant from the
-                // per-edge beading's own bead_widths[idx].
-                let from_junction_width_units = strategy
-                    .compute(2.0 * from_r, bead_count as usize)
-                    .bead_widths
-                    .first()
-                    .copied()
-                    .unwrap_or(0.0);
-                let to_junction_width_units = strategy
-                    .compute(2.0 * to_r, bead_count as usize)
-                    .bead_widths
-                    .first()
-                    .copied()
-                    .unwrap_or(0.0);
-                let from_junction_width_mm = (from_junction_width_units / UNITS_PER_MM) as f32;
-                let to_junction_width_mm = (to_junction_width_units / UNITS_PER_MM) as f32;
+            // Width comes directly from the resolved peak beading's own
+            // array — no per-bead recompute (canonical
+            // `beading->bead_widths[junction_idx]`, `:2076`).
+            let width_units = peak_beading.bead_widths[idx];
+            let width_mm = (width_units / UNITS_PER_MM) as f32;
 
-                // Near-`start_R` snap
-                // (`SkeletalTrapezoidation.cpp:2072-2074`): a bead
-                // whose radius is within `scaled<coord_t>(0.005)` mm
-                // (here `0.01` mm = 100 slicer units, the same
-                // magnitude) of the peak's `distance_to_boundary`
-                // snaps its junction to the peak vertex so a
-                // 3-way intersection downstream sees a single
-                // coincident point instead of a near-coincident
-                // pair.
-                let near_start = (bead_r_units - start_r).abs() <= NEAR_START_R_TOL_UNITS;
-                let (jx, jy) = if near_start {
-                    (ex as f64, ey as f64)
-                } else {
-                    // Mirrors OrcaSlicer's `junction = a + (ab *
-                    // (bead_R - start_R) / (end_R - start_R))` at
-                    // `SkeletalTrapezoidation.cpp:2071`, where
-                    // `a = edge.to.p` (the PEAK) and `ab =
-                    // edge.from.p - edge.to.p` (peak-to-boundary
-                    // vector). With `start_R = to_R` and `end_R =
-                    // from_R` and `delta = end_R - start_R < 0`,
-                    // the interpolation `t = (bead_R - start_R) /
-                    // (end_R - start_R)` is in `[0, 1]` for
-                    // in-band beads and lands the junction on the
-                    // edge at the radial position matching the
-                    // bead. No clamping — `bead_R` is already
-                    // in `[end_R, start_R]`. The junction slides
-                    // from the peak (`t = 0`) toward the
-                    // boundary-side vertex (`t = 1`) as `bead_R`
-                    // decreases.
-                    let t = (bead_r_mm - start_r_mm) / (end_r_mm - start_r_mm);
-                    (
-                        ex as f64 + (sx as f64 - ex as f64) * t,
-                        ey as f64 + (sy as f64 - ey as f64) * t,
-                    )
-                };
-                // The shared XY position for this bead (the beading's
-                // toolpath location interpolated onto the edge). The
-                // `from_junction` and `to_junction` share the same
-                // XY but carry their own per-endpoint widths so a
-                // multi-edge chain sees per-edge width variation
-                // when the chain picks up the first edge's
-                // `from_junctions[bead]` and the last edge's
-                // `to_junctions[bead]` as the chain's two endpoints.
-                let from_junction = ExtrusionJunction {
-                    p: Point3WithWidth {
-                        x: jx as f32,
-                        y: jy as f32,
-                        z: 0.0,
-                        width: from_junction_width_mm,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    },
-                    perimeter_index: 0,
-                };
-                let to_junction = ExtrusionJunction {
-                    p: Point3WithWidth {
-                        x: jx as f32,
-                        y: jy as f32,
-                        z: 0.0,
-                        width: to_junction_width_mm,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    },
-                    perimeter_index: 0,
-                };
-                from_junctions.push(from_junction);
-                to_junctions.push(to_junction);
-                continue;
-            }
-            // Out-of-band bead: skip (no clamping, no placeholder).
-            // The canonical algorithm drops out-of-band beads
-            // entirely (`:2068`); the downstream
-            // `chain_junctions_for_bead`'s `from_j.get(bead)` /
-            // `to_j.get(bead)` lookups return `None` for missing
-            // indices, which the shared-vertex merge handles by
-            // keeping whichever side has a value.
+            // Near-`start_R` snap (`SkeletalTrapezoidation.cpp:2072-2074`):
+            // a bead whose radius is within `NEAR_START_R_TOL_UNITS` of the
+            // peak's `distance_to_boundary` snaps its junction onto the
+            // peak vertex so a multi-way intersection downstream sees a
+            // single coincident point instead of a near-coincident pair.
+            let near_start = (bead_r_units - start_r).abs() <= NEAR_START_R_TOL_UNITS;
+            let (jx, jy) = if near_start {
+                (ex as f64, ey as f64)
+            } else {
+                // Mirrors OrcaSlicer's `junction = a + (ab * (bead_R -
+                // start_R) / (end_R - start_R))` at
+                // `SkeletalTrapezoidation.cpp:2071`, where `a = edge.to.p`
+                // (the PEAK) and `ab = edge.from.p - edge.to.p`
+                // (peak-to-boundary vector). The junction slides from the
+                // peak (`t = 0`) toward the boundary-side vertex (`t = 1`)
+                // as `bead_R` decreases.
+                let t = (bead_r_mm - start_r_mm) / (end_r_mm - start_r_mm);
+                (
+                    ex as f64 + (sx as f64 - ex as f64) * t,
+                    ey as f64 + (sy as f64 - ey as f64) * t,
+                )
+            };
+
+            // One resolved position + width per bead, written to both the
+            // `from_junctions` and `to_junctions` slots — the canonical
+            // algorithm computes ONE junction per bead per edge; the
+            // from/to split is this crate's own structural scheme (since
+            // packet 112/113) for assigning that single junction to either
+            // role when the domain-chain walk stitches edges together.
+            collected.push(ExtrusionJunction {
+                p: Point3WithWidth {
+                    x: jx as f32,
+                    y: jy as f32,
+                    z: 0.0,
+                    width: width_mm,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+                perimeter_index: 0,
+            });
         }
-
-        // NO clamping of out-of-band beads — they were skipped
-        // above, not projected onto the nearest endpoint. This is
-        // the fix for finding N1: the prior implementation's
-        // `.clamp(0.0, 1.0)` placed out-of-band beads on the
-        // endpoint they were nearest to (the medial axis for flat
-        // edges), inflating the outer-wall junction distance from
-        // the boundary.
+        collected.reverse();
+        for junction in collected {
+            from_junctions.push(junction.clone());
+            to_junctions.push(junction);
+        }
 
         edge_junctions.insert(edge_idx, (from_junctions, to_junctions));
     }
@@ -892,83 +732,6 @@ fn emit_chain_lines(
     }
 }
 
-/// Resolves the next quad's seed edge for the chain walk, given the current
-/// quad's dead-end edge `quad_end`.
-///
-/// The canonical `getNextUnconnected` (OrcaSlicer
-/// `SkeletalTrapezoidationGraph.cpp:183-193`) returns `dead_end.twin`, which
-/// works when the dead end is a central sub-edge whose twin is the next cell's
-/// first sub-edge. In this crate's interleaved-rib topology (packet 113c), a
-/// central spoke's dead end is typically a rib `forth` edge whose twin is the
-/// rib `back` (still in the same cell, no contributing junction data), NOT
-/// the next spoke in the ring.
-///
-/// When `quad_end` is a non-contributing edge (rib or non-central), this
-/// function skips past the rib pair by following the topology from
-/// `quad_end`'s twin's resolved "to" vertex (the spine node the rib pair
-/// was emitted from in
-/// [`crate::skeletal_trapezoidation::graph::Builder::make_rib`]) and
-/// returning the first outgoing central `NORMAL` edge — the next spine
-/// segment in the ring. The chain walk then continues from that spine
-/// segment; the `full_chain` filter in [`generate_toolpaths`] still only
-/// collects contributing edges (those with junction data), so non-
-/// contributing spine segments are walked but not emitted as junctions.
-///
-/// The `unprocessed_quad_starts` membership check is deliberately not
-/// applied here: the chain walk follows the topology freely (the
-/// `unprocessed_quad_starts` set only seeds the outer domain loop, not the
-/// inner topology walk). This is what lets the simple-square fixture's
-/// 4 spokes — each one central edge with a rib pair at the incenter end —
-/// chain into a single ring instead of producing 4 disconnected 2-junction
-/// lines (the AC-4 regression).
-///
-/// If no such edge exists, the ring is exhausted at this vertex and
-/// `NO_INDEX` is returned (the chain walk breaks with `is_closed = false`).
-fn next_quad_start(graph: &SkeletalTrapezoidationGraph, quad_end: usize) -> usize {
-    // Canonical path: dead end is a contributing edge → its twin is the next
-    // cell's first sub-edge. This preserves the existing single-edge-domain
-    // behavior (the `single_edge_domain_emits_each_bead_line_exactly_once`
-    // test fixture) and every other case where the dead end is already on the
-    // ring's contributing-edge chain.
-    let quad_end_edge = match graph.edges.get(quad_end) {
-        Some(e) => e,
-        None => return NO_INDEX,
-    };
-    if quad_end_edge.central && quad_end_edge.edge_type == EdgeType::NORMAL {
-        return quad_end_edge.twin;
-    }
-
-    // Non-contributing dead end (rib or non-central): skip past the rib pair
-    // by finding the next central NORMAL edge at the spine node the rib pair
-    // was emitted from. A rib pair consists of two edges
-    // (`make_rib` creates `forth = push_edge(spine_node, ...)` and
-    // `back = push_edge(..., spine_node)`); the rib `back` resolves to
-    // `spine_node` as its "to" vertex (via `resolve_to_vertex(back) =
-    // back.twin.start_vertex = forth.start_vertex = spine_node`).
-    // The canonical `getNextUnconnected` returns `dead_end.twin`; for a rib
-    // `forth`, that twin is the rib `back` whose resolved "to" vertex is
-    // the spine node — and the next central NORMAL edge starting at that
-    // spine node is the next spine segment in the ring.
-    let spine_node = if quad_end_edge.twin != NO_INDEX {
-        resolve_to_vertex(graph, quad_end_edge.twin)
-    } else {
-        NO_INDEX
-    };
-    if spine_node == NO_INDEX {
-        return NO_INDEX;
-    }
-    for (idx, edge) in graph.edges.iter().enumerate() {
-        if edge.start_vertex != spine_node {
-            continue;
-        }
-        if !edge.central || edge.edge_type != EdgeType::NORMAL {
-            continue;
-        }
-        return idx;
-    }
-    NO_INDEX
-}
-
 /// Emits variable-width toolpath insets from `graph`'s central, bead-counted
 /// edges, sourcing every bead's width and toolpath offset from `strategy`.
 ///
@@ -999,27 +762,15 @@ pub fn generate_toolpaths(
 
     // Seed `unprocessed_quad_starts` per `connectJunctions`
     // (`SkeletalTrapezoidation.cpp:2265-2269`): every edge whose `.prev` is
-    // absent. Packet 113c Step 3's construction guarantees this is every rib
+    // absent — no type/centrality filter, matching canonical exactly.
+    // Packet 113c Step 3's construction guarantees this is every rib
     // `back_edge` (`makeRib` never assigns it a `.prev`) plus each cell's
-    // first transferred edge.
-    //
-    // **Packet 141 Step 2 (N1) addendum:** the canonical `generateJunctions`
-    // iterates ALL edges (no centrality gate — see `generate_junctions`'s
-    // doc comment), so non-central edges and `EXTRA_VD` ribs now carry
-    // junction fans too. The `connectJunctions` chain walk
-    // (`SkeletalTrapezoidation.cpp:2260-2368`) only walks central
-    // `NORMAL` edges — the `central && edge_type == NORMAL` membership
-    // gate is the existing code's structural equivalent of the canonical
-    // "central edge only" domain rule, and the new `generate_junctions`
-    // relies on THIS walk (not its own per-edge gate) to drop non-
-    // contributing edges. Without this filter, the 113c-era seed
-    // (`!prev`) would seed a domain start for every rib's `back_edge`
-    // AND for every non-central twin-pair edge, inflating the emitted
-    // line count by ~2× for simple polygons and by 10×+ for
-    // `cube_4color.3mf`-class multi-color inputs (matching the AC-1
-    // regression the new `outer_wall_closes_for_simple_polygon`
-    // test exposes).
-    let unprocessed_quad_starts: BTreeSet<usize> = graph
+    // first transferred edge. Now that `generate_junctions` emits real
+    // junction fans for ribs too (finding N1), the `full_chain` filter
+    // below (`edge_junctions.contains_key`) is what determines which
+    // visited edges actually contribute — this seed just needs to hit
+    // every domain-start edge, the same set 113c already validated.
+    let mut unprocessed_quad_starts: BTreeSet<usize> = graph
         .edges
         .iter()
         .enumerate()
@@ -1046,25 +797,12 @@ pub fn generate_toolpaths(
         let mut full_chain: Vec<usize> = Vec::new();
         let mut quad_start = poly_domain_start;
         let mut ring_closed = false;
-        // Track every edge the chain walk has already loaded into
-        // `full_chain` so a topology walk that revisits a previously-
-        // visited edge (e.g. looping back through the rib pair to the
-        // originating spine node) breaks the walk rather than emitting
-        // the same junction twice. The canonical `connectJunctions`
-        // uses the `unprocessed_quad_starts` set for the same purpose
-        // (erasing the start of each visited quad); with the
-        // packet-141 Step 2 rib-aware `next_quad_start` fix, the
-        // topology walk needs to follow edges whose `.prev` IS set
-        // (post-`insert_node` spine segments between a transition_mid
-        // and the incenter), so the membership check moves from
-        // `unprocessed_quad_starts` to this per-walk visited set.
-        let mut visited_quads: BTreeSet<usize> = BTreeSet::new();
 
         loop {
-            if !visited_quads.insert(quad_start) {
-                // Already visited by this domain walk — would loop
-                // forever. Stop rather than emitting the same edge
-                // twice.
+            if !unprocessed_quad_starts.remove(&quad_start) {
+                // Already claimed by an earlier domain walk -- stop rather
+                // than re-emitting or looping forever (should not happen on
+                // well-formed topology; defensive only).
                 break;
             }
 
@@ -1074,10 +812,8 @@ pub fn generate_toolpaths(
                 .expect("find_quad always returns at least one edge");
             let peak_pos = quad_peak_position(graph, &quad);
             // Split at the peak (see this module's doc comment on
-            // `quad_peak_position` for why concatenating the two arms back
-            // together reproduces `quad`'s own order in this crate's
-            // topology) and collect every edge that actually carries
-            // junction data (ribs never do).
+            // `quad_peak_position`) and collect every edge that actually
+            // carries junction data (ribs now do too, per N1's fix).
             let (arm_before, arm_after) = quad.split_at(peak_pos + 1);
             for &edge_idx in arm_before.iter().chain(arm_after.iter()) {
                 if edge_junctions.contains_key(&edge_idx) {
@@ -1085,39 +821,11 @@ pub fn generate_toolpaths(
                 }
             }
 
-            // `next_start` is the next quad's seed edge. The canonical
-            // `getNextUnconnected` (OrcaSlicer
-            // `SkeletalTrapezoidationGraph.cpp:183-193`) returns
-            // `dead_end.twin`. That works for the canonical topology where
-            // each cell's last sub-edge's twin is the next cell's first
-            // sub-edge. In this crate's interleaved-rib topology
-            // (packet 113c), the last sub-edge in a spoke is typically
-            // followed by a rib pair (forth → back) whose twin chain
-            // dead-ends at the same spine node, NOT at the next cell's
-            // first sub-edge. For the simple-square fixture (4 spokes
-            // meeting at the incenter, each spoke is one central edge
-            // with a rib pair at the incenter end), `dead_end.twin` from
-            // the rib forth lands on the rib back (already removed or
-            // in a different "domain" by the chain walk's membership
-            // check), so the ring never closes and each spoke is
-            // emitted as its own 2-junction line — a 4× inflation
-            // matching the AC-4 regression.
-            //
-            // The fix: when `quad_end` is a non-contributing edge (rib
-            // or non-central), the ring-continuation hop should skip
-            // past the rib pair to the next central `NORMAL` edge that
-            // starts at the rib pair's spine node. The
-            // `unprocessed_quad_starts` membership check is deliberately
-            // dropped here: the chain walk follows the topology freely
-            // (the `full_chain` filter in the outer loop still only
-            // collects contributing edges, so non-contributing spine
-            // segments are walked but not emitted as junctions). The
-            // `unprocessed_quad_starts` set is only used to seed the
-            // outer domain loop, not to gate the inner topology walk.
-            // The per-walk `visited_quads` set above provides the
-            // cycle-detection the canonical algorithm got from
-            // `unprocessed_quad_starts.erase`.
-            let next_start = next_quad_start(graph, quad_end);
+            let next_start = graph
+                .edges
+                .get(quad_end)
+                .map(|e| e.twin)
+                .unwrap_or(NO_INDEX);
 
             if next_start == NO_INDEX {
                 // Open chain exhausted.
@@ -1126,6 +834,11 @@ pub fn generate_toolpaths(
             if next_start == poly_domain_start {
                 // Ring closed back to this domain's own start.
                 ring_closed = true;
+                break;
+            }
+            if !unprocessed_quad_starts.contains(&next_start) {
+                // Already visited by (or belongs to) a different domain --
+                // stop rather than walking into someone else's territory.
                 break;
             }
             quad_start = next_start;
@@ -1148,7 +861,7 @@ pub fn generate_toolpaths(
 mod tests {
     use super::*;
     use crate::beading::Beading;
-    use crate::skeletal_trapezoidation::{STHalfEdge, STVertex};
+    use crate::skeletal_trapezoidation::{EdgeType, STHalfEdge, STVertex};
 
     /// Deterministic bead-width/location generator for
     /// `single_edge_domain_emits_each_bead_line_exactly_once`: splits
@@ -1197,25 +910,43 @@ mod tests {
     }
 
     /// Builds the smallest possible single central-edge domain: two vertices
-    /// (`v0` at the origin, `distance_to_boundary` = 30mm; `v1` at (100mm,
-    /// 0), `distance_to_boundary` = 10mm) joined by exactly one central
+    /// (`v0` at the origin, `distance_to_boundary` = 8mm; `v1` at (100mm,
+    /// 0), `distance_to_boundary` = 40mm) joined by exactly one central
     /// half-edge (`edge 0`) whose `next` is absent (so `find_quad` returns
     /// the single-edge quad `[0]`) and `prev` is also absent (so `edge 0` is
     /// itself a seeded domain start). `edge 0`'s twin (`edge 1`) is present
     /// (so `resolve_to_vertex` can resolve `v1` as `edge 0`'s "to" vertex,
     /// and the domain walk's `.twin`-hop off `edge 0`'s own dead end lands
     /// back on `edge 0` via `edge 1`'s own dead-end `.twin`, closing this
-    /// domain immediately) but marked non-central so it contributes no
-    /// junction fan of its own — this fixture is deliberately scoped to
-    /// exercise exactly one domain walk emitting exactly once per bead
+    /// domain immediately). `v0`'s `distance_to_boundary` (8mm) is strictly
+    /// less than `v1`'s (40mm) so `edge 0` is genuinely the UPWARD half-edge
+    /// per `generate_junctions`'s `from.R < to.R` selection (finding N1's
+    /// fix); `edge 1` (the downward direction) contributes no junction fan
+    /// regardless of its `central` marker, since its own resolved "to"
+    /// vertex (`v0`) has no `bead_count`.
+    ///
+    /// `bead_count = 4` on `v1` (not 2): under the canonical in-band model
+    /// an ISOLATED edge only ever surfaces roughly half of a peak beading's
+    /// total bead count (the other half conceptually belongs to a mirrored
+    /// edge on the medial axis's other side, which this minimal fixture has
+    /// no twin for), and the canonical mid-index scan
+    /// (`(max(1, n) - 1) / 2`) degenerates to index 0 for `n = 2` — with
+    /// `FixedBeadingStrategy`'s `location[i] = width * (i + 0.5)` and
+    /// `width = thickness / bead_count = (2 * to_r) / bead_count`, `n = 4`
+    /// gives locations `[10mm, 30mm, 50mm, 70mm]` against `to_r = 40mm`: the
+    /// scan starts at `mid = 1` (location 30mm, already `<= to_r`), so the
+    /// emission loop (`0..=mid`) covers indices 0 and 1 (locations 10mm,
+    /// 30mm, both `>= from_r = 8mm`) — genuinely two in-band beads from one
+    /// edge, exercising this fixture's original double-emission regression
     /// (the packet-113b regression this test was written to catch: a
     /// pre-fix implementation that walked `next`/`prev` as two independent
     /// chains from a "peak" edge emitted this same single-edge domain's
-    /// bead segment twice).
+    /// bead segment twice) without relying on the incompatible `n = 2`
+    /// degenerate case.
     fn single_edge_domain_graph() -> SkeletalTrapezoidationGraph {
         let v0 = STVertex {
             position: Vertex { x: 0.0, y: 0.0 },
-            distance_to_boundary: 300_000.0, // 30mm
+            distance_to_boundary: 80_000.0, // 8mm
             bead_count: None,
             transition_ratio: 0.0,
         };
@@ -1224,8 +955,8 @@ mod tests {
                 x: 1_000_000.0, // 100mm
                 y: 0.0,
             },
-            distance_to_boundary: 100_000.0, // 10mm
-            bead_count: Some(2),
+            distance_to_boundary: 400_000.0, // 40mm
+            bead_count: Some(4),
             transition_ratio: 0.0,
         };
 
@@ -1243,8 +974,11 @@ mod tests {
             twin: 0,
             next: NO_INDEX,
             prev: NO_INDEX,
-            // Deliberately non-central: only edge 0 carries junction data,
-            // so this fixture exercises exactly one domain-walk emission.
+            // Non-central only for documentation clarity -- `generate_junctions`
+            // no longer gates on centrality (finding N1); this edge is already
+            // excluded on its own because it is the DOWNWARD half (v1's R=30mm
+            // > v0's R=10mm) and because its resolved "to" vertex (v0) has no
+            // `bead_count`.
             central: false,
             edge_type: EdgeType::NORMAL,
             ..STHalfEdge::default()
@@ -1279,8 +1013,10 @@ mod tests {
 
         let output = generate_toolpaths(&graph, &strategy);
 
-        // bead_count = 2 on the domain edge's "to" vertex means two inset
-        // buckets (one per bead index).
+        // bead_count = 4 on the domain edge's "to" vertex, but only 2 of
+        // those beads fall in-band for this isolated edge (see
+        // `single_edge_domain_graph`'s doc comment) -- two inset buckets
+        // (one per in-band bead index).
         assert_eq!(
             output.len(),
             2,
@@ -1313,17 +1049,24 @@ mod tests {
                 line.junctions.len()
             );
 
-            // The line's own two junctions must not be an exact duplicate of
-            // each other: a degenerate 0-length "line" would also slip past
-            // a bare count check.
-            let start = line.junctions[0].p;
-            let end = line.junctions[1].p;
-            assert!(
-                dist_sq_xy(start, end) > CLOSURE_EPS_MM * CLOSURE_EPS_MM,
-                "inset {}: expected two distinct junction positions, got the same point twice \
-                 ({start:?})",
-                line.inset_idx
-            );
+            // NOTE: the two junctions are expected to be CO-LOCATED here,
+            // not distinct. `generate_junctions` resolves ONE physical
+            // position per bead per edge and writes it into both the
+            // `from_junctions` and `to_junctions` slots (canonical
+            // `generateJunctions` computes one junction per bead, not two);
+            // for a chain of exactly one edge (this fixture's domain),
+            // `chain_junctions_for_bead` pushes that edge's `from_j[bead]`
+            // (chain start) and `to_j[bead]` (chain end) as the line's two
+            // endpoints, which are therefore the same point. This is
+            // independently pinned as the correct contract by
+            // `arachne_junction_upward_half_edge_only.rs`'s
+            // `ac_n1_upward_half_edge_emits_beads_along_radius_band`
+            // ("every from/to junction pair is co-located"). A prior
+            // version of this assertion required the two junctions to be
+            // distinct, which held only under the pre-N1-fix per-endpoint
+            // beading scheme (two different beadings, hence two different
+            // interpolated positions) -- not a real geometric invariant of
+            // an isolated single-edge domain.
         }
 
         // Total ExtrusionLine count across every bucket must be exactly 2
