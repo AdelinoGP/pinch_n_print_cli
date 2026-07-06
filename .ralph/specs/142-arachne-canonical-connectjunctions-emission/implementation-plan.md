@@ -13,14 +13,16 @@
 
 - Task IDs:
   - `none` (N2 — provenanced by `target/arachne_parity_audit_20260706_020657.md` §N2)
-- Objective: Rewrite `chain_junctions_for_bead`/`emit_chain_lines`/`generate_toolpaths` (`generate_toolpaths.rs:401-758`) to the canonical per-quad `connectJunctions` scheme — from/to pairing, `perimeter_index` pop-back merge, `addToolpathSegment` line growth, `new_domain_start` flag. Set `perimeter_index = junction_idx` (bead/inset index) at junction generation (`:315,326`). Delete `assign_perimeter_indices` (`pipeline.rs:384-390`) + its call site (`:373`). Update `arachne_pipeline.rs:122` in place to assert `perimeter_index == line.inset_idx`.
-- Precondition: A1 (`141`) is `status: implemented` — A1's upward-half-edge junction fans exist and the N1 red tests are green.
-- Postcondition: AC-1 (N2 red test) passes — every junction carries `perimeter_index == line.inset_idx`. AC-N1 (`arachne_pipeline.rs:122` updated) passes. N1 red tests stay GREEN. N3, N4 red tests stay RED (Step 2 owns N4).
+- Objective: Rewrite `chain_junctions_for_bead`/`emit_chain_lines`/`generate_toolpaths` (symbol-search — the `:401-758` range is pre-`9367d239`, do not trust literally) to the canonical per-quad `connectJunctions` scheme — from/to pairing, `perimeter_index` pop-back merge, `addToolpathSegment` line growth **including 3-or-more-way junction detection in the domain-chain walk itself** (see `packet.spec.md`'s AC-4 and Goal-section scope correction — this is a REQUIRED part of this step, not optional hardening: the current `find_quad` + plain `.twin`-hop walk drives straight through a genuine branch vertex, e.g. a square's medial-axis center where 4 spokes meet, merging unrelated spokes into one fragmented chain), `new_domain_start` flag. Set `perimeter_index = junction_idx` (bead/inset index) at junction generation (symbol-search `generate_junctions`; was `:315,326` pre-fix). Delete `assign_perimeter_indices` (symbol-search in `pipeline.rs`; was `:384-390` pre-fix) + its call site (was `:373`) — **do not touch the `populate_beading_propagation` call A1 added to this same file.** Update `arachne_pipeline.rs:122` in place to assert `perimeter_index == line.inset_idx`.
+- Precondition: A1's `generate_junctions` fix (commit `9367d239`) is present on this branch — `cargo test -p slicer-core --features host-algos --test arachne_generate_junctions_canonical_regression --no-fail-fast` passes (all 3). **Do NOT require `141`'s `packet.spec.md status: implemented`** — per the reverse-coupling discovery (`packet.spec.md`'s Prerequisites section), 141 cannot reach `implemented` until THIS step's AC-4 is green, so gating on 141's status would deadlock. Gate on the regression-test command above instead.
+- Postcondition: AC-1 (N2 red test) passes — every junction carries `perimeter_index == line.inset_idx`. AC-N1 (`arachne_pipeline.rs:122` updated) passes. **AC-4 passes** — A1's own AC-1/AC-2 (`arachne_parity_red_junction_bands.rs`), `outer_wall_closes_for_simple_polygon`, `generate_toolpaths_tapered_wedge`, `outer_wall_is_closed_ring_for_simple_polygons`, and the 2 `arachne_parity_red_chain_junctions.rs` tests all go GREEN — this is the concrete evidence the 3-way-junction fix actually works, not a "nice to have." `arachne_generate_junctions_canonical_regression.rs`'s 3 tests STAY GREEN (confirms this step didn't reintroduce A1's fixed bugs while rewriting the surrounding chain walk). N3, N4 red tests stay RED (Step 2 owns N4).
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — full-read for this step (primary edit target; A1 already full-read it, but A2's implementer may re-read).
-  - `crates/slicer-core/src/arachne/pipeline.rs` — lines `:360-390` (the `assign_perimeter_indices` deletion + call site).
+  - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — full-read for this step (primary edit target; line numbers shifted significantly at `9367d239`, re-locate by symbol name).
+  - `crates/slicer-core/src/arachne/pipeline.rs` — the `assign_perimeter_indices` deletion + call site (symbol-search; also note the `populate_beading_propagation` call A1 added — do not remove it).
   - `crates/slicer-core/tests/arachne_pipeline.rs` — lines `:120-150` (the in-place update target).
   - `crates/slicer-core/tests/arachne_parity_red_perimeter_index.rs` — full (157 lines); AC-1 oracle.
+  - `crates/slicer-core/tests/arachne_parity_red_junction_bands.rs` — full; AC-4's primary oracle (A1's AC-1/AC-2).
+  - `crates/slicer-core/tests/arachne_generate_junctions_canonical_regression.rs` — full (read-only for this step; pins A1's 3 fixed bugs in isolation — must stay green, do not edit its assertions to make it pass).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs`
   - `crates/slicer-core/src/arachne/pipeline.rs`
@@ -32,27 +34,33 @@
   - `OrcaSlicerDocumented/...` (delegate)
 - Expected sub-agent dispatches:
   - "SUMMARY of `SkeletalTrapezoidation.cpp:2283-2327` `connectJunctions` — explicitly ask for the per-quad from/to pairing + `perimeter_index` pop-back merge; return ≤ 200 words, no code unless asked" — purpose: confirm emission rewrite.
-  - "SUMMARY of `SkeletalTrapezoidation.cpp:2198-2234` `addToolpathSegment` — extend-vs-new-line (10 µm tolerance, same width, `new_domain_start`); return ≤ 200 words" — purpose: confirm line-growth.
+  - "SUMMARY of `SkeletalTrapezoidation.cpp:2198-2234` `addToolpathSegment` — explicitly ask HOW it detects a 3-or-more-way junction (not just the extend-vs-new-line decision) and what it does instead of extending through one; return ≤ 200 words" — purpose: confirm the 3-way detection this step's AC-4 requires, not just line-growth.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_perimeter_index -- n2_junction_perimeter_index_is_bead_index --nocapture`; return FACT (pass) or SNIPPETS (fail + ≤ 20 lines)" — purpose: validate AC-1.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_pipeline -- arachne_pipeline_perimeter_index_is_sequential_per_line --nocapture`; return FACT pass/fail" — purpose: validate AC-N1.
-  - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast`; return FACT pass (expected — N1 stays green)" — purpose: gate A2 didn't regress A1.
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast`; return FACT pass or SNIPPETS (fail)" — purpose: validate AC-4's primary oracle — MUST be pass, not "expected fail", by the end of this step.
+  - "Run `cargo test -p slicer-core --features host-algos --test generate_toolpaths --no-fail-fast`; return FACT pass or SNIPPETS (fail)" — purpose: validate AC-4 (`outer_wall_closes_for_simple_polygon`, `generate_toolpaths_tapered_wedge`).
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_invariants -- outer_wall_is_closed_ring_for_simple_polygons --nocapture`; return FACT pass or SNIPPETS (fail)" — purpose: validate AC-4.
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_chain_junctions --no-fail-fast`; return FACT pass or SNIPPETS (fail)" — purpose: validate AC-4 (`constant_radius_chain_to_junction_lands_at_end_vertex_not_start`, `f3_invariant_chain_has_one_junction_per_endpoint_at_shared_vertex`).
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_generate_junctions_canonical_regression --no-fail-fast`; return FACT pass (all 3 — confirms this step did NOT reintroduce A1's fixed bugs while rewriting the chain walk) or SNIPPETS (fail)" — purpose: regression gate on A1's own fix.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_is_odd_semantics --no-fail-fast`; return FACT fail (expected — N4 stays red, Step 2 owns it)" — purpose: gate scope.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_transition_ends --no-fail-fast`; return FACT fail (expected — N3 stays red)" — purpose: gate scope.
   - "Find all callers of `assign_perimeter_indices`; return LOCATIONS" — purpose: confirm no orphan call sites.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/02_ir_schemas.md` §"Arachne extrusion-line geometry" (lines ~1091-1150) — `ExtrusionJunction`/`ExtrusionLine` field shapes.
-  - `docs/DEVIATION_LOG.md` `D-141-JUNCTION-BANDS` entry — addendum target.
+  - `docs/DEVIATION_LOG.md` `D-141-JUNCTION-BANDS` entry, INCLUDING its 2026-07-06 correction paragraph — read full; this is where AC-4's root cause is documented in detail.
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2283-2327` — delegate.
-  - `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2198-2234` — delegate.
+  - `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2198-2234` — delegate, with the 3-way-detection question above.
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2064-2077` — delegate (`perimeter_index = junction_idx`).
 - Verification:
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_perimeter_index -- n2_junction_perimeter_index_is_bead_index --nocapture 2>&1 | tee target/test-output-a2-step1-ac1.log` — FACT pass.
   - `cargo test -p slicer-core --features host-algos --test arachne_pipeline -- arachne_pipeline_perimeter_index_is_sequential_per_line --nocapture 2>&1 | tee target/test-output-a2-step1-neg1.log` — FACT pass.
-  - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast 2>&1 | tee target/test-output-a2-step1-n1-green.log` — FACT pass (N1 stays green).
+  - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --test generate_toolpaths --test arachne_parity_red_chain_junctions --no-fail-fast 2>&1 | tee target/test-output-a2-step1-ac4.log` — FACT pass (AC-4, all of it).
+  - `cargo test -p slicer-core --features host-algos --test arachne_invariants -- outer_wall_is_closed_ring_for_simple_polygons --nocapture 2>&1 | tee target/test-output-a2-step1-ac4b.log` — FACT pass (AC-4).
+  - `cargo test -p slicer-core --features host-algos --test arachne_generate_junctions_canonical_regression --no-fail-fast 2>&1 | tee target/test-output-a2-step1-a1-regression.log` — FACT pass (A1's 3 bugs stay fixed).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 | tee target/test-output-a2-step1-stays-red.log` — FACT fail (expected — N4/N3 stay red).
-- Exit condition: AC-1 + AC-N1 pass; N1 stays green; N4/N3 stay red; `cargo check -p slicer-core --all-targets` passes.
+- Exit condition: AC-1 + AC-N1 + AC-4 (all of it) pass; A1's bug-regression locks stay green; N4/N3 stay red; `cargo check -p slicer-core --all-targets` passes.
 
 ### Step 2: Canonical `is_odd` per-segment + `passed_odd_edges` + fixture re-baseline + deviation log
 

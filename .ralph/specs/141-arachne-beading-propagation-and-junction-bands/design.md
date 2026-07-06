@@ -16,6 +16,17 @@
 - Packet-specific constraint: **A1 must not remove the π hack (`pipeline.rs:334`) or the 0.1× filter-dist fudge (`pipeline.rs:272-277`).** Those are Packet C's (`144`) scope, strictly after A2. A1's rewrite is gated on the centrality scheme the π hack sustains.
 - Packet-specific constraint: **A1 must not touch `arachne_pipeline.rs:122` or delete `assign_perimeter_indices`.** Both are A2's scope. A1 leaves `perimeter_index = 0` at junction generation.
 - Packet-specific constraint: **WASM staleness does NOT apply** — A1's change surface is `slicer-core`-internal (`arachne/`, `skeletal_trapezoidation/`); no path feeds the guest WASM build (`wit/`, `slicer-macros`, `slicer-sdk`, `slicer-ir`, `slicer-schema`, core-modules). The `wasm-staleness` snippet is intentionally omitted.
+- Packet-specific constraint (added 2026-07-06, see `packet.spec.md`'s "Known
+  Implementation Hazard"): **the beading MUST be resolved at the peak
+  (`edge.to`) always — never at `edge.from` as a primary path with the peak
+  as a fallback — and each junction's width MUST come from that ONE resolved
+  beading's own `bead_widths[idx]`, never a fresh per-bead
+  `strategy.compute()` call.** `generate_junctions` must have NO
+  `edge.central`/`edge.edge_type == EdgeType::EXTRA_VD` gate, and the domain
+  seeding in `generate_toolpaths` must NOT gain a matching filter either —
+  canonical has zero such checks. Run
+  `cargo test -p slicer-core --features host-algos --test arachne_generate_junctions_canonical_regression`
+  after any change to `generate_junctions` to confirm.
 
 ## Code Change Surface
 
@@ -25,6 +36,7 @@
   - `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — `SkeletalTrapezoidationGraph` gains a `beading_propagation: Vec<Beading>` (or `HashMap`) field, initialized empty by `from_polygons`, populated by propagation passes.
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — `generate_junctions` (`:192-334`) rewritten: no centrality gate, upward-half-edge-only skip, flat/same-bead-count skip, single `get_beding` at peak node, in-band beads only (middle-index start, break on `bead_R < end_R`), no clamping, near-`start_R` snap.
   - `crates/slicer-core/tests/arachne_junction_upward_half_edge_only.rs` (NEW) — AC-N1 structural test.
+  - `crates/slicer-core/tests/arachne_generate_junctions_canonical_regression.rs` (NEW, added 2026-07-06 as part of the hazard correction) — AC-3, 3 bug-regression locks isolated from the chain walk.
   - `crates/slicer-core/tests/fixtures/arachne/{centrality_*.json, propagation_*.json, bead_count_tapered_wedge.json, toolpaths_tapered_wedge.json}` — re-baselined via self-capture.
 - Rejected alternatives:
   - **Split N7 into a standalone A0 with a structural test suite** — rejected during grilling (user decision: keep bundled in A1). N7's structural tests are a weak oracle (no parity check); bundling with N1 gives N7 a real acceptance oracle via the N1 red tests.

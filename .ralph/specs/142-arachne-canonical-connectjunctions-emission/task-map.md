@@ -16,7 +16,7 @@ audit findings N2 + N4). The task map documents the crosswalk to
 
 | Entry | Status | This packet's action |
 | --- | --- | --- |
-| `D-141-JUNCTION-BANDS` | Closed (A1) | A2 adds a one-line addendum noting A2 supersedes A1 for the junction-metadata + emission layer (A1 owns geometry; A2 owns metadata + emission). No in-place edits. |
+| `D-141-JUNCTION-BANDS` | Open (A1; closure blocked on this packet's AC-4 — see 141 `packet.spec.md` Prerequisites "Reverse coupling" note) | A2 adds a one-line addendum noting A2 supersedes A1 for the junction-metadata + emission layer (A1 owns geometry; A2 owns metadata + emission). A1 cannot close until A2's AC-4 lands; both flip to `implemented` in the same joint closure commit. No in-place edits to A1's narrative. |
 | `D-142-CONNECTJUNCTIONS-EMISSION` (NEW) | — | A2 creates this entry documenting the N2+N4 fix. |
 | `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` | Closed | Untouched by A2 (A1 already added the inheritance addendum). |
 | `D-113B-CONNECTJUNCTIONS` | Closed | Untouched by A2 (113c already superseded it for graph construction; A2's emission rewrite is the next layer). |

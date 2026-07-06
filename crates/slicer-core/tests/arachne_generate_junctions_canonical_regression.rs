@@ -267,16 +267,8 @@ fn generate_junctions_reads_width_from_beadings_own_array_per_bead_index() {
     // all within the edge's [0.5mm, 10mm] radius band.
     graph.beading_propagation[1] = Some(Beading {
         total_thickness: 20.0 * UNITS_PER_MM,
-        bead_widths: vec![
-            0.3 * UNITS_PER_MM,
-            0.6 * UNITS_PER_MM,
-            0.9 * UNITS_PER_MM,
-        ],
-        toolpath_locations: vec![
-            1.0 * UNITS_PER_MM,
-            5.0 * UNITS_PER_MM,
-            9.0 * UNITS_PER_MM,
-        ],
+        bead_widths: vec![0.3 * UNITS_PER_MM, 0.6 * UNITS_PER_MM, 0.9 * UNITS_PER_MM],
+        toolpath_locations: vec![1.0 * UNITS_PER_MM, 5.0 * UNITS_PER_MM, 9.0 * UNITS_PER_MM],
         left_over: 0.0,
     });
 

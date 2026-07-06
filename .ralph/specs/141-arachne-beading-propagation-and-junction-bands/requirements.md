@@ -66,7 +66,13 @@ silently absorbed.
   nearest lookup (0.1 mm `getNearestBeading` radius). Used by `generate_junctions`
   to compute ONE beading at the peak node (`edge.to`), not per-endpoint.
 - **Canonical `generateJunctions` rewrite** in
-  `crates/slicer-core/src/arachne/generate_toolpaths.rs:192-334`:
+  `crates/slicer-core/src/arachne/generate_toolpaths.rs` (line range
+  `:192-334` is pre-`9367d239`; symbol-search for `generate_junctions`, do
+  not trust the literal range). **See `packet.spec.md`'s "Known
+  Implementation Hazard" section before touching this function again — a
+  first attempt got all three bullets below backwards/missing and only
+  discovered it via a fresh OrcaSlicer ground-truth re-read, not from this
+  document, which was already correct.**
   - iterate ALL graph edges with **no centrality gate** (ribs included — ribs
     are the main junction carriers in constant-bead-count regions);
   - skip non-upward half-edges (`from.R > to.R` → continue,
@@ -77,12 +83,18 @@ silently absorbed.
     → continue, `:2024-2027`) — constant-radius central spine edges carry no
     junctions;
   - compute ONE beading at `edge.to` (the peak node) via `getBeading`
-    (`:2038` area);
+    (`:2038` area) — **the peak, ALWAYS, never `edge.from` as a primary path
+    with the peak only as a fallback**;
   - emit ONLY beads whose `toolpath_locations[idx]` lies within
     `[end_R, start_R]` — loop starts at the middle bead index
     (`(max(1,n)-1)/2`, `:2046`) and `break`s once `bead_R < end_R` (`:2068`);
     out-of-band beads are skipped (never clamped);
-  - near-`start_R` beads snap to the start node (`:2072`).
+  - near-`start_R` beads snap to the start node (`:2072`);
+  - **each emitted junction's width is `beading.bead_widths[idx]` read
+    directly from the ONE resolved (peak) beading** (`beading->bead_widths
+    [junction_idx]`, `:2076`) — never a fresh `strategy.compute(...)` call
+    made per bead/per endpoint; the resolved beading's own array already has
+    the right value at the right index.
 - **`upward_central_edges` centrality gate removal** in
   `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs:126-159`:
   drop the `.filter(|(_, e)| e.central)` so the set matches upstream's

@@ -85,6 +85,19 @@ bead-index semantics, same test name, new assertion).
     `ExtrusionLine` of the inset when the new `from` is within 10 µm of its
     last junction (same width, not a 3-way), else start a new line;
     `new_domain_start` forces a fresh line at each polygon-domain start.
+- **3-or-more-way junction detection in the domain-chain walk itself (added
+  2026-07-06, see `packet.spec.md`'s AC-4)**: not just at the
+  `addToolpathSegment` append-decision level. Once A1's `generate_junctions`
+  fix lands (ribs included, no centrality/type gate — commit `9367d239`), the
+  existing `find_quad` + plain `.twin`-hop walk in `generate_toolpaths` has no
+  way to recognize a genuine branch vertex (3+ edges' quads converging there
+  — e.g. a plain square's medial-axis center, where 4 diagonal spokes meet)
+  and drives straight through it, merging unrelated spokes into one
+  fragmented chain. The walk must detect this (vertex in-degree from
+  contributing edges > 2) and stop/split there, matching what canonical's
+  `addToolpathSegment` "not a 3-way" check would do if it were also consulted
+  at the walk level, not only when appending a specific junction. This is the
+  concrete blocker for A1's own AC-1/AC-2 and 4 other tests — see AC-4.
 - **Canonical `is_odd` per segment** in `generate_toolpaths.rs`: replace
   `is_odd: bead_idx % 2 == 1` (`:632`) with the per-segment rule
   (`SkeletalTrapezoidation.cpp:2344-2354`): `bead_count % 2 == 1`,
@@ -110,9 +123,10 @@ bead-index semantics, same test name, new assertion).
   silently absorb.
 - **Fixture re-baseline (this packet's own stage only)**:
   `crates/slicer-core/tests/fixtures/arachne/toolpaths_tapered_wedge.json` —
-  re-record via self-capture if A1 didn't already cover it (A1 and A2 both
-  touch `generate_toolpaths`; coordinate via commit order — A2 re-baselines
-  only if its emission changes drift the fixture past A1's re-baseline).
+  A1 deliberately did NOT re-record this (it currently fails with an
+  `inset_count` drift): re-recording before AC-4's 3-way-junction fix lands
+  would have locked in still-fragmented output. Re-record via self-capture
+  ONLY after AC-4 is green.
   `crates/slicer-core/tests/fixtures/arachne/stitch_*.json` if the `is_odd`
   grouping change affects the stitch fixtures (likely — `stitch.rs:83` groups
   by `is_odd`).
