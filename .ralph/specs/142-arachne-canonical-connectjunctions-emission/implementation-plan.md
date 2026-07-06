@@ -23,15 +23,128 @@
   - `crates/slicer-core/tests/arachne_parity_red_perimeter_index.rs` — full (157 lines); AC-1 oracle.
   - `crates/slicer-core/tests/arachne_parity_red_junction_bands.rs` — full; AC-4's primary oracle (A1's AC-1/AC-2).
   - `crates/slicer-core/tests/arachne_generate_junctions_canonical_regression.rs` — full (read-only for this step; pins A1's 3 fixed bugs in isolation — must stay green, do not edit its assertions to make it pass).
-- Files allowed to edit (≤ 3):
+- Files allowed to edit (≤ 6) — **expanded 2026-07-06 (first swarm run found AC-4
+  cannot close without three test-fixture corrections that the original ≤3 edit
+  list excluded; see "Known Implementation Hazard" addendum at the end of this
+  step block)**:
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs`
   - `crates/slicer-core/src/arachne/pipeline.rs`
-  - `crates/slicer-core/tests/arachne_pipeline.rs`
+  - `crates/slicer-core/tests/arachne_pipeline.rs` — the `:122` in-place update.
+  - `crates/slicer-core/tests/arachne_parity_red_perimeter_index.rs` — **AC-1
+    fixture correction**: the hand-built graph puts `bead_count: Some(2)` on the
+    LOW-R vertex (`v1`, R=1mm) and leaves the PEAK (`v0`, R=3mm) with
+    `bead_count: None`. Canonical `generateJunctions` resolves the beading at
+    the peak (`getOrCreateBeading(edge->to, ...)`, `SkeletalTrapezoidation.cpp
+    :2029`); with no `bead_count` at the peak, no in-band beads are emitted and
+    no inset>0 line is produced, so the `saw_nonzero_inset` guard fires before
+    the `perimeter_index == inset_idx` assertion can even run. **Fix the
+    fixture**: move `bead_count: Some(2)` to the peak vertex (and set the
+    low-R vertex's `bead_count` to `None` or `Some(1)` as the canonical
+    lower-bead-count side). Do NOT weaken the `perimeter_index == inset_idx`
+    assertion — that is the AC.
+  - `crates/slicer-core/tests/arachne_parity_red_chain_junctions.rs` — **AC-4
+    fixture correction**: both `constant_radius_chain_to_junction_lands_at_end_vertex_not_start`
+    and `f3_invariant_chain_has_one_junction_per_endpoint_at_shared_vertex`
+    build graphs with ALL vertices at `distance_to_boundary: 1_000_000.0`
+    (identical R) — i.e. flat/constant-R central spine edges. Canonical
+    `generateJunctions` skips flat edges (`from_r >= to_r` → continue,
+    `:2017`; same-bead-count skip `:2024-2027`), so no junctions are emitted
+    on these edges and the chain walk has nothing to carry — the "expected at
+    least one inset bucket" failure is correct behavior, not a bug. These
+    fixtures pre-date A1's canonical rewrite and encode the old
+    flat-edge-emits-junctions assumption. **Fix the fixtures**: replace the
+    flat constant-R central edges with upward edges (varying R, e.g.
+    `v0.R = 1_000_000`, `v1.R = 3_000_000`, `v2.R = 1_000_000` — a peak at
+    v1) AND add `EdgeType::EXTRA_VD` rib edges connecting the spine to the
+    boundary-side vertices, so the chain walk routes through ribs as
+    canonical requires. `f3_invariant_junction_widths_are_finite_and_positive`
+    (the 3rd test, currently passing) may also need its fixture checked for
+    the same constant-R issue — verify it still passes after the rib additions;
+    if it was passing only because the flat-edge path happened to produce
+    finite widths, fix it too. Do NOT weaken the
+    `constant_radius_chain_to_junction_...` / `f3_invariant_chain_has_one_junction_...`
+    assertions — those are the ACs.
+  - `crates/slicer-core/tests/arachne_parity_red_junction_bands.rs` — **AC-4
+    oracle; edit ONLY if the 1.7mm-from-boundary failure persists after the
+    chain-walk fix below lands green for `outer_wall_closes_for_simple_polygon`
+    and `outer_wall_is_closed_ring_for_simple_polygons`**. The rectangle/square
+    fixtures here are run through the FULL `run_arachne_pipeline` (not a
+    hand-built graph), so their geometry is real Voronoi output — do NOT edit
+    the fixture geometry. If the 1.7mm failure persists after the chain-walk
+    fix, the failure is in `generate_junctions`'s near-start snap (141's
+    deeper scope) and must be reported as a finding, NOT fixed by editing this
+    test. The only permitted edit to this file is re-recording an
+    assertion-strength-preserving baseline if the chain-walk fix shifts the
+    junction positions within the existing ≤0.6mm/≤0.15mm tolerances and the
+    test was previously passing around a now-corrected edge case — and that
+    edit must be justified in the commit message with the before/after
+    measured values.
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs:632` (`is_odd` — Step 2's scope)
   - `crates/slicer-core/src/arachne/pipeline.rs:334` and `:272-277` (Packet C's π hack / fudge)
   - `crates/slicer-sdk/src/host.rs:717` and `crates/slicer-wasm-host/src/host.rs:1814` (wire-type-transparent; NOT edited)
+  - `crates/slicer-core/tests/arachne_generate_junctions_canonical_regression.rs` — A1's 3 bug-regression locks; read-only; do NOT edit its assertions to make it pass
   - `OrcaSlicerDocumented/...` (delegate)
+
+### Known Implementation Hazard (Step 1) — added 2026-07-06 after first swarm run
+
+**A first swarm run (this session) implemented the chain-walk rewrite +
+3-way-detection + `perimeter_index = bead_idx` + `assign_perimeter_indices`
+deletion + `arachne_pipeline.rs:122` in-place update, and correctly kept A1's
+3 regression locks green and N3/N4 red. It then reported the remaining AC-4
+failures as "pre-existing fixture defects" and self-deferred. Independent
+verification found this was a PARTIAL deflection — two of the three claimed
+"defects" are real work this step must do; the third is a chain-walk bug the
+swarm misattributed to 141. Do not repeat these:**
+
+1. **The 3-way-junction detection must count flat/rib edges, not just upward
+   half-edges.** The first run's `compute_vertex_degree` counted only edges
+   with `from.R < to.R` (upward half-edges); flat/constant-R rib edges
+   contribute 0 to degree, so a vertex reached only by flat ribs (e.g. the
+   medial-axis center of a rectangle, where the constant-R spine meets ribs
+   from both sides) never triggers the 3-way stop — the walk drives straight
+   through it, stitching ribs from opposite sides into one chain, producing
+   the 1.7mm-from-boundary junction (near the spine at R=2mm, not the outer
+   bead at R=0.2mm) on `arachne_parity_red_junction_bands`. Canonical
+   `addToolpathSegment`'s "not a 3-way" check
+   (`SkeletalTrapezoidation.cpp:2198-2234`) is NOT an upward-edge-degree
+   count — it checks whether the vertex is a junction of DISTINCT QUAD
+   DOMAINS. **Before re-implementing, dispatch an OrcaSlicer SUMMARY of
+   `:2198-2234` asking specifically**: "what is the exact predicate that
+   identifies a 3-way (or higher) junction — edge degree, quad-domain count,
+   or something else? Do flat/constant-R edges and rib (`EXTRA_VD`) edges
+   contribute to the count?" The degree counter (or replacement predicate)
+   must account for flat-edge/rib contributions so a constant-R spine vertex
+   where ribs converge is recognized as a branch point.
+
+2. **The three test fixtures above (`arachne_parity_red_perimeter_index.rs`,
+   `arachne_parity_red_chain_junctions.rs`, and conditionally
+   `arachne_parity_red_junction_bands.rs`) are in this step's edit list
+   precisely so AC-4 can close.** The first run's "pre-existing fixture
+   defect" framing for `arachne_parity_red_chain_junctions.rs` was a
+   deflection: `packet.spec.md:127` already anticipated that these fixtures
+   "relied on a flat central edge also emitting to bridge the chain, which
+   canonical's flat-edge skip plus this AC's rib-based connectivity must
+   replace" — replacing that connectivity is THIS step's deliverable, and
+   updating the fixtures to exercise the rib-based path (instead of the
+   removed flat-edge path) is part of that deliverable. Fix the fixtures by
+   adding ribs + varying R as described in each file's edit-list entry above;
+   do NOT weaken the assertions.
+
+3. **Do NOT misattribute chain-walk failures to `generate_junctions` (141).**
+   The first run reported the 1.7mm `arachne_parity_red_junction_bands`
+   failure as a `generate_junctions` "near-start snap" issue owned by 141.
+   A1's 3 regression locks are green; D-141 says `generate_junctions` is
+   "genuinely canonical and ground-truth-verified." A junction landing at
+   1.7mm (near the R=2mm medial axis) on a 4mm rectangle is the chain walk
+   emitting at/near the peak vertex, not `generate_junctions` misplacing the
+   junction — `generate_junctions` produces the correct interpolated outer-
+   bead position, but the chain walk's missing rib-based routing sends it to
+   the peak instead. If the 1.7mm failure persists AFTER the chain-walk fix
+   (#1) lands green for `outer_wall_closes_for_simple_polygon` and
+   `outer_wall_is_closed_ring_for_simple_polygons`, THEN it is a
+   `generate_junctions` concern and must be reported as a finding (not fixed
+   in this step, not deflected).
 - Expected sub-agent dispatches:
   - "SUMMARY of `SkeletalTrapezoidation.cpp:2283-2327` `connectJunctions` — explicitly ask for the per-quad from/to pairing + `perimeter_index` pop-back merge; return ≤ 200 words, no code unless asked" — purpose: confirm emission rewrite.
   - "SUMMARY of `SkeletalTrapezoidation.cpp:2198-2234` `addToolpathSegment` — explicitly ask HOW it detects a 3-or-more-way junction (not just the extend-vs-new-line decision) and what it does instead of extending through one; return ≤ 200 words" — purpose: confirm the 3-way detection this step's AC-4 requires, not just line-growth.
@@ -60,7 +173,7 @@
   - `cargo test -p slicer-core --features host-algos --test arachne_invariants -- outer_wall_is_closed_ring_for_simple_polygons --nocapture 2>&1 | tee target/test-output-a2-step1-ac4b.log` — FACT pass (AC-4).
   - `cargo test -p slicer-core --features host-algos --test arachne_generate_junctions_canonical_regression --no-fail-fast 2>&1 | tee target/test-output-a2-step1-a1-regression.log` — FACT pass (A1's 3 bugs stay fixed).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 | tee target/test-output-a2-step1-stays-red.log` — FACT fail (expected — N4/N3 stay red).
-- Exit condition: AC-1 + AC-N1 + AC-4 (all of it) pass; A1's bug-regression locks stay green; N4/N3 stay red; `cargo check -p slicer-core --all-targets` passes.
+- Exit condition: AC-1 + AC-N1 + AC-4 (all of it) pass; A1's bug-regression locks stay green; N4/N3 stay red; `cargo check -p slicer-core --all-targets` passes. **The three test-fixture corrections in the expanded edit list above are REQUIRED for AC-1 and AC-4's `arachne_parity_red_chain_junctions` sub-tests to pass — they are not optional hardening. If AC-4's `arachne_parity_red_junction_bands` sub-test (the full-pipeline rectangle/square) still fails after the chain-walk fix and the two hand-built fixture corrections, report it as a finding (likely a `generate_junctions` near-start-snap concern for 141's deeper scope) — do NOT defer the entire step on it, and do NOT weaken its assertion.**
 
 ### Step 2: Canonical `is_odd` per-segment + `passed_odd_edges` + fixture re-baseline + deviation log
 
