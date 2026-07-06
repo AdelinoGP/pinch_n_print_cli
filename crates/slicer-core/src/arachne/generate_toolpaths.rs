@@ -173,6 +173,31 @@ fn dist_sq_xy(a: Point3WithWidth, b: Point3WithWidth) -> f32 {
     dx * dx + dy * dy
 }
 
+/// Placeholder `ExtrusionJunction` for filling in-band-break gaps in the
+/// per-bead junction vec (the canonical algorithm skips out-of-band beads
+/// rather than emitting them, so the surviving junctions' `perimeter_index`
+/// values are NOT contiguous from 0). The downstream `chain_junctions_for_bead`
+/// lookup `from_j.get(bead)` only retrieves junctions whose `perimeter_index`
+/// matches `bead`; default entries at other slots are never read because the
+/// `emit_chain_lines` loop iterates `bead_idx` and only calls
+/// `chain_junctions_for_bead(..., bead_idx)` for the junction whose
+/// `perimeter_index == bead_idx`. Kept as a function (not `Default`) because
+/// `ExtrusionJunction` doesn't implement `Default` and we don't want to
+/// proliferate a `Default` impl across the IR crate for this single use.
+fn default_extrusion_junction() -> ExtrusionJunction {
+    ExtrusionJunction {
+        p: Point3WithWidth {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            width: 0.0,
+            flow_factor: 0.0,
+            overhang_quartile: None,
+        },
+        perimeter_index: u32::MAX,
+    }
+}
+
 /// Builds the per-edge `from_junctions` / `to_junctions` fans for every
 /// upward half-edge of the skeletal graph.
 ///
@@ -413,6 +438,7 @@ pub fn generate_junctions(
             // peak vertex so a multi-way intersection downstream sees a
             // single coincident point instead of a near-coincident pair.
             let near_start = (bead_r_units - start_r).abs() <= NEAR_START_R_TOL_UNITS;
+            let t = (bead_r_mm - start_r_mm) / (end_r_mm - start_r_mm);
             let (jx, jy) = if near_start {
                 (ex as f64, ey as f64)
             } else {
@@ -423,36 +449,29 @@ pub fn generate_junctions(
                 // (peak-to-boundary vector). The junction slides from the
                 // peak (`t = 0`) toward the boundary-side vertex (`t = 1`)
                 // as `bead_R` decreases.
-                let t = (bead_r_mm - start_r_mm) / (end_r_mm - start_r_mm);
                 (
                     ex as f64 + (sx as f64 - ex as f64) * t,
                     ey as f64 + (sy as f64 - ey as f64) * t,
                 )
             };
 
-            // One resolved position + width per bead, written to both the
-            // `from_junctions` and `to_junctions` slots — the canonical
-            // algorithm computes ONE junction per bead per edge; the
-            // from/to split is this crate's own structural scheme (since
-            // packet 112/113) for assigning that single junction to either
-            // role when the domain-chain walk stitches edges together.
-            //
-            // `perimeter_index` is the junction's slot position in the
-            // post-reverse `from_junctions` / `to_junctions` vec — i.e.
-            // the bead index that the downstream `emit_chain_lines` loop
-            // will use to look this junction up (`from_j[bead]` /
-            // `to_j[bead]`), which equals `line.inset_idx` for the line
-            // the junction ends up in. This is the N2 contract
-            // (`perimeter_index == line.inset_idx`) the
-            // `arachne_pipeline_perimeter_index_is_sequential_per_line`
-            // and `n2_junction_perimeter_index_is_bead_index` red tests
-            // lock. Setting it to the raw loop `idx` would be wrong when
-            // the in-band break fires before `idx = 0` (a PNP-specific
-            // case the canonical algorithm also handles: see
-            // `SkeletalTrapezoidation.cpp:2064-2077` — the loop walks
-            // `junction_idx` downward and breaks once
-            // `bead_R < end_R`, so the surviving junctions' `junction_idx`
-            // values are NOT contiguous from 0).
+            // `perimeter_index` is the bead/inset index (`junction_idx`) at
+            // generation time (canonical `generateJunctions`:
+            // `SkeletalTrapezoidation.cpp:2064-2077`, `junction.perimeter_index
+            // = junction_idx`); the pop-back merge in `connectJunctions`
+            // (`:2302-2314`) keys on it. This is packet 142's N2 fix —
+            // replaces the pre-fix `perimeter_index: 0` placeholder that was
+            // later overwritten by the pipeline's `assign_perimeter_indices`
+            // post-pass (deleted by 142 alongside this change). Setting it to
+            // the bead index (not the post-reverse slot position) is
+            // critical: when the in-band break fires before `idx = 0`
+            // (a PNP-specific case the canonical algorithm also handles —
+            // see `SkeletalTrapezoidation.cpp:2064-2077`, the loop walks
+            // `junction_idx` downward and breaks once `bead_R < end_R`, so
+            // the surviving junctions' `junction_idx` values are NOT
+            // contiguous from 0), the post-reverse slot position no longer
+            // equals the bead index, and routing the junction to the wrong
+            // inset line corrupts AC-1/AC-2 (the 1.7mm / 5.0mm findings).
             collected.push(ExtrusionJunction {
                 p: Point3WithWidth {
                     x: jx as f32,
@@ -462,16 +481,23 @@ pub fn generate_junctions(
                     flow_factor: 1.0,
                     overhang_quartile: None,
                 },
-                perimeter_index: 0,
+                perimeter_index: idx as u32,
             });
         }
         collected.reverse();
-        for (slot, junction) in collected.iter_mut().enumerate() {
-            junction.perimeter_index = slot as u32;
-        }
+        // Store each junction at its `perimeter_index` (= bead index) slot
+        // so the downstream `chain_junctions_for_bead(chain, bead)` lookup
+        // `from_j.get(bead)` retrieves the correct junction for the line
+        // being built. Storing in push order (slot position) would put the
+        // innermost surviving bead at slot 0 when the in-band break fires
+        // early, routing it to the inset-0 line instead of its correct
+        // inset-N line (the 1.7mm / 5.0mm findings).
+        from_junctions.resize(start_idx + 1, default_extrusion_junction());
+        to_junctions.resize(start_idx + 1, default_extrusion_junction());
         for junction in collected {
-            from_junctions.push(junction.clone());
-            to_junctions.push(junction);
+            let slot = junction.perimeter_index as usize;
+            from_junctions[slot] = junction.clone();
+            to_junctions[slot] = junction;
         }
 
         edge_junctions.insert(edge_idx, (from_junctions, to_junctions));
@@ -729,7 +755,11 @@ fn emit_chain_lines(
     let has_bead = |edge_idx: usize, bead: usize| {
         edge_junctions
             .get(&edge_idx)
-            .map(|(from_j, to_j)| bead < from_j.len().min(to_j.len()))
+            .map(|(from_j, _to_j)| {
+                from_j
+                    .get(bead)
+                    .is_some_and(|j| j.perimeter_index == bead as u32)
+            })
             .unwrap_or(false)
     };
 
