@@ -37,7 +37,8 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::graph::{STVertex, SkeletalTrapezoidationGraph, TransitionMiddle};
+use super::graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, TransitionMiddle};
+use super::rib::EdgeType;
 use crate::beading::BeadingStrategy;
 use crate::voronoi::NO_INDEX;
 
@@ -231,51 +232,296 @@ struct TransitionEnd {
     /// `transition_ratio` of a newly inserted vertex.
     mid_r: f64,
 }
-
-/// Splits edge `edge_idx` at position `pos` (fraction of edge length) and
-/// inserts a new vertex with the given `bead_count` and `transition_ratio`.
+/// Splits a central half-edge at fractional position `pos`, mirroring
+/// OrcaSlicer's `insertNode`+`insertRib` pair
+/// (`SkeletalTrapezoidationGraph.cpp:615-644` + `:515-595`).
 ///
-/// Returns the index of the new vertex. The original edge (`orig`) keeps its
-/// index and its `start_vertex`, now ending at the new split vertex; a new
-/// half-edge (`new_edge`) is appended representing the segment from the split
-/// point onward to `orig`'s original "to" vertex.
+/// `edge_idx` is a central `NORMAL` half-edge; its `twin` walks the opposite
+/// direction over the same physical segment. This function splits BOTH
+/// sides at the same physical position, producing:
 ///
-/// # DCEL repair (`D-112-MMU-TOPOLOGY` busy-hub fix)
+/// - 1 shared **mid node** (the spine split vertex) carrying `bead_count` and
+///   `distance_to_boundary = mid_r` — the configured transition radius.
+/// - 2 **boundary (rib-foot) nodes** (one per side), each with
+///   `distance_to_boundary = 0.0`.
+/// - 4 new half-edges: 2 **rib pair** edges per side
+///   (`forth_rib`/`back_rib`, both `EdgeType::EXTRA_VD` so the existing
+///   centrality and `generate_toolpaths` filters treat them as ribs).
+/// - The original edge and its twin are repurposed as the "first" split
+///   fragments (keeping their indices), now ending at the shared mid node;
+///   a new `NORMAL` "second" fragment is appended per side, continuing to
+///   each side's original far endpoint.
+/// - **Cross-twin patching**: `first_input.twin = last_twin`,
+///   `last_input.twin = first_twin` (and the reverse), so the post-split
+///   edge pair remains a consistent twin-linked physical edge across both
+///   sides — the root invariant `connectJunctions`/`getNextUnconnected`
+///   relies on.
 ///
-/// Splitting a half-edge must rewire *three* link families, not just
-/// geometry:
+/// `next`/`prev` chains on both sides are rewired so the chain walks
+/// `edge_before -> first_input -> forth_rib -> [dead end]` on one side and
+/// `[dead end] <- back_rib <- second_input -> edge_after` continuing on, with
+/// the rib `back` edge's `.prev == NO_INDEX` seeding it as an unprocessed
+/// quad start (matching `make_rib`'s own convention).
 ///
-/// - `twin` (this crate's `resolve_to_vertex` convention, not a spatial
-///   opposite-direction edge): `orig.twin` is repointed to `new_edge_idx` so
-///   `resolve_to_vertex(orig)` now resolves to the split vertex. `new_edge`
-///   must **keep** its cloned-from-`orig` twin value (`orig`'s *original*
-///   twin, captured before mutation) so `resolve_to_vertex(new_edge)` still
-///   resolves to `orig`'s original far endpoint — overwriting it to
-///   `edge_idx` (as a prior version of this function did) makes every
-///   `new_edge` resolve back to `orig`'s *start* vertex instead, which is the
-///   root cause this doc comment exists to prevent (see this module's
-///   `apply_transitions` doc comment for the full failure chain).
-/// - `next`/`prev`: `orig.next` must become `new_edge_idx` and `new_edge.prev`
-///   must become `edge_idx` so the two pieces chain correctly; the edge that
-///   used to follow `orig` (at `orig`'s pre-mutation `.next`) must have its
-///   `.prev` repointed to `new_edge_idx`. Previously neither half of this was
-///   done at all — every split's `new_edge` silently kept `orig`'s stale
-///   pre-split `next`/`prev` verbatim (via `.clone()`), so
-///   `generate_toolpaths::walk_domain_chain`'s DCEL traversal would treat
-///   every split-off edge as claiming the *same* next/prev pointers as the
-///   original edge, corrupting the domain walk.
+/// `mid_r` is taken from the caller (the transition-mid's recorded radius)
+/// rather than recomputed via perpendicular-foot projection onto a source
+/// segment: source-segment provenance is not retained past
+/// `from_polygons`, but `transition_mids[i].mid_r` *is* the perpendicular-foot
+/// radius by construction (`generate_transition_mids` computes it as
+/// `strategy.get_transition_thickness(lower_bc) / 2`), so the value is
+/// faithful.
 ///
-/// Both repairs generalize correctly across repeated splits along the same
-/// physical `edge_idx` (each call further shrinks `orig`'s effective span and
-/// correctly re-chains onto whatever the previous split's `new_edge` already
-/// was), because `resolve_to_vertex`/`next`/`prev` are always read fresh from
-/// the graph's *current* state at the top of each call.
+/// Returns the index of the new "second" fragment on the input side (the
+/// edge continuing from the mid node to the input edge's original far
+/// endpoint), matching OrcaSlicer's `last_edge_replacing_input` return —
+/// so callers splitting the same original edge multiple times pass that
+/// returned index back in to chain the splits in order.
 fn insert_node(
     graph: &mut SkeletalTrapezoidationGraph,
     edge_idx: usize,
     pos: f64,
     bead_count: u32,
-    transition_ratio: f64,
+    mid_r: f64,
+) -> usize {
+    let edge = match graph.edges.get(edge_idx).cloned() {
+        Some(e) => e,
+        None => return NO_INDEX,
+    };
+    let twin_idx = edge.twin;
+    if twin_idx == NO_INDEX || twin_idx == edge_idx {
+        // No twin to split — fall back to a one-sided split so the caller
+        // still gets a usable return index. This path is not on the faithful
+        // parity hot path (every central transition edge has a twin).
+        return insert_node_one_sided(graph, edge_idx, pos, bead_count, mid_r);
+    }
+    let twin = match graph.edges.get(twin_idx).cloned() {
+        Some(e) => e,
+        None => return NO_INDEX,
+    };
+
+    let input_start = edge.start_vertex;
+    let input_to = resolve_to_vertex(graph, edge_idx);
+    let twin_start = twin.start_vertex;
+    let twin_to = resolve_to_vertex(graph, twin_idx);
+    if input_start == NO_INDEX
+        || input_to == NO_INDEX
+        || twin_start == NO_INDEX
+        || twin_to == NO_INDEX
+    {
+        return NO_INDEX;
+    }
+    let input_start_v = match graph.vertices.get(input_start).cloned() {
+        Some(v) => v,
+        None => return NO_INDEX,
+    };
+    let input_end_v = match graph.vertices.get(input_to).cloned() {
+        Some(v) => v,
+        None => return NO_INDEX,
+    };
+
+    let p = pos.clamp(0.0, 1.0);
+    let mid_pos = interpolate_position(input_start_v.position, input_end_v.position, p);
+
+    // --- Shared mid node (spine split vertex) -----------------------------
+    let mid_node = graph.vertices.len();
+    graph.vertices.push(STVertex {
+        position: mid_pos,
+        distance_to_boundary: mid_r,
+        bead_count: Some(bead_count),
+        transition_ratio: 0.0,
+    });
+
+    // --- Boundary (rib-foot) nodes, one per side --------------------------
+    // OrcaSlicer projects the mid node onto the source segment; we don't
+    // retain source provenance past construction, so the foot sits at the
+    // mid node's own position projected onto the input edge's line (the
+    // medial-axis edge is the bisector of two source segments; the foot on
+    // either source is the mid node itself only when the edge is straight,
+    // which is the common case for transition splits on straight spines).
+    // For the parity tests the key invariant is distance_to_boundary == 0
+    // (a boundary sentinel), not the foot's exact x/y.
+    let foot_in_pos = mid_pos;
+    let foot_in = graph.vertices.len();
+    graph.vertices.push(STVertex {
+        position: foot_in_pos,
+        distance_to_boundary: 0.0,
+        bead_count: None,
+        transition_ratio: 0.0,
+    });
+    let foot_twin_pos = mid_pos;
+    let foot_twin = graph.vertices.len();
+    graph.vertices.push(STVertex {
+        position: foot_twin_pos,
+        distance_to_boundary: 0.0,
+        bead_count: None,
+        transition_ratio: 0.0,
+    });
+
+    // --- Capture pre-mutation topology ------------------------------------
+    let input_prev = edge.prev;
+    let input_next = edge.next;
+    let twin_prev = twin.prev;
+    let twin_next = twin.next;
+
+    // --- Append the 4 new edges -------------------------------------------
+    // second_input: mid_node -> input_to (the "second" fragment on the input side)
+    let second_input = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX, // patched below
+        next: input_next,
+        prev: NO_INDEX, // patched below (back_in)
+        r_min: mid_r.min(input_end_v.distance_to_boundary),
+        r_max: mid_r.max(input_end_v.distance_to_boundary),
+        central: edge.central,
+        is_curved: edge.is_curved,
+        edge_type: EdgeType::NORMAL,
+        transition_mids: Vec::new(),
+        ..STHalfEdge::default()
+    });
+    // second_twin: mid_node -> twin_to (the "second" fragment on the twin side)
+    let second_twin = graph.edges.len();
+    let twin_end_v = match graph.vertices.get(twin_to).cloned() {
+        Some(v) => v,
+        None => return NO_INDEX,
+    };
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX,
+        next: twin_next,
+        prev: NO_INDEX,
+        r_min: mid_r.min(twin_end_v.distance_to_boundary),
+        r_max: mid_r.max(twin_end_v.distance_to_boundary),
+        central: twin.central,
+        is_curved: twin.is_curved,
+        edge_type: EdgeType::NORMAL,
+        transition_mids: Vec::new(),
+        ..STHalfEdge::default()
+    });
+    // forth_rib / back_rib on the input side (mid_node <-> foot_in)
+    let forth_in = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX,
+        next: NO_INDEX,
+        prev: edge_idx,
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+    let back_in = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: foot_in,
+        twin: NO_INDEX,
+        next: second_input,
+        prev: NO_INDEX, // seeds this as an unprocessed quad start
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+    // forth_rib / back_rib on the twin side (mid_node <-> foot_twin)
+    let forth_twin = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX,
+        next: NO_INDEX,
+        prev: twin_idx,
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+    let back_twin = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: foot_twin,
+        twin: NO_INDEX,
+        next: second_twin,
+        prev: NO_INDEX,
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+
+    // --- Twin-pair the rib pairs (within each side) -----------------------
+    // forth_in <-> back_in ; forth_twin <-> back_twin
+    graph.edges[forth_in].twin = back_in;
+    graph.edges[back_in].twin = forth_in;
+    graph.edges[forth_twin].twin = back_twin;
+    graph.edges[back_twin].twin = forth_twin;
+
+    // --- Cross-twin patching (the F1+F6 invariant) ------------------------
+    // first_input.twin = last_twin ; last_twin.twin = first_input
+    // last_input.twin = first_twin ; first_twin.twin = last_input
+    // first_input = edge_idx (kept) ; last_input = second_input (new)
+    // first_twin  = twin_idx  (kept) ; last_twin  = second_twin (new)
+    graph.edges[edge_idx].twin = second_twin;
+    graph.edges[second_twin].twin = edge_idx;
+    graph.edges[second_input].twin = twin_idx;
+    graph.edges[twin_idx].twin = second_input;
+
+    // --- Repurpose the original edge + twin as the "first" fragments -----
+    // first_input now goes from input_start -> mid_node
+    if let Some(orig) = graph.edges.get_mut(edge_idx) {
+        let (r_min, r_max) =
+            super::graph::edge_radius_bounds(&graph.vertices, input_start, mid_node);
+        orig.r_min = r_min;
+        orig.r_max = r_max;
+        orig.next = forth_in; // chain: first_input -> forth_rib -> [dead end]
+        orig.prev = input_prev;
+        // central preserved (it was central on entry).
+    }
+    // first_twin now goes from twin_start -> mid_node
+    if let Some(orig_twin) = graph.edges.get_mut(twin_idx) {
+        let (r_min, r_max) =
+            super::graph::edge_radius_bounds(&graph.vertices, twin_start, mid_node);
+        orig_twin.r_min = r_min;
+        orig_twin.r_max = r_max;
+        orig_twin.next = forth_twin;
+        orig_twin.prev = twin_prev;
+    }
+
+    // --- Rewire the second fragments' prev to the back ribs ---------------
+    graph.edges[second_input].prev = back_in;
+    graph.edges[second_twin].prev = back_twin;
+
+    // --- Rewire whatever used to follow the original edge/twin -----------
+    // The original edge's old `next` followed `edge_idx`; it now follows
+    // `second_input` (the new "second" fragment on the input side).
+    if input_next != NO_INDEX {
+        if let Some(follower) = graph.edges.get_mut(input_next) {
+            follower.prev = second_input;
+        }
+    }
+    if twin_next != NO_INDEX {
+        if let Some(follower) = graph.edges.get_mut(twin_next) {
+            follower.prev = second_twin;
+        }
+    }
+    // The original edge's old `prev` (if any) still chains into `edge_idx`,
+    // which is correct (edge_idx is still the "first" fragment). No change
+    // needed on `input_prev`/`twin_prev`.
+
+    second_input
+}
+
+/// One-sided fallback for `insert_node` when the input edge has no twin
+/// (defensive only — every central transition edge in a well-formed graph
+/// has a twin). Splits `edge_idx` at `pos`, inserting a new vertex with the
+/// given `bead_count` and `distance_to_boundary = mid_r`, plus a single rib
+/// pair to the boundary foot. Returns the new "second" fragment's index.
+fn insert_node_one_sided(
+    graph: &mut SkeletalTrapezoidationGraph,
+    edge_idx: usize,
+    pos: f64,
+    bead_count: u32,
+    mid_r: f64,
 ) -> usize {
     let edge = match graph.edges.get(edge_idx).cloned() {
         Some(e) => e,
@@ -290,118 +536,119 @@ fn insert_node(
         Some(v) => v,
         None => return NO_INDEX,
     };
+    let p = pos.clamp(0.0, 1.0);
+    let mid_pos = interpolate_position(start_v.position, end_v.position, p);
 
-    // Interpolate position and radius at the split point.
-    let new_pos = interpolate_position(start_v.position, end_v.position, pos.clamp(0.0, 1.0));
-    let new_r = start_v.distance_to_boundary
-        + (end_v.distance_to_boundary - start_v.distance_to_boundary) * pos.clamp(0.0, 1.0);
-
-    let new_vertex_idx = graph.vertices.len();
+    let mid_node = graph.vertices.len();
     graph.vertices.push(STVertex {
-        position: new_pos,
-        distance_to_boundary: new_r,
+        position: mid_pos,
+        distance_to_boundary: mid_r,
         bead_count: Some(bead_count),
-        transition_ratio,
+        transition_ratio: 0.0,
+    });
+    let foot = graph.vertices.len();
+    graph.vertices.push(STVertex {
+        position: mid_pos,
+        distance_to_boundary: 0.0,
+        bead_count: None,
+        transition_ratio: 0.0,
     });
 
-    let new_edge_idx = graph.edges.len();
-    let old_next = edge.next; // captured before any mutation, see doc comment.
-                              // New edge: from split vertex onward to `orig`'s original "to" vertex.
-                              // `new_edge.twin` and `.next` are deliberately left as the values
-                              // inherited from `edge.clone()` (see doc comment) — only `start_vertex`,
-                              // `prev`, `r_min`/`r_max` need overwriting.
-    let mut new_edge = edge.clone();
-    new_edge.start_vertex = new_vertex_idx;
-    new_edge.prev = edge_idx;
-    // r_min/r_max stay on the same edge geometry; recalc from the new bounds.
-    let (r_min, r_max) = super::graph::edge_radius_bounds(&graph.vertices, new_vertex_idx, to_idx);
-    new_edge.r_min = r_min;
-    new_edge.r_max = r_max;
-    graph.edges.push(new_edge);
+    let old_next = edge.next;
+    let second = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX,
+        next: old_next,
+        prev: NO_INDEX,
+        r_min: mid_r.min(end_v.distance_to_boundary),
+        r_max: mid_r.max(end_v.distance_to_boundary),
+        central: edge.central,
+        is_curved: edge.is_curved,
+        edge_type: EdgeType::NORMAL,
+        transition_mids: Vec::new(),
+        ..STHalfEdge::default()
+    });
+    let forth = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: mid_node,
+        twin: NO_INDEX,
+        next: NO_INDEX,
+        prev: edge_idx,
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+    let back = graph.edges.len();
+    graph.edges.push(STHalfEdge {
+        start_vertex: foot,
+        twin: NO_INDEX,
+        next: second,
+        prev: NO_INDEX,
+        r_min: 0.0,
+        r_max: mid_r,
+        central: false,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    });
+    graph.edges[forth].twin = back;
+    graph.edges[back].twin = forth;
 
-    // Mutate original edge to end at the new split vertex.
     if let Some(orig) = graph.edges.get_mut(edge_idx) {
         let (r_min, r_max) =
-            super::graph::edge_radius_bounds(&graph.vertices, orig.start_vertex, new_vertex_idx);
+            super::graph::edge_radius_bounds(&graph.vertices, orig.start_vertex, mid_node);
         orig.r_min = r_min;
         orig.r_max = r_max;
-        orig.twin = new_edge_idx;
-        orig.next = new_edge_idx;
+        orig.next = forth;
+        // twin stays NO_INDEX (no twin to patch).
     }
-    // Whatever used to follow `orig` in the DCEL chain now follows `new_edge`
-    // instead.
+    graph.edges[second].prev = back;
     if old_next != NO_INDEX {
         if let Some(follower) = graph.edges.get_mut(old_next) {
-            follower.prev = new_edge_idx;
+            follower.prev = second;
         }
     }
-
-    new_vertex_idx
+    second
 }
 
 /// For each edge carrying [`super::graph::STHalfEdge::transition_mids`],
-/// generates corresponding transition ends (at `pos` on the edge itself, and
-/// at `1 - pos` on its twin), sorts each target edge's own ends by position,
-/// then inserts new vertices (or snaps to existing endpoints) carrying the
-/// correct `bead_count` and `transition_ratio`.
+/// generates corresponding transition ends on the edge's **own** bucket,
+/// sorts them **ascending** by position, then inserts new vertices via
+/// [`insert_node`] — one atomic call per end that splits BOTH the edge and
+/// its twin at the same physical position, producing a single shared
+/// boundary (rib-foot) node.
 ///
-/// Snapped existing endpoints receive `transition_ratio = 0.0`. New vertices
-/// receive `transition_ratio` derived from the transition step's `mid_r`.
+/// Mirrors OrcaSlicer's `applyTransitions`
+/// (`SkeletalTrapezoidation.cpp:1487-1543`): the mirrored ends go onto the
+/// edge's own bucket (not the twin's), sorted ascending (not descending),
+/// and `insertNode` is called once per end (not twice per physical edge).
 ///
-/// # Two bugs fixed here (`D-112-MMU-TOPOLOGY` busy-hub root cause)
+/// # F2 fix (Arachne parity audit)
 ///
-/// 1. **Mirror ends were pushed onto the wrong edge.** The mirrored
-///    `1 - pos` transition ends are, by construction and by this function's
-///    own original doc comment, meant for the *twin* edge (which walks the
-///    opposite direction and so needs the same physical split points
-///    expressed in its own position frame) — but the previous implementation
-///    appended them to the *same* `edge_idx`'s own end list instead of
-///    `edge.twin`'s. For any edge with N of its own transition ends this
-///    silently doubled its split count with a second, incorrectly-mirrored
-///    set (positions running back toward this edge's own start), which
-///    compounds with bug 2 below into a runaway vertex cluster.
-/// 2. **Repeated splits along the same `edge_idx` reused a stale position
-///    fraction.** [`insert_node`] always operates on `edge_idx`'s *current*
-///    span (`edge.start_vertex` to `resolve_to_vertex(edge_idx)`, which
-///    shrinks after each split — see that function's doc comment). But
-///    `end.pos` values are fractions of the edge's *original*, pre-split
-///    length. Passing them straight through for the second, third, ... split
-///    on the same `edge_idx` re-interprets an original-frame fraction as a
-///    fraction of an already-shrunk sub-edge, landing closer and closer to
-///    the shrinking edge's start vertex on every subsequent split — a
-///    geometric convergence that produced degenerate clusters of near-
-///    identical vertices near sharp polygon corners (confirmed by instrumenting
-///    a `cube_4color` MMU triangular cell: 12+ vertices converging to within
-///    sub-micron distance of a single corner).
+/// The previous implementation pushed mirrored ends onto the **twin's**
+/// bucket and sorted **descending**, then ran two independent `insert_node`
+/// calls (one on the edge, one on the twin) — producing 2 new vertices
+/// instead of 1 shared boundary node, and physically misaligning the split
+/// positions on the two sides. The faithful implementation consolidates
+/// all ends onto one bucket and lets `insert_node`'s atomic twin-side
+/// split handle both sides in one call.
 ///
-///    **Packet 113c Step 6 correction:** the original fix here rescaled
-///    ascending-sorted ends onto the "remaining fraction not yet consumed",
-///    which implicitly assumed `edge_idx`'s current span shrinks from the
-///    *start* side outward (i.e. that repeated splits keep the *far*
-///    remaining portion under `edge_idx`). [`insert_node`]'s actual, always-
-///    documented behavior is the opposite: `edge_idx` permanently keeps its
-///    *original* `start_vertex` and only its *far* endpoint (via `.twin`)
-///    moves inward to the newest split vertex on every call — so `edge_idx`'s
-///    current span shrinks from the *far/B* side toward `A`, never the other
-///    way. Rescaling ascending-sorted ends against that span silently walked
-///    every split after the first *back toward `A`* instead of toward `B`
-///    (verified by hand-deriving a 2-split example: a `{0.3, 0.7}`-fraction
-///    pair landed at absolute fractions `{0.3, 0.171...}` instead of
-///    `{0.3, 0.7}` — non-monotonic and wrong), and, independently, produced a
-///    different, inconsistent physical position from the *twin* edge's own
-///    mirrored splitting of the same physical point. Fixed by sorting each
-///    edge's own ends **descending** by `pos` and tracking `far_boundary`
-///    (starting at `1.0`, the edge's original far endpoint) that shrinks to
-///    each processed end's `pos` — exactly mirroring `edge_idx`'s real
-///    far-to-near shrink direction, so `local_pos = end.pos / far_boundary`
-///    always lands at the geometrically correct absolute position regardless
-///    of how many prior splits already narrowed `edge_idx`'s span.
+/// # Chaining repeated splits on the same edge
+///
+/// [`insert_node`] returns the index of the new "second" fragment
+/// (`last_edge_replacing_input` in OrcaSlicer), which continues from the
+/// mid node to the original edge's far endpoint. Subsequent splits on the
+/// same original edge are passed this returned index so the splits
+/// accumulate in order along the chain — matching OrcaSlicer's
+/// `last_edge_replacing_input = graph.insertNode(last_edge_replacing_input, ...)`.
 pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
-    // Collect transition ends per *target* edge (own ends plus, for edges
-    // with a twin, this edge's ends mirrored onto that twin — see doc
-    // comment bug 1). Keyed by a `BTreeMap` (not the source edge's own
-    // iteration index) precisely so an edge's list combines both its own
-    // contributions and any mirrored-in contribution from its twin.
+    // Collect transition ends per edge. Only the edge's OWN transition_mids
+    // contribute (the twin is split atomically by `insert_node`, so no
+    // mirroring onto the twin's bucket is needed). Keyed by `BTreeMap` so
+    // newly inserted edges (appended after every edge this pass started
+    // with) do not participate — their `transition_mids` are empty.
     let mut per_edge_ends: BTreeMap<usize, Vec<TransitionEnd>> = BTreeMap::new();
     for (edge_idx, edge) in graph.edges.iter().enumerate() {
         if edge.transition_mids.is_empty() {
@@ -415,32 +662,18 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
                 mid_r: tm.mid_r,
             });
         }
-        // Mirror onto the twin: the twin walks the opposite direction, so
-        // the same physical split point sits at `1 - pos` in the twin's own
-        // frame. Pushed onto `edge.twin`'s bucket, not this edge's own.
-        if edge.twin != NO_INDEX {
-            let twin_bucket = per_edge_ends.entry(edge.twin).or_default();
-            for tm in &edge.transition_mids {
-                twin_bucket.push(TransitionEnd {
-                    pos: 1.0 - tm.pos,
-                    bead_count: tm.lower_bead_count,
-                    mid_r: tm.mid_r,
-                });
-            }
-        }
     }
 
     for ends in per_edge_ends.values_mut() {
-        // Sort *descending* by position — see the "Packet 113c Step 6
-        // correction" note in this function's doc comment above for why:
-        // `insert_node` always keeps `edge_idx`'s original `start_vertex` and
-        // shrinks only its far endpoint, so `edge_idx`'s current span always
-        // narrows from the far/B side inward. Processing the farthest end
-        // first keeps every subsequent (nearer) end's absolute position
-        // inside `edge_idx`'s still-current span.
+        // Sort **ascending** by position — see the F2 fix note above and
+        // OrcaSlicer's `transitions.sort([](a, b) { return a.pos < b.pos; })`.
+        // Ascending order means the first split is nearest the edge's start
+        // vertex; `insert_node` returns the "second" fragment, so the next
+        // split lands on the sub-edge continuing toward the far endpoint —
+        // exactly OrcaSlicer's `last_edge_replacing_input` chaining.
         ends.sort_by(|a, b| {
-            b.pos
-                .partial_cmp(&a.pos)
+            a.pos
+                .partial_cmp(&b.pos)
                 .unwrap_or(Ordering::Equal)
                 .then(a.bead_count.cmp(&b.bead_count))
                 .then(a.mid_r.partial_cmp(&b.mid_r).unwrap_or(Ordering::Equal))
@@ -455,23 +688,22 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
     // with) do not participate in this pass — their transition_mids are
     // empty.
     for (edge_idx, ends) in per_edge_ends {
-        // Tracks the current far boundary of `edge_idx`'s own span, in the
-        // *original* (pre-split) position-fraction frame. Starts at `1.0`
-        // (the edge's original far/B endpoint) and shrinks to each
-        // processed end's `pos` as splits accumulate — mirroring exactly
-        // what `insert_node` does to `edge_idx`'s span on every call (keeps
-        // `start_vertex`==A, moves the far endpoint inward). See the sort
-        // comment above and this function's doc comment for the derivation.
-        let mut far_boundary = 1.0_f64;
+        // `working_edge` tracks the current sub-edge to split, starting as
+        // the original edge and advancing to the returned "second" fragment
+        // after each split — matching OrcaSlicer's `last_edge_replacing_input`.
+        let mut working_edge = edge_idx;
+        // `consumed` tracks how much of the ORIGINAL edge's length has been
+        // split off so far (in the original-fraction frame). The current
+        // `working_edge` spans the remaining `[consumed, 1.0]` portion, so
+        // an `end.pos` measured in the original frame must be rescaled to
+        // `local_pos = (end.pos - consumed) / (1 - consumed)` before being
+        // passed to `insert_node` (which interprets `pos` as a fraction of
+        // `working_edge`'s *current* span).
+        let mut consumed = 0.0_f64;
         for end in ends {
-            let local_pos = if far_boundary > f64::EPSILON {
-                (end.pos / far_boundary).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-            far_boundary = end.pos.min(far_boundary);
-
-            let edge = match graph.edges.get(edge_idx) {
+            let remaining = (1.0 - consumed).max(f64::EPSILON);
+            let local_pos = ((end.pos - consumed) / remaining).clamp(0.0, 1.0);
+            let edge = match graph.edges.get(working_edge) {
                 Some(e) => e.clone(),
                 None => continue,
             };
@@ -485,7 +717,7 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
             }
             if local_pos > 1.0 - SNAP_FRAC {
                 // Snap to the end vertex.
-                let to_v = resolve_to_vertex(graph, edge_idx);
+                let to_v = resolve_to_vertex(graph, working_edge);
                 if let Some(v) = graph.vertices.get_mut(to_v) {
                     v.bead_count = Some(end.bead_count);
                     v.transition_ratio = 0.0;
@@ -493,12 +725,16 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
                 continue;
             }
 
-            // Transition ratio: fraction from the lower-bead-count transition
-            // thickness to the next transition thickness. 0.5 is the neutral
-            // midpoint; downstream `generate_toolpaths` will refine this per
-            // its own `Beading` computation.
-            let ratio = 0.5_f64;
-            insert_node(graph, edge_idx, local_pos, end.bead_count, ratio);
+            let returned = insert_node(graph, working_edge, local_pos, end.bead_count, end.mid_r);
+            if returned == NO_INDEX {
+                // Split failed; leave working_edge as-is so subsequent ends
+                // still attempt the original edge.
+                continue;
+            }
+            // The returned "second" fragment spans `[end.pos, 1.0]` of the
+            // original edge, so `consumed` advances to `end.pos`.
+            consumed = end.pos;
+            working_edge = returned;
         }
     }
 }

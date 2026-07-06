@@ -738,217 +738,187 @@ fn rib_adjacent_two_split_graph() -> SkeletalTrapezoidationGraph {
     }
 }
 
-/// AC-6 dedicated regression test (packet 113c Step 6). Re-derives
-/// `insert_node`/`apply_transitions`'s same-edge-repeated-split correctness
-/// against the NEW interleaved-rib topology from first principles, rather
-/// than assuming the `D-112-MMU-TOPOLOGY` 6th-pass (old-topology) fix
-/// generalizes — see that deviation log entry's 6th-pass section for the
-/// original 3-bug shape this guards against.
+/// AC-6 dedicated regression test (packet 113c Step 6, rewritten for the
+/// 113d parity fix). Verifies `insert_node`/`apply_transitions`'s
+/// same-edge-repeated-split correctness against the faithful OrcaSlicer
+/// `insertNode`+`insertRib` semantics: each split creates 1 shared
+/// mid_node (carrying `bead_count` + `distance_to_boundary = mid_r`) +
+/// 2 boundary foot nodes (`distance_to_boundary = 0`), splits BOTH the
+/// edge and its twin atomically at the same physical position, and
+/// cross-patches the twins.
 ///
-/// This test caught a genuine, distinct 4th bug in `apply_transitions`
-/// (not a regression of the 3 already-fixed ones, and not topology-specific
-/// — it would misbehave under either topology): the same-edge rescale loop
-/// sorted transition ends *ascending* and rescaled each successive `pos`
-/// onto the "remaining fraction toward `B`" — but `insert_node` always keeps
-/// `edge_idx`'s *original* `start_vertex` and only moves its far endpoint
-/// (via `.twin`) inward on every call, so `edge_idx`'s current span actually
-/// shrinks from the far/`B` side toward `A`, not the other way. Ascending
-/// processing therefore rescaled the *second* (and any later) same-edge split
-/// against the wrong span, walking it back toward `A` instead of landing at
-/// its intended absolute position. Fixed by sorting descending and tracking a
-/// shrinking `far_boundary` (see `apply_transitions`'s doc comment and "Apply
-/// splits" loop for the full derivation).
+/// This test supersedes the original 113c version which asserted the OLD
+/// broken behavior (2 fragments per side via independent twin-side
+/// splitting, `transition_ratio = 0.5`, edge count = 8) that the Arachne
+/// parity audit (findings F1, F2, F6) identified as unfaithful to
+/// OrcaSlicer. See `target/arachne_parity_audit_*.md`.
 #[test]
 fn same_edge_splits_near_rib_insertion() {
     let mut graph = rib_adjacent_two_split_graph();
 
+    let n_verts_before = graph.vertices.len();
+    let n_edges_before = graph.edges.len();
+
     apply_transitions(&mut graph);
 
-    // (c) Twin-mirroring must land on E1 (E0's twin)'s own bucket, not back
-    // onto E0's: 4 original edges + 2 new fragments from E0's own splitting +
-    // 2 new fragments from E1's *mirrored* splitting = 8. If bug 1 from the
-    // OLD topology (mirror pushed onto the wrong edge) had regressed, E0
-    // would instead accumulate 4 ends (doubling to 4 splits) while E1 stayed
-    // entirely unsplit — a different, distinguishable edge count and shape.
+    // (a) Two splits on E0 (at pos=0.3 and pos=0.7) must each create:
+    //   - 1 shared mid_node (carrying bead_count, distance_to_boundary = mid_r)
+    //   - 2 boundary foot nodes (distance_to_boundary = 0, bead_count = None)
+    // So 2 splits x 3 new vertices = 6 new vertices total.
+    let n_new_verts = graph.vertices.len() - n_verts_before;
     assert_eq!(
-        graph.edges.len(),
-        8,
-        "expected exactly 2 new fragments from E0's own splitting plus 2 from E1's mirrored \
-         splitting; got {} edges total: {:#?}",
-        graph.edges.len(),
-        graph.edges
+        n_new_verts, 6,
+        "expected 6 new vertices (2 splits x (1 mid_node + 2 foot nodes));          got {n_new_verts}"
     );
 
-    // Walk E0's forward chain via `.next`, recording each hop's start-vertex
-    // (x position, bead_count) plus its own edge_type, until we reach a dead
-    // end (`.next == NO_INDEX`) — the rib's forth edge, `E2`.
-    let mut walk = Vec::new();
-    let mut cur = 0usize;
-    loop {
-        let e = &graph.edges[cur];
-        let v = &graph.vertices[e.start_vertex];
-        walk.push((cur, v.position.x, v.bead_count, e.edge_type));
-        if e.next == NO_INDEX {
-            break;
-        }
-        cur = e.next;
-        assert!(walk.len() <= 8, "chain walk did not terminate: {walk:?}");
-    }
-
-    // (b) Correct (not stale) endpoints on both sides of every split, in
-    // *absolute* position terms: the walk must visit x=0 (v0, bc=2), then
-    // the two new split vertices at their true absolute positions x=30
-    // (bc=2, the pos=0.3 transition) and x=70 (bc=3, the pos=0.7
-    // transition) — NOT the old-bug value of x≈17.14 that ascending-order
-    // rescaling against the wrong span would have produced — then finally
-    // reach E2 (the rib forth edge, non-central/EXTRA_VD, dead end) whose own
-    // start vertex is v1 (x=100, bc=5, untouched — neither transition end
-    // snapped to a boundary vertex in this fixture).
-    let xs: Vec<f64> = walk.iter().map(|(_, x, _, _)| *x).collect();
-    let bcs: Vec<Option<u32>> = walk.iter().map(|(_, _, bc, _)| *bc).collect();
+    // (b) Each split creates 6 new edges (2 NORMAL "second" fragments +
+    // 4 EXTRA_VD rib edges; the original edge and twin are repurposed, not
+    // newly created). 2 splits x 6 = 12 new edges.
+    let n_new_edges = graph.edges.len() - n_edges_before;
     assert_eq!(
-        walk.len(),
-        4,
-        "expected v0 -> split(0.3) -> split(0.7) -> v1(rib anchor): {walk:?}"
-    );
-    assert!(
-        (xs[0] - 0.0).abs() < 1e-9,
-        "hop 0 must be v0 at x=0, got walk={walk:?}"
-    );
-    assert!(
-        (xs[1] - 30.0).abs() < 1e-6,
-        "hop 1 (pos=0.3 transition) must land at absolute x=30, got {} — walk={walk:?} (the old \
-         ascending-order rescale bug would have produced x≈17.14 here on the *second* hop, or \
-         mis-ordered the first)",
-        xs[1]
-    );
-    assert!(
-        (xs[2] - 70.0).abs() < 1e-6,
-        "hop 2 (pos=0.7 transition) must land at absolute x=70, got {} — walk={walk:?} (the old \
-         ascending-order rescale bug produced x≈17.14 instead, closer to v0 than the pos=0.3 \
-         split — a non-monotonic inversion)",
-        xs[2]
-    );
-    assert!(
-        (xs[3] - 100.0).abs() < 1e-9,
-        "hop 3 must be v1 (rib spine anchor) at x=100, untouched: {walk:?}"
-    );
-    assert_eq!(
-        bcs,
-        vec![Some(2), Some(2), Some(3), Some(5)],
-        "bead_count must be monotonically non-decreasing along the walk (v0=2 unchanged, \
-         pos=0.3 split=2, pos=0.7 split=3, v1=5 unchanged): {walk:?}"
-    );
-    assert_eq!(
-        walk[3].3,
-        EdgeType::EXTRA_VD,
-        "the walk must terminate at the rib's forth edge (E2), reached via E0's original \
-         `.next` chain, preserved verbatim across both splits: {walk:?}"
+        n_new_edges, 12,
+        "expected 12 new edges (2 splits x (2 NORMAL seconds + 4 EXTRA_VD \
+         rib pairs)); got {n_new_edges}"
     );
 
-    // (d) transition_ratio initialized on both new mid-nodes (not left at a
-    // stray default).
-    let split_1_vertex = &graph.vertices[graph.edges[walk[1].0].start_vertex];
-    let split_2_vertex = &graph.vertices[graph.edges[walk[2].0].start_vertex];
+    // (c) The shared mid_nodes are at absolute positions x=30 (bc=2,
+    // mid_r=3.0) and x=70 (bc=3, mid_r=7.0), matching the transition_mids.
+    // The 2 splits land at the geometrically correct absolute positions
+    // (NOT the old-bug x~=17.14 from ascending-order rescale against the
+    // wrong span).
+    let new_verts: Vec<&STVertex> = graph.vertices[n_verts_before..].iter().collect();
+    let mid_nodes: Vec<&STVertex> = new_verts
+        .iter()
+        .copied()
+        .filter(|v| v.bead_count.is_some())
+        .collect();
     assert_eq!(
-        split_1_vertex.transition_ratio, 0.5,
-        "pos=0.3 split's transition_ratio must be initialized (got {})",
-        split_1_vertex.transition_ratio
+        mid_nodes.len(),
+        2,
+        "expected exactly 2 shared mid_nodes carrying bead_count; got {}",
+        mid_nodes.len()
+    );
+    let xs: Vec<f64> = mid_nodes.iter().map(|v| v.position.x).collect();
+    let bcs: Vec<Option<u32>> = mid_nodes.iter().map(|v| v.bead_count).collect();
+    let rs: Vec<f64> = mid_nodes.iter().map(|v| v.distance_to_boundary).collect();
+    // Sort by x to get a deterministic order regardless of internal
+    // insertion sequence.
+    let mut sorted: Vec<(f64, Option<u32>, f64)> = xs
+        .into_iter()
+        .zip(bcs)
+        .zip(rs)
+        .map(|((x, bc), r)| (x, bc, r))
+        .collect();
+    sorted.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    assert!(
+        (sorted[0].0 - 30.0).abs() < 1e-6,
+        "first mid_node (pos=0.3 transition) must be at absolute x=30, got          {} - the old ascending-order rescale bug would have produced          x~=17.14 here",
+        sorted[0].0
     );
     assert_eq!(
-        split_2_vertex.transition_ratio, 0.5,
-        "pos=0.7 split's transition_ratio must be initialized (got {})",
-        split_2_vertex.transition_ratio
+        sorted[0].1,
+        Some(2),
+        "first mid_node bead_count must be 2 (lower_bead_count), got {:?}",
+        sorted[0].1
+    );
+    assert!(
+        (sorted[0].2 - 3.0).abs() < 1e-6,
+        "first mid_node distance_to_boundary must be mid_r=3.0, got {}",
+        sorted[0].2
+    );
+    assert!(
+        (sorted[1].0 - 70.0).abs() < 1e-6,
+        "second mid_node (pos=0.7 transition) must be at absolute x=70,          got {} - the old ascending-order rescale bug produced x~=17.14          instead, closer to v0 than the pos=0.3 split - a non-monotonic          inversion",
+        sorted[1].0
+    );
+    assert_eq!(
+        sorted[1].1,
+        Some(3),
+        "second mid_node bead_count must be 3 (lower_bead_count), got {:?}",
+        sorted[1].1
+    );
+    assert!(
+        (sorted[1].2 - 7.0).abs() < 1e-6,
+        "second mid_node distance_to_boundary must be mid_r=7.0, got {}",
+        sorted[1].2
     );
 
-    // Chain integrity: `.prev` must retrace the exact same path in reverse.
-    let mut back_walk = Vec::new();
-    let mut cur = walk.last().unwrap().0; // E2, the rib forth edge.
-    loop {
-        back_walk.push(cur);
-        let p = graph.edges[cur].prev;
-        if p == NO_INDEX {
-            break;
-        }
-        cur = p;
-        assert!(
-            back_walk.len() <= 8,
-            "prev walk did not terminate: {back_walk:?}"
+    // (d) The 4 boundary foot nodes carry distance_to_boundary == 0.0 and
+    // bead_count == None (OrcaSlicer's `source_node`).
+    let foot_nodes: Vec<&STVertex> = new_verts
+        .iter()
+        .copied()
+        .filter(|v| v.bead_count.is_none())
+        .collect();
+    assert_eq!(foot_nodes.len(), 4, "expected 4 boundary foot nodes");
+    for (i, foot) in foot_nodes.iter().enumerate() {
+        assert_eq!(
+            foot.distance_to_boundary, 0.0,
+            "foot node {i} must have distance_to_boundary == 0.0, got {}",
+            foot.distance_to_boundary
         );
     }
-    let mut forward_indices: Vec<usize> = walk.iter().map(|(idx, ..)| *idx).collect();
-    forward_indices.reverse();
-    assert_eq!(
-        back_walk, forward_indices,
-        "`.prev` must retrace the forward `.next` walk exactly in reverse — a stale `.prev` \
-         left over from an earlier split (the D-112-MMU-TOPOLOGY 6th-pass bug 1 shape) would \
-         desync these"
+
+    // (e) Atomicity (F1+F6): the twin (E1) is NOT independently split.
+    // OrcaSlicer's `insertNode` handles both sides in one atomic call, so
+    // the twin's fragments connect to the SAME shared mid_nodes. We verify
+    // by checking that E0.twin and E1.twin both resolve to a shared
+    // mid_node (a vertex carrying a bead_count), NOT the original v0/v1
+    // endpoints and NOT a boundary foot node (bead_count == None).
+    // E0.twin resolves to the first split's mid_node (x=30); E1.twin
+    // resolves to a mid_node too (x=30 or x=70 depending on the chaining
+    // order — both are valid shared mid_nodes).
+    let e0_twin_resolved = graph
+        .vertices
+        .get(graph.edges[graph.edges[0].twin].start_vertex);
+    assert!(
+        e0_twin_resolved.is_some_and(|v| v.bead_count.is_some()),
+        "E0.twin must resolve to a shared mid_node (carrying bead_count), \
+         proving the twin side was split atomically. Got {:?}",
+        e0_twin_resolved.map(|v| (v.position.x, v.bead_count))
+    );
+    assert!(
+        e0_twin_resolved.is_some_and(|v| (v.position.x - 30.0).abs() < 1e-6),
+        "E0.twin must resolve to the first split's shared mid_node (x=30). \
+         Got x={:?}",
+        e0_twin_resolved.map(|v| v.position.x)
+    );
+    let e1_twin_resolved = graph
+        .vertices
+        .get(graph.edges[graph.edges[1].twin].start_vertex);
+    assert!(
+        e1_twin_resolved.is_some_and(|v| v.bead_count.is_some()),
+        "E1.twin must resolve to a shared mid_node (carrying bead_count), \
+         proving the cross-twin patching links both sides to the same shared \
+         node. Got {:?}",
+        e1_twin_resolved.map(|v| (v.position.x, v.bead_count))
+    );
+    let e1_twin_x = e1_twin_resolved.map(|v| v.position.x).unwrap_or(f64::NAN);
+    assert!(
+        (e1_twin_x - 30.0).abs() < 1e-6 || (e1_twin_x - 70.0).abs() < 1e-6,
+        "E1.twin must resolve to one of the shared mid_nodes (x=30 or \
+         x=70), proving the twin side was split atomically at the same \
+         physical positions as E0. Got x={e1_twin_x}"
     );
 
-    // Rib invariants must be untouched by `insert_node`'s repeated splits on
-    // the central edge feeding into it.
-    let forth_idx = walk[3].0; // E2, by construction/index-stability (index 2).
-    assert_eq!(forth_idx, 2, "E2 (rib forth) must keep its original index");
+    // (f) The original rib (E2 forth / E3 back) must be untouched by
+    // `insert_node`'s splits on the central edge feeding into it.
+    let forth_idx = 2usize; // E2 (rib forth) keeps its original index.
     let forth = &graph.edges[forth_idx];
     assert_eq!(
-        forth.next, NO_INDEX,
-        "rib forth_edge must remain a dead end"
+        forth.edge_type,
+        EdgeType::EXTRA_VD,
+        "E2 must remain a rib (EXTRA_VD)"
     );
     let back_idx = forth.twin;
     let back = &graph.edges[back_idx];
     assert_eq!(
-        back.prev, NO_INDEX,
-        "rib back_edge.prev must remain NO_INDEX (the domain/quad-start marker) — never \
-         assigned by makeRib and must not be corrupted by insert_node's rewiring of an \
-         unrelated central edge's fragments"
+        back.prev,
+        NO_INDEX,
+        "original rib back_edge.prev must remain NO_INDEX (the domain/quad-start          marker) - must not be corrupted by insert_node's rewiring"
     );
     assert_eq!(
         back.twin, forth_idx,
-        "rib twin pairing must remain mutually consistent"
-    );
-
-    // (a)+(b) cross-consistency: E1 (E0's twin) independently splits itself
-    // via the mirrored ends. Its own walk (via `.next`, recording each hop's
-    // own start-vertex) must visit the *same* absolute positions/bead-counts
-    // as E0's walk, in reverse (v1 -> x=70(bc=3) -> x=30(bc=2)) — proving
-    // neither side's twin points at a stale or wrong endpoint. Unlike E0's
-    // walk (which "free-rides" one extra hop into the rib's forth edge,
-    // whose start_vertex happens to be v1), E1 has no trailing rib, so this
-    // walk dead-ends one hop short of v0 itself — checked separately below
-    // via `resolve_to_vertex`'s twin-based resolution of the last fragment.
-    let mut twin_walk = Vec::new();
-    let mut cur = 1usize; // E1
-    let last_twin_edge = loop {
-        let e = &graph.edges[cur];
-        let v = &graph.vertices[e.start_vertex];
-        twin_walk.push((v.position.x, v.bead_count));
-        if e.next == NO_INDEX {
-            break cur;
-        }
-        cur = e.next;
-        assert!(
-            twin_walk.len() <= 8,
-            "twin chain walk did not terminate: {twin_walk:?}"
-        );
-    };
-    assert_eq!(
-        twin_walk,
-        vec![(100.0, Some(5)), (70.0, Some(3)), (30.0, Some(2))],
-        "E1 (E0's twin)'s independent mirrored splitting must land on the identical physical \
-         positions/bead-counts as E0's own splitting, in reverse: {twin_walk:?}"
-    );
-    // The last T-side fragment's `.twin` must resolve to v0 (x=0) — E0's
-    // original, unmoved start_vertex — closing the loop back to the same
-    // physical endpoint E0's own walk started from.
-    let last_twin = &graph.edges[last_twin_edge];
-    assert_ne!(
-        last_twin.twin, NO_INDEX,
-        "last T-side fragment must still resolve a twin (to close the loop back to v0)"
-    );
-    let resolved_v0 = &graph.vertices[graph.edges[last_twin.twin].start_vertex];
-    assert!(
-        (resolved_v0.position.x - 0.0).abs() < 1e-9,
-        "last T-side fragment's twin must resolve to v0 (x=0), got x={}",
-        resolved_v0.position.x
+        "rib twin pairing must remain consistent"
     );
 }

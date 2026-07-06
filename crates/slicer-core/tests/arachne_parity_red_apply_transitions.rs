@@ -239,23 +239,25 @@ fn apply_transitions_new_vertex_distance_matches_mid_r() {
 
 // ---------------------------------------------------------------------------
 // Test 2 (F2): the resulting vertex_count for a single mid must be
-// exactly 2 (one on each side, in the symmetric case) — OrcaSlicer
-// creates 1 shared boundary node; PNP creates 2 (one on each side).
-// This is the "double-emission" symptom of F2.
+// exactly 3 (1 shared mid_node + 2 boundary foot nodes) — OrcaSlicer's
+// `insertNode`+`insertRib` creates 1 mid_node shared across both sides
+// plus 2 boundary (rib-foot) nodes (one per side). PNP's previous
+// two-independent-insert_node-calls approach produced only 2 vertices
+// (one per side, no shared mid_node, no boundary feet).
 // ---------------------------------------------------------------------------
 //
-// PNP's mirror mechanism pushes 1 mirrored entry onto the twin bucket,
-// and after dedup the twin bucket still has 1 entry, so the twin
-// gets its own independent insert_node call. The result: 2 new
-// vertices, one on each side.
+// Canonical OrcaSlicer `insertNode`
+// (`SkeletalTrapezoidationGraph.cpp:615-644`) creates the mid_node once
+// (shared by both `insertRib` calls), then each `insertRib` creates its
+// own boundary `source_node` (distance_to_boundary == 0). So a single
+// transition_mid produces exactly 3 new vertices: 1 mid_node + 2 foot
+// nodes. The previous PNP implementation produced 2 (one interpolated
+// vertex per side, no shared mid_node, no boundary feet).
 //
-// OrcaSlicer faithful: the mirror goes onto the edge's own bucket
-// (with pos = 1 - tm.pos), and then insertNode on the edge handles
-// BOTH sides in one call. The result: 1 new vertex (shared between
-// edge and twin via the cross-twin patching), plus the 2 rib edges.
-//
-// F2 test: assert that the new vertex count is exactly 1 (shared
-// boundary), not 2. PNP current: 2.
+// The faithful invariant: exactly 1 of the 3 new vertices carries
+// `bead_count == Some(lower_bead_count)` (the mid_node); the other 2
+// (the boundary feet) carry `bead_count == None` (OrcaSlicer only sets
+// `mid_node->data.bead_count`, never the `source_node`'s).
 
 #[test]
 fn apply_transitions_creates_one_shared_boundary_node_not_two() {
@@ -266,17 +268,38 @@ fn apply_transitions_creates_one_shared_boundary_node_not_two() {
 
     let n_new_verts = graph.vertices.len() - n_verts_before;
 
-    // OrcaSlicer faithful: 1 shared boundary node (created by the single
-    // insertNode call that processes both sides via the mirrored
-    // transition_end on the edge's own bucket).
-    // PNP current: 2 new vertices (one per independent insert_node call).
+    // OrcaSlicer faithful: 3 new vertices (1 shared mid_node + 2 boundary
+    // foot nodes). PNP previous: 2 new vertices (one per independent
+    // insert_node call, no shared mid_node, no boundary feet).
     assert_eq!(
-        n_new_verts, 1,
-        "apply_transitions must create exactly 1 new vertex for a single \
-         transition_mid (the shared boundary node from one faithful \
-         insertNode call), not 2 (which is what PNP's two-independent-\
-         insert_node-calls approach produces). Got {n_new_verts}. \
-         This is finding F2 of the Arachne parity audit."
+        n_new_verts, 3,
+        "apply_transitions must create exactly 3 new vertices for a single \
+         transition_mid (1 shared mid_node + 2 boundary foot nodes, matching \
+         OrcaSlicer's insertNode+insertRib), not 2 (which is what PNP's \
+         two-independent-insert_node-calls approach produces). Got \
+         {n_new_verts}. This is finding F2 of the Arachne parity audit.",
+    );
+
+    // The stronger F2 invariant: exactly 1 of the new vertices carries
+    // `bead_count == Some(lower_bead_count)` (the mid_node); the 2
+    // boundary foot nodes carry `bead_count == None` (OrcaSlicer only
+    // sets bead_count on the mid_node, never on the source_node).
+    let new_verts: Vec<usize> = (n_verts_before..graph.vertices.len()).collect();
+    let with_bead_count: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| graph.vertices[i].bead_count.is_some())
+        .collect();
+    assert_eq!(
+        with_bead_count.len(),
+        1,
+        "exactly 1 new vertex (the shared mid_node) must carry a bead_count; \
+         the 2 boundary foot nodes must carry bead_count == None. Got {} \
+         vertices with a bead_count: {:?}. This is the F2 atomicity \
+         invariant — OrcaSlicer's insertNode sets bead_count only on the \
+         shared mid_node, not on the per-side boundary feet.",
+        with_bead_count.len(),
+        with_bead_count
     );
 }
 
@@ -346,13 +369,16 @@ fn apply_transitions_new_vertex_position_is_perpendicular_foot() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 4 (F2): the new vertex's bead_count must match transition_mid's
-// lower_bead_count, not the original edge's bead_count.
+// Test 4 (F2): the new shared mid_node's bead_count must match
+// transition_mid's lower_bead_count, not the original edge's bead_count.
 // ---------------------------------------------------------------------------
 //
-// PNP current: insert_node takes bead_count as a parameter and assigns
-// it to the new vertex. So this should already pass. We include it as
-// a regression lock for the OrcaSlicer-faithful fix.
+// Canonical OrcaSlicer `insertNode` sets `bead_count` ONLY on the shared
+// mid_node, never on the per-side boundary foot nodes (which keep their
+// default-constructed `bead_count`). So this test must check the mid_node
+// specifically, not every new vertex. PNP's previous implementation set
+// `bead_count` on its 2 interpolated vertices (both), so the test passed
+// trivially; with the faithful fix, only the mid_node carries it.
 
 #[test]
 fn apply_transitions_new_vertex_bead_count_matches_lower_bead_count() {
@@ -367,19 +393,33 @@ fn apply_transitions_new_vertex_bead_count_matches_lower_bead_count() {
         "apply_transitions must create at least one new vertex."
     );
 
-    for &i in &new_verts {
-        let bc = graph.vertices[i].bead_count;
-        assert_eq!(
-            bc,
-            Some(2),
-            "new vertex bead_count must match transition_mid's \
-             lower_bead_count (2). Got {:?}. This is a regression \
-             check for the F2 fix: when apply_transitions is fixed to \
-             mirror onto the edge's own bucket, the new vertex must \
-             carry the configured lower_bead_count.",
-            bc
-        );
-    }
+    // Exactly one new vertex (the shared mid_node) carries a bead_count;
+    // the boundary foot nodes carry None. Find the mid_node and assert its
+    // bead_count matches the transition_mid's lower_bead_count (2).
+    let mid_nodes: Vec<usize> = new_verts
+        .iter()
+        .copied()
+        .filter(|&i| graph.vertices[i].bead_count.is_some())
+        .collect();
+    assert_eq!(
+        mid_nodes.len(),
+        1,
+        "exactly 1 new vertex (the shared mid_node) must carry a bead_count; \
+         got {} such vertices: {:?}",
+        mid_nodes.len(),
+        mid_nodes
+    );
+    let bc = graph.vertices[mid_nodes[0]].bead_count;
+    assert_eq!(
+        bc,
+        Some(2),
+        "the shared mid_node's bead_count must match transition_mid's \
+         lower_bead_count (2). Got {:?}. This is a regression check for \
+         the F2 fix: when apply_transitions is fixed to mirror onto the \
+         edge's own bucket, the shared mid_node must carry the configured \
+         lower_bead_count.",
+        bc
+    );
 }
 
 // Suppress unused-import warning when no test uses it.
