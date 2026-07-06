@@ -111,13 +111,14 @@ fn arachne_pipeline_is_deterministic() {
     assert_eq!(first, second, "pipeline must be deterministic");
 }
 
-/// AC: `ExtrusionJunction::perimeter_index` — "zero-based index within the
-/// wall sequence at that vertex" (`design.md`, packet 112) — is a real,
-/// per-line sequential position, not the placeholder-0 the field carried
-/// before this was implemented. Every line's junctions must read
-/// `0, 1, 2, ...` in order, and (since a square's medial axis produces
-/// several beads) at least one line must have more than one junction so the
-/// assertion is non-trivial.
+/// AC: `ExtrusionJunction::perimeter_index` is the bead/inset index (the
+/// N2 contract — packet 142), not the placeholder-0 carried at generation
+/// and not the old "sequential position within the line's junction Vec"
+/// redefinition that packet 142 deletes alongside the
+/// `assign_perimeter_indices` post-pass. Every junction of every line must
+/// read `perimeter_index == line.inset_idx`. Since a square's medial axis
+/// produces several beads, at least one line must have more than one
+/// junction so the assertion is non-trivial.
 #[test]
 fn arachne_pipeline_perimeter_index_is_sequential_per_line() {
     let square = square_10mm();
@@ -133,18 +134,19 @@ fn arachne_pipeline_perimeter_index_is_sequential_per_line() {
         if line.junctions.len() > 1 {
             saw_multi_junction_line = true;
         }
-        for (expected_idx, junction) in line.junctions.iter().enumerate() {
+        for (j_pos, junction) in line.junctions.iter().enumerate() {
             assert_eq!(
-                junction.perimeter_index, expected_idx as u32,
-                "junction {expected_idx} in a line of {} should carry perimeter_index {expected_idx}, got {}",
+                junction.perimeter_index, line.inset_idx,
+                "junction {j_pos} of a line of {} should carry perimeter_index == line.inset_idx (= {}), got {}",
                 line.junctions.len(),
+                line.inset_idx,
                 junction.perimeter_index
             );
         }
     }
     assert!(
         saw_multi_junction_line,
-        "expected at least one line with >1 junction to make the sequential-index assertion non-trivial"
+        "expected at least one line with >1 junction to make the perimeter_index == inset_idx assertion non-trivial"
     );
 }
 

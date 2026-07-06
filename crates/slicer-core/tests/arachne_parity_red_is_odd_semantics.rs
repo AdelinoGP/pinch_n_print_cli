@@ -85,19 +85,35 @@ impl BeadingStrategy for FixedBeadingStrategy {
 /// so the emitted per-bead lines are short open polylines — eligible for
 /// `remove_small_lines` removal iff (mis)labelled `is_odd`.
 fn two_bead_single_edge_graph() -> SkeletalTrapezoidationGraph {
+    // Minimal single-central-edge domain with a TRANSITION (the peak and
+    // boundary carry different `bead_count`s) so Step 1's `generate_junctions`
+    // — which resolves the beading at the PEAK and skips no-transition edges
+    // per canonical `SkeletalTrapezoidation.cpp:2024-2027` — actually emits
+    // junctions for this edge. The peak carries `bead_count = Some(4)` (an
+    // even count, larger than 2, so the peak's beading has enough beads that
+    // the in-band emission step (`:2064-2077`) actually emits 2 junctions
+    // for the 1mm edge — both insets 0 and 1 are needed for AC-3 to have
+    // a meaningful "inset-1 line survives `remove_small_lines`" assertion).
+    // The canonical `is_odd` rule (`SkeletalTrapezoidation.cpp:2344-2354`)
+    // requires `bead_count % 2 == 1` at the PEAK for a centerline gap-fill
+    // segment, so an even-count peak guarantees no line is `is_odd` — exactly
+    // what AC-2 / AC-3 assert. The boundary side carries `bead_count =
+    // Some(1)` (odd) to ensure a real transition (peak != boundary); the
+    // transition itself is not the subject of either test, only the peak's
+    // `is_odd` truth is.
     let v0 = STVertex {
         position: Vertex { x: 0.0, y: 0.0 },
-        distance_to_boundary: 3.0 * UNITS_PER_MM,
-        bead_count: None,
+        distance_to_boundary: 4.0 * UNITS_PER_MM,
+        bead_count: Some(4),
         transition_ratio: 0.0,
     };
     let v1 = STVertex {
         position: Vertex {
-            x: 1.0 * UNITS_PER_MM,
+            x: 3.0 * UNITS_PER_MM,
             y: 0.0,
         },
         distance_to_boundary: 1.0 * UNITS_PER_MM,
-        bead_count: Some(2),
+        bead_count: Some(1),
         transition_ratio: 0.0,
     };
 

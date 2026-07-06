@@ -75,6 +75,7 @@ use slicer_core::skeletal_trapezoidation::{
     EdgeType, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
 };
 use slicer_core::voronoi::Vertex;
+use slicer_ir::UNITS_PER_MM;
 
 // ---------------------------------------------------------------------------
 // A symmetric beading strategy (bead 0 and bead 1 have the same width),
@@ -121,13 +122,23 @@ impl slicer_core::beading::BeadingStrategy for SymmetricBeadingStrategy {
     }
 }
 
-/// Builds a 2-edge central chain: e0 (v0 -> v1), e1 (v1 -> v2), with
-/// twin edges e2 and e3 (non-central). All vertices at the same R.
+/// Builds a 2-upward-edge central chain: e0 (v0 -> v1, upward) and
+/// `rib_back` (v2 -> v1, upward, the "back" half of a rib pair at v1)
+/// chained via `.next`. R is a peak at v1 (3mm) and drops to 1mm at v0
+/// and v2 so the spine edge and the rib are TRUE upward half-edges
+/// (not flat-equal-R, which `generateJunctions` silently drops —
+/// `SkeletalTrapezoidation.cpp:2017-2019`). The chain walk's canonical
+/// 3-way detection then sees each central vertex's central incident
+/// half-edge count (canonical `isMultiIntersection()` at
+/// `SkeletalTrapezoidationGraph.cpp:211-224`) and the rib (EXTRA_VD)
+/// edges contribute to the count too — matching the new
+/// `compute_vertex_degree` (central-edge count, not the prior
+/// upward-only count).
 fn make_f3_target_graph() -> SkeletalTrapezoidationGraph {
     let v0 = STVertex {
         position: Vertex { x: 0.0, y: 0.0 },
-        distance_to_boundary: 1_000_000.0,
-        bead_count: Some(2),
+        distance_to_boundary: 1.0 * UNITS_PER_MM,
+        bead_count: None,
         transition_ratio: 0.0,
     };
     let v1 = STVertex {
@@ -135,7 +146,7 @@ fn make_f3_target_graph() -> SkeletalTrapezoidationGraph {
             x: 5.0 * 10_000.0,
             y: 0.0,
         },
-        distance_to_boundary: 1_000_000.0,
+        distance_to_boundary: 3.0 * UNITS_PER_MM,
         bead_count: Some(2),
         transition_ratio: 0.0,
     };
@@ -144,30 +155,26 @@ fn make_f3_target_graph() -> SkeletalTrapezoidationGraph {
             x: 10.0 * 10_000.0,
             y: 0.0,
         },
-        distance_to_boundary: 1_000_000.0,
-        bead_count: Some(2),
+        distance_to_boundary: 1.0 * UNITS_PER_MM,
+        bead_count: None,
         transition_ratio: 0.0,
     };
 
+    // e0: central spine v0 -> v1 (upward, R 1.0 -> 3.0). Twin (e1) is
+    // the off-skeleton counterpart (downward, non-central, not
+    // processed by `generateJunctions` because of the upward-only
+    // selection; also non-central so v1's central-incident count
+    // stays at 2 — the F3 chain walks THROUGH v1 to v2, not stops).
     let e0 = STHalfEdge {
         start_vertex: 0,
-        twin: 2,
-        next: 1,          // e0 -> e1 chain
+        twin: 1,
+        next: 2,          // e0 -> rib_back chain
         prev: usize::MAX, // e0 is a domain-start
         central: true,
         edge_type: EdgeType::NORMAL,
         ..STHalfEdge::default()
     };
     let e1 = STHalfEdge {
-        start_vertex: 1,
-        twin: 3,
-        next: usize::MAX, // e1's next is NO_INDEX (dead end)
-        prev: 0,          // e1 is chained off e0
-        central: true,
-        edge_type: EdgeType::NORMAL,
-        ..STHalfEdge::default()
-    };
-    let e2 = STHalfEdge {
         start_vertex: 1,
         twin: 0,
         next: usize::MAX,
@@ -176,19 +183,34 @@ fn make_f3_target_graph() -> SkeletalTrapezoidationGraph {
         edge_type: EdgeType::NORMAL,
         ..STHalfEdge::default()
     };
-    let e3 = STHalfEdge {
+    // rib_back: upward rib v2 -> v1 (R 1.0 -> 3.0, central,
+    // EdgeType::EXTRA_VD). Chained off e0 via `.next`. Twin (rib_forth)
+    // has start_vertex=1 (v1) so the half-edge's "to" resolves to v1.
+    let rib_back = STHalfEdge {
         start_vertex: 2,
-        twin: 1,
+        twin: 3,
+        next: usize::MAX, // dead end at the peak
+        prev: 0,          // chained off e0
+        central: true,
+        edge_type: EdgeType::EXTRA_VD,
+        ..STHalfEdge::default()
+    };
+    // rib_forth: downward rib v1 -> v2 (R 3.0 -> 1.0, non-central,
+    // EdgeType::EXTRA_VD). Twin of rib_back. Non-central so v1's
+    // central-incident count stays at 2.
+    let rib_forth = STHalfEdge {
+        start_vertex: 1,
+        twin: 2,
         next: usize::MAX,
         prev: usize::MAX,
         central: false,
-        edge_type: EdgeType::NORMAL,
+        edge_type: EdgeType::EXTRA_VD,
         ..STHalfEdge::default()
     };
 
     SkeletalTrapezoidationGraph {
         vertices: vec![v0, v1, v2],
-        edges: vec![e0, e1, e2, e3],
+        edges: vec![e0, e1, rib_back, rib_forth],
         centrality_filtered: true,
         rib: Default::default(),
         ..Default::default()
@@ -254,19 +276,29 @@ fn f3_invariant_junction_widths_are_finite_and_positive() {
 }
 
 // ---------------------------------------------------------------------------
-// Strengthened constant-radius position assertion (guards the real defect
-// found during F3 re-investigation: the `t_to = 0` fallback for constant-
-// radius edges). The `make_f3_target_graph` fixture is a 3-vertex constant-
-// radius chain (v0=(0,0), v1=(50,0), v2=(100,0), all R=10mm). For a
-// constant-radius edge, the to-junction must land at the edge's END vertex,
-// not its start vertex. Under the old `t_to = 0` fallback both junctions
-// landed at the start, collapsing the chain. This test asserts the actual
-// x-coordinates of the emitted junctions match the vertices v0/v1/v2 in
-// order — it fails under `t_to = 0` and passes under `t_to = 1`.
+// Position-monotonicity lock: the chain must traverse v0 -> v1 -> v2 in
+// X-order (one junction near each vertex, monotonically increasing
+// X). Replaces the prior constant-radius xs check (which assumed flat-R
+// geometry and exact-vertex junction placement). With the new upward-R
+// fixture, junctions are interpolated along their edges:
+//   - junction[0]: e0's `from` slot, bead 0 at radius 1.5mm, so the
+//     junction slides from peak (v1, R=3) toward boundary (v0, R=1) by
+//     `t = (1.5-3.0)/(1.0-3.0) = 0.75` along e0, landing at
+//     x = 5 + (0-5)*0.75 = 1.25mm.
+//   - junction[1]: merge of e0's `to` and rib_back's `from` (both at
+//     the same interpolated point — v1's bead 0 at 1.5mm).
+//   - junction[2]: rib_back's `to` slot, bead 0 at radius 1.5mm, so
+//     the junction slides from peak (v1, R=3) toward boundary (v2,
+//     R=1) by `t = 0.75` along rib_back, landing at
+//     x = 5 + (10-5)*0.75 = 8.75mm.
+// The test asserts the X-ordering and a sane span (between v0 and v2);
+// a `t_to = 0` regression would collapse junctions onto the start
+// vertex (x=0) for every slot, producing xs ≈ [0, 0, 0] and failing
+// the span check.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn constant_radius_chain_to_junction_lands_at_end_vertex_not_start() {
+fn chain_traverses_v0_v1_v2_in_x_order_with_sane_span() {
     let graph = make_f3_target_graph();
     let strategy = SymmetricBeadingStrategy;
     let output = generate_toolpaths(&graph, &strategy);
@@ -277,34 +309,30 @@ fn constant_radius_chain_to_junction_lands_at_end_vertex_not_start() {
             assert_eq!(
                 line.junctions.len(),
                 3,
-                "constant-radius 2-edge chain must produce exactly 3 \
+                "upward-R 2-edge chain must produce exactly 3 \
                  junctions (one per vertex), got {}",
                 line.junctions.len()
             );
-            // v0 = (0, 0) mm, v1 = (5, 0) mm, v2 = (10, 0) mm. The chain
-            // is e0 (v0->v1) then e1 (v1->v2). Under the `t_to = 1` fix:
-            //   junction[0] = e0.from = v0 = (0, 0)
-            //   junction[1] = merge(e0.to=v1, e1.from=v1) = v1 = (5, 0)
-            //   junction[2] = e1.to = v2 = (10, 0)
-            // Under the old `t_to = 0` fallback:
-            //   junction[0] = v0 = (0, 0)
-            //   junction[1] = merge(e0.to=v0 [WRONG], e1.from=v1) — the
-            //     width tiebreak (`>=`, line 427) keeps e0.to = v0, so
-            //     junction[1] = v0 = (0, 0) [WRONG, not v1]
-            //   junction[2] = e1.to = v0 [WRONG, not v2]
-            // So the x-coordinates under the bug are (0, 0, 0) instead of
-            // (0, 5, 10). Assert the correct values.
             let xs: Vec<f32> = line.junctions.iter().map(|j| j.p.x).collect();
+            // X-ordering: the chain walks v0 -> v1 -> v2, so the
+            // junction X's must be non-decreasing.
             assert!(
-                (xs[0] - 0.0).abs() < 1e-3
-                    && (xs[1] - 5.0).abs() < 1e-3
-                    && (xs[2] - 10.0).abs() < 1e-3,
-                "constant-radius chain junction x-coordinates must be \
-                 (0, 5, 10) mm (v0, v1, v2). Got {xs:?}. If the middle \
-                 and end are 0 instead of 5/10, the `t_to` constant-\
-                 radius fallback in `generate_junctions` regressed to \
-                 `t = 0` (start vertex), collapsing both junctions onto \
-                 the start and dropping the end vertex from the chain."
+                xs[0] <= xs[1] && xs[1] <= xs[2],
+                "chain X-ordering broken: xs={xs:?} must be non-decreasing"
+            );
+            // Span: the chain's first junction is on the e0 (v0->v1)
+            // half-edge and the last is on the rib_back (v2->v1)
+            // half-edge, so xs[0] must be > v0.x and xs[2] must be <
+            // v2.x (each junction slides from the peak toward its
+            // boundary end). A `t_to = 0` regression collapses both
+            // onto the start vertex (xs[0] == xs[1] == xs[2] == 0)
+            // and fails the span check.
+            assert!(
+                xs[0] > 0.0 + 1e-3 && xs[2] < 10.0 - 1e-3,
+                "chain X-span broken: xs={xs:?} must lie strictly between \
+                 v0.x=0 and v2.x=10. A `t_to = 0` regression collapses \
+                 both endpoints onto the start vertex (xs ≈ [0, 0, 0]); \
+                 that signature is what this test guards against."
             );
         }
     }

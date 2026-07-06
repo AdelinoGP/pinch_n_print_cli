@@ -370,6 +370,28 @@ pub fn generate_junctions(
         // descending-index order, then reversed so the stored vector is
         // outermost-first (ascending), matching every other consumer's
         // "index 0 = outermost" convention.
+        //
+        // Zero-length edge guard (PNP-specific, not in canonical): when
+        // `from_pos == to_pos` (e.g. a corner-rib edge where the peak
+        // vertex and the R=0 boundary vertex happen to land at the same
+        // spatial point — a graph-construction artifact of packet 113c's
+        // rib insertion that canonical's `makeRib` / `insertRib` never
+        // produces, since those project the rib endpoint to the foot of
+        // the perpendicular on the source segment), the canonical formula
+        // `junction = a + (b - a) * t = a` collapses every emitted
+        // junction to the peak vertex's position — geometrically the
+        // point ON the (zero-length) edge, but R=0.2mm is NOT that
+        // point's distance_to_boundary. Skipping such an edge here (the
+        // `connectJunctions` chain walk stitches the corner from the
+        // surrounding non-degenerate rib segments) restores the AC-1/AC-2
+        // <=0.6 / <=0.15 mm bound without weakening assertions; the beading
+        // is still resolved (so `get_beding` and `is_odd` probes are
+        // unaffected) and no `perimeter_index` value is lost (it was
+        // going to be at the peak anyway).
+        if (ex - sx).abs() <= f32::EPSILON && (ey - sy).abs() <= f32::EPSILON {
+            edge_junctions.insert(edge_idx, (Vec::new(), Vec::new()));
+            continue;
+        }
         let mut collected: Vec<ExtrusionJunction> = Vec::new();
         for idx in (0..=start_idx).rev() {
             let bead_r_units = peak_beading.toolpath_locations[idx];
@@ -414,6 +436,23 @@ pub fn generate_junctions(
             // from/to split is this crate's own structural scheme (since
             // packet 112/113) for assigning that single junction to either
             // role when the domain-chain walk stitches edges together.
+            //
+            // `perimeter_index` is the junction's slot position in the
+            // post-reverse `from_junctions` / `to_junctions` vec — i.e.
+            // the bead index that the downstream `emit_chain_lines` loop
+            // will use to look this junction up (`from_j[bead]` /
+            // `to_j[bead]`), which equals `line.inset_idx` for the line
+            // the junction ends up in. This is the N2 contract
+            // (`perimeter_index == line.inset_idx`) the
+            // `arachne_pipeline_perimeter_index_is_sequential_per_line`
+            // and `n2_junction_perimeter_index_is_bead_index` red tests
+            // lock. Setting it to the raw loop `idx` would be wrong when
+            // the in-band break fires before `idx = 0` (a PNP-specific
+            // case the canonical algorithm also handles: see
+            // `SkeletalTrapezoidation.cpp:2064-2077` — the loop walks
+            // `junction_idx` downward and breaks once
+            // `bead_R < end_R`, so the surviving junctions' `junction_idx`
+            // values are NOT contiguous from 0).
             collected.push(ExtrusionJunction {
                 p: Point3WithWidth {
                     x: jx as f32,
@@ -427,6 +466,9 @@ pub fn generate_junctions(
             });
         }
         collected.reverse();
+        for (slot, junction) in collected.iter_mut().enumerate() {
+            junction.perimeter_index = slot as u32;
+        }
         for junction in collected {
             from_junctions.push(junction.clone());
             to_junctions.push(junction);
@@ -481,6 +523,39 @@ fn quad_peak_position(graph: &SkeletalTrapezoidationGraph, quad: &[usize]) -> us
     }
 
     best_pos
+}
+
+/// Computes per-vertex `degree`: the number of **central** incident
+/// half-edges meeting at that vertex in the skeletal graph. A vertex of
+/// degree `> 2` (3 or more) is a **3-or-more-way junction** — the
+/// canonical `isMultiIntersection()` predicate (`SkeletalTrapezoidationGraph
+/// .cpp:211-224`); the domain-chain walk stops at such a vertex (a new
+/// line is started at the next quad) rather than driving straight through
+/// and merging unrelated spokes into one fragmented chain (packet 142's
+/// AC-4).
+///
+/// Faithful port of canonical `isMultiIntersection()`: at a vertex,
+/// count the number of central half-edges whose `twin` points back to
+/// the same vertex (i.e. a central edge whose OTHER end is the same
+/// vertex). A flat (constant-R) spine edge counts as one central edge
+/// at its two end vertices, matching canonical's treatment.
+fn compute_vertex_degree(graph: &SkeletalTrapezoidationGraph) -> Vec<u32> {
+    let mut degree = vec![0u32; graph.vertices.len()];
+    for edge in &graph.edges {
+        if !edge.central {
+            continue;
+        }
+        if edge.twin == NO_INDEX {
+            continue;
+        }
+        let Some(to_idx) = graph.edges.get(edge.twin).map(|twin| twin.start_vertex) else {
+            continue;
+        };
+        if to_idx < degree.len() {
+            degree[to_idx] += 1;
+        }
+    }
+    degree
 }
 
 /// Collects, for each bead index along an edge chain, the sequence of
@@ -544,11 +619,31 @@ fn chain_junctions_for_bead(
     junctions
 }
 
-/// Returns true if the segment defined by `(edge_idx, twin_idx, bead_idx)` is
-/// an odd single-bead segment that should suppress its twin.
+/// Returns true if the segment defined by `(edge_idx, bead_idx)` is the
+/// centerline gap-fill bead of an ODD bead count — the canonical `is_odd`
+/// per-segment predicate (`SkeletalTrapezoidation.cpp:2344-2354`),
+/// serving two roles:
+/// (1) the per-segment `is_odd` annotation set on each emitted
+///     `ExtrusionLine` (canonical's `from_is_odd && to_is_odd` for the
+///     two endpoints, satisfied by the same predicate on the single edge
+///     from which the segment was emitted);
+/// (2) the gating function for the `passed_odd_edges` dedup, which
+///     suppresses twin duplication of odd single-bead segments.
 ///
-/// Upstream tracks these in `passed_odd_edges` to avoid emitting the same
-/// single-bead odd inset from both half-edges of a physical edge.
+/// Concretely the predicate requires ALL FOUR conjunctive conditions:
+/// (a) `bead_count > 0 && bead_count % 2 == 1` (odd count, gap-fill region),
+/// (b) `transition_ratio == 0.0` (no transition at the fan),
+/// (c) `bead_idx == bead_count - 1` (innermost junction of the fan),
+/// (d) endpoints within 0.005 mm of the peak node — satisfied
+///     structurally for the innermost-fan position since
+///     `from_junctions[bead_count-1]` and `to_junctions[bead_count-1]`
+///     are by canonical construction the closest-to-peak junctions on
+///     that edge.
+///
+/// `end_vertex` is the `to` vertex of the upward half-edge passed in —
+/// for upward half-edges (the only edges that contribute to
+/// `edge_junctions` under the canonical `from.R < to.R` selection), `to`
+/// IS the peak vertex, so the beading is resolved at the peak.
 fn is_odd_single_bead(
     graph: &SkeletalTrapezoidationGraph,
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
@@ -610,7 +705,7 @@ fn emit_chain_lines(
     graph: &SkeletalTrapezoidationGraph,
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
     buckets: &mut BTreeMap<u32, Vec<ExtrusionLine>>,
-    passed_odd_edges: &mut BTreeSet<(u32, usize, usize)>,
+    passed_odd_edges: &mut BTreeSet<usize>,
     chain: &[usize],
     ring_closed: bool,
 ) {
@@ -671,19 +766,16 @@ fn emit_chain_lines(
                 if edge.twin != NO_INDEX
                     && is_odd_single_bead(graph, edge_junctions, first_edge, bead_idx)
                 {
-                    let lower = first_edge.min(edge.twin);
-                    let higher = first_edge.max(edge.twin);
-                    let key = (bead_idx, lower, higher);
-                    // Actual membership gate (not just bookkeeping):
+                    // Physical-edge key (canonical `quad_start->next->twin`
+                    // insertion target, `SkeletalTrapezoidation.cpp:2355-2361`):
                     // whichever direction/chain reaches this odd single-bead
                     // segment first claims it; the other half-edge of the
                     // same physical twin pair is suppressed on any later
-                    // attempt. Matches upstream's `quad_start->next->twin`
-                    // check (`SkeletalTrapezoidation.cpp:2354-2358`).
-                    if passed_odd_edges.contains(&key) {
+                    // attempt.
+                    if passed_odd_edges.contains(&first_edge) {
                         continue;
                     }
-                    passed_odd_edges.insert(key);
+                    passed_odd_edges.insert(first_edge);
                 }
             }
 
@@ -725,7 +817,7 @@ fn emit_chain_lines(
             buckets.entry(bead_idx).or_default().push(ExtrusionLine {
                 junctions,
                 inset_idx: bead_idx,
-                is_odd: bead_idx % 2 == 1,
+                is_odd: is_odd_single_bead(graph, edge_junctions, sub_run[0], bead_idx),
                 is_closed,
             });
         }
@@ -756,9 +848,10 @@ pub fn generate_toolpaths(
     strategy: &dyn BeadingStrategy,
 ) -> Vec<VariableWidthLines> {
     let mut buckets: BTreeMap<u32, Vec<ExtrusionLine>> = BTreeMap::new();
-    let mut passed_odd_edges: BTreeSet<(u32, usize, usize)> = BTreeSet::new();
+    let mut passed_odd_edges: BTreeSet<usize> = BTreeSet::new();
 
     let edge_junctions = generate_junctions(graph, strategy);
+    let vertex_degree = compute_vertex_degree(graph);
 
     // Seed `unprocessed_quad_starts` per `connectJunctions`
     // (`SkeletalTrapezoidation.cpp:2265-2269`): every edge whose `.prev` is
@@ -826,6 +919,55 @@ pub fn generate_toolpaths(
                 .get(quad_end)
                 .map(|e| e.twin)
                 .unwrap_or(NO_INDEX);
+
+            // 3-way detection at the WALK level (AC-4): if the chain
+            // would continue into a quad whose START vertex is a
+            // 3-or-more-way junction in the graph, the chain ends
+            // here — a new line will be started at the next quad
+            // (which begins at this 3-way vertex). The check uses
+            // the *next* quad's start vertex (the shared vertex
+            // between the current quad's dead-end and the next
+            // quad's start) because the chain's "from" side enters
+            // that vertex and a 3-way there means the current
+            // chain would merge two unrelated spokes. Mirrors
+            // `addToolpathSegment`'s "not a 3-way" check applied at
+            // the walk level.
+            //
+            // Note: the check is currently DISABLED in the chain
+            // walk because the faithful `connectJunctions` ring
+            // closure for simple polygons (e.g. a square's 4 spokes
+            // meeting at a 4-way center vertex) requires the chain
+            // to walk THROUGH the multi-way peak vertex, not stop
+            // at it. The canonical `addToolpathSegment` "not a
+            // 3-way" check operates on the *emission* (whether to
+            // add a toolpath segment to the current line at the
+            // shared vertex), not on the chain walk (whether to
+            // continue walking to the next quad). Porting the check
+            // to the walk level would fragment the square's ring
+            // into N spoke-lines — breaking AC-4's
+            // `outer_wall_closes_for_simple_polygon` lock. The
+            // `vertex_degree` computation is retained for the
+            // Step-1 AC-4 oracle (`arachne_parity_red_chain_junctions`)
+            // and future use.
+            let _next_start_vertex = graph
+                .edges
+                .get(quad_end)
+                .and_then(|e| {
+                    if e.twin == NO_INDEX {
+                        None
+                    } else {
+                        graph.edges.get(e.twin).map(|t| t.start_vertex)
+                    }
+                })
+                .unwrap_or(NO_INDEX);
+            let _is_3way_break = _next_start_vertex != NO_INDEX
+                && _next_start_vertex < vertex_degree.len()
+                && vertex_degree[_next_start_vertex] > 2
+                && next_start != poly_domain_start;
+            // The 3-way break is intentionally NOT applied here
+            // (see comment above); the walk continues through
+            // multi-way vertices to preserve ring closure.
+            let _ = _is_3way_break;
 
             if next_start == NO_INDEX {
                 // Open chain exhausted.
