@@ -506,9 +506,14 @@ impl Builder {
             for p1_idx in 1..n {
                 let p1 = disc[p1_idx];
                 let v1 = if p1_idx < n - 1 {
-                    // Interior discretization node — never registered.
-                    let dist = nearest_boundary_distance(p1.0, p1.1, inp.segments);
-                    self.push_node(p1.0, p1.1, dist)
+                    // Interior discretization node — never registered, and
+                    // (F5 fix) created with the `NAN` "uncomputed" sentinel
+                    // matching `make_node_vd`, since these nodes are never
+                    // ribbed so no `make_rib` overwrite will set a real
+                    // perpendicular-foot distance. The previous
+                    // `nearest_boundary_distance` (global min) was
+                    // semantically wrong for these nodes.
+                    self.push_node(p1.0, p1.1, f64::NAN)
                 } else {
                     self.make_node_vd(inp, inp.vertex1_idx(vd_edge), p1)
                 };
@@ -569,6 +574,30 @@ impl Builder {
 
     /// Looks up or creates the graph node for a boostvoronoi vertex, mirroring
     /// `makeNode` (endpoints are shared across cells via `vd_node_to_he_node`).
+    ///
+    /// # F5 fix (Arachne parity audit)
+    ///
+    /// The node is created with `distance_to_boundary = f64::NAN` — an
+    /// explicit "uncomputed" sentinel — rather than the previous
+    /// `nearest_boundary_distance` (global min over all segments).
+    /// OrcaSlicer's `makeNode` (`SkeletalTrapezoidation.cpp:132-143`)
+    /// leaves the node at the sentinel `-1` until `makeRib` sets the
+    /// perpendicular-foot value (line 459) or
+    /// `constructFromPolygons` sets `0.0` on boundary start/end nodes.
+    /// The previous eager global-min was semantically wrong for un-ribbed
+    /// interior discretization nodes (Branch B of `transfer_edge`), which
+    /// retained a plausible-looking but incorrect distance. The two
+    /// consumers that actually use the value are unaffected:
+    ///
+    /// - `make_rib` overwrites the spine node with the perpendicular-foot
+    ///   distance (line 552 in this file).
+    /// - `build` sets `0.0` on boundary start/end nodes (lines 399, 419).
+    ///
+    /// `f64::NAN` is used instead of OrcaSlicer's `-1.0` because downstream
+    /// `distance_to_boundary` math assumes non-negative values (radii), and
+    /// `NAN` propagates visibly if a code path mistakenly reads an un-ribbed
+    /// node's distance — surfacing the bug rather than hiding it behind a
+    /// plausible-looking wrong number.
     fn make_node_vd(&mut self, inp: &Inputs, vd_idx: usize, fallback: (f64, f64)) -> usize {
         if vd_idx != NO_INDEX {
             let existing = self.vd_node_to_he_node[vd_idx];
@@ -576,13 +605,11 @@ impl Builder {
                 return existing;
             }
             let pos = inp.clamped[vd_idx];
-            let dist = nearest_boundary_distance(pos.x, pos.y, inp.segments);
-            let node = self.push_node(pos.x, pos.y, dist);
+            let node = self.push_node(pos.x, pos.y, f64::NAN);
             self.vd_node_to_he_node[vd_idx] = node;
             node
         } else {
-            let dist = nearest_boundary_distance(fallback.0, fallback.1, inp.segments);
-            self.push_node(fallback.0, fallback.1, dist)
+            self.push_node(fallback.0, fallback.1, f64::NAN)
         }
     }
 
@@ -1045,6 +1072,14 @@ fn clamp_implausible_vertex(v: Vertex, bbox: (f64, f64, f64, f64)) -> Vertex {
 
 /// Nearest distance from floating-point point `(x, y)` to any segment in
 /// `segments`, via point-to-segment distance. `segments` is assumed non-empty.
+///
+/// Unused since the F5 fix replaced `make_node_vd`'s eager call with the
+/// `NAN` sentinel; retained for the future F5-strengthening test that
+/// asserts an un-ribbed node's distance equals the perpendicular-foot to
+/// its own source segment (which would re-derive this via the cell's
+/// source-segment provenance — see the F5 section of
+/// `target/arachne_parity_audit_*.md`).
+#[allow(dead_code)]
 fn nearest_boundary_distance(x: f64, y: f64, segments: &[Segment]) -> f64 {
     segments
         .iter()
@@ -1054,6 +1089,7 @@ fn nearest_boundary_distance(x: f64, y: f64, segments: &[Segment]) -> f64 {
 
 /// Distance from floating-point point `(px, py)` to the closest point on
 /// integer-coordinate segment `[a, b]`.
+#[allow(dead_code)]
 fn point_to_segment_distance_f64(px: f64, py: f64, a: Point2, b: Point2) -> f64 {
     let ax = a.x as f64;
     let ay = a.y as f64;
@@ -1082,14 +1118,25 @@ fn point_to_segment_distance_f64(px: f64, py: f64, a: Point2, b: Point2) -> f64 
 /// - One resolvable: that side's value for both.
 /// - Neither resolvable: `(0.0, 0.0)`.
 ///
+/// **NAN handling (F5 fix):** A `distance_to_boundary` of `f64::NAN` (the
+/// "uncomputed" sentinel set by `make_node_vd` for un-ribbed interior
+/// nodes) is treated as if the endpoint were unresolved — i.e. the other
+/// endpoint's real value is used for both `r_min` and `r_max`. This keeps
+/// downstream centrality/bead-count math finite and non-negative
+/// (matching OrcaSlicer's treatment of its `-1` sentinel) while still
+/// surfacing a `NAN` in any direct read of the node's own
+/// `distance_to_boundary` field (the F5 diagnostic invariant).
+///
 /// Always returns finite, non-negative values with `r_min <= r_max`.
 pub fn edge_radius_bounds(vertices: &[STVertex], from_idx: usize, to_idx: usize) -> (f64, f64) {
     let from_d = (from_idx != NO_INDEX)
         .then(|| vertices.get(from_idx).map(|v| v.distance_to_boundary))
-        .flatten();
+        .flatten()
+        .filter(|d| d.is_finite());
     let to_d = (to_idx != NO_INDEX)
         .then(|| vertices.get(to_idx).map(|v| v.distance_to_boundary))
-        .flatten();
+        .flatten()
+        .filter(|d| d.is_finite());
 
     match (from_d, to_d) {
         (Some(a), Some(b)) => (a.min(b), a.max(b)),
