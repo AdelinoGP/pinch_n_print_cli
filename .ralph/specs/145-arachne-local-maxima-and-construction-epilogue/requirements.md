@@ -64,10 +64,26 @@ canonical and untouched. D's epilogue is additive (three passes appended after
 - **Epilogue wiring** in `graph.rs::from_polygons`: append the three passes
   (`separatePointyQuadEndNodes` → `collapseSmallEdges` → incident-edge
   normalization) after 113c's existing per-edge radius bounds (`:269-327`).
-- **`isLocalMaximum` predicate** (NEW) in `graph.rs` or `centrality.rs`: a node
-  is a local maximum if all its neighbors have `distance_to_boundary <=` its
-  own. D's implementer decides the location (likely `centrality.rs` alongside
-  `updateIsCentral`, or `graph.rs` as a graph predicate).
+- **`isLocalMaximum` predicate for N9's `generateLocalMaximaSingleBeads`
+  gate**: a node is a local maximum if all its neighbors have
+  `distance_to_boundary <=` its own. **Not a fresh symbol** — a private,
+  currently-`#[allow(dead_code)]` function with matching semantics already
+  exists at `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs:264`
+  (`fn is_local_maximum`, used only by the unwired `try_dissolve` whisker-
+  dissolve helper the packet-113c/144 gotcha already forbids wiring up — see
+  `docs/specs/arachne-parity-N1-N13-plan.md`'s "Gotchas" section). D's
+  implementer MUST decide, before Step 1 begins, between:
+  (a) reuse `centrality.rs`'s existing `is_local_maximum` directly (drop its
+  `#[allow(dead_code)]`, keep it private, call it from `generate_toolpaths.rs`
+  via a `pub(crate)` re-export or a thin wrapper), or
+  (b) add a distinctly-named new predicate (e.g. `is_local_max_for_odd_bead`)
+  in `graph.rs` if the two checks are not actually semantically identical
+  (N9's gate needs `isLocalMaximum(true)` — the canonical bool argument's
+  exact meaning must be confirmed via OrcaSlicer delegation before assuming
+  reuse is safe).
+  Adding a second, same-named `is_local_maximum` in the same module
+  (`centrality.rs`) is a compile error; the decision must be made and recorded
+  in `design.md` before implementation, not discovered mid-Step-1.
 - **New tests**: `arachne_local_maxima_single_beads.rs` (AC-1 — near-square
   odd-bead-count region emits hexagonal micro-loop), `arachne_construction_epilogue.rs`
   (AC-2 — no zero-length edges, normalized incident edges, unique quad-start

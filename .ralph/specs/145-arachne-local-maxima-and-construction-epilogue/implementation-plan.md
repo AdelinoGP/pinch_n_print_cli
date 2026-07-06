@@ -13,8 +13,15 @@
 
 - Task IDs:
   - `none` (N9 — provenanced by `target/arachne_parity_audit_20260706_020657.md` §N9)
-- Objective: Port `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`) as `generate_local_maxima_single_beads` in `generate_toolpaths.rs`, called as the final step of `generate_toolpaths` after A2's `connectJunctions` emission. For nodes with odd `beading.bead_widths.size()`, `isLocalMaximum(true)`, and not central, emit a 6-segment hexagonal micro-loop (radius `width/8`, `is_odd = true`). Add the `is_local_maximum` predicate (in `graph.rs` or `centrality.rs`).
-- Precondition: C (`144`) is `status: implemented` — D's `generateLocalMaximaSingleBeads` reads the normalized centrality (C's `filterNoncentralRegions` + configured angle must land first).
+- Objective: Port `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`) as `generate_local_maxima_single_beads` in `generate_toolpaths.rs`, called as the final step of `generate_toolpaths` after A2's `connectJunctions` emission. For nodes with odd `beading.bead_widths.size()`, `isLocalMaximum(true)`, and not central, emit a 6-segment hexagonal micro-loop (radius `width/8`, `is_odd = true`). Wire in the `is_local_maximum` predicate per `design.md`'s reuse-vs-rename decision — `centrality.rs:264` already has a private, dead-code function with matching semantics; do not add a second same-named definition.
+- Precondition: `141` (A1), `142` (A2), `143` (B), and `144` (C) are all
+  `status: implemented` — D's `generateLocalMaximaSingleBeads` runs after A1's
+  canonical junction generation and A2's `connectJunctions` emission, reads
+  bead-width state B's transition/rib passes shape, and reads the normalized
+  centrality C's `filterNoncentralRegions` + configured angle produce. This
+  step's own gate check below (N1/N2/N4/N3 stay green) already presumes A1,
+  A2, and B are implemented — the precondition text must say so explicitly,
+  not just name C.
 - Postcondition: AC-1 passes (hexagonal micro-loop at local maximum). N1, N2, N3, N4 stay GREEN. N10 epilogue NOT yet in place (Step 2 owns it).
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — range-read the end of `generate_toolpaths` (where `generate_local_maxima_single_beads` is appended) + the `Beading`/`ExtrusionLine` emission patterns A1/A2 use.

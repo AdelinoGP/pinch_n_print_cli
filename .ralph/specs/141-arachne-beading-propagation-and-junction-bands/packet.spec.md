@@ -30,7 +30,11 @@ in/out-of-scope lists live in `requirements.md`.
 
 - Depends on: `113c-arachne-faithful-graph-construction` (`status: implemented`)
   — its interleaved-rib graph topology is the substrate this packet's junction
-  generation walks.
+  generation walks. This is a hard technical prerequisite that happens to
+  already be satisfied; `docs/specs/arachne-parity-N1-N13-plan.md`'s "Prereqs:
+  none" for A1 means "no *new* packet in this N1-N13 chain must land first,"
+  not "no dependency at all" — the two statements are consistent, not
+  conflicting.
 - Unblocks: `142-arachne-canonical-connectjunctions-emission` (N2+N4 — needs
   A1's correct junction fans for the `perimeter_index` pop-back merge); `143-arachne-transition-ends-and-extra-ribs` (N3+N8 — B's beading interpolation reads
   A1's junction fans); `144-arachne-angle-fudge-and-noncentral-regions` (N5+N6 —
@@ -105,7 +109,7 @@ A list of specific doc sections that this packet adds or modifies:
   (fixture re-baseline + e2e closure) are inherited by this packet chain, not
   silently absorbed. Supersession pattern (new ID + addendum, no in-place edits).
   - `rg -q 'D-141-JUNCTION-BANDS' docs/DEVIATION_LOG.md`
-  - `rg -q 'D-141-JUNCTION-BANDS' docs/DEVIATION_LOG.md && rg -q 'inherited.*141\|141.*inherit' docs/DEVIATION_LOG.md`
+  - `rg -q 'D-141-JUNCTION-BANDS' docs/DEVIATION_LOG.md && rg -q -e 'inherited.*141' -e '141.*inherit' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

@@ -19,9 +19,22 @@ Add `generateLocalMaximaSingleBeads` as the final step of `generate_toolpaths` (
 
 ## Prerequisites and Blockers
 
-- Depends on: `144-arachne-angle-fudge-and-noncentral-regions` (C — D's `generateLocalMaximaSingleBeads` reads the normalized centrality; C's `filterNoncentralRegions` must land first so local-maxima detection runs on the corrected central set).
+- Depends on: `141-arachne-beading-propagation-and-junction-bands` (A1),
+  `142-arachne-canonical-connectjunctions-emission` (A2),
+  `143-arachne-transition-ends-and-extra-ribs` (B), and
+  `144-arachne-angle-fudge-and-noncentral-regions` (C) — all four, strictly
+  (matches `task-map.md`'s crosswalk: "D depends on A1/A2/B/C strictly").
+  D's `generateLocalMaximaSingleBeads` runs as the final step of
+  `generate_toolpaths`, after A1's canonical junction generation and A2's
+  `connectJunctions` emission have shaped the graph's junction fans; B's
+  transition/rib passes run earlier in canonical `generateSegments` and
+  further shape the `beading.bead_widths` state N9 reads; C's
+  `filterNoncentralRegions` must land first so local-maxima detection runs on
+  the corrected central set. Any one of A1/A2/B missing means D's local-maxima
+  gate reads state from an intermediate, non-canonical graph shape.
 - Unblocks: `146-arachne-postprocess-order-and-remove-small-simplify` (E — E's `removeSmallLines` interacts with the micro-loops D emits).
-- Activation blockers: none.
+- Activation blockers: `141`, `142`, `143`, and `144` must all be `status:
+  implemented` before this packet activates.
 
 ## Acceptance Criteria
 

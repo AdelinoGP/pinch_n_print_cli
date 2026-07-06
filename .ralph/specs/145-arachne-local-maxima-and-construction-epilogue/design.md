@@ -4,7 +4,7 @@
 
 - Primary code path (N9): `crates/slicer-core/src/arachne/generate_toolpaths.rs` — the end of `generate_toolpaths` (where `generateLocalMaximaSingleBeads` is appended as the final step, after A2's `connectJunctions` emission).
 - Primary code path (N10): `crates/slicer-core/src/skeletal_trapezoidation/graph.rs:269-327` (`from_polygons` — where the three-pass epilogue is appended after 113c's per-edge radius bounds).
-- Neighboring code path: `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs` (the `isLocalMaximum` predicate may live here alongside `updateIsCentral`, or in `graph.rs`).
+- Neighboring code path: `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs` — **NOT a clean slate**: a private, `#[allow(dead_code)]` `fn is_local_maximum` already exists at `centrality.rs:264` (used only by the unwired `try_dissolve` whisker-dissolve helper, which the 144/C gotcha already forbids wiring up). The implementer must decide reuse-vs-distinct-name before Step 1 (see Rejected Alternatives / Architecture Constraints below) — a same-named second definition in this module is a compile error.
 - Neighboring tests/fixtures: `arachne_local_maxima_single_beads.rs` (NEW — AC-1), `arachne_construction_epilogue.rs` (NEW — AC-2), `crates/slicer-core/tests/fixtures/arachne/centrality_*.json` + `toolpaths_tapered_wedge.json` (re-baseline).
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load).
 
@@ -17,25 +17,27 @@
 - Packet-specific constraint: **D's epilogue is additive** — three passes appended after 113c's existing per-edge radius bounds. 113c's `from_polygons` Steps 1-3 remain canonical and untouched. D does not re-derive 113c's per-cell construction.
 - Packet-specific constraint: **`collapseSmallEdges`'s zero-length ε is a small constant in slicer units.** The implementer confirms the exact value via a delegated SUMMARY of `SkeletalTrapezoidationGraph.cpp`'s `collapseSmallEdges`.
 - Packet-specific constraint: **WASM staleness does NOT apply** — D's change surface is `slicer-core`-internal; no path feeds the guest WASM build. The `wasm-staleness` snippet is intentionally omitted.
+- Packet-specific constraint: **`is_local_maximum` name collision must be resolved before Step 1.** `centrality.rs:264` already defines a private `fn is_local_maximum` with matching neighbor-`distance_to_boundary` semantics (currently dead code, reachable only from the unwired `try_dissolve`). The implementer decides, and records in this file before implementation starts: reuse the existing function (dropping its `#[allow(dead_code)]`) once a delegated SUMMARY confirms OrcaSlicer's `isLocalMaximum(true)` argument means the same thing this predicate already checks, or introduce a distinctly-named predicate if it doesn't. Do not silently add a second `is_local_maximum` to `centrality.rs`.
 
 ## Code Change Surface
 
 - Selected approach: port `generateLocalMaximaSingleBeads` (N9) as the final step of `generate_toolpaths` and port the `constructFromPolygons` epilogue (N10) as three additive passes appended to `from_polygons`. The two are bundled because they are both "cleanup" passes (local-maxima emission + graph degeneracy cleanup) that are low-risk and share the graph-shape context.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — NEW `generate_local_maxima_single_beads` function (6-segment hexagonal micro-loop, radius `width/8`, `is_odd = true`); called as the final step of `generate_toolpaths` after A2's `connectJunctions` emission.
-  - `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — NEW `separate_pointy_quad_end_nodes`, `collapse_small_edges`, incident-edge normalization functions; appended to `from_polygons` after 113c's per-edge radius bounds (`:269-327`). NEW `is_local_maximum` predicate (or in `centrality.rs`).
+  - `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — NEW `separate_pointy_quad_end_nodes`, `collapse_small_edges`, incident-edge normalization functions; appended to `from_polygons` after 113c's per-edge radius bounds (`:269-327`). `is_local_maximum` predicate: reuse `centrality.rs:264`'s existing (currently dead-code) function per the name-collision decision above, NOT a fresh same-named definition.
   - `crates/slicer-core/tests/arachne_local_maxima_single_beads.rs` (NEW) — AC-1.
   - `crates/slicer-core/tests/arachne_construction_epilogue.rs` (NEW) — AC-2.
   - `crates/slicer-core/tests/fixtures/arachne/centrality_*.json` + `toolpaths_tapered_wedge.json` — re-baselined via self-capture.
 - Rejected alternatives:
   - **Split N9 and N10 into two packets** — rejected (both are low-risk cleanup passes sharing graph-shape context; bundling as one M packet avoids packet-management overhead).
   - **Put `isLocalMaximum` in `generate_toolpaths.rs`** — rejected (it's a graph predicate, not a toolpath-emission concern; belongs in `graph.rs` or `centrality.rs` alongside `updateIsCentral`).
+  - **Add a second, same-named `is_local_maximum` to `centrality.rs`** — rejected outright (compile error; `centrality.rs:264` already defines one). The implementer reuses it or names the new predicate distinctly — see Architecture Constraints above.
   - **Make `collapseSmallEdges`'s ε configurable** — rejected (canonical hardcodes it; D should match unless a delegated SUMMARY reveals a config key).
 
 ## Files in Scope (read + edit)
 
 - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — role: N9 `generateLocalMaximaSingleBeads`; expected change: add `generate_local_maxima_single_beads` function + call it as the final step of `generate_toolpaths`.
-- `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — role: N10 epilogue + `isLocalMaximum` predicate; expected change: add `separate_pointy_quad_end_nodes`/`collapse_small_edges`/incident-edge normalization, append to `from_polygons`, add `is_local_maximum`.
+- `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — role: N10 epilogue + `isLocalMaximum` predicate; expected change: add `separate_pointy_quad_end_nodes`/`collapse_small_edges`/incident-edge normalization, append to `from_polygons`, wire in `is_local_maximum` per the reuse-vs-rename decision (do not redefine it).
 - `crates/slicer-core/tests/arachne_local_maxima_single_beads.rs` — role: AC-1; expected change: NEW file, near-square odd-bead-count region + hexagonal micro-loop assertion.
 
 ## Read-Only Context
