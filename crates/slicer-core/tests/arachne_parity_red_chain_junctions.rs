@@ -1,27 +1,50 @@
 //! Red tests encoding finding F3 of the Arachne parity audit
 //! (`target/arachne_parity_audit_*.md`).
 //!
-//! **Finding F3:** PNP's `chain_junctions_for_bead`
+//! **Finding F3 (as stated by the audit):** PNP's `chain_junctions_for_bead`
 //! (`crates/slicer-core/src/arachne/generate_toolpaths.rs:395-443`)
 //! uses a **width-based** merge at shared vertices: it compares
 //! `p.width` of the two candidate junctions and keeps the wider one.
 //! OrcaSlicer's `connectJunctions`
 //! (`OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:2315-2322`)
-//! uses a **`perimeter_index` pop-back** merge: it pops back entries
-//! from `to_junctions` whose `perimeter_index <= next_edge's
-//! from_junctions[0].perimeter_index`, then appends.
+//! uses a **`perimeter_index` pop-back** merge.
 //!
-//! # Status: currently passing (signal too weak to fail)
+//! # Status: F3 (the merge heuristic) is NOT a finding
 //!
-//! The F3 signal is subtle: a wider junction having a *lower*
-//! `perimeter_index` (or vice versa) is needed to expose the difference.
-//! The two tests in this file are designed as **invariant locks** that
-//! document the F3 contract for the fix agent. With the current
-//! symmetric fixture (all vertices at the same R), the width-based and
-//! perimeter_index-based merges produce equivalent results, so the
-//! tests pass.
+//! Re-investigation (post-F1/F2/F5/F6 fixes) concluded F3's stated
+//! severity rationale ("missing beads") is wrong: PNP's
+//! `chain_junctions_for_bead` runs **per bead index**
+//! (`generate_toolpaths.rs:588`), so at a shared vertex it merges
+//! `edge_i.to_junctions[b]` with `edge_{i+1}.from_junctions[b]` — the
+//! **same bead `b`** — and keeps exactly one. No bead goes missing;
+//! the audit was reasoning about OrcaSlicer's full-list `connectJunctions`
+//! (where pop_back removes a perimeter_index from the combined list),
+//! which is a different architecture. The position difference between
+//! the two merges is sub-vertex interpolation noise that the audit's
+//! own red tests could not distinguish (see the original "What a
+//! stronger test would need" note below, kept for history). F3 is
+//! documented as not-a-finding, matching F4 and F7.
 //!
-//! # What a stronger test would need
+//! # The actual defect this file now guards: the `t_to` constant-radius fallback
+//!
+//! While investigating F3, a separate real defect was found in
+//! `generate_junctions` (`generate_toolpaths.rs:282-291`): for a
+//! constant-radius central edge (`delta_r_mm == 0`), the `to_junctions`
+//! fallback was `t = 0` (start vertex), placing both `from_junctions[b]`
+//! and `to_junctions[b]` at the **start** vertex — collapsing the edge's
+//! two junctions onto one point and dropping the end vertex from the
+//! chain. This fires on real topology (102 constant-radius central
+//! edges in `cube_4color.3mf`), producing visibly wrong wall geometry
+//! (~0.17mm Y-shift on the outer walls). The fix: `t_to` falls back to
+//! `1.0` (end vertex) for constant-radius edges, so `from_junctions`
+//! lands at the start and `to_junctions` lands at the end.
+//!
+//! OrcaSlicer avoids this case entirely (`SkeletalTrapezoidation.cpp:2024-2025`
+//! skips edges where `end_R >= start_R`, which includes constant-radius),
+//! but PNP processes all central edges and must emit both endpoints'
+//! junctions to chain across shared vertices.
+//!
+//! # Original F3 "What a stronger test would need" (kept for history)
 //!
 //! A test that genuinely *fails* under PNP's width-based merge and
 //! passes under OrcaSlicer's perimeter_index-based merge would need:
@@ -31,23 +54,16 @@
 //!   3. The narrow junction has a *higher* `perimeter_index` than the
 //!      wide one.
 //!
-//! This is constructible from the public `BeadingStrategy` API by
-//! using a strategy that returns bead widths in a different order on
-//! the two endpoints (impossible with the current `BeadingStrategy`
-//! API, which returns one `Beading` per call). A more thorough
-//! investigation would require either:
-//!   (a) extending `BeadingStrategy::compute` to take per-endpoint
-//!       context (a larger refactor than this audit is scoped to), or
-//!   (b) constructing a hand-built graph that drives
-//!       `chain_junctions_for_bead` directly through a pub-crate test
-//!       helper (not currently exposed).
+//! This is not constructible from the public `BeadingStrategy` API
+//! without a per-endpoint context extension, and (per the re-
+//! investigation) would not demonstrate a real defect even if built.
 //!
 //! # Tests in this file
 //!
-//! Both tests pass on the current code AND on the OrcaSlicer-faithful
-//! fix. They are written here as a regression lock so a future
-//! "simplification" of the merge logic does not silently regress to
-//! dropping one side's junction at a shared vertex.
+//! The first two tests are the original F3 invariant locks (count and
+//! width-positivity). The third test is the strengthened constant-radius
+//! position assertion that genuinely fails under the old `t_to = 0`
+//! fallback and passes under the `t_to = 1` fix.
 //!
 //! Host-only: gated behind `host-algos`.
 
@@ -232,6 +248,63 @@ fn f3_invariant_junction_widths_are_finite_and_positive() {
                     j.p.width
                 );
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Strengthened constant-radius position assertion (guards the real defect
+// found during F3 re-investigation: the `t_to = 0` fallback for constant-
+// radius edges). The `make_f3_target_graph` fixture is a 3-vertex constant-
+// radius chain (v0=(0,0), v1=(50,0), v2=(100,0), all R=10mm). For a
+// constant-radius edge, the to-junction must land at the edge's END vertex,
+// not its start vertex. Under the old `t_to = 0` fallback both junctions
+// landed at the start, collapsing the chain. This test asserts the actual
+// x-coordinates of the emitted junctions match the vertices v0/v1/v2 in
+// order — it fails under `t_to = 0` and passes under `t_to = 1`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn constant_radius_chain_to_junction_lands_at_end_vertex_not_start() {
+    let graph = make_f3_target_graph();
+    let strategy = SymmetricBeadingStrategy;
+    let output = generate_toolpaths(&graph, &strategy);
+
+    assert!(!output.is_empty(), "expected at least one inset bucket");
+    for bucket in &output {
+        for line in bucket {
+            assert_eq!(
+                line.junctions.len(),
+                3,
+                "constant-radius 2-edge chain must produce exactly 3 \
+                 junctions (one per vertex), got {}",
+                line.junctions.len()
+            );
+            // v0 = (0, 0) mm, v1 = (5, 0) mm, v2 = (10, 0) mm. The chain
+            // is e0 (v0->v1) then e1 (v1->v2). Under the `t_to = 1` fix:
+            //   junction[0] = e0.from = v0 = (0, 0)
+            //   junction[1] = merge(e0.to=v1, e1.from=v1) = v1 = (5, 0)
+            //   junction[2] = e1.to = v2 = (10, 0)
+            // Under the old `t_to = 0` fallback:
+            //   junction[0] = v0 = (0, 0)
+            //   junction[1] = merge(e0.to=v0 [WRONG], e1.from=v1) — the
+            //     width tiebreak (`>=`, line 427) keeps e0.to = v0, so
+            //     junction[1] = v0 = (0, 0) [WRONG, not v1]
+            //   junction[2] = e1.to = v0 [WRONG, not v2]
+            // So the x-coordinates under the bug are (0, 0, 0) instead of
+            // (0, 5, 10). Assert the correct values.
+            let xs: Vec<f32> = line.junctions.iter().map(|j| j.p.x).collect();
+            assert!(
+                (xs[0] - 0.0).abs() < 1e-3
+                    && (xs[1] - 5.0).abs() < 1e-3
+                    && (xs[2] - 10.0).abs() < 1e-3,
+                "constant-radius chain junction x-coordinates must be \
+                 (0, 5, 10) mm (v0, v1, v2). Got {xs:?}. If the middle \
+                 and end are 0 instead of 5/10, the `t_to` constant-\
+                 radius fallback in `generate_junctions` regressed to \
+                 `t = 0` (start vertex), collapsing both junctions onto \
+                 the start and dropping the end vertex from the chain."
+            );
         }
     }
 }

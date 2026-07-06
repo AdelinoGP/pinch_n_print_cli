@@ -275,10 +275,16 @@ fn generate_junctions(
             // between the two endpoints' `distance_to_boundary` values.
             // Clamped to `[0, 1]` so a bead whose target radius falls outside
             // this edge's local radius range lands on the nearer endpoint
-            // instead of extrapolating past it; falls back to `t = 0` (the
-            // start endpoint) when the edge is constant-radius
-            // (`delta_r_mm == 0`), matching this doc's "falls back to the
-            // edge's own endpoint" guarantee.
+            // instead of extrapolating past it. When the edge is constant-
+            // radius (`delta_r_mm == 0`), the bead's target radius is the same
+            // at both ends, so the from-junction falls back to the edge's own
+            // start endpoint (`t = 0`) and the to-junction falls back to the
+            // edge's own end endpoint (`t = 1`) — placing the two junctions at
+            // their respective chain vertices so a constant-radius edge
+            // stitches correctly across shared vertices. (Using `t = 0` for
+            // both would collapse both junctions onto the start vertex,
+            // dropping the end vertex from the chain and producing a
+            // degenerate 0-length segment.)
             let t_from = if delta_r_mm.abs() > f32::EPSILON {
                 ((loc_start_mm - r_start_mm) / delta_r_mm).clamp(0.0, 1.0)
             } else {
@@ -287,7 +293,7 @@ fn generate_junctions(
             let t_to = if delta_r_mm.abs() > f32::EPSILON {
                 ((loc_end_mm - r_start_mm) / delta_r_mm).clamp(0.0, 1.0)
             } else {
-                0.0
+                1.0
             };
 
             // `perimeter_index` is a placeholder here — `bead_idx` duplicates
