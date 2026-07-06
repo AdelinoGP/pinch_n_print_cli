@@ -319,6 +319,7 @@ fn centrality_stage_two_whisker_dissolve_is_exercised() {
         edges,
         centrality_filtered: false,
         rib: RibData::default(),
+        ..Default::default()
     };
     let params = CentralityParams::new(1000.0, 0.0); // generous length budget; floor never rejects.
     let mut test_params = params;

@@ -80,6 +80,7 @@ fn single_edge_with_mid() -> SkeletalTrapezoidationGraph {
         edges: vec![edge0, edge1],
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     }
 }
 
@@ -199,6 +200,7 @@ fn n3_transition_spilling_past_vertex_sets_fractional_ratio() {
         edges: vec![edge_a, edge_b, edge_a_rev, edge_b_rev],
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     };
 
     apply_transitions(&mut graph);

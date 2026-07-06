@@ -79,6 +79,7 @@ use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
 use super::discretize::discretize_parabolic_edge;
 use super::rib::{EdgeType, RibData};
+use crate::beading::Beading;
 use crate::voronoi::{self, Segment, SourceCategory, Vertex, VoronoiError, NO_INDEX};
 
 /// Numerical tolerance (in `f64` scaled-integer units) below which a length or
@@ -213,6 +214,21 @@ pub struct SkeletalTrapezoidationGraph {
     pub centrality_filtered: bool,
     /// Rib-topology payload. Empty since packet 113c (ribs live in `edges`).
     pub rib: RibData,
+    /// Per-vertex `Beading` side table, parallel to `vertices` (packet 141
+    /// Step 1, N7). Mirrors OrcaSlicer's `std::vector<BeadingPropagation>
+    /// beading_propagation` (`SkeletalTrapezoidation.hpp`,
+    /// `SkeletalTrapezoidation.cpp:2091-2127` for the `getBeading` /
+    /// `getNearestBeading` accessors). Initialised to `vec![None;
+    /// vertices.len()]` in [`SkeletalTrapezoidationGraph::from_polygons`]
+    /// and populated vertex-by-vertex by
+    /// [`super::propagation::populate_beading_propagation`] (one entry per
+    /// vertex whose `bead_count` is `Some(_)`); the merge branch of
+    /// [`super::propagation::propagate_beadings_downward_with_transition_dist`]
+    /// overwrites merged vertices' entries with a width/location-blended
+    /// beading when both endpoints already carry one. Step 2 (N1) reads
+    /// this via [`SkeletalTrapezoidationGraph::get_beding`] /
+    /// [`SkeletalTrapezoidationGraph::get_nearest_beding`].
+    pub beading_propagation: Vec<Option<Beading>>,
 }
 
 /// Errors from [`SkeletalTrapezoidationGraph::from_polygons`].
@@ -317,13 +333,200 @@ impl SkeletalTrapezoidationGraph {
             builder.edges[i].r_max = r_max;
         }
 
+        let n = builder.vertices.len();
         Ok(Self {
             vertices: builder.vertices,
             edges: builder.edges,
             centrality_filtered: false,
             rib: RibData::default(),
+            beading_propagation: {
+                let mut side = Vec::with_capacity(n);
+                for _ in 0..n {
+                    side.push(None);
+                }
+                side
+            },
         })
     }
+
+    /// Returns the per-vertex `Beading` for `node_id`, or `None` if no
+    /// beading has been stored for that vertex (either the side table has
+    /// not been populated by
+    /// [`super::propagation::populate_beading_propagation`] yet, or the
+    /// vertex is a rib-foot node with `bead_count = None`).
+    ///
+    /// Mirrors OrcaSlicer's `SkeletalTrapezoidation::getBeading`
+    /// (`SkeletalTrapezoidation.cpp:2091`). Out-of-range lookups return
+    /// `None` rather than panicking; the side table is index-parallel to
+    /// [`SkeletalTrapezoidationGraph::vertices`], so an in-range index is
+    /// always the right one to use.
+    ///
+    /// The hot path carries a `debug_assert!` of the documented
+    /// `Beading` invariant
+    /// (`bead_widths.len() == toolpath_locations.len()`) so a regression
+    /// in the population step surfaces at the first call site rather than
+    /// deep in a downstream consumer.
+    pub fn get_beding(&self, node_id: usize) -> Option<&Beading> {
+        let entry = self.beading_propagation.get(node_id)?.as_ref();
+        if let Some(beading) = entry {
+            debug_assert_eq!(
+                beading.bead_widths.len(),
+                beading.toolpath_locations.len(),
+                "beading_propagation[{node_id}] violates the bead_widths.len() == toolpath_locations.len() invariant"
+            );
+        }
+        entry
+    }
+
+    /// Returns the nearest populated `Beading` to `node_id` within
+    /// `radius_units` (in slicer units, where 1 unit = 100 nm), or `None`
+    /// if no populated entry lies within the radius.
+    ///
+    /// Mirrors OrcaSlicer's `SkeletalTrapezoidation::getNearestBeading`
+    /// (`SkeletalTrapezoidation.cpp:2098-2127`). The canonical call site
+    /// uses a 0.1 mm radius (`1000` slicer units at
+    /// `UNITS_PER_MM = 10_000`); the radius is a parameter here so
+    /// callers can override for non-default lookups.
+    ///
+    /// "Nearest" is defined as Euclidean vertex-to-vertex distance in the
+    /// scaled-integer unit space, matching the rest of this module's
+    /// distance conventions. Self-lookups (`node_id` itself, distance 0)
+    /// are returned when `node_id` is populated; for an unpopulated
+    /// `node_id` with `radius_units > 0`, the function performs a
+    /// breadth-first walk through the half-edge adjacency until the
+    /// cumulative edge length exceeds `radius_units` or the frontier is
+    /// exhausted. For `radius_units <= 0.0`, only `node_id` itself is
+    /// considered (degenerate nearest-neighbour).
+    pub fn get_nearest_beding(&self, node_id: usize, radius_units: f64) -> Option<&Beading> {
+        if self.beading_propagation.get(node_id)?.is_some() {
+            return self.get_beding(node_id);
+        }
+        if !radius_units.is_finite() || radius_units <= 0.0 {
+            return None;
+        }
+        // BFS over half-edge adjacency; cumulative Euclidean edge length
+        // is the distance metric. `visited` guards against the cycle a
+        // graph topology can introduce (twin pair, prev/next loops).
+        let mut visited: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        visited.insert(node_id);
+        let mut frontier: std::collections::VecDeque<(usize, f64)> =
+            std::collections::VecDeque::new();
+        // Seed the frontier with the immediate neighbours via twin
+        // (predecessor via twin's start_vertex) and via next/prev on the
+        // edges that start at `node_id`.
+        for (edge_idx, edge) in self.edges.iter().enumerate() {
+            if edge.start_vertex == node_id {
+                if let Some(twin_idx) = (edge.twin != NO_INDEX).then_some(edge.twin) {
+                    if let Some(twin) = self.edges.get(twin_idx) {
+                        let to_v = twin.start_vertex;
+                        if visited.insert(to_v) {
+                            let edge_len = nearest_edge_length(self, edge_idx);
+                            if edge_len <= radius_units {
+                                frontier.push_back((to_v, edge_len));
+                            }
+                        }
+                    }
+                }
+                let mut cursor = edge.next;
+                let mut guard = 0usize;
+                while cursor != NO_INDEX && guard <= self.edges.len() {
+                    if let Some(next_edge) = self.edges.get(cursor) {
+                        let to_v = next_edge.start_vertex;
+                        if visited.insert(to_v) {
+                            let edge_len = nearest_edge_length(self, cursor);
+                            if edge_len <= radius_units {
+                                frontier.push_back((to_v, edge_len));
+                            }
+                        }
+                        cursor = next_edge.next;
+                    } else {
+                        break;
+                    }
+                    guard += 1;
+                }
+            }
+        }
+        while let Some((v, dist)) = frontier.pop_front() {
+            if self
+                .beading_propagation
+                .get(v)
+                .and_then(|e| e.as_ref())
+                .is_some()
+            {
+                // The first populated vertex popped is the nearest
+                // (BFS by cumulative distance). `get_beding` re-validates
+                // the structural invariant as a `debug_assert!` hot-path
+                // check, so a regression in the population step surfaces
+                // here.
+                return self.get_beding(v);
+            }
+            if dist >= radius_units {
+                continue;
+            }
+            // Expand `v`'s neighbours.
+            for (edge_idx, edge) in self.edges.iter().enumerate() {
+                if edge.start_vertex != v {
+                    continue;
+                }
+                let edge_len = nearest_edge_length(self, edge_idx);
+                let new_dist = dist + edge_len;
+                if new_dist > radius_units {
+                    continue;
+                }
+                if let Some(twin_idx) = (edge.twin != NO_INDEX).then_some(edge.twin) {
+                    if let Some(twin) = self.edges.get(twin_idx) {
+                        let to_v = twin.start_vertex;
+                        if visited.insert(to_v) {
+                            frontier.push_back((to_v, new_dist));
+                        }
+                    }
+                }
+                let mut cursor = edge.next;
+                let mut guard = 0usize;
+                while cursor != NO_INDEX && guard <= self.edges.len() {
+                    if let Some(next_edge) = self.edges.get(cursor) {
+                        let to_v = next_edge.start_vertex;
+                        if visited.insert(to_v) {
+                            frontier.push_back((to_v, new_dist));
+                        }
+                        cursor = next_edge.next;
+                    } else {
+                        break;
+                    }
+                    guard += 1;
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Local Euclidean edge length helper for [`SkeletalTrapezoidationGraph::get_nearest_beding`]
+/// (duplicated rather than shared with the `pub(super) fn edge_length` in
+/// [`super::centrality`] to keep this module's nearest-lookup self-contained
+/// and avoid a cross-module dependency on `centrality.rs`'s private API).
+fn nearest_edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> f64 {
+    let Some(edge) = graph.edges.get(edge_idx) else {
+        return 0.0;
+    };
+    let Some(start_v) = graph.vertices.get(edge.start_vertex) else {
+        return 0.0;
+    };
+    let to_idx = if edge.twin == NO_INDEX {
+        NO_INDEX
+    } else {
+        graph
+            .edges
+            .get(edge.twin)
+            .map(|twin_edge| twin_edge.start_vertex)
+            .unwrap_or(NO_INDEX)
+    };
+    let Some(end_v) = graph.vertices.get(to_idx) else {
+        return 0.0;
+    };
+    let dx = end_v.position.x - start_v.position.x;
+    let dy = end_v.position.y - start_v.position.y;
+    (dx * dx + dy * dy).sqrt()
 }
 
 /// Read-only inputs to the graph construction: the raw Voronoi diagram plus

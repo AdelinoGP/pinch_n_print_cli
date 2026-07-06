@@ -392,6 +392,7 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
         edges,
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     }
 }
 
@@ -449,6 +450,7 @@ fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
         edges,
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     }
 }
 
@@ -735,6 +737,7 @@ fn rib_adjacent_two_split_graph() -> SkeletalTrapezoidationGraph {
         edges: vec![e0, e1, e2, e3],
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     }
 }
 

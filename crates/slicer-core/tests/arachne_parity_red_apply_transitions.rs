@@ -136,6 +136,7 @@ fn make_f2_target_graph(mid_r_units: f64) -> SkeletalTrapezoidationGraph {
         edges: vec![e0, e1],
         centrality_filtered: true,
         rib: Default::default(),
+        ..Default::default()
     }
 }
 

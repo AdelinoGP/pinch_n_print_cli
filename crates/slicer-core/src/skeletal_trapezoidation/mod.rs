@@ -32,7 +32,7 @@ pub use centrality::{filter_central, CentralityParams};
 pub use discretize::discretize_parabolic_edge;
 pub use graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, SktError, TransitionMiddle};
 pub use propagation::{
-    apply_transitions, generate_transition_mids, propagate_beadings_downward,
-    propagate_beadings_upward,
+    apply_transitions, generate_transition_mids, populate_beading_propagation,
+    propagate_beadings_downward, propagate_beadings_upward,
 };
 pub use rib::{build_quad_rib_topology, EdgeType, RibData, RibError};

@@ -39,7 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::graph::{STHalfEdge, STVertex, SkeletalTrapezoidationGraph, TransitionMiddle};
 use super::rib::EdgeType;
-use crate::beading::BeadingStrategy;
+use crate::beading::{Beading, BeadingStrategy};
 use crate::voronoi::NO_INDEX;
 
 /// Snap distance used by `apply_transitions` when deciding whether a
@@ -119,8 +119,16 @@ fn _radius_at(graph: &SkeletalTrapezoidationGraph, edge_idx: usize, pos: f64) ->
 }
 
 /// Returns all edges whose endpoints' `distance_to_boundary` increase along the
-/// edge direction (`start_R < end_R`) and which are central. This is the set
-/// upstream calls `upward_quad_mids` in the propagation passes.
+/// edge direction (`start_R < end_R`). This is the set upstream calls
+/// `upward_quad_mids` in the propagation passes.
+///
+/// **Packet 141 (N7) — centrality gate dropped.** The previous implementation
+/// also filtered on `e.central`, which silently excluded the upward
+/// (non-flat) rib-foot connections that canonical `upwardQuadMids`
+/// (`OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp:1669-1672`)
+/// includes. The name is preserved to minimise call-site blast radius; the
+/// behaviour is now "all strictly-upward edges" rather than "strictly-upward
+/// central edges".
 ///
 /// Tie order is index-ascending (deterministic).
 fn upward_central_edges(graph: &SkeletalTrapezoidationGraph) -> Vec<usize> {
@@ -128,7 +136,6 @@ fn upward_central_edges(graph: &SkeletalTrapezoidationGraph) -> Vec<usize> {
         .edges
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.central)
         .filter(|(idx, e)| {
             let start_r = graph
                 .vertices
@@ -742,13 +749,17 @@ pub fn apply_transitions(graph: &mut SkeletalTrapezoidationGraph) {
 /// Computes the exact traversal order [`propagate_beadings_upward`] walks:
 /// `upward_central_edges`'s own descending-`r_max` order reversed (yielding
 /// ascending order), or — for hand-built test graphs with no strictly-upward
-/// central edges at all (every endpoint tied on `distance_to_boundary`) — all
-/// central edges sorted ascending by `r_min` (tie-broken by index) and then
+/// edges at all (every endpoint tied on `distance_to_boundary`) — all
+/// edges sorted ascending by `r_min` (tie-broken by index) and then
 /// *also* reversed, exactly mirroring the single `iter.iter().rev())` this
 /// function used to apply uniformly to whichever list it picked. Factored out
 /// so [`compute_dist_to_bottom_source`] can replay the identical walk (same
 /// order ⇒ same accumulated distances) without duplicating this order/
 /// fallback logic a third time.
+///
+/// **Packet 141 (N7) — centrality gate dropped** in the fallback (matching
+/// [`upward_central_edges`] and the corresponding change in
+/// [`propagate_beadings_downward_with_transition_dist`]'s own fallback).
 fn upward_propagation_order(graph: &SkeletalTrapezoidationGraph) -> Vec<usize> {
     let order = upward_central_edges(graph);
     if !order.is_empty() {
@@ -756,13 +767,7 @@ fn upward_propagation_order(graph: &SkeletalTrapezoidationGraph) -> Vec<usize> {
         ascending.reverse();
         return ascending;
     }
-    let mut all: Vec<usize> = graph
-        .edges
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.central)
-        .map(|(idx, _)| idx)
-        .collect();
+    let mut all: Vec<usize> = graph.edges.iter().enumerate().map(|(idx, _)| idx).collect();
     all.sort_by(|&a, &b| {
         graph.edges[a]
             .r_min
@@ -821,32 +826,137 @@ fn interpolate_bead_counts(bottom_bc: u32, top_bc: u32, ratio_of_top: f64) -> u3
     blended.round() as u32
 }
 
+/// Width/location-blended `Beading` between `bottom` and `top` per the
+/// upstream `interpolate()` weighting (`SkeletalTrapezoidation.cpp:1883-1885`,
+/// `ratio_of_top` = `dist_to_bottom_source / min(total_dist,
+/// beading_propagation_transition_dist)`).
+///
+/// Unlike [`interpolate_bead_counts`] — which only blends the integer bead
+/// count and discards the per-bead width/location structure — this blends
+/// `total_thickness`, every per-bead `bead_width`, and every per-bead
+/// `toolpath_location` elementwise, matching OrcaSlicer's full
+/// `BeadingPropagation` blend. The two `Beading`s must have the same
+/// `bead_count` (`bead_widths.len() == toolpath_locations.len()`) for the
+/// elementwise blend to be well-defined; if they differ, the longer one is
+/// truncated to the shorter so the result is deterministic and never
+/// silently expands the beading.
+///
+/// `ratio_of_top` is clamped to `[0, 1]`. `left_over` is also linearly
+/// blended (consistent with the other scalars — OrcaSlicer's blend does
+/// not distinguish it).
+pub(crate) fn interpolate_bead_propagation(
+    bottom: &Beading,
+    top: &Beading,
+    ratio_of_top: f64,
+) -> Beading {
+    let t = ratio_of_top.clamp(0.0, 1.0);
+    let n = bottom.bead_widths.len().min(top.bead_widths.len());
+    let mut widths = Vec::with_capacity(n);
+    let mut locations = Vec::with_capacity(n);
+    for i in 0..n {
+        let bw = bottom.bead_widths[i] * (1.0 - t) + top.bead_widths[i] * t;
+        let bl = bottom.toolpath_locations[i] * (1.0 - t) + top.toolpath_locations[i] * t;
+        widths.push(bw);
+        locations.push(bl);
+    }
+    Beading {
+        total_thickness: bottom.total_thickness * (1.0 - t) + top.total_thickness * t,
+        bead_widths: widths,
+        toolpath_locations: locations,
+        left_over: bottom.left_over * (1.0 - t) + top.left_over * t,
+    }
+}
+
+/// Populates [`SkeletalTrapezoidationGraph::beading_propagation`] for every
+/// vertex whose `bead_count = Some(bc)`, by calling
+/// `strategy.compute(2.0 * v.distance_to_boundary, bc as usize)` and storing
+/// the resulting `Beading` in the side table.
+///
+/// **Packet 141 (N7) — N1's substrate.** Step 2 (N1) reads this side table
+/// via [`SkeletalTrapezoidationGraph::get_beding`] /
+/// [`SkeletalTrapezoidationGraph::get_nearest_beding`] to resolve a
+/// per-junction beading (instead of the current
+/// per-endpoint-from-`bead_count` interpolation, which is finding N1 of the
+/// second-pass audit).
+///
+/// This function is intentionally separate from
+/// [`assign_bead_counts`](super::bead_count::assign_bead_counts) so Packet B
+/// (the `BeadingStrategy` trait extension) owns the future move of the
+/// beading computation into the primary pass; the side table is populated
+/// here against an already-strategy-resolved graph, on demand, matching how
+/// OrcaSlicer's `BeadingPropagation` is built in a single pass at
+/// `updateBeadCount` time but stored on the graph for later reads.
+///
+/// Vertices with `bead_count = None` (rib-foot nodes) are left as `None` in
+/// the side table; the structural invariant is "rib-foot ⇒ `None`",
+/// "primary ⇒ `Some`" (see
+/// `tests/arachne_beding_propagation_side_table.rs`'s
+/// `populate_side_table_covers_primary_vertices_only`).
+pub fn populate_beading_propagation(
+    graph: &mut SkeletalTrapezoidationGraph,
+    strategy: &dyn BeadingStrategy,
+) {
+    // Resize the side table if the graph's vertex count has changed since
+    // `from_polygons` (e.g. `apply_transitions::insert_node` added split
+    // vertices). `apply_transitions` is out of scope for Step 1, but this
+    // resize keeps the side table index-parallel to `vertices` even if a
+    // caller wires it in.
+    if graph.beading_propagation.len() != graph.vertices.len() {
+        graph.beading_propagation.resize(graph.vertices.len(), None);
+    }
+    for (v_idx, v) in graph.vertices.iter().enumerate() {
+        let Some(bc) = v.bead_count else {
+            continue;
+        };
+        let thickness = 2.0 * v.distance_to_boundary;
+        let beading = strategy.compute(thickness, bc as usize);
+        // Defensive invariant check (mirrors `Beading`'s own documented
+        // contract): strategies that violate this are caught here rather
+        // than at first `get_beding` call.
+        debug_assert_eq!(
+            beading.bead_widths.len(),
+            beading.toolpath_locations.len(),
+            "BeadingStrategy::compute({}, {}) produced a beading with mismatched \
+             bead_widths.len() = {} and toolpath_locations.len() = {}",
+            thickness,
+            bc,
+            beading.bead_widths.len(),
+            beading.toolpath_locations.len()
+        );
+        if let Some(slot) = graph.beading_propagation.get_mut(v_idx) {
+            *slot = Some(beading);
+        }
+    }
+}
+
 /// Structural set of vertices that receive a *primary* (non-propagated) bead
-/// count: exactly the "to" vertices of central edges, matching
+/// count: exactly the "to" vertices of upward edges, matching
 /// `bead_count.rs::assign_bead_counts`'s own primary-pass gate ("for each
 /// central edge, assign the bead count at the edge's `to` vertex") — computed
 /// fresh from the graph's *current* edge topology, not from the (already
 /// fully-propagated, hence uninformative) `bead_count` field.
 ///
+/// **Packet 141 (N7) — centrality gate dropped.** The previous implementation
+/// filtered on `edge.central`, which (per the same change in
+/// [`upward_central_edges`]) silently excluded rib-foot connections the
+/// canonical `upwardQuadMids` includes.
+///
 /// This also correctly captures every vertex `apply_transitions::insert_node`
 /// creates: splitting a central edge repoints that edge's own "to" (via
 /// `.twin`) to the new split vertex, and `insert_node` always sets
 /// `bead_count: Some(_)` directly on it — so by construction a split vertex
-/// is *also* the "to" vertex of a (now-shrunk) central edge in the
+/// is *also* the "to" vertex of a (now-shrunk) edge in the
 /// post-`apply_transitions` graph this function is always called against,
 /// and is correctly treated as primary/real, not propagated.
 ///
-/// Vertices that are never any central edge's "to" (rare — only possible for
-/// a vertex with no incoming central edge at all) are the genuine gaps
+/// Vertices that are never any edge's "to" (rare — only possible for a
+/// vertex with no incoming edge at all) are the genuine gaps
 /// [`propagate_beadings_upward`] exists to fill; used by
 /// [`compute_dist_to_bottom_source`] to know when accumulated distance is
 /// implicitly zero (a real source) versus needs summing along the chain.
 fn primary_source_vertices(graph: &SkeletalTrapezoidationGraph) -> BTreeSet<usize> {
     let mut set = BTreeSet::new();
     for edge_idx in 0..graph.edges.len() {
-        if !graph.edges[edge_idx].central {
-            continue;
-        }
         let to_v = resolve_to_vertex(graph, edge_idx);
         if to_v != NO_INDEX {
             set.insert(to_v);
@@ -993,14 +1103,11 @@ pub fn propagate_beadings_downward_with_transition_dist(
 
     let order = upward_central_edges(graph);
     // Fallback for hand-built test graphs with no strictly-upward edges.
+    // **Packet 141 (N7) — centrality gate dropped here too** to match
+    // [`upward_central_edges`]: the fallback must consider all edges, not
+    // just central ones, so the propagation shape stays consistent.
     let fallback_order: Vec<usize> = if order.is_empty() {
-        let mut all: Vec<usize> = graph
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.central)
-            .map(|(idx, _)| idx)
-            .collect();
+        let mut all: Vec<usize> = graph.edges.iter().enumerate().map(|(idx, _)| idx).collect();
         all.sort_by(|&a, &b| {
             graph.edges[b]
                 .r_max
@@ -1060,6 +1167,22 @@ pub fn propagate_beadings_downward_with_transition_dist(
                 v.bead_count = Some(peak_bc);
                 v.transition_ratio = source_transition_ratio;
             }
+            // Side-table write: copy the top vertex's beading verbatim
+            // into the bottom vertex's slot when one is available. The
+            // `clone` is intentional: we cannot hold an immutable borrow
+            // on `peak_v`'s slot and a mutable borrow on `bottom_v`'s
+            // simultaneously, so we copy out and write in.
+            let top_beading_clone: Option<Beading> = graph
+                .beading_propagation
+                .get(peak_v)
+                .and_then(|e| e.as_ref())
+                .cloned();
+            if let (Some(beading), Some(slot)) = (
+                top_beading_clone,
+                graph.beading_propagation.get_mut(bottom_v),
+            ) {
+                *slot = Some(beading);
+            }
             dist_from_top_source.insert(bottom_v, top_dist_from_source + edge_len);
             continue;
         }
@@ -1081,11 +1204,58 @@ pub fn propagate_beadings_downward_with_transition_dist(
                 v.bead_count = Some(peak_bc);
                 v.transition_ratio = source_transition_ratio;
             }
+            // Side-table write: when the top vertex already carries a
+            // stored beading (i.e. `populate_beading_propagation` ran
+            // before this pass), copy that beading verbatim into the
+            // bottom vertex's slot. This is the "full overwrite" case
+            // from upstream's perspective. See the same borrow-checker
+            // pattern as in the no-beading branch above.
+            let top_beading_clone: Option<Beading> = graph
+                .beading_propagation
+                .get(peak_v)
+                .and_then(|e| e.as_ref())
+                .cloned();
+            if let (Some(beading), Some(slot)) = (
+                top_beading_clone,
+                graph.beading_propagation.get_mut(bottom_v),
+            ) {
+                *slot = Some(beading);
+            }
             dist_from_top_source.insert(bottom_v, top_dist_from_source + edge_len);
         } else {
             let blended = interpolate_bead_counts(bottom_bc, peak_bc, ratio_of_top);
             if let Some(v) = graph.vertices.get_mut(bottom_v) {
                 v.bead_count = Some(blended);
+            }
+            // Side-table write (the audit's "width/location blend" path):
+            // when both endpoints already carry a stored beading, blend
+            // them elementwise into the bottom vertex's slot. This is the
+            // canonical OrcaSlicer `BeadingPropagation` merge shape; the
+            // integer `bead_count` write above remains for back-compat
+            // with downstream readers (e.g. `generate_toolpaths`) until
+            // Step 2 turns them into side-table readers. See the same
+            // borrow-checker pattern as the other two side-table writes
+            // above (clone out, write in).
+            let bottom_beading_clone: Option<Beading> = graph
+                .beading_propagation
+                .get(bottom_v)
+                .and_then(|e| e.as_ref())
+                .cloned();
+            let top_beading_clone: Option<Beading> = graph
+                .beading_propagation
+                .get(peak_v)
+                .and_then(|e| e.as_ref())
+                .cloned();
+            if let (Some(bottom_beading), Some(top_beading), Some(slot)) = (
+                bottom_beading_clone.as_ref(),
+                top_beading_clone.as_ref(),
+                graph.beading_propagation.get_mut(bottom_v),
+            ) {
+                *slot = Some(interpolate_bead_propagation(
+                    bottom_beading,
+                    top_beading,
+                    ratio_of_top,
+                ));
             }
             // Merge branch deliberately does not record `dist_from_top_source`
             // for `bottom_v` -- see doc comment (upstream: a merged beading is

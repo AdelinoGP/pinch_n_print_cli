@@ -125,6 +125,7 @@ fn two_bead_single_edge_graph() -> SkeletalTrapezoidationGraph {
         edges: vec![edge0, edge1],
         centrality_filtered: true,
         rib: RibData::default(),
+        ..Default::default()
     }
 }
 
