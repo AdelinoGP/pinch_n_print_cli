@@ -27,12 +27,25 @@
 
 #![cfg(feature = "host-algos")]
 
+use std::collections::BTreeSet;
+
+use slicer_core::beading::distributed::DistributedBeadingStrategy;
 use slicer_core::skeletal_trapezoidation::{
-    apply_transitions, EdgeType, RibData, STHalfEdge, STVertex, SkeletalTrapezoidationGraph,
-    TransitionMiddle,
+    apply_transitions, generate_all_transition_ends, EdgeType, RibData, STHalfEdge, STVertex,
+    SkeletalTrapezoidationGraph, TransitionMiddle,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::UNITS_PER_MM;
+
+fn default_strategy() -> DistributedBeadingStrategy {
+    DistributedBeadingStrategy::new(
+        8000.0,   // optimal_width (0.8mm)
+        4000.0,   // default_transition_length (0.4mm)
+        1000.0,   // transition_filter_dist (0.1mm)
+        2,        // distribution_count
+        f64::MAX, // wall_transition_angle
+    )
+}
 
 fn vertex(x_units: f64, r_units: f64, bead_count: Option<u32>) -> STVertex {
     STVertex {
@@ -103,6 +116,8 @@ fn n3_apply_transitions_creates_lower_and_upper_end_splits() {
     let pre_vertex_count = graph.vertices.len();
     let mid_x_units = 5.0 * UNITS_PER_MM; // pos 0.5 of the 10mm edge
 
+    let strategy = default_strategy();
+    generate_all_transition_ends(&mut graph, &strategy);
     apply_transitions(&mut graph);
 
     // New spine vertices = appended vertices that are not boundary/rib-foot
@@ -127,6 +142,34 @@ fn n3_apply_transitions_creates_lower_and_upper_end_splits() {
          (SkeletalTrapezoidation.cpp:1525-1526). Splitting once at the mid produces an abrupt \
          width step instead of a ramp (finding N3)",
         mid_x_units
+    );
+
+    // Positive assertions: canonical generates at least 2 spine nodes, bead
+    // counts cover {1, 2}, and the end nodes straddle the mid position.
+    assert!(
+        new_spine.len() >= 2,
+        "expected at least 2 new spine vertices (lower and upper end splits), got {}",
+        new_spine.len()
+    );
+
+    let bead_counts: BTreeSet<u32> = new_spine.iter().filter_map(|v| v.bead_count).collect();
+    assert!(
+        bead_counts.contains(&1) && bead_counts.contains(&2),
+        "expected bead counts {{1, 2}}, got {:?}",
+        bead_counts
+    );
+
+    let has_before_mid = new_spine
+        .iter()
+        .any(|v| v.position.x < mid_x_units - tol_units);
+    let has_after_mid = new_spine
+        .iter()
+        .any(|v| v.position.x > mid_x_units + tol_units);
+    assert!(
+        has_before_mid && has_after_mid,
+        "expected end nodes to straddle the mid position (x = {:.0}), got spine nodes at x = {:?}",
+        mid_x_units,
+        new_spine.iter().map(|v| v.position.x).collect::<Vec<_>>()
     );
 }
 
@@ -203,6 +246,8 @@ fn n3_transition_spilling_past_vertex_sets_fractional_ratio() {
         ..Default::default()
     };
 
+    let strategy = default_strategy();
+    generate_all_transition_ends(&mut graph, &strategy);
     apply_transitions(&mut graph);
 
     let ratio = graph.vertices[1].transition_ratio;

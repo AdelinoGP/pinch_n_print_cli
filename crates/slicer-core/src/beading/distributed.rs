@@ -39,11 +39,9 @@ pub struct DistributedBeadingStrategy {
     /// OrcaSlicer's own `DistributedBeadingStrategy::compute` never
     /// references it either — it is only consumed by the base-class
     /// transitioning-length logic, which this trait does not expose.
-    #[allow(dead_code)]
     default_transition_length: f64,
     /// Reserved for later decorator steps of this packet; see
     /// `default_transition_length` for why it is unused here.
-    #[allow(dead_code)]
     transition_filter_dist: f64,
     /// The Gaussian decay radius (in bead-count units), i.e. OrcaSlicer's
     /// `distribution_radius`. Beads more than roughly this many indices away
@@ -194,5 +192,36 @@ impl BeadingStrategy for DistributedBeadingStrategy {
 
     fn wall_transition_angle(&self) -> f64 {
         self.wall_transition_angle
+    }
+
+    fn get_transitioning_length(&self, lower_bead_count: usize) -> f64 {
+        if lower_bead_count == 0 {
+            // Canonical BeadingStrategy.cpp:54: `scaled<coord_t>(0.01)` = 10µm =
+            // 10,000 Orca units. Per docs/08_coordinate_system.md porting rule
+            // (PNP_units = Orca_units / 100): 10,000 / 100 = 100 PNP units.
+            100.0
+        } else {
+            self.default_transition_length
+        }
+    }
+
+    fn get_transition_anchor_pos(&self, lower_bead_count: usize) -> f64 {
+        let transition = self.get_transition_thickness(lower_bead_count);
+        let lower_optimum = self.optimal_thickness(lower_bead_count);
+        let upper_optimum = self.optimal_thickness(lower_bead_count + 1);
+        let denominator = upper_optimum - lower_optimum;
+        if denominator <= 0.0 {
+            return 0.5;
+        }
+        1.0 - (transition - lower_optimum) / denominator
+    }
+
+    fn get_nonlinear_thicknesses(&self, lower_bead_count: usize) -> Vec<f64> {
+        let _ = lower_bead_count;
+        Vec::new()
+    }
+
+    fn get_transition_filter_dist(&self, _lower_bead_count: usize) -> f64 {
+        self.transition_filter_dist
     }
 }

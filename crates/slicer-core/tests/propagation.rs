@@ -355,6 +355,7 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
             transition_mids: Vec::new(),
+            transition_ends: Vec::new(),
         }
     }
 
@@ -429,6 +430,7 @@ fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
             transition_mids: Vec::new(),
+            transition_ends: Vec::new(),
         }
     }
 
@@ -685,6 +687,7 @@ fn rib_adjacent_two_split_graph() -> SkeletalTrapezoidationGraph {
             quad_cell: None,
             edge_type,
             transition_mids,
+            transition_ends: Vec::new(),
         }
     }
 

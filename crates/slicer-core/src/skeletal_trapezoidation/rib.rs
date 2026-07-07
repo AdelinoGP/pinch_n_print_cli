@@ -30,7 +30,7 @@
 //! rib pass. What remains here are the small shared type shapes still consumed
 //! across the crate:
 //!
-//! - [`EdgeType`] — edge classification (`NORMAL` / `EXTRA_VD` / `TRANSITION_END`),
+//! - [`EdgeType`] — edge classification (`NORMAL` / `EXTRA_VD`),
 //!   set directly by `from_polygons` (ribs → `EXTRA_VD`) and read by
 //!   centrality / bead-count / toolpath passes.
 //! - [`RibData`] — the (now empty) rib-topology payload field on the graph,
@@ -46,8 +46,8 @@ use crate::skeletal_trapezoidation::graph::SkeletalTrapezoidationGraph;
 /// Edge classification used by Arachne's later passes.
 ///
 /// Mirrors OrcaSlicer's `SkeletalTrapezoidationEdge::type` enum. Variant
-/// names intentionally preserve upstream spelling (`EXTRA_VD`,
-/// `TRANSITION_END`) for cross-reference clarity.
+/// names intentionally preserve upstream spelling (`EXTRA_VD`) for
+/// cross-reference clarity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(non_camel_case_types)]
 pub enum EdgeType {
@@ -56,9 +56,6 @@ pub enum EdgeType {
     NORMAL,
     /// A synthetic rib edge inserted by `makeRib` (`EXTRA_VD` upstream).
     EXTRA_VD,
-    /// A transition-region terminal edge. Declared so the `EdgeType` enum shape
-    /// is stable for downstream passes.
-    TRANSITION_END,
 }
 
 /// Rib-topology data owned by [`SkeletalTrapezoidationGraph`].

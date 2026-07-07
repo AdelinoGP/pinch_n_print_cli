@@ -92,7 +92,7 @@ const EPS: f64 = 1e-6;
 /// (`1 unit = 100 nm`, so `0.2 mm = 2000 units`). Only affects the geometric
 /// fidelity of curved edges (more sub-segments = closer chord fit); topology,
 /// closure, and determinism are independent of its exact value.
-const DISCRETIZATION_STEP_UNITS: f64 = 0.2 * UNITS_PER_MM;
+pub const DISCRETIZATION_STEP_UNITS: f64 = 0.2 * UNITS_PER_MM;
 
 /// A `SkeletalTrapezoidationGraph` vertex: a graph node annotated with its
 /// distance to the nearest input polygon boundary edge.
@@ -163,6 +163,10 @@ pub struct STHalfEdge {
     /// [`super::propagation::generate_transition_mids`] before `apply_transitions`
     /// splits edges at these positions.
     pub transition_mids: Vec<TransitionMiddle>,
+    /// Transition-end annotations placed by
+    /// [`super::propagation::generate_all_transition_ends`], consumed by
+    /// [`super::propagation::apply_transitions`].
+    pub transition_ends: Vec<TransitionEnd>,
 }
 
 /// A single transition-middle annotation on a half-edge, placed by
@@ -181,6 +185,22 @@ pub struct TransitionMiddle {
     pub mid_r: f64,
 }
 
+/// A transition end annotation placed by `generate_all_transition_ends`,
+/// consumed by `apply_transitions` to split edges at the end positions.
+///
+/// Mirrors OrcaSlicer's `TransitionEnd` struct.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TransitionEnd {
+    /// Position along the half-edge as a fraction of the edge length (`0.0..=1.0`).
+    pub pos: f64,
+    /// The bead count on the lower-R side of the transition.
+    pub lower_bead_count: u32,
+    /// Radius (`distance_to_boundary`) at which this end occurs.
+    pub mid_r: f64,
+    /// Whether this end is the lower end (`true`) or upper end (`false`).
+    pub is_lower_end: bool,
+}
+
 impl Default for STHalfEdge {
     fn default() -> Self {
         Self {
@@ -196,6 +216,7 @@ impl Default for STHalfEdge {
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
             transition_mids: Vec::new(),
+            transition_ends: Vec::new(),
         }
     }
 }

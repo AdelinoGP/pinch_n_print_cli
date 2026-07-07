@@ -94,6 +94,51 @@ pub trait BeadingStrategy: Send + Sync {
         f64::MAX
     }
 
+    /// Returns the length (in slicer units) over which a bead-count transition
+    /// is ramped, so that bead widths change smoothly rather than snapping at a
+    /// single point.
+    ///
+    /// The default implementation returns `0.0` (no transition ramp).
+    /// `DistributedBeadingStrategy` overrides this with the configured
+    /// `default_transition_length`.
+    fn get_transitioning_length(&self, lower_bead_count: usize) -> f64 {
+        let _ = lower_bead_count;
+        0.0
+    }
+
+    /// Returns a value in `[0, 1]` describing where along the transition
+    /// interval the anchor point sits, relative to the optimum thicknesses for
+    /// `lower_bead_count` and `lower_bead_count + 1` beads. `0.0` = anchored at
+    /// lower optimum, `1.0` = anchored at upper optimum.
+    ///
+    /// The default implementation returns `0.5` (midpoint).
+    /// `DistributedBeadingStrategy` computes this from actual transition and
+    /// optimal thicknesses.
+    fn get_transition_anchor_pos(&self, lower_bead_count: usize) -> f64 {
+        let _ = lower_bead_count;
+        0.5
+    }
+
+    /// Returns a vector of per-bead thickness adjustments used when the bead
+    /// count is transitioning nonlinearly across the transition interval. An
+    /// empty vector (the default) gives default linear interpolation.
+    ///
+    /// The default implementation returns an empty vector.
+    fn get_nonlinear_thicknesses(&self, lower_bead_count: usize) -> Vec<f64> {
+        let _ = lower_bead_count;
+        Vec::new()
+    }
+
+    /// Returns the transition filter distance (in slicer units) used by
+    /// `filter_transition_mids` to dissolve nearby same-`lower_bead_count`
+    /// transitions.  The default implementation returns `0.0` (no filtering).
+    /// `DistributedBeadingStrategy` overrides this with the configured
+    /// `transition_filter_dist`.
+    fn get_transition_filter_dist(&self, lower_bead_count: usize) -> f64 {
+        let _ = lower_bead_count;
+        0.0
+    }
+
     /// Returns a string describing the full decorator composition chain from
     /// this strategy down to its innermost (base) parent, e.g.
     /// `"Limited(OuterWallInset(Widening(Redistribute(Distributed))))"`.

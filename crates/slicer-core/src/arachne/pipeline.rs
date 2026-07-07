@@ -53,7 +53,8 @@ use crate::arachne::{remove_small_lines, simplify_toolpaths, stitch_extrusions};
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
-    apply_transitions, assign_bead_counts, filter_central, generate_transition_mids,
+    apply_transitions, assign_bead_counts, filter_central, filter_transition_mids,
+    generate_all_transition_ends, generate_extra_ribs, generate_transition_mids,
     populate_beading_propagation, propagate_beadings_upward, BeadCountError, CentralityParams,
     SkeletalTrapezoidationGraph, SktError,
 };
@@ -343,7 +344,10 @@ pub fn run_arachne_pipeline(
     assign_bead_counts(&mut graph, strategy.as_ref())?;
 
     generate_transition_mids(&mut graph, strategy.as_ref());
+    filter_transition_mids(&mut graph, strategy.as_ref());
+    generate_all_transition_ends(&mut graph, strategy.as_ref());
     apply_transitions(&mut graph);
+    generate_extra_ribs(&mut graph, strategy.as_ref());
     propagate_beadings_upward(&mut graph);
     // Packet 113c Step 8b: thread the pipeline's *actual* configured
     // beading-propagation transition distance (`wall_transition_length`,

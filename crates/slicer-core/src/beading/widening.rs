@@ -164,4 +164,20 @@ impl BeadingStrategy for WideningBeadingStrategy {
     fn wall_transition_angle(&self) -> f64 {
         self.parent.wall_transition_angle()
     }
+
+    fn get_transitioning_length(&self, lower_bead_count: usize) -> f64 {
+        self.parent.get_transitioning_length(lower_bead_count)
+    }
+
+    fn get_transition_anchor_pos(&self, lower_bead_count: usize) -> f64 {
+        self.parent.get_transition_anchor_pos(lower_bead_count)
+    }
+
+    fn get_nonlinear_thicknesses(&self, lower_bead_count: usize) -> Vec<f64> {
+        self.parent.get_nonlinear_thicknesses(lower_bead_count)
+    }
+
+    fn get_transition_filter_dist(&self, lower_bead_count: usize) -> f64 {
+        self.parent.get_transition_filter_dist(lower_bead_count)
+    }
 }

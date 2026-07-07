@@ -295,6 +295,7 @@ fn centrality_stage_two_whisker_dissolve_is_exercised() {
             quad_cell: None,
             edge_type: EdgeType::NORMAL,
             transition_mids: Vec::new(),
+            transition_ends: Vec::new(),
         }
     }
 
