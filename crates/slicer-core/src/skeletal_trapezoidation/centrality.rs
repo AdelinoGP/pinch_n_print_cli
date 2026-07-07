@@ -256,12 +256,17 @@ pub(super) fn edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) 
 /// identical *set* of outgoing half-edges — order doesn't matter here since
 /// every outgoing edge is inspected regardless of order.
 // The recursive whisker-dissolve helpers below are no longer used by the
-// current `updateIsCentral` implementation, but they are retained (marked
-// `#[allow(dead_code)]`) so a future packet that wires in the real
-// `filterCentral`/`filterOuterCentral` passes can reuse the existing helpers
-// without re-porting them.
-#[allow(dead_code)]
-fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> bool {
+// current `updateIsCentral` implementation, but they are retained so a future
+// packet that wires in the real `filterCentral`/`filterOuterCentral` passes
+// can reuse the existing helpers without re-porting them.
+//
+// `is_local_maximum` is an exception: it is the canonical-faithful all-edges
+// local-maximum predicate (no centrality gate) shared with
+// [`super::bead_count::assign_bead_counts`]'s second loop, matching OrcaSlicer's
+// `STHalfEdgeNode::isLocalMaximum` (`SkeletalTrapezoidationGraph.cpp:254-274`)
+// which `updateBeadCount` (`SkeletalTrapezoidation.cpp:786-801`) calls without
+// any `isCentral()` check.
+pub(super) fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> bool {
     if vertex_idx == NO_INDEX {
         return false;
     }

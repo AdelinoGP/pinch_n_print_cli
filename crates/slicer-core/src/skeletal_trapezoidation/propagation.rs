@@ -1344,30 +1344,19 @@ pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
     }
 }
 
-/// Interpolates a bead count using the upstream `interpolate()` weighting.
-/// Weight is `ratio_of_top = dist_to_bottom_source /
-/// min(total_dist, beading_propagation_transition_dist)`. Returns a
-/// floating-point blend; callers round as appropriate.
-fn interpolate_bead_counts(bottom_bc: u32, top_bc: u32, ratio_of_top: f64) -> u32 {
-    let t = ratio_of_top.clamp(0.0, 1.0);
-    let blended = bottom_bc as f64 * (1.0 - t) + top_bc as f64 * t;
-    blended.round() as u32
-}
-
 /// Width/location-blended `Beading` between `bottom` and `top` per the
 /// upstream `interpolate()` weighting (`SkeletalTrapezoidation.cpp:1883-1885`,
 /// `ratio_of_top` = `dist_to_bottom_source / min(total_dist,
 /// beading_propagation_transition_dist)`).
 ///
-/// Unlike [`interpolate_bead_counts`] — which only blends the integer bead
-/// count and discards the per-bead width/location structure — this blends
-/// `total_thickness`, every per-bead `bead_width`, and every per-bead
+/// Blends `total_thickness`, every per-bead `bead_width`, and every per-bead
 /// `toolpath_location` elementwise, matching OrcaSlicer's full
-/// `BeadingPropagation` blend. The two `Beading`s must have the same
-/// `bead_count` (`bead_widths.len() == toolpath_locations.len()`) for the
-/// elementwise blend to be well-defined; if they differ, the longer one is
-/// truncated to the shorter so the result is deterministic and never
-/// silently expands the beading.
+/// `BeadingPropagation` blend (`SkeletalTrapezoidation.cpp:1890-1894`). The
+/// two `Beading`s must have the same `bead_count`
+/// (`bead_widths.len() == toolpath_locations.len()`) for the elementwise
+/// blend to be well-defined; if they differ, the longer one is truncated to
+/// the shorter so the result is deterministic and never silently expands the
+/// beading.
 ///
 /// `ratio_of_top` is clamped to `[0, 1]`. `left_over` is also linearly
 /// blended (consistent with the other scalars — OrcaSlicer's blend does
@@ -1671,7 +1660,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
         if peak_v == NO_INDEX || bottom_v == NO_INDEX {
             continue;
         }
-        let Some(peak_bc) = graph.vertices.get(peak_v).and_then(|v| v.bead_count) else {
+        let Some(_peak_bc) = graph.vertices.get(peak_v).and_then(|v| v.bead_count) else {
             continue;
         };
         let edge_len = edge_length(graph, edge_idx);
@@ -1680,7 +1669,6 @@ pub fn propagate_beadings_downward_with_transition_dist(
         }
 
         let top_dist_from_source = dist_from_top_source.get(&peak_v).copied().unwrap_or(0.0);
-        let source_transition_ratio = graph.vertices[peak_v].transition_ratio;
         let bottom_has_beading = graph
             .vertices
             .get(bottom_v)
@@ -1688,13 +1676,19 @@ pub fn propagate_beadings_downward_with_transition_dist(
             .is_some();
 
         if !bottom_has_beading {
-            // Fresh downward propagation (upstream's `!hasBeading()` branch):
-            // no ratio math, straight copy, and extend the bookkeeping so
-            // further-down edges see the correct cumulative distance.
-            if let Some(v) = graph.vertices.get_mut(bottom_v) {
-                v.bead_count = Some(peak_bc);
-                v.transition_ratio = source_transition_ratio;
-            }
+            // Fresh downward propagation (upstream's `!hasBeading()` branch at
+            // `SkeletalTrapezoidation.cpp:1872-1876`): copy the top vertex's
+            // `BeadingPropagation` into the bottom vertex's side-table slot and
+            // extend the bookkeeping — but do NOT write `bead_count` or
+            // `transition_ratio` on the joint. Canonical leaves the joint
+            // `bead_count` at its default (-1 / `None` here) and only attaches
+            // the beading weak_ptr via `setBeading`. Writing `bead_count` here
+            // would flatten the gradient (boundary vertices would inherit the
+            // peak's count) and trip `generate_junctions`'s same-bead-count
+            // skip gate (`SkeletalTrapezoidation.cpp:2024-2027`), producing
+            // empty output for shapes whose medial axis has no central edges
+            // (e.g. a square at `wall_transition_angle=10°`). See
+            // `docs/DEVIATION_LOG.md` `D-144-ANGLE-FUDGE-NONCENTRAL`.
             // Side-table write: copy the top vertex's beading verbatim
             // into the bottom vertex's slot when one is available. The
             // `clone` is intentional: we cannot hold an immutable borrow
@@ -1715,7 +1709,7 @@ pub fn propagate_beadings_downward_with_transition_dist(
             continue;
         }
 
-        let Some(bottom_bc) = graph.vertices.get(bottom_v).and_then(|v| v.bead_count) else {
+        let Some(_bottom_bc) = graph.vertices.get(bottom_v).and_then(|v| v.bead_count) else {
             continue;
         };
         let bottom_dist_to_source = dist_to_bottom_source.get(&bottom_v).copied().unwrap_or(0.0);
@@ -1726,12 +1720,13 @@ pub fn propagate_beadings_downward_with_transition_dist(
         let ratio_of_top = (bottom_dist_to_source / denom).max(0.0);
 
         if ratio_of_top >= 1.0 {
-            // Full overwrite -- still extends dist_from_top_source (upstream:
-            // `bottom_beading = top_beading; bottom_beading.dist_from_top_source += length;`).
-            if let Some(v) = graph.vertices.get_mut(bottom_v) {
-                v.bead_count = Some(peak_bc);
-                v.transition_ratio = source_transition_ratio;
-            }
+            // Full overwrite (upstream: `bottom_beading = top_beading;
+            // bottom_beading.dist_from_top_source += length;` at lines
+            // 1887-1889). Canonical mutates the `BeadingPropagation` side
+            // table in-place via reference and does NOT write the joint's
+            // `bead_count` or `transition_ratio` — see the `!hasBeading()`
+            // branch comment above for why writing `bead_count` here would
+            // flatten the gradient and break emission.
             // Side-table write: when the top vertex already carries a
             // stored beading (i.e. `populate_beading_propagation` ran
             // before this pass), copy that beading verbatim into the
@@ -1751,19 +1746,15 @@ pub fn propagate_beadings_downward_with_transition_dist(
             }
             dist_from_top_source.insert(bottom_v, top_dist_from_source + edge_len);
         } else {
-            let blended = interpolate_bead_counts(bottom_bc, peak_bc, ratio_of_top);
-            if let Some(v) = graph.vertices.get_mut(bottom_v) {
-                v.bead_count = Some(blended);
-            }
             // Side-table write (the audit's "width/location blend" path):
             // when both endpoints already carry a stored beading, blend
             // them elementwise into the bottom vertex's slot. This is the
-            // canonical OrcaSlicer `BeadingPropagation` merge shape; the
-            // integer `bead_count` write above remains for back-compat
-            // with downstream readers (e.g. `generate_toolpaths`) until
-            // Step 2 turns them into side-table readers. See the same
-            // borrow-checker pattern as the other two side-table writes
-            // above (clone out, write in).
+            // canonical OrcaSlicer `BeadingPropagation` merge shape
+            // (`SkeletalTrapezoidation.cpp:1890-1894`); canonical does NOT
+            // write the joint's `bead_count` here either — the merge lives
+            // entirely in the side table. See the `!hasBeading()` branch
+            // comment above for why writing `bead_count` would break
+            // emission for non-central-medial-axis shapes.
             let bottom_beading_clone: Option<Beading> = graph
                 .beading_propagation
                 .get(bottom_v)

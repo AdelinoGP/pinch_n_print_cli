@@ -86,11 +86,15 @@ impl Error for BeadCountError {}
 /// For each central edge: the `to` vertex receives
 /// `bead_count = Some(strategy.optimal_bead_count(2.0 * to.distance_to_boundary) as u32)`
 /// — directly mirroring OrcaSlicer's `updateBeadCount`
-/// (`SkeletalTrapezoidation.cpp:777`). After the edge pass, every vertex
-/// that is a local maximum in `distance_to_boundary` (all incident central
-/// edges have a strictly smaller `r_max`) has its `bead_count` recomputed
+/// (`SkeletalTrapezoidation.cpp:777-783`). After the edge pass, every vertex
+/// that is a geometric local maximum in `distance_to_boundary` (no outgoing
+/// edge reaches a strictly higher-R neighbor) has its `bead_count` recomputed
 /// from its own `distance_to_boundary * 2`, exactly as upstream re-derives it
-/// for `node.isLocalMaximum()` nodes.
+/// for `node.isLocalMaximum()` nodes
+/// (`SkeletalTrapezoidation.cpp:786-801`). Canonical's local-maximum pass has
+/// NO centrality gate — a local maximum with zero incident central edges
+/// (e.g. the center of a square whose Voronoi edges all fail the centrality
+/// predicate) still receives a bead count.
 ///
 /// Every non-central-adjacent vertex's `bead_count` is left as `None`,
 /// while every central edge's `to` vertex is guaranteed to carry a
@@ -140,27 +144,29 @@ pub fn assign_bead_counts(
     }
 
     // Recompute at local-maximum radius vertices (OrcaSlicer
-    // SkeletalTrapezoidation.cpp:786-802): a vertex is a local maximum when it
-    // is incident to at least one central edge and every central edge incident
-    // to it has a strictly smaller radius at the *other* endpoint.
+    // `SkeletalTrapezoidation.cpp:786-802`). Canonical's second loop iterates
+    // every node and assigns a bead count whenever `node.isLocalMaximum()` is
+    // true — with NO centrality check (`isCentral` is never called in lines
+    // 786-801). `isLocalMaximum` (`SkeletalTrapezoidationGraph.cpp:254-274`)
+    // is purely geometric: a node is a local maximum when no outgoing edge
+    // leads to a neighbor with strictly higher `distance_to_boundary`, and it
+    // returns false for boundary nodes (`distance_to_boundary == 0`) and for
+    // nodes whose `twin->next` is null (boundary-adjacent). Reusing
+    // [`super::centrality::is_local_maximum`] keeps this port faithful: it
+    // inspects every edge starting at the vertex (no centrality filter) and
+    // rejects vertices whose neighbor has a strictly higher R.
+    //
+    // Prior to this fix the loop required `touches_central` (at least one
+    // incident central edge) and inspected only central edges — a
+    // non-canonical gate. For a square at `wall_transition_angle=10°` every
+    // Voronoi edge is a radial spoke (`dR/dD ≈ 0.707..1.0`, all above
+    // `sin(5°) ≈ 0.087`), so `filter_central` marks nothing central and the
+    // square's center vertex (a true geometric local maximum at
+    // `distance_to_boundary = 5mm`) was skipped — producing empty output.
+    // The π hack masked this by making the diagonals central. See
+    // `docs/DEVIATION_LOG.md` `D-144-ANGLE-FUDGE-NONCENTRAL`.
     for v_idx in 0..graph.vertices.len() {
-        let Some(vertex) = graph.vertices.get(v_idx) else {
-            continue;
-        };
-        let mut touches_central = false;
-        let is_local_max = graph.edges.iter().all(|e| {
-            if !e.central {
-                return true;
-            }
-            let touches = e.start_vertex == v_idx || edge_ends_at(graph, e, v_idx);
-            if !touches {
-                return true;
-            }
-            touches_central = true;
-            let other_r = other_endpoint_distance(graph, e, v_idx);
-            other_r < vertex.distance_to_boundary
-        });
-        if !touches_central || !is_local_max {
+        if !super::centrality::is_local_maximum(graph, v_idx) {
             continue;
         }
         if let Some(vertex) = graph.vertices.get_mut(v_idx) {
@@ -170,49 +176,4 @@ pub fn assign_bead_counts(
     }
 
     Ok(())
-}
-
-/// Does edge `e` end at vertex `v_idx`?
-fn edge_ends_at(
-    graph: &SkeletalTrapezoidationGraph,
-    e: &super::graph::STHalfEdge,
-    v_idx: usize,
-) -> bool {
-    if e.twin == NO_INDEX {
-        return false;
-    }
-    graph
-        .edges
-        .get(e.twin)
-        .map(|twin| twin.start_vertex == v_idx)
-        .unwrap_or(false)
-}
-
-/// Returns the `distance_to_boundary` at the endpoint of `e` that is *not*
-/// `v_idx`, or `0.0` if it cannot be resolved.
-fn other_endpoint_distance(
-    graph: &SkeletalTrapezoidationGraph,
-    e: &super::graph::STHalfEdge,
-    v_idx: usize,
-) -> f64 {
-    let start_r = graph
-        .vertices
-        .get(e.start_vertex)
-        .map(|v| v.distance_to_boundary)
-        .unwrap_or(0.0);
-    let to_r = if e.twin == NO_INDEX {
-        0.0
-    } else {
-        graph
-            .edges
-            .get(e.twin)
-            .and_then(|twin| graph.vertices.get(twin.start_vertex))
-            .map(|v| v.distance_to_boundary)
-            .unwrap_or(0.0)
-    };
-    if e.start_vertex == v_idx {
-        to_r
-    } else {
-        start_r
-    }
 }
