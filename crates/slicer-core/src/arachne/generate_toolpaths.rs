@@ -552,39 +552,6 @@ fn quad_peak_position(graph: &SkeletalTrapezoidationGraph, quad: &[usize]) -> us
     best_pos
 }
 
-/// Computes per-vertex `degree`: the number of **central** incident
-/// half-edges meeting at that vertex in the skeletal graph. A vertex of
-/// degree `> 2` (3 or more) is a **3-or-more-way junction** — the
-/// canonical `isMultiIntersection()` predicate (`SkeletalTrapezoidationGraph
-/// .cpp:211-224`); the domain-chain walk stops at such a vertex (a new
-/// line is started at the next quad) rather than driving straight through
-/// and merging unrelated spokes into one fragmented chain (packet 142's
-/// AC-4).
-///
-/// Faithful port of canonical `isMultiIntersection()`: at a vertex,
-/// count the number of central half-edges whose `twin` points back to
-/// the same vertex (i.e. a central edge whose OTHER end is the same
-/// vertex). A flat (constant-R) spine edge counts as one central edge
-/// at its two end vertices, matching canonical's treatment.
-fn compute_vertex_degree(graph: &SkeletalTrapezoidationGraph) -> Vec<u32> {
-    let mut degree = vec![0u32; graph.vertices.len()];
-    for edge in &graph.edges {
-        if !edge.central {
-            continue;
-        }
-        if edge.twin == NO_INDEX {
-            continue;
-        }
-        let Some(to_idx) = graph.edges.get(edge.twin).map(|twin| twin.start_vertex) else {
-            continue;
-        };
-        if to_idx < degree.len() {
-            degree[to_idx] += 1;
-        }
-    }
-    degree
-}
-
 /// Collects, for each bead index along an edge chain, the sequence of
 /// junctions that form one open polyline.
 ///
@@ -963,7 +930,6 @@ pub fn generate_toolpaths(
     let mut passed_odd_edges: BTreeSet<usize> = BTreeSet::new();
 
     let edge_junctions = generate_junctions(graph, strategy);
-    let vertex_degree = compute_vertex_degree(graph);
 
     // Seed `unprocessed_quad_starts` per `connectJunctions`
     // (`SkeletalTrapezoidation.cpp:2265-2269`): every edge whose `.prev` is
@@ -1032,40 +998,29 @@ pub fn generate_toolpaths(
                 .map(|e| e.twin)
                 .unwrap_or(NO_INDEX);
 
-            // 3-way detection at the WALK level (AC-4): if the chain
-            // would continue into a quad whose START vertex is a
-            // 3-or-more-way junction in the graph, the chain ends
-            // here — the current domain emits its fragment, and a
-            // new domain will be walked from the next quad (which
-            // begins at this 3-way vertex). This is the walk-level
-            // form of canonical `addToolpathSegment`'s "not a
-            // 3-way" check (SkeletalTrapezoidation.cpp:2198-2234).
+            // Canonical `connectJunctions` walks the entire polygon domain in
+            // one continuous `do { ... } while (quad_start != poly_domain_start)`
+            // loop (`SkeletalTrapezoidation.cpp:2273-2366`) — it does NOT
+            // terminate the walk at 3-way / multi-intersection vertices. The
+            // 3-way handling lives inside `addToolpathSegment` (`:2198-2234`),
+            // which forces a *new ExtrusionLine* (not a new domain walk) at a
+            // 3-way vertex, and ONLY when the segment is odd-bead
+            // (`from_is_3way = from_is_odd && isMultiIntersection()` at
+            // `:2359`). The new line's first junction IS the 3-way vertex, so
+            // the two fragments share a coincident endpoint that
+            // `PolylineStitcher` can always reconnect (the gap is 0).
             //
-            // Fragmenting a simple polygon's ring into individual
-            // spokes at a multi-way center vertex is the intended
-            // behaviour: `run_arachne_pipeline` stitches adjacent
-            // fragments back together post-walk
-            // (`stitch_extrusions`), so ring closure is preserved
-            // at the pipeline level even though the walk itself
-            // stops at branch points.
-            let next_start_vertex = graph
-                .edges
-                .get(quad_end)
-                .and_then(|e| {
-                    if e.twin == NO_INDEX {
-                        None
-                    } else {
-                        graph.edges.get(e.twin).map(|t| t.start_vertex)
-                    }
-                })
-                .unwrap_or(NO_INDEX);
-            let is_3way_break = next_start_vertex != NO_INDEX
-                && next_start_vertex < vertex_degree.len()
-                && vertex_degree[next_start_vertex] > 2
-                && next_start != poly_domain_start;
-            if is_3way_break {
-                break;
-            }
+            // The prior walk-level 3-way break here was a non-canonical
+            // divergence: it terminated the domain walk at the 3-way vertex
+            // and started a new walk from the *next quad's start vertex*,
+            // which for a wedge trapezoid's narrow tip can be ~15mm away from
+            // the 3-way vertex — far beyond `stitch_extrusions`'s 0.4mm gap
+            // threshold, leaving the outer wall permanently open. It was also
+            // unconditional, splitting even-bead (non-odd) outer walls that
+            // canonical never splits. Removing it matches canonical's
+            // continuous walk; the per-bead odd-segment line-splitting is
+            // handled by `emit_chain_lines`'s sub-run logic + the
+            // `passed_odd_edges` dedup (and `is_odd` grouping in stitch).
 
             if next_start == NO_INDEX {
                 // Open chain exhausted.
