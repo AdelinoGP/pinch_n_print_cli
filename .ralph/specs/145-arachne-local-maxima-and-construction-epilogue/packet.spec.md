@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 145-arachne-local-maxima-and-construction-epilogue
 task_ids:
   - none

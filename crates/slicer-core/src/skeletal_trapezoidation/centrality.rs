@@ -266,7 +266,7 @@ pub(super) fn edge_length(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) 
 // `STHalfEdgeNode::isLocalMaximum` (`SkeletalTrapezoidationGraph.cpp:254-274`)
 // which `updateBeadCount` (`SkeletalTrapezoidation.cpp:786-801`) calls without
 // any `isCentral()` check.
-pub(super) fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> bool {
+pub(crate) fn is_local_maximum(graph: &SkeletalTrapezoidationGraph, vertex_idx: usize) -> bool {
     if vertex_idx == NO_INDEX {
         return false;
     }

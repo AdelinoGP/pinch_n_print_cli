@@ -128,6 +128,7 @@ use slicer_ir::{
 };
 
 use crate::beading::BeadingStrategy;
+use crate::skeletal_trapezoidation::centrality::is_local_maximum;
 use crate::skeletal_trapezoidation::SkeletalTrapezoidationGraph;
 use crate::voronoi::{Vertex, NO_INDEX};
 
@@ -854,6 +855,87 @@ fn emit_chain_lines(
     }
 }
 
+/// Emits 6-segment hexagonal micro-loops at local maxima with odd bead count,
+/// mirroring OrcaSlicer's `generateLocalMaximaSingleBeads`
+/// (`SkeletalTrapezoidation.cpp:2383-2413`).
+///
+/// For each vertex whose beading has an odd `bead_widths` count,
+/// `is_local_maximum` (strict — matching canonical `isLocalMaximum(true)`),
+/// and no central incident edge, emits a closed `ExtrusionLine` hexagon
+/// (radius `width/8` where `width` is the middle bead's width, `is_odd = true`)
+/// so isolated thick spots get their center dot.
+fn generate_local_maxima_single_beads(
+    graph: &SkeletalTrapezoidationGraph,
+    buckets: &mut BTreeMap<u32, Vec<ExtrusionLine>>,
+) {
+    use std::f64::consts::TAU;
+
+    for (v_idx, vertex) in graph.vertices.iter().enumerate() {
+        // Gate 1: odd bead count from the beading side table.
+        let Some(beading) = graph.get_beding(v_idx) else {
+            continue;
+        };
+        let n_beads = beading.bead_widths.len();
+        if n_beads == 0 || n_beads % 2 == 0 {
+            continue;
+        }
+
+        // Gate 2: strict local maximum (PNP's `is_local_maximum` uses `>`
+        // with EPS, matching canonical `isLocalMaximum(true)` — equidistant
+        // neighbors do not disqualify).
+        if !is_local_maximum(graph, v_idx) {
+            continue;
+        }
+
+        // Gate 3: not central — no edge starting from this vertex is central.
+        if graph
+            .edges
+            .iter()
+            .any(|e| e.start_vertex == v_idx && e.central)
+        {
+            continue;
+        }
+
+        // Emit a 6-segment hexagonal micro-loop.
+        let mid_bead = n_beads / 2;
+        let width = beading.bead_widths[mid_bead];
+        let r = width / 8.0; // radius in slicer units
+
+        let cx = vertex.position.x / UNITS_PER_MM;
+        let cy = vertex.position.y / UNITS_PER_MM;
+        let r_mm = (r / UNITS_PER_MM) as f32;
+        let width_mm = (width / UNITS_PER_MM) as f32;
+
+        let mut junctions = Vec::with_capacity(6);
+        for seg in 0..6usize {
+            let angle = TAU * seg as f64 / 6.0;
+            let jx = cx as f32 + r_mm * angle.cos() as f32;
+            let jy = cy as f32 + r_mm * angle.sin() as f32;
+            junctions.push(ExtrusionJunction {
+                p: Point3WithWidth {
+                    x: jx,
+                    y: jy,
+                    z: 0.0,
+                    width: width_mm,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+                perimeter_index: mid_bead as u32,
+            });
+        }
+
+        buckets
+            .entry(mid_bead as u32)
+            .or_default()
+            .push(ExtrusionLine {
+                junctions,
+                inset_idx: mid_bead as u32,
+                is_odd: true,
+                is_closed: true,
+            });
+    }
+}
+
 /// Emits variable-width toolpath insets from `graph`'s central, bead-counted
 /// edges, sourcing every bead's width and toolpath offset from `strategy`.
 ///
@@ -1011,6 +1093,10 @@ pub fn generate_toolpaths(
             ring_closed,
         );
     }
+
+    // N9: emit hexagonal micro-loops at isolated local-maxima thick spots
+    // with odd bead count (OrcaSlicer `generateLocalMaximaSingleBeads`).
+    generate_local_maxima_single_beads(graph, &mut buckets);
 
     buckets.into_values().collect()
 }

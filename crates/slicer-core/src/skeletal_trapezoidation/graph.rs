@@ -73,6 +73,7 @@
 //!   `distance_to_boundary`, always finite and `r_min <= r_max`.
 //! - **`central`** defaults `false` — the centrality pass fills it in.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use slicer_ir::{ExPolygon, Point2, Polygon, UNITS_PER_MM};
@@ -291,6 +292,121 @@ impl From<VoronoiError> for SktError {
     }
 }
 
+/// Duplicates shared boundary start-nodes so each quad traversal has a
+/// unique start, mirroring OrcaSlicer's `separatePointyQuadEndNodes`
+/// (`SkeletalTrapezoidation.cpp:538-542` /
+/// `SkeletalTrapezoidationGraph.cpp`).
+///
+/// Iterates all half-edges; for each chain head (`prev == NO_INDEX`), if
+/// its `start_vertex` was already seen, duplicates the vertex and repoints
+/// the chain head. This ensures each quad owns a private start node,
+/// preventing cross-quad contamination during junction generation.
+///
+/// NOTE: incident-edge normalization (canonical's `edge.from->incident_edge
+/// = &edge`) is a documented no-op in PNP — `STVertex` has no
+/// `incident_edge` field (confirmed as a fan-walk optimization, not
+/// correctness; PNP's all-edges scans produce the same results).
+fn separate_pointy_quad_end_nodes(vertices: &mut Vec<STVertex>, edges: &mut Vec<STHalfEdge>) {
+    let mut seen: HashSet<usize> = HashSet::new();
+    for i in 0..edges.len() {
+        if edges[i].prev != NO_INDEX {
+            continue; // Not a chain head.
+        }
+        let from_v = edges[i].start_vertex;
+        if from_v == NO_INDEX {
+            continue;
+        }
+        if seen.contains(&from_v) {
+            // Duplicate the vertex and repoint the chain head.
+            let new_v = vertices.len();
+            vertices.push(vertices[from_v]);
+            edges[i].start_vertex = new_v;
+            // The twin's "to" vertex is derived from edges[i].start_vertex,
+            // so no explicit twin update is needed — changing start_vertex
+            // implicitly changes the twin's "to" vertex.
+        } else {
+            seen.insert(from_v);
+        }
+    }
+}
+
+/// Removes degenerate zero-length edges produced by integer rounding,
+/// mirroring OrcaSlicer's `collapseSmallEdges`
+/// (`SkeletalTrapezoidation.cpp:543` / `SkeletalTrapezoidationGraph.cpp`).
+///
+/// The snap distance is 5 nm (0.05 PNP units at `UNITS_PER_MM = 10_000`,
+/// matching OrcaSlicer's default `snap_dist = 5` in its 1-nm-unit system).
+///
+/// For each edge whose endpoints are within the snap distance, merges the
+/// "to" vertex into the "from" vertex (repointing all outgoing edges) and
+/// splices the degenerate edge out of its chain.
+///
+/// NOTE: incident-edge SET/READ lines are skipped (PNP's `STVertex` has no
+/// `incident_edge` field — documented no-op).
+fn collapse_small_edges(vertices: &mut Vec<STVertex>, edges: &mut Vec<STHalfEdge>) {
+    // 5 nm snap distance in PNP units (1 unit = 100 nm).
+    const SNAP_DIST_SQ: f64 = 0.05 * 0.05;
+
+    // Collect all edges to check (can't iterate and mutate simultaneously).
+    let edge_indices: Vec<usize> = (0..edges.len()).collect();
+
+    for edge_idx in edge_indices {
+        if edge_idx >= edges.len() {
+            continue;
+        }
+        let twin = edges[edge_idx].twin;
+        if twin == NO_INDEX {
+            continue;
+        }
+        let from_v = edges[edge_idx].start_vertex;
+        let to_v = edges[twin].start_vertex;
+        if from_v == NO_INDEX || to_v == NO_INDEX || from_v == to_v {
+            continue;
+        }
+
+        let dx = vertices[from_v].position.x - vertices[to_v].position.x;
+        let dy = vertices[from_v].position.y - vertices[to_v].position.y;
+        if dx * dx + dy * dy >= SNAP_DIST_SQ {
+            continue;
+        }
+
+        // Merge to_v into from_v: repoint all edges starting from to_v.
+        for e in edges.iter_mut() {
+            if e.start_vertex == to_v {
+                e.start_vertex = from_v;
+            }
+        }
+
+        // Splice the degenerate edge out of its chain.
+        let prev = edges[edge_idx].prev;
+        let next = edges[edge_idx].next;
+        if prev != NO_INDEX {
+            edges[prev].next = next;
+        }
+        if next != NO_INDEX {
+            edges[next].prev = prev;
+        }
+
+        // Splice the twin out of its chain.
+        let twin_prev = edges[twin].prev;
+        let twin_next = edges[twin].next;
+        if twin_prev != NO_INDEX {
+            edges[twin_prev].next = twin_next;
+        }
+        if twin_next != NO_INDEX {
+            edges[twin_next].prev = twin_prev;
+        }
+
+        // Mark both as removed (sentinel start_vertex).
+        edges[edge_idx].start_vertex = NO_INDEX;
+        edges[edge_idx].prev = NO_INDEX;
+        edges[edge_idx].next = NO_INDEX;
+        edges[twin].start_vertex = NO_INDEX;
+        edges[twin].prev = NO_INDEX;
+        edges[twin].next = NO_INDEX;
+    }
+}
+
 impl SkeletalTrapezoidationGraph {
     /// Builds a `SkeletalTrapezoidationGraph` from closed input polygons.
     ///
@@ -353,6 +469,19 @@ impl SkeletalTrapezoidationGraph {
             builder.edges[i].r_min = r_min;
             builder.edges[i].r_max = r_max;
         }
+
+        // N10 construction epilogue (OrcaSlicer
+        // `SkeletalTrapezoidation.cpp:538-546`):
+        // 1. Separate pointy quad end nodes — duplicate shared boundary
+        //    start-nodes so each quad traversal has a unique start.
+        // 2. Collapse small edges — remove degenerate zero-length edges
+        //    produced by integer rounding.
+        // NOTE: incident-edge normalization is a documented no-op in PNP
+        // (STVertex has no `incident_edge` field — confirmed as fan-walk
+        // optimization, not correctness; PNP's all-edges scans produce the
+        // same results for all 6 canonical read sites).
+        separate_pointy_quad_end_nodes(&mut builder.vertices, &mut builder.edges);
+        collapse_small_edges(&mut builder.vertices, &mut builder.edges);
 
         let n = builder.vertices.len();
         Ok(Self {
