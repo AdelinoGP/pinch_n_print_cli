@@ -41,6 +41,12 @@ interface host-services {
         initial-layer-min-bead-width: f32,
         outer-wall-offset: f32,
         is-initial-layer: bool,
+        /// Squared distance gate (mm²) from meshfix_maximum_resolution.
+        smallest-line-segment-squared: f32,
+        /// Squared error distance gate (mm²) from meshfix_maximum_deviation.
+        allowed-error-distance-squared: f32,
+        /// Area deviation threshold (mm²) for near-colinear fast-path guard.
+        maximum-extrusion-area-deviation: f32,
     }
     /// Runs the full Arachne beading-strategy pipeline
     /// (`slicer_core::arachne::pipeline::run_arachne_pipeline`) host-side, for

@@ -155,6 +155,21 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         let initial_layer_min_bead_width = config.get_float("initial_layer_min_bead_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.initial_layer_min_bead_width);
         let outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
 
+        // Distance-gate config keys for simplify_toolpaths (N13).
+        // Stored as squared mm² values; config keys are in mm (resolution/deviation).
+        let smallest_line_segment_squared = config
+            .get_float("meshfix_maximum_resolution")
+            .map(|v| { let mm = units_to_mm(v as i64) as f64; mm * mm })
+            .unwrap_or(defaults.smallest_line_segment_squared);
+        let allowed_error_distance_squared = config
+            .get_float("meshfix_maximum_deviation")
+            .map(|v| { let mm = units_to_mm(v as i64) as f64; mm * mm })
+            .unwrap_or(defaults.allowed_error_distance_squared);
+        let maximum_extrusion_area_deviation = config
+            .get_float("meshfix_maximum_extrusion_area_deviation")
+            .map(|v| units_to_mm(v as i64) as f64)
+            .unwrap_or(defaults.maximum_extrusion_area_deviation);
+
         ArachneParams {
             optimal_width,
             preferred_bead_width_outer,
@@ -173,6 +188,9 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             initial_layer_min_bead_width,
             outer_wall_offset,
             is_initial_layer: false,
+            smallest_line_segment_squared,
+            allowed_error_distance_squared,
+            maximum_extrusion_area_deviation,
         }
     }
 }

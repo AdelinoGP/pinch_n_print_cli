@@ -74,6 +74,7 @@ pub mod generate_toolpaths;
 pub mod pipeline;
 pub mod preprocess;
 pub mod remove_small;
+pub mod separate_inner_contour;
 pub mod simplify;
 pub mod stitch;
 
@@ -83,6 +84,7 @@ pub use generate_toolpaths::generate_toolpaths;
 pub use pipeline::{run_arachne_pipeline, ArachneParams, ArachnePipelineError};
 pub use preprocess::{preprocess_input_outline, preprocess_per_color_inputs, PreprocessParams};
 pub use remove_small::remove_small_lines;
+pub use separate_inner_contour::{remove_empty_toolpaths, separate_out_inner_contour};
 pub use simplify::simplify_toolpaths;
 pub use stitch::stitch_extrusions;
 

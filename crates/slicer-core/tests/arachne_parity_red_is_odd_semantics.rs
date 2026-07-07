@@ -195,7 +195,7 @@ fn n4_even_inner_wall_survives_remove_small_lines() {
 
     // Threshold 0.5 * 4.0 = 2.0 mm; the fixture's per-bead lines are < 1 mm
     // long, so anything (mis)labelled odd+open at inset 1 gets removed.
-    let survivors = remove_small_lines(lines, 0.5, 4.0);
+    let survivors = remove_small_lines(lines, 0.5, 4.0, false);
     let inset1_after = survivors.iter().filter(|l| l.inset_idx == 1).count();
 
     assert_eq!(

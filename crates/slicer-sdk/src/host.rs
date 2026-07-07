@@ -495,6 +495,12 @@ pub struct ArachneParams {
     /// aware beading strategies override `min_output_width` with
     /// `initial_layer_min_bead_width`.
     pub is_initial_layer: bool,
+    /// Squared distance gate (mm²) from meshfix_maximum_resolution.
+    pub smallest_line_segment_squared: f64,
+    /// Squared error distance gate (mm²) from meshfix_maximum_deviation.
+    pub allowed_error_distance_squared: f64,
+    /// Area deviation threshold (mm²) for near-colinear fast-path guard.
+    pub maximum_extrusion_area_deviation: f64,
 }
 
 impl Default for ArachneParams {
@@ -520,6 +526,9 @@ impl Default for ArachneParams {
             initial_layer_min_bead_width: 0.34,
             outer_wall_offset: 0.0,
             is_initial_layer: false,
+            smallest_line_segment_squared: 0.0025,
+            allowed_error_distance_squared: 0.000025,
+            maximum_extrusion_area_deviation: 0.005,
         }
     }
 }
@@ -557,6 +566,9 @@ pub fn generate_arachne_walls(
             initial_layer_min_bead_width: params.initial_layer_min_bead_width,
             outer_wall_offset: params.outer_wall_offset,
             is_initial_layer: params.is_initial_layer,
+            smallest_line_segment_squared: params.smallest_line_segment_squared,
+            allowed_error_distance_squared: params.allowed_error_distance_squared,
+            maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation,
         };
         slicer_core::arachne::pipeline::run_arachne_pipeline(
             polygons,
@@ -616,6 +628,9 @@ package slicer:common {
             initial-layer-min-bead-width: f32,
             outer-wall-offset: f32,
             is-initial-layer: bool,
+            smallest-line-segment-squared: f32,
+            allowed-error-distance-squared: f32,
+            maximum-extrusion-area-deviation: f32,
         }
         generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
     }
@@ -690,6 +705,9 @@ world sdk-arachne {
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f32,
             outer_wall_offset: params.outer_wall_offset as f32,
             is_initial_layer: params.is_initial_layer,
+            smallest_line_segment_squared: params.smallest_line_segment_squared as f32,
+            allowed_error_distance_squared: params.allowed_error_distance_squared as f32,
+            maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f32,
         };
 
         let result =

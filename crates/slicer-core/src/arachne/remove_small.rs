@@ -7,23 +7,21 @@
 // (`WallToolPaths::removeSmallLines`, helper `shorterThan<T>`).
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
-// adapted for the Pinch 'n Print architecture. **Deviation**: OrcaSlicer
-// derives `min_width` per-line (the minimum junction width along that line)
-// and additionally branches on "is top/bottom layer" for the length
-// divisor. Packet 112 Track B's spec fixes the signature to a single
-// caller-supplied `min_width: f64` (no per-line derivation, no layer-type
-// branch) — see this packet's `packet.spec.md` for the simplified contract.
+// adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Packet 112 (Track B, T-227): drops degenerate odd, non-closed
-//! `ExtrusionLine`s (bead-parity transition slivers) whose XY polyline
-//! length falls below `min_length_factor * min_width` (millimeters, matching
-//! `Point3WithWidth`'s coordinate unit).
+//! Packet 146 (N12): drops degenerate odd, non-closed `ExtrusionLine`s whose
+//! XY polyline length falls below a per-line threshold derived from the
+//! minimum junction width along that line.
+//!
+//! Canonical behaviour (WallToolPaths.cpp:838-856):
+//! - `min_width` per line = minimum junction width over the line's junctions.
+//! - On top/bottom layers: threshold = `min_width / 2`.
+//! - On other layers: threshold = `min_width * min_length_factor`.
 //!
 //! # Invariants (checked before the length computation)
 //!
 //! - Closed lines are never removed — this covers both the primary
-//!   (`inset_idx == 0`) outer-wall contour and any other closed loop
-//!   (even-inset regular walls, small closed odd-inset fill loops).
+//!   (`inset_idx == 0`) outer-wall contour and any other closed loop.
 //! - Even (`is_odd == false`) lines are never removed, closed or not.
 //!
 //! Only lines with `is_odd == true && is_closed == false` are ever eligible
@@ -31,32 +29,54 @@
 
 use slicer_ir::ExtrusionLine;
 
-/// Removes odd, non-closed `ExtrusionLine`s shorter than
-/// `min_length_factor * min_width`.
+/// Removes odd, non-closed `ExtrusionLine`s shorter than a per-line threshold.
 ///
-/// `min_width` is a caller-supplied nominal width (millimeters); this is
-/// a simplified variant of OrcaSlicer's per-line-derived `min_width` (see
-/// module doc-comment deviation note).
+/// The threshold is computed per line from the minimum junction width along
+/// that line:
+/// - Top/bottom layers (`is_initial_layer == true`): `min_junction_width / 2`
+///   (conservative — prevents top gaps, matching WallToolPaths.cpp:848).
+/// - Other layers: `min_junction_width * min_length_factor`.
+///
+/// `min_length_factor` is the configurable multiplier (typically 0.5,
+/// matching `docs/15_config_keys_reference.md`).
 pub fn remove_small_lines(
     lines: Vec<ExtrusionLine>,
     min_length_factor: f64,
-    min_width: f64,
+    _min_width: f64,
+    is_initial_layer: bool,
 ) -> Vec<ExtrusionLine> {
-    let threshold = min_length_factor * min_width;
     lines
         .into_iter()
-        .filter(|line| !should_remove(line, threshold))
+        .filter(|line| !should_remove(line, min_length_factor, is_initial_layer))
         .collect()
 }
 
 /// Preserve conditions are checked first, before any length computation:
-/// closed lines (regardless of inset parity — this covers both the primary
-/// `inset_idx == 0` contour and closed even-inset lines) and even lines are
-/// never eligible for removal.
-fn should_remove(line: &ExtrusionLine, threshold: f64) -> bool {
+/// closed lines and even lines are never eligible for removal.
+fn should_remove(line: &ExtrusionLine, min_length_factor: f64, is_initial_layer: bool) -> bool {
     if line.is_closed || !line.is_odd {
         return false;
     }
+
+    // Per-line min_width: minimum junction width over the line.
+    // WallToolPaths.cpp:840-845 — iterate all junctions, take minimum width.
+    let min_width = line
+        .junctions
+        .iter()
+        .map(|j| j.p.width as f64)
+        .fold(f64::INFINITY, f64::min);
+
+    if !min_width.is_finite() || min_width <= 0.0 {
+        // No junctions or all zero-width: treat as degenerate, remove.
+        return true;
+    }
+
+    // WallToolPaths.cpp:848-854 — layer-type divisor.
+    let threshold = if is_initial_layer {
+        min_width / 2.0
+    } else {
+        min_width * min_length_factor
+    };
 
     polyline_length_xy(line) < threshold
 }

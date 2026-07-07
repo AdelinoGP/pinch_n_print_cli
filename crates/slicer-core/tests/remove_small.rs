@@ -52,7 +52,7 @@ fn remove_small_lines_preserves_primary() {
     let min_width = 0.4; // threshold = 0.2mm; short_transition length 0.05mm < 0.2mm
 
     let input = vec![primary.clone(), short_transition];
-    let result = remove_small_lines(input, min_length_factor, min_width);
+    let result = remove_small_lines(input, min_length_factor, min_width, false);
 
     assert_eq!(
         result.len(),
@@ -93,7 +93,7 @@ fn remove_small_lines_all_primary_invariant() {
     let input = vec![tiny_primary_a.clone(), tiny_primary_b.clone()];
     // A large threshold that would remove both lines if the preserve
     // invariant were not checked first.
-    let result = remove_small_lines(input, 1000.0, 1000.0);
+    let result = remove_small_lines(input, 1000.0, 1000.0, false);
 
     assert_eq!(
         result.len(),

@@ -49,7 +49,10 @@ use slicer_ir::{ExPolygon, ExtrusionLine, UNITS_PER_MM};
 
 use crate::arachne::generate_toolpaths::generate_toolpaths;
 use crate::arachne::preprocess::{preprocess_input_outline, PreprocessParams};
-use crate::arachne::{remove_small_lines, simplify_toolpaths, stitch_extrusions};
+use crate::arachne::{
+    remove_empty_toolpaths, remove_small_lines, separate_out_inner_contour, simplify_toolpaths,
+    stitch_extrusions,
+};
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
@@ -139,6 +142,20 @@ pub struct ArachneParams {
     /// aware beading strategies override `min_output_width` with
     /// `initial_layer_min_bead_width`.
     pub is_initial_layer: bool,
+    /// Squared distance gate (mm²) for `simplify_toolpaths`: segments shorter
+    /// than this AND within `allowed_error_distance_squared` of the chord are
+    /// removed. Sourced from `meshfix_maximum_resolution` (mm) squared.
+    /// Maps to the `meshfix_maximum_resolution` config key.
+    pub smallest_line_segment_squared: f64,
+    /// Squared error distance gate (mm²) for `simplify_toolpaths`: the
+    /// perpendicular distance threshold for the primary removal gate.
+    /// Sourced from `meshfix_maximum_deviation` (mm) squared.
+    /// Maps to the `meshfix_maximum_deviation` config key.
+    pub allowed_error_distance_squared: f64,
+    /// Area deviation threshold (mm²) for `simplify_toolpaths`'s
+    /// near-colinear fast-path guard (`calculateExtrusionAreaDeviationError`).
+    /// Maps to the `meshfix_maximum_extrusion_area_deviation` config key.
+    pub maximum_extrusion_area_deviation: f64,
 }
 
 impl Default for ArachneParams {
@@ -179,6 +196,13 @@ impl Default for ArachneParams {
             initial_layer_min_bead_width: 0.34,
             outer_wall_offset: 0.0,
             is_initial_layer: false,
+            // Distance-gate defaults for simplify_toolpaths (N13).
+            // meshfix_maximum_resolution = 0.05mm, squared = 0.0025 mm².
+            smallest_line_segment_squared: 0.0025,
+            // meshfix_maximum_deviation = 0.005mm, squared = 0.000025 mm².
+            allowed_error_distance_squared: 0.000025,
+            // meshfix_maximum_extrusion_area_deviation = 0.005 mm².
+            maximum_extrusion_area_deviation: 0.005,
         }
     }
 }
@@ -353,8 +377,23 @@ pub fn run_arachne_pipeline(
     // never produces a negative gap threshold.
     let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
     let stitched = stitch_extrusions(lines, max_gap);
-    let simplified = simplify_toolpaths(stitched, params.visvalingam_area_threshold);
-    let final_lines = remove_small_lines(simplified, params.min_length_factor, params.min_width);
+    // Canonical post-process order (WallToolPaths.cpp:679-699):
+    // stitch → removeSmallLines → separateOutInnerContour → simplify → removeEmpty
+    let without_small = remove_small_lines(
+        stitched,
+        params.min_length_factor,
+        params.min_width,
+        params.is_initial_layer,
+    );
+    let (toolpaths, _inner_contour) = separate_out_inner_contour(without_small);
+    let simplified = simplify_toolpaths(
+        toolpaths,
+        params.visvalingam_area_threshold,
+        params.smallest_line_segment_squared,
+        params.allowed_error_distance_squared,
+        params.maximum_extrusion_area_deviation,
+    );
+    let final_lines = remove_empty_toolpaths(simplified);
 
     Ok(final_lines)
 }

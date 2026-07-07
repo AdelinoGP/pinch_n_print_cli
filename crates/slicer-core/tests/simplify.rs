@@ -42,7 +42,7 @@ fn simplify_toolpaths_vertex_count() {
     let original_len = line.junctions.len();
 
     let visvalingam_area_threshold = 0.01; // mm² -- typical bead-width-weighted default
-    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold);
+    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold, 0.0, 0.0, 0.0);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
@@ -101,7 +101,7 @@ fn simplify_toolpaths_width_weighted_gate_preserves_junctions() {
     let original_len = line.junctions.len();
 
     let visvalingam_area_threshold = 0.01; // mm²
-    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold);
+    let result = simplify_toolpaths(vec![line], visvalingam_area_threshold, 0.0, 0.0, 0.0);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
