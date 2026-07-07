@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 144-arachne-angle-fudge-and-noncentral-regions
 task_ids:
   - none

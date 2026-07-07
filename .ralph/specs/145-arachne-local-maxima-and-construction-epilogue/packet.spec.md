@@ -11,11 +11,11 @@ context_cost_estimate: M
 
 ## Goal
 
-Port `generateLocalMaximaSingleBeads` (N9 — hexagonal micro-loop for isolated thick spots with odd bead count) and the `constructFromPolygons` construction epilogue (N10 — `separatePointyQuadEndNodes`, `collapseSmallEdges`, incident-edge normalization), so local maxima that never join a domain chain get their center dot and degenerate zero-length edges / shared quad-start nodes are cleaned up by construction.
+Port `generateLocalMaximaSingleBeads` (N9 — hexagonal micro-loop for isolated thick spots with odd bead count) and the `constructFromPolygons` construction epilogue (N10 — `separatePointyQuadEndNodes`, `collapseSmallEdges`; incident-edge normalization is a documented no-op since PNP's `STVertex` has no `incident_edge` field), so local maxima that never join a domain chain get their center dot and degenerate zero-length edges / shared quad-start nodes are cleaned up by construction.
 
 ## Scope Boundaries
 
-Add `generateLocalMaximaSingleBeads` as the final step of `generate_toolpaths` (N9), and add the three-pass construction epilogue to `from_polygons` in `graph.rs` (N10). Full in/out-of-scope lists live in `requirements.md`.
+Add `generateLocalMaximaSingleBeads` as the final step of `generate_toolpaths` (N9), and add the two-pass construction epilogue to `from_polygons` in `graph.rs` (N10 — `separatePointyQuadEndNodes` + `collapseSmallEdges`; incident-edge normalization is a documented no-op). Full in/out-of-scope lists live in `requirements.md`.
 
 ## Prerequisites and Blockers
 
@@ -42,7 +42,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
 
 - **AC-1. Given** a near-square region with an odd bead count whose center is a local maximum (`isLocalMaximum(true)`, not central), **when** `generate_toolpaths` runs, **then** the output contains a 6-segment hexagonal micro-loop (radius `width/8`, `is_odd = true`) at the local maximum — `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`) emits the center dot so isolated thick spots don't vanish.
   | `cargo test -p slicer-core --features host-algos --test arachne_local_maxima_single_beads --nocapture 2>&1 | tee target/test-output-d-ac1.log`
-- **AC-2. Given** a polygon whose Voronoi diagram produces degenerate zero-length edges (integer rounding) and pointy-corner cells sharing quad-start nodes, **when** `SkeletalTrapezoidationGraph::from_polygons` runs, **then** (1) no edge has zero length (`collapseSmallEdges` removed them), (2) each node's `incident_edge` is the first `prev`-less edge (incident-edge normalization), and (3) pointy-corner quad-start nodes are unique per quad (`separatePointyQuadEndNodes`).
+- **AC-2. Given** a polygon whose Voronoi diagram produces degenerate zero-length edges (integer rounding) and pointy-corner cells sharing quad-start nodes, **when** `SkeletalTrapezoidationGraph::from_polygons` runs, **then** (1) no edge has zero length (`collapseSmallEdges` removed them), and (2) pointy-corner quad-start nodes are unique per quad (`separatePointyQuadEndNodes`). Incident-edge normalization is a documented no-op (PNP's `STVertex` has no `incident_edge` field — confirmed as a fan-walk optimization, not correctness).
   | `cargo test -p slicer-core --features host-algos --test arachne_construction_epilogue --nocapture 2>&1 | tee target/test-output-d-ac2.log`
 
 ## Negative Test Cases

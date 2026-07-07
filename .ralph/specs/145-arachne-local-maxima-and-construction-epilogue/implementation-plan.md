@@ -13,7 +13,7 @@
 
 - Task IDs:
   - `none` (N9 — provenanced by `target/arachne_parity_audit_20260706_020657.md` §N9)
-- Objective: Port `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`) as `generate_local_maxima_single_beads` in `generate_toolpaths.rs`, called as the final step of `generate_toolpaths` after A2's `connectJunctions` emission. For nodes with odd `beading.bead_widths.size()`, `isLocalMaximum(true)`, and not central, emit a 6-segment hexagonal micro-loop (radius `width/8`, `is_odd = true`). Wire in the `is_local_maximum` predicate per `design.md`'s reuse-vs-rename decision — `centrality.rs:264` already has a private, dead-code function with matching semantics; do not add a second same-named definition.
+- Objective: Port `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`) as `generate_local_maxima_single_beads` in `generate_toolpaths.rs`, called as the final step of `generate_toolpaths` after A2's `connectJunctions` emission. For nodes with odd `beading.bead_widths.size()`, `isLocalMaximum(true)`, and not central, emit a 6-segment hexagonal micro-loop (radius `width/8`, `is_odd = true`). **`is_local_maximum` reuse:** `centrality.rs:269` already defines `pub(super) fn is_local_maximum` (wired into `bead_count.rs:169` by commit `79f2a8f0`). Step 1 widens it to `pub(crate)` and calls it from `generate_toolpaths.rs` — do NOT add a second definition. The swarm's OrcaSlicer delegation must confirm whether canonical's `isLocalMaximum(true)` (`strict=true`) matches PNP's no-argument version (which uses `>` strictly-higher) before assuming reuse is safe.
 - Precondition: `141` (A1), `142` (A2), `143` (B), and `144` (C) are all
   `status: implemented` — D's `generateLocalMaximaSingleBeads` runs after A1's
   canonical junction generation and A2's `connectJunctions` emission, reads
@@ -57,11 +57,11 @@
 
 - Task IDs:
   - `none` (N10 — provenanced by §N10)
-- Objective: Port the `constructFromPolygons` epilogue (`SkeletalTrapezoidation.cpp:538-546`) as three additive passes appended to `from_polygons` in `graph.rs`: `separate_pointy_quad_end_nodes` (duplicate shared boundary start-nodes), `collapse_small_edges` (remove degenerate zero-length edges), incident-edge normalization (reset each node's `incident_edge` to the first `prev`-less edge). Re-baseline `centrality_*.json` + `toolpaths_tapered_wedge.json`. Add `D-145-LOCAL-MAXIMA-EPILOGUE` deviation-log entry + `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` addendum.
+- Objective: Port the `constructFromPolygons` epilogue (`SkeletalTrapezoidation.cpp:538-546`) as two additive passes appended to `from_polygons` in `graph.rs`: `separate_pointy_quad_end_nodes` (duplicate shared boundary start-nodes; skip the `incident_edge` SET line), `collapse_small_edges` (remove degenerate zero-length edges; skip the `incident_edge` SET/READ lines). **Incident-edge normalization is a documented no-op** — PNP's `STVertex` has no `incident_edge` field (confirmed by OrcaSlicer ground-truth as a fan-walk optimization, not correctness; PNP's all-edges scans produce the same results). Add a comment in `from_polygons` explaining the skip. Re-baseline `centrality_*.json` + `toolpaths_tapered_wedge.json`. Add `D-145-LOCAL-MAXIMA-EPILOGUE` deviation-log entry + `D-113C-FAITHFUL-GRAPH-CONSTRUCTION` addendum.
 - Precondition: Step 1 is green (`generate_local_maxima_single_beads` in place).
 - Postcondition: AC-2 passes (no zero-length edges, normalized incident edges, unique quad-start nodes). AC-N1 passes (N1 red tests stay green). `centrality`/`bead_count`/`propagation`/`generate_toolpaths` regression green (fixtures re-baselined). `D-145-LOCAL-MAXIMA-EPILOGUE` present.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — range-read `:269-327` (the current `from_polygons` end, where the epilogue is appended) + the `STHalfEdge`/`STVertex` struct defs + the `incident_edge` field (if it exists — the implementer confirms via the struct def).
+  - `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` — range-read `:306-371` (the current `from_polygons` end at line 371, where the epilogue is appended) + the `STHalfEdge`/`STVertex` struct defs (`:102-164`) + confirm `STVertex` has NO `incident_edge` field (it doesn't — the normalization is a no-op).
   - `crates/slicer-core/tests/arachne_parity_red_junction_bands.rs` — full (202 lines); AC-N1 oracle.
   - `docs/08_coordinate_system.md` §"Constant Conversion Table" (~30 lines) — `collapseSmallEdges`'s ε conversion.
 - Files allowed to edit (≤ 3):
@@ -74,7 +74,7 @@
   - `crates/slicer-core/tests/fixtures/arachne/centrality_*.json` (re-record via self-capture; never read directly)
   - `OrcaSlicerDocumented/...` (delegate)
 - Expected sub-agent dispatches:
-  - "SUMMARY of `SkeletalTrapezoidation.cpp:538-546` `constructFromPolygons` epilogue — ask for the three-pass order; return ≤ 200 words" — purpose: confirm Step 2's epilogue.
+  - "SUMMARY of `SkeletalTrapezoidation.cpp:538-546` `constructFromPolygons` epilogue — ask for the two-pass order (`separatePointyQuadEndNodes` → `collapseSmallEdges`; incident-edge normalization is a no-op in PNP); return ≤ 200 words" — purpose: confirm Step 2's epilogue.
   - "SUMMARY of `SkeletalTrapezoidationGraph.cpp` `collapseSmallEdges` — ask for the zero-length ε constant + the endpoint-merge rule; return ≤ 200 words" — purpose: confirm `collapse_small_edges`.
   - "SUMMARY of `SkeletalTrapezoidationGraph.cpp` `separatePointyQuadEndNodes` — ask for the node-duplication rule; return ≤ 200 words" — purpose: confirm `separate_pointy_quad_end_nodes`.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_construction_epilogue --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-2.

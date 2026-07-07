@@ -20,13 +20,17 @@ center dot. Without it, local maxima that never join a domain chain simply
 vanish (pinholes at e.g. the center of near-square regions with odd bead
 counts). `grep local_maxima` in PNP finds no hits — the pass is entirely
 missing. **N10 (`constructFromPolygons` epilogue missing):** PNP's
-`SkeletalTrapezoidationGraph::from_polygons` (`graph.rs:269-327`) ends after
-per-edge radius bounds; none of the three canonical epilogue passes
+`SkeletalTrapezoidationGraph::from_polygons` (`graph.rs:306-371`) ends after
+per-edge radius bounds; none of the canonical epilogue passes
 (`SkeletalTrapezoidation.cpp:538-546`) exists: (1) `separatePointyQuadEndNodes`
 duplicates shared boundary start-nodes so each quad traversal has a unique
 start; (2) `graph.collapseSmallEdges()` removes degenerate zero-length edges
-produced by integer rounding; (3) each node's `incident_edge` is reset to the
-first `prev`-less edge. Consequences in PNP: zero-length spine fragments
+produced by integer rounding; (3) incident-edge normalization (each node's
+`incident_edge` reset to the first `prev`-less edge) — **this pass is a
+documented no-op in PNP** because `STVertex` has no `incident_edge` field
+(confirmed by OrcaSlicer ground-truth as a fan-walk optimization, not
+correctness; PNP's all-edges scans produce the same results for all 6
+canonical read sites). Consequences in PNP: zero-length spine fragments
 survive into centrality/junction math (degenerate `edge_length` guards paper
 over them: `centrality.rs:167`, `propagation.rs:1042-1044`), and pointy-corner
 cells share quad-start nodes, which the `connectJunctions` walk then has to
@@ -36,8 +40,8 @@ step of `generate_toolpaths`, N10 as the epilogue of `from_polygons`.
 
 This packet extends `D-113C-FAITHFUL-GRAPH-CONSTRUCTION`'s `from_polygons` with
 the canonical epilogue; 113c's per-cell graph construction (Steps 1-3) remains
-canonical and untouched. D's epilogue is additive (three passes appended after
-113c's existing per-edge radius bounds).
+canonical and untouched. D's epilogue is additive (two real passes + one
+documented no-op appended after 113c's existing per-edge radius bounds).
 
 ## In Scope
 
@@ -58,32 +62,33 @@ canonical and untouched. D's epilogue is additive (three passes appended after
   / `SkeletalTrapezoidationGraph.cpp`. Edges with `edge_length < ε` (in slicer
   units; the canonical ε is a small constant — delegate for the exact value)
   are collapsed: their endpoints are merged, and incident edges repointed.
-- **Incident-edge normalization** (NEW) in `graph.rs`: each node's
-  `incident_edge` is reset to the first `prev`-less edge, mirroring
-  `SkeletalTrapezoidation.cpp:545-546`.
+- **Incident-edge normalization** (DOCUMENTED NO-OP) in `graph.rs`: canonical
+  resets each node's `incident_edge` to the first `prev`-less edge
+  (`SkeletalTrapezoidation.cpp:545-546`). PNP's `STVertex` does NOT have an
+  `incident_edge` field — OrcaSlicer ground-truth confirmed it's a fan-walk
+  optimization (entry point for `edge = edge->twin->next` around a node), not
+  a correctness requirement. PNP's all-edges scans (`edges.iter().filter(|e|
+  e.start_vertex == v_idx)`) produce the same results for all 6 canonical read
+  sites (`isLocalMaximum`, `isCentral`, `isMultiIntersection`,
+  `updateBeadCount`, `getOrCreateBeading`, `getNearestBeading`). The
+  normalization pass is a documented no-op: the function exists as a comment
+  explaining why PNP skips it, NOT a real pass that mutates a non-existent
+  field. `separatePointyQuadEndNodes` and `collapseSmallEdges` skip their
+  `incident_edge` SET lines but port everything else.
 - **Epilogue wiring** in `graph.rs::from_polygons`: append the three passes
   (`separatePointyQuadEndNodes` → `collapseSmallEdges` → incident-edge
-  normalization) after 113c's existing per-edge radius bounds (`:269-327`).
+  normalization) after 113c's existing per-edge radius bounds (`:306-371`).
 - **`isLocalMaximum` predicate for N9's `generateLocalMaximaSingleBeads`
   gate**: a node is a local maximum if all its neighbors have
-  `distance_to_boundary <=` its own. **Not a fresh symbol** — a private,
-  currently-`#[allow(dead_code)]` function with matching semantics already
-  exists at `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs:264`
-  (`fn is_local_maximum`, used only by the unwired `try_dissolve` whisker-
-  dissolve helper the packet-113c/144 gotcha already forbids wiring up — see
-  `docs/specs/arachne-parity-N1-N13-plan.md`'s "Gotchas" section). D's
-  implementer MUST decide, before Step 1 begins, between:
-  (a) reuse `centrality.rs`'s existing `is_local_maximum` directly (drop its
-  `#[allow(dead_code)]`, keep it private, call it from `generate_toolpaths.rs`
-  via a `pub(crate)` re-export or a thin wrapper), or
-  (b) add a distinctly-named new predicate (e.g. `is_local_max_for_odd_bead`)
-  in `graph.rs` if the two checks are not actually semantically identical
-  (N9's gate needs `isLocalMaximum(true)` — the canonical bool argument's
-  exact meaning must be confirmed via OrcaSlicer delegation before assuming
-  reuse is safe).
-  Adding a second, same-named `is_local_maximum` in the same module
-  (`centrality.rs`) is a compile error; the decision must be made and recorded
-  in `design.md` before implementation, not discovered mid-Step-1.
+  `distance_to_boundary <=` its own. **Already exists and wired**:
+  `centrality.rs:269` defines `pub(super) fn is_local_maximum(graph, vertex_idx)
+  -> bool` (made `pub(super)` + wired into `bead_count.rs:169` by commit
+  `79f2a8f0`, the centrality-coupling fix). Step 1 reuses it directly — widen to
+  `pub(crate)` so `generate_toolpaths.rs` (in `arachne/`) can call it. Do NOT add
+  a second definition. Open question: canonical's `isLocalMaximum(bool strict)`
+  takes a `strict` argument PNP's version lacks — the swarm's OrcaSlicer
+  delegation must confirm whether `strict=true` changes the comparison
+  semantics before assuming reuse is safe (see `design.md` Open Questions).
 - **New tests**: `arachne_local_maxima_single_beads.rs` (AC-1 — near-square
   odd-bead-count region emits hexagonal micro-loop), `arachne_construction_epilogue.rs`
   (AC-2 — no zero-length edges, normalized incident edges, unique quad-start
@@ -207,12 +212,12 @@ express:
 
 Packet-specific context-budget hazards:
 
-- `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` (~700 LOC per 113c)
-  is the primary edit target for Step 2 — range-read `:269-327` (the current
-  `from_polygons` end) + the `STHalfEdge`/`STVertex` struct defs; do NOT
-  full-read (113c's per-cell construction is canonical, not D's scope to
-  re-derive).
-- `crates/slicer-core/src/arachne/generate_toolpaths.rs` (~953 LOC) is the
+- `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` (~1491 LOC per
+  113c + later packets) is the primary edit target for Step 2 — range-read
+  `:306-371` (the current `from_polygons` end) + the `STHalfEdge`/`STVertex`
+  struct defs; do NOT full-read (113c's per-cell construction is canonical,
+  not D's scope to re-derive).
+- `crates/slicer-core/src/arachne/generate_toolpaths.rs` (~1242 LOC) is the
   primary edit target for Step 1 — range-read the end of `generate_toolpaths`
   (where `generateLocalMaximaSingleBeads` is appended as the final step).
 - `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs` — read-only

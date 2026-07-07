@@ -23,5 +23,5 @@ This packet has `task_ids: none` (provenanced by findings N9 + N10).
 | Step | OrcaSlicer ref | Purpose |
 | --- | --- | --- |
 | Step 1 (N9) | `SkeletalTrapezoidation.cpp:2383-2413` | `generateLocalMaximaSingleBeads` (hexagonal micro-loop). |
-| Step 2 (N10) | `SkeletalTrapezoidation.cpp:538-546` | `constructFromPolygons` epilogue (three-pass order). |
+| Step 2 (N10) | `SkeletalTrapezoidation.cpp:538-546` | `constructFromPolygons` epilogue (two-pass + documented no-op). |
 | Step 2 (N10) | `SkeletalTrapezoidationGraph.cpp` | `collapseSmallEdges`/`separatePointyQuadEndNodes` implementations. |

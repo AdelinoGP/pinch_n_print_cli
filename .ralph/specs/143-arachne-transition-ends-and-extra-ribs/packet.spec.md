@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 143-arachne-transition-ends-and-extra-ribs
 task_ids:
   - none
