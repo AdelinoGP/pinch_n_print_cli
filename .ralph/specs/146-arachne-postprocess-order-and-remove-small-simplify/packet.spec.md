@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 146-arachne-postprocess-order-and-remove-small-simplify
 task_ids:
   - none
