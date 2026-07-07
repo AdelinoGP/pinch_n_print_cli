@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 141-arachne-beading-propagation-and-junction-bands
 task_ids:
   - none

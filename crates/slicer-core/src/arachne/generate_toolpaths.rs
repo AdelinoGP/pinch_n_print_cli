@@ -953,33 +953,20 @@ pub fn generate_toolpaths(
             // 3-way detection at the WALK level (AC-4): if the chain
             // would continue into a quad whose START vertex is a
             // 3-or-more-way junction in the graph, the chain ends
-            // here — a new line will be started at the next quad
-            // (which begins at this 3-way vertex). The check uses
-            // the *next* quad's start vertex (the shared vertex
-            // between the current quad's dead-end and the next
-            // quad's start) because the chain's "from" side enters
-            // that vertex and a 3-way there means the current
-            // chain would merge two unrelated spokes. Mirrors
-            // `addToolpathSegment`'s "not a 3-way" check applied at
-            // the walk level.
+            // here — the current domain emits its fragment, and a
+            // new domain will be walked from the next quad (which
+            // begins at this 3-way vertex). This is the walk-level
+            // form of canonical `addToolpathSegment`'s "not a
+            // 3-way" check (SkeletalTrapezoidation.cpp:2198-2234).
             //
-            // Note: the check is currently DISABLED in the chain
-            // walk because the faithful `connectJunctions` ring
-            // closure for simple polygons (e.g. a square's 4 spokes
-            // meeting at a 4-way center vertex) requires the chain
-            // to walk THROUGH the multi-way peak vertex, not stop
-            // at it. The canonical `addToolpathSegment` "not a
-            // 3-way" check operates on the *emission* (whether to
-            // add a toolpath segment to the current line at the
-            // shared vertex), not on the chain walk (whether to
-            // continue walking to the next quad). Porting the check
-            // to the walk level would fragment the square's ring
-            // into N spoke-lines — breaking AC-4's
-            // `outer_wall_closes_for_simple_polygon` lock. The
-            // `vertex_degree` computation is retained for the
-            // Step-1 AC-4 oracle (`arachne_parity_red_chain_junctions`)
-            // and future use.
-            let _next_start_vertex = graph
+            // Fragmenting a simple polygon's ring into individual
+            // spokes at a multi-way center vertex is the intended
+            // behaviour: `run_arachne_pipeline` stitches adjacent
+            // fragments back together post-walk
+            // (`stitch_extrusions`), so ring closure is preserved
+            // at the pipeline level even though the walk itself
+            // stops at branch points.
+            let next_start_vertex = graph
                 .edges
                 .get(quad_end)
                 .and_then(|e| {
@@ -990,14 +977,13 @@ pub fn generate_toolpaths(
                     }
                 })
                 .unwrap_or(NO_INDEX);
-            let _is_3way_break = _next_start_vertex != NO_INDEX
-                && _next_start_vertex < vertex_degree.len()
-                && vertex_degree[_next_start_vertex] > 2
+            let is_3way_break = next_start_vertex != NO_INDEX
+                && next_start_vertex < vertex_degree.len()
+                && vertex_degree[next_start_vertex] > 2
                 && next_start != poly_domain_start;
-            // The 3-way break is intentionally NOT applied here
-            // (see comment above); the walk continues through
-            // multi-way vertices to preserve ring closure.
-            let _ = _is_3way_break;
+            if is_3way_break {
+                break;
+            }
 
             if next_start == NO_INDEX {
                 // Open chain exhausted.

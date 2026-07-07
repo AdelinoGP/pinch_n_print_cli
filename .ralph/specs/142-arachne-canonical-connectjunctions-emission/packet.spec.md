@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 142-arachne-canonical-connectjunctions-emission
 task_ids:
   - none
