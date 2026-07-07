@@ -21,6 +21,12 @@ A1 (N7+N1) -> A2 (N2+N4) -> B (N3+N8) / C (N5+N6) [either order] -> D (N9+N10) -
 
 Linear A1 -> A2 -> rest (B/C strictly after A2; no parallelism with A2).
 
+### Closure status (2026-07-06)
+
+- **A1 (141) + A2 (142): closed jointly** as a closure unit in commit `1d9cc6ad` (not merged into one packet — per spec-review recommendation, each kept its own `packet.spec.md` flipped to `status: implemented`). The 141↔142 reverse-coupling discovery: 142's chain walk reads 141's `generate_junctions` output, and 141's `perimeter_index = idx` (slot→bead-index) change in `a554ed36` broke 142's `outer_wall_closes_for_simple_polygon` invariant; both packets' ACs only green simultaneously after the joint fix-up in `1d9cc6ad`.
+- **Activation-timing correction:** 142 was activated immediately after 141's `arachne_generate_junctions_canonical_regression` (3/3) passed — NOT after 141's `status: implemented` flip. The two packets' `status: implemented` flips happened in the same commit (`1d9cc6ad`) because the reverse coupling meant neither could close alone.
+- **B (143), C (144): unblocked** by the joint closure. Sequence per handoff: 143 first, then 144 (144's AC-1 asserts `arachne_parity_red_junction_bands` stays green after π-hack removal — running 144 first then 143 could mask a regression if 143's transition-ends work shifts graph topology that 144's `filter_central` reads).
+
 ### Packet A1 — BeadingPropagation + canonical generateJunctions (L, gating)
 
 - **Findings:** N7 + N1
