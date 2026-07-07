@@ -15,7 +15,7 @@ Fix the `WallToolPaths::generate` post-processing order (N11 — `stitch → rem
 
 ## Scope Boundaries
 
-Reorder the post-processing pipeline in `arachne/pipeline.rs:360-375`, add `separateOutInnerContour` + `removeEmptyToolPaths`, rewrite `remove_small_lines` to use per-line `min_width`, and rewrite `simplify_toolpaths` to use distance gates + the area guard on the near-colinear fast path. Full in/out-of-scope lists live in `requirements.md`.
+Reorder the post-processing pipeline in `arachne/pipeline.rs:350-360`, add `separateOutInnerContour` + `removeEmptyToolPaths`, rewrite `remove_small_lines` to use per-line `min_width`, and rewrite `simplify_toolpaths` to use distance gates + the area guard on the near-colinear fast path. Full in/out-of-scope lists live in `requirements.md`.
 
 ## Prerequisites and Blockers
 
@@ -27,12 +27,12 @@ Reorder the post-processing pipeline in `arachne/pipeline.rs:360-375`, add `sepa
 
 Acceptance Criteria are stated **once**, here. `requirements.md` references them by ID, never copies them.
 
-- **AC-1. Given** `run_arachne_pipeline`'s post-processing pipeline (`pipeline.rs:360-375`), **when** the pipeline runs, **then** the stage order is `stitch → remove_small_lines → separate_out_inner_contour → simplify_toolpaths → remove_empty_toolpaths` (matching `WallToolPaths.cpp:679-699`), NOT PNP's current `stitch → simplify → remove_small`. `separateOutInnerContour` (inner-surface bookkeeping for infill boundary) and `removeEmptyToolPaths` are present.
-  | `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order --nocapture 2>&1 | tee target/test-output-e-ac1.log`
+- **AC-1. Given** `run_arachne_pipeline`'s post-processing pipeline (`pipeline.rs:350-360`), **when** the pipeline runs, **then** the stage order is `stitch → remove_small_lines → separate_out_inner_contour → simplify_toolpaths → remove_empty_toolpaths` (matching `WallToolPaths.cpp:679-699`), NOT PNP's current `stitch → simplify → remove_small`. `separateOutInnerContour` (inner-surface bookkeeping for infill boundary) and `removeEmptyToolPaths` are present.
+  | `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order -- --nocapture 2>&1 | tee target/test-output-e-ac1.log`
 - **AC-2. Given** a line whose minimum junction width is `min_w` (much smaller than the nominal width), **when** `remove_small_lines` runs, **then** the line's removal threshold is `min_w` (per-line, not the caller-supplied constant) — on top/bottom layers the divisor is `min_w/2`, otherwise `min_w * min_length_factor` (matching `WallToolPaths.cpp:838-856`).
-  | `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width --nocapture 2>&1 | tee target/test-output-e-ac2.log`
+  | `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width -- --nocapture 2>&1 | tee target/test-output-e-ac2.log`
 - **AC-3. Given** a long low-curvature arc that PNP's iterative area-only sweep would consume, **when** `simplify_toolpaths` runs, **then** the arc survives because the distance gates (`smallest_line_segment_squared` / `allowed_error_distance_squared` from `meshfix_maximum_resolution`/`_deviation`) reject the collapse, with `calculateExtrusionAreaDeviationError` as an extra guard on the near-colinear fast path only (matching `ExtrusionLine.cpp:56-243`).
-  | `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates --nocapture 2>&1 | tee target/test-output-e-ac3.log`
+  | `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates -- --nocapture 2>&1 | tee target/test-output-e-ac3.log`
 
 ## Negative Test Cases
 

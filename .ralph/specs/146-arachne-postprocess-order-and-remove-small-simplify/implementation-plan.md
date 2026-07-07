@@ -13,11 +13,11 @@
 
 - Task IDs:
   - `none` (N11 — provenanced by `target/arachne_parity_audit_20260706_020657.md` §N11)
-- Objective: Reorder `pipeline.rs:360-375` from `stitch → simplify → remove_small` to `stitch → remove_small → separate_out_inner_contour → simplify → remove_empty`. Add `separate_out_inner_contour` (NEW — inner-surface bookkeeping for infill boundary; delegate the exact responsibility) and `remove_empty_toolpaths` (filter out empty `ExtrusionLine`s after simplify).
+- Objective: Reorder `pipeline.rs:350-360` from `stitch → simplify → remove_small` to `stitch → remove_small → separate_out_inner_contour → simplify → remove_empty`. Add `separate_out_inner_contour` (NEW — inner-surface bookkeeping for infill boundary; delegate the exact responsibility) and `remove_empty_toolpaths` (filter out empty `ExtrusionLine`s after simplify).
 - Precondition: D (`145`) is `status: implemented` — E's `removeSmallLines` interacts with D's `is_odd = true` micro-loops; D's canonical `is_odd` semantics must land first.
 - Postcondition: AC-1 passes (canonical post-process order). N1, N2, N3, N4 stay GREEN. N12 per-line `min_width` + N13 distance gates NOT yet in place (Steps 2 + 3 own them).
 - Files allowed to read (with line-range hints when > 300 lines):
-  - `crates/slicer-core/src/arachne/pipeline.rs` — lines `:360-375` (the post-processing pipeline); do NOT read `:260-340` (A1/A2/B/C's scope).
+  - `crates/slicer-core/src/arachne/pipeline.rs` — lines `:350-360` (the post-processing pipeline); do NOT read `:260-340` (A1/A2/B/C's scope).
   - `crates/slicer-core/src/arachne/stitch.rs` — read-only (the stitch stage is unchanged; E only reorders it).
   - `crates/slicer-core/tests/arachne_parity_red_junction_bands.rs` — full (202 lines); AC-N1 oracle pattern.
 - Files allowed to edit (≤ 3):
@@ -31,7 +31,7 @@
   - `OrcaSlicerDocumented/...` (delegate)
 - Expected sub-agent dispatches:
   - "SUMMARY of `WallToolPaths.cpp:679-699` canonical post-process order — ask for the exact stage sequence + the `separateOutInnerContour` responsibility; return ≤ 200 words" — purpose: confirm Step 1's order swap + `separate_out_inner_contour`.
-  - "Run `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-1.
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order -- --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-1.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast`; return FACT pass (expected — AC-N1, N1 stays green)" — purpose: gate E didn't regress A1.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast`; return FACT pass (expected — N2/N4/N3 stay green)" — purpose: gate scope.
 - Context cost: `S`
@@ -40,7 +40,7 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp:679-699` — delegate.
 - Verification:
-  - `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order --nocapture 2>&1 | tee target/test-output-e-step1-ac1.log` — FACT pass (AC-1).
+  - `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order -- --nocapture 2>&1 | tee target/test-output-e-step1-ac1.log` — FACT pass (AC-1).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast 2>&1 | tee target/test-output-e-step1-neg1.log` — FACT pass (AC-N1).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 | tee target/test-output-e-step1-stays-green.log` — FACT pass.
   - `cargo check -p slicer-core --all-targets` — FACT pass.
@@ -62,11 +62,11 @@
   - `crates/slicer-core/tests/arachne_remove_small_per_line_min_width.rs` (NEW)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/arachne/simplify.rs` (Step 3's scope)
-  - `crates/slicer-core/src/arachne/pipeline.rs:360-375` (Step 1's scope — already done)
+  - `crates/slicer-core/src/arachne/pipeline.rs:350-360` (Step 1's scope — already done)
   - `OrcaSlicerDocumented/...` (delegate)
 - Expected sub-agent dispatches:
   - "SUMMARY of `WallToolPaths.cpp:838-856` `removeSmallLines` — ask for the per-line `min_width` computation + the layer-type divisor (`min_width/2` top/bottom, `min_width * min_length_factor` otherwise); return ≤ 200 words" — purpose: confirm Step 2's per-line `min_width`.
-  - "Run `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-2.
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width -- --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-2.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_is_odd_semantics --no-fail-fast`; return FACT pass (expected — N4 stays green, real walls not mis-removed)" — purpose: gate E didn't regress A2's `is_odd` fix.
   - "Run `cargo test -p slicer-core --features host-algos --test remove_small 2>&1`; return FACT pass/fail (fixtures re-baselined)" — purpose: regression gate.
 - Context cost: `S`
@@ -75,7 +75,7 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp:838-856` — delegate.
 - Verification:
-  - `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width --nocapture 2>&1 | tee target/test-output-e-step2-ac2.log` — FACT pass (AC-2).
+  - `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width -- --nocapture 2>&1 | tee target/test-output-e-step2-ac2.log` — FACT pass (AC-2).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_is_odd_semantics --no-fail-fast 2>&1 | tee target/test-output-e-step2-n4-green.log` — FACT pass (N4 stays green).
   - `cargo test -p slicer-core --features host-algos --test remove_small 2>&1 | tee target/test-output-e-step2-regression.log` — FACT pass (fixtures re-baselined).
 - Exit condition: AC-2 passes; N4 stays green; `remove_small` regression green; `cargo check -p slicer-core --all-targets` passes.
@@ -98,13 +98,13 @@
 - (Secondary edits not counted against the ≤ 3: `crates/slicer-core/tests/arachne_simplify_distance_gates.rs` (NEW — AC-3), `crates/slicer-core/tests/fixtures/arachne/simplify_*.json`/`stitch_*.json` (re-baseline), `crates/slicer-schema/wit/` + `slicer-sdk`/`slicer-wasm-host` if WIT record fields are added.)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/arachne/remove_small.rs` (Step 2's scope — already done)
-  - `crates/slicer-core/src/arachne/pipeline.rs:360-375` (Step 1's scope — already done)
+  - `crates/slicer-core/src/arachne/pipeline.rs:350-360` (Step 1's scope — already done)
   - `OrcaSlicerDocumented/...` (delegate)
 - Expected sub-agent dispatches:
   - "SUMMARY of `ExtrusionLine.cpp:56-243` `simplifyToolpaths` — ask for the distance-gate thresholds (`smallest_line_segment_squared` / `allowed_error_distance_squared`) + the near-colinear fast-path guard (`calculateExtrusionAreaDeviationError`); return ≤ 200 words" — purpose: confirm Step 3's distance gates.
   - "SUMMARY of `WallToolPaths.cpp:868-872` — ask for the `meshfix_maximum_resolution`/`_deviation` sourcing; return ≤ 200 words" — purpose: confirm the distance-gate config keys.
   - "Run `rg -q 'meshfix_maximum_resolution' docs/15_config_keys_reference.md`; return FACT pass/fail" — purpose: confirm whether the distance-gate config keys are already registered.
-  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-3.
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates -- --nocapture`; return FACT pass/fail or SNIPPETS on failure" — purpose: validate AC-3.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast`; return FACT pass (expected — N1 stays green)" — purpose: gate E didn't regress A1.
   - "Run `cargo test -p slicer-core --features host-algos --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast`; return FACT pass (expected — N2/N4/N3 stay green)" — purpose: gate scope.
   - "Run `cargo test -p slicer-core --features host-algos --test simplify --test stitch 2>&1`; return FACT pass/fail (fixtures re-baselined)" — purpose: regression gate.
@@ -118,7 +118,7 @@
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/ExtrusionLine.cpp:56-243` — delegate.
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp:868-872` — delegate.
 - Verification:
-  - `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates --nocapture 2>&1 | tee target/test-output-e-step3-ac3.log` — FACT pass (AC-3).
+  - `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates -- --nocapture 2>&1 | tee target/test-output-e-step3-ac3.log` — FACT pass (AC-3).
   - `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --no-fail-fast 2>&1 | tee target/test-output-e-step3-n1-green.log` — FACT pass (N1 stays green).
   - `cargo test -p slicer-core --features host-algos --test simplify --test stitch 2>&1 | tee target/test-output-e-step3-regression.log` — FACT pass (fixtures re-baselined).
   - `rg -q 'D-146-POSTPROCESS-ORDER' docs/DEVIATION_LOG.md` — FACT pass.

@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- Primary code path (N11): `crates/slicer-core/src/arachne/pipeline.rs:360-375` — the post-processing pipeline order (`stitch → simplify → remove_small`) E reorders to canonical (`stitch → remove_small → separate_out_inner_contour → simplify → remove_empty`).
+- Primary code path (N11): `crates/slicer-core/src/arachne/pipeline.rs:350-360` — the post-processing pipeline order (`stitch → simplify → remove_small`) E reorders to canonical (`stitch → remove_small → separate_out_inner_contour → simplify → remove_empty`).
 - Primary code path (N12): `crates/slicer-core/src/arachne/remove_small.rs:40-50` — the caller-supplied constant `min_width` E replaces with per-line minimum junction width + layer-type divisor.
 - Primary code path (N13): `crates/slicer-core/src/arachne/simplify.rs:43-121` — the iterative multi-pass area-only sweep E replaces with the canonical distance-gated single pass.
 - Neighboring tests/fixtures: `arachne_postprocess_order.rs` (NEW — AC-1), `arachne_remove_small_per_line_min_width.rs` (NEW — AC-2), `arachne_simplify_distance_gates.rs` (NEW — AC-3), `crates/slicer-core/tests/fixtures/arachne/stitch_*.json`/`simplify_*.json`/`remove_small_*.json` (re-baseline if they exist).
@@ -25,7 +25,7 @@
 
 - Selected approach: reorder the post-processing pipeline to canonical, port per-line `min_width` with layer-type divisor, and replace the iterative area-only simplify sweep with the canonical distance-gated single pass. The three changes are bundled because they are all post-processing-pipeline concerns and share the `pipeline.rs`/`remove_small.rs`/`simplify.rs` context.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `crates/slicer-core/src/arachne/pipeline.rs:360-375` — reorder the pipeline stages; insert `separate_out_inner_contour` + `remove_empty_toolpaths`.
+  - `crates/slicer-core/src/arachne/pipeline.rs:350-360` — reorder the pipeline stages; insert `separate_out_inner_contour` + `remove_empty_toolpaths`.
   - `crates/slicer-core/src/arachne/remove_small.rs:40-50` — per-line `min_width` (minimum junction width over the line) + layer-type divisor (`min_width/2` top/bottom, `min_width * min_length_factor` otherwise); needs `is_initial_layer`.
   - `crates/slicer-core/src/arachne/simplify.rs:43-121` — replace iterative multi-pass area-only sweep with single linear pass gated by `smallest_line_segment_squared` / `allowed_error_distance_squared`; `calculateExtrusionAreaDeviationError` as extra guard on near-colinear fast path only.
   - `crates/slicer-core/src/arachne/separate_inner_contour.rs` (NEW, or inline in `pipeline.rs`) — `separate_out_inner_contour` (inner-surface bookkeeping for infill boundary).

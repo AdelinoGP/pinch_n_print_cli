@@ -12,7 +12,7 @@
 ## Problem Statement
 
 Three minor post-processing divergences (N11 + N12 + N13). **N11
-(post-processing order):** PNP's `pipeline.rs:360-375` runs
+(post-processing order):** PNP's `pipeline.rs:350-360` runs
 `stitch → simplify → remove_small`. Canonical (`WallToolPaths.cpp:679-699`) is
 `stitch (681) → removeSmallLines (683) → separateOutInnerContour (685) →
 simplifyToolPaths (687) → removeEmptyToolPaths (689)`. Order swap means PNP
@@ -43,7 +43,7 @@ pipeline.
 
 ## In Scope
 
-- **Post-process order swap** in `crates/slicer-core/src/arachne/pipeline.rs:360-375`:
+- **Post-process order swap** in `crates/slicer-core/src/arachne/pipeline.rs:350-360`:
   change `stitch → simplify → remove_small` to
   `stitch → remove_small → separate_out_inner_contour → simplify → remove_empty`.
   Add `separate_out_inner_contour` (inner-surface bookkeeping for infill
@@ -149,9 +149,9 @@ subset.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order --nocapture 2>&1 \| tee target/test-output-e-ac1.log` | AC-1: canonical post-process order | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
-| `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width --nocapture 2>&1 \| tee target/test-output-e-ac2.log` | AC-2: per-line min_width | FACT pass/fail |
-| `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates --nocapture 2>&1 \| tee target/test-output-e-ac3.log` | AC-3: simplify distance gates | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_postprocess_order -- --nocapture 2>&1 \| tee target/test-output-e-ac1.log` | AC-1: canonical post-process order | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
+| `cargo test -p slicer-core --features host-algos --test arachne_remove_small_per_line_min_width -- --nocapture 2>&1 \| tee target/test-output-e-ac2.log` | AC-2: per-line min_width | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_distance_gates -- --nocapture 2>&1 \| tee target/test-output-e-ac3.log` | AC-3: simplify distance gates | FACT pass/fail |
 | `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 \| tee target/test-output-e-stays-green.log` | N1/N2/N4/N3 stay green (E doesn't regress A1/A2/B) | FACT pass (expected) |
 | `cargo test -p slicer-core --features host-algos --test stitch --test simplify --test remove_small 2>&1 \| tee target/test-output-e-regression.log` | post-process regression (fixtures re-baselined) | FACT pass/fail |
 | `cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --config resources/test_config/cube_4color-arachne.json --output /tmp/e-cube4color.gcode 2>&1 \| tail -5` then `cargo test -p slicer-runtime --test executor -- cube_4color_arachne_outer_walls_close_end_to_end --nocapture 2>&1 \| tee target/test-output-e-e2e.log` | e2e closure delta (record-only per cross-cutting policy; E records the failure count in its commit msg, does NOT block on green) | FACT pass/fail + summary line (record-only) |
@@ -190,7 +190,7 @@ express:
 
 Packet-specific context-budget hazards:
 
-- `crates/slicer-core/src/arachne/pipeline.rs:360-375` is the primary edit
+- `crates/slicer-core/src/arachne/pipeline.rs:350-360` is the primary edit
   target for the order swap — range-read this block only (the rest of
   `pipeline.rs` is A1/A2/B/C's scope).
 - `crates/slicer-core/src/arachne/remove_small.rs` (~57 LOC per the audit) is
