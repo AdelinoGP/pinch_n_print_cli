@@ -387,3 +387,90 @@ fn try_dissolve(
     }
     should_dissolve
 }
+
+const NONCENTRAL_REGION_MAX_DIST: f64 = 4000.0;
+
+fn dissolve_noncentral_gap(
+    graph: &mut SkeletalTrapezoidationGraph,
+    source_v: usize,
+    edge_idx: usize,
+    total_dist: f64,
+) -> bool {
+    if total_dist > NONCENTRAL_REGION_MAX_DIST {
+        return false;
+    }
+    let to_v = resolve_to_vertex(graph, edge_idx);
+    if to_v == NO_INDEX || to_v == source_v {
+        return false;
+    }
+    let (src_bc, dst_bc) = {
+        let src = graph.vertices[source_v].bead_count;
+        let dst = graph.vertices[to_v].bead_count;
+        (src, dst)
+    };
+    let src_bc = match src_bc {
+        Some(bc) => bc,
+        None => return false,
+    };
+    let should_dissolve = match dst_bc {
+        Some(dst) if dst == src_bc => true,
+        None => {
+            graph.vertices[to_v].bead_count = Some(src_bc);
+            true
+        }
+        Some(dst) if src_bc.abs_diff(dst) <= 1 => true,
+        _ => false,
+    };
+    if !should_dissolve {
+        return false;
+    }
+    if let Some(e) = graph.edges.get_mut(edge_idx) {
+        e.central = true;
+    }
+    let twin = graph.edges[edge_idx].twin;
+    if twin != NO_INDEX {
+        if let Some(t) = graph.edges.get_mut(twin) {
+            t.central = true;
+        }
+    }
+    for next_idx in 0..graph.edges.len() {
+        if next_idx == twin {
+            continue;
+        }
+        if graph.edges[next_idx].start_vertex != to_v || graph.edges[next_idx].central {
+            continue;
+        }
+        let next_twin = graph.edges[next_idx].twin;
+        let next_to = if next_twin != NO_INDEX {
+            graph.edges[next_twin].start_vertex
+        } else {
+            NO_INDEX
+        };
+        if next_to == source_v {
+            continue;
+        }
+        let edge_len = graph.edges[next_idx].r_max - graph.edges[next_idx].r_min;
+        if edge_len > 0.0 {
+            dissolve_noncentral_gap(graph, to_v, next_idx, total_dist + edge_len);
+        }
+    }
+    true
+}
+
+/// Promotes non-central gaps between same/±1-bead-count central regions back
+/// to central, mirroring `SkeletalTrapezoidation::filterNoncentralRegions`
+/// (`SkeletalTrapezoidation.cpp:811-862`). Called unconditionally after
+/// `assign_bead_counts` in the pipeline, before transition machinery.
+pub fn filter_noncentral_regions(graph: &mut SkeletalTrapezoidationGraph) {
+    for edge_idx in 0..graph.edges.len() {
+        if !is_end_of_central(graph, edge_idx) {
+            continue;
+        }
+        let to_v = resolve_to_vertex(graph, edge_idx);
+        if to_v == NO_INDEX {
+            continue;
+        }
+        let edge_len = graph.edges[edge_idx].r_max - graph.edges[edge_idx].r_min;
+        dissolve_noncentral_gap(graph, to_v, edge_idx, edge_len);
+    }
+}

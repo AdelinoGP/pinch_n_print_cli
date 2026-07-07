@@ -53,10 +53,10 @@ use crate::arachne::{remove_small_lines, simplify_toolpaths, stitch_extrusions};
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
-    apply_transitions, assign_bead_counts, filter_central, filter_transition_mids,
-    generate_all_transition_ends, generate_extra_ribs, generate_transition_mids,
-    populate_beading_propagation, propagate_beadings_upward, BeadCountError, CentralityParams,
-    SkeletalTrapezoidationGraph, SktError,
+    apply_transitions, assign_bead_counts, filter_central, filter_noncentral_regions,
+    filter_transition_mids, generate_all_transition_ends, generate_extra_ribs,
+    generate_transition_mids, populate_beading_propagation, propagate_beadings_upward,
+    BeadCountError, CentralityParams, SkeletalTrapezoidationGraph, SktError,
 };
 
 /// Parameters controlling the end-to-end Arachne pipeline.
@@ -264,15 +264,9 @@ fn to_beading_factory_params(params: &ArachneParams) -> BeadingFactoryParams {
 /// `transition_filter_dist` therefore maps directly to
 /// `CentralityParams::transition_filter_dist`.
 ///
-/// However, the default `transition_filter_dist` (0.1mm) is larger than the
-/// half-width of the 0.15mm thin-wall test strip (0.075mm). That fixture's
-/// entire medial axis sits below the outer-edge filter, so it would be dropped
-/// before `WideningBeadingStrategy` can rescue it. A small fixed fraction (10%)
-/// preserves the filter's intent for tiny boundary artifacts while letting the
-/// strip's real central edge through.
 fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
     CentralityParams::new(
-        params.transition_filter_dist * UNITS_PER_MM * 0.1,
+        params.transition_filter_dist * UNITS_PER_MM,
         params.min_central_distance * UNITS_PER_MM,
     )
 }
@@ -316,32 +310,15 @@ pub fn run_arachne_pipeline(
     let mut graph = SkeletalTrapezoidationGraph::from_polygons(&cleaned)?;
 
     let centrality_params = to_centrality_params(&params);
-    // With the quad/rib topology in place, spine edges use the configured
-    // wall-transition angle directly. A small default angle no longer
-    // rejects every radial edge because ribs are filtered out separately.
-    // We still cap at a minimum of 10° to avoid degenerate sin(angle/2) ~= 0
-    // behavior from user config. For very acute real geometry, the configured
-    // angle can still reject too many spine edges; we therefore also enforce a
-    // hard ceiling of 180° so the predicate never drops below `dR < dD`.
-    // TEMPORARY: the quad/rib topology pass currently only marks ribs at
-    // sharp/reflex polygon corners. A square has no such corners, so every
-    // boundary-to-center edge remains NORMAL and is evaluated by the predicate.
-    // The formal `dR < dD * sin(angle/2)` rule rejects the square's long radial
-    // spokes for any realistic transition angle. Until the rib topology is
-    // extended to smooth convex corners (or the predicate is paired with a
-    // different smooth-corner test), use a permissive 180° cap so the predicate
-    // becomes `dR < dD` and accepts every non-degenerate spine edge. This is
-    // still structurally faithful: rib edges, when present, remain non-central.
-    let effective_transitioning_angle_rad = std::f64::consts::PI;
+    let beading_params = to_beading_factory_params(&params);
+    let strategy = BeadingStrategyFactory::create_stack(&beading_params);
     filter_central(
         &mut graph,
         &centrality_params,
-        effective_transitioning_angle_rad,
+        beading_params.wall_transition_angle,
     );
-
-    let beading_params = to_beading_factory_params(&params);
-    let strategy = BeadingStrategyFactory::create_stack(&beading_params);
     assign_bead_counts(&mut graph, strategy.as_ref())?;
+    filter_noncentral_regions(&mut graph);
 
     generate_transition_mids(&mut graph, strategy.as_ref());
     filter_transition_mids(&mut graph, strategy.as_ref());

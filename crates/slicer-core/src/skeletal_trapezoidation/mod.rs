@@ -28,7 +28,7 @@ pub mod propagation;
 pub mod rib;
 
 pub use bead_count::{assign_bead_counts, BeadCountError};
-pub use centrality::{filter_central, CentralityParams};
+pub use centrality::{filter_central, filter_noncentral_regions, CentralityParams};
 pub use discretize::discretize_parabolic_edge;
 pub use graph::{
     STHalfEdge, STVertex, SkeletalTrapezoidationGraph, SktError, TransitionEnd, TransitionMiddle,
