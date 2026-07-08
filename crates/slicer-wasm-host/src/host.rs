@@ -1768,7 +1768,7 @@ impl hs::Host for HostExecutionContext {
         &mut self,
         polygons: Vec<ExPolygon>,
         params: hs::ArachneParams,
-    ) -> wasmtime::Result<Result<Vec<ir::ExtrusionLine>, String>> {
+    ) -> wasmtime::Result<Result<(Vec<ir::ExtrusionLine>, Vec<ir::ExtrusionLine>), String>> {
         let ir_polygons = wit_to_ir_expolygons(&polygons);
         let core_params = slicer_core::arachne::pipeline::ArachneParams {
             optimal_width: params.optimal_width as f64,
@@ -1793,36 +1793,39 @@ impl hs::Host for HostExecutionContext {
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f64,
         };
 
+        let to_wit_lines = |lines: Vec<slicer_ir::ExtrusionLine>| -> Vec<ir::ExtrusionLine> {
+            lines
+                .into_iter()
+                .map(|line| ir::ExtrusionLine {
+                    junctions: line
+                        .junctions
+                        .into_iter()
+                        .map(|j| ir::ExtrusionJunction {
+                            p: Point3WithWidth {
+                                x: j.p.x,
+                                y: j.p.y,
+                                z: j.p.z,
+                                width: j.p.width,
+                                flow_factor: j.p.flow_factor,
+                                overhang_quartile: j.p.overhang_quartile,
+                            },
+                            perimeter_index: j.perimeter_index,
+                        })
+                        .collect(),
+                    inset_idx: line.inset_idx,
+                    is_odd: line.is_odd,
+                    is_closed: line.is_closed,
+                })
+                .collect()
+        };
+
         match slicer_core::arachne::pipeline::run_arachne_pipeline(
             &ir_polygons,
             &core_params,
             core_params.is_initial_layer,
         ) {
-            Ok(lines) => {
-                let wit_lines: Vec<ir::ExtrusionLine> = lines
-                    .into_iter()
-                    .map(|line| ir::ExtrusionLine {
-                        junctions: line
-                            .junctions
-                            .into_iter()
-                            .map(|j| ir::ExtrusionJunction {
-                                p: Point3WithWidth {
-                                    x: j.p.x,
-                                    y: j.p.y,
-                                    z: j.p.z,
-                                    width: j.p.width,
-                                    flow_factor: j.p.flow_factor,
-                                    overhang_quartile: j.p.overhang_quartile,
-                                },
-                                perimeter_index: j.perimeter_index,
-                            })
-                            .collect(),
-                        inset_idx: line.inset_idx,
-                        is_odd: line.is_odd,
-                        is_closed: line.is_closed,
-                    })
-                    .collect();
-                Ok(Ok(wit_lines))
+            Ok((toolpaths, inner_contour)) => {
+                Ok(Ok((to_wit_lines(toolpaths), to_wit_lines(inner_contour))))
             }
             Err(e) => Ok(Err(format!("{:?}", e))),
         }

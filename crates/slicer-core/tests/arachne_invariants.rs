@@ -355,7 +355,7 @@ fn build_domain_chains(graph: &SkeletalTrapezoidationGraph) -> Vec<Vec<usize>> {
 #[test]
 fn outer_wall_is_closed_ring_for_simple_polygons() {
     for poly in simple_fixtures() {
-        let lines = run_arachne_pipeline(
+        let (lines, _) = run_arachne_pipeline(
             std::slice::from_ref(&poly),
             &ArachneParams::default(),
             false,
@@ -535,7 +535,7 @@ fn junction_count_delta_bound_at_domain_chain_stitches() {
     for poly in [square_10mm(), wedge_trapezoid()] {
         // Corroborate with real production output first, per this
         // invariant's "reading actual ExtrusionLine/junction data" mandate.
-        let lines = run_arachne_pipeline(
+        let (lines, _) = run_arachne_pipeline(
             std::slice::from_ref(&poly),
             &ArachneParams::default(),
             false,

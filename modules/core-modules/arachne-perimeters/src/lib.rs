@@ -62,8 +62,9 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    extrusion_line_to_extrusion_path3d, units_to_mm, ConfigView, ExtrusionRole, LoopType,
-    WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    extrusion_line_to_extrusion_path3d, mm_to_units, units_to_mm, ConfigView, ExPolygon,
+    ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -260,23 +261,24 @@ impl LayerModule for ArachnePerimeters {
             }
             let z = region.z();
 
-            let lines = match slicer_sdk::host::generate_arachne_walls(polygons, &params) {
-                Ok(lines) => lines,
-                Err(e) => {
-                    // A single region's geometry failing the pipeline (e.g.
-                    // preprocessing reduces it to nothing) must not abort
-                    // perimeter generation for every other region on this
-                    // layer — log and move on, mirroring classic-perimeters'
-                    // own permissive handling of medial-axis failures.
-                    slicer_sdk::host::log_warn(&format!(
-                        "arachne-perimeters: generate_arachne_walls failed for region \
-                         object_id={} region_id={}: {e}",
-                        region.object_id(),
-                        region.region_id()
-                    ));
-                    continue;
-                }
-            };
+            let (lines, inner_contour) =
+                match slicer_sdk::host::generate_arachne_walls(polygons, &params) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        // A single region's geometry failing the pipeline (e.g.
+                        // preprocessing reduces it to nothing) must not abort
+                        // perimeter generation for every other region on this
+                        // layer — log and move on, mirroring classic-perimeters'
+                        // own permissive handling of medial-axis failures.
+                        slicer_sdk::host::log_warn(&format!(
+                            "arachne-perimeters: generate_arachne_walls failed for region \
+                             object_id={} region_id={}: {e}",
+                            region.object_id(),
+                            region.region_id()
+                        ));
+                        continue;
+                    }
+                };
 
             let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
             for line in &lines {
@@ -311,6 +313,38 @@ impl LayerModule for ArachnePerimeters {
 
             for wall in walls {
                 output.push_wall_loop(wall)?;
+            }
+
+            // Convert inner-contour marker lines to infill area polygons.
+            // Matches canonical WallToolPaths::separateOutInnerContour
+            // (line 905): skip odd lines (centerline single beads), convert
+            // closed even lines to polygons, then union to normalize winding.
+            let infill_candidates: Vec<ExPolygon> = inner_contour
+                .iter()
+                .filter(|line| !line.is_odd && line.is_closed)
+                .map(|line| ExPolygon {
+                    contour: Polygon {
+                        points: line
+                            .junctions
+                            .iter()
+                            .map(|j| Point2 {
+                                x: mm_to_units(j.p.x),
+                                y: mm_to_units(j.p.y),
+                            })
+                            .collect(),
+                    },
+                    holes: Vec::new(),
+                })
+                .collect();
+            if !infill_candidates.is_empty() {
+                let infill_areas = slicer_sdk::host::clip_polygons(
+                    &infill_candidates,
+                    &[],
+                    slicer_sdk::host::ClipOperation::Union,
+                );
+                if !infill_areas.is_empty() {
+                    output.set_infill_areas(infill_areas)?;
+                }
             }
         }
 

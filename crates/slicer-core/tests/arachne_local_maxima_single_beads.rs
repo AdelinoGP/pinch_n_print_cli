@@ -62,7 +62,7 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
         p_mm(-10.0, 2.0),  // top-left of bar
     ]);
 
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&t_shape),
         &ArachneParams::default(),
         false,

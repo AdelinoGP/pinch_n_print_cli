@@ -55,7 +55,7 @@ fn dumbbell_polygon() -> ExPolygon {
 #[test]
 fn dumbbell_single_central_region_inset0_ring_pair() {
     let dumbbell = dumbbell_polygon();
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&dumbbell),
         &ArachneParams::default(),
         false,

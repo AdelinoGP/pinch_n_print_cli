@@ -70,7 +70,7 @@ fn arachne_pipeline_square_produces_lines() {
     let params = ArachneParams::default();
 
     let result = run_arachne_pipeline(std::slice::from_ref(&square), &params, false);
-    let lines = result.expect("10mm square should produce Ok(lines) under default params");
+    let (lines, _) = result.expect("10mm square should produce Ok(lines) under default params");
 
     assert!(
         !lines.is_empty(),
@@ -124,7 +124,7 @@ fn arachne_pipeline_perimeter_index_is_sequential_per_line() {
     let square = square_10mm();
     let params = ArachneParams::default();
 
-    let lines = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
+    let (lines, _) = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
         .expect("10mm square should produce Ok(lines)");
 
     assert!(!lines.is_empty(), "expected at least one ExtrusionLine");
@@ -224,9 +224,9 @@ fn arachne_pipeline_thin_wall_widening() {
         ..ArachneParams::default()
     };
 
-    let on_lines = run_arachne_pipeline(std::slice::from_ref(&strip), &widening_on, false)
+    let (on_lines, _) = run_arachne_pipeline(std::slice::from_ref(&strip), &widening_on, false)
         .expect("thin strip with widening on should produce Ok(lines)");
-    let off_lines = run_arachne_pipeline(std::slice::from_ref(&strip), &widening_off, false)
+    let (off_lines, _) = run_arachne_pipeline(std::slice::from_ref(&strip), &widening_off, false)
         .expect("thin strip with widening off should still produce Ok([]), not an error");
 
     assert!(
@@ -284,7 +284,7 @@ fn arachne_pipeline_initial_layer_uses_initial_layer_min_bead_width() {
         ..Default::default()
     };
 
-    let lines = run_arachne_pipeline(std::slice::from_ref(&strip), &params, true)
+    let (lines, _) = run_arachne_pipeline(std::slice::from_ref(&strip), &params, true)
         .expect("initial-layer thin strip should produce Ok(lines)");
 
     assert!(

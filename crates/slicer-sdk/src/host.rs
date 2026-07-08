@@ -545,7 +545,7 @@ impl Default for ArachneParams {
 pub fn generate_arachne_walls(
     polygons: &[ExPolygon],
     params: &ArachneParams,
-) -> Result<Vec<slicer_ir::ExtrusionLine>, String> {
+) -> Result<(Vec<slicer_ir::ExtrusionLine>, Vec<slicer_ir::ExtrusionLine>), String> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let core_params = slicer_core::arachne::pipeline::ArachneParams {
@@ -632,7 +632,7 @@ package slicer:common {
             allowed-error-distance-squared: f32,
             maximum-extrusion-area-deviation: f32,
         }
-        generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
+        generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<tuple<list<extrusion-line>, list<extrusion-line>>, string>;
     }
 }
 
@@ -716,30 +716,34 @@ world sdk-arachne {
                 wit_params,
             );
 
-        result.map(|lines| {
-            lines
-                .into_iter()
-                .map(|line| slicer_ir::ExtrusionLine {
-                    junctions: line
-                        .junctions
+        result.map(|(toolpaths, inner_contour)| {
+            let to_ir_lines =
+                |lines: Vec<__sdk_host_arachne_import::slicer::types::geometry::ExtrusionLine>| {
+                    lines
                         .into_iter()
-                        .map(|j| slicer_ir::ExtrusionJunction {
-                            p: slicer_ir::Point3WithWidth {
-                                x: j.p.x,
-                                y: j.p.y,
-                                z: j.p.z,
-                                width: j.p.width,
-                                flow_factor: j.p.flow_factor,
-                                overhang_quartile: j.p.overhang_quartile,
-                            },
-                            perimeter_index: j.perimeter_index,
+                        .map(|line| slicer_ir::ExtrusionLine {
+                            junctions: line
+                                .junctions
+                                .into_iter()
+                                .map(|j| slicer_ir::ExtrusionJunction {
+                                    p: slicer_ir::Point3WithWidth {
+                                        x: j.p.x,
+                                        y: j.p.y,
+                                        z: j.p.z,
+                                        width: j.p.width,
+                                        flow_factor: j.p.flow_factor,
+                                        overhang_quartile: j.p.overhang_quartile,
+                                    },
+                                    perimeter_index: j.perimeter_index,
+                                })
+                                .collect(),
+                            inset_idx: line.inset_idx,
+                            is_odd: line.is_odd,
+                            is_closed: line.is_closed,
                         })
-                        .collect(),
-                    inset_idx: line.inset_idx,
-                    is_odd: line.is_odd,
-                    is_closed: line.is_closed,
-                })
-                .collect()
+                        .collect()
+                };
+            (to_ir_lines(toolpaths), to_ir_lines(inner_contour))
         })
     }
 }

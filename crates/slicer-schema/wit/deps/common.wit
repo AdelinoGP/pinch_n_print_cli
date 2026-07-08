@@ -53,6 +53,11 @@ interface host-services {
     /// a WASM guest that cannot itself link the `host-algos` feature
     /// (rayon + boostvoronoi are native-only) — mirrors the `medial-axis`
     /// bridge above.
-    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
+    ///
+    /// Returns a tuple of (toolpaths, inner_contour):
+    /// - `toolpaths`: printable variable-width wall lines.
+    /// - `inner_contour`: zero-width marker lines defining the wall/infill
+    ///   boundary (consumed by `arachne-perimeters` to set infill areas).
+    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<tuple<list<extrusion-line>, list<extrusion-line>>, string>;
     now-us: func() -> u64;
 }

@@ -148,7 +148,7 @@ fn square_10mm() -> ExPolygon {
 #[test]
 fn f7_invariant_bead_count_delta_bounded_at_domain_chain_stitches() {
     let square = square_10mm();
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&square),
         &ArachneParams::default(),
         false,

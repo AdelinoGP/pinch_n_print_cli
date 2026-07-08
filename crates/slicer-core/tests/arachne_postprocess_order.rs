@@ -57,7 +57,7 @@ fn pipeline_smoke_after_order_swap() {
         p_mm(10.0, 10.0),
         p_mm(0.0, 10.0),
     ]);
-    let lines = run_arachne_pipeline(&[sq], &ArachneParams::default(), false)
+    let (lines, _) = run_arachne_pipeline(&[sq], &ArachneParams::default(), false)
         .expect("10mm square should produce Ok(lines)");
     assert!(
         !lines.is_empty(),
@@ -193,7 +193,7 @@ fn full_pipeline_simple_polygon() {
         p_mm(20.0, 20.0),
         p_mm(0.0, 20.0),
     ]);
-    let lines = run_arachne_pipeline(&[sq], &ArachneParams::default(), false)
+    let (lines, _) = run_arachne_pipeline(&[sq], &ArachneParams::default(), false)
         .expect("20mm square should produce Ok(lines)");
     assert!(
         !lines.is_empty(),

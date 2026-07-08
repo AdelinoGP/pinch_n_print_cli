@@ -318,7 +318,7 @@ pub fn run_arachne_pipeline(
     polygons: &[ExPolygon],
     params: &ArachneParams,
     is_initial_layer: bool,
-) -> Result<Vec<ExtrusionLine>, ArachnePipelineError> {
+) -> Result<(Vec<ExtrusionLine>, Vec<ExtrusionLine>), ArachnePipelineError> {
     let mut params = params.clone();
     params.is_initial_layer = is_initial_layer;
     let preprocess_params = PreprocessParams::default();
@@ -385,7 +385,7 @@ pub fn run_arachne_pipeline(
         params.min_width,
         params.is_initial_layer,
     );
-    let (toolpaths, _inner_contour) = separate_out_inner_contour(without_small);
+    let (toolpaths, inner_contour) = separate_out_inner_contour(without_small);
     let simplified = simplify_toolpaths(
         toolpaths,
         params.visvalingam_area_threshold,
@@ -395,7 +395,7 @@ pub fn run_arachne_pipeline(
     );
     let final_lines = remove_empty_toolpaths(simplified);
 
-    Ok(final_lines)
+    Ok((final_lines, inner_contour))
 }
 
 #[cfg(test)]
@@ -438,7 +438,7 @@ mod tests {
             &ArachneParams::default(),
             false,
         );
-        let lines = result.expect("10mm square should produce Ok(lines)");
+        let (lines, _inner_contour) = result.expect("10mm square should produce Ok(lines)");
         assert!(!lines.is_empty(), "expected at least one ExtrusionLine");
     }
 
@@ -446,9 +446,9 @@ mod tests {
     fn run_arachne_pipeline_is_deterministic() {
         let square = square_10mm();
         let params = ArachneParams::default();
-        let first = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
+        let (first, _) = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
             .expect("first run should succeed");
-        let second = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
+        let (second, _) = run_arachne_pipeline(std::slice::from_ref(&square), &params, false)
             .expect("second run should succeed");
         assert_eq!(first, second, "pipeline must be deterministic");
     }

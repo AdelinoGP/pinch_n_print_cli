@@ -386,7 +386,7 @@ fn square_pipeline_outer_wall_is_closed() {
 
     let side: i64 = (10.0 * UNITS_PER_MM) as i64;
     let square = expoly(vec![p(0, 0), p(side, 0), p(side, side), p(0, side)]);
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&square),
         &ArachneParams::default(),
         false,

@@ -88,7 +88,7 @@ fn n1_rectangle_outer_wall_junctions_stay_near_boundary() {
         p_mm(0.0, H_MM),
     ]);
 
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&rect),
         &ArachneParams::default(),
         false,
@@ -155,7 +155,7 @@ fn n1_square_outer_wall_junctions_at_outer_bead_radius() {
         p_mm(0.0, SIDE_MM),
     ]);
 
-    let lines = run_arachne_pipeline(
+    let (lines, _) = run_arachne_pipeline(
         std::slice::from_ref(&square),
         &ArachneParams::default(),
         false,
