@@ -32,42 +32,48 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
 
 /// AC-1 — hexagonal micro-loop at local maximum.
 ///
-/// A small regular hexagon whose center is a local maximum with odd bead
-/// count and no central edges (the hexagon is small enough that the
-/// centrality predicate filters out all edges). After `generate_toolpaths`
-/// runs, the output must contain at least one closed `ExtrusionLine` with
-/// `is_odd = true` and exactly 6 junctions — the hexagonal micro-loop
-/// emitted by `generateLocalMaximaSingleBeads`.
-///
-/// Mirrors OrcaSlicer's `SkeletalTrapezoidation.cpp:2383-2413`.
+/// A small regular pentagon whose center is a geometric local maximum with
+/// odd bead count and no central edges. A pentagon has no parallel edges,
+/// so its medial axis has no flat segments — every edge from the center
+/// radiates outward with `dR/dD ≈ 1.0 >> sin(5°)`, making all edges
+/// non-central under the strict 10° predicate. This mirrors OrcaSlicer's
+/// `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:2383-2413`):
+/// isolated thick spots with odd bead count, non-central, at local maxima
+/// get a 6-segment hexagonal micro-loop.
 #[test]
 fn ac1_local_maximum_emits_hexagonal_micro_loop() {
-    // A "T-shape": a wide horizontal bar with a narrow vertical protrusion
-    // (bump). The bar is large enough to have a central skeleton with
-    // bead_counts. The bump is narrow enough that its edges are non-central
-    // (dR/dD ratio fails the strict 10° centrality predicate). The tip of
-    // the bump is a local maximum with odd bead count (propagated from the
-    // bar) and no central edges — triggering the micro-loop.
-    //
-    // Bar: 20mm × 4mm centered at origin, bump: 2mm × 6mm protruding upward
-    // from the center of the bar.
-    let t_shape = expoly(vec![
-        p_mm(-10.0, -2.0), // bottom-left
-        p_mm(10.0, -2.0),  // bottom-right
-        p_mm(10.0, 2.0),   // top-right of bar
-        p_mm(1.0, 2.0),    // right side of bump base
-        p_mm(1.0, 8.0),    // top-right of bump
-        p_mm(-1.0, 8.0),   // top-left of bump
-        p_mm(-1.0, 2.0),   // left side of bump base
-        p_mm(-10.0, 2.0),  // top-left of bar
+    // Regular pentagon centered at origin with circumradius 0.7mm
+    // (apothem ≈ 0.566mm). The center has R ≈ 0.566mm → width ≈ 1.132mm
+    // → optimal_bead_count = round(1.132 / 0.4) = 3 (odd). All edges from
+    // the center have dR/dD ≈ 1.0, which exceeds sin(5°) ≈ 0.087, so no
+    // edge is central — Gate 3 passes.
+    let cr: f64 = 0.7;
+    let pentagon = expoly(vec![
+        p_mm(0.0, cr),
+        p_mm(
+            cr * (72.0_f64.to_radians()).sin(),
+            cr * (72.0_f64.to_radians()).cos(),
+        ),
+        p_mm(
+            cr * (144.0_f64.to_radians()).sin(),
+            cr * (144.0_f64.to_radians()).cos(),
+        ),
+        p_mm(
+            cr * (216.0_f64.to_radians()).sin(),
+            cr * (216.0_f64.to_radians()).cos(),
+        ),
+        p_mm(
+            cr * (288.0_f64.to_radians()).sin(),
+            cr * (288.0_f64.to_radians()).cos(),
+        ),
     ]);
 
     let (lines, _) = run_arachne_pipeline(
-        std::slice::from_ref(&t_shape),
+        std::slice::from_ref(&pentagon),
         &ArachneParams::default(),
         false,
     )
-    .expect("T-shape should produce Ok(lines)");
+    .expect("pentagon should produce Ok(lines)");
 
     // Find closed is_odd lines with exactly 6 junctions — the micro-loop.
     let micro_loops: Vec<&ExtrusionLine> = lines
@@ -78,8 +84,8 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     assert!(
         !micro_loops.is_empty(),
         "expected at least one closed is_odd ExtrusionLine with 6 junctions (hexagonal \
-         micro-loop from generateLocalMaximaSingleBeads) for a small hexagon with odd bead \
-         count, got {} total lines with {} closed-is_odd-6j candidates",
+         micro-loop from generateLocalMaximaSingleBeads) for a regular pentagon with odd bead \
+         count and no central edges, got {} total lines with {} closed-is_odd-6j candidates",
         lines.len(),
         micro_loops.len()
     );
