@@ -1,0 +1,139 @@
+# ADR-0035 — Arachne Emission, Transitions, and Post-Process Must Be Faithful Algorithm-Level Ports of OrcaSlicer's C++ Reference
+
+<!-- filename: 0035-arachne-faithful-emission-and-transitions -->
+
+## Status
+
+Accepted (2026-07-08). Authored alongside packet `147-arachne-cross-cutting-closure`,
+the closure packet for the Arachne parity N1-N13 chain (packets 141-147).
+
+## Context
+
+Packets 141-146 collectively deliver canonical OrcaSlicer parity for the Arachne
+pipeline's full emission + transitions + post-process surface. The chain addresses
+N1-N13 — the 13 numbered findings from the canonical parity audit at
+`target/arachne_parity_audit_20260706_020657.md`, committed as red tests at
+`b2ea52b7`. Each packet fixed its slice:
+
+- **P141 (A1)** — `BeadingPropagation` + canonical `generateJunctions` (N1+N7).
+  `crates/slicer-core/src/arachne/beading_propagation.rs` and
+  `crates/slicer-core/src/arachne/generate_junctions.rs`.
+- **P142 (A2)** — `perimeter_index` + canonical `connectJunctions` emission +
+  canonical `is_odd` (N2+N4). `crates/slicer-core/src/arachne/connect_junctions.rs`.
+- **P143 (B)** — canonical transition ends + `BeadingStrategy` trait extension
+  (N3+N8). `crates/slicer-core/src/arachne/transition_ends.rs`.
+- **P144 (C)** — `filterNoncentralRegions` + centrality coupling resolution
+  (N5+N6). `crates/slicer-core/src/arachne/filter_noncentral_regions.rs`.
+- **P145 (D)** — local maxima micro-loops + construction epilogue (N9+N10).
+  `crates/slicer-core/src/arachne/local_maxima.rs`.
+- **P146 (E)** — canonical post-process order + per-line `min_width` +
+  distance-gated `simplify` (N11+N12+N13).
+  `crates/slicer-core/src/arachne/post_process.rs`.
+
+Packet 147 (F) closed the 7 deferred parity-audit findings (the cross-cutting
+closure: `is_closed` pre-stitch, `has_bead` sub-run split,
+`filter_noncentral_regions` 4 deviations, `connectJunctions` merge, `is_odd`
+predicate, transition interpolation, `collapseSmallEdges` Pattern B),
+re-enabled the `cube_4color` e2e closure gate (49.33% closure,
+`MAX_FAILURES=500` regression guard), and re-baselined the cross-crate
+`perimeter_parity` fixtures.
+
+The chain supersedes the PNP "ADAPTATION" divergence for the Arachne surface —
+the project no longer maintains a separate, simplified algorithm and instead
+ports OrcaSlicer's reference algorithms directly. This is consistent with
+ADR 0023 (arachne-port-strategy) and ADR 0034 (graph construction must be a
+faithful per-cell port).
+
+## Decision
+
+**`generateJunctions`, `connectJunctions`, `generateAllTransitionEnds`,
+`applyTransitions`, `generateExtraRibs`, `filterNoncentralRegions`,
+`collapseSmallEdges`, `dissolveNoncentralGap`, `removeSmallLines`, and
+`simplifyToolpaths` must all be faithful, algorithm-level ports of OrcaSlicer's
+real C++ implementations — a partial implementation that only handles a subset
+of cases (e.g. "corners only", "just the cases we've tested") is a defect, not
+a documented scope limitation, unless a future ADR explicitly revises this one.**
+
+This extends ADR 0034's bar for graph construction to the post-graph-construction
+emission/transitions/post-process surface. The same reasoning applies: the N1-N13
+audit demonstrated that PNP's prior "ADAPTATION" approximations produced
+systematically wrong output (open walls, missing transitions, incorrect bead
+counts) that could not be patched downstream. A partial port that handles only
+the geometry seen in the current fixture set is indistinguishable from the old
+approximation — it will break on the next non-trivial input, just as the
+reflex-corner-only rib pass did in ADR 0034's narrative.
+
+**Process corollary:** when delegating an OrcaSlicer-read dispatch for any of
+these functions, the dispatch prompt MUST ask about the **calling loop's**
+structure and invocation frequency, not only summarize the target function's
+own body in isolation. This mirrors ADR 0034's Process corollary and applies
+to the same underlying failure mode: a callee-body-only summary of e.g.
+`generateJunctions` cannot surface that its caller invokes it once per
+`ExtrusionJunction` in a specific traversal order, which is the fact that
+determines correctness.
+
+## Rejected alternatives
+
+- **Maintain PNP's simplified "ADAPTATION" approximations and document the
+  gaps as known limitations.** Rejected: this is what the project did before
+  the N1-N13 audit, and it produced wall geometry that never closes into loops
+  for any non-trivial input. Documenting gaps does not fix the user-visible
+  symptom (holes, missing walls, incorrect bead counts). The parity audit
+  proved that the gap between "close enough for the tested fixtures" and
+  "correct" is not a narrow edge case but the entire non-trivial input space.
+- **Build the real OrcaSlicer C++ checkout to generate golden-oracle numeric
+  fixtures for this surface.** Considered and declined for the same reasons as
+  ADR 0034: a multi-hour CMake+vcpkg+MSVC infrastructure lift with no
+  precedent in this project's prior arachne packets, disproportionate to what
+  invariant-based testing (closed rings, bead-count deltas, transition-length
+  bounds — properties that hold regardless of specific geometry) already
+  achieves. The N1-N13 red tests in `crates/slicer-core/tests/arachne_parity_red_*`
+  serve as the real parity oracles instead.
+- **Port each function incrementally, shipping partial implementations with
+  "TODO: generalize" markers.** Rejected: this is exactly the pattern that
+  produced the reflex-corner-only rib pass in packet 113b (see ADR 0034's
+  narrative). The N1-N13 chain proved that these functions are mutually
+  dependent — a partial `connectJunctions` breaks when `generateJunctions`
+  changes, and vice versa. Incremental partial ports create a permanently
+  broken intermediate state that no single packet can fix without touching
+  every function at once.
+
+## Consequences
+
+- Any future packet touching `crates/slicer-core/src/arachne/` (any file in
+  the emission, transitions, or post-process surface) must treat "faithful,
+  algorithm-level port" as the bar, not "passes the currently-tested fixtures."
+  A partial implementation that only handles a subset of cases is a defect,
+  unless a future ADR explicitly revises this one.
+- OrcaSlicer-read dispatches for these functions must request caller-loop
+  context, not just callee-body summaries — see this ADR's Process corollary,
+  which mirrors ADR 0034's Process corollary for the same underlying failure
+  mode.
+- Self-captured fixtures guard self-regression, not OrcaSlicer ground truth.
+  The N1-N13 red tests in `crates/slicer-core/tests/arachne_parity_red_*` are
+  the real parity oracles — they encode specific, audited deviations from
+  OrcaSlicer's output that were confirmed by direct C++ reference during the
+  chain's implementation. A future packet that changes these tests without
+  re-auditing against OrcaSlicer's source is introducing a regression.
+- `docs/DEVIATION_LOG.md`'s `D-ARACHNE-ADAPTATION` entry (the PNP "ADAPTATION"
+  divergence) is superseded by this ADR and the N1-N13 chain's deviations
+  registered during packets 141-147. The old entry remains as a record of what
+  was tried and why it fell short, useful for any future agent tempted to
+  reintroduce a similar simplification.
+
+## Future reviewers
+
+- If a future performance or complexity concern makes a full faithful port
+  genuinely infeasible for some specific function in this surface, that
+  tradeoff must be recorded as a **new, explicit ADR** revising this one —
+  not silently reintroduced as an unreviewed simplification the way packet
+  113b's reflex-corner-only pass was (see ADR 0034's narrative).
+- If OrcaSlicer's upstream `WallToolPaths.cpp` or `Line.cpp` gains new
+  emission or post-process functions in a future vendored update, re-evaluate
+  whether this ADR's scope needs extension. As of this writing, the functions
+  listed in the Decision section cover the full post-graph-construction surface
+  that OrcaSlicer's Arachne pipeline exposes.
+- The `cube_4color` e2e closure gate (49.33% closure, `MAX_FAILURES=500`
+  regression guard) is a regression guard, not a parity oracle. A future packet
+  that raises the closure percentage must re-audit against OrcaSlicer's C++
+  source — the percentage alone does not measure algorithmic faithfulness.

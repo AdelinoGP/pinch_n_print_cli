@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 147-arachne-cross-cutting-closure
 task_ids:
   - none

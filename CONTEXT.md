@@ -282,6 +282,56 @@ edge to the next unprocessed edge in the same domain, via a
 (not copied verbatim from the raw per-cell Voronoi DCEL) for the walk to
 terminate correctly and cover every edge exactly once.
 
+### `BeadingPropagation`
+The recursive traversal that assigns bead counts to every **quad** in a
+topological domain, starting from the widest edge and propagating inward
+via the quad/rib topology. Each step consults the `BeadingStrategy` stack
+to determine how many beads fit at the current edge's radius, then
+records the count and continues to the next narrower edge. The result is
+a per-edge bead count that varies smoothly along the domain, enabling
+variable-width extrusion.
+
+### `getBeading`
+The `BeadingStrategy` method that computes the bead layout (count,
+positions, widths) for a given edge radius. Called by `BeadingPropagation`
+at each step; returns a `Beading` containing the ordered list of bead
+widths and their offsets from the medial axis. The strategy stack
+composes multiple strategies (e.g. widening, narrowing, middle-out)
+via delegation.
+
+### Transition end
+The narrow end of a **quad** where the bead count decreases by one
+relative to the wide end — the point where a variable-width extrusion
+transitions from N beads to N-1 beads. Marked by the `BeadingStrategy`
+when the edge radius can no longer accommodate the current bead count.
+The transition's geometry (length, position along the quad) determines
+the smoothness of the width change in the printed toolpath.
+
+### `filterNoncentralRegions`
+The post-processing step that discards **quad** regions whose central
+edge is classified as non-central (i.e. `dR >= dD * sin(θ/2)`), so that
+only truly medial-axis-aligned regions survive to bead-count assignment.
+Prevents the variable-width walk from following edges that are too close
+to the polygon boundary, which would produce degenerate or zero-width
+extrusion.
+
+### Local maximum
+A **central edge** whose radius is greater than both its predecessor and
+successor in the domain — a local widening of the polygon. The
+`BeadingStrategy` stack uses local maxima as the starting points for
+bead-count propagation (widest-first), ensuring the bead count is
+assigned at the most generous cross-section and then reduced as the
+domain narrows.
+
+### `separateOutInnerContour`
+The graph-construction step that isolates the inner (hole) contour's
+Voronoi cells from the outer contour's, producing a separate
+skeletal-trapezoidation graph for each topological contour. Without
+this, the medial axis of a hole would be walked as if it were part of
+the outer boundary, producing toolpaths that cross the void. Each
+contour's graph is then processed independently through bead-count
+assignment and `connectJunctions`.
+
 ## Flagged ambiguities
 
 ### "region"
