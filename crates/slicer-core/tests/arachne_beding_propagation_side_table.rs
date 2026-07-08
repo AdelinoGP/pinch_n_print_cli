@@ -165,13 +165,23 @@ fn populate_side_table_covers_primary_vertices_only() {
     for (v_idx, v) in graph.vertices.iter().enumerate() {
         let entry = &graph.beading_propagation[v_idx];
         match v.bead_count {
-            Some(_) => {
+            Some(bc) if bc > 0 => {
                 assert!(
                     entry.is_some(),
                     "vertex {v_idx} has bead_count = {:?} but no side-table beading",
                     v.bead_count
                 );
                 saw_populated = true;
+            }
+            Some(0) => {
+                // Canonical `SkeletalTrapezoidation.cpp:1700` skips
+                // `bead_count <= 0` — zero-bead vertices get no side-table
+                // entry.
+                assert!(
+                    entry.is_none(),
+                    "vertex {v_idx} has bead_count = Some(0) but side-table is populated \
+                     — canonical skips bead_count <= 0"
+                );
             }
             None => {
                 assert!(
@@ -181,6 +191,7 @@ fn populate_side_table_covers_primary_vertices_only() {
                 );
                 saw_unpopulated = true;
             }
+            _ => unreachable!(),
         }
     }
     assert!(
@@ -234,7 +245,7 @@ fn get_beding_round_trips_populated_entries() {
     for (v_idx, v) in graph.vertices.iter().enumerate() {
         let got = graph.get_beding(v_idx);
         match v.bead_count {
-            Some(_) => {
+            Some(bc) if bc > 0 => {
                 let got = got.unwrap_or_else(|| {
                     panic!(
                         "get_beding({v_idx}) returned None for a vertex with bead_count = {:?}",
@@ -249,10 +260,18 @@ fn get_beding_round_trips_populated_entries() {
                     "get_beding({v_idx}) returned a Beading different from the stored entry"
                 );
             }
+            Some(0) => {
+                // Canonical skips bead_count <= 0 (SkeletalTrapezoidation.cpp:1700).
+                assert!(
+                    got.is_none(),
+                    "get_beding({v_idx}) returned Some for a bead_count=0 vertex"
+                );
+            }
             None => assert!(
                 got.is_none(),
                 "get_beding({v_idx}) returned Some for a rib-foot vertex with bead_count = None"
             ),
+            _ => unreachable!(),
         }
     }
     // Out-of-range lookups return None (no panic).

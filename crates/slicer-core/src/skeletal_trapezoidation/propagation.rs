@@ -1409,15 +1409,46 @@ pub(crate) fn interpolate_bead_propagation(
 /// "primary ⇒ `Some`" (see
 /// `tests/arachne_beding_propagation_side_table.rs`'s
 /// `populate_side_table_covers_primary_vertices_only`).
+/// Element-wise interpolation between two [`Beading`]s, matching canonical
+/// `SkeletalTrapezoidation::interpolate` (`SkeletalTrapezoidation.cpp:1976-1995`).
+///
+/// `ratio_left` is the weight for `left`; `right` gets `1.0 - ratio_left`.
+/// Beads beyond `min(left.size, right.size)` are taken from the larger beading
+/// (whichever had more `total_thickness`). Zero-width wall markers stay zero.
+fn interpolate_beading(left: &Beading, ratio_left: f64, right: &Beading) -> Beading {
+    let ratio_right = 1.0 - ratio_left;
+    // Start from the larger beading (canonical `:1981`).
+    let mut ret = if left.total_thickness > right.total_thickness {
+        left.clone()
+    } else {
+        right.clone()
+    };
+    let n = left.bead_widths.len().min(right.bead_widths.len());
+    for i in 0..n {
+        if left.bead_widths[i] == 0.0 || right.bead_widths[i] == 0.0 {
+            ret.bead_widths[i] = 0.0;
+        } else {
+            ret.bead_widths[i] =
+                ratio_left * left.bead_widths[i] + ratio_right * right.bead_widths[i];
+        }
+        ret.toolpath_locations[i] =
+            ratio_left * left.toolpath_locations[i] + ratio_right * right.toolpath_locations[i];
+    }
+    ret
+}
+
+/// Populates the [`SkeletalTrapezoidationGraph`] `beading_propagation` side
+/// table for every vertex that carries a `bead_count`, mirroring canonical
+/// `SkeletalTrapezoidation.cpp:1700-1725`.
+///
+/// Finding #6: when `transition_ratio != 0.0`, canonical interpolates between
+/// the beading for `bc` and `bc + 1` via `interpolate(low, 1.0 - tr, high)`
+/// (`:1704-1715`). When `transition_ratio == 0.0`, the beading is computed
+/// directly (current behavior).
 pub fn populate_beading_propagation(
     graph: &mut SkeletalTrapezoidationGraph,
     strategy: &dyn BeadingStrategy,
 ) {
-    // Resize the side table if the graph's vertex count has changed since
-    // `from_polygons` (e.g. `apply_transitions::insert_node` added split
-    // vertices). `apply_transitions` is out of scope for Step 1, but this
-    // resize keeps the side table index-parallel to `vertices` even if a
-    // caller wires it in.
     if graph.beading_propagation.len() != graph.vertices.len() {
         graph.beading_propagation.resize(graph.vertices.len(), None);
     }
@@ -1425,11 +1456,19 @@ pub fn populate_beading_propagation(
         let Some(bc) = v.bead_count else {
             continue;
         };
+        if bc == 0 {
+            continue;
+        }
         let thickness = 2.0 * v.distance_to_boundary;
-        let beading = strategy.compute(thickness, bc as usize);
-        // Defensive invariant check (mirrors `Beading`'s own documented
-        // contract): strategies that violate this are caught here rather
-        // than at first `get_beding` call.
+        // Finding #6: branch on transition_ratio, matching canonical
+        // `SkeletalTrapezoidation.cpp:1704-1715`.
+        let beading = if v.transition_ratio == 0.0 {
+            strategy.compute(thickness, bc as usize)
+        } else {
+            let low = strategy.compute(thickness, bc as usize);
+            let high = strategy.compute(thickness, bc as usize + 1);
+            interpolate_beading(&low, 1.0 - v.transition_ratio, &high)
+        };
         debug_assert_eq!(
             beading.bead_widths.len(),
             beading.toolpath_locations.len(),

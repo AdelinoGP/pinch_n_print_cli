@@ -45,7 +45,9 @@ use std::collections::HashSet;
 
 use super::graph::SkeletalTrapezoidationGraph;
 use super::rib::EdgeType;
+use crate::beading::BeadingStrategy;
 use crate::voronoi::NO_INDEX;
+use slicer_ir::UNITS_PER_MM;
 
 /// Tolerance for floating-point boundary-distance / length comparisons.
 /// Vertex positions and `distance_to_boundary` are `f64`s derived from
@@ -397,76 +399,91 @@ const NONCENTRAL_REGION_MAX_DIST: f64 = 4000.0;
 
 fn dissolve_noncentral_gap(
     graph: &mut SkeletalTrapezoidationGraph,
-    source_v: usize,
-    edge_idx: usize,
-    total_dist: f64,
+    to_edge: usize,
+    bead_count: u32,
+    traveled_dist: f64,
+    max_dist: f64,
+    strategy: &dyn BeadingStrategy,
 ) -> bool {
-    if total_dist > NONCENTRAL_REGION_MAX_DIST {
+    let to_v = resolve_to_vertex(graph, to_edge);
+    if to_v == NO_INDEX {
         return false;
     }
-    let to_v = resolve_to_vertex(graph, edge_idx);
-    if to_v == NO_INDEX || to_v == source_v {
+    let r = graph.vertices[to_v].distance_to_boundary;
+    let to_twin = graph.edges[to_edge].twin;
+
+    // Canonical `SkeletalTrapezoidation.cpp:836-844`: walk via twin->next.
+    let mut next_edge = graph.edges[to_edge].next;
+    while next_edge != NO_INDEX && next_edge != to_twin {
+        let next_to = resolve_to_vertex(graph, next_edge);
+        if next_to == NO_INDEX {
+            break;
+        }
+        let next_to_r = graph.vertices[next_to].distance_to_boundary;
+        let next_from = graph.edges[next_edge].start_vertex;
+        let dx = graph.vertices[next_to].position.x - graph.vertices[next_from].position.x;
+        let dy = graph.vertices[next_to].position.y - graph.vertices[next_from].position.y;
+        let short_edge = dx * dx + dy * dy < (0.01 * UNITS_PER_MM).powi(2);
+        if next_to_r >= r || short_edge {
+            break;
+        }
+        let twin = graph.edges[next_edge].twin;
+        if twin == NO_INDEX {
+            break;
+        }
+        next_edge = graph.edges[twin].next;
+    }
+    if next_edge == to_twin || next_edge == NO_INDEX {
         return false;
     }
-    let (src_bc, dst_bc) = {
-        let src = graph.vertices[source_v].bead_count;
-        let dst = graph.vertices[to_v].bead_count;
-        (src, dst)
+
+    let next_to = resolve_to_vertex(graph, next_edge);
+    let next_from = graph.edges[next_edge].start_vertex;
+    let dx = graph.vertices[next_to].position.x - graph.vertices[next_from].position.x;
+    let dy = graph.vertices[next_to].position.y - graph.vertices[next_from].position.y;
+    let length = (dx * dx + dy * dy).sqrt();
+    let next_bc = graph.vertices[next_to].bead_count;
+
+    let dissolve = match next_bc {
+        Some(dst_bc) if dst_bc == bead_count => true,
+        None => dissolve_noncentral_gap(
+            graph,
+            next_edge,
+            bead_count,
+            traveled_dist + length,
+            max_dist,
+            strategy,
+        ),
+        Some(dst_bc) => (traveled_dist + length < max_dist) && bead_count.abs_diff(dst_bc) == 1,
     };
-    let src_bc = match src_bc {
-        Some(bc) => bc,
-        None => return false,
-    };
-    let should_dissolve = match dst_bc {
-        Some(dst) if dst == src_bc => true,
-        None => {
-            graph.vertices[to_v].bead_count = Some(src_bc);
-            true
+
+    if dissolve {
+        if let Some(e) = graph.edges.get_mut(next_edge) {
+            e.central = true;
         }
-        Some(dst) if src_bc.abs_diff(dst) <= 1 => true,
-        _ => false,
-    };
-    if !should_dissolve {
-        return false;
+        let twin = graph.edges[next_edge].twin;
+        if twin != NO_INDEX {
+            if let Some(t) = graph.edges.get_mut(twin) {
+                t.central = true;
+            }
+        }
+        let d2b = graph.vertices[next_to].distance_to_boundary;
+        let optimal_bc = strategy.optimal_bead_count(d2b * 2.0);
+        graph.vertices[next_to].bead_count = Some(optimal_bc as u32);
+        graph.vertices[next_to].transition_ratio = 0.0;
     }
-    if let Some(e) = graph.edges.get_mut(edge_idx) {
-        e.central = true;
-    }
-    let twin = graph.edges[edge_idx].twin;
-    if twin != NO_INDEX {
-        if let Some(t) = graph.edges.get_mut(twin) {
-            t.central = true;
-        }
-    }
-    for next_idx in 0..graph.edges.len() {
-        if next_idx == twin {
-            continue;
-        }
-        if graph.edges[next_idx].start_vertex != to_v || graph.edges[next_idx].central {
-            continue;
-        }
-        let next_twin = graph.edges[next_idx].twin;
-        let next_to = if next_twin != NO_INDEX {
-            graph.edges[next_twin].start_vertex
-        } else {
-            NO_INDEX
-        };
-        if next_to == source_v {
-            continue;
-        }
-        let edge_len = graph.edges[next_idx].r_max - graph.edges[next_idx].r_min;
-        if edge_len > 0.0 {
-            dissolve_noncentral_gap(graph, to_v, next_idx, total_dist + edge_len);
-        }
-    }
-    true
+
+    dissolve
 }
 
 /// Promotes non-central gaps between same/±1-bead-count central regions back
 /// to central, mirroring `SkeletalTrapezoidation::filterNoncentralRegions`
-/// (`SkeletalTrapezoidation.cpp:811-862`). Called unconditionally after
+/// (`SkeletalTrapezoidation.cpp:811-866`). Called unconditionally after
 /// `assign_bead_counts` in the pipeline, before transition machinery.
-pub fn filter_noncentral_regions(graph: &mut SkeletalTrapezoidationGraph) {
+pub fn filter_noncentral_regions(
+    graph: &mut SkeletalTrapezoidationGraph,
+    strategy: &dyn BeadingStrategy,
+) {
     for edge_idx in 0..graph.edges.len() {
         if !is_end_of_central(graph, edge_idx) {
             continue;
@@ -475,7 +492,17 @@ pub fn filter_noncentral_regions(graph: &mut SkeletalTrapezoidationGraph) {
         if to_v == NO_INDEX {
             continue;
         }
-        let edge_len = graph.edges[edge_idx].r_max - graph.edges[edge_idx].r_min;
-        dissolve_noncentral_gap(graph, to_v, edge_idx, edge_len);
+        let bc = match graph.vertices[to_v].bead_count {
+            Some(bc) => bc,
+            None => continue,
+        };
+        dissolve_noncentral_gap(
+            graph,
+            edge_idx,
+            bc,
+            0.0,
+            NONCENTRAL_REGION_MAX_DIST,
+            strategy,
+        );
     }
 }

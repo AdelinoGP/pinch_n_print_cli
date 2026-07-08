@@ -132,11 +132,6 @@ use crate::skeletal_trapezoidation::centrality::is_local_maximum;
 use crate::skeletal_trapezoidation::SkeletalTrapezoidationGraph;
 use crate::voronoi::{Vertex, NO_INDEX};
 
-/// XY distance below which a generated 2-junction line's own endpoints are
-/// considered coincident (`is_closed = true`). Millimeters, matching
-/// `Point3WithWidth`'s coordinate unit.
-const CLOSURE_EPS_MM: f32 = 1e-4;
-
 /// Per-edge junction fans produced by `generate_junctions`.
 ///
 /// `from_junctions` live at the half-edge's `start_vertex`; `to_junctions`
@@ -165,13 +160,6 @@ fn resolve_to_vertex(graph: &SkeletalTrapezoidationGraph, edge_idx: usize) -> us
 /// millimeters.
 fn to_mm_xy(v: Vertex) -> (f32, f32) {
     ((v.x / UNITS_PER_MM) as f32, (v.y / UNITS_PER_MM) as f32)
-}
-
-/// Squared XY distance between two junction positions.
-fn dist_sq_xy(a: Point3WithWidth, b: Point3WithWidth) -> f32 {
-    let dx = a.x - b.x;
-    let dy = a.y - b.y;
-    dx * dx + dy * dy
 }
 
 /// Placeholder `ExtrusionJunction` for filling in-band-break gaps in the
@@ -585,23 +573,18 @@ fn chain_junctions_for_bead(
             }
         } else {
             // Intermediate shared vertex: merge this edge's to-junction with
-            // the next edge's from-junction for this bead, keeping the wider
-            // width. This matches upstream's "pop overlapping perimeter_index"
-            // merge at shared vertices.
+            // the next edge's from-junction for this bead. Canonical
+            // `connectJunctions` (:2302-2327) uses perimeter_index overlap
+            // removal + concatenation — in PNP's per-bead model this reduces
+            // to keeping the earlier edge's junction (this_to) when both
+            // exist, since both represent the same bead at the same vertex.
             if let Some(next_edge) = chain.get(i + 1) {
                 let this_to = to_j.get(bead);
                 let next_from = edge_junctions
                     .get(next_edge)
                     .and_then(|(next_from_j, _)| next_from_j.get(bead));
                 let chosen = match (this_to, next_from) {
-                    (Some(a), Some(b)) => {
-                        if a.p.width >= b.p.width {
-                            a.clone()
-                        } else {
-                            b.clone()
-                        }
-                    }
-                    (Some(a), None) => a.clone(),
+                    (Some(a), _) => a.clone(),
                     (None, Some(b)) => b.clone(),
                     (None, None) => continue,
                 };
@@ -613,36 +596,61 @@ fn chain_junctions_for_bead(
     junctions
 }
 
-/// Returns true if the segment defined by `(edge_idx, bead_idx)` is the
-/// centerline gap-fill bead of an ODD bead count — the canonical `is_odd`
-/// per-segment predicate (`SkeletalTrapezoidation.cpp:2344-2354`),
-/// serving two roles:
-/// (1) the per-segment `is_odd` annotation set on each emitted
-///     `ExtrusionLine` (canonical's `from_is_odd && to_is_odd` for the
-///     two endpoints, satisfied by the same predicate on the single edge
-///     from which the segment was emitted);
-/// (2) the gating function for the `passed_odd_edges` dedup, which
-///     suppresses twin duplication of odd single-bead segments.
+/// Returns true if BOTH endpoints of the segment satisfy the canonical
+/// `is_odd` predicate (`SkeletalTrapezoidation.cpp:2344-2354`).
 ///
-/// Concretely the predicate requires ALL FOUR conjunctive conditions:
-/// (a) `bead_count > 0 && bead_count % 2 == 1` (odd count, gap-fill region),
-/// (b) `transition_ratio == 0.0` (no transition at the fan),
-/// (c) `bead_idx == bead_count - 1` (innermost junction of the fan),
-/// (d) endpoints within 0.005 mm of the peak node — satisfied
-///     structurally for the innermost-fan position since
-///     `from_junctions[bead_count-1]` and `to_junctions[bead_count-1]`
-///     are by canonical construction the closest-to-peak junctions on
-///     that edge.
+/// Finding #5: canonical requires BOTH `from_is_odd && to_is_odd`, where
+/// each checks: (a) `bead_count > 0 && bead_count % 2 == 1`, (b)
+/// `transition_ratio == 0`, (c) innermost junction (`bead_idx == bc - 1`),
+/// (d) junction within 0.005 mm of the peak node.
 ///
-/// `end_vertex` is the `to` vertex of the upward half-edge passed in —
-/// for upward half-edges (the only edges that contribute to
-/// `edge_junctions` under the canonical `from.R < to.R` selection), `to`
-/// IS the peak vertex, so the beading is resolved at the peak.
-fn is_odd_single_bead(
+/// `first_edge` / `last_edge` are the chain's boundary edges; `junctions`
+/// is the collected polyline for this bead index.
+fn is_odd_segment(
+    graph: &SkeletalTrapezoidationGraph,
+    edge_junctions: &BTreeMap<usize, EdgeJunctions>,
+    first_edge: usize,
+    last_edge: usize,
+    bead_idx: u32,
+    junctions: &[ExtrusionJunction],
+) -> bool {
+    if junctions.len() < 2 {
+        return false;
+    }
+
+    // Proximity tolerance: 0.005 mm (canonical `scaled<coord_t>(0.005)`).
+    const PROX_TOL: f32 = 0.005;
+
+    // Check the "from" side: first edge's peak vertex + first junction.
+    let from_ok = is_odd_endpoint(
+        graph,
+        edge_junctions,
+        first_edge,
+        bead_idx,
+        &junctions[0],
+        PROX_TOL,
+    );
+    // Check the "to" side: last edge's peak vertex + last junction.
+    let to_ok = is_odd_endpoint(
+        graph,
+        edge_junctions,
+        last_edge,
+        bead_idx,
+        junctions.last().unwrap(),
+        PROX_TOL,
+    );
+
+    from_ok && to_ok
+}
+
+/// Checks one endpoint of a segment against the canonical `is_odd` predicate.
+fn is_odd_endpoint(
     graph: &SkeletalTrapezoidationGraph,
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
     edge_idx: usize,
     bead_idx: u32,
+    junction: &ExtrusionJunction,
+    prox_tol: f32,
 ) -> bool {
     let Some(edge) = graph.edges.get(edge_idx) else {
         return false;
@@ -650,51 +658,56 @@ fn is_odd_single_bead(
     if edge.twin == NO_INDEX {
         return false;
     }
-    let Some(end_vertex) = graph.vertices.get(resolve_to_vertex(graph, edge_idx)) else {
+    let peak_v_idx = resolve_to_vertex(graph, edge_idx);
+    let Some(peak_v) = graph.vertices.get(peak_v_idx) else {
         return false;
     };
-    let Some(bead_count) = end_vertex.bead_count else {
+    // (a) odd bead count
+    let Some(bead_count) = peak_v.bead_count else {
         return false;
     };
     if bead_count == 0 || bead_count % 2 == 0 {
         return false;
     }
+    // (c) innermost junction
     if bead_idx != bead_count - 1 {
         return false;
     }
-    if end_vertex.transition_ratio != 0.0 {
+    // (b) no transition
+    if peak_v.transition_ratio != 0.0 {
         return false;
     }
-    // Must actually have junctions at this index on this edge.
-    edge_junctions
+    // Must have junctions at this index.
+    let has_j = edge_junctions
         .get(&edge_idx)
         .map(|(from_j, to_j)| (bead_idx as usize) < from_j.len().min(to_j.len()))
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if !has_j {
+        return false;
+    }
+    // (d) proximity: junction within 0.005 mm of the peak vertex.
+    let px = peak_v.position.x as f32 / UNITS_PER_MM as f32;
+    let py = peak_v.position.y as f32 / UNITS_PER_MM as f32;
+    let dx = junction.p.x - px;
+    let dy = junction.p.y - py;
+    dx * dx + dy * dy <= prox_tol * prox_tol
 }
 
 /// Emits one multi-junction `ExtrusionLine` per bead index for the given edge
 /// chain, using `passed_odd_edges` to suppress twin duplication for odd
 /// single-bead segments.
 ///
-/// A domain can span regions of different local depth (e.g. a corner-
-/// adjacent edge with a shallow `bead_count` next to a deeper spine edge
-/// further from the boundary): rather than clamping the whole chain's emitted
-/// bead range to whichever edge supports the *fewest* beads (which would
-/// silently drop every inner wall for the entire domain because of one
-/// shallow edge), each bead index `b` is emitted only over `chain`'s maximal
-/// contiguous sub-runs of edges that all actually carry bead `b`.
+/// Matches canonical `connectJunctions` (`SkeletalTrapezoidation.cpp:2273-2366`):
+/// walks the full chain in one pass for each bead index, collecting junctions
+/// via [`chain_junctions_for_bead`] (which handles the merge at shared
+/// vertices). This replaces the prior sub-run splitting approach (finding #2)
+/// which fragmented chains at every edge lacking a particular bead index,
+/// producing degenerate 2-junction point-fragments beyond stitch's 0.4 mm
+/// threshold. Canonical has NO per-edge bead filtering — it walks the full
+/// chain in one do-while, appending every quad's paired junctions.
 ///
 /// `ring_closed` reports whether the domain-walk that produced `chain`
-/// returned to its own starting quad (mirroring `connectJunctions`'s own
-/// ring-closure detection, [`generate_toolpaths`]'s doc comment). A "ring"
-/// only makes physical sense when the walk wraps back through at least one
-/// *other* edge, and only for the sub-run spanning `chain` in its entirety
-/// (a partial sub-run, by construction, does not reach back to `chain`'s own
-/// start): a single-edge chain's own two ends are inherently distinct
-/// physical points (an isolated central edge whose only neighbor is
-/// non-central can trivially satisfy the quad-topology closure check without
-/// representing a real loop), so a sub-run length of at least 2 is required
-/// in addition to `ring_closed` before this function forces closure.
+/// returned to its own starting quad.
 fn emit_chain_lines(
     graph: &SkeletalTrapezoidationGraph,
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
@@ -708,8 +721,7 @@ fn emit_chain_lines(
     }
 
     // The overall bead range this chain could ever emit: the *largest* fan
-    // length found on any edge, not the smallest -- see this function's doc
-    // comment for why a uniform minimum across the whole domain is wrong.
+    // length found on any edge, not the smallest.
     let mut max_beads: usize = 0;
     for &edge_idx in chain {
         if let Some((from_j, to_j)) = edge_junctions.get(&edge_idx) {
@@ -720,105 +732,73 @@ fn emit_chain_lines(
         return;
     }
 
-    let has_bead = |edge_idx: usize, bead: usize| {
-        edge_junctions
-            .get(&edge_idx)
-            .map(|(from_j, _to_j)| {
-                from_j
-                    .get(bead)
-                    .is_some_and(|j| j.perimeter_index == bead as u32)
-            })
-            .unwrap_or(false)
-    };
-
     for bead in 0..max_beads {
         let bead_idx = bead as u32;
 
-        // Split `chain` into maximal contiguous sub-runs that all carry
-        // `bead_idx`.
-        let mut sub_runs: Vec<&[usize]> = Vec::new();
-        let mut run_start: Option<usize> = None;
-        for (i, &edge_idx) in chain.iter().enumerate() {
-            if has_bead(edge_idx, bead) {
-                if run_start.is_none() {
-                    run_start = Some(i);
-                }
-            } else if let Some(start) = run_start.take() {
-                sub_runs.push(&chain[start..i]);
-            }
-        }
-        if let Some(start) = run_start {
-            sub_runs.push(&chain[start..]);
+        // Collect junctions for this bead index across the entire chain.
+        // No sub-run splitting — canonical walks the full chain in one pass.
+        let mut junctions = chain_junctions_for_bead(edge_junctions, chain, bead);
+        if junctions.len() < 2 {
+            continue;
         }
 
-        // Only a sub-run spanning `chain` in its entirety can represent the
-        // ring-closure the outer domain-walk detected.
-        let whole_chain_run = sub_runs.len() == 1 && sub_runs[0].len() == chain.len();
+        // Ring closure: if the chain is a ring, merge the first and last
+        // junctions (keeping the wider of the two) so their positions
+        // coincide exactly.
+        if ring_closed && junctions.len() >= 2 {
+            let n = junctions.len();
+            let first = junctions[0].clone();
+            let last = junctions[n - 1].clone();
+            let merged = if first.p.width >= last.p.width {
+                first
+            } else {
+                last
+            };
+            junctions[0] = merged.clone();
+            junctions[n - 1] = merged;
+        }
 
-        for sub_run in sub_runs {
-            // Odd single-bead dedup: only emit from the lower-indexed
-            // half-edge of a twin pair when the segment is the lone odd
-            // innermost bead.
-            let first_edge = sub_run[0];
+        // Finding #5: canonical `is_odd` requires BOTH endpoints + 0.005mm
+        // proximity. `is_odd_segment` checks the first and last edges of
+        // the chain against the peak vertex of each.
+        let first_edge = chain[0];
+        let last_edge = *chain.last().unwrap();
+        let is_odd = is_odd_segment(
+            graph,
+            edge_junctions,
+            first_edge,
+            last_edge,
+            bead_idx,
+            &junctions,
+        );
+
+        // Odd single-bead dedup: only emit from the lower-indexed
+        // half-edge of a twin pair when the segment is the lone odd
+        // innermost bead.
+        if is_odd {
             if let Some(edge) = graph.edges.get(first_edge) {
-                if edge.twin != NO_INDEX
-                    && is_odd_single_bead(graph, edge_junctions, first_edge, bead_idx)
-                {
-                    // Physical-edge key (canonical `quad_start->next->twin`
-                    // insertion target, `SkeletalTrapezoidation.cpp:2355-2361`):
-                    // whichever direction/chain reaches this odd single-bead
-                    // segment first claims it; the other half-edge of the
-                    // same physical twin pair is suppressed on any later
-                    // attempt.
+                if edge.twin != NO_INDEX {
                     if passed_odd_edges.contains(&first_edge) {
                         continue;
                     }
                     passed_odd_edges.insert(first_edge);
                 }
             }
-
-            let mut junctions = chain_junctions_for_bead(edge_junctions, sub_run, bead);
-            if junctions.len() < 2 {
-                continue;
-            }
-
-            let close_ring = ring_closed && whole_chain_run && sub_run.len() >= 2;
-            if close_ring {
-                // The sub-run's own first (from-junction of its first edge)
-                // and last (to-junction of its last edge) entries are each
-                // independently interpolated along their own edge and
-                // generally land at different points near the shared
-                // wrap-around vertex, not exactly on it -- so, mirroring
-                // `stitch_extrusions`'s own `finalize_chain` convention
-                // (`first.xy == last.xy` for a genuinely closed loop), merge
-                // them (keeping the wider of the two, the same rule
-                // `chain_junctions_for_bead` already applies at every
-                // intermediate shared vertex) and write the merged junction
-                // into both the first and last slots so the two positions
-                // coincide exactly, not just approximately.
-                let n = junctions.len();
-                let first = junctions[0].clone();
-                let last = junctions[n - 1].clone();
-                let merged = if first.p.width >= last.p.width {
-                    first
-                } else {
-                    last
-                };
-                junctions[0] = merged.clone();
-                junctions[n - 1] = merged;
-            }
-
-            let start = junctions[0].p;
-            let end = junctions[junctions.len() - 1].p;
-            let is_closed = dist_sq_xy(start, end) <= CLOSURE_EPS_MM * CLOSURE_EPS_MM;
-
-            buckets.entry(bead_idx).or_default().push(ExtrusionLine {
-                junctions,
-                inset_idx: bead_idx,
-                is_odd: is_odd_single_bead(graph, edge_junctions, sub_run[0], bead_idx),
-                is_closed,
-            });
         }
+
+        // Finding #1: `is_closed` is OUTPUT-only (canonical
+        // `WallToolPaths.cpp:802` post-stitch). Pre-stitch, all
+        // chain-emitted lines are open; `stitch_extrusions` determines
+        // closure. Hexagons from `generate_local_maxima_single_beads`
+        // are emitted with `is_closed: true` and skip stitch via AC-6.
+        let is_closed = false;
+
+        buckets.entry(bead_idx).or_default().push(ExtrusionLine {
+            junctions,
+            inset_idx: bead_idx,
+            is_odd,
+            is_closed,
+        });
     }
 }
 
@@ -847,9 +827,7 @@ fn generate_local_maxima_single_beads(
             continue;
         }
 
-        // Gate 2: strict local maximum (PNP's `is_local_maximum` uses `>`
-        // with EPS, matching canonical `isLocalMaximum(true)` — equidistant
-        // neighbors do not disqualify).
+        // Gate 2: strict local maximum
         if !is_local_maximum(graph, v_idx) {
             continue;
         }

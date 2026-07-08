@@ -332,14 +332,21 @@ fn separate_pointy_quad_end_nodes(vertices: &mut Vec<STVertex>, edges: &mut Vec<
 
 /// Removes degenerate zero-length edges produced by integer rounding,
 /// mirroring OrcaSlicer's `collapseSmallEdges`
-/// (`SkeletalTrapezoidation.cpp:543` / `SkeletalTrapezoidationGraph.cpp`).
+/// (`SkeletalTrapezoidationGraph.cpp:310-431`).
 ///
 /// The snap distance is 5 nm (0.05 PNP units at `UNITS_PER_MM = 10_000`,
 /// matching OrcaSlicer's default `snap_dist = 5` in its 1-nm-unit system).
 ///
-/// For each edge whose endpoints are within the snap distance, merges the
-/// "to" vertex into the "from" vertex (repointing all outgoing edges) and
-/// splices the degenerate edge out of its chain.
+/// Two collapse patterns are applied per quad (chain of edges starting from
+/// an edge with `prev == NO_INDEX`):
+///
+/// **Pattern A**: If the quad has a middle edge (3-edge quad) and its
+/// endpoints are within snap distance, collapse the middle edge — merge its
+/// "to" vertex into its "from" vertex and splice it out.
+///
+/// **Pattern B** (finding #7): If both side edges of the quad have
+/// collapsable length, bypass the quad entirely — reconnect the twin of
+/// the start edge to the twin of the end edge, merging the two side nodes.
 ///
 /// NOTE: incident-edge SET/READ lines are skipped (PNP's `STVertex` has no
 /// `incident_edge` field — documented no-op).
@@ -347,63 +354,151 @@ fn collapse_small_edges(vertices: &mut Vec<STVertex>, edges: &mut Vec<STHalfEdge
     // 5 nm snap distance in PNP units (1 unit = 100 nm).
     const SNAP_DIST_SQ: f64 = 0.05 * 0.05;
 
-    // Collect all edges to check (can't iterate and mutate simultaneously).
-    let edge_indices: Vec<usize> = (0..edges.len()).collect();
+    let should_collapse = |vertices: &[STVertex], a: usize, b: usize| -> bool {
+        if a == NO_INDEX || b == NO_INDEX {
+            return false;
+        }
+        let dx = vertices[a].position.x - vertices[b].position.x;
+        let dy = vertices[a].position.y - vertices[b].position.y;
+        (dx * dx + dy * dy) < SNAP_DIST_SQ
+    };
 
-    for edge_idx in edge_indices {
-        if edge_idx >= edges.len() {
-            continue;
-        }
-        let twin = edges[edge_idx].twin;
-        if twin == NO_INDEX {
-            continue;
-        }
-        let from_v = edges[edge_idx].start_vertex;
-        let to_v = edges[twin].start_vertex;
-        if from_v == NO_INDEX || to_v == NO_INDEX || from_v == to_v {
-            continue;
-        }
+    // Iterate chain heads (prev == NO_INDEX) and process each quad.
+    // Matches canonical `collapseSmallEdges` which only processes chain heads.
+    let chain_heads: Vec<usize> = (0..edges.len())
+        .filter(|&i| edges[i].prev == NO_INDEX && edges[i].start_vertex != NO_INDEX)
+        .collect();
 
-        let dx = vertices[from_v].position.x - vertices[to_v].position.x;
-        let dy = vertices[from_v].position.y - vertices[to_v].position.y;
-        if dx * dx + dy * dy >= SNAP_DIST_SQ {
+    for head in chain_heads {
+        if head >= edges.len() || edges[head].start_vertex == NO_INDEX {
             continue;
         }
 
-        // Merge to_v into from_v: repoint all edges starting from to_v.
-        for e in edges.iter_mut() {
-            if e.start_vertex == to_v {
-                e.start_vertex = from_v;
+        // Find the quad: walk next pointers to find the end.
+        let quad_start = head;
+        let mut quad_end = quad_start;
+        let mut count = 0;
+        while edges[quad_end].next != NO_INDEX && count < 1000 {
+            quad_end = edges[quad_end].next;
+            count += 1;
+        }
+        if quad_end == quad_start {
+            continue; // Single-edge chain, nothing to collapse
+        }
+
+        let quad_mid = if edges[quad_start].next == quad_end {
+            None // 2-edge quad, no middle edge
+        } else {
+            Some(edges[quad_start].next)
+        };
+
+        // Pattern A: collapse the middle edge of a 3-edge quad.
+        if let Some(mid) = quad_mid {
+            if mid < edges.len() {
+                let mid_twin = edges[mid].twin;
+                let mid_from = edges[mid].start_vertex;
+                let mid_to = if mid_twin != NO_INDEX {
+                    edges[mid_twin].start_vertex
+                } else {
+                    NO_INDEX
+                };
+                if mid_from != NO_INDEX
+                    && mid_to != NO_INDEX
+                    && should_collapse(vertices, mid_from, mid_to)
+                {
+                    // Merge mid_to into mid_from: repoint all edges starting from mid_to.
+                    for e in edges.iter_mut() {
+                        if e.start_vertex == mid_to {
+                            e.start_vertex = mid_from;
+                        }
+                    }
+                    // Splice the middle edge out of its chain.
+                    let prev = edges[mid].prev;
+                    let next = edges[mid].next;
+                    if prev != NO_INDEX {
+                        edges[prev].next = next;
+                    }
+                    if next != NO_INDEX {
+                        edges[next].prev = prev;
+                    }
+                    // Splice the twin out of its chain.
+                    if mid_twin != NO_INDEX {
+                        let twin_prev = edges[mid_twin].prev;
+                        let twin_next = edges[mid_twin].next;
+                        if twin_prev != NO_INDEX {
+                            edges[twin_prev].next = twin_next;
+                        }
+                        if twin_next != NO_INDEX {
+                            edges[twin_next].prev = twin_prev;
+                        }
+                    }
+                    // Mark both as removed.
+                    edges[mid].start_vertex = NO_INDEX;
+                    edges[mid].prev = NO_INDEX;
+                    edges[mid].next = NO_INDEX;
+                    if mid_twin != NO_INDEX {
+                        edges[mid_twin].start_vertex = NO_INDEX;
+                        edges[mid_twin].prev = NO_INDEX;
+                        edges[mid_twin].next = NO_INDEX;
+                    }
+                }
             }
         }
 
-        // Splice the degenerate edge out of its chain.
-        let prev = edges[edge_idx].prev;
-        let next = edges[edge_idx].next;
-        if prev != NO_INDEX {
-            edges[prev].next = next;
+        // Finding #7 — Pattern B: bypass the quad entirely when both side
+        // edges are collapsable. Matching canonical
+        // `SkeletalTrapezoidationGraph.cpp:395-420`.
+        if quad_start >= edges.len() || quad_end >= edges.len() {
+            continue;
         }
-        if next != NO_INDEX {
-            edges[next].prev = prev;
+        let start_twin = edges[quad_start].twin;
+        let end_twin = edges[quad_end].twin;
+        if start_twin == NO_INDEX || end_twin == NO_INDEX {
+            continue;
         }
+        let start_from = edges[quad_start].start_vertex;
+        let start_to = edges[start_twin].start_vertex;
+        let end_from = edges[quad_end].start_vertex;
+        let end_to = edges[end_twin].start_vertex;
 
-        // Splice the twin out of its chain.
-        let twin_prev = edges[twin].prev;
-        let twin_next = edges[twin].next;
-        if twin_prev != NO_INDEX {
-            edges[twin_prev].next = twin_next;
+        if should_collapse(vertices, start_from, end_to)
+            && should_collapse(vertices, start_to, end_from)
+        {
+            // Pattern B: bypass the quad — reconnect twins.
+            // Merge start_from into end_to (keep end_to).
+            for e in edges.iter_mut() {
+                if e.start_vertex == start_from {
+                    e.start_vertex = end_to;
+                }
+            }
+            // Reconnect: start_twin's twin becomes end_twin and vice versa.
+            edges[start_twin].twin = end_twin;
+            edges[end_twin].twin = start_twin;
+            // Splice start and end edges out of their chains.
+            // (start has no prev, end has no next — they're chain boundaries)
+            // Remove start edge.
+            edges[quad_start].start_vertex = NO_INDEX;
+            edges[quad_start].prev = NO_INDEX;
+            edges[quad_start].next = NO_INDEX;
+            // Remove end edge.
+            edges[quad_end].start_vertex = NO_INDEX;
+            edges[quad_end].prev = NO_INDEX;
+            edges[quad_end].next = NO_INDEX;
+            // Remove middle edges if any.
+            if let Some(mid) = quad_mid {
+                if mid < edges.len() && edges[mid].start_vertex != NO_INDEX {
+                    let mid_twin = edges[mid].twin;
+                    edges[mid].start_vertex = NO_INDEX;
+                    edges[mid].prev = NO_INDEX;
+                    edges[mid].next = NO_INDEX;
+                    if mid_twin != NO_INDEX {
+                        edges[mid_twin].start_vertex = NO_INDEX;
+                        edges[mid_twin].prev = NO_INDEX;
+                        edges[mid_twin].next = NO_INDEX;
+                    }
+                }
+            }
         }
-        if twin_next != NO_INDEX {
-            edges[twin_next].prev = twin_prev;
-        }
-
-        // Mark both as removed (sentinel start_vertex).
-        edges[edge_idx].start_vertex = NO_INDEX;
-        edges[edge_idx].prev = NO_INDEX;
-        edges[edge_idx].next = NO_INDEX;
-        edges[twin].start_vertex = NO_INDEX;
-        edges[twin].prev = NO_INDEX;
-        edges[twin].next = NO_INDEX;
     }
 }
 

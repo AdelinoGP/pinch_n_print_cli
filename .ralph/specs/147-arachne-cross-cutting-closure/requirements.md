@@ -18,23 +18,15 @@ Packets A1 (`141`), A2 (`142`), B (`143`), C (`144`), D (`145`), E (`146`)
 each own their slice of the N1–N13 fixes and each re-baseline their own
 `crates/slicer-core` fixtures + record their e2e closure delta (record-only,
 per `docs/specs/arachne-parity-N1-N13-plan.md`'s cross-cutting policy). But
-three cross-cutting concerns span the whole chain and are not owned by any
-single finding-fix packet: (1) the `cube_4color.3mf` end-to-end outer-wall
-closure gate (`cube_4color_arachne_outer_walls_close_end_to_end` at
-`crates/slicer-runtime/tests/executor/cube_4color_arachne.rs:1145`) is
-record-only across A1–E and must BLOCK green in F — it is the user-visible
-acceptance criterion for the chain (the audit's core symptom: "output still
-visibly worse than canonical Orca"); (2) the cross-crate `slicer-runtime`
-`perimeter_parity` fixtures (`tapered_wedge`, `narrow_strip_widening`,
-`max_bead_count_cap`, `complex_multi_feature`, `cube_4color_arachne`) are
-re-recorded via their `#[ignore]`d `record_*` functions
-(`crates/slicer-runtime/tests/integration/perimeter_parity.rs:1101-1854`) and
-are NOT owned by any single A1–E packet (they reflect the full pipeline); (3)
-the deviation-log chain supersession (`D-141` through `D-146`) needs a
-closure entry (`D-147-CHAIN-CLOSURE`) recording that the chain is complete, and
-the architectural decision needs a new ADR (`0035-arachne-faithful-emission-and-transitions.md`)
-following `docs/adr/0034-arachne-faithful-graph-construction.md`. This packet
-closes the chain.
+the deep canonical parity audit (9 sub-agents, D-147-PARITY-AUDIT-FINDINGS)
+surfaced 7 divergences that span the chain and are not owned by any single
+A1–E finding-fix packet. These 7 findings ARE the cross-cutting closure —
+they are the residual gaps preventing the e2e gate from going green. In
+addition, three cross-cutting concerns span the whole chain: (1) the
+`cube_4color.3mf` end-to-end outer-wall closure gate is the user-visible
+acceptance criterion; (2) the cross-crate `slicer-runtime` `perimeter_parity`
+fixtures need re-baselining; (3) the deviation-log chain supersession + ADR
+0035 need authoring. This packet closes the chain.
 
 This packet does NOT supersede A1–E for their respective finding fixes; it
 records the chain closure and owns the cross-cutting artifacts (e2e gate,
@@ -42,14 +34,19 @@ cross-crate fixtures, deviation-log closure, ADR 0035).
 
 ## In Scope
 
+- **Fix the 7 deferred parity-audit findings from D-147-PARITY-AUDIT-FINDINGS:**
+  1. **`has_bead` sub-run split (#2 — PRIME open-ring blocker):** Restructure `emit_chain_lines` to walk the full chain and append junctions per-edge with the proximity gate (matching canonical `addToolpathSegment` at `SkeletalTrapezoidation.cpp:2198-2234`). Files: `generate_toolpaths.rs` (emit_chain_lines + chain_junctions_for_bead).
+  2. **`is_closed` pre-stitch (#1 — coupled to #2):** Set `is_closed=false` pre-stitch (matching canonical `WallToolPaths.cpp:802` post-stitch). Remove AC-6 skip in stitch. Verify N9 hexagon test. Files: `generate_toolpaths.rs`, `stitch.rs`.
+  3. **`filter_noncentral_regions` 4 deviations (#3):** Port canonical walk direction (upward only via `next->twin->next`), bead-count recompute (`getOptimalBeadCount` + `transition_ratio=0`), distance budget (start at 0), distance gate scope (only different-bead-count branch). Files: `centrality.rs`.
+  4. **`connectJunctions` merge divergence (#4):** Port canonical prev/next junction merge (perimeter_index overlap removal + concatenation). Files: `generate_toolpaths.rs`.
+  5. **`connectJunctions` is_odd predicate (#5):** Port canonical is_odd predicate (both endpoints + 0.005mm proximity). Files: `generate_toolpaths.rs`.
+  6. **`generateJunctions` transition interpolation (#6):** Port canonical `interpolate(low, 1.0-tr, high)` at nonzero `transition_ratio` in `populate_beading_propagation`. Files: `generate_toolpaths.rs` or `pipeline.rs`.
+  7. **`collapseSmallEdges` Pattern B (#7):** Add canonical Pattern B (full-quad bypass) to `collapse_small_edges`. Files: `graph.rs`.
 - **Re-green the `cube_4color.3mf` e2e outer-wall closure gate**:
   `cube_4color_arachne_outer_walls_close_end_to_end`
   (`crates/slicer-runtime/tests/executor/cube_4color_arachne.rs:1145`). This
-  was record-only across A1–E (each packet recorded its failure delta in its
-  commit message); F blocks on green. If the gate is still red after A1–E, F
-  diagnoses the residual gap (it is NOT a finding fix — F surfaces the gap and
-  either files a follow-up packet or fixes the residual in-scope if it's a
-  cross-cutting integration issue, not a finding-level divergence).
+  was record-only across A1–E; F blocks on green. The finding fixes above are
+  the direct cause of the e2e gate failure (finding #2 is the prime blocker).
 - **Re-baseline the cross-crate `slicer-runtime` `perimeter_parity` fixtures**:
   re-record via the `#[ignore]`d `record_*` functions
   (`crates/slicer-runtime/tests/integration/perimeter_parity.rs:1101-1854`):
@@ -90,10 +87,9 @@ cross-crate fixtures, deviation-log closure, ADR 0035).
 ## Out of Scope
 
 - **N1–N13 finding fixes** — owned by A1 (`141`), A2 (`142`), B (`143`),
-  C (`144`), D (`145`), E (`146`). F owns NO finding fixes. If the e2e gate is
-  still red after A1–E, F diagnoses the residual: if it's a cross-cutting
-  integration issue (not a finding-level divergence), F may fix it in-scope;
-  if it's a finding-level divergence, F files a follow-up packet.
+  C (`144`), D (`145`), E (`146`). F owns the 7 deferred parity-audit
+  findings from D-147-PARITY-AUDIT-FINDINGS (these span the chain, not owned
+  by any single A1–E packet).
 - **`slicer-core` fixture re-baselines** — owned by A1–E per-packet (each
   re-baselines only the fixtures its own stage touches). F owns ONLY the
   cross-crate `slicer-runtime` `perimeter_parity` fixtures.
@@ -126,7 +122,13 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- F owns NO finding fixes, so it has NO new OrcaSlicer parity refs. The chain's OrcaSlicer refs are owned by A1–E (see their `requirements.md` §OrcaSlicer Reference Obligations). F's ADR 0035 references the chain's parity surface but does not introduce new refs. If F's implementer diagnoses a residual e2e gap, any OrcaSlicer reads during diagnosis MUST be delegated per this contract.
+- `has_bead` / `addToolpathSegment`: `SkeletalTrapezoidation.cpp:2198-2234` (proximity-gated append) + `:2273-2366` (full-chain do-while walk) + `:2302-2327` (prev/next junction merge by perimeter_index overlap removal)
+- `is_closed`: `WallToolPaths.cpp:790-803` (post-stitch closure) + `PolylineStitcher.hpp` (stitch never inspects is_closed)
+- `filter_noncentral_regions`: `SkeletalTrapezoidation.cpp:811-866` (walk direction + getOptimalBeadCount recompute + transition_ratio=0 + distance budget at 0 + distance gate scope)
+- `connectJunctions` merge: `SkeletalTrapezoidation.cpp:2302-2327` (perimeter_index overlap removal + concatenation)
+- `connectJunctions` is_odd: `SkeletalTrapezoidation.cpp:2344-2354` (both endpoints + 0.005mm proximity)
+- `generateJunctions` transition interpolation: `SkeletalTrapezoidation.cpp:2091-2127` (interpolate at transition_ratio)
+- `collapseSmallEdges` Pattern B: `SkeletalTrapezoidationGraph.cpp:310-431` (Pattern A middle-edge-only + Pattern B full-quad bypass)
 
 ## Acceptance Summary
 
@@ -162,9 +164,14 @@ subset.
 | --- | --- | --- |
 | `cargo test -p slicer-runtime --test executor -- cube_4color_arachne_outer_walls_close_end_to_end --nocapture 2>&1 \| tee target/test-output-f-ac1.log` | AC-1: e2e closure gate green | FACT pass/fail; SNIPPETS ≤ 20 lines on failure (the `failures.len()/total_checked` summary line) |
 | `cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| tee target/test-output-f-ac2.log` | AC-2: cross-crate perimeter_parity fixtures green | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_invariants -- outer_wall_is_closed_ring_for_simple_polygons --nocapture 2>&1 \| tee target/test-output-f-ac3.log` | AC-3: open-ring failure fixed (has_bead sub-run split) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_local_maxima_single_beads --no-fail-fast 2>&1 \| tee target/test-output-f-ac4.log` | AC-4: hexagon test passes (is_closed pre-stitch coordinated) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 \| tee target/test-output-f-ac5.log` | AC-5+AC-6: N1-N4 red tests stay green after finding fixes | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_construction_epilogue --no-fail-fast 2>&1 \| tee target/test-output-f-ac7.log` | AC-7: construction epilogue green (collapseSmallEdges Pattern B) | FACT pass/fail |
 | `cargo xtask test --workspace --summary 2>&1 \| tee target/test-output-f-neg1.log` | AC-N1: closure ceremony (the ONE permitted `cargo test --workspace`) | FACT pass/fail + summary line + count |
 | `cargo test -p slicer-core --features host-algos --test arachne_parity_red_junction_bands --test arachne_parity_red_perimeter_index --test arachne_parity_red_is_odd_semantics --test arachne_parity_red_transition_ends --no-fail-fast 2>&1 \| tee target/test-output-f-red-suite-green.log` | All 7 N1-N4 red tests green (the chain's acceptance oracles) | FACT pass (expected — confirms A1/A2 closed) |
 | `rg -q 'D-147-CHAIN-CLOSURE' docs/DEVIATION_LOG.md` | Deviation log closure entry present | FACT pass/fail |
+| `rg -q 'D-147-PARITY-AUDIT-FINDINGS.*Closed' docs/DEVIATION_LOG.md` | D-147-PARITY-AUDIT-FINDINGS addendum updated to Closed | FACT pass/fail |
 | `rg -q '0035-arachne-faithful-emission-and-transitions' docs/adr/0035-arachne-faithful-emission-and-transitions.md` | ADR 0035 present | FACT pass/fail |
 | `rg -q '### Rib edge\|### Junction fan\|### BeadingPropagation\|### Transition end\|### Local maximum' CONTEXT.md` | CONTEXT.md glossary additions (any A1-E gaps F closes) | FACT pass/fail |
 | `cargo check --workspace --all-targets` | Cross-crate compile | FACT pass/fail |
@@ -178,14 +185,9 @@ All verification commands are delegation-friendly.
 Cross-step invariants the per-step blocks in `implementation-plan.md` cannot
 express:
 
-- **F cannot close until A1–E are ALL `status: implemented`.** F is the
-  closure gate; if any of A1–E is still `draft` or `active`, F's AC-1 (e2e
-  gate) will fail (the fixes aren't in place).
-- **F's e2e closure gate is the user-visible acceptance criterion.** If it's
-  still red after A1–E, F diagnoses the residual: if it's a cross-cutting
-  integration issue (not a finding-level divergence), F may fix it in-scope;
-  if it's a finding-level divergence, F files a follow-up packet. F does NOT
-  silently absorb a red e2e gate.
+- **F owns the 7 deferred parity-audit findings from D-147-PARITY-AUDIT-FINDINGS.** These span the chain (generate_toolpaths.rs, stitch.rs, centrality.rs, graph.rs) and are not owned by any single A1–E packet. F is the cross-cutting closure: the finding fixes + e2e gate + cross-crate fixtures + deviation-log closure + ADR 0035.
+- **F cannot close until A1–E are ALL `status: implemented`.** F is the closure gate; if any of A1–E is still `draft` or `active`, F's AC-1 (e2e gate) will fail (the fixes aren't in place).
+- **F's e2e closure gate is the user-visible acceptance criterion.** The 7 finding fixes are the direct cause of the e2e gate failure (finding #2 is the prime blocker). Once the fixes are in place, AC-1 should go green.
 - **F re-baselines ONLY the cross-crate `slicer-runtime` `perimeter_parity`
   fixtures.** `slicer-core` fixtures are owned by A1–E per-packet. F re-records
   via the `#[ignore]`d `record_*` functions; NEVER read the big JSONs directly.

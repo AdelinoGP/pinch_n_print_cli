@@ -342,7 +342,7 @@ pub fn run_arachne_pipeline(
         beading_params.wall_transition_angle,
     );
     assign_bead_counts(&mut graph, strategy.as_ref())?;
-    filter_noncentral_regions(&mut graph);
+    filter_noncentral_regions(&mut graph, strategy.as_ref());
 
     generate_transition_mids(&mut graph, strategy.as_ref());
     filter_transition_mids(&mut graph, strategy.as_ref());
