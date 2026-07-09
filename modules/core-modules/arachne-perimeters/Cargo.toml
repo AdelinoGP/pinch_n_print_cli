@@ -9,6 +9,7 @@ description = "Arachne variable-width perimeter generator skeleton implementing 
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core", default-features = false }
 
 # Required by the `#[slicer_module]` macro's wasm32-only component export
 # glue. On native builds the emitted `wit_bindgen::generate!` call is
@@ -21,6 +22,7 @@ wit-bindgen.workspace = true
 
 [dev-dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+toml = "0.8"
 
 [lints]
 workspace = true

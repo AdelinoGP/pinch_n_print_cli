@@ -78,6 +78,8 @@ below, which it uniquely owns.
 
 - **DEV-053** (2026-05-15): Config key normalization (kebab→snake) in `modules/core-modules/fuzzy-skin/src/lib.rs`. Discovered during spec-review of Packet 56b: the module was reading `"apply-to-all"` / `"point-distance"` (kebab) while the host stamps `"apply_to_all"` / `"point_distance"` (snake_case per CLAUDE.md convention) and the manifest declares the same snake_case names. Without the fix the modifier-part `apply_to_all = true` stamp would be silently ignored. Two-line change; registered and closed by Packet 56b.
 
+- **2026-07-09 — D-104-OVERHANG-QUARTILE-NONE scope refinement** (Packet 148): Packet 148 refined scope from pipeline-wide to arachne-path-only per-vertex overhang/flag/seam/boundary parity.
+
 ## Legacy Backlog Crosswalk
 
 The status backlog previously referenced XML-era labels such as `deviation #14b` and `deviation #23`. Those labels were retired because the audit cleanup merged several historical entries and rewrote the live registry around stable `DEV-###` rows.

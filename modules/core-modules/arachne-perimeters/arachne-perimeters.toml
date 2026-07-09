@@ -193,6 +193,30 @@ max-ir-schema     = "5.0.0"
   group       = "Arachne"
   advanced    = true
 
+  # ── Wall sequencing / seam parity (packet 148) ───────────────────────────
+  # Registered here to match classic-perimeters.toml byte-for-byte (AC-7);
+  # not yet consumed by run_perimeters in this step.
+
+[config.schema.precise_outer_wall]
+type    = "bool"
+default = false
+display = "Precise outer wall (gated on wall_sequence=InnerOuter)"
+group   = "Walls"
+
+[config.schema.wall_sequence]
+type    = "string"
+default = "InnerOuter"
+display = "Wall sequence (InnerOuter, OuterInner, InnerOuterInner)"
+group   = "Walls"
+
+[config.schema.seam_candidate_angle_threshold_deg]
+type    = "float"
+default = 30.0
+min     = 0.0
+max     = 180.0
+display = "Seam candidate sharp-corner angle threshold (degrees)"
+group   = "Seam"
+
 [config.overridable-per-region]
 keys = []
 

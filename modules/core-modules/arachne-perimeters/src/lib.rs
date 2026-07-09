@@ -61,10 +61,11 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_core::perimeter_utils::{generate_sharp_corner_seam_candidates, point_in_any_polygon};
 use slicer_ir::{
-    extrusion_line_to_extrusion_path3d, mm_to_units, units_to_mm, ConfigView, ExPolygon,
-    ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallFeatureFlags, WallLoop,
-    WidthProfile,
+    extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
+    ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType,
+    WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -154,7 +155,33 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         let wall_transition_length = config.get_float("wall_transition_length").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.wall_transition_length);
         let wall_transition_angle = config.get_float("wall_transition_angle").map(|v| v.to_radians()).unwrap_or(defaults.wall_transition_angle);
         let initial_layer_min_bead_width = config.get_float("initial_layer_min_bead_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.initial_layer_min_bead_width);
-        let outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
+
+        // Precise outer wall (packet 148, Step 6): mirrors OrcaSlicer's
+        // `PerimeterGenerator.cpp:2146-2158` `apply_precise_outer_wall =
+        // precise_outer_wall && wall_sequence == InnerOuter` gate, and
+        // `wall_0_inset = -(ext_perimeter_width/2 - ext_perimeter_spacing/2)`
+        // when the gate is satisfied (else 0). `preferred_bead_width_outer`
+        // stands in for upstream's `ext_perimeter_width` (it is this
+        // pipeline's own dedicated "outermost bead" width field, per its own
+        // doc comment) and `optimal_width` stands in for
+        // `ext_perimeter_spacing` (the nominal/general wall width) — the two
+        // width-like config keys this function already reads; there is no
+        // separate "spacing" concept threaded through `ArachneParams`.
+        // `outer_wall_offset` remains directly overridable via its own
+        // registered config key (read above pre-gate as the base/manual
+        // value) when the precise-outer-wall gate does not apply, preserving
+        // that key's own independent meaning.
+        let manual_outer_wall_offset = config.get_float("outer_wall_offset").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.outer_wall_offset);
+        let precise_outer_wall = config.get_bool("precise_outer_wall").unwrap_or(false);
+        let wall_sequence_is_inner_outer = config
+            .get_string("wall_sequence")
+            .map(|s| s == "InnerOuter")
+            .unwrap_or(true); // default wall_sequence is "InnerOuter"
+        let outer_wall_offset = if precise_outer_wall && wall_sequence_is_inner_outer {
+            -((preferred_bead_width_outer / 2.0) - (optimal_width / 2.0))
+        } else {
+            manual_outer_wall_offset
+        };
 
         // Distance-gate config keys for simplify_toolpaths (N13).
         // Stored as squared mm² values; config keys are in mm (resolution/deviation).
@@ -200,11 +227,31 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
 /// loop_type)` pair.
 ///
 /// `is_odd` lines (odd-width transition regions, per `ExtrusionLine::is_odd`'s
-/// own doc comment) are treated as gap-fill regardless of `inset_idx`;
-/// otherwise `inset_idx == 0` is the outermost wall and anything deeper is an
-/// inner wall.
-fn classify_line(line: &slicer_ir::ExtrusionLine) -> (ExtrusionRole, LoopType) {
-    if line.is_odd {
+/// own doc comment) are treated as gap-fill regardless of `inset_idx`, with
+/// one exception (packet 148, AC-2): an `is_odd` line at `inset_idx == 0`
+/// with `print_thin_walls` enabled is the single widened center-line bead
+/// `WideningBeadingStrategy` produces for a region thinner than one full
+/// bead. OrcaSlicer's own Arachne path assigns this bead no special
+/// thin-wall/gap-fill role at all — the Arachne skeletal-graph algorithm has
+/// no such role; `is_odd` is purely structural, and every emitted
+/// `ExtrusionLine` becomes `erExternalPerimeter`/`erPerimeter` via
+/// `inset_idx == 0` (`PerimeterGenerator.cpp:383-384`); `print_thin_walls`
+/// only gates whether `WideningBeadingStrategy` runs at all. `LoopType::ThinWall`
+/// here is PnP's own IR-level semantic refinement of that same bead — a
+/// deliberate deviation from upstream, not a ported behavior — allowing
+/// downstream consumers (feature-flag/report tooling) to distinguish a
+/// widened thin region from an ordinary outer wall. Deeper odd lines
+/// (`inset_idx > 0`, transition regions between full beads) stay `GapFill`
+/// regardless of `print_thin_walls`; classic-perimeters' `medial_axis`-based
+/// thin-wall gate does not apply here since Arachne's beading strategy
+/// already produces the widened bead directly.
+fn classify_line(
+    line: &slicer_ir::ExtrusionLine,
+    print_thin_walls: bool,
+) -> (ExtrusionRole, LoopType) {
+    if line.is_odd && line.inset_idx == 0 && print_thin_walls {
+        (ExtrusionRole::ThinWall, LoopType::ThinWall)
+    } else if line.is_odd {
         (ExtrusionRole::GapFill, LoopType::GapFill)
     } else if line.inset_idx == 0 {
         (ExtrusionRole::OuterWall, LoopType::Outer)
@@ -260,6 +307,11 @@ impl LayerModule for ArachnePerimeters {
                 continue;
             }
             let z = region.z();
+            // AC-4/AC-5 (packet 148): fetched once per region and reused
+            // across every emitted line's vertices below, mirroring
+            // `expolygon_to_path3d`'s own per-vertex band-lookup pattern.
+            let bridge_areas = region.bridge_areas();
+            let overhang_bands = region.overhang_quartile_polygons();
 
             let (lines, inner_contour) =
                 match slicer_sdk::host::generate_arachne_walls(polygons, &params) {
@@ -282,7 +334,7 @@ impl LayerModule for ArachnePerimeters {
 
             let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
             for line in &lines {
-                let (role, loop_type) = classify_line(line);
+                let (role, loop_type) = classify_line(line, params.print_thin_walls);
                 let mut path = extrusion_line_to_extrusion_path3d(line, role);
                 if path.points.is_empty() {
                     continue;
@@ -293,13 +345,82 @@ impl LayerModule for ArachnePerimeters {
                 let num_points = path.points.len();
                 let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
 
+                // AC-3 (packet 148): is_thin_wall is set on every vertex of a
+                // ThinWall wall only — never on Outer/Inner walls, even if
+                // geometrically narrow (mirrors classic-perimeters' own
+                // is_thin_wall flag shape).
+                let mut feature_flags = vec![WallFeatureFlags::default(); num_points];
+                if loop_type == LoopType::ThinWall {
+                    for flag in &mut feature_flags {
+                        flag.is_thin_wall = true;
+                    }
+                }
+
+                // AC-4 (packet 148): is_bridge is set per-vertex, ONLY on
+                // Outer/Inner walls (never ThinWall/GapFill/NonPlanarShell),
+                // for every vertex whose path point lies inside one of the
+                // region's bridge areas. `region.bridge_areas()` is in
+                // units-space (same as `region.polygons()`); wall path
+                // points are in mm-space (set by
+                // `extrusion_line_to_extrusion_path3d`), so convert via
+                // `mm_to_units` at the lookup boundary, mirroring the
+                // mm_to_units conversion already used below for
+                // `infill_candidates`.
+                if !bridge_areas.is_empty()
+                    && matches!(loop_type, LoopType::Outer | LoopType::Inner)
+                {
+                    for (i, pt) in path.points.iter().enumerate() {
+                        let units_pt = Point2 {
+                            x: mm_to_units(pt.x),
+                            y: mm_to_units(pt.y),
+                        };
+                        if point_in_any_polygon(&units_pt, bridge_areas) {
+                            feature_flags[i].is_bridge = true;
+                        }
+                    }
+                }
+
+                // AC-5 (packet 148): overhang_quartile is set per-vertex on
+                // every wall type, for every vertex whose path point lies
+                // inside a `overhang_quartile_polygons` band's polygon(s).
+                // Mirrors `expolygon_to_path3d`'s own lookup
+                // (perimeter_utils.rs ~316-331): filter bands whose polygons
+                // contain the point, take the max quartile among matches.
+                // `point_in_polygon_winding` takes mm-space query
+                // coordinates and converts the (units-space) band polygon
+                // internally, so no coordinate conversion is needed here —
+                // `pt.x`/`pt.y` are already mm.
+                if !overhang_bands.is_empty() {
+                    for pt in &mut path.points {
+                        pt.overhang_quartile = overhang_bands
+                            .iter()
+                            .filter(|band| {
+                                band.polygons.iter().any(|poly| {
+                                    point_in_polygon_winding(poly, pt.x as f64, pt.y as f64, 0.0)
+                                })
+                            })
+                            .map(|band| band.quartile)
+                            .max();
+                    }
+                }
+
+                // AC-1 (packet 148): the outermost bead (inset_idx == 0) faces
+                // air or a gap, exactly like classic-perimeters' own outer
+                // wall — it gets ExteriorSurface. Deeper insets stay Interior
+                // (no material-boundary detection wired here yet).
+                let boundary_type = if line.inset_idx == 0 {
+                    WallBoundaryType::ExteriorSurface
+                } else {
+                    WallBoundaryType::Interior
+                };
+
                 walls.push(WallLoop {
                     perimeter_index: line.inset_idx,
                     loop_type,
                     path,
                     width_profile: WidthProfile { widths },
-                    feature_flags: vec![WallFeatureFlags::default(); num_points],
-                    boundary_type: WallBoundaryType::Interior,
+                    feature_flags,
+                    boundary_type,
                 });
             }
 
@@ -313,6 +434,30 @@ impl LayerModule for ArachnePerimeters {
 
             for wall in walls {
                 output.push_wall_loop(wall)?;
+            }
+
+            // AC-6 (packet 148): sharp-corner seam candidates, once per
+            // region polygon (island), against each input polygon's outer
+            // contour (units-space `slicer_ir::Polygon`) — NOT the mm-space
+            // wall path. Mirrors classic-perimeters' own per-island loop
+            // (`for (poly_idx, poly) in outer_polys.iter().enumerate()`,
+            // lib.rs ~888-902): a region may contain several disjoint
+            // islands of the same color, and each island's own sharp
+            // corners must contribute candidates, not just the first
+            // island's. Holes are not iterated — contours only, same as
+            // classic.
+            let seam_candidate_angle_threshold_deg = config
+                .get_float("seam_candidate_angle_threshold_deg")
+                .unwrap_or(30.0) as f32;
+            for polygon in polygons {
+                let candidates = generate_sharp_corner_seam_candidates(
+                    &polygon.contour,
+                    z,
+                    seam_candidate_angle_threshold_deg,
+                );
+                for candidate in candidates {
+                    output.push_seam_candidate(candidate.position, candidate.score)?;
+                }
             }
 
             // Convert inner-contour marker lines to infill area polygons.

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use crate::views::{PerimeterRegionView, SliceRegionView};
+use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
     LayerCollectionIR, LoopType, Point3WithWidth, Polygon, PrintEntity, RegionKey, SeamCandidate,
@@ -151,6 +152,7 @@ pub struct SliceRegionViewBuilder {
     sparse_infill_area: Vec<ExPolygon>,
     surface_group: Option<SurfaceGroup>,
     overhang_areas: Vec<ExPolygon>,
+    overhang_quartile_polygons: Vec<QuartileBand>,
 }
 
 impl SliceRegionViewBuilder {
@@ -184,6 +186,7 @@ impl SliceRegionViewBuilder {
             sparse_infill_area: Vec::new(),
             surface_group: None,
             overhang_areas: Vec::new(),
+            overhang_quartile_polygons: Vec::new(),
         }
     }
 
@@ -389,6 +392,14 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the region's quartile-banded overhang polygons (packet 107, P148).
+    /// Mirrors [`SliceRegionView::set_overhang_quartile_polygons`].
+    #[must_use]
+    pub fn overhang_quartile_polygons(mut self, bands: Vec<QuartileBand>) -> Self {
+        self.overhang_quartile_polygons = bands;
+        self
+    }
+
     /// Build a [`SliceRegionView`].
     ///
     /// If no infill areas were explicitly added, polygons are cloned
@@ -419,6 +430,7 @@ impl SliceRegionViewBuilder {
             tmp.set_sparse_infill_area(self.sparse_infill_area);
             tmp.set_surface_group(self.surface_group);
             tmp.set_overhang_areas(self.overhang_areas);
+            tmp.set_overhang_quartile_polygons(self.overhang_quartile_polygons);
             tmp
         }
     }

@@ -47,12 +47,18 @@ is the authoritative catalog of their defaults and ranges.
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
 | `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `min_feature_size` | float | `1000` | >= 0.0 | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
+| `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | `arachne-perimeters` |
 | `preferred_bead_width_outer` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
+| `visvalingam_area_threshold` | float | `100` | >= 0.0 | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
+| `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
 | `wall_transition_length` | float | `4000` | >= 0.0 | `arachne-perimeters` |
@@ -442,7 +448,7 @@ global < object_config:<id>:<key> < paint_config:<semantic>:<key>
 
 ## Walls (packet 104)
 
-Keys consumed by `classic-perimeters` to gate single-wall reduction on specific layer types (the fake `arachne-perimeters` module was deleted in P108; `classic-perimeters` is the sole perimeter generator until real Arachne lands under P110+P112). Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
+Keys consumed by `classic-perimeters` to gate single-wall reduction on specific layer types (the fake `arachne-perimeters` module was deleted in P108; a real Arachne implementation landed under P110+P112, and packet 148 registers `precise_outer_wall`, `wall_sequence`, and `seam_candidate_angle_threshold_deg` on `arachne-perimeters` for parity with `classic-perimeters`). Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
 
 | Key | Type | Default | Range | Module(s) |
 |---|---|---|---|---|
@@ -450,10 +456,11 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
-| `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
+| `precise_outer_wall` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
 | `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
-| `wall_sequence` | enum | `"inner_outer"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `path-optimization-default` |
+| `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
+| `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 

@@ -4,7 +4,7 @@
 
 - Grouped task IDs: none (audit-only; not yet on `docs/07_implementation_status.md`).
 - Backlog source: `tmp/arachne_parity_audit_20260709.md` (working artifact; not canonical — `docs/DEVIATION_LOG.md` is canonical per the grilling-session decision).
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M` (sum of per-step S/M costs in `implementation-plan.md`).
 
 ## Problem Statement
@@ -20,8 +20,11 @@ The classic path's `crates/slicer-core/src/perimeter_utils.rs` already exports t
 - Edit `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`:
   - Add `[config.schema.precise_outer_wall]` (bool, default `false`, matches classic).
   - Add `[config.schema.seam_candidate_angle_threshold_deg]` (float, default `30.0`, range `0.0..=180.0`, matches classic).
+  - Add `[config.schema.wall_sequence]` (copy classic's entry at `classic-perimeters.toml:81`) — the AC-8 gate reads `wall_sequence`, which is registered in classic but absent from the arachne manifest today.
+- Edit `crates/slicer-sdk/src/test_support/fixtures.rs`:
+  - Add an `overhang_quartile_polygons(...)` setter to `SliceRegionViewBuilder` (the builder has `bridge_areas(...)` at :355 and `overhang_areas(...)` at :387 but no quartile-band setter; AC-5's unit-test fixture cannot be built without it).
 - Edit `modules/core-modules/arachne-perimeters/src/lib.rs`:
-  - `classify_line` (lib.rs:206-214): return `LoopType::ThinWall` for widened thin-wall beads, gated on `print_thin_walls && medial_axis_enabled` (mirroring classic's gate).
+  - `classify_line` (lib.rs:206-214): return `LoopType::ThinWall` for widened thin-wall beads, gated on `print_thin_walls` (the `detect_thin_wall` manifest key). Candidate predicate: `line.is_odd && line.inset_idx == 0` → ThinWall, deeper odd lines stay GapFill — confirmed against the delegated OrcaSlicer `WallToolPaths.cpp` summary before implementation (design.md §Open Questions). NOTE: classic's `medial_axis_enabled` gate does NOT apply — medial-axis is the classic-path thin-wall mechanism; arachne thin walls come from the WideningBeadingStrategy.
   - `run_perimeters` (lib.rs:236-352): in the `WallLoop` construction loop (lib.rs:296-303), populate `feature_flags` (per-vertex `is_bridge` from `region.bridge_areas()` via `point_in_any_polygon`; per-vertex `is_thin_wall` on `ThinWall` loops only) and `boundary_type` (ExteriorSurface for `inset_idx == 0`, Interior otherwise); populate per-vertex `path.points[i].overhang_quartile` from the band lookup against `region.overhang_quartile_polygons()` (mirrors `expolygon_to_path3d:316-331`); emit seam candidates for the outer wall using the **input region polygon contour** (`region.polygons()[0].contour`), NOT `wall.path` (type bridge: helper takes `&slicer_ir::Polygon` in units, `wall.path` is `ExtrusionPath3D` in mm — call shape matches classic's `lib.rs:889-900`).
   - `arachne_params_from_config` (lib.rs:106-197): thread `precise_outer_wall` and `seam_candidate_angle_threshold_deg` through. **AC-8 mechanism rewrite**: gate `ArachneParams.outer_wall_offset` on `precise_outer_wall && wall_sequence==InnerOuter`; the inset is realized at the beading-stack level via the existing `ArachneParams.outer_wall_offset` plumbing (wired at lib.rs:157) — mirrors OrcaSlicer's `OuterWallInsetBeadingStrategy::compute` at `Arachne/BeadingStrategy/OuterWallInsetBeadingStrategy.cpp:44-60`. NOT a post-hoc `wall.path` mutation.
 - Add new unit-test files in `modules/core-modules/arachne-perimeters/tests/` (one per rewritten arachne-path AC):

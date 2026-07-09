@@ -65,6 +65,12 @@ path = "../../modules/core-modules/lightning-infill"
 [dev-dependencies.classic-perimeters]
 path = "../../modules/core-modules/classic-perimeters"
 
+# packet 148 (AC-9): arachne_parity.rs drives ArachnePerimeters::run_perimeters
+# natively (mirroring the module's own canonical tdd tests) instead of
+# substring-matching its source text.
+[dev-dependencies.arachne-perimeters]
+path = "../../modules/core-modules/arachne-perimeters"
+
 # packet 108 (D-108-SEAM-CONSUMED): painted_seam_enforcer_blocker_tdd exercises
 # seam-placer directly against classic-perimeters output.
 [dev-dependencies.seam-placer]

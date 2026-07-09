@@ -9,21 +9,23 @@
 
 ## Steps
 
-### Step 1: Add `slicer-core` dependency (with `default-features=false`) and the 2 new config keys
+### Step 1: Add `slicer-core` dependency (with `default-features=false`), the 3 new config keys, and the test-fixture setter
 
 - Task IDs:
   - none
-- Objective: make the helpers from `slicer_core::perimeter_utils` reachable from the arachne module, and register the two new config keys in the arachne manifest.
+- Objective: make the helpers from `slicer_core::perimeter_utils` reachable from the arachne module; register the three new config keys in the arachne manifest (`precise_outer_wall`, `seam_candidate_angle_threshold_deg`, AND `wall_sequence` — the AC-8 gate reads `wall_sequence`, which classic registers at `classic-perimeters.toml:81` but arachne does not; without it the gate cannot be evaluated); add an `overhang_quartile_polygons(...)` setter to `SliceRegionViewBuilder` in `crates/slicer-sdk/src/test_support/fixtures.rs` (the builder has `bridge_areas(...)` at fixtures.rs:355 and `overhang_areas(...)` at :387 but NO quartile-band setter today — AC-5's unit-test fixture cannot be built without it).
 - Precondition: `parity/arachne` is checked out at `182892ad`; cargo build is green; the 3 packet-1 red tests are red (3 passed, 12 red in `arachne_parity`).
-- Postcondition: `cargo check -p arachne-perimeters` is green; `cargo build -p arachne-perimeters --target wasm32-unknown-unknown` is green (the `slicer-core` dep with `default-features=false` compiles to wasm); the arachne manifest TOML has two new sections; `cargo xtask build-guests --check` reports Fresh.
+- Postcondition: `cargo check -p arachne-perimeters` is green; `cargo build -p arachne-perimeters --target wasm32-unknown-unknown` is green (the `slicer-core` dep with `default-features=false` compiles to wasm); the arachne manifest TOML has three new sections; `SliceRegionViewBuilder::overhang_quartile_polygons(...)` compiles (`cargo check -p slicer-sdk --all-targets --features test` — the bare `--all-targets` form fails on a clean baseline because `test_support` is feature-gated); `cargo xtask build-guests --check` reports Fresh.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/arachne-perimeters/Cargo.toml` (26 lines, full)
   - `modules/core-modules/arachne-perimeters/arachne-perimeters.toml` (204 lines, full)
   - `modules/core-modules/classic-perimeters/Cargo.toml` (≤ 30 lines, full — the precedent for the slicer-core dep)
-  - `modules/core-modules/classic-perimeters/classic-perimeters.toml` (197 lines, lines 75-99 only — the precise_outer_wall + seam_candidate_angle_threshold_deg sections to confirm byte-for-byte)
+  - `modules/core-modules/classic-perimeters/classic-perimeters.toml` (197 lines, lines 75-99 for precise_outer_wall + seam_candidate_angle_threshold_deg, lines 81-86 for wall_sequence — confirm byte-for-byte)
+  - `crates/slicer-sdk/src/test_support/fixtures.rs` lines 340-400 (the `bridge_areas`/`overhang_areas` setters — the pattern for the new quartile-band setter)
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/arachne-perimeters/Cargo.toml`
   - `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`
+  - `crates/slicer-sdk/src/test_support/fixtures.rs`
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/**` (no edits to slicer-core)
   - `modules/core-modules/arachne-perimeters/src/lib.rs` (no edits to source this step)
@@ -48,60 +50,67 @@
 
 - Task IDs:
   - none
-- Objective: replace the hardcoded `WallBoundaryType::Interior` at `arachne-perimeters/src/lib.rs:302` with a conditional that returns `ExteriorSurface` for the outer wall and `Interior` for inner walls.
-- Precondition: Step 1 complete; the arachne module compiles.
-- Postcondition: `arachne_parity_arachne_path_outer_wall_boundary_type_hardcoded_interior` is green.
+- Objective: TDD. FIRST write `modules/core-modules/arachne-perimeters/tests/arachne_parity_outer_wall_boundary_type_tdd.rs` (drives `run_perimeters` natively per the harness at `classic_perimeters_tdd.rs:1-70`; asserts `output.wall_loops()` where `perimeter_index == 0` has `boundary_type == WallBoundaryType::ExteriorSurface`) and confirm it is RED. THEN replace the hardcoded `WallBoundaryType::Interior` at `arachne-perimeters/src/lib.rs:302` with a conditional returning `ExteriorSurface` for `line.inset_idx == 0` and `Interior` otherwise; confirm the new test is GREEN. **Do NOT verify via the old substring test `arachne_parity_arachne_path_outer_wall_boundary_type_hardcoded_interior` — it hardcodes its own failure (`arachne_parity.rs:444-446` constructs a local `Interior` and asserts it is not `Interior`) and can NEVER pass regardless of module changes; it stays red until Step 8 deletes it.**
+- Precondition: Step 1 complete; the arachne module compiles; the fixtures setter from Step 1 exists.
+- Postcondition: `cargo test -p arachne-perimeters --test arachne_parity_outer_wall_boundary_type_tdd` is green.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/arachne-perimeters/src/lib.rs` lines 280-310 (the construction loop)
   - `crates/slicer-ir/src/slice_ir.rs` lines 1418-1428 (WallBoundaryType enum) — `rg 'pub enum WallBoundaryType' crates/slicer-ir/src/slice_ir.rs` is enough
+  - `modules/core-modules/classic-perimeters/tests/classic_perimeters_tdd.rs` lines 1-70 (the native harness pattern)
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
+  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_outer_wall_boundary_type_tdd.rs` (new)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/**`, `crates/slicer-ir/src/**`, `crates/slicer-sdk/src/**` (read-only)
+  - `crates/slicer-runtime/tests/arachne_parity.rs` (untouched until Step 8)
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_outer_wall_boundary_type_hardcoded_interior 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-1 green.
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_outer_wall_boundary_type_tdd 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-1 green (run once before the code change expecting RED, once after expecting GREEN).
 - Context cost: S
 - Authoritative docs:
   - `docs/02_ir_schemas.md` §1418-1428 — delegate SUMMARY if implementer needs the enum variants
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:383` — `inset_idx` assignment
 - Verification:
-  - `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_outer_wall_boundary_type_hardcoded_interior` — pass
-- Exit condition: AC-1 test green; no other test regressed (run the full `arachne_parity` file once and confirm the count of passing tests is now 4, not 3).
+  - `cargo test -p arachne-perimeters --test arachne_parity_outer_wall_boundary_type_tdd` — pass
+- Exit condition: the new unit test was RED before the lib.rs edit and is GREEN after it. (The full `arachne_parity` pass count does NOT move this step — the old substring tests are structurally un-passable and are removed in Step 8.)
 
 ### Step 3: AC-2 + AC-3 — `LoopType::ThinWall` + `is_thin_wall` flag
 
 - Task IDs:
   - none
-- Objective: extend `classify_line` (lib.rs:206-214) to return `LoopType::ThinWall` for widened thin-wall beads, and wire `feature_flags[i].is_thin_wall = true` in the construction loop for those walls.
+- Objective: TDD. FIRST write `arachne-perimeters/tests/arachne_parity_thin_wall_loop_type_tdd.rs` (AC-2) and `arachne_parity_is_thin_wall_flag_tdd.rs` (AC-3) driving `run_perimeters` natively with the 0.25 mm × 5 mm thin-strip fixture and `detect_thin_wall=true`; confirm both RED. THEN extend `classify_line` (lib.rs:206-214) to return `LoopType::ThinWall` and wire `feature_flags[i].is_thin_wall = true` in the construction loop for those walls; confirm both GREEN. **ThinWall predicate:** `classify_line` today maps ALL `is_odd` lines to `GapFill` (lib.rs:207-208). The candidate predicate is `line.is_odd && line.inset_idx == 0 && params.print_thin_walls` → ThinWall (the widened center-line bead of a region thinner than one bead), with deeper odd lines staying GapFill — CONFIRM against the delegated `WallToolPaths.cpp` summary before implementing (see design.md §Open Questions). Note `classify_line` currently takes only `&ExtrusionLine`; threading `print_thin_walls` into it (extra parameter) is part of this step. The classic gate (`medial_axis_enabled`) does NOT apply here — medial-axis is the classic thin-wall mechanism; arachne thin walls come from the WideningBeadingStrategy.
 - Precondition: Step 2 complete.
-- Postcondition: `arachne_parity_arachne_path_thin_wall_loop_type_never_emitted` and `arachne_parity_arachne_path_is_thin_wall_flag_never_set` are green.
+- Postcondition: both new unit tests are green.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/arachne-perimeters/src/lib.rs` lines 200-220 (classify_line) and 280-310 (construction loop)
-  - `modules/core-modules/classic-perimeters/src/lib.rs` lines 760-800 (the ThinWall emission path; the canonical pattern)
+  - `modules/core-modules/classic-perimeters/src/lib.rs` lines 760-800 (the ThinWall emission path; classic precedent for the flag shape, NOT for the gate)
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
+  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_thin_wall_loop_type_tdd.rs` (new)
+  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_is_thin_wall_flag_tdd.rs` (new)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/beading/**` (the beading-strategy stack is correct; do not touch)
+  - `crates/slicer-runtime/tests/arachne_parity.rs` (untouched until Step 8)
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_thin_wall_loop_type_never_emitted 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-2 green.
-  - "Run `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_is_thin_wall_flag_never_set 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-3 green.
+  - "Summarize the ThinWall/odd-line classification in `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp` (the 783-790 region and wherever odd toolpaths are classified); return SUMMARY (≤ 200 words) answering: is a thin-wall bead distinguished by is_odd + inset 0, or another signal?" — purpose: pin the ThinWall predicate before implementing.
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_thin_wall_loop_type_tdd 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-2 green.
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_is_thin_wall_flag_tdd 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-3 green.
 - Context cost: S
 - Authoritative docs:
   - `docs/02_ir_schemas.md` §1505-1516 — LoopType::ThinWall (delegate)
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Arachne/WideningBeadingStrategy.cpp:27-77` — thin-wall widening
 - Verification:
-  - Both AC-2 and AC-3 tests green
-- Exit condition: full `arachne_parity` count is now 6 passed (3 packet-1 + 2 this step + 1 from Step 2), 9 red.
+  - Both new AC-2 and AC-3 unit tests green
+- Exit condition: both unit tests were RED before the lib.rs edit and are GREEN after; the ThinWall predicate used matches the delegated OrcaSlicer summary (or the divergence is recorded in design.md §Open Questions resolution).
 
 ### Step 4: AC-4 + AC-5 — per-vertex `is_bridge` and `overhang_quartile` from region data
 
 - Task IDs:
   - none
-- Objective: in the construction loop, populate `feature_flags[i].is_bridge` per-vertex via `point_in_any_polygon(pt, region.bridge_areas())`, and populate `path.points[i].overhang_quartile` per-vertex via the band lookup against `region.overhang_quartile_polygons()`.
-- Precondition: Step 3 complete; `slicer-core` is a reachable dep from Step 1.
-- Postcondition: `arachne_parity_arachne_path_is_bridge_flag_never_set` and `arachne_parity_arachne_path_overhang_quartile_hardcoded_none` are green.
+- Objective: TDD. FIRST write `arachne-perimeters/tests/arachne_parity_is_bridge_flag_tdd.rs` (AC-4; fixture uses `SliceRegionViewBuilder::bridge_areas(...)` at fixtures.rs:355) and `arachne_parity_overhang_quartile_tdd.rs` (AC-5; fixture uses the `overhang_quartile_polygons(...)` setter added in Step 1); confirm both RED. THEN, in the construction loop, populate `feature_flags[i].is_bridge` per-vertex via `point_in_any_polygon(pt, region.bridge_areas())`, and populate `path.points[i].overhang_quartile` per-vertex via the band lookup against `region.overhang_quartile_polygons()`; confirm both GREEN. **Do NOT verify via the old substring tests — `arachne_parity_arachne_path_is_bridge_flag_never_set` greps for a source line containing both `is_bridge` and `true` (arachne_parity.rs:477-479), which the real fix (`is_bridge: point_in_any_polygon(...)`) does not produce; it stays red until Step 8 deletes it.**
+- Precondition: Step 3 complete; `slicer-core` is a reachable dep and the fixtures setter exists (Step 1).
+- Postcondition: both new unit tests are green.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/arachne-perimeters/src/lib.rs` lines 280-310
   - `crates/slicer-core/src/perimeter_utils.rs:608` (`point_in_any_polygon` signature) and `:316-331` (overhang-band lookup pattern in `expolygon_to_path3d`)
@@ -109,13 +118,16 @@
   - `crates/slicer-ir/src/slice_ir.rs:1542-1558` (`Point3WithWidth.overhang_quartile` field)
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/arachne-perimeters/src/lib.rs`
+  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_is_bridge_flag_tdd.rs` (new)
+  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_overhang_quartile_tdd.rs` (new)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-core/src/perimeter_utils.rs` (the helper is correct; do not touch)
   - `crates/slicer-sdk/src/views.rs` (the accessor is correct; do not touch)
+  - `crates/slicer-runtime/tests/arachne_parity.rs` (untouched until Step 8)
 - Expected sub-agent dispatches:
   - "Summarize `crates/slicer-core/src/perimeter_utils.rs:316-331` (the overhang-band lookup pattern in `expolygon_to_path3d`); return SUMMARY ≤ 200 words." — purpose: confirm the canonical lookup shape.
-  - "Run `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_is_bridge_flag_never_set 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-4 green.
-  - "Run `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_arachne_path_overhang_quartile_hardcoded_none 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-5 green.
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_is_bridge_flag_tdd 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-4 green.
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_overhang_quartile_tdd 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: AC-5 green.
 - Context cost: M (the band lookup is the largest single edit; the bridge lookup is trivial)
 - Authoritative docs:
   - `docs/02_ir_schemas.md` §1520-1533 (WallFeatureFlags), §1542-1558 (Point3WithWidth) — delegate SUMMARY
@@ -123,8 +135,8 @@
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:675-678` — per-vertex is_bridge
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:2113-2119` — overhang quartile population
 - Verification:
-  - AC-4 + AC-5 green
-- Exit condition: full `arachne_parity` count is now 8 passed (3 packet-1 + 4 this packet so far), 7 red.
+  - AC-4 + AC-5 unit tests green
+- Exit condition: both unit tests were RED before the lib.rs edit and are GREEN after.
 
 ### Step 5: AC-6 + AC-7 — seam-candidate emission + `precise_outer_wall` registration
 
@@ -132,7 +144,7 @@
   - none
 - Objective: in `run_perimeters`, after the `for wall in walls { output.push_wall_loop(wall)?; }` loop, iterate the outer region and call `generate_sharp_corner_seam_candidates(&region.polygons()[0].contour, region.z(), seam_candidate_angle_threshold_deg)`, then `output.push_seam_candidate(c.position, c.score)?` for each. The seam helper takes a `&slicer_ir::Polygon` (units-space input contour) — NOT `&wall.path` (mm-space `ExtrusionPath3D`); the call shape matches classic's `lib.rs:889-900` (`generate_sharp_corner_seam_candidates(&poly.contour, z, threshold_deg)`). Then verify the test for AC-7 (manifest presence of `precise_outer_wall` and `seam_candidate_angle_threshold_deg` keys) — Step 1 already added the manifest entries, so AC-7 should now be green on the test run. AC-6 needs the new code path; AC-7 just needs Step 1's manifest change to be present.
 - Precondition: Step 4 complete; `slicer-core` and the two new config keys are reachable.
-- Postcondition: `arachne_parity_arachne_path_seam_candidate_producer_missing` (rewritten as `arachne_parity_seam_candidate_tdd`) and `arachne_parity_arachne_path_precise_outer_wall_not_registered` (rewritten as `arachne_parity_precise_outer_wall_manifest_tdd`) are green.
+- Postcondition: the new unit tests `arachne_parity_seam_candidate_tdd` (AC-6) and `arachne_parity_precise_outer_wall_manifest_tdd` (AC-7) are green. (The old substring tests `arachne_parity_arachne_path_seam_candidate_producer_missing` and `..._precise_outer_wall_not_registered` stay red until Step 8 deletes them.) Write both test files FIRST (RED), then implement (GREEN).
 - Files allowed to read (with line-range hints when > 300 lines):
   - `modules/core-modules/arachne-perimeters/src/lib.rs` lines 310-330 (the post-loop region)
   - `crates/slicer-core/src/perimeter_utils.rs:460` (`generate_sharp_corner_seam_candidates` signature)
@@ -152,8 +164,8 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PerimeterGenerator.cpp:2093-2535` — seam candidate emission
 - Verification:
-  - AC-6 + AC-7 green
-- Exit condition: full `arachne_parity` count is now 10 passed (3 packet-1 + 7 packet-148 arachne-path rewritten), 5 red (4 packet-149 + 1 D-104f).
+  - AC-6 + AC-7 unit tests green
+- Exit condition: both unit tests were RED before the lib.rs edit and are GREEN after. (The 10-passed / 5-red full-file count is Step 8's exit condition, not this step's.)
 
 ### Step 6: AC-8 — `precise_outer_wall` beading-stack mechanism unit test + offset gating
 
@@ -182,50 +194,36 @@
   - `cargo test -p arachne-perimeters --test precise_outer_wall_tdd` — pass (positive and negative cases)
 - Exit condition: AC-8 + AC-N2 both green.
 
-### Step 7: AC-1 through AC-5 unit tests — `arachne-parimeters/tests/` harness
+### Step 7: Aggregate unit-suite verification — `arachne-perimeters/tests/` all green
 
 - Task IDs:
   - none
-- Objective: add the remaining 5 unit-test files in `arachne-perimeters/tests/` that drive `ArachnePerimeters::run_perimeters` natively and assert on real `WallLoop` output (the per-AC coverage that the rewritten `arachne_parity.rs` delegates to):
-  - `arachne_parity_outer_wall_boundary_type_tdd.rs` (AC-1)
-  - `arachne_parity_thin_wall_loop_type_tdd.rs` (AC-2)
-  - `arachne_parity_is_thin_wall_flag_tdd.rs` (AC-3)
-  - `arachne_parity_is_bridge_flag_tdd.rs` (AC-4)
-  - `arachne_parity_overhang_quartile_tdd.rs` (AC-5)
-  - Each builds a `SliceRegionView` via `SliceRegionViewBuilder` (with `set_bridge_areas(...)` for AC-4 and `set_overhang_quartile_polygons(...)` for AC-5 as needed), a `ConfigView` via `ConfigViewBuilder`, constructs `PerimeterOutputBuilder::new()`, calls `ArachnePerimeters.run_perimeters(0, &[region], &PaintRegionLayerView::new(0), &mut output, &config)`, and asserts on `output.wall_loops()`. The harness pattern is identical to `modules/core-modules/classic-perimeters/tests/classic_perimeters_tdd.rs:1-50`.
-- Precondition: Steps 1-6 complete (the guest module code is in; the per-vertex overrides for `boundary_type`, `is_bridge`, `is_thin_wall`, `overhang_quartile` are wired; the seam emission is wired; `outer_wall_offset` gating is wired).
-- Postcondition: 5 new unit tests in `arachne-perimeters/tests/` are green; the runtime `output.wall_loops()` fields match the AC assertions.
+- Objective: consolidation gate. The 8 unit-test files were created inside Steps 2-6 (TDD-first per step); this step runs the whole module test suite once and confirms no cross-test interference (shared fixtures, config bleed) before the Step 8 rewrite of `arachne_parity.rs`.
+- Precondition: Steps 1-6 complete (all per-step unit tests individually green).
+- Postcondition: `cargo test -p arachne-perimeters --tests` shows all 8 test files green in one run.
 - Files allowed to read:
-  - `modules/core-modules/classic-perimeters/tests/classic_perimeters_tdd.rs:1-50` (the harness precedent)
-  - `crates/slicer-sdk/src/test_support/fixtures.rs` (`SliceRegionViewBuilder`, `ConfigViewBuilder`)
-  - `crates/slicer-sdk/src/test_support/capture.rs` (the test-only `PerimeterOutputCapture` if needed)
-  - `crates/slicer-ir/src/polygon_predicate.rs:41-47` (`point_in_polygon_winding`, `point_in_contour_winding` — wasm-compatible helpers used by the per-vertex band lookup)
-- Files allowed to edit (≤ 6):
-  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_outer_wall_boundary_type_tdd.rs` (new)
-  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_thin_wall_loop_type_tdd.rs` (new)
-  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_is_thin_wall_flag_tdd.rs` (new)
-  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_is_bridge_flag_tdd.rs` (new)
-  - `modules/core-modules/arachne-perimeters/tests/arachne_parity_overhang_quartile_tdd.rs` (new)
+  - `target/test-output.log` (via Grep, after the dispatched run)
+- Files allowed to edit (≤ 3):
+  - none (any failure here is triaged back to the owning step; do not patch tests in this step)
 - Files explicitly out-of-bounds for this step:
   - `modules/core-modules/arachne-perimeters/src/lib.rs` (read-only; the implementation is already in from Steps 1-6)
   - the manifests (read-only; Step 1 already set them)
 - Expected sub-agent dispatches:
-  - "For each of the 5 arachne-path ACs, run `cargo test -p arachne-perimeters --test <test_name> 2>&1 | tee target/test-output.log`; return FACT (pass) or SNIPPETS (first 20 lines of failure)." — purpose: per-AC unit test verification.
-  - "Read `modules/core-modules/classic-perimeters/tests/classic_perimeters_tdd.rs:1-50`; return SNIPPETS (verbatim, ≤ 30 lines) of the harness pattern (SliceRegionViewBuilder + ConfigViewBuilder + PerimeterOutputBuilder::new() + run_perimeters call)." — purpose: confirm the harness shape.
-- Context cost: M (5 new test files, each a small variation on the harness pattern; parallelizable to a sub-agent)
+  - "Run `cargo test -p arachne-perimeters --tests 2>&1 | tee target/test-output.log`; return FACT (all test binaries green, count) or SNIPPETS (failing-test detail blocks, ≤ 20 lines each)." — purpose: whole-suite verification.
+- Context cost: S (verification only)
 - Authoritative docs:
-  - none (the harness pattern is established by the classic module's existing tests)
+  - none
 - OrcaSlicer refs:
   - none
 - Verification:
-  - All 5 new unit tests green
-- Exit condition: `cargo test -p arachne-perimeters --tests` shows all 7+ unit tests (Steps 5+6+7) green; `cargo test -p slicer-runtime --test arachne_parity` shows 10 passed (3 packet-1 + 7 packet-148) once the test rewrite in Step 8 is in.
+  - All 8 unit-test files green in one `--tests` run
+- Exit condition: `cargo test -p arachne-perimeters --tests` exits 0.
 
 ### Step 8: Test rewrite — `arachne_parity.rs` rewritten to drive `run_perimeters` natively
 
 - Task IDs:
   - none
-- Objective: REWRITE `crates/slicer-runtime/tests/arachne_parity.rs` so the 7 arachne-path red tests drive `ArachnePerimeters::run_perimeters` natively (delegating to the new `arachne-perimeters/tests/*_tdd.rs` files, OR running the same harness inline). The 3 packet-1 stale-doc tests, 4 packet-149 pipeline-config tests, and 1 D-104f test are preserved with their existing predicates (they are manifest-presence / wiring-presence concerns and are correct as-is). The 7 arachne-path substring-matching tests are DELETED (the `arachne-parimeters/tests/*_tdd.rs` files are the canonical coverage). This step is sub-agent-dispatched (see Expected sub-agent dispatches) — the test rewrite is a substantial chunk of work and benefits from isolation.
+- Objective: REWRITE `crates/slicer-runtime/tests/arachne_parity.rs` so the 7 arachne-path red tests drive `ArachnePerimeters::run_perimeters` natively (delegating to the new `arachne-perimeters/tests/*_tdd.rs` files, OR running the same harness inline). The 3 packet-1 stale-doc tests, 4 packet-149 pipeline-config tests, and 1 D-104f test are preserved with their existing predicates (they are manifest-presence / wiring-presence concerns and are correct as-is). The 7 arachne-path substring-matching tests are DELETED (the `arachne-perimeters/tests/*_tdd.rs` files are the canonical coverage; note two of the old tests are structurally un-passable — the boundary-type test hardcodes its own failure at arachne_parity.rs:444-446 and the is_bridge test greps for `is_bridge`+`true` on one source line — so deletion, not repair, is the correct move). This step is sub-agent-dispatched (see Expected sub-agent dispatches) — the test rewrite is a substantial chunk of work and benefits from isolation.
 - Precondition: Steps 1-7 complete (the guest module is in; the 7+ new unit tests are green; the harness pattern is established).
 - Postcondition: `cargo test -p slicer-runtime --test arachne_parity` shows 10 passed (3 packet-1 stale-doc + 7 packet-148 arachne-path rewritten) and 5 red (4 packet-149 + 1 D-104f deferred). The substring-matching tests are gone.
 - Files allowed to read:
@@ -254,7 +252,7 @@
 
 - Task IDs:
   - none
-- Objective: refine `D-104-OVERHANG-QUARTILE-NONE` in `docs/DEVIATION_LOG.md` to "arachne-path-only per-vertex overhang/flag/seam/boundary parity" (Status flips to `Closed — 2026-07-09: packet 148 closes the arachne-path half`); append a one-line record to `docs/14_deviation_audit_history.md`; append the two new config keys to `docs/15_config_keys_reference.md` §Walls.
+- Objective: refine the RATIONALE of `D-104-OVERHANG-QUARTILE-NONE` in `docs/DEVIATION_LOG.md` to "arachne-path-only per-vertex overhang/flag/seam/boundary parity" — the row is ALREADY `Closed 2026-07-03` (DEVIATION_LOG.md:22); do NOT change its Status, only sharpen the rationale text and note packet 148 closed the arachne-path residue; append a one-line record to `docs/14_deviation_audit_history.md`; append the three new config keys (`precise_outer_wall`, `seam_candidate_angle_threshold_deg`, `wall_sequence`) to `docs/15_config_keys_reference.md` §Walls.
 - Precondition: Steps 5-8 complete (the code changes that close D-104's arachne-path half are in, and the test rewrite is complete).
 - Postcondition: `rg -q 'arachne-path-only per-vertex overhang' docs/DEVIATION_LOG.md` is a hit; `rg -q 'seam_candidate_angle_threshold_deg' docs/15_config_keys_reference.md` is a hit; `rg -q 'Packet 148' docs/14_deviation_audit_history.md` is a hit.
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -284,17 +282,17 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | S | Cargo.toml (`slicer-core` with `default-features=false`) + manifest edits, no source-code changes |
-| Step 2 | S | Single-line conditional in the construction loop |
-| Step 3 | S | Two-line `classify_line` extension + per-vertex flag in the construction loop |
-| Step 4 | M | Per-vertex is_bridge + overhang-band lookup; largest single edit |
-| Step 5 | M | New helper import + post-loop seam emission (input polygon contour, not `wall.path`) + 2 new test files (AC-6, AC-7) |
+| Step 1 | S | Cargo.toml (`slicer-core` with `default-features=false`) + 3 manifest keys (incl. `wall_sequence`) + fixtures.rs quartile-band setter |
+| Step 2 | S | AC-1 unit test (TDD-first) + single-line conditional in the construction loop |
+| Step 3 | M | AC-2/AC-3 unit tests (TDD-first) + `classify_line` ThinWall arm (predicate confirmed via OrcaSlicer dispatch) + per-vertex flag |
+| Step 4 | M | AC-4/AC-5 unit tests (TDD-first) + per-vertex is_bridge + overhang-band lookup; largest single edit |
+| Step 5 | M | New helper import + post-loop seam emission (input polygon contour, not `wall.path`) + 2 new test files (AC-6, AC-7), TDD-first |
 | Step 6 | M | AC-8 beading-stack offset gating in `arachne_params_from_config` + 1 new test file (AC-8 + AC-N2) |
-| Step 7 | M | 5 new unit-test files driving `run_perimeters` natively (AC-1 through AC-5) |
-| Step 8 | M | Test rewrite — `arachne_parity.rs` rewritten to drive `run_perimeters` natively (or delegate to the new test files); sub-agent-dispatched |
-| Step 9 | S | Deviation log + audit history + config keys reference |
+| Step 7 | S | Aggregate `cargo test -p arachne-perimeters --tests` verification only (test files created in Steps 2-6) |
+| Step 8 | M | Test rewrite — old substring tests deleted from `arachne_parity.rs` (two are structurally un-passable); sub-agent-dispatched |
+| Step 9 | S | Deviation log rationale (row already Closed) + audit history + config keys reference |
 
-Aggregate: M (sum of S+S+S+M+M+M+M+M+S = M-equivalent). No step is L. The packet does not need to split before activation.
+Aggregate: M (sum of S+S+M+M+M+M+S+M+S = M-equivalent). No step is L. The packet does not need to split before activation.
 
 ## Packet Completion Gate
 

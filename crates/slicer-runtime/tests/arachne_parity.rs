@@ -55,8 +55,18 @@ const CLASSIC_MODULE_SRC: &str =
 #[path = "fixtures/arachne_parity/mod.rs"]
 mod fixtures;
 
+use arachne_perimeters::ArachnePerimeters;
 use slicer_core::arachne::{run_arachne_pipeline, ArachneParams};
-use slicer_ir::{ExPolygon, ExtrusionLine, WallBoundaryType};
+use slicer_core::perimeter_utils::point_in_any_polygon;
+use slicer_ir::slice_ir::QuartileBand;
+use slicer_ir::{
+    mm_to_units, point_in_polygon_winding, units_to_mm, ConfigView, ExPolygon, ExtrusionLine,
+    LoopType, Point2, WallBoundaryType,
+};
+use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::*;
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+use slicer_sdk::views::SliceRegionView;
 
 /// Parse the module manifest TOML into a `toml::Value` for key-presence tests.
 fn manifest() -> toml::Value {
@@ -78,6 +88,94 @@ fn manifest_has_config_key(key: &str) -> bool {
         .and_then(|s| s.as_table())
         .map(|t| t.contains_key(key))
         .unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
+// AC-9 harness: drives `ArachnePerimeters::run_perimeters` natively via the
+// `LayerModule` trait, mirroring the canonical tdd fixtures under
+// `modules/core-modules/arachne-perimeters/tests/`.
+// ---------------------------------------------------------------------------
+
+/// Config with a nominal wall_count + bead width, no thin-wall detection.
+/// Mirrors `arachne_parity_outer_wall_boundary_type_tdd.rs::make_config` /
+/// `arachne_parity_is_bridge_flag_tdd.rs::make_config` /
+/// `arachne_parity_overhang_quartile_tdd.rs::make_config` /
+/// `arachne_parity_seam_candidate_tdd.rs::make_config`.
+fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
+    ConfigViewBuilder::new()
+        .int("wall_count", wall_count as i64)
+        .float("optimal_width", mm_to_units(line_width_mm) as f64)
+        .float(
+            "preferred_bead_width_outer",
+            mm_to_units(line_width_mm) as f64,
+        )
+        .build()
+}
+
+/// Config with a nominal 0.4mm bead width and thin-wall detection toggled.
+/// Mirrors `arachne_parity_thin_wall_loop_type_tdd.rs::make_config` /
+/// `arachne_parity_is_thin_wall_flag_tdd.rs::make_config`.
+fn native_thin_wall_config(detect_thin_wall_on: bool) -> ConfigView {
+    ConfigViewBuilder::new()
+        .int("wall_count", 2)
+        .float("optimal_width", mm_to_units(0.4) as f64)
+        .float("preferred_bead_width_outer", mm_to_units(0.4) as f64)
+        .bool("detect_thin_wall", detect_thin_wall_on)
+        .build()
+}
+
+/// A plain square region, centered at origin. Mirrors the tdd files' own
+/// `make_region(side_mm, z)`.
+fn native_square_region(side_mm: f32, z: f32) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_polygon(0.0, 0.0, side_mm))
+        .build()
+}
+
+/// A 0.25mm x 5mm thin strip, narrower than one full 0.4mm bead. Mirrors
+/// `arachne_parity_thin_wall_loop_type_tdd.rs::make_thin_strip_region`.
+fn native_thin_strip_region(z: f32) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(rect_polygon(0.0, 0.0, 0.25, 5.0))
+        .build()
+}
+
+/// A square region with a smaller centered bridge area. Mirrors
+/// `arachne_parity_is_bridge_flag_tdd.rs::make_region`.
+fn native_bridge_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_polygon(0.0, 0.0, side_mm))
+        .bridge_areas(vec![square_polygon(0.0, 0.0, bridge_side_mm)])
+        .build()
+}
+
+/// A square region with a smaller centered overhang-quartile band. Mirrors
+/// `arachne_parity_overhang_quartile_tdd.rs::make_region`.
+fn native_overhang_region(
+    side_mm: f32,
+    band_side_mm: f32,
+    quartile: u8,
+    z: f32,
+) -> SliceRegionView {
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_polygon(0.0, 0.0, side_mm))
+        .overhang_quartile_polygons(vec![QuartileBand {
+            quartile,
+            polygons: vec![square_polygon(0.0, 0.0, band_side_mm)],
+        }])
+        .build()
 }
 
 // ===========================================================================
@@ -185,35 +283,56 @@ fn arachne_parity_stale_doc_manifest_description_not_stale() {
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: overhang_quartile populated on junctions
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-5): overhang_quartile populated
+// per vertex
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `overhang_quartile` is populated in `classic-perimeters`
-/// (via `perimeter_utils::expolygon_to_path3d` at
-/// `crates/slicer-core/src/perimeter_utils.rs:316-331`) but hardcoded `None`
-/// in the arachne path (`generate_toolpaths.rs:184, 471, 866`). Tracked as
-/// `D-104-OVERHANG-QUARTILE-NONE`.
+/// `overhang_quartile` is now populated per-vertex in the arachne path via
+/// `region.overhang_quartile_polygons()` band lookup, mirroring
+/// `perimeter_utils::expolygon_to_path3d`
+/// (`crates/slicer-core/src/perimeter_utils.rs:316-331`). Rewritten (packet
+/// 148 AC-9) to drive `ArachnePerimeters::run_perimeters` natively instead of
+/// substring-matching source text — mirrors
+/// `arachne_parity_overhang_quartile_tdd.rs`.
 ///
 /// OrcaSlicer ref: `PerimeterGenerator.cpp:2113-2119`, `:370-460`, `:1117-1453`.
 #[test]
-fn arachne_parity_arachne_path_overhang_quartile_hardcoded_none() {
-    let sq = fixtures::square_mm(10.0);
-    let (lines, _) = arachne_lines(std::slice::from_ref(&sq));
-    let any_set = lines
-        .iter()
-        .flat_map(|l| l.junctions.iter())
-        .any(|j| j.p.overhang_quartile.is_some());
+fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
+    let config = native_wall_config(2, 0.4_f32);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_overhang_region(10.0, 4.0, 3, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
     assert!(
-        any_set,
-        "PARITY GAP: arachne_path: overhang_quartile populated | expected: \
-         OrcaSlicer detects overhang walls by offsetting lower slices by \
-         nozzle/2 and assigns the perimeter an overhang role, populating the \
-         per-vertex overhang classification (PerimeterGenerator.cpp:2113-2119) | \
-         classic path DOES set this via perimeter_utils::expolygon_to_path3d \
-         (perimeter_utils.rs:316-331) | got (arachne path): \
-         generate_toolpaths.rs:184,471,866 hardcodes overhang_quartile: None \
-         for every junction — tracked as D-104-OVERHANG-QUARTILE-NONE | ref: \
-         PerimeterGenerator.cpp:2113-2119"
+        !output.wall_loops().is_empty(),
+        "expected at least one wall loop to be emitted"
+    );
+
+    let band_polygon = square_polygon(0.0, 0.0, 4.0);
+    let mut checked_any_point = false;
+
+    for wall in output.wall_loops() {
+        for pt in &wall.path.points {
+            checked_any_point = true;
+            let inside = point_in_polygon_winding(&band_polygon, pt.x as f64, pt.y as f64, 0.0);
+            let expected = if inside { Some(3u8) } else { None };
+            assert_eq!(
+                pt.overhang_quartile, expected,
+                "vertex at ({}, {}) mm: expected overhang_quartile == {:?} \
+                 (point-in-band == {}), got {:?}",
+                pt.x, pt.y, expected, inside, pt.overhang_quartile
+            );
+        }
+    }
+
+    assert!(
+        checked_any_point,
+        "expected at least one path point to verify"
     );
 }
 
@@ -290,75 +409,118 @@ fn arachne_parity_pipeline_overhang_reverse_config_keys() {
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: LoopType::ThinWall emitted
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-2): LoopType::ThinWall emitted
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `LoopType::ThinWall` is emitted in classic
-/// (`classic-perimeters/src/lib.rs:783-790`) but the arachne module's
-/// `classify_line` (`arachne-perimeters/src/lib.rs:206-214`) never returns
-/// `ThinWall`.
+/// `LoopType::ThinWall` is now emitted by the arachne module's
+/// `classify_line` when `print_thin_walls` (`detect_thin_wall`) is on and a
+/// widened `is_odd`/`inset_idx == 0` center-line bead is thinner than one
+/// full bead, mirroring classic (`classic-perimeters/src/lib.rs:783-790`).
+/// Rewritten (packet 148 AC-9) to drive `ArachnePerimeters::run_perimeters`
+/// natively instead of substring-matching source text — mirrors
+/// `arachne_parity_thin_wall_loop_type_tdd.rs`.
 ///
 /// OrcaSlicer ref: `WallToolPaths.hpp:18`; `WideningBeadingStrategy.cpp:27-77`.
 #[test]
-fn arachne_parity_arachne_path_thin_wall_loop_type_never_emitted() {
-    let strip = fixtures::thin_strip_mm(0.25, 5.0);
-    let params = ArachneParams {
-        print_thin_walls: true,
-        ..ArachneParams::default()
-    };
-    let (lines, _) = run_arachne_pipeline(std::slice::from_ref(&strip), &params, false)
-        .expect("thin strip pipeline ok");
-    let classic_emits_thin_wall = CLASSIC_MODULE_SRC.contains("LoopType::ThinWall");
-    let arachne_classify_emits_thin_wall = ARACHNE_MODULE_SRC
-        .lines()
-        .any(|l| l.contains("classify_line") && l.contains("ThinWall"))
-        || (ARACHNE_MODULE_SRC.contains("classify_line")
-            && ARACHNE_MODULE_SRC.contains("ThinWall"));
+fn arachne_parity_arachne_path_thin_wall_loop_type_emitted() {
+    let config = native_thin_wall_config(true);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_thin_strip_region(0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let walls = output.wall_loops();
     assert!(
-        classic_emits_thin_wall && arachne_classify_emits_thin_wall,
-        "PARITY GAP: arachne_path: ThinWall loop type emitted | expected: \
-         OrcaSlicer tags thin-wall widened beads as a distinct loop type \
-         (WideningBeadingStrategy.cpp:27-77; WallToolPaths.hpp:18 \
-         fill_outline_gaps=true; LoopType::ThinWall per docs/02_ir_schemas.md:\
-         1505-1516) | classic path DOES emit ThinWall (lib.rs:783-790) | got \
-         (arachne path): classify_line (lib.rs:206-214) maps is_odd→GapFill, \
-         inset_idx==0→Outer, else Inner; LoopType::ThinWall is never produced \
-         (classic emits ThinWall: {}, arachne classify references ThinWall: {}, \
-         lines produced: {}) | ref: WideningBeadingStrategy.cpp:27-77",
-        classic_emits_thin_wall,
-        arachne_classify_emits_thin_wall,
-        lines.len()
+        !walls.is_empty(),
+        "the thin-strip fixture must emit at least one wall loop"
+    );
+    assert!(
+        walls.iter().any(|w| w.loop_type == LoopType::ThinWall),
+        "a 0.25mm-wide strip with detect_thin_wall=true must emit at least one \
+         WallLoop with loop_type == LoopType::ThinWall; got loop_types: {:?}",
+        walls.iter().map(|w| w.loop_type).collect::<Vec<_>>()
     );
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: precise_outer_wall not registered in arachne manifest
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-7/AC-8): precise_outer_wall
+// registered and honored
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `precise_outer_wall` IS honored in classic
-/// (`classic-perimeters/src/lib.rs:176-178, 545, 712`, T-053) but not in the
-/// arachne manifest/module.
+/// `precise_outer_wall` is now registered in `arachne-perimeters.toml` and
+/// gated on `precise_outer_wall && wall_sequence == "InnerOuter"`, offsetting
+/// the outer wall's toolpath by `-(preferred_bead_width_outer/2 -
+/// optimal_width/2)`, mirroring classic
+/// (`classic-perimeters/src/lib.rs:176-178, 545, 712`, T-053). Rewritten
+/// (packet 148 AC-9) to drive `ArachnePerimeters::run_perimeters` natively
+/// instead of substring-matching source text — mirrors
+/// `precise_outer_wall_tdd.rs`.
 ///
 /// OrcaSlicer ref: `PerimeterGenerator.cpp:2146-2158`;
 /// `OuterWallInsetBeadingStrategy.cpp:44-60`; `PrintConfig.cpp:1484-1489`.
 #[test]
-fn arachne_parity_arachne_path_precise_outer_wall_not_registered() {
-    let classic_registers = CLASSIC_MODULE_SRC.contains("precise_outer_wall");
-    let arachne_registers = manifest_has_config_key("precise_outer_wall");
+fn arachne_parity_arachne_path_precise_outer_wall_registered() {
     assert!(
-        arachne_registers && classic_registers,
-        "PARITY GAP: arachne_path: precise_outer_wall config registered | \
-         expected: OrcaSlicer exposes precise_outer_wall coBool (default \
-         true) that offsets the outer wall by -(ext_perimeter_width/2 - \
-         ext_perimeter_spacing/2) when wall_sequence==InnerOuter \
-         (PerimeterGenerator.cpp:2146-2158; OuterWallInsetBeadingStrategy.cpp:\
-         44-60; PrintConfig.cpp:1484-1489) | classic path DOES register + \
-         honor it (lib.rs:176-178, 545, 712) | got (arachne path): no \
-         precise_outer_wall section in arachne-perimeters.toml \
-         (arachne registers: {}, classic registers: {}) | ref: \
-         PerimeterGenerator.cpp:2146-2158",
-        arachne_registers,
-        classic_registers
+        manifest_has_config_key("precise_outer_wall"),
+        "expected arachne-perimeters.toml to declare [config.schema.precise_outer_wall]"
+    );
+
+    const OUTER_WIDTH_MM: f32 = 0.5;
+    const SPACING_WIDTH_MM: f32 = 0.4;
+    const EXPECTED_OFFSET_MM: f64 =
+        -((OUTER_WIDTH_MM as f64 / 2.0) - (SPACING_WIDTH_MM as f64 / 2.0));
+    const TOLERANCE_MM: f32 = 1e-3;
+
+    let make_config = |precise_outer_wall: bool| -> ConfigView {
+        ConfigViewBuilder::new()
+            .int("wall_count", 2)
+            .float("optimal_width", mm_to_units(SPACING_WIDTH_MM) as f64)
+            .float(
+                "preferred_bead_width_outer",
+                mm_to_units(OUTER_WIDTH_MM) as f64,
+            )
+            .bool("precise_outer_wall", precise_outer_wall)
+            .string("wall_sequence", "InnerOuter")
+            .build()
+    };
+    let run_and_get_outer_wall = |config: &ConfigView| -> slicer_ir::WallLoop {
+        let module = ArachnePerimeters::on_print_start(config).unwrap();
+        let regions = vec![native_square_region(10.0, 0.2)];
+        let paint = PaintRegionLayerView::new(0);
+        let mut output = PerimeterOutputBuilder::new();
+        module
+            .run_perimeters(0, &regions, &paint, &mut output, config)
+            .unwrap();
+        output
+            .wall_loops()
+            .iter()
+            .find(|w| w.perimeter_index == 0)
+            .expect("a wall loop with perimeter_index == 0 must be emitted")
+            .clone()
+    };
+    let min_x = |wall: &slicer_ir::WallLoop| -> f32 {
+        wall.path
+            .points
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::INFINITY, f32::min)
+    };
+
+    let outer_off = run_and_get_outer_wall(&make_config(false));
+    let outer_on = run_and_get_outer_wall(&make_config(true));
+    let observed_delta = (min_x(&outer_on) - min_x(&outer_off)) as f64;
+
+    assert!(
+        (observed_delta - EXPECTED_OFFSET_MM).abs() < TOLERANCE_MM as f64,
+        "expected outer wall min-x to shift by {EXPECTED_OFFSET_MM} mm when \
+         precise_outer_wall is gated on, observed shift {observed_delta} mm \
+         (off min-x={}, on min-x={})",
+        min_x(&outer_off),
+        min_x(&outer_on)
     );
 }
 
@@ -419,128 +581,206 @@ fn arachne_parity_pipeline_alternate_extra_wall_not_registered() {
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: WallBoundaryType::ExteriorSurface for outer wall
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-1): WallBoundaryType::ExteriorSurface
+// for outer wall
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `WallBoundaryType::ExteriorSurface` is set for the outer
-/// wall in classic (`crates/slicer-core/src/perimeter_utils.rs:194-195`) but
-/// hardcoded `Interior` in arachne (`arachne-perimeters/src/lib.rs:302`).
+/// `WallBoundaryType::ExteriorSurface` is now set for the outermost wall
+/// (`perimeter_index == 0`) in arachne, mirroring classic
+/// (`crates/slicer-core/src/perimeter_utils.rs:194-195`). Rewritten (packet
+/// 148 AC-9) to drive `ArachnePerimeters::run_perimeters` natively instead of
+/// constructing a local `WallBoundaryType::Interior` and asserting it isn't
+/// `Interior` (structurally un-passable) — mirrors
+/// `arachne_parity_outer_wall_boundary_type_tdd.rs`.
 ///
 /// OrcaSlicer ref: `PerimeterGenerator.cpp:383`; `docs/02_ir_schemas.md:1418-1428`.
 #[test]
-fn arachne_parity_arachne_path_outer_wall_boundary_type_hardcoded_interior() {
-    let sq = fixtures::square_mm(10.0);
-    let (lines, _) = arachne_lines(std::slice::from_ref(&sq));
-    let outer_idx = lines
+fn arachne_parity_arachne_path_outer_wall_boundary_type_exterior_surface() {
+    let config = native_wall_config(2, 0.4_f32);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_square_region(10.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let outer_wall = output
+        .wall_loops()
         .iter()
-        .min_by_key(|l| l.inset_idx)
-        .map(|l| l.inset_idx);
-    assert!(
-        outer_idx.is_some(),
-        "Arachne pipeline produced no lines for a 10mm square"
-    );
-    let arachne_uses_exterior = ARACHNE_MODULE_SRC.contains("WallBoundaryType::ExteriorSurface");
-    // Replicate the module's hardcoded decision to surface the gap.
-    let boundary = WallBoundaryType::Interior;
-    assert!(
-        arachne_uses_exterior && !matches!(boundary, WallBoundaryType::Interior),
-        "PARITY GAP: arachne_path: outer wall boundary_type ExteriorSurface | \
-         expected: the outermost wall (inset_idx == 0) carries \
-         WallBoundaryType::ExteriorSurface, signalling it faces air \
-         (PerimeterGenerator.cpp:383; docs/02_ir_schemas.md:1418-1428) | \
-         classic path DOES set ExteriorSurface via perimeter_utils::\
-         build_wall_flags (perimeter_utils.rs:194-195) | got (arachne path): \
-         arachne-perimeters lib.rs:302 hardcodes \
-         boundary_type = WallBoundaryType::Interior for every wall \
-         (arachne uses ExteriorSurface: {}) | ref: PerimeterGenerator.cpp:383",
-        arachne_uses_exterior
+        .find(|w| w.perimeter_index == 0)
+        .expect("a wall loop with perimeter_index == 0 must be emitted");
+
+    assert_eq!(
+        outer_wall.boundary_type,
+        WallBoundaryType::ExteriorSurface,
+        "the perimeter_index == 0 wall loop (outermost bead, facing air) must have \
+         boundary_type == ExteriorSurface, got {:?}",
+        outer_wall.boundary_type
     );
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: is_bridge flag never set in arachne path
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-4): is_bridge flag set per vertex
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `WallFeatureFlags.is_bridge` is set per-vertex in
-/// classic (`classic-perimeters/src/lib.rs:675-678`) but never set in arachne
-/// (`arachne-perimeters/src/lib.rs:301` uses `WallFeatureFlags::default()`).
+/// `WallFeatureFlags.is_bridge` is now set per-vertex in arachne via
+/// `region.bridge_areas()` point-in-polygon lookup on Outer/Inner walls,
+/// mirroring classic (`classic-perimeters/src/lib.rs:675-678`).
+/// ThinWall/GapFill walls never set `is_bridge`. Rewritten (packet 148 AC-9)
+/// to drive `ArachnePerimeters::run_perimeters` natively instead of grepping
+/// source text for `is_bridge` + `true` on one line (structurally
+/// un-passable) — mirrors `arachne_parity_is_bridge_flag_tdd.rs`.
 ///
 /// OrcaSlicer ref: `docs/02_ir_schemas.md:1520-1533`;
 /// `PerimeterGenerator.cpp:2113-2119`.
 #[test]
-fn arachne_parity_arachne_path_is_bridge_flag_never_set() {
-    let sq = fixtures::square_mm(10.0);
-    let (lines, _) = arachne_lines(std::slice::from_ref(&sq));
-    let classic_sets_is_bridge = CLASSIC_MODULE_SRC
-        .lines()
-        .any(|l| l.contains("is_bridge") && l.contains("true"));
-    let arachne_sets_is_bridge = ARACHNE_MODULE_SRC
-        .lines()
-        .any(|l| l.contains("is_bridge") && l.contains("true"));
+fn arachne_parity_arachne_path_is_bridge_flag_set_per_vertex() {
+    let config = native_wall_config(2, 0.4_f32);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_bridge_region(10.0, 4.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let bridge_areas = vec![square_polygon(0.0, 0.0, 4.0)];
     assert!(
-        classic_sets_is_bridge && arachne_sets_is_bridge,
-        "PARITY GAP: arachne_path: is_bridge flag set on overhang | expected: \
-         overhang/bridge wall segments carry WallFeatureFlags.is_bridge = \
-         true (docs/02_ir_schemas.md:1520-1533; PerimeterGenerator.cpp:2113-\
-         2119) | classic path DOES set is_bridge per-vertex (lib.rs:675-678) | \
-         got (arachne path): arachne-perimeters lib.rs:301 builds \
-         feature_flags: vec![WallFeatureFlags::default(); num_points] for \
-         every wall, so is_bridge is never set (classic sets is_bridge: {}, \
-         arachne sets is_bridge: {}, lines produced: {}) | ref: \
-         PerimeterGenerator.cpp:2113-2119",
-        classic_sets_is_bridge,
-        arachne_sets_is_bridge,
-        lines.len()
+        !output.wall_loops().is_empty(),
+        "expected at least one wall loop to be emitted"
+    );
+
+    let mut checked_any_outer_inner = false;
+    for wall in output.wall_loops() {
+        for (j, flag) in wall.feature_flags.iter().enumerate() {
+            let pt = &wall.path.points[j];
+            let units_pt = Point2 {
+                x: mm_to_units(pt.x),
+                y: mm_to_units(pt.y),
+            };
+            let inside = point_in_any_polygon(&units_pt, &bridge_areas);
+
+            match wall.loop_type {
+                LoopType::Outer | LoopType::Inner => {
+                    checked_any_outer_inner = true;
+                    assert_eq!(
+                        flag.is_bridge,
+                        inside,
+                        "wall loop_type={:?} perimeter_index={} vertex {} at ({}, {}) mm: \
+                         expected is_bridge == {} (point-in-bridge-area == {}), got {}",
+                        wall.loop_type,
+                        wall.perimeter_index,
+                        j,
+                        pt.x,
+                        pt.y,
+                        inside,
+                        inside,
+                        flag.is_bridge
+                    );
+                }
+                _ => {
+                    assert!(
+                        !flag.is_bridge,
+                        "ThinWall/GapFill/NonPlanarShell walls must never set is_bridge \
+                         (loop_type={:?}, vertex {})",
+                        wall.loop_type, j
+                    );
+                }
+            }
+        }
+    }
+
+    assert!(
+        checked_any_outer_inner,
+        "expected at least one Outer or Inner wall loop to verify is_bridge against"
     );
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: is_thin_wall flag never set in arachne path
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-3): is_thin_wall flag set on thin
+// region
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: `WallFeatureFlags.is_thin_wall` is set in classic
-/// (`classic-perimeters/src/lib.rs:772` in ThinWall emission) but never set in
-/// arachne.
+/// `WallFeatureFlags.is_thin_wall` is now set on every vertex of a
+/// `LoopType::ThinWall` wall, and never on `Outer`/`Inner` walls, mirroring
+/// classic (`classic-perimeters/src/lib.rs:772` in ThinWall emission).
+/// Rewritten (packet 148 AC-9) to drive `ArachnePerimeters::run_perimeters`
+/// natively instead of substring-matching source text — mirrors
+/// `arachne_parity_is_thin_wall_flag_tdd.rs`.
 ///
 /// OrcaSlicer ref: `docs/02_ir_schemas.md:1528`; `WideningBeadingStrategy.cpp:27-77`.
 #[test]
-fn arachne_parity_arachne_path_is_thin_wall_flag_never_set() {
-    let strip = fixtures::thin_strip_mm(0.25, 5.0);
-    let params = ArachneParams {
-        print_thin_walls: true,
-        ..ArachneParams::default()
-    };
-    let (lines, _) = run_arachne_pipeline(std::slice::from_ref(&strip), &params, false)
-        .expect("thin strip pipeline ok");
-    let classic_sets_is_thin_wall = CLASSIC_MODULE_SRC
-        .lines()
-        .any(|l| l.contains("is_thin_wall") && l.contains("true"));
-    let arachne_sets_is_thin_wall = ARACHNE_MODULE_SRC
-        .lines()
-        .any(|l| l.contains("is_thin_wall") && l.contains("true"));
+fn arachne_parity_arachne_path_is_thin_wall_flag_set_on_thin_wall_loops() {
+    let config = native_thin_wall_config(true);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_thin_strip_region(0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let walls = output.wall_loops();
     assert!(
-        classic_sets_is_thin_wall && arachne_sets_is_thin_wall,
-        "PARITY GAP: arachne_path: is_thin_wall flag set on thin region | \
-         expected: thin-wall widened beads carry WallFeatureFlags.is_thin_wall \
-         = true (docs/02_ir_schemas.md:1528; WideningBeadingStrategy.cpp:27-77) \
-         | classic path DOES set is_thin_wall (lib.rs:772 in ThinWall emission) \
-         | got (arachne path): arachne-perimeters lib.rs:301 builds \
-         feature_flags: vec![WallFeatureFlags::default(); num_points] \
-         (classic sets is_thin_wall: {}, arachne sets is_thin_wall: {}, lines \
-         produced: {}) | ref: WideningBeadingStrategy.cpp:27-77",
-        classic_sets_is_thin_wall,
-        arachne_sets_is_thin_wall,
-        lines.len()
+        !walls.is_empty(),
+        "the thin-strip fixture must emit at least one wall loop"
     );
+
+    let thin_wall_loops: Vec<_> = walls
+        .iter()
+        .filter(|w| w.loop_type == LoopType::ThinWall)
+        .collect();
+    assert!(
+        !thin_wall_loops.is_empty(),
+        "the thin-strip fixture must emit at least one LoopType::ThinWall wall; \
+         got loop_types: {:?}",
+        walls.iter().map(|w| w.loop_type).collect::<Vec<_>>()
+    );
+    for wall in &thin_wall_loops {
+        assert!(
+            wall.feature_flags.iter().all(|f| f.is_thin_wall),
+            "every vertex's WallFeatureFlags on a LoopType::ThinWall wall must have \
+             is_thin_wall == true; got {:?}",
+            wall.feature_flags
+                .iter()
+                .map(|f| f.is_thin_wall)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    // Negative shape: is_thin_wall must never be set on Outer/Inner walls,
+    // even if geometrically narrow.
+    for wall in walls
+        .iter()
+        .filter(|w| w.loop_type == LoopType::Outer || w.loop_type == LoopType::Inner)
+    {
+        assert!(
+            wall.feature_flags.iter().all(|f| !f.is_thin_wall),
+            "Outer/Inner walls must never have is_thin_wall == true (loop_type {:?}); \
+             got {:?}",
+            wall.loop_type,
+            wall.feature_flags
+                .iter()
+                .map(|f| f.is_thin_wall)
+                .collect::<Vec<_>>()
+        );
+    }
 }
 
 // ===========================================================================
-// GAP_ARACHNE_PATH: seam_candidate producer missing in arachne
+// GAP_ARACHNE_PATH (CLOSED, packet 148 AC-6): seam_candidate producer present
 // ====================================================================================
 
-/// GAP_ARACHNE_PATH: seam candidates are emitted in classic
-/// (`classic-perimeters/src/lib.rs:889-900` via
-/// `generate_sharp_corner_seam_candidates`) but never in arachne.
+/// Arachne now emits seam candidates for each region's outer contour via
+/// `generate_sharp_corner_seam_candidates`, mirroring classic
+/// (`classic-perimeters/src/lib.rs:889-900`). Rewritten (packet 148 AC-9) to
+/// drive `ArachnePerimeters::run_perimeters` natively instead of
+/// substring-matching source text — mirrors
+/// `arachne_parity_seam_candidate_tdd.rs`.
 ///
 /// OrcaSlicer ref: `docs/05_module_sdk.md:601-657`;
 /// `PerimeterGenerator.cpp:2093-2535`.
@@ -548,25 +788,41 @@ fn arachne_parity_arachne_path_is_thin_wall_flag_never_set() {
 /// `region.seam_candidates()`); it does not generate them — the perimeter
 /// module is the producer.
 #[test]
-fn arachne_parity_arachne_path_seam_candidate_producer_missing() {
-    let classic_emits_seam = CLASSIC_MODULE_SRC.contains("generate_sharp_corner_seam_candidates")
-        || CLASSIC_MODULE_SRC.contains("push_seam_candidate");
-    let arachne_emits_seam = ARACHNE_MODULE_SRC.contains("generate_sharp_corner_seam_candidates")
-        || ARACHNE_MODULE_SRC.contains("push_seam_candidate")
-        || ARACHNE_MODULE_SRC.contains("seam_candidate");
+fn arachne_parity_arachne_path_seam_candidate_producer_present() {
+    let config = native_wall_config(2, 0.4_f32);
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_square_region(10.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
+    let candidates = output.seam_candidates();
     assert!(
-        classic_emits_seam && arachne_emits_seam,
-        "PARITY GAP: arachne_path: seam_candidates produced | expected: \
-         perimeter modules emit seam_candidates for the outer wall via \
-         generate_sharp_corner_seam_candidates (docs/05_module_sdk.md:601-657; \
-         PerimeterGenerator.cpp:2093-2535) | classic path IS the seam-candidate \
-         producer (lib.rs:889-900) | got (arachne path): no \
-         generate_sharp_corner_seam_candidates / push_seam_candidate call in \
-         arachne-perimeters src/lib.rs (classic emits: {}, arachne emits: {}) | \
-         ref: docs/05_module_sdk.md:601-657",
-        classic_emits_seam,
-        arachne_emits_seam
+        !candidates.is_empty(),
+        "expected at least one seam candidate for a square's sharp corners"
     );
+
+    // square_polygon(0.0, 0.0, 10.0) corners, in mm.
+    let corners_mm: Vec<(f32, f32)> = square_polygon(0.0, 0.0, 10.0)
+        .contour
+        .points
+        .iter()
+        .map(|p| (units_to_mm(p.x), units_to_mm(p.y)))
+        .collect();
+
+    for (pos, _score) in candidates {
+        let is_at_corner = corners_mm
+            .iter()
+            .any(|(cx, cy)| (pos.x - cx).abs() < 1e-3 && (pos.y - cy).abs() < 1e-3);
+        assert!(
+            is_at_corner,
+            "seam candidate at ({}, {}) mm does not match any input polygon corner {:?}",
+            pos.x, pos.y, corners_mm
+        );
+    }
 }
 
 // ===========================================================================

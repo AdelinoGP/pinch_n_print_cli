@@ -148,9 +148,11 @@ dependencies = [
 name = "arachne-perimeters"
 version = "0.1.0"
 dependencies = [
+ "slicer-core",
  "slicer-ir",
  "slicer-schema",
  "slicer-sdk",
+ "toml 0.8.23",
  "wit-bindgen 0.57.1",
 ]
 
@@ -2536,6 +2538,7 @@ dependencies = [
 name = "slicer-runtime"
 version = "0.1.0"
 dependencies = [
+ "arachne-perimeters",
  "assert_cmd",
  "base64 0.22.1",
  "clap",
