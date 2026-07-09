@@ -1,8 +1,8 @@
 [module]
 id           = "com.core.arachne-perimeters"
 version      = "0.1.0"
-display-name = "Arachne Perimeters (skeleton)"
-description  = "Arachne variable-width perimeter generator (M2 foundations skeleton — walls not yet produced, see P112)"
+display-name = "Arachne Perimeters"
+description  = "Arachne variable-width perimeter generator. Produces perimeter walls via the Arachne/WallToolPaths pipeline (skeletal-trapezoidation graph + beading-strategy stack); selected when wall_generator = \"arachne\" (default \"classic\", see D-112-WALL-GENERATOR-SELECT). Claim-holds Layer::Perimeters and is incompatible with com.core.classic-perimeters."
 author       = "modular-slicer"
 license      = "MIT"
 wit-world    = "slicer:world-layer@1.0.0"
@@ -61,7 +61,7 @@ max-ir-schema     = "5.0.0"
   min         = 0
   unit        = "units"
   display     = "Wall transition filter deviation"
-  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Maps to DistributedBeadingStrategy's internal transition_filter_dist field (reserved, not yet read by compute). OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts. Maps to DistributedBeadingStrategy's internal transition_filter_dist field and is consumed by the centrality/propagation path (skeletal_trapezoidation/centrality.rs:162, propagation.rs:670,719). OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
   group       = "Arachne"
   advanced    = true
 
@@ -179,7 +179,7 @@ max-ir-schema     = "5.0.0"
   type        = "bool"
   default     = false
   display     = "Detect thin wall"
-  description = "Gates whether WideningBeadingStrategy is wrapped into the BeadingStrategyFactory::create_stack composition at all (maps to the internal Arachne print_thin_walls parameter). false means WideningBeadingStrategy is absent from the stack entirely, not merely a no-op. Matches OrcaSlicer's coBool default of false exactly (PrintConfig.cpp:6299-6305, label \"Detect thin wall\")."
+  description = "Gates whether WideningBeadingStrategy is wrapped into the BeadingStrategyFactory::create_stack composition at all (maps to the internal Arachne print_thin_walls parameter). false means WideningBeadingStrategy is absent from the stack entirely, not merely a no-op. PnP exposes this as a config key defaulting to false; OrcaSlicer's analog is fill_outline_gaps, a hardcoded constexpr bool = true in WallToolPaths.hpp:18, so PnP's default differs from upstream by design."
   group       = "Arachne"
   advanced    = true
 
