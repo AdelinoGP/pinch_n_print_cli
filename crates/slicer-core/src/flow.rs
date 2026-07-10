@@ -77,6 +77,22 @@ pub fn flow_to_width(spacing: f32, layer_height: f32) -> f32 {
     (spacing + layer_height * pi_minus_quarter).max(spacing)
 }
 
+/// Flow-rate multiplier applied to bridging extrusions (packet 149, D4).
+///
+/// Mirrors OrcaSlicer's `LayerRegion.cpp` `bridging_flow`: the real formula is
+/// `base_flow.with_flow_ratio(bridge_flow_ratio)` — `bridge_flow_ratio` is a
+/// ratio applied on top of the base flow, not a standalone constant. The
+/// `thick_bridges == true` branch returning `1.0` (i.e. no flow reduction) is
+/// a Pinch 'n Print divergence from OrcaSlicer's per-path `Flow`
+/// height/nozzle-diameter model, registered as deviation D-104g.
+pub fn bridging_flow(bridge_flow_ratio: f32, thick_bridges: bool) -> f32 {
+    if thick_bridges {
+        1.0
+    } else {
+        bridge_flow_ratio
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

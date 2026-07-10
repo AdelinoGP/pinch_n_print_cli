@@ -21,6 +21,7 @@
 
 use std::collections::HashMap;
 
+use slicer_core::flow::bridging_flow;
 use slicer_core::perimeter_utils::{
     apply_seam_paint_bias, build_wall_flags, expolygon_to_path3d,
     generate_sharp_corner_seam_candidates, point_in_any_polygon, wall_sequence_reorder,
@@ -220,6 +221,22 @@ impl LayerModule for ClassicPerimeters {
             .map(|v| v as f32)
             .unwrap_or(10.0);
         let only_one_wall_top = _config.get_bool("only_one_wall_top").unwrap_or(false);
+        // min_width_top_surface (D-104d, deferred): OrcaSlicer's width
+        // threshold (mm) gating the `only_one_wall_top` single-wall cutoff —
+        // a top-surface loop narrower than this keeps its full wall count
+        // instead of collapsing to one (PerimeterGenerator.cpp:2160-2245;
+        // PrintConfig.cpp:1491-1511). `only_one_wall_top` above is
+        // unconditional (no per-loop width comparison yet) — behavior
+        // deferred, see D-104d-MIN-WIDTH-TOP-SURFACE-NONE. Read and
+        // validated here (must be a finite, non-negative mm value) so the
+        // config key round-trips correctly ahead of that follow-up; the
+        // value itself is intentionally unused until then.
+        let min_width_top_surface = _config.get_float("min_width_top_surface").unwrap_or(1.2);
+        debug_assert!(
+            min_width_top_surface.is_finite() && min_width_top_surface >= 0.0,
+            "min_width_top_surface must be a finite, non-negative mm value, got {min_width_top_surface}"
+        );
+        let _ = min_width_top_surface;
         let only_one_wall_first_layer = _config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
@@ -240,6 +257,13 @@ impl LayerModule for ClassicPerimeters {
             .unwrap_or(self.inner_speed_factor * BASE_SPEED);
         let outer_speed_factor = outer_wall_speed / BASE_SPEED;
         let inner_speed_factor = inner_wall_speed / BASE_SPEED;
+        // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
+        // invocation, applied per-vertex in emit_walls wherever is_bridge is true.
+        let bridge_flow_ratio = _config
+            .get_float("bridge_flow")
+            .map(|v| v as f32)
+            .unwrap_or(1.0);
+        let thick_bridges = _config.get_bool("thick_bridges").unwrap_or(false);
 
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
@@ -319,6 +343,8 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
+                        bridge_flow_ratio,
+                        thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
@@ -346,6 +372,8 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
+                        bridge_flow_ratio,
+                        thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
@@ -375,6 +403,8 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
+                        bridge_flow_ratio,
+                        thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
@@ -402,6 +432,8 @@ impl LayerModule for ClassicPerimeters {
                         outer_speed_factor,
                         inner_speed_factor,
                         region.bridge_areas(),
+                        bridge_flow_ratio,
+                        thick_bridges,
                         region_outer_wall_line_width,
                         inner_wall_line_width,
                         wall_sequence,
@@ -429,6 +461,8 @@ impl LayerModule for ClassicPerimeters {
                     outer_speed_factor,
                     inner_speed_factor,
                     region.bridge_areas(),
+                    bridge_flow_ratio,
+                    thick_bridges,
                     region_outer_wall_line_width,
                     inner_wall_line_width,
                     wall_sequence,
@@ -495,6 +529,8 @@ impl ClassicPerimeters {
         outer_speed_factor: f32,
         inner_speed_factor: f32,
         bridge_areas: &[ExPolygon],
+        bridge_flow_ratio: f32,
+        thick_bridges: bool,
         outer_wall_line_width: f32,
         inner_wall_line_width: f32,
         wall_sequence: WallSequence,
@@ -638,7 +674,7 @@ impl ClassicPerimeters {
             };
 
             for (poly_idx, poly) in wall_polys.iter().enumerate() {
-                let points = expolygon_to_path3d(
+                let mut points = expolygon_to_path3d(
                     &poly.contour,
                     z,
                     self.line_width_for(
@@ -674,7 +710,11 @@ impl ClassicPerimeters {
                 // handled by mirror_first_to_last below.
                 for (i, pt) in poly.contour.points.iter().enumerate() {
                     if i < feature_flags.len() {
-                        feature_flags[i].is_bridge = point_in_any_polygon(pt, bridge_areas);
+                        let is_bridge = point_in_any_polygon(pt, bridge_areas);
+                        feature_flags[i].is_bridge = is_bridge;
+                        if is_bridge {
+                            points[i].flow_factor = bridging_flow(bridge_flow_ratio, thick_bridges);
+                        }
                     }
                 }
                 slicer_sdk::mirror_first_to_last(&mut feature_flags);

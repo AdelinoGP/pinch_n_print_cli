@@ -217,6 +217,97 @@ max     = 180.0
 display = "Seam candidate sharp-corner angle threshold (degrees)"
 group   = "Seam"
 
+# ── OrcaSlicer overhang/bridging/vase config wiring (packet 149) ────────
+# Mixed: alternate_extra_wall, spiral_vase, sparse_infill_density, bridge_flow,
+# and thick_bridges ARE consumed by run_perimeters (D3 alternating-wall
+# max_bead_count gate / D4 bridge flow factor). The remaining keys are
+# registration only, behavior deferred per D-104c/D-104d.
+# Grepped modules/core-modules/*/*.toml first: none of these 11 keys were
+# already registered here, except extra_perimeters_on_overhangs and
+# only_one_wall_top, whose section shape is copied verbatim from
+# classic-perimeters.toml so the two manifests mirror each other.
+
+[config.schema.detect_overhang_wall]
+type        = "bool"
+default     = true
+display     = "Detect overhang wall"
+description = "OrcaSlicer coBool key detect_overhang_wall (Orca default 1/true); gates the overhang-wall speed/reversal/extra-perimeter special-casing path. Not yet consumed by run_perimeters in this packet."
+group       = "Walls"
+
+[config.schema.overhang_reverse]
+type        = "bool"
+default     = false
+display     = "Reverse on overhang"
+description = "OrcaSlicer coBool key overhang_reverse; reverses the print direction of wall loops on odd layers containing overhang wall segments (anti-warping). Not yet consumed by run_perimeters in this packet."
+group       = "Walls"
+
+[config.schema.overhang_reverse_internal_only]
+type        = "bool"
+default     = false
+display     = "Reverse on overhang (internal walls only)"
+description = "OrcaSlicer coBool key overhang_reverse_internal_only; when true, only internal (non-outer) overhang wall lines are reversed. Not yet consumed by run_perimeters in this packet."
+group       = "Walls"
+
+[config.schema.extra_perimeters_on_overhangs]
+type    = "bool"
+default = false
+display = "Extra perimeter on overhangs (adds one wall loop inside region.overhang_areas())"
+group   = "Walls"
+
+[config.schema.min_width_top_surface]
+type        = "float"
+default     = 1.2
+min         = 0.0
+unit        = "mm"
+display     = "Minimum top surface width"
+description = "OrcaSlicer coFloatOrPercent key min_width_top_surface, default 300% of line width (≈1.2mm at the common 0.4mm line width). No coFloatOrPercent/literal-percent representation precedent found in modules/core-modules/*/*.toml (grepped); represented here as a plain mm float per the docs/03_wit_and_manifest.md unit=\"mm\" convention (see tree_support_branch_diameter). Not yet consumed by run_perimeters in this packet."
+group       = "Walls"
+
+[config.schema.alternate_extra_wall]
+type        = "bool"
+default     = false
+display     = "Alternate extra wall"
+description = "OrcaSlicer coBool key alternate_extra_wall; adds an extra perimeter wall on alternating layers to correct over-extrusion patterns. Consumed by run_perimeters: D3 gate bumps ArachneParams.max_bead_count by +2 on odd layers when !spiral_vase && sparse_infill_density > 0."
+group       = "Walls"
+
+[config.schema.bridge_flow]
+type        = "float"
+default     = 1.0
+min         = 0.0
+display     = "Bridge flow ratio"
+description = "OrcaSlicer coFloat key bridge_flow; flow-rate multiplier applied to bridging extrusions. Consumed by run_perimeters: D4 per-vertex bridge flow factor via slicer_core::flow::bridging_flow, applied at is_bridge vertices."
+group       = "Quality"
+
+[config.schema.thick_bridges]
+type        = "bool"
+default     = false
+display     = "Thick bridges"
+description = "OrcaSlicer coBool key thick_bridges; when true, bridge extrusions use full un-scarfed layer height instead of the thin/adaptive bridge height. Consumed by run_perimeters: D4 per-vertex bridge flow factor via slicer_core::flow::bridging_flow (thick_bridges=true short-circuits the ratio to 1.0)."
+group       = "Quality"
+
+[config.schema.spiral_vase]
+type        = "bool"
+default     = false
+display     = "Spiral vase mode"
+description = "OrcaSlicer coBool key spiral_vase; enables spiral/vase mode (continuous single-wall Z-ramp, no top layers, only one wall). No existing registration found elsewhere in modules/core-modules/*/*.toml (grepped). Consumed by run_perimeters: part of the D3 odd-layer max_bead_count gate (alternate_extra_wall applies only when !spiral_vase)."
+group       = "Walls"
+
+[config.schema.sparse_infill_density]
+type        = "float"
+default     = 20.0
+min         = 0.0
+max         = 100.0
+unit        = "%"
+display     = "Sparse infill density"
+description = "OrcaSlicer coPercent key sparse_infill_density, default 20%. No existing registration found elsewhere in modules/core-modules/*/*.toml (grepped); represented here as a plain percent float. Consumed by run_perimeters: part of the D3 odd-layer max_bead_count gate (alternate_extra_wall applies only when sparse_infill_density > 0)."
+group       = "Infill"
+
+[config.schema.only_one_wall_top]
+type    = "bool"
+default = false
+display = "Only one wall on top surfaces"
+group   = "Walls"
+
 [config.overridable-per-region]
 keys = []
 

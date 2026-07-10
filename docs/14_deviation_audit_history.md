@@ -80,6 +80,20 @@ below, which it uniquely owns.
 
 - **2026-07-09 — D-104-OVERHANG-QUARTILE-NONE scope refinement** (Packet 148): Packet 148 refined scope from pipeline-wide to arachne-path-only per-vertex overhang/flag/seam/boundary parity.
 
+- **2026-07-09 — D-104b-OVERHANG-FLOW-NONE registered and closed** (Packet 149): per-vertex `flow_factor` was never reduced for bridge segments (always 1.0). Closed by `slicer_core::flow::bridging_flow(bridge_flow_ratio, thick_bridges)`, applied at `is_bridge` vertices in both `classic-perimeters` and `arachne-perimeters`.
+
+- **2026-07-09 — D-104c-OVERHANG-REVERSE-NONE registered and closed (registration only)** (Packet 149): `detect_overhang_wall`, `overhang_reverse`, `overhang_reverse_internal_only`, `extra_perimeters_on_overhangs` were absent from the pipeline entirely. Closed for the registration gap — all four keys now registered on both perimeter manifests with OrcaSlicer defaults (`1`/`0`/`0`/`0`). The reversal BEHAVIOR itself remains unimplemented and is tracked as a follow-up concern, not closed by this packet.
+
+- **2026-07-09 — D-104d-MIN-WIDTH-TOP-SURFACE-NONE registered and closed** (Packet 149): `min_width_top_surface` was absent from the pipeline. Closed by registering it on both perimeter manifests (float mm, default `1.2` ≈ OrcaSlicer's 300% of line width) plus read-and-validate reads in both modules' `lib.rs`. The `only_one_wall_top` threshold behavior this key is meant to gate is deferred.
+
+- **2026-07-09 — D-104e-ALTERNATE-EXTRA-WALL-NONE registered and closed** (Packet 149): `alternate_extra_wall` was absent from the pipeline. Closed by registering it on `arachne-perimeters` and implementing it as a `+2` bump to `ArachneParams.max_bead_count` on odd layers (PnP's beading stack emits `max_bead_count / 2` walls, so `+2` is the PnP equivalent of OrcaSlicer's `loop_number++`), gated on `!spiral_vase && sparse_infill_density > 0`.
+
+- **2026-07-09 — D-104f-CONCENTRIC-INFILL-NO-ARACHNE registered (open, deferred)** (Packet 149): concentric infill does not route through Arachne (OrcaSlicer `FillConcentric.cpp:80-118` / `FillConcentricInternal.cpp:29-55` wiring missing). Not closed by packet 149 — the red test `arachne_parity_pipeline_concentric_infill_uses_arachne` stays red as the explicit fingerprint of this gap. Deferred to a follow-up workstream; no packet is currently scoped to close it.
+
+- **2026-07-09 — D-104g-FLOW-FACTOR-PERVERTEX-DIVERGENCE registered (open)** (Packet 149): PnP models flow as a per-vertex `flow_factor`; OrcaSlicer models a per-path `Flow` (height/width/thread-diameter). The `bridge_flow` ratio is correctly modelable per-vertex; the divergence is realized in the `thick_bridges=true` branch of `bridging_flow()` returning `1.0` instead of OrcaSlicer's height/nozzle-diameter `Flow` computation.
+
+- **2026-07-09 — D-104h-NO-PERCENT-CONFIG-TYPE registered (open, post-implementation audit)** (Packet 149): OrcaSlicer's `coFloatOrPercent`/`coPercent` config types have no `[config.schema]` representation in this codebase; percent-typed keys must be registered as pre-resolved floats. Packet 149 registered `min_width_top_surface` (Orca: 300% of line width) as resolved mm `1.2` (0.4 mm reference line width) and `sparse_infill_density` (Orca: 20%) as raw float `20.0`. The resolved values do not track the user's actual line width; a future implementer should add a percent-or-absolute config type and re-register these keys.
+
 ## Legacy Backlog Crosswalk
 
 The status backlog previously referenced XML-era labels such as `deviation #14b` and `deviation #23`. Those labels were retired because the audit cleanup merged several historical entries and rewrote the live registry around stable `DEV-###` rows.

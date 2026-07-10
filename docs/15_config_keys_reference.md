@@ -43,7 +43,11 @@ is the authoritative catalog of their defaults and ranges.
 <!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Module |
 |---|---|---|---|---|
+| `alternate_extra_wall` | bool | `false` | — | `arachne-perimeters` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | `arachne-perimeters` |
+| `detect_overhang_wall` | bool | `true` | — | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
+| `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
 | `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
@@ -51,17 +55,27 @@ is the authoritative catalog of their defaults and ranges.
 | `min_feature_size` | float | `1000` | >= 0.0 | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
 | `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `min_width_top_surface` | float | `1.2` | >= 0.0 | `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
 | `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
+| `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
+| `overhang_reverse_internal_only` | bool | `false` | — | `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `arachne-perimeters` |
 | `preferred_bead_width_outer` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
+| `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `arachne-perimeters` |
+| `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
+| `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
 | `visvalingam_area_threshold` | float | `100` | >= 0.0 | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
 | `wall_transition_length` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `alternate_extra_wall` | bool | `false` | — | `classic-perimeters` |
+| `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
+| `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
 | `detect_thin_wall` | bool | `true` | — | `classic-perimeters` |
 | `extra_perimeters` | int | `0` | [0.0, 10.0] | `classic-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters` |
@@ -71,17 +85,21 @@ is the authoritative catalog of their defaults and ranges.
 | `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
+| `min_width_top_surface` | float | `1.2` | >= 0.0 | `classic-perimeters` |
 | `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
 | `outer_wall_line_width` | float | `0.5` | [0.1, 2.0] | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
+| `overhang_reverse` | bool | `false` | — | `classic-perimeters` |
+| `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters` |
 | `perimeter_arc_tolerance` | float | `0.0125` | [0.0, 1.0] | `classic-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters` |
 | `slice_has_paint` | bool | `false` | — | `classic-perimeters` |
 | `smaller_perimeter_line_width` | float | `0.25` | [0.05, 2.0] | `classic-perimeters` |
 | `smaller_perimeter_threshold_mm` | float | `0.8` | [0.0, 10.0] | `classic-perimeters` |
+| `thick_bridges` | bool | `false` | — | `classic-perimeters` |
 | `wall_count` | int | `3` | [1.0, 10.0] | `classic-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `classic-perimeters` |
 | `apply_to_all` | bool | `false` | — | `fuzzy-skin` |
@@ -448,11 +466,11 @@ global < object_config:<id>:<key> < paint_config:<semantic>:<key>
 
 ## Walls (packet 104)
 
-Keys consumed by `classic-perimeters` to gate single-wall reduction on specific layer types (the fake `arachne-perimeters` module was deleted in P108; a real Arachne implementation landed under P110+P112, and packet 148 registers `precise_outer_wall`, `wall_sequence`, and `seam_candidate_angle_threshold_deg` on `arachne-perimeters` for parity with `classic-perimeters`). Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
+Keys consumed by `classic-perimeters` to gate single-wall reduction on specific layer types (the fake `arachne-perimeters` module was deleted in P108; a real Arachne implementation landed under P110+P112, and packet 148 registers `precise_outer_wall`, `wall_sequence`, and `seam_candidate_angle_threshold_deg` on `arachne-perimeters` for parity with `classic-perimeters`). Packet 149 re-publishes `only_one_wall_top` on `arachne-perimeters` and adds `min_width_top_surface` to both perimeter manifests. Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
 
 | Key | Type | Default | Range | Module(s) |
 |---|---|---|---|---|
-| `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
@@ -461,6 +479,7 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 | `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
+| `min_width_top_surface` | float | `1.2` | — | `classic-perimeters`, `arachne-perimeters` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 
@@ -480,6 +499,60 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 - `OuterInner` — outer wall prints first; better surface quality on slow machines.
 - `InnerOuter` — inner walls print first; better dimensional accuracy (default).
 - `InnerOuterInner` — inner walls first, outer wall next, remaining inner walls last; balances both goals by bracketing the outer wall.
+
+**`min_width_top_surface`** — OrcaSlicer `min_width_top_surface` (`coFloatOrPercent`, canonical default `300%` of line width). Minimum wall width applied when narrowing walls on top solid surfaces. Registered here as a fixed mm float (`1.2` ≈ 300% of the common `0.4` mm line width) rather than a percent-of-line-width type — this codebase's manifest schema does not yet have a `coFloatOrPercent`-equivalent field type. **Not yet consumed for its intended purpose:** the key is read-and-validated in both `classic-perimeters` and `arachne-perimeters`, but the `only_one_wall_top` narrowing threshold it is meant to gate does not yet reference it (see `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` in `docs/DEVIATION_LOG.md`).
+
+---
+
+## Overhangs (packet 149)
+
+Keys registered on both `classic-perimeters` and `arachne-perimeters` mirroring OrcaSlicer's overhang-wall `PrintConfig.cpp` options. Defaults and source-of-truth live in the respective module manifests under `modules/core-modules/<name>/<name>.toml`.
+
+| Key | Type | Default | Range | Module(s) |
+|---|---|---|---|---|
+| `detect_overhang_wall` | bool | `true` | — | `classic-perimeters`, `arachne-perimeters` |
+| `overhang_reverse` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+| `extra_perimeters_on_overhangs` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` (re-published on `arachne-perimeters`; `classic-perimeters` has carried this key since packet 108 / T-077) |
+
+**`detect_overhang_wall`** — when `true`, the perimeter generator identifies wall segments that overhang the layer below for downstream overhang-aware handling (speed/fan classification, reversal). Registered by packet 149; the detection/classification consumer remains the existing `overhang-classifier-default` finalization module (see `docs/15_config_keys_reference.md` "Overhang speed key consumption" note below), not new code in the perimeter modules themselves.
+
+**`overhang_reverse`** / **`overhang_reverse_internal_only`** — mirror OrcaSlicer's wall-winding-reversal options for overhang segments (alternating print direction to reduce sagging on printed-in-air perimeters; `_internal_only` restricts reversal to internal, non-outer-visible walls). Registered by packet 149 with OrcaSlicer's own defaults (`false`/`false`). **Gap, not yet closed:** no code path currently changes wall winding or direction based on these keys — see `D-104c-OVERHANG-REVERSE-NONE` in `docs/DEVIATION_LOG.md`.
+
+**`extra_perimeters_on_overhangs`** — already present on `classic-perimeters` since packet 108/T-077 (see the generated **Module-owned config keys** table above); packet 149 re-publishes it on `arachne-perimeters` for cross-generator parity. When `true`, adds extra perimeter loops specifically over overhang regions to improve their surface strength.
+
+---
+
+## Strength (packet 149)
+
+Keys registered on `arachne-perimeters` for the alternating-extra-wall strength feature, plus two pre-existing gate keys re-registered here for the D-104e gate condition.
+
+| Key | Type | Default | Range | Module(s) |
+|---|---|---|---|---|
+| `alternate_extra_wall` | bool | `false` | — | `arachne-perimeters` |
+| `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
+| `sparse_infill_density` | float | `20.0` | % | `arachne-perimeters` |
+
+**`alternate_extra_wall`** — OrcaSlicer `alternate_extra_wall` (`coBool`, default `false`). When `true`, `arachne-perimeters` bumps `ArachneParams.max_bead_count` by `+2` on odd layers — this codebase's beading stack emits `max_bead_count / 2` walls, so a `+2` bump is the PnP-side equivalent of OrcaSlicer's `loop_number++` for this option. Gated on `!spiral_vase && sparse_infill_density > 0`, mirroring OrcaSlicer's own gate (alternating extra walls only make sense with solid infill present and outside spiral-vase mode).
+
+**`spiral_vase`** — registered on `arachne-perimeters` solely to provide the D-104e gate condition for `alternate_extra_wall` above; no spiral-vase toolpath behavior is implemented by this packet.
+
+**`sparse_infill_density`** — registered on `arachne-perimeters` solely to provide the D-104e gate condition for `alternate_extra_wall` above (`> 0` means solid infill exists); does not change infill density behavior on the perimeter module itself (see `gyroid-infill`/`rectilinear-infill`/`lightning-infill`'s own `infill_density` keys in the generated **Module-owned config keys** table for the actual infill-density consumers).
+
+---
+
+## Bridging (packet 149)
+
+Keys registered on both `classic-perimeters` and `arachne-perimeters`, consumed by `slicer_core::flow::bridging_flow(bridge_flow_ratio, thick_bridges)` and applied to `is_bridge` vertices' `flow_factor`.
+
+| Key | Type | Default | Range | Module(s) |
+|---|---|---|---|---|
+| `bridge_flow` | float | `1.0` | — | `classic-perimeters`, `arachne-perimeters` |
+| `thick_bridges` | bool | `false` | — | `classic-perimeters`, `arachne-perimeters` |
+
+**`bridge_flow`** — OrcaSlicer `bridge_flow_ratio` equivalent. Scales the per-vertex `flow_factor` applied at `is_bridge` vertices; `1.0` is a no-op.
+
+**`thick_bridges`** — when `true`, `bridging_flow()` returns `1.0` instead of the configured `bridge_flow` ratio. This is a documented PnP-vs-OrcaSlicer divergence: OrcaSlicer's `thick_bridges=true` computes a height/nozzle-diameter-derived `Flow` (via `Flow::bridging_flow`) rather than simply disabling the ratio reduction; PnP's per-vertex `flow_factor` model cannot represent that per-path height/width computation, so the `thick_bridges` branch is a no-op placeholder pending a larger IR change (see `D-104g-FLOW-FACTOR-PERVERTEX-DIVERGENCE` in `docs/DEVIATION_LOG.md`).
 
 ---
 

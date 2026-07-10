@@ -61,6 +61,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_core::flow::bridging_flow;
 use slicer_core::perimeter_utils::{generate_sharp_corner_seam_candidates, point_in_any_polygon};
 use slicer_ir::{
     extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
@@ -291,6 +292,61 @@ impl LayerModule for ArachnePerimeters {
         let mut params = arachne_params_from_config(config);
         params.is_initial_layer = layer_index == 0;
 
+        // only_one_wall_top (D-104d, deferred): mirrors classic's own
+        // only_one_wall_top gate (classic-perimeters/src/lib.rs, near its
+        // `min_width_top_surface` read) that re-runs the wall generator for a
+        // single remaining top-surface wall beyond the `min_width_top_surface`
+        // threshold (PerimeterGenerator.cpp:2160-2245; PrintConfig.cpp:1491-
+        // 1511). Arachne's beading-stack path does not yet re-run
+        // `generate_arachne_walls` for a single collapsed top-surface wall —
+        // behavior deferred, see D-104d-MIN-WIDTH-TOP-SURFACE-NONE. Read here
+        // so the config key round-trips correctly ahead of that follow-up;
+        // the value itself is intentionally unused until then.
+        let only_one_wall_top = config.get_bool("only_one_wall_top").unwrap_or(false);
+        let _ = only_one_wall_top;
+
+        // alternate_extra_wall (T-149 AC-3, D-104e closed): OrcaSlicer adds
+        // one extra wall loop on every second (0-indexed-odd) layer by
+        // incrementing `loop_number` before constructing `WallToolPaths`
+        // (`PrintConfig.cpp:5059-5066`; `WallToolPaths(..., loop_number + 1,
+        // ...)` with `max_bead_count = 2 * inset_count` inside the
+        // beading-strategy factory). Skipped when `spiral_vase` is on (a
+        // spiral print has no discrete wall stack to alternate) or
+        // `sparse_infill_density <= 0.0` (a solid/no-infill part has no
+        // interior room to grow an extra wall into). Applied here as a
+        // post-construction bump to `params.max_bead_count` — the
+        // beading-stack's own input cap, not a post-hoc wall-count mutation
+        // downstream of it, mirroring how `params.is_initial_layer` is set
+        // just above (this function has no access to `layer_index`).
+        let alternate_extra_wall = config.get_bool("alternate_extra_wall").unwrap_or(false);
+        let spiral_vase = config.get_bool("spiral_vase").unwrap_or(false);
+        let sparse_infill_density = config.get_float("sparse_infill_density").unwrap_or(20.0);
+        if alternate_extra_wall
+            && layer_index % 2 == 1
+            && !spiral_vase
+            && sparse_infill_density > 0.0
+        {
+            // Empirically measured (see alternate_extra_wall_tdd.rs's module
+            // doc comment): `LimitedBeadingStrategy` inserts a symmetric
+            // sentinel pair that `remove_small_lines` filters as zero-width
+            // (beading/limited.rs's own doc comment), so the emitted wall
+            // count for an even `max_bead_count` is `max_bead_count / 2`; a
+            // `+1` bump does not reliably cross that /2 floor into an extra
+            // emitted wall, but `+2` does (same parity class, +1 emitted
+            // wall) — matching OrcaSlicer's own `max_bead_count = 2 *
+            // inset_count` relation (one extra `inset_count` step == two
+            // `max_bead_count` units).
+            params.max_bead_count += 2;
+        }
+
+        // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
+        // invocation, applied per-vertex below wherever is_bridge is true.
+        let bridge_flow_ratio = config
+            .get_float("bridge_flow")
+            .map(|v| v as f32)
+            .unwrap_or(1.0);
+        let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
+
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
         // any residual base-color region — no per-tool grouping/splitting is
@@ -369,13 +425,17 @@ impl LayerModule for ArachnePerimeters {
                 if !bridge_areas.is_empty()
                     && matches!(loop_type, LoopType::Outer | LoopType::Inner)
                 {
-                    for (i, pt) in path.points.iter().enumerate() {
+                    for i in 0..path.points.len() {
                         let units_pt = Point2 {
-                            x: mm_to_units(pt.x),
-                            y: mm_to_units(pt.y),
+                            x: mm_to_units(path.points[i].x),
+                            y: mm_to_units(path.points[i].y),
                         };
                         if point_in_any_polygon(&units_pt, bridge_areas) {
                             feature_flags[i].is_bridge = true;
+                            // D4: bridge vertices get the bridging flow factor
+                            // (mirrors OrcaSlicer's LayerRegion.cpp bridging_flow).
+                            path.points[i].flow_factor =
+                                bridging_flow(bridge_flow_ratio, thick_bridges);
                         }
                     }
                 }

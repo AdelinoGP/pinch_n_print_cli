@@ -23,15 +23,19 @@ The classic path already has `extra_perimeters_on_overhangs` (T-077, P108) and r
   - Add `[config.schema.alternate_extra_wall]` (bool, default `false`; matches `PrintConfig.cpp:5059-5066`).
   - Re-publish `[config.schema.extra_perimeters_on_overhangs]` (already in classic; the arachne manifest's test for AC-1 asserts its presence; copy from `classic-perimeters.toml:45`).
   - Add `[config.schema.bridge_flow]` (float, default `1.0`; matches OrcaSlicer `PrintConfig.cpp:1327` coFloat default). This is the ratio applied to the bridge flow — the canonical OrcaSlicer formula is `base_flow.with_flow_ratio(bridge_flow_ratio)`.
-  - Add `[config.schema.thick_bridges]` (bool, default `false`; matches OrcaSlicer `PrintConfig.cpp:1941` coBool default). When `true`, PnP's helper returns `flow_factor = 1.0` (PnP doesn't model Flow height/width/thread_diameter the way OrcaSlicer does — this divergence is D-104g).
+  - Add `[config.schema.thick_bridges]` (bool, default `false`; `docs/ORCA_CONFIG_REFERENCE.md:150` default `0`). When `true`, PnP's helper returns `flow_factor = 1.0` (PnP doesn't model Flow height/width/thread_diameter the way OrcaSlicer does — this divergence is D-104g).
+  - Add `[config.schema.spiral_vase]` (bool, default `false`) and `[config.schema.sparse_infill_density]` (float/percent, OrcaSlicer default) — the D3 gate reads both, and NEITHER is registered in the arachne manifest or read anywhere in the module today (verified: zero grep matches). Without registration the gate `!spiral_vase && sparse_infill_density > 0` cannot be evaluated.
 - Edit `modules/core-modules/arachne-perimeters/src/lib.rs`:
   - **D3 mechanism rewrite**: on odd layers (`layer_index % 2 == 1 && !spiral_vase && sparse_infill_density > 0`), increment `ArachneParams.max_bead_count` by 1 (mirrors OrcaSlicer's `loop_number++` at `PerimeterGenerator.cpp:1227` (classic) and `:2133` (arachne), which flows into `WallToolPaths(..., coord_t(loop_number + 1), ...)` → `max_bead_count = 2 * inset_count` at `WallToolPaths.cpp:525`). NOT a post-hoc wall-count mutation.
   - **D4 mechanism rewrite**: in `run_perimeters`, after packet 148's `is_bridge` per-vertex flag is set, for each `path.points[i]` with `feature_flags[i].is_bridge == true`, set `pt.flow_factor = slicer_core::flow::bridging_flow(bridge_flow_ratio, thick_bridges)`. The helper returns `bridge_flow_ratio` (the user's chosen ratio, default 1.0) when `!thick_bridges`, and `1.0` when `thick_bridges` (PnP's per-vertex model diverges from OrcaSlicer's per-path `Flow` model — D-104g).
   - Read `bridge_flow` and `thick_bridges` from config (the manifest entries above).
 - Edit `modules/core-modules/classic-perimeters/classic-perimeters.toml`:
-  - Re-publish the 4 missing keys (`detect_overhang_wall`, `overhang_reverse`, `overhang_reverse_internal_only`, `min_width_top_surface`) and add the 4 new keys (`alternate_extra_wall`, `bridge_flow`, `thick_bridges`).
+  - Register the 4 missing keys (`detect_overhang_wall`, `overhang_reverse`, `overhang_reverse_internal_only`, `min_width_top_surface`) and add the 3 new keys (`alternate_extra_wall`, `bridge_flow`, `thick_bridges`) — 7 sections total.
 - Edit `modules/core-modules/classic-perimeters/src/lib.rs`:
   - Apply the same `bridging_flow()` flow_factor reduction on bridge segments (the classic path's `is_bridge` flag is set per-vertex at `lib.rs:677`; the same `pt.flow_factor` reduction applies for parity with arachne).
+  - Add a `min_width_top_surface` config read (read-and-validate pattern; behavior deferred, doc comment points at D-104d) — required by AC-2's actual predicate, which greps `CLASSIC_MODULE_SRC` for the string.
+- Edit `modules/core-modules/arachne-perimeters/src/lib.rs` (AC-2 read): add an `only_one_wall_top` config read (read-and-validate pattern; behavior deferred) — required by AC-2's actual predicate, which greps `ARACHNE_MODULE_SRC` for the string. Register `only_one_wall_top` in the arachne manifest alongside the other new keys.
+- Edit `crates/slicer-runtime/tests/arachne_parity.rs` (AC-4 only): REWRITE `arachne_parity_pipeline_bridge_flow_factor_on_overhang` — the current predicate (arachne_parity.rs:232-250) drives the host pipeline on a bridgeless 10 mm square and asserts on `junctions[].p.flow_factor`; it cannot observe the guest-side fix and its fixture has no bridges. Rewrite to drive `run_perimeters` natively with a `bridge_areas` fixture (same harness as the new unit test), preserving the test name. The other three pipeline red tests keep their existing predicates.
 - Edit `crates/slicer-core/src/flow.rs`:
   - Add `pub fn bridging_flow(bridge_flow_ratio: f32, thick_bridges: bool) -> f32 { if thick_bridges { 1.0 } else { bridge_flow_ratio } }` (matches OrcaSlicer's `LayerRegion.cpp:135` formula simplified for PnP's per-vertex model — the real formula uses `base_flow.with_flow_ratio(bridge_flow_ratio)` for the non-thick branch; PnP's per-vertex `flow_factor` model is a divergence, D-104g).
 - Add new unit-test files in `arachne-perimeters/tests/`:
@@ -42,7 +46,7 @@ The classic path already has `extra_perimeters_on_overhangs` (T-077, P108) and r
 - Edit `docs/14_deviation_audit_history.md`:
   - Append one row per new deviation (6 total).
 - Edit `docs/15_config_keys_reference.md`:
-  - Append the 8 new config keys (4 in §Overhangs, 1 in §Walls, 1 in §Strength, 2 in §Bridging).
+  - Append the 11 new config keys (4 in §Overhangs, 2 in §Walls incl. `only_one_wall_top`, 3 in §Strength incl. `spiral_vase` + `sparse_infill_density`, 2 in §Bridging). NOTE: only `## Walls (packet 104)` exists today — create the §Overhangs/§Strength/§Bridging subsections following the existing table format.
 
 ## Out of Scope
 
@@ -80,7 +84,7 @@ Reference Acceptance Criteria by ID. Do not copy them.
 
 - Positive cases: AC-1 through AC-6. Measurable refinements:
 - AC-1: the four keys MUST be present in the arachne manifest TOML (the test grep-asserts this). The keys MUST also be present in the classic manifest (manifest-parity for the wall_generator switch); this is a Doc Impact requirement, not a test requirement.
-- AC-2: `min_width_top_surface` MUST be present in the arachne manifest with a default verified via sub-agent dispatch against `docs/ORCA_CONFIG_REFERENCE.md:135` BEFORE commit. The test predicate is a manifest-presence grep on the arachne manifest.
+- AC-2: `min_width_top_surface` MUST be present in both manifests with a default verified via sub-agent dispatch against `docs/ORCA_CONFIG_REFERENCE.md:135` (300%, coFloatOrPercent) BEFORE commit. The test predicate is a SOURCE-string conjunction (arachne_parity.rs:377-395): classic source must contain `min_width_top_surface` and arachne source must contain `only_one_wall_top` — so both modules gain read-and-validate config reads, not just manifest entries.
 - AC-3: `alternate_extra_wall` MUST be present in the arachne manifest. The unit test in `arachne-perimeters/tests/alternate_extra_wall_tdd.rs` (NEW) sets up `wall_count=2`, `alternate_extra_wall=true`, the gate conditions `!spiral_vase && sparse_infill_density > 0`, and asserts the wall count is 3 on odd layers and 2 on even layers. Mechanism: bump `ArachneParams.max_bead_count` by 1 on odd layers (mirrors OrcaSlicer's `loop_number++` → `WallToolPaths(..., coord_t(loop_number + 1), ...)` → `max_bead_count = 2 * inset_count`).
 - AC-4: the bridge flow factor test fixture sets `region.bridge_areas()` to a non-empty polygon set and asserts bridge vertices' `path.points[i].flow_factor` equals `bridge_flow_ratio` (config-driven, default 1.0). The helper `bridging_flow(bridge_flow_ratio, thick_bridges) -> f32` returns the ratio (or 1.0 when `thick_bridges` — PnP's per-vertex model diverges from OrcaSlicer's per-path `Flow` model; D-104g documents this). Both perimeter modules apply it. The test sets `bridge_flow = 0.7` and asserts `flow_factor == 0.7`.
 - AC-5: the 6 new deviation log rows MUST be present (greps verify).
@@ -99,7 +103,7 @@ Reference Acceptance Criteria by ID. Do not copy them.
 | `cargo test -p slicer-runtime --test arachne_parity -- arachne_parity_pipeline_bridge_flow_factor_on_overhang 2>&1 \| tee target/test-output.log` | AC-4 | FACT pass/fail |
 | `cargo test -p arachne-perimeters --test alternate_extra_wall_tdd 2>&1 \| tee target/test-output.log` | AC-3 unit | FACT pass/fail |
 | `cargo test -p arachne-perimeters --test bridge_flow_factor_tdd 2>&1 \| tee target/test-output.log` | AC-4 unit | FACT pass/fail |
-| `rg -q 'config\.schema\.(precise_outer_wall\|seam_candidate_angle_threshold_deg)' modules/core-modules/arachne-perimeters/arachne-perimeters.toml; [ $? -ne 0 ]` | AC-N1 | FACT exit 0 = pass |
+| `c1=$(grep -c 'config\.schema\.precise_outer_wall\]' modules/core-modules/arachne-perimeters/arachne-perimeters.toml); c2=$(grep -c 'config\.schema\.seam_candidate_angle_threshold_deg\]' modules/core-modules/arachne-perimeters/arachne-perimeters.toml); [ "$c1" -le 1 ] && [ "$c2" -le 1 ]` | AC-N1 (packet-148 keys not duplicated; they are legitimately present since 148 lands first) | FACT exit 0 = pass |
 | `rg -A1 'D-104f-CONCENTRIC-INFILL-NO-ARACHNE' docs/DEVIATION_LOG.md \| head -5` | AC-N2 | SNIPPETS, manual check |
 | `rg -q 'D-104b-OVERHANG-FLOW-NONE' docs/DEVIATION_LOG.md && rg -q 'D-104c-OVERHANG-REVERSE-NONE' docs/DEVIATION_LOG.md && rg -q 'D-104d-MIN-WIDTH-TOP-SURFACE-NONE' docs/DEVIATION_LOG.md && rg -q 'D-104e-ALTERNATE-EXTRA-WALL-NONE' docs/DEVIATION_LOG.md && rg -q 'D-104f-CONCENTRIC-INFILL-NO-ARACHNE' docs/DEVIATION_LOG.md` | AC-5 | FACT exit 0 = pass |
 | `cargo clippy -p slicer-runtime --test arachne_parity -- -D warnings 2>&1 \| tee target/clippy-output.log` | gate | FACT exit 0 |
@@ -121,6 +125,6 @@ Cross-step invariants that the per-step blocks in `implementation-plan.md` canno
 ## Context Discipline Notes
 
 - `OrcaSlicerDocumented/` is forbidden to load directly; every parity check is a sub-agent dispatch.
-- The 7 new manifest keys are atomically added in one step (Step 1) — splitting them across steps adds no value because they all share the same test-failure mode (manifest presence grep) and the same risk surface (default-value mismatches).
-- The largest single step is Step 4 (D4 bridge flow) — it touches both perimeter modules, adds a `slicer_core::flow::bridging_flow` helper, and threads `thick_bridges` through both manifests. Cost M.
-- The implementer should NOT re-open packet 148's files (the manifest keys for `precise_outer_wall` and `seam_candidate_angle_threshold_deg` are packet 148's; adding them again here is a manifest-drift bug caught by AC-N1).
+- The 11 new arachne manifest keys (and 7 classic ones) are atomically added in one step (Step 1) — splitting them across steps adds no value because they all share the same test-failure mode (manifest presence grep) and the same risk surface (default-value mismatches).
+- The largest single step is Step 4 (D4 bridge flow) — it touches both perimeter modules, adds a `slicer_core::flow::bridging_flow` helper, threads `thick_bridges` through both manifests, and rewrites the AC-4 red test. Cost M.
+- Packet 149 legitimately edits the arachne manifest (packet 148 also edited it), but MUST NOT re-add or duplicate packet 148's sections (`precise_outer_wall`, `seam_candidate_angle_threshold_deg`, `wall_sequence`); a duplicated section is the manifest-drift bug caught by AC-N1.

@@ -337,34 +337,86 @@ fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
 }
 
 // ===========================================================================
-// GAP_PIPELINE: bridge flow_factor on overhang (propose D-104b)
+// GAP_PIPELINE (CLOSED, packet 149 D4): bridge flow_factor on overhang
 // ====================================================================================
 
-/// GAP_PIPELINE: `flow_factor` is never reduced for overhang segments.
-/// OrcaSlicer applies `bridging_flow(frPerimeter, thick_bridges)`
-/// (`LayerRegion.cpp:135`). PnP's overhang handling modulates `speed_factor`
-/// (in `overhang-classifier-default`) but never `flow_factor`.
+/// `flow_factor` is now reduced for bridge vertices via
+/// `slicer_core::flow::bridging_flow(bridge_flow, thick_bridges)`, applied
+/// per-vertex in arachne wherever `feature_flags[i].is_bridge == true`
+/// (mirrors `arachne_parity_arachne_path_is_bridge_flag_set_per_vertex`'s own
+/// `region.bridge_areas()` fixture). Rewritten (packet 149) to drive
+/// `ArachnePerimeters::run_perimeters` natively with a `bridge_areas`
+/// fixture — the original drove the HOST `arachne_lines` pipeline directly
+/// on a bridgeless square and asserted on `junctions[].p.flow_factor`, which
+/// can never observe this guest-side (module) fix.
 ///
-/// OrcaSlicer ref: `LayerRegion.cpp:135`.
-/// Proposed deviation: `D-104b-OVERHANG-FLOW-NONE`.
+/// OrcaSlicer ref: `LayerRegion.cpp:135` (`bridging_flow(frPerimeter,
+/// thick_bridges)`).
 #[test]
 fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
-    let sq = fixtures::square_mm(10.0);
-    let (lines, _) = arachne_lines(std::slice::from_ref(&sq));
-    let all_default = lines
-        .iter()
-        .flat_map(|l| l.junctions.iter())
-        .all(|j| j.p.flow_factor == 1.0);
+    let config = ConfigViewBuilder::new()
+        .int("wall_count", 2)
+        .float("optimal_width", mm_to_units(0.4_f32) as f64)
+        .float("preferred_bead_width_outer", mm_to_units(0.4_f32) as f64)
+        .float("bridge_flow", 0.7)
+        .bool("thick_bridges", false)
+        .build();
+    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let regions = vec![native_bridge_region(10.0, 4.0, 0.2)];
+    let paint = PaintRegionLayerView::new(0);
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_perimeters(0, &regions, &paint, &mut output, &config)
+        .unwrap();
+
     assert!(
-        !all_default,
-        "PARITY GAP: pipeline: bridge flow_factor on overhang | expected: \
-         OrcaSlicer computes a bridging flow (bridging_flow(frPerimeter, \
-         thick_bridges)) for overhang/bridge perimeters so flow_factor \
-         differs from 1.0 on overhang segments (LayerRegion.cpp:135) | got: \
-         every junction's flow_factor is 1.0 (extrusion_line_to_extrusion_path3d \
-         sets the canonical default); no bridge-flow assignment exists \
-         anywhere in the pipeline — propose D-104b-OVERHANG-FLOW-NONE | ref: \
-         LayerRegion.cpp:135"
+        !output.wall_loops().is_empty(),
+        "expected at least one wall loop to be emitted"
+    );
+
+    let mut found_bridge_vertex = false;
+    for wall in output.wall_loops() {
+        // is_bridge is only ever set on Outer/Inner walls (packet 148 AC-4).
+        if !matches!(wall.loop_type, LoopType::Outer | LoopType::Inner) {
+            continue;
+        }
+        for (j, flag) in wall.feature_flags.iter().enumerate() {
+            let pt = &wall.path.points[j];
+            if flag.is_bridge {
+                found_bridge_vertex = true;
+                assert!(
+                    (pt.flow_factor - 0.7).abs() < f32::EPSILON,
+                    "wall loop_type={:?} perimeter_index={} vertex {} at ({}, {}) mm: \
+                     is_bridge=true, expected flow_factor == 0.7 (bridge_flow via \
+                     bridging_flow), got {}",
+                    wall.loop_type,
+                    wall.perimeter_index,
+                    j,
+                    pt.x,
+                    pt.y,
+                    pt.flow_factor
+                );
+            } else {
+                assert!(
+                    (pt.flow_factor - 1.0).abs() < f32::EPSILON,
+                    "wall loop_type={:?} perimeter_index={} vertex {} at ({}, {}) mm: \
+                     is_bridge=false, expected flow_factor == 1.0, got {}",
+                    wall.loop_type,
+                    wall.perimeter_index,
+                    j,
+                    pt.x,
+                    pt.y,
+                    pt.flow_factor
+                );
+            }
+        }
+    }
+
+    assert!(
+        found_bridge_vertex,
+        "expected at least one is_bridge==true vertex to verify flow_factor against \
+         (fixture must produce bridge vertices, or this test can never fail)"
     );
 }
 
