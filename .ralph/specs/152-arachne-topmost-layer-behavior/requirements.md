@@ -13,7 +13,8 @@
 Two Arachne parity gaps concern the topmost printed layer, and both need a
 "topmost layer" signal the pipeline cannot currently express:
 
-- **G3 `only_one_wall_top` (D-104d):** OrcaSlicer forces a single wall on the
+- **G3 `only_one_wall_top` (consumes the `min_width_top_surface` behavior
+  deferred under `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`):** OrcaSlicer forces a single wall on the
   topmost layer (`loop_number = 0` when `upper_slices == nullptr`) and, for
   NON-topmost layers whose surface is partly a top surface, runs a SECOND
   `Arachne::WallToolPaths` pass over the non-top sub-area with `inner_loop_number
@@ -40,7 +41,11 @@ deliberately isolated here to contain guest-rebuild risk.
 - Extend the `arachne-params` WIT record (`crates/slicer-schema/wit/deps/common.wit:26-50`)
   with `is-bottom-layer` and `is-topmost-layer` bools; mirror in the Rust
   `ArachneParams` (`crates/slicer-core/src/arachne/pipeline.rs`) and set them in
-  the module from region top/bottom metadata.
+  the module from region top/bottom metadata. The record↔struct conversions that
+  must gain the two fields are: `crates/slicer-sdk/src/host.rs` (`:551` native
+  path, `:690` WIT path — the adapter lives HERE, not in `slicer-macros`, which
+  has zero `ArachneParams` code) and `crates/slicer-wasm-host/src/host.rs`
+  (`:1773-1794` host-side field-by-field mapping).
 - Change `remove_small_lines` to key the lenient `min_width/2` threshold on
   `is_bottom_layer || is_topmost_layer` (retaining or subsuming `is_initial_layer`
   after auditing its other consumers); thread the flags through
@@ -52,11 +57,18 @@ deliberately isolated here to contain guest-rebuild risk.
   `offset2_ex` shrink/expand, second pass over non-top area, `inset_idx += 1`
   renumbering, merge, empty-top fallback rerun).
 - Author locking tests for the G3 second pass (not covered by the red test).
-- Close D-104d; update docs/03 (WIT record), docs/15, docs/18.
+- Narrow `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` (arachne half lands here; split the
+  classic-perimeters remainder into
+  `D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER`); update docs/03 (WIT record),
+  docs/15, docs/18.
 
 ## Out of Scope
 
 - Flow/percent, winding, wall_count, spiral — packets 150/151.
+- `classic-perimeters`' `min_width_top_surface` threshold behavior (the other
+  half of `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`; read-and-discarded at
+  `classic-perimeters/src/lib.rs:224-239`) — split into the successor deviation,
+  not implemented here.
 - `interface_shells` per-region upper-slice handling beyond what the topmost
   detection needs (Orca has an `interface_shells` branch at `:2190`; port only if
   a locking test requires it — otherwise record as a follow-up deviation).
@@ -67,7 +79,8 @@ deliberately isolated here to contain guest-rebuild risk.
   the `arachne-params`/host-service section.
 - `docs/02_ir_schemas.md` — `SliceRegionView` top-shell metadata; delegate.
 - `docs/08_coordinate_system.md` — short; load for offset unit conversions.
-- `docs/DEVIATION_LOG.md` — D-104d entry.
+- `docs/DEVIATION_LOG.md` — `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` entry (`:82`;
+  covers both modules — only the arachne half lands here).
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -86,8 +99,9 @@ Files to inspect for this packet:
 - Positive: `AC-1` (G3 topmost single wall via `top_shell_index`),
   `AC-2` (G3 second pass: single top wall + renumbered inner walls),
   `AC-3` (G10 topmost thin-wall survival), `AC-4` (WIT record carries the two
-  new bools), `AC-5` (14 locks + 150/151 gap tests stay green, incl. the
-  `only_one_wall_top_vs_min_width_top_surface` source-read lock).
+  new bools), `AC-5` (15 locks + 150/151 gap tests stay green, incl. the
+  `arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface`
+  source-read lock).
 - Negative: `AC-N1` (mid-stack layer still drops short odd lines — lenient
   threshold is top/bottom only), `AC-N2` (`only_one_wall_top=false` emits full
   wall count on a topmost region).
@@ -99,11 +113,11 @@ Files to inspect for this packet:
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top --exact` | G3 part 1 | FACT pass/fail |
-| `cargo test -p arachne-perimeters --lib -- only_one_wall_top_second_pass` | AC-2 second pass | FACT pass/fail; SNIPPETS on fail |
+| `cargo test -p arachne-perimeters --test only_one_wall_top_tdd -- only_one_wall_top_second_pass --exact` | AC-2 second pass (packet-authored `tests/only_one_wall_top_tdd.rs`) | FACT pass/fail; SNIPPETS on fail |
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_arachne_path_remove_small_lines_top_layer_exception --exact` | G10 | FACT pass/fail |
 | `rg -q 'is-topmost-layer' crates/slicer-schema/wit/deps/common.wit` | AC-4 WIT | FACT hit/miss |
-| `cargo test -p slicer-core --lib arachne::remove_small -- non_top_layer_strict` | AC-N1 | FACT pass/fail |
-| `cargo test -p arachne-perimeters --lib -- only_one_wall_top_disabled` | AC-N2 | FACT pass/fail |
+| `cargo test -p slicer-core --lib -- arachne::remove_small::tests::non_top_layer_strict --exact` | AC-N1 (packet-authored `#[cfg(test)]` mod in remove_small.rs) | FACT pass/fail |
+| `cargo test -p arachne-perimeters --test only_one_wall_top_tdd -- only_one_wall_top_disabled --exact` | AC-N2 | FACT pass/fail |
 | `cargo test -p slicer-runtime --test arachne_parity` | AC-5 locks | FACT pass/fail; SNIPPETS on fail |
 | `cargo check --workspace --all-targets` | compile gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |

@@ -20,8 +20,10 @@ flipping gap tests G3 and G10.
 ## Scope Boundaries
 
 Extends the `arachne-params` WIT record (`common.wit`) with `is-bottom-layer` /
-`is-topmost-layer` bools, threads them through the SDK bridge and
-`run_arachne_pipeline`, and reworks `remove_small_lines` to key the lenient
+`is-topmost-layer` bools, threads them through the SDK bridge
+(`slicer-sdk/src/host.rs` — both its native-path and WIT-path conversions) AND
+the host-side service impl (`slicer-wasm-host/src/host.rs` field-by-field
+mapping) into `run_arachne_pipeline`, and reworks `remove_small_lines` to key the lenient
 threshold on top-OR-bottom rather than layer 0. In the module, implements the
 `only_one_wall_top` topmost single-wall force and the full second-pass top-surface
 generation (top-area derivation, `min_width_top_surface` filter using packet
@@ -52,8 +54,14 @@ Acceptance Criteria are stated **once**, here.
   covers it), **when** `arachne-perimeters` runs, **then** the top sub-area emits
   a single wall while the non-top remainder emits the inner walls via a second
   `WallToolPaths` pass, and merged inner-wall `inset_idx` values are incremented
-  by 1 (renumbered) relative to a naive single-pass run. |
-  `cargo test -p arachne-perimeters --lib -- only_one_wall_top_second_pass --nocapture`
+  by 1 (renumbered) relative to a naive single-pass run. Packet-authored test in
+  a new `tests/only_one_wall_top_tdd.rs` (module tests/ dir — follows the 10
+  existing native `*_tdd.rs` files that drive `ArachnePerimeters::run_perimeters`
+  via `slicer_sdk::traits::LayerModule`; standalone file ⇒ auto-registered, no
+  aggregator). NOT `--lib`: the only in-file test module is the param-level unit
+  mod packet 151 authors — a `--lib` filter for this name would match nothing
+  and false-pass with "0 tests run". |
+  `cargo test -p arachne-perimeters --test only_one_wall_top_tdd -- only_one_wall_top_second_pass --exact --nocapture`
 - **AC-3 (G10 top-layer exception). Given** a 3 mm odd unclosed center line on
   the TOPMOST layer (`is_topmost_layer=true`, `is_initial_layer=false`), **when**
   `remove_small_lines` runs, **then** the line survives via the lenient
@@ -65,11 +73,12 @@ Acceptance Criteria are stated **once**, here.
   bool fields (alongside the existing `is-initial-layer`), mirrored in the Rust
   `ArachneParams` struct and set by the module from region top/bottom metadata. |
   `rg -q 'is-topmost-layer' crates/slicer-schema/wit/deps/common.wit`
-- **AC-5 (regression lock). Given** the 14 `arachne_parity.rs` locks and the
+- **AC-5 (regression lock). Given** the 15 `arachne_parity.rs` locks and the
   green G-tests from packets 150/151, **when** the topmost behavior lands,
-  **then** all stay green; the `only_one_wall_top_vs_min_width_top_surface` lock
-  (which requires the module source to still read `only_one_wall_top`) remains
-  satisfied. |
+  **then** all stay green; the
+  `arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface` lock
+  (`arachne_parity.rs:591`, probes the module source via `include_str!` for the
+  string `only_one_wall_top`) remains satisfied. |
   `cargo test -p slicer-runtime --test arachne_parity`
 
 ## Negative Test Cases
@@ -77,12 +86,16 @@ Acceptance Criteria are stated **once**, here.
 - **AC-N1 (non-top layer unaffected). Given** `is_topmost_layer=false` and
   `is_bottom_layer=false` (a normal mid-stack layer), **when** `remove_small_lines`
   runs on a short odd line, **then** the strict threshold applies and the line is
-  dropped — the lenient threshold fires ONLY on top/bottom layers. |
-  `cargo test -p slicer-core --lib arachne::remove_small -- non_top_layer_strict --nocapture`
+  dropped — the lenient threshold fires ONLY on top/bottom layers. Packet-authored
+  test in a NEW `#[cfg(test)] mod tests` inside
+  `crates/slicer-core/src/arachne/remove_small.rs` (the file has no test module
+  today; without authoring it, a `--lib` filter matches nothing and false-passes). |
+  `cargo test -p slicer-core --lib -- arachne::remove_small::tests::non_top_layer_strict --exact --nocapture`
 - **AC-N2 (only_one_wall_top off). Given** `only_one_wall_top=false` on a topmost
   region, **when** `arachne-perimeters` runs, **then** the full `wall_count` walls
-  are emitted — the single-wall force fires only when the key is on. |
-  `cargo test -p arachne-perimeters --lib -- only_one_wall_top_disabled --nocapture`
+  are emitted — the single-wall force fires only when the key is on. Lives in the
+  same packet-authored `tests/only_one_wall_top_tdd.rs` as AC-2's test. |
+  `cargo test -p arachne-perimeters --test only_one_wall_top_tdd -- only_one_wall_top_disabled --exact --nocapture`
 
 ## Verification
 
@@ -99,7 +112,11 @@ Acceptance Criteria are stated **once**, here.
 - `docs/02_ir_schemas.md` — `SliceRegionView` top-shell metadata
   (`top_shell_index`, `top_solid_fill`); delegate the region section.
 - `docs/08_coordinate_system.md` — unit conversions for thresholds (load).
-- `docs/DEVIATION_LOG.md` — D-104d (G3) closes here.
+- `docs/DEVIATION_LOG.md` — `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`
+  (`DEVIATION_LOG.md:82`) — NOTE its scope covers BOTH modules' deferred
+  `min_width_top_surface` behavior; this packet lands only the arachne half
+  (see Doc Impact for the narrowing protocol). The classic-perimeters
+  remainder stays open.
 
 ## Doc Impact Statement (Required)
 
@@ -107,11 +124,21 @@ Changes a WIT contract and module behavior, so `none` is not eligible:
 
 - `docs/03_wit_and_manifest.md` §"arachne-params" — document the two new bool
   fields — `rg -q 'is-topmost-layer' docs/03_wit_and_manifest.md`
-- `docs/15_config_keys_reference.md` — note `only_one_wall_top` now behavioral +
-  `min_width_top_surface` consumed — `rg -q 'only_one_wall_top' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` — close D-104d — `rg -q 'D-104d.*(CLOSED|closed)' docs/DEVIATION_LOG.md`
-- `docs/18_arachne_parity_audit.md` — mark G3/G10 closed —
-  `rg -q 'G10.*closed' docs/18_arachne_parity_audit.md`
+- `docs/15_config_keys_reference.md` — annotate the existing `only_one_wall_top`
+  (`:59`) and `min_width_top_surface` (`:58`) rows as behavioral as of P152.
+  NOTE: both keys ALREADY appear in this doc, so a bare key-name grep is
+  pre-satisfied today and verifies nothing — the grep below tests the new
+  annotation — `rg -q 'P152' docs/15_config_keys_reference.md`
+- `docs/DEVIATION_LOG.md` — narrow `D-104d-MIN-WIDTH-TOP-SURFACE-NONE`: mark the
+  arachne-perimeters half landed (P152) and split the classic-perimeters
+  remainder into a successor entry `D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER`
+  (do NOT mark the whole entry closed — its scope includes classic-perimeters,
+  which this packet does not touch) —
+  `rg -q 'D-104d-MIN-WIDTH-TOP-SURFACE-NONE.*P152' docs/DEVIATION_LOG.md` and
+  `rg -q 'D-152-CLASSIC-MIN-WIDTH-TOP-SURFACE-REMAINDER' docs/DEVIATION_LOG.md`
+- `docs/18_arachne_parity_audit.md` — mark G3 (row `:178`) and G10 (row `:185`)
+  closed in the PnP-status column, following the file's existing `… closed`
+  style — `rg -q 'G10.*closed' docs/18_arachne_parity_audit.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

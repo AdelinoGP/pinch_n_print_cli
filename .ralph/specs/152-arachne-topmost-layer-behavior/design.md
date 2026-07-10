@@ -8,12 +8,25 @@
     add `is-bottom-layer` / `is-topmost-layer` bools.
   - Rust mirror: `crates/slicer-core/src/arachne/pipeline.rs` `ArachneParams`
     (`is_initial_layer` at `:144`; no top/bottom fields) + `Default` (`:180-208`).
-  - SDK bridge: `crates/slicer-sdk/src/host.rs` (`generate_arachne_walls`,
-    `ArachneParams::default`) + the `slicer-macros` adapter that maps the WIT
-    record ↔ Rust struct — both must gain the two fields.
+  - SDK bridge: `crates/slicer-sdk/src/host.rs` — `generate_arachne_walls`
+    (`:545`) holds BOTH conversion directions itself: `:551` builds the core
+    `ArachneParams` (native path) and `:690` builds the WIT record (wasm path).
+    There is NO `ArachneParams` adapter in `slicer-macros` (zero matches; only a
+    routing comment at `slicer-macros/src/lib.rs:543`) — do not plan edits there.
+  - Host-side service impl: `crates/slicer-wasm-host/src/host.rs:1773-1794` —
+    `generate_arachne_walls` maps the incoming WIT record field-by-field into
+    the core struct (`is_initial_layer: params.is_initial_layer`, …). This file
+    MUST gain the two field mappings or host instantiation of the service
+    breaks; it is the only `ArachneParams` reference in `slicer-wasm-host`.
   - removeSmallLines: `crates/slicer-core/src/arachne/remove_small.rs:42-82` —
     `remove_small_lines(lines, min_length_factor, _min_width, is_initial_layer)`
     → add a top/bottom flag; lenient `min_width/2` when top OR bottom.
+    PRECISION: the `min_width` used by the threshold (`:75-79`) is a per-line
+    local derived from the line's junction widths (`:63-67`, `fold(min)`), NOT
+    the `_min_width` parameter (discarded). Keep that per-line derivation — do
+    not wire the threshold to the passed param, or strict-path behavior changes
+    beyond the G10 fix (the G10 red test's `0.4` arg is annotated "unused by the
+    per-line threshold").
   - Pipeline entry: `crates/slicer-core/src/arachne/pipeline.rs:317-321`
     `run_arachne_pipeline(polygons, params, is_initial_layer)` — the top/bottom
     signal rides in `params` (the WIT record already flows through), so the
@@ -23,9 +36,12 @@
     `only_one_wall_top` discard) — detect topmost via
     `SliceRegionView::top_shell_index` (no such read exists today), set the WIT
     flags, force single wall on topmost, and run the second pass for G3 part 2.
-- Neighboring tests: `arachne_parity_gaps.rs` (G3 `:246-269`, G10 `:564-613` —
-  G10's CALL adapts, assertion preserved), `arachne_parity.rs` (14 locks incl.
-  the `only_one_wall_top` source-read lock at `:591`).
+- Neighboring tests: `arachne_parity_gaps.rs` (G3 `:246-269`, fixture
+  `region.set_top_shell_index(Some(0))` at `:252`; G10 `:564-613`, call at
+  `:591-596`, assertion at `:598` — G10's CALL adapts, assertion preserved),
+  `arachne_parity.rs` (15 locks incl. the
+  `arachne_parity_pipeline_only_one_wall_top_vs_min_width_top_surface`
+  source-read lock at `:591`, probing via `include_str!` at `:47-48`).
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference
   Obligations (delegate; never load `PerimeterGenerator.cpp:2160-2246`).
 
@@ -43,6 +59,19 @@
   `ArachneParams`; verify type identity across the boundary (field order +
   types); run `cargo build --tests` then `cargo xtask build-guests` after the
   WIT edit. This is the ONLY packet of the three touching `common.wit`.
+  (`slicer:common` is an unversioned WIT package — `deps/common.wit:1` — and
+  docs/03 states no version-bump rule for record field additions; the world
+  packages carry `@1.0.0` but the compatibility matrix governs world MAJOR
+  loads, not field additions.)
+- **ADR-0035 conformance:** `removeSmallLines` is EXPLICITLY in ADR-0035's
+  faithful-port function list — the G10 top-or-bottom keying is the
+  faithfulness fix that ADR mandates, not a deviation. The second-pass caller
+  logic (G3 part 2) lives in the module, outside ADR-0035's named
+  `slicer-core/src/arachne` scope, BUT that ADR's recording bar requires
+  algorithm divergences to be recorded via an amending/new ADR, not merely a
+  DEVIATION_LOG entry — see Open Questions for the top-area-derivation
+  consequence. ADR-0033 fixes only the bridge's plain-data calling convention;
+  adding two bools conforms.
 
 ## Code Change Surface
 
@@ -57,12 +86,25 @@
   - `pipeline.rs`: two `ArachneParams` fields + defaults (`false`);
     `run_arachne_pipeline` passes them to `remove_small_lines`.
   - `remove_small.rs`: threshold keys on `is_bottom || is_topmost`; audit
-    `is_initial_layer` remaining consumers before subsuming it.
-  - `slicer-sdk`/`slicer-macros`: adapter arms for the two fields.
+    `is_initial_layer` remaining consumers before subsuming it. Also gains a NEW
+    `#[cfg(test)] mod tests` housing `non_top_layer_strict` (no test module
+    exists in the file today; without it the AC-N1 `--lib` filter false-passes
+    with "0 tests run").
+  - `crates/slicer-sdk/src/host.rs`: the two fields at BOTH conversion sites
+    (`:551` native, `:690` WIT). NOT `slicer-macros` — no `ArachneParams` code
+    exists there.
+  - `crates/slicer-wasm-host/src/host.rs:1773-1794`: the two field mappings in
+    the host-side WIT→core conversion.
   - `arachne-perimeters/src/lib.rs`: read `top_shell_index`; set the WIT flags;
-    `only_one_wall_top` topmost single-wall force; the second-pass generation.
-  - Tests: packet-authored `only_one_wall_top_second_pass`,
-    `non_top_layer_strict`, `only_one_wall_top_disabled`.
+    `only_one_wall_top` topmost single-wall force; the second-pass generation
+    (PnP already ships `offset2_ex` at `crates/slicer-core/src/polygon_ops.rs:345`,
+    mirroring ClipperUtils — no new polygon helper needed).
+  - Tests: packet-authored `tests/only_one_wall_top_tdd.rs` in the module
+    (houses `only_one_wall_top_second_pass` + `only_one_wall_top_disabled`,
+    following the 10 existing native `*_tdd.rs` files that drive
+    `ArachnePerimeters::run_perimeters` via `slicer_sdk::traits::LayerModule`;
+    standalone ⇒ auto-registered) and `non_top_layer_strict` in
+    remove_small.rs's new test mod.
 - Rejected alternatives: (a) a single `is-top-or-bottom` bool — rejected per user
   decision (G3 needs to distinguish topmost specifically); (b) a new host-service
   parameter outside the record — rejected (bigger WIT surface, the record already
@@ -78,21 +120,25 @@ Primary:
 - `modules/core-modules/arachne-perimeters/src/lib.rs` — topmost detection + G3
   behavior (the largest change).
 
-Secondary (mechanical): `crates/slicer-sdk/src/host.rs`,
-`crates/slicer-macros/src/lib.rs` (adapter arms). The packet exceeds ≤3 because a
-WIT record change intrinsically fans out to schema + core + SDK + macros +
-module; each is a localized, mirror-the-field edit.
+Secondary (mechanical): `crates/slicer-sdk/src/host.rs` (`:551`, `:690`),
+`crates/slicer-wasm-host/src/host.rs` (`:1773-1794`). The packet exceeds ≤3
+because a WIT record change intrinsically fans out to schema + core + SDK +
+wasm-host + module; each is a localized, mirror-the-field edit.
 
 ## Read-Only Context
 
 - `crates/slicer-runtime/tests/arachne_parity_gaps.rs` — G3 `:246-269`, G10
   `:564-613` — purpose: exact assertions + the G10 call to adapt.
-- `crates/slicer-sdk/src/views.rs:184-210` — `set_top_shell_index` /
-  `set_top_solid_fill` (host-only test setters; the live values come from
-  `PrePass::ShellClassification`) — purpose: how the module reads topmost.
-- `crates/slicer-runtime/src/slice_postprocess_prepass.rs:144-149` — where the
-  host populates `top_shell_index`/`top_solid_fill` — purpose: confirm the field
-  the module keys on is populated on the live path.
+- `crates/slicer-sdk/src/views.rs:184-210` — `set_top_shell_index` (`:190`) /
+  `set_top_solid_fill` (`:205`); backing fields on `SliceRegionView` (`:41`,
+  `:45`) and IR `SlicedRegion` (`slice_ir.rs:1298`, `:1304`). Live values come
+  from the ShellClassification prepass built-in (entry fn documented at
+  `slice_postprocess_prepass.rs:86`; "PrePass::ShellClassification" is
+  doc-comment vocabulary, not a literal enum variant in that file) — purpose:
+  how the module reads topmost.
+- `crates/slicer-runtime/src/slice_postprocess_prepass.rs:144-150` — where the
+  host applies `top_shell_index`/`top_solid_fill` edits — purpose: confirm the
+  field the module keys on is populated on the live path.
 
 ## Out-of-Bounds Files
 
@@ -119,8 +165,9 @@ module; each is a localized, mirror-the-field edit.
 - WIT boundary: **yes** — `arachne-params` gains two bools; host `bindgen!` and
   every guest `wit_bindgen::generate!` regenerate. Field identity must match
   across `common.wit`, the Rust struct, and the adapter, or instantiation fails.
-- IR: `SliceRegionView::top_shell_index` is populated by host
-  `PrePass::ShellClassification`; the module reads it (new read).
+- IR: `SliceRegionView::top_shell_index` is populated by the host's
+  ShellClassification prepass built-in (`slice_postprocess_prepass.rs:86`); the
+  module reads it (new read).
 - Determinism: threshold + wall-count logic is pure per layer; no scheduler
   impact.
 
@@ -161,8 +208,12 @@ module; each is a localized, mirror-the-field edit.
 
 - `[FWD]` Does the G3 second pass derive the top area from upper slices (Orca) or
   can it reuse PnP's already-computed `top_solid_fill` on `SliceRegionView`? The
-  latter is simpler and avoids re-deriving; if taken, record a deviation noting
-  the divergence from Orca's `diff_ex(infill_contour, upper_slices_clipped)`.
-  Resolve during the G3-part-2 step; does not block activation.
+  latter is simpler and avoids re-deriving. Resolution criteria (per ADR-0035's
+  recording bar): reuse `top_solid_fill` ONLY if a dispatched comparison confirms
+  it matches Orca's `diff_ex(infill_contour, upper_slices_clipped)` semantics for
+  the covered cases; any residual divergence must be recorded as a DEVIATION_LOG
+  entry AND flagged for an amending/new ADR (ADR-0035 requires algorithm
+  divergences be recorded at ADR level, not merely logged). Resolve during the
+  G3-part-2 step; does not block activation.
 - `[FWD]` Whether `is_initial_layer` is subsumed by `is_bottom_layer` or kept
   distinct — decided by the LOCATIONS dispatch on its consumers.
