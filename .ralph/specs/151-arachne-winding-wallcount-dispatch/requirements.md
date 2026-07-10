@@ -14,12 +14,19 @@ Five Arachne parity gaps plus one latent wiring bug all concern how many walls
 are emitted and in which direction:
 
 - **wall_count wiring bug (prerequisite, discovered in planning):**
-  `arachne-perimeters` never reads `wall_count`. It reads `max_bead_count`, which
-  is unregistered on the module and silently defaults to 9; `LimitedBeadingStrategy`'s
-  over-cap branch then yields ~5 walls on a 10 mm square (the audit's `{0,1,2,3,4}`
-  index anomaly). OrcaSlicer sets `max_bead_count = 2 × inset_count`
-  (`WallToolPaths.cpp:525`). Without this, G2's "force single wall" has no correct
-  baseline to reduce from.
+  `arachne-perimeters` never reads `wall_count`. It reads `max_bead_count` —
+  which IS registered on the module (`arachne-perimeters.toml:159`,
+  `default = 9`) but effectively invisible when the user doesn't set it:
+  `ConfigView` never merges schema defaults (`get_int` returns `None` for unset
+  keys — `slice_ir.rs:807-814`; `bind_module_config_view` pre-filters the raw
+  source without consulting defaults), so the module's own
+  `.unwrap_or(defaults.max_bead_count)` (`lib.rs:119-122`) silently supplies 9;
+  `LimitedBeadingStrategy`'s over-cap branch then yields ~5 walls on a 10 mm
+  square (the `{0,1,2,3,4}` index anomaly observed during packet planning —
+  NOT recorded in `docs/18`, which never mentions `wall_count`/`max_bead_count`;
+  the new DEVIATION_LOG entry is where it gets recorded). OrcaSlicer sets
+  `max_bead_count = 2 × inset_count` (`WallToolPaths.cpp:525`). Without this,
+  G2's "force single wall" has no correct baseline to reduce from.
 - **G1 `wall_direction`:** zero readers anywhere; contour winding cannot be
   controlled (Orca CCW/CW via `make_counter_clockwise`/`make_clockwise`, holes
   opposite the contour).
@@ -42,6 +49,8 @@ shared baseline the winding and single-wall behaviors act on.
 
 - Register `wall_count` on `arachne-perimeters`; read it and set
   `max_bead_count = 2 × wall_count` in `arachne_params_from_config`.
+  Precedence: an explicitly-set `max_bead_count` (`get_int` → `Some`) still
+  wins; only the unset case (`None`) takes `2 × wall_count`.
 - Register `wall_direction` (enum, default `counter_clockwise`); add a
   signed-area-based winding normalization at emission (none exists today) that
   reverses contour point order to match the requested winding, with holes wound
@@ -57,7 +66,8 @@ shared baseline the winding and single-wall behaviors act on.
 - Thread a spiral-vase input through the generator-selection path
   (`execution_plan_live.rs` extracts it from `config_source` like `wall_generator`;
   `dedup_same_claim_modules` forces classic when spiral is active).
-- Close D-104c; add a DEVIATION_LOG entry for the wall_count bug; update docs.
+- Close `D-104c-OVERHANG-REVERSE-NONE`; add a DEVIATION_LOG entry for the
+  wall_count bug (`D-151-WALLCOUNT-MAXBEAD-UNWIRED`); update docs.
 
 ## Out of Scope
 
@@ -71,7 +81,8 @@ shared baseline the winding and single-wall behaviors act on.
 - `docs/04_host_scheduler.md` — claim dedup / generator selection (G8); delegate.
 - `docs/15_config_keys_reference.md` — key provenance; delegate the entries.
 - `docs/08_coordinate_system.md` — short; load for G9 mm² note.
-- `docs/DEVIATION_LOG.md` — D-104c + wall_count entries.
+- `docs/DEVIATION_LOG.md` — `D-104c-OVERHANG-REVERSE-NONE` +
+  `D-151-WALLCOUNT-MAXBEAD-UNWIRED` entries.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -92,7 +103,7 @@ Files to inspect for this packet:
 - Positive: `AC-1` (wall_count→max_bead_count=2×), `AC-2` (G1 winding flip),
   `AC-3` (G2 first-layer single wall), `AC-4` (G7 odd-layer reversal),
   `AC-5` (G8 spiral→classic), `AC-6`/`AC-6b` (G9 registration + wiring),
-  `AC-7` (14 locks green against the corrected wall-count baseline).
+  `AC-7` (15 locks green against the corrected wall-count baseline).
 - Negative: `AC-N1` (spiral fallback fires ONLY when spiral active),
   `AC-N2` (absent `wall_direction` preserves prior default winding).
 - Cross-packet: depends on 150 (`float_or_percent`); unblocks 152 (correct
@@ -109,8 +120,8 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_pipeline_wall_max_resolution_deviation_registered --exact` | G9 registration | FACT pass/fail |
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_wall_count_wires_max_bead_count --exact` | wall_count bug (packet-authored) | FACT pass/fail |
 | `cargo test -p arachne-perimeters --lib -- wall_maximum_resolution_wired` | G9 wiring | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test contract -- spiral_vase_arachne_dispatch` | AC-N1 | FACT pass/fail |
-| `cargo test -p slicer-runtime --test arachne_parity` | AC-7/AC-N2 14 locks | FACT pass/fail; SNIPPETS on fail |
+| `cargo test -p slicer-scheduler --test scheduler_contract -- spiral_vase_arachne_dispatch` | AC-N1 (binary is `scheduler_contract`, not `contract`) | FACT pass/fail |
+| `cargo test -p slicer-runtime --test arachne_parity` | AC-7/AC-N2 15 locks | FACT pass/fail; SNIPPETS on fail |
 | `cargo check --workspace --all-targets` | compile gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask build-guests --check` | guest freshness (module/manifest edits) | FACT clean/STALE |
@@ -120,7 +131,7 @@ Files to inspect for this packet:
 - Cross-step invariant: the wall_count wiring step MUST land before the G2/G7
   winding steps — those assert exact index sets / winding against the corrected
   baseline; running them against `max_bead_count=9` gives false reds/greens.
-- Cross-step invariant: no step regresses the 14 `arachne_parity.rs` locks
+- Cross-step invariant: no step regresses the 15 `arachne_parity.rs` locks
   (AC-7). Locks that assert wall counts will legitimately shift when wall_count
   wiring lands — each shift must be validated as the wall_count-correct value
   (2×N produces N walls on the test squares), not blindly rebaselined.
@@ -130,7 +141,8 @@ Files to inspect for this packet:
 ## Context Discipline Notes
 
 - Large files: `arachne-perimeters/src/lib.rs` (>500 lines — range-read
-  `:108-225` params, `:295-306` overhang keys, `:467-497` emission);
+  `:108-225` params, `:295-306` the `only_one_wall_top` discard — G7's new
+  overhang reads land nearby, `:467-497` emission);
   `execution_plan.rs` and `execution_plan_live.rs` (range-read the dedup +
   loader signature only, `:250-262` / `:201-216`).
 - Likely temptation: reading `LimitedBeadingStrategy` to "understand" the

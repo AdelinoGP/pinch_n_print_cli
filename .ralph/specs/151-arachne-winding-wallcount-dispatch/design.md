@@ -5,10 +5,17 @@
 - Primary code paths:
   - Wall-count wiring + params: `modules/core-modules/arachne-perimeters/src/lib.rs`
     `arachne_params_from_config` (`:108-225`) — currently reads `max_bead_count`
-    (`:119-122`) with no `wall_count` read; add `wall_count` → `max_bead_count =
-    2 × wall_count`. Also the home for G7 overhang reads (`:295-306`, currently a
-    `let _ = only_one_wall_top;`-style discard for the overhang keys) and G9
-    tolerance wiring.
+    (`:119-122`, falling back to `unwrap_or(defaults.max_bead_count)` = 9) with
+    no `wall_count` read anywhere in the file. The key is registered
+    (`arachne-perimeters.toml:159`, `default = 9`) but `ConfigView` never merges
+    schema defaults, so unset ⇒ `get_int` → `None` — which is exactly what makes
+    the precedence rule implementable: explicit `Some` wins, `None` →
+    `max_bead_count = 2 × wall_count`. Also the home for G7 overhang reads (the
+    overhang keys `overhang_reverse` / `overhang_reverse_internal_only` /
+    `detect_overhang_wall` are registered — toml `:230-244` — but have ZERO
+    reads in `lib.rs`; the nearby `let _ = only_one_wall_top;` discard at
+    `:305-306` is packet 152's key, not an overhang key) and G9 tolerance
+    wiring.
   - Winding (G1/G7): emission block `lib.rs:467-497` (sets `perimeter_index =
     line.inset_idx`, `path`); the `path` comes from
     `extrusion_line_to_extrusion_path3d` (`crates/slicer-ir/src/slice_ir.rs:1783-1792`),
@@ -22,13 +29,21 @@
     `allowed_error_distance_squared` (0.000025 mm²), both mm², currently sourced
     from `meshfix_*`. The module already reads `meshfix_maximum_resolution/deviation`
     (`lib.rs:190-198`); G9 adds `wall_maximum_*` reads and feeds the squared mm.
-  - G8 dispatch: `crates/slicer-wasm-host/src/execution_plan_live.rs:201-216`
-    (extracts `wall_generator` from `config_source`, calls
+  - G8 dispatch: `crates/slicer-wasm-host/src/execution_plan_live.rs:208-219`
+    (extracts `wall_generator` from `config_source` via
+    `WALL_GENERATOR_CONFIG_KEY`, calls
     `dedup_same_claim_modules_with_wall_generator`) +
-    `crates/slicer-scheduler/src/execution_plan.rs:250-275` (dedup body). Thread
-    a `spiral_vase` bool the same way; force classic when true.
-- Neighboring tests: `crates/slicer-runtime/tests/arachne_parity_gaps.rs` (G1/G2/
-  G7/G8/G9 red tests — arbiters, do not edit), `arachne_parity.rs` (14 locks).
+    `crates/slicer-scheduler/src/execution_plan.rs:246-271` (test wrapper
+    `:246-251`, production entry `:259-265`, private impl `:267+`; classic id
+    const `CLASSIC_PERIMETERS_MODULE_ID = "com.core.classic-perimeters"` at
+    `:201`). Thread a `spiral_vase` bool the same way; force classic when true.
+    The G8 red test's source probe (`arachne_parity_gaps.rs:491-509`) accepts
+    "spiral" in EITHER `execution_plan.rs` OR `run.rs` (`||`), so the
+    scheduler-side change alone satisfies it.
+- Neighboring tests: `crates/slicer-runtime/tests/arachne_parity_gaps.rs` —
+  existing test bodies are arbiters, never modify them; Step 1 APPENDS the
+  packet-authored `arachne_parity_wall_count_wires_max_bead_count` test to this
+  file (append-only). `arachne_parity.rs` (15 locks).
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference
   Obligations (delegate; never load).
 
@@ -47,6 +62,22 @@
 - **Winding has no existing helper** — the module must introduce a signed-area
   (shoelace) test + point-order reversal; there is no `make_ccw`/`reverse` to
   reuse in `slicer-ir` or `slicer-core`. Keep it local to the module's emission.
+- **ADR-0011 conformance (wall sequencing):** ADR-0011 locks inter-wall
+  *reordering* logic (e.g. InnerOuterInner grouping) into shared
+  `slicer-perimeter-utils`. Winding is point-traversal *direction within one
+  loop*, not inter-wall order, so the module-local shoelace normalization does
+  not contradict it. If `classic-perimeters` later needs the same reversal
+  (Orca applies `overhang_reverse` to both generators), promote the helper to
+  `slicer-perimeter-utils` then — out of scope here.
+- **ADR-0035 conformance (faithful emission):** the winding normalization is
+  the port of OrcaSlicer's wall reorientation
+  (`PerimeterGenerator.cpp:527-545` winding rule; `:58-98,422-429` odd-layer
+  reversal) applied after junction emission — it is not a supplemental
+  invention on top of the faithful `generateJunctions`/`connectJunctions`
+  surface. Likewise the G9 rewiring only changes where
+  `simplifyToolPaths`' tolerances come from (config vs `meshfix_*`), never the
+  simplify algorithm itself; the replace-vs-supplement `[FWD]` dispatch must
+  confirm the Orca sourcing before wiring.
 
 ## Code Change Surface
 
@@ -54,18 +85,28 @@
   `arachne_params_from_config` + emission block; G8 in the scheduler/loader
   selection path (one bool threaded like `wall_generator`).
 - Exact changes:
-  - `arachne-perimeters/src/lib.rs`: read `wall_count` (→2×max_bead_count),
+  - `arachne-perimeters/src/lib.rs`: read `wall_count` (→ `max_bead_count =
+    2 × wall_count` when `max_bead_count` is unset; explicit `Some` wins),
     `wall_direction`, `only_one_wall_first_layer`, the overhang keys,
     `wall_maximum_resolution/deviation`; add winding normalization at `:467-497`;
-    odd-layer reversal for G7.
+    odd-layer reversal for G7. Also author a `#[cfg(test)] mod tests` containing
+    `wall_maximum_resolution_wired` (AC-6b) — no in-file test module exists
+    today, so the `--lib` filter would otherwise match nothing and false-pass.
   - `arachne-perimeters.toml`: register `wall_count`, `wall_direction` (enum),
     `only_one_wall_first_layer`, `overhang_reverse_threshold` (`float_or_percent`),
     `wall_maximum_resolution`, `wall_maximum_deviation`.
+  - `crates/slicer-runtime/tests/arachne_parity_gaps.rs`: APPEND the
+    packet-authored `arachne_parity_wall_count_wires_max_bead_count` test
+    (AC-1); existing test bodies are immutable arbiters.
   - `execution_plan_live.rs`: extract `spiral_vase` from `config_source`; pass to
     dedup. `execution_plan.rs`: `dedup_same_claim_modules(..., spiral_vase)` forces
     `classic-perimeters` for the `perimeter-generator` claim when spiral is active.
     (Adding the literal string "spiral" to `execution_plan.rs` also satisfies the
     G8 red test's substring probe — but the real behavior is the point.)
+  - `crates/slicer-scheduler/tests/contract/spiral_vase_arachne_dispatch_tdd.rs`
+    (new) + `mod spiral_vase_arachne_dispatch_tdd;` registration in
+    `tests/contract/main.rs` (AC-N1; the aggregated binary is
+    `scheduler_contract` per `slicer-scheduler/Cargo.toml` `[[test]]`).
 - Rejected alternatives: (a) putting spiral logic in the module (rejected — the
   audit and Orca both gate at selection time, before the module runs); (b) a new
   winding type in `slicer-ir` (rejected — a local shoelace test is enough and
@@ -82,8 +123,16 @@ Primary:
 - `crates/slicer-scheduler/src/execution_plan.rs` + (secondary)
   `crates/slicer-wasm-host/src/execution_plan_live.rs` — G8 spiral threading.
 
-The packet exceeds ≤3 because G8 legitimately lives in a different crate from the
-module gaps; it is a small, isolated two-file change with no overlap.
+Test files (packet-authored additions only):
+
+- `crates/slicer-runtime/tests/arachne_parity_gaps.rs` — append the AC-1 test.
+- `crates/slicer-scheduler/tests/contract/spiral_vase_arachne_dispatch_tdd.rs`
+  (new) + `crates/slicer-scheduler/tests/contract/main.rs` (one `mod` line).
+
+The packet exceeds ≤3 primary files because G8 legitimately lives in a different
+crate from the module gaps; it is a small, isolated two-file change with no
+overlap. The test additions are per-step (see implementation-plan) and stay
+within each step's ≤3-edit cap.
 
 ## Read-Only Context
 
@@ -127,7 +176,7 @@ module gaps; it is a small, isolated two-file change with no overlap.
 
 - `max_bead_count = 2 × wall_count` (Orca `WallToolPaths.cpp:525`) is the wiring
   contract; the emitted distinct-index count on a solid square equals `wall_count`.
-- The 14 `arachne_parity.rs` locks are invariant (AC-7); wall-count shifts are
+- The 15 `arachne_parity.rs` locks are invariant (AC-7); wall-count shifts are
   validated, not rebaselined.
 - Default `wall_direction = counter_clockwise` must reproduce the prior
   (pre-packet) winding so absent-key configs are unchanged (AC-N2).
@@ -159,7 +208,11 @@ module gaps; it is a small, isolated two-file change with no overlap.
   tolerances, or supplement them (Orca has both keys)? Resolve from the
   `WallToolPaths.cpp:487-503,702-719` dispatch during the G9 step; the red test
   only needs registration, so this affects AC-6b's wiring, not AC-6.
-- `[FWD]` Exact spiral-vase config key/source on the raw config path — `spiral_vase`
-  exists on the arachne manifest, but the selection path reads the RAW
-  `config_source` (pre-`ResolvedConfig`); confirm `spiral_vase` is present there
-  the way `wall_generator` is, or thread whichever raw key carries spiral state.
+- `[FWD]` Exact spiral-vase config key/source on the raw config path —
+  `spiral_vase` is registered on the arachne manifest (toml `:288`), and the
+  selection path reads the RAW `config_source` (the same map `wall_generator`
+  is read from via `WALL_GENERATOR_CONFIG_KEY` at
+  `execution_plan_live.rs:208-219`), so a user-set `spiral_vase` will be
+  present there; absent ⇒ treat spiral as inactive. Remaining question for the
+  G8 step: the raw `ConfigValue` variant to match (`Bool` vs `String`) —
+  confirm against how the gap/contract tests build their config fixtures.

@@ -15,13 +15,18 @@
 
 - Gaps: wall_count wiring bug (prerequisite).
 - Objective: register `wall_count`; read it in `arachne_params_from_config`; set
-  `max_bead_count = 2 × wall_count`.
+  `max_bead_count = 2 × wall_count` when `max_bead_count` is unset (`get_int` →
+  `None`; `ConfigView` never merges the toml `default = 9`) — an explicitly-set
+  `max_bead_count` still wins. Author the AC-1 test by APPENDING
+  `arachne_parity_wall_count_wires_max_bead_count` to `arachne_parity_gaps.rs`
+  (existing test bodies are immutable arbiters).
 - Precondition: packet active (150 implemented).
 - Postcondition: AC-1 — distinct Outer/Inner indices on a solid square equal
   `wall_count` (e.g. `{0,1,2}` for 3).
 - Files read: `arachne-perimeters/src/lib.rs:108-225`.
 - Files edit (≤3): `modules/core-modules/arachne-perimeters/src/lib.rs`,
-  `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
+  `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`,
+  `crates/slicer-runtime/tests/arachne_parity_gaps.rs` (append-only).
 - Out-of-bounds: `crates/slicer-core/src/beading/**`.
 - Dispatches: "Run `cargo test -p slicer-runtime --test arachne_parity_gaps --
   arachne_parity_wall_count_wires_max_bead_count --exact`; FACT."; "From
@@ -30,7 +35,8 @@
 - Docs: `docs/15_config_keys_reference.md` (delegate `wall_count` entry).
 - OrcaSlicer refs: `WallToolPaths.cpp:525` — delegate.
 - Verification: the AC-1 packet-authored test.
-- Exit condition: AC-1 green; DEVIATION_LOG entry drafted for the bug.
+- Exit condition: AC-1 green; DEVIATION_LOG entry drafted for the bug
+  (`D-151-WALLCOUNT-MAXBEAD-UNWIRED`).
 
 ### Step 2: Register + wire wall_direction winding (G1)
 
@@ -88,7 +94,7 @@
 - Docs: none.
 - OrcaSlicer refs: `PerimeterGenerator.cpp:58-98,422-429`.
 - Verification: G7 gap test.
-- Exit condition: AC-4 green; D-104c marked closed.
+- Exit condition: AC-4 green; `D-104c-OVERHANG-REVERSE-NONE` marked closed.
 
 ### Step 5: wall_maximum_resolution/deviation (G9)
 
@@ -96,6 +102,9 @@
 - Objective: register both keys; read and feed
   `smallest_line_segment_squared = wall_maximum_resolution²`,
   `allowed_error_distance_squared = wall_maximum_deviation²` (mm²; no ÷100).
+  Author `#[cfg(test)] mod tests` in `lib.rs` containing
+  `wall_maximum_resolution_wired` (AC-6b) — the crate has no in-file test module
+  today; without it the `--lib` filter matches nothing and false-passes.
 - Precondition: independent of Steps 2-4.
 - Postcondition: AC-6 (registration flips G9 gap test) + AC-6b (wiring, packet
   test).
@@ -113,35 +122,65 @@
 - Verification: G9 gap test + wiring test.
 - Exit condition: AC-6 + AC-6b green.
 
-### Step 6: Spiral vase forces classic (G8)
+### Step 6a: Spiral vase forces classic (G8 behavior)
 
 - Gaps: G8.
 - Objective: extract a spiral-vase bool from `config_source` in
-  `execution_plan_live.rs` (like `wall_generator`); thread into
-  `dedup_same_claim_modules`; force `classic-perimeters` for the
-  `perimeter-generator` claim when spiral is active.
+  `execution_plan_live.rs` (like `wall_generator` via
+  `WALL_GENERATOR_CONFIG_KEY`, `:208-219`); thread into
+  `dedup_same_claim_modules` (`execution_plan.rs:246-271`); force
+  `com.core.classic-perimeters` for the `perimeter-generator` claim when spiral
+  is active.
 - Precondition: independent of Steps 1-5 (different crates).
-- Postcondition: AC-5 (G8 gap test — the selection path mentions/handles spiral)
-  and AC-N1 (fallback fires only when spiral active).
+- Postcondition: AC-5 (G8 gap test — its source probe accepts "spiral" in
+  EITHER `execution_plan.rs` OR `run.rs`, so the scheduler-side change
+  suffices).
 - Files read: `crates/slicer-scheduler/src/execution_plan.rs:180-275`,
-  `crates/slicer-wasm-host/src/execution_plan_live.rs:201-216`.
+  `crates/slicer-wasm-host/src/execution_plan_live.rs:201-219`.
 - Files edit (≤3): `crates/slicer-scheduler/src/execution_plan.rs`,
   `crates/slicer-wasm-host/src/execution_plan_live.rs`.
 - Out-of-bounds: the module.
-- Dispatches: "Run G8 gap test + `cargo test -p slicer-scheduler --test contract
-  -- spiral_vase_arachne_dispatch`; FACT."
+- Dispatches: "Run G8 gap test; FACT."
 - Context cost: `M`.
 - Docs: `docs/04_host_scheduler.md` (delegate selection section).
 - OrcaSlicer refs: `LayerRegion.cpp:138-141`.
-- Verification: G8 gap test + the contract test (AC-N1).
-- Exit condition: AC-5 + AC-N1 green.
+- Verification: G8 gap test.
+- Exit condition: AC-5 green.
+
+### Step 6b: Spiral-dispatch contract test (AC-N1)
+
+- Gaps: G8 (negative case).
+- Objective: author
+  `crates/slicer-scheduler/tests/contract/spiral_vase_arachne_dispatch_tdd.rs`
+  asserting the fallback fires ONLY when spiral is active (arachne stays
+  selected when spiral is inactive); register it via
+  `mod spiral_vase_arachne_dispatch_tdd;` in `tests/contract/main.rs`. The
+  aggregated binary is `scheduler_contract` (`slicer-scheduler/Cargo.toml`
+  `[[test]]`), NOT `contract` — an unregistered file silently never compiles
+  into the binary and false-passes with "0 tests run".
+- Precondition: Step 6a landed.
+- Postcondition: AC-N1 green.
+- Files read: `crates/slicer-scheduler/tests/contract/main.rs`.
+- Files edit (≤3): the new test file,
+  `crates/slicer-scheduler/tests/contract/main.rs`.
+- Out-of-bounds: the module.
+- Dispatches: "Run `cargo test -p slicer-scheduler --test scheduler_contract --
+  spiral_vase_arachne_dispatch --nocapture`; FACT (must report ≥1 test run)."
+- Context cost: `S`.
+- Docs: none.
+- OrcaSlicer refs: none.
+- Verification: the contract test (AC-N1).
+- Exit condition: AC-N1 green; the test visibly runs (≥1 test, not 0).
 
 ### Step 7: Docs, deviation closure, guest freshness
 
 - Gaps: bookkeeping.
-- Objective: update docs/15 (six keys), docs/04 (spiral fallback), docs/18
-  (G1/G2/G7/G8/G9 closed), DEVIATION_LOG (close D-104c; add wall_count entry).
-- Precondition: Steps 1-6 green.
+- Objective: update docs/15 (six keys), docs/04 (ADD a generator-selection
+  subsection — `wall_generator` dispatch is currently undocumented there —
+  covering the dedup and the spiral fallback), docs/18 (G1/G2/G7/G8/G9 marked
+  closed in the Gn rows' PnP-status column), DEVIATION_LOG (close
+  `D-104c-OVERHANG-REVERSE-NONE`; add `D-151-WALLCOUNT-MAXBEAD-UNWIRED`).
+- Precondition: Steps 1-6b green.
 - Postcondition: every Doc Impact grep hits.
 - Files read/edit (docs only, sequential): the four docs.
 - Dispatches: "Run each Doc Impact grep; FACT all-hit / misses."
@@ -158,20 +197,22 @@
 | Step 3 | S | first-layer single wall |
 | Step 4 | M | overhang reversal (composes with Step 2) |
 | Step 5 | M | G9 register + wire |
-| Step 6 | M | spiral dispatch (different crates) |
+| Step 6a | M | spiral dispatch behavior (different crates) |
+| Step 6b | S | AC-N1 contract test + aggregator registration |
 | Step 7 | S | docs + closure |
 
 Aggregate: `M` (one M step at a time; no L).
 
 ## Packet Completion Gate
 
-- All 7 steps complete; every exit condition met.
+- All 8 steps (1-5, 6a, 6b, 7) complete; every exit condition met.
 - G1/G2/G7/G8/G9 gap tests green; the wall_count packet test green; other gap
   tests (G3/G4/G5/G6/G10) unchanged (G4/G5/G6 already green from 150).
-- 14 `arachne_parity.rs` locks green (shifts validated as wall_count-correct).
+- 15 `arachne_parity.rs` locks green (shifts validated as wall_count-correct).
 - `cargo check`/`clippy --workspace --all-targets` clean;
   `cargo xtask build-guests --check` clean.
-- Doc Impact greps hit; D-104c closed; wall_count bug logged.
+- Doc Impact greps hit; `D-104c-OVERHANG-REVERSE-NONE` closed;
+  `D-151-WALLCOUNT-MAXBEAD-UNWIRED` logged.
 
 ## Acceptance Ceremony
 
