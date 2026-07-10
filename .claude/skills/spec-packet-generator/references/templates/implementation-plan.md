@@ -62,4 +62,4 @@ If the sum exceeds M aggregate, or any single step is L, the packet must be spli
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md`.
 - Confirm packet-level verification commands are green.
 - Record any remaining packet-local risk explicitly before moving to `status: implemented`.
-- Confirm the implementer's peak context usage stayed under 70%; if not, log it as a packet-authoring lesson for future spec-packet-generator runs.
+- Confirm the implementer's peak context usage stayed within its declared band (≤150k standard; ≤300k only with a logged ESCALATION block); if not, log it as a packet-authoring lesson for future spec-packet-generator runs.

@@ -10,4 +10,4 @@
 - **Another packet is already active.** Keep the new packet as `draft` and call out the conflict.
 - **OrcaSlicer reference missing.** Note that the packet has no OrcaSlicer dependency rather than inventing one.
 - **Existing packet directory already present.** Ask whether to overwrite, revise in place, or choose a new slug — never overwrite without explicit approval.
-- **Your own context is approaching 60%.** Stop populating files. Emit the partial packet, hand off remaining files as a numbered TODO list, and tell the user to resume in a fresh session with the partial packet as input.
+- **Your own context is approaching the 120k reading budget.** Stop populating files. Emit the partial packet, hand off remaining files as a numbered TODO list, and tell the user to resume in a fresh session with the partial packet as input.

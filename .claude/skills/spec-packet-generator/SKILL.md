@@ -1,8 +1,8 @@
 ---
 name: spec-packet-generator
-description: Generates a Pinch 'n Print Ralph spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, or URL.
+description: Generates a Pinch 'n Print Ralph spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, URL, or approved plan. Multi-packet plans run the Batch Protocol — plan persisted verbatim to docs/specs/ with a packet queue, 2–3 packets authored inline, 4+ orchestrated via authoring subagents with independent preflight reviewers; also use to resume a batch from its plan file.
 type: anthropic-skill
-version: "1.2"
+version: "1.4"
 metadata:
   internal: true
 ---
@@ -11,10 +11,10 @@ metadata:
 
 ## Context Discipline (primacy — overrides any later instruction)
 
-Treat context as a budget, not a buffer. Quality collapses past ~140k of 200k. This block is the rule, not an aspiration: packet generation is read-heavy (backlog file, authoritative docs, OrcaSlicer refs, sometimes a predecessor packet), and you are the only agent that can keep this skill from quietly burning the implementer's budget.
+Treat context as a budget, not a buffer. Quality collapses once context fills with raw reads — regardless of window size, so budgets are absolute token counts, never window percentages. This block is the rule, not an aspiration: packet generation is read-heavy (backlog file, authoritative docs, OrcaSlicer refs, sometimes a predecessor packet), and you are the only agent that can keep this skill from quietly burning the implementer's budget.
 
 **Hard limits**
-- Read budget: 60% (≈120k). At 60% stop reading and finalize, hand off, or delegate.
+- Read budget: 120k (absolute; generation never gets an extended band — a packet that needs one is a packet to split). At 120k stop reading and finalize, hand off, or delegate.
 - NEVER read a file > 600 lines in full. Use symbol search, line ranges, or delegate.
 - NEVER load generated code, lockfiles, `target/`, vendored deps, or full `cargo`/test output. Delegate or skip.
 
@@ -59,13 +59,15 @@ PLAN
 ```
 
 **Checkpoints**
-- 60%: state remaining budget; re-confirm plan fits.
-- 70%: stop reading. Finalize, hand off, or compress.
-- 85%: STOP. Output a handoff block — completed steps, current state, next concrete action, files to reopen.
+- 100k: state remaining budget; re-confirm plan fits.
+- 120k: stop reading. Finalize, hand off, or compress.
+- 150k: STOP. Output a handoff block — completed steps, current state, next concrete action, files to reopen.
 
 ## When to Use
 
 - The user has a rough prompt and wants a packet.
+- An approved plan (Plan-mode output or a plan file) needs decomposing into packets — Batch Protocol.
+- A `docs/specs/` plan file with a `## Packet Queue` section needs its remaining packets generated (batch resume).
 - A `docs/07_implementation_status.md` slice needs runnable spec artifacts.
 - A task group needs scope, authoritative docs, OrcaSlicer refs, and acceptance criteria before implementation.
 
@@ -89,7 +91,7 @@ A packet MUST NOT modify files in another packet's directory. If correcting/comp
 
 ## Parameters
 
-- **input** (required) — rough text, markdown file path, or URL.
+- **input** (required) — rough text, markdown file path, URL, an approved plan (Plan-mode output or file), or a `docs/specs/` plan file with a packet queue (batch resume).
 - **task_ids** (optional) — `TASK-###` ids from `docs/07`. If omitted, infer and confirm.
 - **spec_slug** (optional) — kebab-case folder name; derive from prompt + scope when omitted.
 - **output_dir** (optional, default `./.ralph/specs/[spec_slug]/`).
@@ -97,19 +99,31 @@ A packet MUST NOT modify files in another packet's directory. If correcting/comp
 
 Constraints: ask for missing required params via `AskUserQuestion`; support text/file/URL input (delegate summarization for > 300 lines); never overwrite an existing packet directory without explicit approval; present scope and get explicit approval before generating files; keep packets small (a handful of related `docs/07` tasks, not a phase).
 
+## Batch Protocol (multi-packet plans)
+
+Emitted packet files consume your window exactly like reads do — quality decay across a batch is a context failure, not a diligence failure. The defense is structural:
+
+- **The plan file is the anchor.** Persist the plan verbatim to `docs/specs/<slug>-plan.md` with an appended `## Packet Queue` table, and get one approval for the whole queue — it stands in for each packet's scope gate. Every packet is generated from the file, not from conversation memory. The skill never commits; the user commits the plan file and its packets together.
+- **Mode by size.** 2–3 packets → **inline**: this session authors each packet sequentially in dependency order through the normal workflow. 4+ packets → **orchestrated**: this session becomes an orchestrator, subagents author, and it authors nothing itself.
+- **Author ≠ reviewer (orchestrated).** Every packet's preflight gate (Step 14) runs in an independent reviewer subagent; the orchestrator adjudicates verdicts, reads each `packet.spec.md` for plan conformance, and never opens `design.md` / `implementation-plan.md`.
+
+Queue table format, dispatch contracts, failure handling, and resume: `references/batch-protocol.md`.
+
 ## Workflow
 
 ### 0. PLAN
 
 Emit the PLAN block. Default for this skill:
-- Files in scope: the 5 packet files under `./.ralph/specs/<slug>/`.
+- Files in scope: the 5 packet files under `./.ralph/specs/<slug>/` (plus the `docs/specs/` plan file when the Batch Protocol is active).
 - Out of scope: the workspace; `target/`; lockfiles; `OrcaSlicerDocumented/` (delegated).
-- Dispatches: at minimum one for `docs/07`, one for `docs/00` if needed, one for OrcaSlicer if parity matters, optionally one per predecessor packet.
+- Dispatches: at minimum one for `docs/07`, one for `docs/00` if needed, one for OrcaSlicer if parity matters, optionally one per predecessor packet, plus the Step-4 grounding dispatches (one per load-bearing plan claim, batched by area).
 - Cost: M is typical. L → split (most often, predecessor reconciliation becomes its own preliminary packet).
-- Stop condition: 5 packet files written, self-review checklist green, scope approved.
+- Stop condition: 5 packet files written, self-review checklist green, preflight gate PASS, scope approved.
 
 ### 1. Detect Input Mode
 
+- A `docs/specs/*-plan.md` file with a `## Packet Queue` section: batch resume — read `references/batch-protocol.md` and continue from the first `pending` row.
+- A plan (Plan-mode output or plan file) that decomposes into more than one packet: Batch Protocol — persist the plan file and queue before generating anything.
 - File path: read; if > 300 lines, delegate a SUMMARY.
 - URL: delegate fetch + summarization. Do not paste page body into context.
 - Otherwise: treat as direct prompt text.
@@ -144,13 +158,25 @@ Return: LOCATIONS
 
 Record returned paths verbatim in `requirements.md` and `packet.spec.md`.
 
-### 4. Resolve Packet Metadata
+### 4. Ground the Plan (claims → facts)
+
+The input plan is **claims, not evidence**. Plans routinely name symbols, files, and module states the tree does not contain, and every ungrounded claim copied into a packet becomes an implementer-facing defect — the 2026-06 fictional-symbol wave (≥1 defect in every packet 104–112) entered through exactly this door.
+
+Extract every claim the packet will lean on, classified per the symbol-inventory dispatch in `.claude/skills/spec-review/references/preflight-gate.md`: pre-existing symbols (fn/struct/field/trait/module + claimed crate + claimed shape), WIT/IR identifiers, prerequisite packet statuses, schema versions, ADR slots, deviation IDs, new-test-file target binaries. Dispatch one FACT/LOCATIONS per load-bearing claim against the real tree (batch by area). Then:
+
+- **Confirmed** → the packet cites the verified name/shape/`file:line`, never the plan's wording.
+- **Falsified** → the plan is not executable there; redesign that slice to the tree's reality, and if the correction changes scope, surface it via `AskUserQuestion` before the metadata gate.
+- **Unresolvable** → it enters the packet only as a `design.md` Open Question tagged `[BLOCK]`, never as fact.
+
+Completion criterion: every pre-existing symbol, path, status, and identifier the packet will name has a dispatched grep behind it — the same standard Step 14's gate enforces after writing.
+
+### 5. Resolve Packet Metadata
 
 Determine: slug, task ids, goal, in-scope, out-of-scope, output dir, status.
 
-**Gate.** Present a short plan — slug, grouped task ids, one-paragraph goal, in/out-of-scope, files to generate, expected downstream context cost (S/M/L based on crates touched). MUST NOT write files until the user approves.
+**Gate.** Present a short plan — slug, grouped task ids, one-paragraph goal, in/out-of-scope, files to generate, expected downstream context cost (S/M/L based on crates touched). MUST NOT write files until the user approves. Batch runs: the queue approval is this gate's standing answer — re-ask only when Step-4 grounding changed the entry's scope (`references/batch-protocol.md`).
 
-### 5. Acceptance Criteria Completeness Checklist
+### 6. Acceptance Criteria Completeness Checklist
 
 Before writing any packet file, verify each AC meets the rules below. If any item fails, resolve before proceeding.
 
@@ -178,7 +204,7 @@ Before writing any packet file, verify each AC meets the rules below. If any ite
 
 See `references/acceptance-criteria-examples.md` for a compliant and a non-compliant AC.
 
-### 6. Create Packet Structure
+### 7. Create Packet Structure
 
 Create `./.ralph/specs/[spec_slug]/` and generate the packet files. Use the templates at `references/templates/` (inside this skill) as starting structure but replace placeholders with packet-specific content. Templates already include context-discipline fields (files-in-scope, sub-agent dispatches, context cost) — fill in concretely; no placeholders, no "TBD", no "see above".
 
@@ -205,17 +231,17 @@ Create `./.ralph/specs/[spec_slug]/` and generate the packet files. Use the temp
 
 Decide per snippet whether the packet needs it. If included, copy verbatim. **Paraphrasing snippet content is forbidden** — paraphrases drift and rot; verbatim or absent.
 
-### 7. `packet.spec.md`
+### 8. `packet.spec.md`
 
 YAML frontmatter (`status`, `packet`, `task_ids`, `backlog_source: docs/07_implementation_status.md`); one-sentence solution-shaped Goal; **prose** Scope Boundaries (2–3 sentences, NOT a bullet list duplicating `requirements.md` §In Scope); Given/When/Then ACs as the single authoritative source (each ending with `|` + runnable command, each labelled `AC-1`, `AC-2`, …); at least one negative/rejection criterion (`AC-N1`, `AC-N2`, …) when the packet touches validation, enforcement, or error handling; prerequisites and blockers when sequencing matters or a prior packet is being corrected; Verification section listing only the **2–3 gate commands** the closure check runs (full matrix lives in `requirements.md`); authoritative docs; Doc Impact Statement (Required); OrcaSlicer Reference Obligations (include `orca-delegation` snippet if applicable, omit section otherwise); Context Discipline Note (include `context-discipline` snippet — mandatory).
 
 **Do not** include a static "Packet Files" section — the 5-file structure is documented once in `.ralph/specs/README.md`.
 
-### 8. `requirements.md`
+### 9. `requirements.md`
 
 Problem Statement (motivation-shaped — why the gap matters); grouped task ids; **full** In Scope / Out of Scope bullet lists; authoritative docs with size/delegation notes; OrcaSlicer Reference Obligations (include `orca-delegation` snippet if applicable); Acceptance Summary that **references ACs by ID** and adds measurable refinements that didn't fit Given/When/Then (never copies the criterion text); Verification Commands as a **table with delegation hints** (the full matrix — `packet.spec.md` carries only the gate subset); Step Completion Expectations that document only cross-step invariants the per-step blocks in `implementation-plan.md` cannot express (write `None.` if not applicable, never restate per-step preconditions); packet-specific Context Discipline Notes only (do not restate the workspace-wide discipline — that lives in the `context-discipline` snippet in `packet.spec.md`).
 
-### 9. `design.md`
+### 10. `design.md`
 
 Implementation shape (no implementation):
 - Controlling code paths / likely surfaces (point at `requirements.md` for OrcaSlicer parity surface; do not restate the delegation rules).
@@ -232,7 +258,7 @@ Implementation shape (no implementation):
 - Context Cost Estimate (aggregate, largest single step, highest-risk dispatch).
 - Open Questions — never omitted silently. Tag with `[FWD]` (forward-looking; implementer can resolve mid-flight) or `[BLOCK]` (activation-blocking). Write `None.` if none.
 
-### 10. `implementation-plan.md`
+### 11. `implementation-plan.md`
 
 Atomic ordered steps. Each step:
 - Title; linked task ids; objective; precondition; postcondition.
@@ -246,7 +272,7 @@ Atomic ordered steps. Each step:
 
 Steps stay inside the packet boundary, reflect TDD/narrow validation, and are actionable without guesswork. Read-only discovery steps must state expected output. Include a packet completion gate at the end.
 
-### 11. Self-Review (mandatory before reporting)
+### 12. Self-Review (mandatory before reporting)
 
 **Implementation-grade checks**
 
@@ -298,15 +324,24 @@ The user reviews this reasoning when signing off on `status: active`. If the rea
 
 If any item fails, revise before presenting as complete. If you cannot resolve from available sources, stop and tell the user exactly what is ambiguous.
 
-### 12. `task-map.md`
+### 13. `task-map.md`
 
 Add when it clarifies how packet steps map back to `docs/07`. Especially when: the packet spans > 1 task id; multiple docs are authoritative for different steps; OrcaSlicer refs differ by step; the packet reopens or supersedes prior work.
 
-### 13. Report
+### 14. Clear the Preflight Gate
 
-List generated files with paths. Summarize: slug, status, task ids covered, authoritative docs chosen, OrcaSlicer refs chosen, open questions or assumptions, whether self-review passed cleanly or remained `draft` with blockers, aggregate context cost (sum of step S/M/L) so the user can decide on scheduling against a fresh agent.
+Invoke `spec-review --preflight <packet dir>` via the Skill tool (orchestrated batch: this gate runs in the independent reviewer subagent — `references/batch-protocol.md`). The S0–S8 gate is the authoritative authoring check — Step 4 grounded the plan's claims before writing; the gate verifies what the writing itself introduced. The packet is done only on `PREFLIGHT PASS`:
 
-### 14. Activation
+- `PREFLIGHT BLOCKED` → fix the flagged items in the packet files and re-run the gate.
+- A blocker you cannot fix from available sources → the packet stays `draft`; record the blocker verbatim in `design.md` Open Questions (`[BLOCK]`) and in the report.
+
+A packet is never presented as complete, committed, or offered for activation without a passing gate.
+
+### 15. Report
+
+List generated files with paths. Summarize: slug, status, task ids covered, authoritative docs chosen, OrcaSlicer refs chosen, preflight-gate verdict, open questions or assumptions, whether self-review passed cleanly or remained `draft` with blockers, aggregate context cost (sum of step S/M/L) so the user can decide on scheduling against a fresh agent. Batch runs: include the final queue table (statuses, blockers), remind the user to commit the plan file together with the generated packets, and — if rows remain `pending` (budget stop or blocked dependents) — the resume instruction per the Batch Protocol.
+
+### 16. Activation
 
 If `draft`, ask whether to mark `active`. If yes:
 - Confirm no other active packet.
@@ -344,6 +379,7 @@ Load on demand:
 - `coord-system.md` — bullet in `design.md` §Architecture Constraints when the packet touches geometry / mm↔unit conversion. Skip for non-geometric packets.
 
 **Examples and operations**
-- `references/acceptance-criteria-examples.md` — when writing or reviewing ACs in Step 5/7. Shows a compliant AC and a non-compliant one side by side.
+- `references/acceptance-criteria-examples.md` — when writing or reviewing ACs in Step 6/8. Shows a compliant AC and a non-compliant one side by side.
+- `references/batch-protocol.md` — when the input decomposes into more than one packet, or the input is a `docs/specs/` plan file with a packet queue (resume). Mode selection, queue format, subagent dispatch contracts, failure handling.
 - `references/usage-examples.md` — when the user asks how to invoke the skill or wants an example invocation string.
-- `references/troubleshooting.md` — when you hit a failure mode: prompt too broad, ambiguous task mapping, no relevant tasks in `docs/07`, an active packet conflict, missing OrcaSlicer ref, existing packet directory, or your own context approaching 60%.
+- `references/troubleshooting.md` — when you hit a failure mode: prompt too broad, ambiguous task mapping, no relevant tasks in `docs/07`, an active packet conflict, missing OrcaSlicer ref, existing packet directory, or your own context approaching the 120k reading budget.

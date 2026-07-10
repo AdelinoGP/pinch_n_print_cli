@@ -1,6 +1,6 @@
 # Acceptance Criteria Examples
 
-**When to read:** while writing or reviewing ACs in Step 5 / Step 7. Shows the rule "name exact assertion content" applied to a real example, plus the most common failure shape.
+**When to read:** while writing or reviewing ACs in Step 6 / Step 8. Shows the rule "name exact assertion content" applied to a real example, plus the most common failure shape.
 
 **Topics:** Given/When/Then, exact field names, runnable verification command, delegation-friendly output.
 

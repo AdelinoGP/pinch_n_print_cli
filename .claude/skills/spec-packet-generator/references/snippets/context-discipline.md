@@ -15,9 +15,9 @@ This packet was generated against the context_discipline preamble shared by `spe
 - treat `design.md`'s code change surface as the authoritative files-in-scope list
 - honor `design.md`'s out-of-bounds list — those files must not be loaded directly
 - delegate every cargo run and authoritative-doc fact-check
-- stop reading at 60% context and hand off at 85%
+- obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
-Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
 ```
 
 **Do not paraphrase.** If the content does not apply (it always does, for any packet that ships through Ralph), the packet should not exist. There is no "apply selectively" mode for this snippet.
