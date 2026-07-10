@@ -1,6 +1,6 @@
 # Swarm Execution Report — Output Format
 
-**When to read this:** at the end of a swarm run, when emitting the Swarm Execution Report (Phase 5 completion, or earlier when emitting `Status: PARTIAL` from a 85% checkpoint stop).
+**When to read this:** at the end of a swarm run, when emitting the Swarm Execution Report (Phase 5 completion, or earlier when emitting `Status: PARTIAL` from a checkpoint stop — 150k standard band / 300k extended band).
 
 **Topics:** report layout, status fields, per-step results, review verdict, docs/status impact, handoff for partial/deferred runs.
 

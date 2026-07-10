@@ -2,14 +2,14 @@
 name: swarm
 description: Planner-Worker orchestration to implement or refine an active spec packet under .ralph/specs/. Planner stays small via strict context budget; workers do reads, edits, validation, and OrcaSlicer parity checks.
 type: anthropic-skill
-version: "1.4"
+version: "1.5"
 metadata:
   internal: true
 ---
 
 # Swarm — Planner-Worker Packet Implementation
 
-You are the planner on a Rust workspace with a 200k context window. **Workers are the delegation primitive.** Every code read, code edit, cargo run, doc fact-check, and OrcaSlicer parity check is a worker dispatch. If you find yourself reading code or running cargo directly, you have stopped being the planner.
+You are the planner on a Rust workspace. **Workers are the delegation primitive.** Every code read, code edit, cargo run, doc fact-check, and OrcaSlicer parity check is a worker dispatch. If you find yourself reading code or running cargo directly, you have stopped being the planner.
 
 This block overrides anything below it that pushes you to read broadly, accumulate full logs, or paste large files.
 
@@ -18,9 +18,21 @@ Ancillary content lives in `references/`:
 - `references/output-format.md` — read at completion to emit the Swarm Execution Report.
 - `references/usage-examples.md` — read only if the user asks for invocation examples or you hit a known troubleshooting case.
 
-## Hard limits
+## Context budget
 
-- Hard context budget: **60%** (≈120k) for reading. At 60% stop reading; finalize, hand off, or compress to the manifest.
+The window is large (1M-class); the binding constraint is planning quality and per-turn cost, not fitting the window. Reasoning degrades once context fills with raw logs, full files, and stale transcripts — long before a large window is full — and every retained token is re-paid in cache cost and latency on each subsequent turn. **All budgets are absolute token counts, never window percentages.**
+
+Two bands:
+
+| Band | Reading budget | Checkpoints | Entry |
+|------|----------------|-------------|-------|
+| **standard** (default) | 120k | 100k / 120k / 150k | always |
+| **extended** | 240k | 200k / 240k / **300k hard stop** | escalation protocol only |
+
+Nearly every packet should finish in standard band. Extended exists for the genuinely large, unsplittable run — not for sloppier reading.
+
+### Invariants (identical in both bands — extension never relaxes these)
+
 - NEVER read a file > **600 lines** in full. Use line ranges, symbol search, or delegate.
 - NEVER load generated code, lockfiles, `target/`, or vendored deps.
 - NEVER paste full cargo/test output. The worker schema forbids it; reject any reply that violates it.
@@ -32,7 +44,37 @@ The planner reads directly only:
 - relevant rows of `docs/07_implementation_status.md` (delegate the survey if > 300 lines)
 - the predecessor packet's `packet.spec.md` if `supersedes:` is set
 
-Everything else is a worker dispatch.
+Everything else is a worker dispatch — in both bands.
+
+### What extended headroom buys (and what it never buys)
+
+Extra budget is spent only on **structured state** — the categories that degrade planning least per token:
+
+- more review/fix iterations (their bounded structured returns)
+- the full AC × evidence matrix retained across iterations instead of compressed
+- per-step command summaries retained across all iterations (no mid-run ledger compression)
+- the final full `spec-review` dispatch and acceptance ceremony in-session instead of deferring closure
+
+Never on: bigger direct reads, absorbed logs, worker transcripts, or packet re-reads. A planner that escalates and then reads a 2000-line file has broken the contract twice.
+
+### Escalation protocol (standard → extended)
+
+Extension is declared, never drifted into. Escalate only when at least one holds:
+
+1. Phase 0 honestly rates planner cost **L** for a packet that genuinely cannot be split (cross-cutting WIT/IR surface, atomic schema migration) — declare extended in the PLAN block.
+2. At the 120k decision point the step ledger shows most steps DONE and verified, and closing (remaining fixes + ceremony + final review) verifiably exceeds remaining standard headroom — a handoff would discard a large verified ledger.
+3. The user explicitly asks for single-session closure of a large packet.
+
+To escalate, append an ESCALATION block to the step ledger and state it in the transcript:
+
+```
+ESCALATION
+- Trigger: <criterion 1 | 2 | 3, plus one line of evidence>
+- Spend plan: <which permitted categories, rough split>
+- Stop line: 300k hard
+```
+
+One escalation per run. There is no band above extended: at 300k the only moves are finalize or `Status: PARTIAL` handoff.
 
 ## Subagent contract
 
@@ -85,9 +127,17 @@ The worker MUST NOT return full diffs, full logs, or repeated packet excerpts.
 
 ## Checkpoints
 
-- **60%**: state remaining budget; drop non-essential transcripts; re-confirm the manifest is the working state. Compress iteration history to a step ledger plus a one-line outcome per iteration.
-- **70%**: stop dispatching new exploratory workers. Only targeted-fix workers for outstanding findings.
-- **85%**: STOP. Emit a Swarm Execution Report with `Status: PARTIAL`, the current step ledger, the next concrete dispatch list, and the files to reopen. No exceptions — a `PARTIAL` report with a clean handoff is always better than a degraded final report.
+Standard band:
+
+- **100k**: state remaining budget; drop non-essential transcripts; re-confirm the manifest is the working state. Compress iteration history to a step ledger plus a one-line outcome per iteration.
+- **120k — decision point**: stop reading. Either finalize/hand off within remaining headroom, or escalate to extended band via the protocol above. Not deciding = finalize.
+- **150k**: STOP (if not escalated). Emit a Swarm Execution Report with `Status: PARTIAL`, the current step ledger, the next concrete dispatch list, and the files to reopen.
+
+Extended band:
+
+- **200k**: compress to the ledger; delta-only review; only targeted-fix workers.
+- **240k**: stop dispatching everything except the acceptance ceremony and the final full review.
+- **300k**: HARD STOP. `Status: PARTIAL` report + handoff. No exceptions — a `PARTIAL` report with a clean handoff is always better than a degraded final report.
 
 ## When to use
 
@@ -128,7 +178,7 @@ If no packet is supplied and there is not exactly one `active` packet, stop and 
 - If `supersedes: ...` is set, read the predecessor's `packet.spec.md` first.
 - The planner MUST compile packet docs once into a compact execution manifest and use that manifest plus rolling deltas thereafter.
 - Worker outputs MUST be structured and bounded.
-- Intermediate review may be delta-scoped; packet-close decisions still need a final full review provided budget allows.
+- Intermediate review may be delta-scoped; packet-close decisions always need a final full review — if the run cannot fit one even after a justified escalation, closure defers to a fresh session (see Phase 5.1).
 - Do not commit, create branches, or require per-worker commits unless the user explicitly asks.
 
 ## Workflow
@@ -143,11 +193,12 @@ PLAN
 - Files in scope (planner reads): the 5 packet files + .ralph/specs/README.md
 - Files explicitly out of scope (planner): all code, all docs > 300 lines, all OrcaSlicer source, all cargo output
 - Worker dispatches planned: <Step N → worker M with files X,Y; ...>
-- Estimated planner context cost: <S/M/L>; if L → reduce iterations or split the packet
+- Estimated planner context cost: <S/M/L/XL>
+- Band: <standard | extended — cost L + genuinely unsplittable; include the ESCALATION block here>
 - Stop condition: packet completion gate green OR max_iterations reached with explicit handoff
 ```
 
-If honest cost is L, do not start. Split the packet, reduce `max_iterations`, or run `review-only` first to scope the work.
+If honest cost is L: first try to split the packet, reduce `max_iterations`, or run `review-only` to scope the work; only if the packet genuinely cannot be split, declare extended band from the start (escalation criterion 1). If honest cost is XL — it will not fit even the extended band — do not start; split the packet.
 
 ### Phase 1 — Resolve the packet & preflight
 
@@ -161,7 +212,7 @@ If honest cost is L, do not start. Split the packet, reduce `max_iterations`, or
 - `design.md` resolves open questions that would change scope, or the packet remains `draft`.
 - `design.md` declares files-in-scope, read-only context, and explicit out-of-bounds files.
 - Every step has objective, precondition, postcondition, verification, exit condition, files-to-read, files-to-edit, expected sub-agent dispatches, and context cost estimate.
-- No step has context cost L.
+- No step has context cost L. (Extended band tolerates a single L step when `design.md` justifies why it cannot be split; it runs on a dedicated worker and serializes with everything else. XL steps are always a split.)
 - `task-map.md` exists when the packet spans multiple task IDs, reopens work, or supersedes a prior packet.
 
 If preflight fails: in `refine-draft` fix the packet docs first; in `implement` stop and report the packet-authoring defects instead of guessing.
@@ -186,9 +237,9 @@ Store in session memory by default; use a packet-local checkpoint file only when
 - postcondition is not another active step's precondition
 - acceptance evidence does not depend on another step finishing first
 - does not share a reopened task slice with another worker in a way that would force conflicting packet/doc updates
-- combined context cost does not push the planner past 60% when structured returns come back
+- combined context cost does not push the planner past its band's decision point (120k standard / 200k extended) when structured returns come back
 
-Rules: read-only inventory steps may run in parallel with other read-only analysis. Test-writing and code-writing steps that touch the same crate or test file should usually serialize. Two steps listing the same source file → sequential. Multiple steps funneling through one hotspot → sequential. Default `2` workers. Allow `3` only when write surfaces are disjoint and no precondition chain is split. Allow `4` only when source files, test files, and verification commands are all independent and no shared build/temp-resource lock is expected. If verification commands contend on the same build artifacts, temp dirs, databases, or fixture outputs, serialize even when edits are disjoint. If safe write parallelism is unclear, use workers for read-only analysis and keep edits sequential.
+Rules: read-only inventory steps may run in parallel with other read-only analysis. Test-writing and code-writing steps that touch the same crate or test file should usually serialize. Two steps listing the same source file → sequential. Multiple steps funneling through one hotspot → sequential. Default `2` workers. Allow `3` only when write surfaces are disjoint and no precondition chain is split. Allow `4` only when source files, test files, and verification commands are all independent and no shared build/temp-resource lock is expected. If verification commands contend on the same build artifacts, temp dirs, databases, or fixture outputs, serialize even when edits are disjoint. If safe write parallelism is unclear, use workers for read-only analysis and keep edits sequential. The worker ceiling is set by write-surface safety and planner merge attention, not window size — it does not scale with the budget band.
 
 **2.3 Capture docs/backlog impact.** Decide: leave backlog rows untouched / update task notes only / close-or-reopen task rows / reconcile a superseded predecessor. Do not assume an edit is always required — for retrofit packets correcting closed work, the correct outcome may be `no backlog delta`. Track the decision in the manifest so it is not re-derived during review.
 
@@ -235,7 +286,11 @@ Do not replace packet-specific commands with generic workspace tests. Use the ma
 
 **`cargo test --workspace` is forbidden during implementation iterations.** The suite is >1000 tests and takes ≥11 minutes per run — running it inside a fix loop burns budget without adding signal beyond the targeted command. It runs at most once, in Phase 5.1's acceptance ceremony, and only if the packet itself lists it as a closure gate. Targeted commands (`cargo test -p <crate> --test <file>` / `-- <test_name>`) and `cargo check --workspace` are the workhorses; reach for `--workspace` test runs deliberately, never reflexively.
 
-**4.2 Review.** After the implementation pass, dispatch a single review worker bound by `.claude/skills/spec-review/SKILL.md` with the same context-discipline reminders.
+**4.2 Review.** After the implementation pass, dispatch a single review worker bound by `.claude/skills/spec-review/SKILL.md` (packet scope) with the same context-discipline reminders. The dispatch prompt must include this adversarial charter verbatim — a review worker without it drifts into confirming the implementation instead of attacking it:
+
+> *You did not write this code; review it cold and bias toward finding problems. Burden of proof is on the implementation: an AC without passing dispatched evidence is FAIL, a claim you cannot trace to file:line is [unverified], and any [unverified] load-bearing row caps the verdict at CHANGES REQUESTED. Return the evidence line behind every PASS.*
+
+The planner must reject a review return whose PASS rows carry no evidence — a verdict without evidence is not a review, and re-dispatching is cheaper than closing on a rubber stamp.
 
 Treat findings in two buckets:
 - **packet-authoring defects**: missing commands, weak acceptance language, unresolved scope, stale task mapping
@@ -249,7 +304,7 @@ Intermediate loops may use a delta review keyed to `changed_steps`/`changed_file
 
 ### Phase 5 — Completion, status, docs
 
-**5.1 Acceptance ceremony.** Re-dispatch every pipe-suffixed acceptance command from `packet.spec.md`; every non-duplicate verification command from `implementation-plan.md` that still matters at packet scope; every packet-level command from the `Verification` section; a final full `spec-review` pass before status change (provided budget allows).
+**5.1 Acceptance ceremony.** Re-dispatch every pipe-suffixed acceptance command from `packet.spec.md`; every non-duplicate verification command from `implementation-plan.md` that still matters at packet scope; every packet-level command from the `Verification` section; a final **full** `spec-review` (packet scope) pass before status change. If budget does not allow a full review, the packet does not close this session — report DEFERRED and propose a fresh-session full review. Budget pressure defers closure; it never waives review.
 
 **5.2 Status transitions.**
 - `draft` used only for refinement → keep `draft`.
@@ -266,10 +321,10 @@ Do not auto-rewrite packet status just because code compiled. If packet status o
 - **Draft packet asked to implement** → only in explicit `implement` mode; keep status `draft` unless the user wants finalization; report whether the packet is implementation-grade.
 - **Multiple active packets** → don't guess; report the conflict and ask which packet should own the run.
 - **Worker scope overlap after decomposition** → cancel the parallel plan; regroup as sequential steps or read-only workers + planner-owned edits.
-- **Planner context pressure** → rebuild the compact manifest from the packet docs once; discard stale transcripts; retain only step ledger, `changed_steps`/`changed_files`, and command summaries; full logs only via SNIPPETS dispatch on demand. Past 70%, switch to delta-only review and stop dispatching exploratory workers.
+- **Planner context pressure** → rebuild the compact manifest from the packet docs once; discard stale transcripts; retain only step ledger, `changed_steps`/`changed_files`, and command summaries; full logs only via SNIPPETS dispatch on demand. Past the band's decision point (120k standard / 200k extended), switch to delta-only review and stop dispatching exploratory workers.
 - **Worker output overflow** → treat as non-compliant; do not paste; ask for a compact rerun citing the context-discipline rules; never paste verbose worker output into subsequent worker prompts.
 - **Missing/stale verification commands** → packet defect. In `refine-draft` fix the docs; in `implement` stop and report the missing contract.
-- **Step rated context cost L** → the packet is un-runnable by Swarm. Recommend a split before activation. Do not silently dispatch a worker against an L-cost step — the worker faces the same budget problem.
+- **Step rated context cost L** → recommend a split before activation. In extended band a single justified-unsplittable L step may run on a dedicated worker (serialized); never dispatch an L step silently in standard band. XL steps are always un-runnable — the worker faces the same quality budget the planner does, regardless of window size.
 
 ## Dependencies
 

@@ -30,10 +30,10 @@
 
 **"Worker produced no changes."** Verify whether the step was read-only or already satisfied. If neither, treat the step as incomplete.
 
-**"The planner is running out of context."** Rebuild the compact execution manifest and continue from the step ledger plus deltas instead of reloading the full packet and prior worker transcripts. If past 70%, stop dispatching exploratory workers and finish on the evidence you already have.
+**"The planner is running out of context."** Rebuild the compact execution manifest and continue from the step ledger plus deltas instead of reloading the full packet and prior worker transcripts. If past the band's decision point (120k standard / 200k extended), stop dispatching exploratory workers and finish on the evidence you already have.
 
 **"Review keeps finding packet-authoring defects."** Fix the packet docs first; do not keep rerunning code workers against an under-specified packet.
 
 **"Build fails after a worker run."** Map the failure back to the specific packet step, repair that slice, and rerun the same narrow validation before widening scope. Never paste the full build log into the planner — dispatch a SNIPPETS lookup for the failing assertion.
 
-**"A step is rated context cost L."** Stop. The packet should have been split during generation. Either go back to `spec-packet-generator` to split it, or fall back to manual sequential implementation outside Swarm.
+**"A step is rated context cost L."** Stop. The packet should have been split during generation. Either go back to `spec-packet-generator` to split it, or — only in extended band, when `design.md` justifies why the step cannot be split — run it on a dedicated serialized worker. Otherwise fall back to manual sequential implementation outside Swarm. XL steps always mean a split.
