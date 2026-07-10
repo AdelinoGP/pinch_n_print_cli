@@ -3,15 +3,16 @@
 use std::collections::HashMap;
 
 use slicer_core::algos::prepass_slice::{
-    batch_bottom_surface_footprints, batch_slice_objects_by_layer,
+    assemble_flat_bridge_areas, batch_bottom_surface_footprints, batch_slice_objects_by_layer,
     execute_prepass_slice_single_layer, execute_prepass_slice_single_layer_with_cache,
     PrepassSliceCache,
 };
+use slicer_core::polygon_ops::{closing_ex, difference};
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
     ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionId, SemVer,
-    SurfaceClassificationIR, Transform3d,
+    SlicedRegion, SurfaceClassificationIR, Transform3d,
 };
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -272,6 +273,142 @@ fn surface_classification_with_quartile_bands(
 /// is included). The 1.5x floor below leaves headroom across machines/build
 /// profiles while still failing fast if this regresses back to per-layer
 /// recomputation (which would collapse the ratio to ~1x).
+/// A sharp-cornered star polygon with `tips` points, alternating between
+/// `outer_mm` and `inner_mm` radii. Sharp convex tips are what make a
+/// large-radius `Round`-join morphological offset pathological: Clipper2
+/// tessellates every tip's exterior angle into an arc, so the intermediate
+/// polygon's vertex count explodes with the join radius. A smooth high-vertex
+/// circle does NOT stress `Round` joins (each vertex's exterior angle is
+/// tiny); sharp tips do — and the real Benchy cross-section is full of them
+/// (railings, cabin edges, chimney).
+fn sharp_star(tips: usize, outer_mm: f32, inner_mm: f32) -> ExPolygon {
+    use std::f32::consts::PI;
+    let mut points = Vec::with_capacity(tips * 2);
+    for i in 0..(tips * 2) {
+        let angle = (i as f32) * PI / (tips as f32);
+        let r = if i % 2 == 0 { outer_mm } else { inner_mm };
+        points.push(Point2::from_mm(r * angle.cos(), r * angle.sin()));
+    }
+    ExPolygon {
+        contour: Polygon { points },
+        holes: vec![],
+    }
+}
+
+fn square_expoly(cx: f32, cy: f32, half_mm: f32) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(cx - half_mm, cy - half_mm),
+                Point2::from_mm(cx + half_mm, cy - half_mm),
+                Point2::from_mm(cx + half_mm, cy + half_mm),
+                Point2::from_mm(cx - half_mm, cy + half_mm),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+/// Regression test for the flat-bridge enclosure closing that dominated
+/// `PrePass::Slice` (~28s of a ~30s stage on 3D Benchy — 92% of it, per
+/// sub-stage instrumentation). `assemble_flat_bridge_areas`'s enclosure
+/// discriminator used the shared `closing_ex` (dilate-then-erode with `Round`
+/// joins at a 0.05mm arc tolerance) at a 12mm radius. On a high-vertex,
+/// sharp-cornered cross-section this tessellates every convex tip into a large
+/// arc, exploding the intermediate polygon before the erode — and it ran per
+/// layer.
+///
+/// The fix replaced it with a `Square`-join closing. The discriminator is a
+/// BOOLEAN "does a gap ≤ 2·R re-fill?" test gated by a loose 10% fraction, so
+/// corner roundness is irrelevant, and `Square` adds one bevel point per corner
+/// instead of an arc.
+///
+/// The robust, machine-independent signal is the **vertex count** of the
+/// closing output: `Round` at 12mm / 0.05mm tessellates each sharp tip into an
+/// arc, so the closed polygon carries several× more points than the `Square`
+/// closing produces (measured: ~1100 vs ~220 on this fixture). That vertex
+/// blow-up — multiplied across ~280 per-layer/-region closings — was the ~28s.
+/// Wall-clock ratio alone is a weaker signal (Clipper2 offset has a high fixed
+/// per-call cost, so the ~5× point reduction is only ~1.8× in time), so this
+/// asserts on vertex count, not timing. It also runs the real
+/// `assemble_flat_bridge_areas` and requires the enclosed gap to still be
+/// flagged, proving the closing PATH actually executes.
+#[test]
+fn flat_bridge_enclosure_closing_avoids_round_arc_explosion() {
+    use slicer_core::polygon_ops::{offset, OffsetJoinType};
+
+    // Solid star with a small central gap: the gap is the flat-unsupported
+    // span; the star body is the support that gets morphologically closed.
+    let star = sharp_star(220, 40.0, 26.0);
+    let gap = square_expoly(0.0, 0.0, 2.0); // 4mm square gap, well inside inner radius
+    let bottom_fp = square_expoly(0.0, 0.0, 4.0); // covers the gap → flat_unsupported non-empty
+
+    let support = difference(&[star.clone()], &[gap.clone()]);
+    let round_pts: usize = closing_ex(&support, 12.0)
+        .iter()
+        .map(|e| e.contour.points.len())
+        .sum();
+    let sq_dil = offset(&support, 12.0, OffsetJoinType::Square, 0.0);
+    let square_pts: usize = offset(&sq_dil, -12.0, OffsetJoinType::Square, 0.0)
+        .iter()
+        .map(|e| e.contour.points.len())
+        .sum();
+
+    assert!(
+        square_pts > 0 && round_pts > 0,
+        "both closings must produce geometry (fixture sanity): round={round_pts} square={square_pts}"
+    );
+    assert!(
+        square_pts * 3 < round_pts,
+        "Square enclosure closing emitted {square_pts} vertices but the old Round \
+         `closing_ex` emitted {round_pts} on the same sharp-cornered 12mm-radius \
+         support — expected Square to be ≥3× leaner (measured ~5×). A shrinking gap \
+         means the enclosure discriminator reverted to `Round` arc tessellation, \
+         which made `assemble_flat_bridge_areas` ~92% of PrePass::Slice (~28s) on \
+         3D Benchy."
+    );
+
+    // The real fix site must still flag the enclosed gap — i.e. its (Square)
+    // closing path actually ran, rather than short-circuiting before it.
+    let mut region = SlicedRegion {
+        object_id: "star".to_string(),
+        polygons: vec![star.clone()],
+        infill_areas: vec![star.clone()],
+        ..Default::default()
+    };
+    assemble_flat_bridge_areas(
+        &mut region,
+        std::slice::from_ref(&bottom_fp),
+        &[gap.clone()],
+        true, // square_closing (default)
+    );
+    assert!(
+        region.is_bridge,
+        "the enclosed central gap must be flagged as a flat bridge — otherwise the \
+         closing PATH short-circuited and this test would not guard it"
+    );
+
+    // The opt-in legacy Round path (`flat_bridge_square_closing = false`) must
+    // still detect the same enclosed gap — the config knob only trades cost, not
+    // correctness of the enclosure verdict on this fixture.
+    let mut region_round = SlicedRegion {
+        object_id: "star".to_string(),
+        polygons: vec![star.clone()],
+        infill_areas: vec![star.clone()],
+        ..Default::default()
+    };
+    assemble_flat_bridge_areas(
+        &mut region_round,
+        std::slice::from_ref(&bottom_fp),
+        &[gap.clone()],
+        false, // square_closing off → legacy Round closing_ex
+    );
+    assert!(
+        region_round.is_bridge,
+        "legacy Round enclosure closing must flag the same enclosed gap"
+    );
+}
+
 #[test]
 fn prepass_slice_caches_bottom_surface_footprint_across_layers() {
     const FACET_COUNT: usize = 800;

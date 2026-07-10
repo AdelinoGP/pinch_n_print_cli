@@ -56,6 +56,7 @@ support_resolution      = { default = 0.0375, range = ">= 0", note = "D-P tolera
 min_segment_length      = { default = 0.05,   range = ">= 0", note = "short-segment dropper" }
 gcode_xy_decimals       = { default = 3,      range = "[1, 6]", note = "X / Y / Z token formatting" }
 slice_closing_radius    = { default = 0.049,  range = ">= 0", note = "per-layer Clipper2 close" }
+flat_bridge_square_closing = { default = true, note = "Square-join flat-bridge enclosure closing (fast); false = legacy Round" }
 top_fill_holder         = { default = "rectilinear-infill", note = "holder of claim:top-fill (packet 37)" }
 bottom_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bottom-fill (packet 37)" }
 bridge_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bridge-fill (packet 37)" }

@@ -338,6 +338,7 @@ pub fn assemble_flat_bridge_areas(
     region: &mut SlicedRegion,
     bottom_surface_footprint: &[ExPolygon],
     unsupported_region: &[ExPolygon],
+    square_closing: bool,
 ) {
     if bottom_surface_footprint.is_empty() || unsupported_region.is_empty() {
         return;
@@ -367,7 +368,27 @@ pub fn assemble_flat_bridge_areas(
         // bottom against, so it is a free-floating bottom, not a bridge.
         return;
     }
-    let closed = closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM);
+    // Morphological closing (dilate-then-erode by R) used purely as a BOOLEAN
+    // enclosure discriminator: does a gap ≤ 2·R get re-filled? The exact
+    // roundness of the offset corners is irrelevant here, and the downstream
+    // `FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION` gate (10 %) is loose.
+    //
+    // `square_closing` (config `flat_bridge_square_closing`, default true)
+    // selects `Square` joins: Round joins at a 12 mm radius tessellate every
+    // corner of the (high-vertex) cross-section into dozens of arc points, so
+    // the `Round` `closing_ex` (0.05 mm arc tolerance) exploded the intermediate
+    // polygon and made this call ~92 % of PrePass::Slice wall-clock on Benchy
+    // (~28 s / 30 s). `Square` adds a single bevel point per corner instead of
+    // an arc — same ≤2·R gap-fill behaviour at ~1.8× less time / ~5× fewer
+    // vertices. `Round` (`square_closing == false`) is retained as the opt-in
+    // legacy path: bit-identical to pre-optimisation flat-bridge detection.
+    let closed = if square_closing {
+        let r_mm = FLAT_BRIDGE_ENCLOSURE_RADIUS_MM as f32;
+        let dilated = offset(&support, r_mm, OffsetJoinType::Square, 0.0);
+        offset(&dilated, -r_mm, OffsetJoinType::Square, 0.0)
+    } else {
+        closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM)
+    };
     let refilled = difference(&closed, &support);
     if refilled.is_empty() {
         // No pinched gap anywhere: every flat-unsupported area is a free-edge
@@ -564,7 +585,7 @@ fn execute_prepass_slice_single_layer_impl(
                 object_id: active.object_id.clone(),
             })?;
 
-        let slice_closing_radius_mm = if let Some(rm) = region_map {
+        let (slice_closing_radius_mm, flat_bridge_square_closing) = if let Some(rm) = region_map {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: active.object_id.clone(),
@@ -589,9 +610,15 @@ fn execute_prepass_slice_single_layer_impl(
                     layer.index, active.object_id, active.region_id,
                 );
             }
-            entry.map_or(0.0_f32, |_| rm.config_for(&key).slice_closing_radius)
+            match entry {
+                Some(_) => {
+                    let cfg = rm.config_for(&key);
+                    (cfg.slice_closing_radius, cfg.flat_bridge_square_closing)
+                }
+                None => (0.0_f32, true),
+            }
         } else {
-            0.0_f32
+            (0.0_f32, true)
         };
 
         let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
@@ -698,7 +725,12 @@ fn execute_prepass_slice_single_layer_impl(
                                 &obj_data.facet_classes,
                             ),
                         };
-                        assemble_flat_bridge_areas(&mut sliced_region, &bottom_fp, &unsupported);
+                        assemble_flat_bridge_areas(
+                            &mut sliced_region,
+                            &bottom_fp,
+                            &unsupported,
+                            flat_bridge_square_closing,
+                        );
                     }
                 }
             }

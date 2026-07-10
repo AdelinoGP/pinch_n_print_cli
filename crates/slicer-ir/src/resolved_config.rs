@@ -644,6 +644,14 @@ declare_resolved_config! {
     cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
     /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
     cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
+    /// When true (default), the flat-bridge enclosure discriminator in
+    /// `PrePass::Slice` uses a cheap `Square`-join morphological closing. The
+    /// discriminator is a boolean "does a gap ≤ 2·R re-fill?" test, so corner
+    /// roundness is irrelevant, and `Square` avoids the arc tessellation that
+    /// made the closing ~92% of `PrePass::Slice` on high-vertex cross-sections.
+    /// Set false for the legacy `Round`-join closing, which is bit-identical to
+    /// pre-optimisation flat-bridge detection but ~1.8× slower per layer.
+    cli "flat_bridge_square_closing" flat_bridge_square_closing: bool = true => extract_bool;
 
     // Support
     /// Whether support is enabled.
@@ -733,6 +741,7 @@ impl PartialEq for ResolvedConfig {
             && self.gcode_xy_decimals == other.gcode_xy_decimals
             && self.perimeter_arc_tolerance.to_bits() == other.perimeter_arc_tolerance.to_bits()
             && self.slice_closing_radius.to_bits() == other.slice_closing_radius.to_bits()
+            && self.flat_bridge_square_closing == other.flat_bridge_square_closing
             && self.support_enabled == other.support_enabled
             && self.support_type == other.support_type
             && self.support_overhang_angle.to_bits() == other.support_overhang_angle.to_bits()
@@ -802,6 +811,7 @@ impl std::hash::Hash for ResolvedConfig {
         self.gcode_xy_decimals.hash(state);
         self.perimeter_arc_tolerance.to_bits().hash(state);
         self.slice_closing_radius.to_bits().hash(state);
+        self.flat_bridge_square_closing.hash(state);
         self.support_enabled.hash(state);
         self.support_type.hash(state);
         self.support_overhang_angle.to_bits().hash(state);

@@ -51,6 +51,13 @@ fn resolved_str<'a>(c: &'a ResolvedConfig, key: &str) -> Option<&'a str> {
     })
 }
 
+fn resolved_bool(c: &ResolvedConfig, key: &str) -> Option<bool> {
+    Some(match key {
+        "flat_bridge_square_closing" => c.flat_bridge_square_closing,
+        _ => return None,
+    })
+}
+
 #[test]
 fn speeds_match_feedrate_default() {
     // Exhaustive destructuring makes this bidirectional at compile time:
@@ -173,6 +180,14 @@ fn resolved_config_keys_match_default() {
             assert_eq!(
                 expected, code,
                 "[resolved_config.{key}]: host-keys.toml={expected:?} != default={code:?}"
+            );
+        } else if let Some(expected) = spec["default"].as_bool() {
+            let code = resolved_bool(&rc, key).unwrap_or_else(|| {
+                panic!("[resolved_config.{key}] has no matching ResolvedConfig bool field")
+            });
+            assert_eq!(
+                expected, code,
+                "[resolved_config.{key}]: host-keys.toml={expected} != default={code}"
             );
         } else {
             let doc = doc_num(spec);
