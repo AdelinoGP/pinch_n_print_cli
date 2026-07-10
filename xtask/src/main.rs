@@ -1,5 +1,6 @@
 mod build_guests;
 mod check_deviations;
+mod compact_specs;
 mod dist;
 mod gen_config_docs;
 mod test;
@@ -23,6 +24,9 @@ SUBCOMMANDS:
     gen-config-docs --check   Exit 1 if doc 15's generated tables are stale.
     dist                  Build pnp_cli + all core-module WASMs and stage them under target/dist/.
     dist --debug          Same as `dist`, but stages the debug-profile binary.
+    compact-specs         Collapse each .ralph/specs/_OLD packet into a single
+                          design-only <NN_slug>.md, then delete the source dir.
+    compact-specs --dry-run  Write digests but keep the source dirs (preview).
     test [ARGS...]        Run `cargo xtask build-guests --check` (rebuild if stale),
                           then `cargo test ARGS...` with output tee'd to
                           target/test-output.log. Use for whole-suite /
@@ -123,6 +127,19 @@ fn main() -> ExitCode {
                 }
                 Some(other) => {
                     eprintln!("xtask: unknown flag '{other}' for gen-config-docs\n");
+                    eprintln!("{USAGE}");
+                    ExitCode::from(2)
+                }
+            }
+        }
+        Some("compact-specs") => {
+            let flag = args.get(1).map(String::as_str);
+            let ws = build_guests::workspace_root();
+            match flag {
+                None => ExitCode::from(compact_specs::run(&ws, false) as u8),
+                Some("--dry-run") => ExitCode::from(compact_specs::run(&ws, true) as u8),
+                Some(other) => {
+                    eprintln!("xtask: unknown flag '{other}' for compact-specs\n");
                     eprintln!("{USAGE}");
                     ExitCode::from(2)
                 }
