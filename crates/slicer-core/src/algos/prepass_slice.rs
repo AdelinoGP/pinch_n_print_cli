@@ -428,6 +428,97 @@ fn expoly_set_area(polys: &[ExPolygon]) -> f64 {
 }
 
 // ============================================================================
+// batch_slice_objects_by_layer
+// ============================================================================
+
+/// Pre-slice every object mesh referenced across `global_layers` in one
+/// `slice_mesh_ex` call per object, instead of one call per (layer, object)
+/// pair. `slice_mesh_ex` performs a full O(triangle-count) scan of the mesh
+/// regardless of how many Z planes it is given — calling it once per layer,
+/// as a naive per-layer loop does, makes the whole pre-pass slice step
+/// O(layer-count × triangle-count) instead of O(triangle-count +
+/// intersections). Returns raw (pre-closing-radius) polygons keyed by
+/// `(global_layer_index, object_id)`.
+pub fn batch_slice_objects_by_layer(
+    mesh: &MeshIR,
+    global_layers: &[GlobalLayer],
+) -> HashMap<u32, HashMap<ObjectId, Vec<ExPolygon>>> {
+    let mut layers_and_zs_by_object: HashMap<ObjectId, (Vec<u32>, Vec<f32>)> = HashMap::new();
+    for layer in global_layers {
+        for active in &layer.active_regions {
+            let entry = layers_and_zs_by_object
+                .entry(active.object_id.clone())
+                .or_default();
+            if entry.0.last() != Some(&layer.index) {
+                entry.0.push(layer.index);
+                entry.1.push(layer.z);
+            }
+        }
+    }
+
+    let mut result: HashMap<u32, HashMap<ObjectId, Vec<ExPolygon>>> = HashMap::new();
+    for (object_id, (layer_indices, zs)) in layers_and_zs_by_object {
+        let Some(object) = mesh.objects.iter().find(|o| o.id == object_id) else {
+            continue;
+        };
+        let sliced = slice_mesh_ex(&object.mesh, &zs);
+        for (layer_index, polygons) in layer_indices.into_iter().zip(sliced) {
+            result
+                .entry(layer_index)
+                .or_default()
+                .insert(object_id.clone(), polygons);
+        }
+    }
+    result
+}
+
+// ============================================================================
+// batch_bottom_surface_footprints
+// ============================================================================
+
+/// Pre-compute each object's whole-mesh bottom-surface XY footprint once.
+/// [`crate::algos::mesh_analysis::bottom_surface_footprint`] depends only on
+/// an object's mesh, transform, and facet classes — never on a specific
+/// layer — so calling it from inside the per-layer loop (as
+/// `execute_prepass_slice_single_layer` does when no cache is supplied)
+/// recomputes an identical boolean-union result once per layer instead of
+/// once per object. Returns `None` if `surface_class` is absent (matching
+/// the guard `execute_prepass_slice_single_layer` already applies before
+/// ever needing this footprint).
+pub fn batch_bottom_surface_footprints(
+    mesh: &MeshIR,
+    surface_class: Option<&SurfaceClassificationIR>,
+) -> HashMap<ObjectId, Vec<ExPolygon>> {
+    let mut result = HashMap::new();
+    let Some(sc) = surface_class else {
+        return result;
+    };
+    for object in &mesh.objects {
+        let Some(obj_data) = sc.per_object.get(&object.id) else {
+            continue;
+        };
+        let footprint = crate::algos::mesh_analysis::bottom_surface_footprint(
+            &object.mesh,
+            &object.transform,
+            &obj_data.facet_classes,
+        );
+        result.insert(object.id.clone(), footprint);
+    }
+    result
+}
+
+/// Layer-invariant and per-layer data pre-computed once for a whole
+/// `PrePass::Slice` run, built by [`batch_slice_objects_by_layer`] and
+/// [`batch_bottom_surface_footprints`], and reused across every
+/// [`execute_prepass_slice_single_layer_with_cache`] call for that run.
+pub struct PrepassSliceCache<'a> {
+    /// This layer's raw (pre-closing-radius) slice polygons, keyed by object id.
+    pub raw_polygons: &'a HashMap<ObjectId, Vec<ExPolygon>>,
+    /// Whole-object bottom-surface XY footprint, keyed by object id.
+    pub bottom_surface_footprint: &'a HashMap<ObjectId, Vec<ExPolygon>>,
+}
+
+// ============================================================================
 // execute_prepass_slice_single_layer
 // ============================================================================
 
@@ -438,6 +529,29 @@ pub fn execute_prepass_slice_single_layer(
     layer: &GlobalLayer,
     surface_class: Option<&SurfaceClassificationIR>,
     region_map: Option<&RegionMapIR>,
+) -> Result<SliceIR, LayerSliceError> {
+    execute_prepass_slice_single_layer_impl(mesh, layer, surface_class, region_map, None)
+}
+
+/// Same as [`execute_prepass_slice_single_layer`], but takes pre-computed
+/// per-object data from `cache` (see [`PrepassSliceCache`]) instead of
+/// calling `slice_mesh_ex` and `bottom_surface_footprint` from scratch.
+pub fn execute_prepass_slice_single_layer_with_cache(
+    mesh: &MeshIR,
+    layer: &GlobalLayer,
+    surface_class: Option<&SurfaceClassificationIR>,
+    region_map: Option<&RegionMapIR>,
+    cache: &PrepassSliceCache<'_>,
+) -> Result<SliceIR, LayerSliceError> {
+    execute_prepass_slice_single_layer_impl(mesh, layer, surface_class, region_map, Some(cache))
+}
+
+fn execute_prepass_slice_single_layer_impl(
+    mesh: &MeshIR,
+    layer: &GlobalLayer,
+    surface_class: Option<&SurfaceClassificationIR>,
+    region_map: Option<&RegionMapIR>,
+    cache: Option<&PrepassSliceCache<'_>>,
 ) -> Result<SliceIR, LayerSliceError> {
     let mut regions = Vec::with_capacity(layer.active_regions.len());
     for active in &layer.active_regions {
@@ -480,8 +594,13 @@ pub fn execute_prepass_slice_single_layer(
             0.0_f32
         };
 
-        let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
-        let raw_polygons = sliced.pop().unwrap_or_default();
+        let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
+            Some(cached) => cached.clone(),
+            None => {
+                let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
+                sliced.pop().unwrap_or_default()
+            }
+        };
         let polygons = if slice_closing_radius_mm > 0.0 {
             apply_slice_closing_radius(raw_polygons, slice_closing_radius_mm)
         } else {
@@ -569,11 +688,16 @@ pub fn execute_prepass_slice_single_layer(
                         unsupported = union(&unsupported, &band.polygons);
                     }
                     if !unsupported.is_empty() {
-                        let bottom_fp = crate::algos::mesh_analysis::bottom_surface_footprint(
-                            &object.mesh,
-                            &object.transform,
-                            &obj_data.facet_classes,
-                        );
+                        let bottom_fp = match cache
+                            .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
+                        {
+                            Some(cached) => cached.clone(),
+                            None => crate::algos::mesh_analysis::bottom_surface_footprint(
+                                &object.mesh,
+                                &object.transform,
+                                &obj_data.facet_classes,
+                            ),
+                        };
                         assemble_flat_bridge_areas(&mut sliced_region, &bottom_fp, &unsupported);
                     }
                 }

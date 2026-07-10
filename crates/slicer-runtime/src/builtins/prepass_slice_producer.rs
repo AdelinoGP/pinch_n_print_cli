@@ -73,15 +73,32 @@ pub fn execute_prepass_slice_all_layers(
     let surface_class = blackboard.surface_classification().map(|a| a.as_ref());
     let region_map = blackboard.region_map().map(|a| a.as_ref());
 
+    let raw_polygons_by_layer = slicer_core::algos::prepass_slice::batch_slice_objects_by_layer(
+        mesh.as_ref(),
+        &layer_plan.global_layers,
+    );
+    let bottom_surface_footprint_by_object =
+        slicer_core::algos::prepass_slice::batch_bottom_surface_footprints(
+            mesh.as_ref(),
+            surface_class,
+        );
+    let empty_cache = std::collections::HashMap::new();
+
     layer_plan
         .global_layers
         .iter()
         .map(|gl| {
-            slicer_core::algos::prepass_slice::execute_prepass_slice_single_layer(
+            let raw_polygons = raw_polygons_by_layer.get(&gl.index).unwrap_or(&empty_cache);
+            let cache = slicer_core::algos::prepass_slice::PrepassSliceCache {
+                raw_polygons,
+                bottom_surface_footprint: &bottom_surface_footprint_by_object,
+            };
+            slicer_core::algos::prepass_slice::execute_prepass_slice_single_layer_with_cache(
                 mesh.as_ref(),
                 gl,
                 surface_class,
                 region_map,
+                &cache,
             )
         })
         .collect()
