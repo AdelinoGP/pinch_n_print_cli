@@ -1,11 +1,13 @@
 ---
-when: Read this when you reach the report-writing stage of `spec-review` and need the exact section template for the review report.
-keywords: report template, output format, verdict, findings tables, review sections
+when: Read this when you reach the report-writing stage of any `spec-review` scope and need the exact report template — packet review, session audit, or code review.
+keywords: report template, output format, verdict, findings tables, review sections, ship, do not ship
 ---
 
-# Spec Review Output Format
+# Review Output Formats
 
-Use this exact structure when emitting the review report.
+One template per scope. Use the exact structure for the scope you are running.
+
+## Packet scope
 
 ```
 ## Spec Review: [Packet Name]
@@ -103,7 +105,6 @@ Use this exact structure when emitting the review report.
 
 - **[GOOD]** Description of well-implemented aspect
 - **[GOOD]** Strong test coverage for [feature]
-- **[GOOD]** Clear documentation of [aspect]
 
 ---
 
@@ -132,4 +133,68 @@ Use this exact structure when emitting the review report.
 | **Critical Issues** | [N outstanding] |
 | **High Priority Items** | [N outstanding] |
 | **Overall Verdict** | **APPROVED** / **APPROVED WITH NOTES** / **CHANGES REQUESTED** / **BLOCKED** / **DEFERRED** |
+```
+
+Preflight mode (`--preflight`) uses the gate report format in `references/preflight-gate.md` instead.
+
+## Session scope
+
+Exactly these three sections, in this order, no additions, then the one-line verdict with no trailing prose.
+
+```
+## Session Audit: [Packet Name]
+
+### 1. DEFERRED / INCOMPLETE
+
+- `file:line` — [what's missing] — [why deferred, if known]
+(or, literally: None — all packet items implemented.)
+
+### 2. PRODUCTION READINESS
+
+- `file:line` — [one-line description] — **READY** / **NOT READY** *(reason)*
+
+### 3. PACKET DEVIATIONS
+
+- [Spec ref] — Specified: X | Implemented: Y | Reason: Z
+
+SHIP
+(or)
+DO NOT SHIP — <biggest blocker(s), max 2>
+```
+
+## Code scope
+
+```
+## Code Review: [Feature/Module/Files]
+
+### Summary
+[2-3 sentences: overall quality assessment]
+
+### Critical Issues (must fix before commit)
+1. [CRIT-1] `file:line` — Description — **Fix:** ...
+
+### High Priority (should fix)
+1. [HIGH-1] `file:line` — Description — **Fix:** ...
+
+### Medium Priority (consider fixing)
+1. [MED-1] `file:line` — Description — **Fix:** ...
+
+### Smell Baseline (judgement calls — non-blocking)
+1. [SMELL-1] `file:line` — Possible [smell name] — [quoted hunk or one-line rationale] — **Refactor:** ...
+(or, literally: None spotted.)
+
+### Positive Observations
+- [Good] Description of well-implemented pattern
+
+### Automated Check Results
+| Check | Status | Details |
+|-------|--------|---------|
+| Build | PASS/FAIL | ... |
+| Tests (targeted) | PASS/FAIL | crates/files exercised, X passed, Y failed |
+| Clippy (--all-targets) | PASS/FAIL | ... |
+| Check (--all-targets) | PASS/FAIL | ... |
+
+### Verdict
+[APPROVED / APPROVED WITH NOTES / CHANGES REQUESTED]
+[If changes requested: list critical/high items that must be addressed]
 ```

@@ -1,6 +1,6 @@
 ---
-when: Read this when running `spec-review --preflight <packet>`, or when Step 1 preflight needs the symbol-existence gate. Defines the seven authoring checks (S1–S7) a draft packet must clear before its files are committed / it is activated.
-keywords: preflight, symbol existence, fictional symbol, draft packet gate, authoring defect, S1-S7
+when: Read this when running `spec-review --preflight <packet>` (packet scope), or when packet-review Step 1 preflight needs the symbol-existence gate. Defines the authoring checks (S0–S8) a draft packet must clear before its files are committed / it is activated.
+keywords: preflight, symbol existence, fictional symbol, draft packet gate, authoring defect, S0-S8
 ---
 
 # Preflight Symbol-Existence Gate (S1–S7)
