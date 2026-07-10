@@ -532,40 +532,46 @@ fn compute_anchor_width_mm(runs: &[AnchorRun], bridge_direction_deg: f32) -> f32
 }
 
 /// Union of per-facet XY triangle projections.
+///
+/// Builds every facet's triangle polygon up front and unions them in a
+/// single clipper2 call. Clipper2's union is an n-way sweep, not a pairwise
+/// primitive — invoking it once per facet (as an incremental `accum = union(accum, [tri])`
+/// loop) turns an O(n) sweep into O(n) full sweeps over a growing accumulator,
+/// which is what made `MeshAnalysis` take minutes on meshes with tens of
+/// thousands of overhang/bridge facets (e.g. a curved hull like 3D Benchy).
 fn compute_xy_footprint(
     mesh: &IndexedTriangleSet,
     transform: &Transform3d,
     facet_indices: &[u32],
 ) -> Vec<ExPolygon> {
-    use crate::polygon_ops::union;
+    use crate::polygon_ops::union_ex;
 
-    let mut accum: Vec<ExPolygon> = Vec::new();
+    let tris: Vec<ExPolygon> = facet_indices
+        .iter()
+        .map(|&t| {
+            let t = t as usize;
+            let i0 = mesh.indices[t * 3];
+            let i1 = mesh.indices[t * 3 + 1];
+            let i2 = mesh.indices[t * 3 + 2];
 
-    for &t in facet_indices {
-        let t = t as usize;
-        let i0 = mesh.indices[t * 3];
-        let i1 = mesh.indices[t * 3 + 1];
-        let i2 = mesh.indices[t * 3 + 2];
+            let wv0 = apply_transform(transform, get_vertex_unchecked(mesh, i0));
+            let wv1 = apply_transform(transform, get_vertex_unchecked(mesh, i1));
+            let wv2 = apply_transform(transform, get_vertex_unchecked(mesh, i2));
 
-        let wv0 = apply_transform(transform, get_vertex_unchecked(mesh, i0));
-        let wv1 = apply_transform(transform, get_vertex_unchecked(mesh, i1));
-        let wv2 = apply_transform(transform, get_vertex_unchecked(mesh, i2));
+            ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(wv0.x, wv0.y),
+                        Point2::from_mm(wv1.x, wv1.y),
+                        Point2::from_mm(wv2.x, wv2.y),
+                    ],
+                },
+                holes: vec![],
+            }
+        })
+        .collect();
 
-        let tri = ExPolygon {
-            contour: Polygon {
-                points: vec![
-                    Point2::from_mm(wv0.x, wv0.y),
-                    Point2::from_mm(wv1.x, wv1.y),
-                    Point2::from_mm(wv2.x, wv2.y),
-                ],
-            },
-            holes: vec![],
-        };
-
-        accum = union(&accum, &[tri]);
-    }
-
-    accum
+    union_ex(&tris)
 }
 
 /// XY footprint (union of per-facet triangle projections, transform applied)
@@ -762,5 +768,81 @@ mod tests {
             classify_facet([0.0, 0.0, 1.0], DEFAULT_OVERHANG_THRESHOLD_DEG),
             FacetClass::TopSurface
         ));
+    }
+
+    fn identity_transform() -> Transform3d {
+        Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        }
+    }
+
+    /// `facet_count` mutually non-overlapping unit triangles, spaced 10mm apart
+    /// on the X axis so their XY projections never touch and union can never
+    /// merge them into fewer output polygons.
+    fn disjoint_triangle_mesh(facet_count: usize) -> IndexedTriangleSet {
+        let mut vertices = Vec::with_capacity(facet_count * 3);
+        let mut indices = Vec::with_capacity(facet_count * 3);
+        for i in 0..facet_count {
+            let ox = i as f32 * 10.0;
+            let base = vertices.len() as u32;
+            vertices.push(Point3 {
+                x: ox,
+                y: 0.0,
+                z: 0.0,
+            });
+            vertices.push(Point3 {
+                x: ox + 1.0,
+                y: 0.0,
+                z: 0.0,
+            });
+            vertices.push(Point3 {
+                x: ox,
+                y: 1.0,
+                z: 0.0,
+            });
+            indices.push(base);
+            indices.push(base + 1);
+            indices.push(base + 2);
+        }
+        IndexedTriangleSet { vertices, indices }
+    }
+
+    /// Regression test for the `PrePass::MeshAnalysis` stage taking 118s+ on
+    /// 3D Benchy: `compute_xy_footprint` used to call `union(&accum, &[tri])`
+    /// once per facet, growing `accum` every iteration and re-running a full
+    /// clipper2 boolean-op on the whole accumulated set each time — O(n)
+    /// full clipper2 invocations instead of one batched union. Measured
+    /// directly against the old per-facet-union implementation: 1200
+    /// disjoint facets took 61ms batched vs. 20.6s incremental (338x). The
+    /// threshold below leaves ~50x headroom above the batched runtime while
+    /// sitting ~7x under the incremental runtime, so it fails fast and
+    /// reliably if this ever regresses back to the incremental pattern.
+    #[test]
+    fn compute_xy_footprint_is_fast_for_thousands_of_disjoint_facets() {
+        const FACET_COUNT: usize = 1200;
+        let mesh = disjoint_triangle_mesh(FACET_COUNT);
+        let transform = identity_transform();
+        let facet_indices: Vec<u32> = (0..FACET_COUNT as u32).collect();
+
+        let start = std::time::Instant::now();
+        let footprint = compute_xy_footprint(&mesh, &transform, &facet_indices);
+        let elapsed = start.elapsed();
+
+        assert_eq!(
+            footprint.len(),
+            FACET_COUNT,
+            "disjoint triangles must not merge into fewer polygons"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(3),
+            "compute_xy_footprint took {elapsed:?} for {FACET_COUNT} disjoint \
+             facets (expected well under 3s; batched call measures ~61ms) — \
+             this smells like a regression to per-facet incremental union \
+             calls (O(n) separate clipper2 invocations instead of one \
+             batched union), which is what made PrePass::MeshAnalysis take \
+             118s+ on 3D Benchy"
+        );
     }
 }
