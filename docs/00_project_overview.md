@@ -82,7 +82,7 @@ Use this table as the first-hop index when answering architecture or implementat
 | WIT worlds, manifest contracts, module compatibility      | `./docs/03_wit_and_manifest.md`                           |
 | Scheduler validation, DAG execution, RegionMapIR behavior | `./docs/04_host_scheduler.md`                             |
 | SDK usage, host service wrappers, test workflow           | `./docs/05_module_sdk.md`                                 |
-| Live agent orchestration and role instructions            | `../ralph.yml`                                            |
+| Packet authoring, preflight gating, and agent orchestration | `../.claude/skills/` (`spec-packet-generator`, `spec-review`, `swarm`) |
 | Current sequencing, progress, and gate status             | `./docs/07_implementation_status.md`                      |
 | Coordinate scaling and porting rules                      | `./docs/08_coordinate_system.md`                          |
 | Runtime event schema and ordering guarantees              | `./docs/09_progress_events.md`                            |
@@ -96,8 +96,10 @@ Use this table as the first-hop index when answering architecture or implementat
 | Active architecture deviations                            | `./docs/DEVIATION_LOG.md`                                 |
 | Audit provenance and retired XML crosswalk                | `./docs/14_deviation_audit_history.md`                    |
 
-Operational agent orchestration and validation gates live in `../ralph.yml`; architecture
-conflicts are still resolved by the precedence order below.
+Operational agent orchestration and validation gates live in the repo skills under
+`.claude/skills/` (`spec-packet-generator` authors packets, `spec-review` gates them,
+`swarm` executes them); architecture conflicts are still resolved by the precedence
+order below.
 
 Precedence rule for conflicts:
 

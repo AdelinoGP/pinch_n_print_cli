@@ -20,4 +20,4 @@ This packet was generated against the context_discipline preamble shared by `spe
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
 ```
 
-**Do not paraphrase.** If the content does not apply (it always does, for any packet that ships through Ralph), the packet should not exist. There is no "apply selectively" mode for this snippet.
+**Do not paraphrase.** If the content does not apply (it always does, for any packet that ships through the packet workflow), the packet should not exist. There is no "apply selectively" mode for this snippet.

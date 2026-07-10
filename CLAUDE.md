@@ -145,9 +145,9 @@ When modifying WIT types or interface definitions:
 3. Run `cargo build --tests` after WIT changes.
 4. Edit the canonical source at `crates/slicer-schema/wit/` — both host (`bindgen! path:`) and guest macro (`include_str!`) read these files directly. There is no inline copy to keep in sync.
 
-## Ralph Agent Workflow
+## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before a packet can be closed; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony, not during implementation iterations (see Test Discipline above).
+Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before a packet can be closed; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony, not during implementation iterations (see Test Discipline above).
 
 ## OrcaSlicer Attribution Rules
 

@@ -1,6 +1,6 @@
 ---
 name: spec-packet-generator
-description: Generates a Pinch 'n Print Ralph spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, URL, or approved plan. Multi-packet plans run the Batch Protocol — plan persisted verbatim to docs/specs/ with a packet queue, 2–3 packets authored inline, 4+ orchestrated via authoring subagents with independent preflight reviewers; also use to resume a batch from its plan file.
+description: Generates a Pinch 'n Print spec packet under .ralph/specs/ (packet.spec.md, requirements.md, design.md, implementation-plan.md, task-map.md) from a rough prompt, file, URL, or approved plan. Multi-packet plans run the Batch Protocol — plan persisted verbatim to docs/specs/ with a packet queue, 2–3 packets authored inline, 4+ orchestrated via authoring subagents with independent preflight reviewers; also use to resume a batch from its plan file.
 type: anthropic-skill
 version: "1.4"
 metadata:
@@ -347,11 +347,11 @@ If `draft`, ask whether to mark `active`. If yes:
 - Confirm no other active packet.
 - Confirm no unresolved questions, missing negative cases, or missing exit criteria.
 - Update `packet.spec.md` to `status: active`.
-- Remind user: next steps are `ralph preflight` then `ralph run -c ralph.yml`.
+- Remind user: next steps are `/spec-review <packet> --preflight` then `/swarm <packet>`.
 
 ## Output Contract
 
-The packet must be sufficient for a Ralph run to know:
+The packet must be sufficient for a swarm run to know:
 - Exact backlog slice in scope.
 - Which docs govern the behavior.
 - Which OrcaSlicer references to check.

@@ -10,7 +10,7 @@ copy_note: This file lives in the spec-packet-generator skill. The skill writes 
 
 # Packet Contract: [spec-slug]
 
-Template note: this template is marked `status: implemented` so Ralph preflight ignores it if it is ever read in place. The generator overwrites the status when emitting a real packet.
+Template note: this template is marked `status: implemented` so preflight review ignores it if it is ever read in place. The generator overwrites the status when emitting a real packet.
 
 ## Goal
 
