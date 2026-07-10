@@ -56,8 +56,8 @@ use std::collections::HashMap;
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{ExPolygon, IndexedTriangleSet};
 
-use crate::algos::mesh_cross_section::cross_section_at_z;
 use crate::polygon_ops::{difference_ex, intersection_ex, offset, OffsetJoinType};
+use crate::slice_mesh_ex;
 
 /// Arc tolerance (mm) passed to the underlying `clipper2` offset calls.
 /// Small relative to expected line-width-scale thresholds (0.2-0.8mm range);
@@ -102,24 +102,33 @@ pub fn annotate_overhangs(
     line_width_mm: f32,
 ) -> HashMap<u32, Vec<QuartileBand>> {
     let mut result = HashMap::new();
+    if layer_zs.len() < 2 {
+        return result;
+    }
+
+    // `slice_mesh_ex` does one O(triangle-count) pass over the whole mesh
+    // and fans each triangle out to every Z-plane it straddles — it is
+    // built to be called once with the full batch of layer heights, not
+    // once per layer. Calling it here (via `cross_section_at_z`) twice per
+    // layer transition instead re-scanned the entire mesh 2x per layer,
+    // i.e. O(layers * triangles) — this is what made
+    // `PrePass::OverhangAnnotation` take 18s+ on 3D Benchy.
+    let cross_sections = slice_mesh_ex(mesh, layer_zs);
 
     for i in 1..layer_zs.len() {
-        let prev_z = layer_zs[i - 1];
-        let curr_z = layer_zs[i];
-
-        let previous = cross_section_at_z(mesh, prev_z);
-        let current = cross_section_at_z(mesh, curr_z);
+        let previous = &cross_sections[i - 1];
+        let current = &cross_sections[i];
 
         if current.is_empty() {
             continue;
         }
 
-        let overhang_area = difference_ex(&current, &previous);
+        let overhang_area = difference_ex(current, previous);
         if overhang_area.is_empty() {
             continue;
         }
 
-        let bands = partition_into_bands(&current, &previous, &overhang_area, line_width_mm);
+        let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
         if !bands.is_empty() {
             result.insert(i as u32, bands);
         }
@@ -260,6 +269,119 @@ mod tests {
         assert!(
             !result.contains_key(&0),
             "layer 0 has no previous layer and must never be classified as overhanging"
+        );
+    }
+
+    /// `cube_count` unit (1mm) cubes stacked vertically with a 0.05mm gap
+    /// between them, cube `i` spanning Z in `[i*1.05, i*1.05 + 1.0]`. Each
+    /// cube is disjoint in Z from every other cube, so a mesh with N cubes
+    /// has N narrow, non-overlapping Z-bands — this is the shape that
+    /// stresses per-call vs. batched cross-sectioning cost: at any single Z,
+    /// only one cube (12 of the mesh's `12*cube_count` triangles) is
+    /// actually relevant.
+    fn stacked_cubes_mesh(cube_count: usize) -> IndexedTriangleSet {
+        const CUBE_SIZE_MM: f32 = 1.0;
+        const GAP_MM: f32 = 0.05;
+        let pitch = CUBE_SIZE_MM + GAP_MM;
+
+        let mut vertices = Vec::with_capacity(cube_count * 8);
+        let mut indices = Vec::with_capacity(cube_count * 36);
+
+        for i in 0..cube_count {
+            let z0 = i as f32 * pitch;
+            let z1 = z0 + CUBE_SIZE_MM;
+            let base = vertices.len() as u32;
+            vertices.push(Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: z0,
+            });
+            vertices.push(Point3 {
+                x: CUBE_SIZE_MM,
+                y: 0.0,
+                z: z0,
+            });
+            vertices.push(Point3 {
+                x: CUBE_SIZE_MM,
+                y: CUBE_SIZE_MM,
+                z: z0,
+            });
+            vertices.push(Point3 {
+                x: 0.0,
+                y: CUBE_SIZE_MM,
+                z: z0,
+            });
+            vertices.push(Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: z1,
+            });
+            vertices.push(Point3 {
+                x: CUBE_SIZE_MM,
+                y: 0.0,
+                z: z1,
+            });
+            vertices.push(Point3 {
+                x: CUBE_SIZE_MM,
+                y: CUBE_SIZE_MM,
+                z: z1,
+            });
+            vertices.push(Point3 {
+                x: 0.0,
+                y: CUBE_SIZE_MM,
+                z: z1,
+            });
+
+            #[rustfmt::skip]
+            let local: [u32; 36] = [
+                0, 1, 2,  0, 2, 3,
+                4, 5, 6,  4, 6, 7,
+                0, 1, 5,  0, 5, 4,
+                1, 2, 6,  1, 6, 5,
+                2, 3, 7,  2, 7, 6,
+                3, 0, 4,  3, 4, 7,
+            ];
+            indices.extend(local.iter().map(|&idx| base + idx));
+        }
+
+        IndexedTriangleSet { vertices, indices }
+    }
+
+    /// Regression test for the redundant-cross-sectioning bug that made
+    /// `PrePass::OverhangAnnotation` take 18s+ on 3D Benchy:
+    /// `annotate_overhangs` used to call `cross_section_at_z` (a single-Z
+    /// wrapper around `slice_mesh_ex`) twice per layer transition, and
+    /// `slice_mesh_ex` does a full O(triangle-count) scan over the whole
+    /// mesh on every call regardless of how many Z values it's given — it's
+    /// built to be called once with the full batch. Measured directly
+    /// against the old per-layer implementation: 1200 stacked cubes (14400
+    /// triangles, 1200 layers) took 39.8ms batched vs. 2.05s incremental
+    /// (52x). The threshold below leaves ~25x headroom above the batched
+    /// runtime while sitting ~2x under the incremental runtime, so it fails
+    /// fast and reliably if this ever regresses back to per-layer
+    /// single-Z cross-sectioning.
+    #[test]
+    fn annotate_overhangs_is_fast_for_many_stacked_layers() {
+        const CUBE_COUNT: usize = 1200;
+        let mesh = stacked_cubes_mesh(CUBE_COUNT);
+        let layer_zs: Vec<f32> = (0..CUBE_COUNT).map(|i| i as f32 * 1.05 + 0.5).collect();
+
+        let start = std::time::Instant::now();
+        let result = annotate_overhangs(&mesh, &layer_zs, 0.4);
+        let elapsed = start.elapsed();
+
+        assert!(
+            result.is_empty(),
+            "identically-sized stacked cubes must never classify as overhanging"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "annotate_overhangs took {elapsed:?} for {CUBE_COUNT} stacked-cube \
+             layers (expected well under 1s; batched cross-sectioning \
+             measures ~40ms) — this smells like a regression to per-layer \
+             single-Z cross-sectioning (O(layers) full-mesh scans instead of \
+             one batched slice_mesh_ex call), which is what made \
+             PrePass::OverhangAnnotation take 18s+ on 3D Benchy"
         );
     }
 }
