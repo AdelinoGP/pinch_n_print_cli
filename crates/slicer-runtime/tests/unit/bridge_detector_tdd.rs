@@ -5,6 +5,7 @@
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
 use slicer_core::algos::prepass_slice::{
     assemble_bridge_areas, execute_prepass_slice_single_layer,
+    execute_prepass_slice_single_layer_with_cache, PrepassSliceCache,
 };
 use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
 use slicer_ir::{
@@ -1039,20 +1040,20 @@ fn invalid_bridge_excluded_from_slice_areas() {
 ///
 /// The beam's underside is a `BottomSurface` facet, so it never enters the
 /// sloped-overhang bridge pipeline (`assemble_bridge_areas` only consumes
-/// `Overhang`/`Bridge` clusters). The discriminator is the overhang prepass's
-/// per-layer unsupported region. This test injects that region exactly as
-/// `PrePass::OverhangAnnotation` would populate
-/// `SurfaceClassificationIR.overhang_quartile_polygons`, then asserts the
-/// slice path now produces `bridge_areas` + `is_bridge` over the gap.
-///
-/// Before the fix this FAILS (bridge_areas empty, is_bridge false); after the
-/// fix it PASSES.
+/// `Overhang`/`Bridge` clusters). `PrePass::Slice` recovers it from the
+/// unsupported region it derives as `diff(this-layer cross-section,
+/// previous-layer cross-section)` — the same consecutive-layer diff OrcaSlicer
+/// uses (`PrintObject.cpp:901`). Here the beam's full 30×10 footprint sits over
+/// a previous layer of two end pillars ([0,5] and [25,30]), so the diff is the
+/// 20×10 middle gap. The test drives the real cache path (as
+/// `execute_prepass_slice_all_layers` does) and asserts `bridge_areas` +
+/// `is_bridge` over that gap.
 #[test]
-fn flat_bridge_span_over_gap_flagged_via_overhang_prepass() {
+fn flat_bridge_span_over_gap_flagged_via_layer_diff() {
     // Flat slab (beam) spanning x∈[0,30], y∈[0,10], underside at z=10.
     let slab = make_box("slab-obj", 0.0, 0.0, 10.0, 30.0, 10.0, 13.0);
 
-    let mut analysis = execute_mesh_analysis_with(&slab, MeshAnalysisConfig::default())
+    let analysis = execute_mesh_analysis_with(&slab, MeshAnalysisConfig::default())
         .expect("mesh analysis must succeed");
 
     // Defect precondition: the flat underside yields NO sloped bridge_regions.
@@ -1063,19 +1064,8 @@ fn flat_bridge_span_over_gap_flagged_via_overhang_prepass() {
          not Overhang) — this is the defect precondition"
     );
 
-    // Inject the layer's unsupported region as the overhang prepass would: the
-    // gap span [5,25]×[0,10] under the beam is not supported by the layer below.
-    let global_layer_index = 5_u32;
-    analysis.overhang_quartile_polygons.insert(
-        global_layer_index,
-        vec![slicer_ir::slice_ir::QuartileBand {
-            quartile: 4,
-            polygons: vec![rect_expoly_mm(5.0, 0.0, 25.0, 10.0)],
-        }],
-    );
-
     let layer = GlobalLayer {
-        index: global_layer_index,
+        index: 5,
         z: 11.5,
         active_regions: vec![ActiveRegion {
             object_id: "slab-obj".to_string(),
@@ -1091,8 +1081,33 @@ fn flat_bridge_span_over_gap_flagged_via_overhang_prepass() {
         is_sync_layer: false,
     };
 
-    let slice_ir = execute_prepass_slice_single_layer(&slab, &layer, Some(&analysis), None)
-        .expect("slice must succeed");
+    // This layer's cross-section: the full beam. The previous layer: two end
+    // pillars. Their diff is the 20×10 middle gap = the unsupported flat span.
+    let current: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
+        "slab-obj".to_string(),
+        vec![rect_expoly_mm(0.0, 0.0, 30.0, 10.0)],
+    )]);
+    let previous: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
+        "slab-obj".to_string(),
+        vec![
+            rect_expoly_mm(0.0, 0.0, 5.0, 10.0),
+            rect_expoly_mm(25.0, 0.0, 30.0, 10.0),
+        ],
+    )]);
+    // The beam's whole underside is a BottomSurface facet → full 30×10 footprint.
+    let bottom_fp: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
+        "slab-obj".to_string(),
+        vec![rect_expoly_mm(0.0, 0.0, 30.0, 10.0)],
+    )]);
+    let cache = PrepassSliceCache {
+        raw_polygons: &current,
+        prev_raw_polygons: Some(&previous),
+        bottom_surface_footprint: &bottom_fp,
+    };
+
+    let slice_ir =
+        execute_prepass_slice_single_layer_with_cache(&slab, &layer, Some(&analysis), None, &cache)
+            .expect("slice must succeed");
 
     let region = slice_ir
         .regions
@@ -1123,31 +1138,29 @@ fn flat_bridge_span_over_gap_flagged_via_overhang_prepass() {
 /// build plate must NOT be flagged as a flat bridge on its first layer or any
 /// bottom layer.
 ///
-/// This exercises the REAL overhang kernel (`annotate_overhangs`): a plate box
-/// never grows, so its unsupported region is empty at every layer (layer 0 is
-/// skipped outright). With no unsupported region, the flat-bridge path must be
-/// a no-op — proving the fix cannot mis-flag a genuinely-supported plate
-/// bottom (the naïve `difference(layer0, ∅)` = whole first layer failure mode).
+/// A constant-cross-section box never grows, so `diff(current, previous)` is
+/// empty at every interior layer. Its very first layer (`prev_raw_polygons`
+/// absent) diffs to the *whole* cross-section — the naïve `difference(layer0,
+/// ∅)` failure mode — but the flat-bridge enclosure discriminator rejects it,
+/// because a fully-unsupported footprint leaves an empty `support` set (nothing
+/// to enclose the "gap" against). Both cases must produce no bridge.
 #[test]
 fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
     let box_mesh = make_box("box-obj", 0.0, 0.0, 0.0, 10.0, 10.0, 10.0);
 
-    let mut analysis = execute_mesh_analysis_with(&box_mesh, MeshAnalysisConfig::default())
+    let analysis = execute_mesh_analysis_with(&box_mesh, MeshAnalysisConfig::default())
         .expect("mesh analysis must succeed");
 
-    // Real overhang annotation over a layer stack spanning the box height.
-    let obj = box_mesh.objects.first().unwrap();
-    let layer_zs: Vec<f32> = (0..50).map(|i| 0.1 + i as f32 * 0.2).collect();
-    let overhang =
-        slicer_core::algos::overhang_annotation::annotate_overhangs(&obj.mesh, &layer_zs, 0.4);
-    assert!(
-        overhang.is_empty(),
-        "a plate box must have NO overhang layers (guards the unsupported-region source signal)"
-    );
-    analysis.overhang_quartile_polygons = overhang;
+    let footprint: HashMap<String, Vec<ExPolygon>> = HashMap::from([(
+        "box-obj".to_string(),
+        vec![rect_expoly_mm(0.0, 0.0, 10.0, 10.0)],
+    )]);
 
-    // First layer (index 0) and a mid layer — neither may be flagged a bridge.
-    for (index, z) in [(0_u32, 0.1_f32), (10_u32, 2.1_f32)] {
+    // First layer (no predecessor → diff = whole cross-section) and a mid layer
+    // (predecessor identical → diff = ∅). Neither may be flagged a bridge.
+    let cases: [(u32, f32, Option<&HashMap<String, Vec<ExPolygon>>>); 2] =
+        [(0, 0.1, None), (10, 2.1, Some(&footprint))];
+    for (index, z, prev_raw_polygons) in cases {
         let layer = GlobalLayer {
             index,
             z,
@@ -1164,8 +1177,19 @@ fn solid_box_bottom_layers_not_flagged_as_flat_bridge() {
             has_nonplanar: false,
             is_sync_layer: false,
         };
-        let slice_ir = execute_prepass_slice_single_layer(&box_mesh, &layer, Some(&analysis), None)
-            .expect("slice must succeed");
+        let cache = PrepassSliceCache {
+            raw_polygons: &footprint,
+            prev_raw_polygons,
+            bottom_surface_footprint: &footprint,
+        };
+        let slice_ir = execute_prepass_slice_single_layer_with_cache(
+            &box_mesh,
+            &layer,
+            Some(&analysis),
+            None,
+            &cache,
+        )
+        .expect("slice must succeed");
         for region in &slice_ir.regions {
             assert!(
                 region.bridge_areas.is_empty(),

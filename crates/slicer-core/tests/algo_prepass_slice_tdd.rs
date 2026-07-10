@@ -312,30 +312,31 @@ fn square_expoly(cx: f32, cy: f32, half_mm: f32) -> ExPolygon {
 /// Regression test for the flat-bridge enclosure closing that dominated
 /// `PrePass::Slice` (~28s of a ~30s stage on 3D Benchy — 92% of it, per
 /// sub-stage instrumentation). `assemble_flat_bridge_areas`'s enclosure
-/// discriminator used the shared `closing_ex` (dilate-then-erode with `Round`
-/// joins at a 0.05mm arc tolerance) at a 12mm radius. On a high-vertex,
-/// sharp-cornered cross-section this tessellates every convex tip into a large
-/// arc, exploding the intermediate polygon before the erode — and it ran per
-/// layer.
+/// discriminator used a `Round`-join `closing_ex` (0.05mm arc tolerance) at a
+/// 12mm radius. On a high-vertex, sharp-cornered cross-section this tessellates
+/// every convex tip into a large arc, exploding the intermediate polygon before
+/// the erode — and it ran per layer.
 ///
-/// The fix replaced it with a `Square`-join closing. The discriminator is a
-/// BOOLEAN "does a gap ≤ 2·R re-fill?" test gated by a loose 10% fraction, so
-/// corner roundness is irrelevant, and `Square` adds one bevel point per corner
-/// instead of an arc.
+/// The fix made the join type configurable (`flat_bridge_closing_join`) and
+/// defaulted it to `Miter` (OrcaSlicer's `closing` join). The discriminator is
+/// a BOOLEAN "does a gap ≤ 2·R re-fill?" test gated by a loose 10% fraction, so
+/// corner roundness is irrelevant to the verdict — the join type is purely a
+/// performance knob here (the closing's geometry is discarded).
 ///
 /// The robust, machine-independent signal is the **vertex count** of the
-/// closing output: `Round` at 12mm / 0.05mm tessellates each sharp tip into an
-/// arc, so the closed polygon carries several× more points than the `Square`
-/// closing produces (measured: ~1100 vs ~220 on this fixture). That vertex
-/// blow-up — multiplied across ~280 per-layer/-region closings — was the ~28s.
-/// Wall-clock ratio alone is a weaker signal (Clipper2 offset has a high fixed
-/// per-call cost, so the ~5× point reduction is only ~1.8× in time), so this
-/// asserts on vertex count, not timing. It also runs the real
+/// closing output on this 220-tip fixture. `Round` at 12mm / 0.05mm tessellates
+/// every sharp tip into an arc and is by far the heaviest; `Miter` (the default)
+/// is meaningfully leaner; `Square` is leanest of all. Measured here: roughly
+/// Round≈1100, Miter≈730, Square≈220. The default `Miter` therefore clears the
+/// Round arc-explosion (the ~28s / 92%-of-`PrePass::Slice` regression on 3D
+/// Benchy) while `Square` remains available as the leanest opt-in. Wall-clock
+/// ratio alone is a weaker signal (Clipper2 offset has a high fixed per-call
+/// cost), so this asserts on vertex count, not timing. It also runs the real
 /// `assemble_flat_bridge_areas` and requires the enclosed gap to still be
-/// flagged, proving the closing PATH actually executes.
+/// flagged under every join mode, proving each closing PATH actually executes.
 #[test]
 fn flat_bridge_enclosure_closing_avoids_round_arc_explosion() {
-    use slicer_core::polygon_ops::{offset, OffsetJoinType};
+    use slicer_core::polygon_ops::OffsetJoinType;
 
     // Solid star with a small central gap: the gap is the flat-unsupported
     // span; the star body is the support that gets morphologically closed.
@@ -344,69 +345,63 @@ fn flat_bridge_enclosure_closing_avoids_round_arc_explosion() {
     let bottom_fp = square_expoly(0.0, 0.0, 4.0); // covers the gap → flat_unsupported non-empty
 
     let support = difference(&[star.clone()], &[gap.clone()]);
-    let round_pts: usize = closing_ex(&support, 12.0)
-        .iter()
-        .map(|e| e.contour.points.len())
-        .sum();
-    let sq_dil = offset(&support, 12.0, OffsetJoinType::Square, 0.0);
-    let square_pts: usize = offset(&sq_dil, -12.0, OffsetJoinType::Square, 0.0)
-        .iter()
-        .map(|e| e.contour.points.len())
-        .sum();
+    let pts = |join| -> usize {
+        closing_ex(&support, 12.0, join)
+            .iter()
+            .map(|e| e.contour.points.len())
+            .sum()
+    };
+    let round_pts = pts(OffsetJoinType::Round);
+    let miter_pts = pts(OffsetJoinType::Miter);
+    let square_pts = pts(OffsetJoinType::Square);
 
     assert!(
-        square_pts > 0 && round_pts > 0,
-        "both closings must produce geometry (fixture sanity): round={round_pts} square={square_pts}"
+        miter_pts > 0 && round_pts > 0 && square_pts > 0,
+        "all closings must produce geometry (fixture sanity): \
+         round={round_pts} miter={miter_pts} square={square_pts}"
     );
+    // Default (Miter) clears the Round arc-explosion by a clear margin (≥25%
+    // leaner) — reverting the default join to Round would push this back to
+    // Round's vertex count and fail here.
+    assert!(
+        miter_pts * 4 < round_pts * 3,
+        "Default Miter enclosure closing emitted {miter_pts} vertices vs the legacy Round \
+         `closing_ex`'s {round_pts} on the same sharp-cornered 12mm-radius support — \
+         expected Miter ≥25% leaner. A vertex count near Round's means the enclosure \
+         discriminator reverted to `Round` arc tessellation (~92% of PrePass::Slice, ~28s, \
+         on 3D Benchy)."
+    );
+    // `Square` remains the leanest option (dramatically below Round).
     assert!(
         square_pts * 3 < round_pts,
-        "Square enclosure closing emitted {square_pts} vertices but the old Round \
-         `closing_ex` emitted {round_pts} on the same sharp-cornered 12mm-radius \
-         support — expected Square to be ≥3× leaner (measured ~5×). A shrinking gap \
-         means the enclosure discriminator reverted to `Round` arc tessellation, \
-         which made `assemble_flat_bridge_areas` ~92% of PrePass::Slice (~28s) on \
-         3D Benchy."
+        "Square enclosure closing ({square_pts}) should be ≥3× leaner than Round ({round_pts})"
     );
 
-    // The real fix site must still flag the enclosed gap — i.e. its (Square)
+    // Every supported join mode must still flag the enclosed gap — i.e. its
     // closing path actually ran, rather than short-circuiting before it.
-    let mut region = SlicedRegion {
-        object_id: "star".to_string(),
-        polygons: vec![star.clone()],
-        infill_areas: vec![star.clone()],
-        ..Default::default()
-    };
-    assemble_flat_bridge_areas(
-        &mut region,
-        std::slice::from_ref(&bottom_fp),
-        &[gap.clone()],
-        true, // square_closing (default)
-    );
-    assert!(
-        region.is_bridge,
-        "the enclosed central gap must be flagged as a flat bridge — otherwise the \
-         closing PATH short-circuited and this test would not guard it"
-    );
-
-    // The opt-in legacy Round path (`flat_bridge_square_closing = false`) must
-    // still detect the same enclosed gap — the config knob only trades cost, not
-    // correctness of the enclosure verdict on this fixture.
-    let mut region_round = SlicedRegion {
-        object_id: "star".to_string(),
-        polygons: vec![star.clone()],
-        infill_areas: vec![star.clone()],
-        ..Default::default()
-    };
-    assemble_flat_bridge_areas(
-        &mut region_round,
-        std::slice::from_ref(&bottom_fp),
-        &[gap.clone()],
-        false, // square_closing off → legacy Round closing_ex
-    );
-    assert!(
-        region_round.is_bridge,
-        "legacy Round enclosure closing must flag the same enclosed gap"
-    );
+    for join in [
+        OffsetJoinType::Miter,
+        OffsetJoinType::Square,
+        OffsetJoinType::Round,
+    ] {
+        let mut region = SlicedRegion {
+            object_id: "star".to_string(),
+            polygons: vec![star.clone()],
+            infill_areas: vec![star.clone()],
+            ..Default::default()
+        };
+        assemble_flat_bridge_areas(
+            &mut region,
+            std::slice::from_ref(&bottom_fp),
+            &[gap.clone()],
+            join,
+        );
+        assert!(
+            region.is_bridge,
+            "the enclosed central gap must be flagged as a flat bridge under {join:?} — \
+             otherwise the closing PATH short-circuited and this test would not guard it"
+        );
+    }
 }
 
 #[test]
@@ -441,8 +436,12 @@ fn prepass_slice_caches_bottom_surface_footprint_across_layers() {
             let raw_polygons = raw_polygons_by_layer
                 .get(&layer.index)
                 .unwrap_or(&empty_cache);
+            // `prev_raw_polygons: None` keeps the flat-bridge unsupported diff
+            // empty in both paths, so this test isolates the bottom-surface
+            // footprint caching it targets (uncached has no cache at all).
             let cache = PrepassSliceCache {
                 raw_polygons,
+                prev_raw_polygons: None,
                 bottom_surface_footprint: &bottom_surface_footprint_by_object,
             };
             execute_prepass_slice_single_layer_with_cache(&mesh, layer, Some(&sc), None, &cache)

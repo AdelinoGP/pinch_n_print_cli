@@ -91,14 +91,26 @@ pub fn execute_prepass_slice_all_layers(
     // `Err`, so the result is bit-identical to the previous sequential `.iter()`.
     // This is the dominant cost of the stage (bridge classification + flat-bridge
     // enclosure per layer), so parallelising it scales the stage with core count.
+    //
+    // Each layer also receives the *previous* global layer's raw cross-sections
+    // (position `i-1` in plan order, which is the layer physically below), so
+    // the flat-bridge enclosure test can compute its unsupported region as
+    // `diff(current, previous)` — reading only the already-built immutable
+    // batch, so the parallelism is unaffected.
     use rayon::prelude::*;
     layer_plan
         .global_layers
         .par_iter()
-        .map(|gl| {
+        .enumerate()
+        .map(|(i, gl)| {
             let raw_polygons = raw_polygons_by_layer.get(&gl.index).unwrap_or(&empty_cache);
+            let prev_raw_polygons = i
+                .checked_sub(1)
+                .map(|prev_i| layer_plan.global_layers[prev_i].index)
+                .and_then(|prev_index| raw_polygons_by_layer.get(&prev_index));
             let cache = slicer_core::algos::prepass_slice::PrepassSliceCache {
                 raw_polygons,
+                prev_raw_polygons,
                 bottom_surface_footprint: &bottom_surface_footprint_by_object,
             };
             slicer_core::algos::prepass_slice::execute_prepass_slice_single_layer_with_cache(

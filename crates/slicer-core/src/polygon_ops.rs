@@ -208,6 +208,23 @@ pub fn offset(
     join: OffsetJoinType,
     arc_tolerance_mm: f32,
 ) -> Vec<ExPolygon> {
+    // miter_limit matches Clipper2's default (2.0); callers needing
+    // OrcaSlicer's closing/opening miter limit go through `opening`/
+    // `closing_ex`, which pass `ORCA_MORPH_MITER_LIMIT` explicitly.
+    inflate_once(polygons, delta_mm, join, 2.0, arc_tolerance_mm)
+}
+
+/// Single inflate pass with every Clipper2 knob explicit. All offset-shaped
+/// wrappers in this module route through here so the path→`ExPolygon`
+/// conversion (each path a separate `ExPolygon`, no hole reconstruction —
+/// same limitation as `clip_polygons`) stays identical across them.
+fn inflate_once(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+    miter_limit: f64,
+    arc_tolerance_mm: f32,
+) -> Vec<ExPolygon> {
     use clipper2_rust::inflate_paths_64;
     use clipper2_rust::{EndType, JoinType};
 
@@ -224,21 +241,15 @@ pub fn offset(
         OffsetJoinType::Square => JoinType::Square,
     };
 
-    // Execute offset operation
-    // inflate_paths_64 signature: inflate_paths_64(&paths, delta, join_type, end_type, miter_limit, arc_tolerance)
-    // We use EndType::Polygon for closed polygon offsetting
-    // miter_limit and arc_tolerance can be defaults (2.0 and 0.0)
     let result_paths = inflate_paths_64(
         &paths,
         delta_units,
         join_type,
         EndType::Polygon,
-        2.0,
+        miter_limit,
         (arc_tolerance_mm as f64) * slicer_ir::UNITS_PER_MM,
     );
 
-    // Convert result paths back to ExPolygon
-    // Note: Same limitation as clip_polygons - treats every path as separate ExPolygon with no holes
     result_paths
         .into_iter()
         .map(|path| {
@@ -276,20 +287,49 @@ pub fn difference_ex(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon
     difference(subject, clip)
 }
 
+/// OrcaSlicer's default miter limit for its closing/opening helpers
+/// (`ClipperUtils.hpp` `DefaultMiterLimit = 3.`). The plain [`offset`]
+/// wrapper keeps Clipper2's default of 2.0; the morphological helpers use
+/// Orca's value for `Miter` joins so parity call sites match the C++.
+const ORCA_MORPH_MITER_LIMIT: f64 = 3.0;
+
+/// Arc tolerance (mm) applied to `Round`-join morphological passes — the
+/// pre-existing convention in this module. `Miter`/`Square` joins emit no
+/// arcs, so they pass 0.
+const MORPH_ROUND_ARC_TOLERANCE_MM: f32 = 0.05;
+
+/// One erode/dilate pass of a morphological op, with per-join-type knobs
+/// (`Round` keeps the historical 0.05 mm arc tolerance byte-for-byte;
+/// `Miter` uses OrcaSlicer's miter limit 3.0).
+fn morph_pass(subject: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec<ExPolygon> {
+    let (miter_limit, arc_tolerance_mm) = match join {
+        OffsetJoinType::Round => (2.0, MORPH_ROUND_ARC_TOLERANCE_MM),
+        OffsetJoinType::Miter => (ORCA_MORPH_MITER_LIMIT, 0.0),
+        OffsetJoinType::Square => (2.0, 0.0),
+    };
+    inflate_once(subject, delta_mm, join, miter_limit, arc_tolerance_mm)
+}
+
 /// Morphological opening: erode then dilate by `distance` (mm).
 ///
 /// Opening removes thin bridges and small protrusions smaller than `distance`.
-pub fn opening(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
-    let eroded = offset(subject, -distance as f32, OffsetJoinType::Round, 0.05);
-    offset(&eroded, distance as f32, OffsetJoinType::Round, 0.05)
+/// `join` is explicit at every call site: OrcaSlicer's `opening`/`closing`
+/// default to `jtMiter` (`ClipperUtils.hpp`), so parity callers pass
+/// [`OffsetJoinType::Miter`]; `Round` reproduces this helper's historical
+/// hard-coded behaviour bit-for-bit.
+pub fn opening(subject: &[ExPolygon], distance: f64, join: OffsetJoinType) -> Vec<ExPolygon> {
+    let eroded = morph_pass(subject, -distance as f32, join);
+    morph_pass(&eroded, distance as f32, join)
 }
 
 /// Morphological closing: dilate then erode by `distance` (mm).
 ///
-/// Closing fills small gaps and holes smaller than `distance`.
-pub fn closing_ex(subject: &[ExPolygon], distance: f64) -> Vec<ExPolygon> {
-    let dilated = offset(subject, distance as f32, OffsetJoinType::Round, 0.05);
-    offset(&dilated, -distance as f32, OffsetJoinType::Round, 0.05)
+/// Closing fills small gaps and holes smaller than `distance`. See
+/// [`opening`] for the join-type contract (Miter = OrcaSlicer parity,
+/// Round = historical behaviour).
+pub fn closing_ex(subject: &[ExPolygon], distance: f64, join: OffsetJoinType) -> Vec<ExPolygon> {
+    let dilated = morph_pass(subject, distance as f32, join);
+    morph_pass(&dilated, -distance as f32, join)
 }
 
 /// Two-pass offset: apply `delta1_mm` first (negative = erode), then `delta2_mm` (positive = dilate).
@@ -695,15 +735,36 @@ mod tests {
     fn opening_erodes_then_dilates() {
         // 20000 units = 2mm per side; erode/dilate by 0.1mm (1000 units)
         let sq = make_expoly(&[(0, 0), (20000, 0), (20000, 20000), (0, 20000)], &[]);
-        let result = opening(&[sq], 0.1);
+        let result = opening(&[sq], 0.1, OffsetJoinType::Miter);
         assert!(!result.is_empty());
     }
 
     #[test]
     fn closing_ex_dilates_then_erodes() {
         let sq = make_expoly(&[(0, 0), (20000, 0), (20000, 20000), (0, 20000)], &[]);
-        let result = closing_ex(&[sq], 0.1);
+        let result = closing_ex(&[sq], 0.1, OffsetJoinType::Miter);
         assert!(!result.is_empty());
+    }
+
+    /// The `Round` join reproduces the helpers' historical hard-coded
+    /// behaviour: on a sharp-cornered square it tessellates corner arcs,
+    /// so it must emit strictly more vertices than the `Miter` join, which
+    /// adds at most one point per corner.
+    #[test]
+    fn closing_ex_round_join_is_the_arc_tessellating_legacy_path() {
+        let sq = make_expoly(&[(0, 0), (20000, 0), (20000, 20000), (0, 20000)], &[]);
+        let round_pts: usize = closing_ex(std::slice::from_ref(&sq), 0.5, OffsetJoinType::Round)
+            .iter()
+            .map(|e| e.contour.points.len())
+            .sum();
+        let miter_pts: usize = closing_ex(&[sq], 0.5, OffsetJoinType::Miter)
+            .iter()
+            .map(|e| e.contour.points.len())
+            .sum();
+        assert!(
+            round_pts > miter_pts,
+            "Round closing should tessellate corner arcs (round={round_pts}, miter={miter_pts})"
+        );
     }
 
     #[test]

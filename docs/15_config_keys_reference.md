@@ -239,7 +239,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `flat_bridge_square_closing` | bool | `true` | — (Square-join flat-bridge enclosure closing (fast); false = legacy Round) | `resolved_config.rs::ResolvedConfig` |
+| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) \| square \| round (legacy, bit-identical, slow)) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | `resolved_config.rs::ResolvedConfig` |
 | `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | `resolved_config.rs::ResolvedConfig` |

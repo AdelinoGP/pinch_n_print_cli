@@ -15,13 +15,13 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::polygon_ops::{closing_ex, difference, intersection, offset, union, OffsetJoinType};
+use crate::polygon_ops::{closing_ex, difference, intersection, offset, OffsetJoinType};
 use crate::slice_mesh_ex;
 use crate::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
-    ExPolygon, GlobalLayer, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Point2, Point3,
-    Polygon, RegionKey, RegionMapIR, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
-    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    ExPolygon, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData,
+    Point2, Point3, Polygon, RegionKey, RegionMapIR, SliceIR, SlicedRegion,
+    SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 use slicer_ir::BlackboardError;
@@ -78,6 +78,29 @@ impl std::error::Error for LayerSliceError {}
 /// Apply a 4x4 column-major transform to a 3-D point.
 fn transform_point(t: &Transform3d, p: &Point3) -> Point3 {
     crate::transform_point3(&t.matrix, *p)
+}
+
+/// A copy of `object`'s mesh with its transform baked into every vertex, so it
+/// is sliced in world/global space.
+///
+/// `PrePass::Slice` must slice world-space geometry: the object's bridge
+/// classification ([`classify_region_surfaces`]) and its `BottomSurface`
+/// footprint ([`crate::algos::mesh_analysis::bottom_surface_footprint`]) both
+/// already apply the transform, and `PrePass::OverhangAnnotation` derives its
+/// overhang bands from these slices — slicing local-space here would desync all
+/// three for any non-identity transform (e.g. slicing a translated object at a
+/// global-space layer Z would miss the mesh entirely). For an identity
+/// transform this is a vertex-wise copy, so slice output is bit-identical.
+fn object_world_mesh(object: &ObjectMesh) -> IndexedTriangleSet {
+    IndexedTriangleSet {
+        vertices: object
+            .mesh
+            .vertices
+            .iter()
+            .map(|p| crate::transform_point3(&object.transform.matrix, *p))
+            .collect(),
+        indices: object.mesh.indices.clone(),
+    }
 }
 
 /// Ray-casting point-in-polygon test (integer coordinate space).
@@ -265,10 +288,26 @@ const FLAT_BRIDGE_ENCLOSURE_RADIUS_MM: f64 = MAX_FLAT_BRIDGE_SPAN_MM / 2.0;
 /// | wedge cantilever lip (free-edge, false) | 160 mm²| 0.9 mm²|   0.006  |
 /// | wedge edge sliver (free-edge, false)    |10.4 mm²| 0.3 mm²|   0.03   |
 ///
-/// A wide thin bridge only *partially* re-fills (the round-join dilations meet
+/// A wide thin bridge only *partially* re-fills (the opposing dilations meet
 /// in a narrow waist), so the true-positive floor is ~0.26 — far below 1.0 but
 /// far above the artifact ceiling (~0.03). 0.1 sits in that empty band.
 const FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION: f64 = 0.1;
+
+/// Parse the `flat_bridge_closing_join` config string into an
+/// [`OffsetJoinType`]. Recognises `"miter"`, `"square"`, and `"round"`
+/// (case-insensitive, surrounding whitespace ignored); any other value falls
+/// back to `Miter` — the OrcaSlicer-parity default — with a warning.
+fn parse_flat_bridge_join(raw: &str) -> OffsetJoinType {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "miter" => OffsetJoinType::Miter,
+        "square" => OffsetJoinType::Square,
+        "round" => OffsetJoinType::Round,
+        other => {
+            log::warn!("unknown flat_bridge_closing_join {other:?}; falling back to \"miter\"");
+            OffsetJoinType::Miter
+        }
+    }
+}
 
 /// Detect and record *flat* (perfectly horizontal) unsupported bridge spans.
 ///
@@ -285,9 +324,9 @@ const FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION: f64 = 0.1;
 ///    `BottomSurface` facets (the region's flat-bottom footprint,
 ///    via [`crate::algos::mesh_analysis::bottom_surface_footprint`]), and
 /// 2. `unsupported_region` — this layer's area **not** supported by the layer
-///    below (the union of
-///    `SurfaceClassificationIR.overhang_quartile_polygons[layer]`, populated
-///    by the `PrePass::OverhangAnnotation` step),
+///    below, computed by the caller (`PrePass::Slice`) as
+///    `diff(this-layer cross-section, previous-layer cross-section)`, matching
+///    OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:901`),
 ///
 /// then clipping the result to the region's own printable area
 /// (`region.infill_areas`, mirroring [`assemble_bridge_areas`]) and appending
@@ -296,12 +335,11 @@ const FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION: f64 = 0.1;
 ///
 /// # First-layer / build-plate exclusion
 ///
-/// Build-plate-contact and first-layer bottoms are excluded automatically:
-/// `annotate_overhangs` never emits an unsupported region for layer 0 (a layer
-/// with no predecessor is never overhanging), and a genuinely *supported*
-/// bottom surface (its footprint sits entirely on material below) likewise has
-/// an empty `difference(current, previous)` and therefore an empty
-/// `unsupported_region`. In both cases this function is a no-op. The
+/// Build-plate-contact and first-layer bottoms are excluded automatically: the
+/// object's first layer has no predecessor cross-section, so its
+/// `unsupported_region` (`diff(current, previous)`) is empty, and a genuinely
+/// *supported* bottom surface (its footprint sits entirely on material below)
+/// likewise diffs to empty. In both cases this function is a no-op. The
 /// discriminator is exactly "is this flat bottom supported by the layer
 /// below?" — never the facet normal in isolation.
 ///
@@ -338,7 +376,7 @@ pub fn assemble_flat_bridge_areas(
     region: &mut SlicedRegion,
     bottom_surface_footprint: &[ExPolygon],
     unsupported_region: &[ExPolygon],
-    square_closing: bool,
+    closing_join: OffsetJoinType,
 ) {
     if bottom_surface_footprint.is_empty() || unsupported_region.is_empty() {
         return;
@@ -371,24 +409,17 @@ pub fn assemble_flat_bridge_areas(
     // Morphological closing (dilate-then-erode by R) used purely as a BOOLEAN
     // enclosure discriminator: does a gap ≤ 2·R get re-filled? The exact
     // roundness of the offset corners is irrelevant here, and the downstream
-    // `FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION` gate (10 %) is loose.
-    //
-    // `square_closing` (config `flat_bridge_square_closing`, default true)
-    // selects `Square` joins: Round joins at a 12 mm radius tessellate every
-    // corner of the (high-vertex) cross-section into dozens of arc points, so
-    // the `Round` `closing_ex` (0.05 mm arc tolerance) exploded the intermediate
-    // polygon and made this call ~92 % of PrePass::Slice wall-clock on Benchy
-    // (~28 s / 30 s). `Square` adds a single bevel point per corner instead of
-    // an arc — same ≤2·R gap-fill behaviour at ~1.8× less time / ~5× fewer
-    // vertices. `Round` (`square_closing == false`) is retained as the opt-in
-    // legacy path: bit-identical to pre-optimisation flat-bridge detection.
-    let closed = if square_closing {
-        let r_mm = FLAT_BRIDGE_ENCLOSURE_RADIUS_MM as f32;
-        let dilated = offset(&support, r_mm, OffsetJoinType::Square, 0.0);
-        offset(&dilated, -r_mm, OffsetJoinType::Square, 0.0)
-    } else {
-        closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM)
-    };
+    // `FLAT_BRIDGE_ENCLOSURE_MIN_FRACTION` gate (10 %) is loose — which is why
+    // the join type is configurable via `flat_bridge_closing_join`:
+    // - `Miter` (default) matches OrcaSlicer's `closing` join (`jtMiter`,
+    //   `ClipperUtils.hpp`) and adds at most one point per corner.
+    // - `Square` is an equally cheap alternative (one bevel point per corner).
+    // - `Round` tessellates every corner of the (high-vertex) cross-section
+    //   into dozens of arc points at a 12 mm radius, which exploded the
+    //   intermediate polygon and made this call ~92 % of PrePass::Slice
+    //   wall-clock on Benchy (~28 s / 30 s). It is retained only as the
+    //   bit-identical pre-optimisation legacy path.
+    let closed = closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM, closing_join);
     let refilled = difference(&closed, &support);
     if refilled.is_empty() {
         // No pinched gap anywhere: every flat-unsupported area is a free-edge
@@ -482,7 +513,7 @@ pub fn batch_slice_objects_by_layer(
         let Some(object) = mesh.objects.iter().find(|o| o.id == object_id) else {
             continue;
         };
-        let sliced = slice_mesh_ex(&object.mesh, &zs);
+        let sliced = slice_mesh_ex(&object_world_mesh(object), &zs);
         for (layer_index, polygons) in layer_indices.into_iter().zip(sliced) {
             result
                 .entry(layer_index)
@@ -535,6 +566,11 @@ pub fn batch_bottom_surface_footprints(
 pub struct PrepassSliceCache<'a> {
     /// This layer's raw (pre-closing-radius) slice polygons, keyed by object id.
     pub raw_polygons: &'a HashMap<ObjectId, Vec<ExPolygon>>,
+    /// The *previous* global layer's raw slice polygons, keyed by object id.
+    /// `None` for the first layer in plan order (no predecessor). The
+    /// flat-bridge enclosure test derives this layer's unsupported region as
+    /// `diff(raw_polygons, prev_raw_polygons)`.
+    pub prev_raw_polygons: Option<&'a HashMap<ObjectId, Vec<ExPolygon>>>,
     /// Whole-object bottom-surface XY footprint, keyed by object id.
     pub bottom_surface_footprint: &'a HashMap<ObjectId, Vec<ExPolygon>>,
 }
@@ -585,7 +621,7 @@ fn execute_prepass_slice_single_layer_impl(
                 object_id: active.object_id.clone(),
             })?;
 
-        let (slice_closing_radius_mm, flat_bridge_square_closing) = if let Some(rm) = region_map {
+        let (slice_closing_radius_mm, flat_bridge_join) = if let Some(rm) = region_map {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: active.object_id.clone(),
@@ -613,18 +649,21 @@ fn execute_prepass_slice_single_layer_impl(
             match entry {
                 Some(_) => {
                     let cfg = rm.config_for(&key);
-                    (cfg.slice_closing_radius, cfg.flat_bridge_square_closing)
+                    (
+                        cfg.slice_closing_radius,
+                        parse_flat_bridge_join(&cfg.flat_bridge_closing_join),
+                    )
                 }
-                None => (0.0_f32, true),
+                None => (0.0_f32, OffsetJoinType::Miter),
             }
         } else {
-            (0.0_f32, true)
+            (0.0_f32, OffsetJoinType::Miter)
         };
 
         let raw_polygons = match cache.and_then(|c| c.raw_polygons.get(&active.object_id)) {
             Some(cached) => cached.clone(),
             None => {
-                let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
+                let mut sliced = slice_mesh_ex(&object_world_mesh(object), &[layer.z]);
                 sliced.pop().unwrap_or_default()
             }
         };
@@ -703,35 +742,42 @@ fn execute_prepass_slice_single_layer_impl(
         // Flat (perfectly horizontal) unsupported bridge spans. The sloped
         // pipeline above only sees `Overhang`-derived clusters; a flat beam
         // over a gap has a `BottomSurface` underside and is missed there. The
-        // discriminator is this layer's unsupported region (from the overhang
-        // prepass), which is empty for layer 0 / build-plate contact, so
-        // genuinely-supported bottoms are never flagged.
+        // unsupported region is this object's cross-section area not covered by
+        // the previous layer — `diff(current, previous)` — mirroring
+        // OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:901`).
+        // It is empty for the object's first layer (no previous cross-section
+        // in the batch), so genuinely-supported build-plate bottoms are never
+        // flagged; a fully-unsupported bottom is additionally rejected by the
+        // enclosure discriminator's empty-`support` early-out.
         if let Some(sc) = surface_class {
-            if let Some(bands) = sc.overhang_quartile_polygons.get(&layer.index) {
-                if let Some(obj_data) = sc.per_object.get(&active.object_id) {
-                    // Union this layer's quartile bands into its unsupported region.
-                    let mut unsupported: Vec<ExPolygon> = Vec::new();
-                    for band in bands {
-                        unsupported = union(&unsupported, &band.polygons);
-                    }
-                    if !unsupported.is_empty() {
-                        let bottom_fp = match cache
-                            .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
-                        {
-                            Some(cached) => cached.clone(),
-                            None => crate::algos::mesh_analysis::bottom_surface_footprint(
-                                &object.mesh,
-                                &object.transform,
-                                &obj_data.facet_classes,
-                            ),
-                        };
-                        assemble_flat_bridge_areas(
-                            &mut sliced_region,
-                            &bottom_fp,
-                            &unsupported,
-                            flat_bridge_square_closing,
-                        );
-                    }
+            if let Some(obj_data) = sc.per_object.get(&active.object_id) {
+                let current_raw = cache
+                    .and_then(|c| c.raw_polygons.get(&active.object_id))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let prev_raw = cache
+                    .and_then(|c| c.prev_raw_polygons)
+                    .and_then(|m| m.get(&active.object_id))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let unsupported = difference(current_raw, prev_raw);
+                if !unsupported.is_empty() {
+                    let bottom_fp = match cache
+                        .and_then(|c| c.bottom_surface_footprint.get(&active.object_id))
+                    {
+                        Some(cached) => cached.clone(),
+                        None => crate::algos::mesh_analysis::bottom_surface_footprint(
+                            &object.mesh,
+                            &object.transform,
+                            &obj_data.facet_classes,
+                        ),
+                    };
+                    assemble_flat_bridge_areas(
+                        &mut sliced_region,
+                        &bottom_fp,
+                        &unsupported,
+                        flat_bridge_join,
+                    );
                 }
             }
         }

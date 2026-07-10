@@ -152,7 +152,7 @@ pub fn propagate_top_bottom(
     };
     let open = |p: &[ExPolygon]| -> Vec<ExPolygon> {
         if small_thr > 0.0 && !p.is_empty() {
-            opening(p, small_thr)
+            opening(p, small_thr, OffsetJoinType::Miter)
         } else {
             p.to_vec()
         }
