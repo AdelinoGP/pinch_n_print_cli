@@ -1,9 +1,0 @@
-# Task Map: live-seam-placement-and-consumption
-
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `TASK-120c` | Step 1 | `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/tests/live_seam_path_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.cpp` | Freezes the missing live `resolved_seam` commitment before code changes. |
-| `TASK-120c` | Step 2 | `docs/01_system_architecture.md`, `docs/02_ir_schemas.md` | `modules/core-modules/seam-placer/src/lib.rs`, `crates/slicer-host/src/dispatch.rs`, `crates/slicer-host/src/wit_host.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.hpp` | Restores seam placement on real wall-loop seam candidates. |
-| `TASK-151` | Step 3 | `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md` | `modules/core-modules/path-optimization-default/tests/seam_consumption_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.cpp` | Freezes the seam-consumption expectations on the module surface. |
-| `TASK-151` | Step 4 | `docs/04_host_scheduler.md` | `modules/core-modules/path-optimization-default/src/lib.rs`, `crates/slicer-host/src/dispatch.rs`, `crates/slicer-host/src/layer_executor.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.cpp` | Makes the path-optimization stage replay seam-started wall loops instead of only writing a marker comment. |
-| `TASK-151` (negative) | Step 3 | `docs/02_ir_schemas.md` | `modules/core-modules/path-optimization-default/tests/seam_consumption_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.cpp` | Missing `resolved_seam` must not fabricate a seam split. |

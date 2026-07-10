@@ -1,9 +1,0 @@
-# Task Map: live-travel-retraction-policy
-
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `TASK-120d1` | Step 1 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `modules/core-modules/path-optimization-default/tests/travel_policy_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/RetractWhenCrossingPerimeters.hpp` | Locks ownership on the module surface before implementation. |
-| `TASK-120d` | Step 2 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `modules/core-modules/path-optimization-default/src/lib.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` | Restores the actual retract/no-retract decisions on the chosen policy surface. |
-| `TASK-120d2` | Step 3 | `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/src/wit_host.rs`, `crates/slicer-host/src/dispatch.rs`, `crates/slicer-host/tests/live_travel_policy_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/AvoidCrossingPerimeters.cpp` | Wires matched retract/unretract and aligned `ZHop` output through the live host path. |
-| `TASK-120d` | Step 4 | `docs/04_host_scheduler.md` | `crates/slicer-host/tests/live_travel_policy_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` | Adds the deterministic repeated-run guard needed before Benchy evidence relies on travel behavior. |
-| `TASK-120d2` (negative) | Step 3 | `docs/02_ir_schemas.md` | `crates/slicer-host/tests/live_travel_policy_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` | A no-retract fixture must not produce orphan retracts or stray `ZHop` entries. |

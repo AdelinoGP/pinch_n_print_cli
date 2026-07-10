@@ -1,9 +1,0 @@
-# Task Map: live-support-generation
-
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `TASK-120b` | Step 1 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/tests/live_support_generation_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.hpp` | Freezes the host-level support commitment gap before generator-specific fixes. |
-| `TASK-120b` | Step 2 | `docs/01_system_architecture.md`, `docs/02_ir_schemas.md` | `modules/core-modules/tree-support/src/lib.rs`, `crates/slicer-host/src/dispatch.rs`, `crates/slicer-host/src/layer_executor.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport3D.hpp` | Restores tree-support as the canonical live support generator for the Benchy path. |
-| `TASK-120b` | Step 3 | `docs/01_system_architecture.md`, `docs/02_ir_schemas.md` | `modules/core-modules/traditional-support/src/lib.rs`, `crates/slicer-host/tests/live_support_generation_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.hpp` | Keeps the shared host path honest and locks paint blocker/enforcer precedence. |
-| `TASK-120b` | Step 4 | `docs/04_host_scheduler.md` | `crates/slicer-host/tests/live_support_generation_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/SupportCommon.hpp` | Adds the deterministic live-stage guard required before Benchy evidence can rely on support output. |
-| `TASK-120b` (negative) | Step 3 | `docs/01_system_architecture.md` | `crates/slicer-host/tests/live_support_generation_tdd.rs`, `modules/core-modules/tree-support/tests/enforcer_blocker_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.hpp` | Disabled or ineligible support must stay empty, and blockers must still override default eligibility. |
