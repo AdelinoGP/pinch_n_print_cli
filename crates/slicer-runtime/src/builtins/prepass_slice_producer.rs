@@ -84,9 +84,17 @@ pub fn execute_prepass_slice_all_layers(
         );
     let empty_cache = std::collections::HashMap::new();
 
+    // Per-layer slicing is embarrassingly parallel once the batch caches
+    // (`raw_polygons_by_layer`, `bottom_surface_footprint_by_object`) are built:
+    // each layer produces an independent `SliceIR` from immutable inputs. Rayon's
+    // ordered `collect` preserves plan order and short-circuits on the first
+    // `Err`, so the result is bit-identical to the previous sequential `.iter()`.
+    // This is the dominant cost of the stage (bridge classification + flat-bridge
+    // enclosure per layer), so parallelising it scales the stage with core count.
+    use rayon::prelude::*;
     layer_plan
         .global_layers
-        .iter()
+        .par_iter()
         .map(|gl| {
             let raw_polygons = raw_polygons_by_layer.get(&gl.index).unwrap_or(&empty_cache);
             let cache = slicer_core::algos::prepass_slice::PrepassSliceCache {
