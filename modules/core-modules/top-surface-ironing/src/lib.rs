@@ -237,7 +237,10 @@ impl LayerModule for TopSurfaceIroning {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("ironing_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
-            _ => true,
+            // Default OFF to match OrcaSlicer (`ironing_type = no ironing`).
+            // Ironing at 0.1 mm spacing over every top surface roughly doubles
+            // top-surface emission; users opt in explicitly.
+            _ => false,
         };
 
         let ironing_speed = match config.get("ironing_speed") {

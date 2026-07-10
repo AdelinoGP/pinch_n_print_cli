@@ -167,7 +167,7 @@ is the authoritative catalog of their defaults and ranges.
 | `ironing_spacing` | float | `0.1` | [0.01, 1.0] | `support-surface-ironing` |
 | `ironing_speed` | float | `30.0` | [1.0, 300.0] | `support-surface-ironing` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `support-surface-ironing` |
-| `ironing_enabled` | bool | `true` | — | `top-surface-ironing` |
+| `ironing_enabled` | bool | `false` | — | `top-surface-ironing` |
 | `ironing_flow` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_pattern` | enum | `"rectilinear"` | — | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |

@@ -163,6 +163,34 @@ fn interior_top_shell_layers_emit_no_ironing() {
 }
 
 #[test]
+fn absent_ironing_enabled_defaults_to_disabled() {
+    // Regression: when the user config omits `ironing_enabled` entirely, the
+    // module MUST default to OFF (OrcaSlicer parity: `ironing_type = no
+    // ironing`). Previously the fallback was `true`, which silently ironed
+    // every top surface at 0.1 mm spacing and inflated default gcode ~16%.
+    let cfg = config_with(&[
+        // deliberately NO ironing_enabled key
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
+    ]);
+    let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module.run_infill(0, &[region], &mut output, &cfg).unwrap();
+
+    assert!(
+        output.ironing_paths().is_empty(),
+        "ironing must default to OFF when ironing_enabled is absent from config"
+    );
+}
+
+#[test]
 fn disabled_config_emits_no_ironing() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(false)),
