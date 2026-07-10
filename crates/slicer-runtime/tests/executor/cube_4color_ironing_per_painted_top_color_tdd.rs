@@ -37,6 +37,7 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use slicer_ir::ConfigValue;
 use slicer_runtime::{run_slice, SliceOutcome, SliceRunOptions};
 use std::sync::Arc;
 
@@ -84,7 +85,12 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
-        config_overrides: std::collections::HashMap::new(),
+        // Ironing defaults to OFF (OrcaSlicer parity, commit d11f9ff8), so this
+        // per-painted-color ironing regression must enable it explicitly.
+        config_overrides: std::collections::HashMap::from([(
+            "ironing_enabled".to_string(),
+            ConfigValue::Bool(true),
+        )]),
     };
     run_slice(opts)
         .unwrap_or_else(|e| panic!("run_slice failed against {}: {e}", model_path.display()))
@@ -166,7 +172,7 @@ fn cube_4color_ironing_per_painted_top_color() {
     let blocks = tools_per_ironing_block(&outcome.gcode_text);
     assert!(
         !blocks.is_empty(),
-        "cube_4color must emit at least one `;TYPE:Ironing` block (ironing is on by default); \
+        "cube_4color must emit at least one `;TYPE:Ironing` block (ironing enabled via config override); \
          found 0. Pre-fix a single `;TYPE:Ironing` block was emitted for only one of the two \
          top-surface colors; if the assertion is failing for the opposite reason (zero ironing \
          at all) check that top-surface-ironing is loaded and ironing_enabled is true."
