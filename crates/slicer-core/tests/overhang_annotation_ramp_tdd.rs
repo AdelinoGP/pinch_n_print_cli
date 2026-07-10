@@ -3,7 +3,19 @@
 //! quartile distance bands.
 
 use slicer_core::algos::overhang_annotation::annotate_overhangs;
+use slicer_core::slice_mesh_ex;
 use slicer_ir::{ExPolygon, IndexedTriangleSet, Point3, UNITS_PER_MM};
+
+/// Slice `mesh` at each Z and pair each footprint with its position index,
+/// producing the `annotate_overhangs` input (which now consumes pre-computed
+/// per-layer cross-sections instead of a mesh).
+fn footprints(mesh: &IndexedTriangleSet, layer_zs: &[f32]) -> Vec<(u32, Vec<ExPolygon>)> {
+    slice_mesh_ex(mesh, layer_zs)
+        .into_iter()
+        .enumerate()
+        .map(|(i, poly)| (i as u32, poly))
+        .collect()
+}
 
 /// Builds a frustum-like solid: a 10x10mm-footprint prism at z=0 whose
 /// footprint grows linearly in +x as z increases (dx/dz = 1, i.e. a 45
@@ -74,7 +86,7 @@ fn ramp_overhang_partitions_into_correctly_ordered_bands() {
     // is 0.9mm wide).
     let layer_zs = vec![3.0_f32, 3.2_f32, 4.1_f32];
 
-    let result = annotate_overhangs(&mesh, &layer_zs, LINE_WIDTH_MM);
+    let result = annotate_overhangs(&footprints(&mesh, &layer_zs), LINE_WIDTH_MM);
 
     // Layer 0 has no previous layer: never overhanging, key absent.
     assert!(

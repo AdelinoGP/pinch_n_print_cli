@@ -493,23 +493,6 @@ pub fn execute_prepass_with_builtins_configured_instr(
             wasm_handles,
         )?;
     }
-    // PrePass::OverhangAnnotation — host built-in. Runs immediately after
-    // MeshAnalysis + LayerPlanning (both are satisfied once `early_stages` has
-    // executed, per canonical `STAGE_ORDER`), and before RegionMapping/Slice so
-    // later stages could in principle consume the banded overhang data. Merges
-    // per-object `annotate_overhangs` output into a replacement
-    // `SurfaceClassificationIR` via `replace_surface_classification`.
-    run_builtin_stage(
-        blackboard,
-        instrumentation,
-        "PrePass::OverhangAnnotation",
-        "host:overhang_annotation",
-        |bb| bb.layer_plan().is_some() && bb.surface_classification().is_some(),
-        |bb| {
-            commit_overhang_annotation_builtin(bb, raw_config_source)
-                .map_err(|source| PrepassExecutionError::OverhangAnnotation { source })
-        },
-    )?;
     // Region-mapping: needs LayerPlan; resolves per-paint-semantic config overlays
     // into RegionPlan.paint_overrides.
     //
@@ -574,6 +557,28 @@ pub fn execute_prepass_with_builtins_configured_instr(
         |bb| {
             crate::builtins::prepass_slice_producer::commit_slice_builtin(bb)
                 .map_err(|source| PrepassExecutionError::Slice { source })
+        },
+    )?;
+    // PrePass::OverhangAnnotation — host built-in. Runs strictly AFTER Slice:
+    // it derives each object's overhang bands from the committed SliceIR by
+    // diffing consecutive-layer footprints (OrcaSlicer's
+    // `detect_overhangs_for_lift`, `PrintObject.cpp:880-908`), never re-slicing
+    // the mesh. Merges per-object `annotate_overhangs` output into a
+    // replacement `SurfaceClassificationIR` via `replace_surface_classification`
+    // for layer-tier consumers (perimeters, fuzzy-skin, infill).
+    run_builtin_stage(
+        blackboard,
+        instrumentation,
+        "PrePass::OverhangAnnotation",
+        "host:overhang_annotation",
+        |bb| {
+            bb.slice_ir().is_some()
+                && bb.layer_plan().is_some()
+                && bb.surface_classification().is_some()
+        },
+        |bb| {
+            commit_overhang_annotation_builtin(bb, raw_config_source)
+                .map_err(|source| PrepassExecutionError::OverhangAnnotation { source })
         },
     )?;
     // PrePass::ShellClassification — host built-in. Refines the freshly

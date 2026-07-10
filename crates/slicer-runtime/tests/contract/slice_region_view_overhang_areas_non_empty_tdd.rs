@@ -15,28 +15,17 @@
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
-    ObjectMesh, Point2, Point3, Polygon, PrepassRunnerError, SemVer, SlicedRegion, StageId,
+    ActiveRegion, BoundingBox3, ConfigKey, ConfigValue, ExPolygon, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ObjectMesh, Point2, Point3, Polygon, ResolvedConfig, SlicedRegion,
     Transform3d,
 };
 use slicer_runtime::{
-    build_wasm_instance_pool, execute_prepass_with_builtins, Blackboard, CompiledModule,
-    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LoadedModuleBuilder,
-    PrepassStageInput, PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
+    commit_overhang_annotation_builtin, commit_slice_builtin, execute_mesh_analysis, Blackboard,
 };
 use slicer_wasm_host::host::sliced_region_to_data;
-
-fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer {
-        major,
-        minor,
-        patch,
-    }
-}
 
 fn identity_transform() -> Transform3d {
     Transform3d {
@@ -137,92 +126,59 @@ fn overhang_ramp_mesh() -> MeshIR {
     }
 }
 
+fn active_region(object_id: &str) -> ActiveRegion {
+    ActiveRegion {
+        object_id: object_id.to_string(),
+        region_id: 0,
+        resolved_config: ResolvedConfig::default(),
+        effective_layer_height: 1.0,
+        nonplanar_shell: None,
+        is_catchup_layer: false,
+        catchup_z_bottom: 0.0,
+        tool_index: 0,
+    }
+}
+
 fn two_global_layers() -> Vec<GlobalLayer> {
     vec![
         GlobalLayer {
             index: 0,
             z: 0.5,
-            active_regions: vec![],
+            active_regions: vec![active_region("ramp")],
             has_nonplanar: false,
             is_sync_layer: false,
         },
         GlobalLayer {
             index: 1,
             z: 1.5,
-            active_regions: vec![],
+            active_regions: vec![active_region("ramp")],
             has_nonplanar: false,
             is_sync_layer: false,
         },
     ]
 }
 
-fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
-    let loaded = LoadedModuleBuilder::new(
-        module_id,
-        semver(0, 1, 0),
-        stage_id,
-        "slicer:world-prepass@1.0.0",
-        PathBuf::from(format!("fixtures/{module_id}.wasm")),
-    )
-    .claims(vec!["layer-planner".to_string()])
-    .min_host_version(semver(0, 1, 0))
-    .min_ir_schema(semver(1, 0, 0))
-    .max_ir_schema(semver(2, 0, 0))
-    .build();
-    let _pool = Arc::new(
-        build_wasm_instance_pool(
-            loaded.id(),
-            loaded.stage(),
-            loaded.layer_parallel_safe(),
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("fixture pool must build"),
-    );
-    CompiledModuleBuilder::new(loaded.id().to_string()).build()
-}
-
-/// Stub runner that returns a fixed `LayerPlanIR` for `PrePass::LayerPlanning`.
-/// Mirrors `prepass_overhang_annotation_stage_order_tdd.rs::LayerPlanningStubRunner`.
-struct LayerPlanningStubRunner {
-    mesh: MeshIR,
-    global_layers: Vec<GlobalLayer>,
-}
-
-impl PrepassStageRunner for LayerPlanningStubRunner {
-    fn run_stage(
-        &self,
-        stage_id: &StageId,
-        _module: &CompiledModuleLive<'_>,
-        _input: PrepassStageInput<'_>,
-    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
-        assert_eq!(stage_id, "PrePass::LayerPlanning");
-        let mut object_participation = HashMap::new();
-        for obj in &self.mesh.objects {
-            object_participation.insert(
-                obj.id.clone(),
-                vec![
-                    ObjectLayerRef {
-                        local_layer_index: 0,
-                        global_layer_index: 0,
-                        effective_layer_height: 1.0,
-                    },
-                    ObjectLayerRef {
-                        local_layer_index: 1,
-                        global_layer_index: 1,
-                        effective_layer_height: 1.0,
-                    },
-                ],
-            );
-        }
-        Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-            global_layers: self.global_layers.clone(),
-            object_participation,
-            ..Default::default()
-        })))
-    }
+/// Seed a blackboard with mesh analysis + layer plan, run `PrePass::Slice`, then
+/// `PrePass::OverhangAnnotation` (which derives overhang from the committed
+/// slices), returning the blackboard with a populated
+/// `SurfaceClassificationIR.overhang_quartile_polygons`. `commit_slice_builtin`
+/// needs no `RegionMapIR` (per-region defaults are used when none is present).
+fn seed_slice_and_annotate(mesh: MeshIR, global_layers: Vec<GlobalLayer>) -> Blackboard {
+    let sc = execute_mesh_analysis(&mesh).expect("mesh analysis must succeed");
+    let n_layers = global_layers.len();
+    let mut bb = Blackboard::new(Arc::new(mesh), n_layers);
+    bb.commit_layer_plan(Arc::new(LayerPlanIR {
+        global_layers,
+        ..Default::default()
+    }))
+    .expect("commit layer plan");
+    bb.commit_surface_classification(Arc::new(sc))
+        .expect("commit surface classification");
+    commit_slice_builtin(&mut bb).expect("PrePass::Slice must succeed");
+    let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    commit_overhang_annotation_builtin(&mut bb, &empty_raw)
+        .expect("PrePass::OverhangAnnotation must succeed");
+    bb
 }
 
 /// Axis-aligned square `ExPolygon` at the given mm corners, generously sized
@@ -299,37 +255,10 @@ fn wit_expolygons_bbox(
 
 #[test]
 fn overhang_areas_non_empty_on_layer_with_overhang_facets() {
-    let mesh = overhang_ramp_mesh();
-    let mesh_arc = Arc::new(mesh.clone());
-    let mut blackboard = Blackboard::new(Arc::clone(&mesh_arc), 0);
-
-    let plan = ExecutionPlan {
-        prepass_stages: vec![CompiledStage {
-            stage_id: String::from("PrePass::LayerPlanning"),
-            modules: vec![compiled_stub_module(
-                "PrePass::LayerPlanning",
-                "com.test.layer-planning-stub",
-            )],
-        }],
-        per_layer_stages: vec![],
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
-        global_layers: Arc::new(vec![]),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-        aggregated_region_split: Default::default(),
-    };
-
-    let runner = LayerPlanningStubRunner {
-        mesh,
-        global_layers: two_global_layers(),
-    };
-    let wasm_handles = HashMap::new();
-
-    // Downstream builtins may error on this intentionally-tiny fixture; only
-    // the state committed up through `PrePass::OverhangAnnotation` matters
-    // here (mirrors `overhang_annotation_runs_after_mesh_analysis_and_layer_planning`).
-    let _ = execute_prepass_with_builtins(&plan, &mut blackboard, &runner, &wasm_handles);
+    // Run the real host builtins in order (PrePass::Slice, then
+    // PrePass::OverhangAnnotation) to obtain a genuine SurfaceClassificationIR
+    // with overhang bands derived from the committed slices.
+    let blackboard = seed_slice_and_annotate(overhang_ramp_mesh(), two_global_layers());
 
     let surface_classification = blackboard
         .surface_classification()

@@ -19,11 +19,14 @@ use crate::region_split::{aggregate_region_splits, AggregatedRegionSplitEntry};
 pub const STAGE_ORDER: &[&str] = &[
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
-    "PrePass::OverhangAnnotation",
     "PrePass::SeamPlanning",
     "PrePass::PaintSegmentation",
     "PrePass::RegionMapping",
     "PrePass::Slice",
+    // OverhangAnnotation derives overhang from the committed slices
+    // (OrcaSlicer's `detect_overhangs_for_lift` diffs consecutive `lslices`),
+    // so it runs strictly AFTER Slice — never re-slicing the mesh.
+    "PrePass::OverhangAnnotation",
     "PrePass::ShellClassification",
     "PrePass::SupportGeometry",
     "Layer::PaintRegionAnnotation",

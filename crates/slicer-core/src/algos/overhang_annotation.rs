@@ -1,13 +1,17 @@
 //! Per-layer overhang quartile-band annotation (Step 4, O-T021/O-T022).
 //!
-//! Deterministic pure function: given a mesh and a set of layer Z heights
-//! (mm), classifies the *overhanging* portion of each layer's cross-section
-//! — the part of layer `n`'s footprint that is NOT supported by layer
-//! `n - 1`'s footprint — into 4 concentric distance bands measured from the
-//! previous layer's cross-section boundary. No host-services, scheduler, or
-//! runtime dependency: this is pure geometry over [`IndexedTriangleSet`] +
-//! [`ExPolygon`], reusing existing [`crate::polygon_ops`] boolean/offset
-//! primitives (no new polygon boolean code is implemented here).
+//! Deterministic pure function: given a per-layer sequence of already-computed
+//! cross-section footprints, classifies the *overhanging* portion of each
+//! layer's cross-section — the part of layer `n`'s footprint that is NOT
+//! supported by layer `n - 1`'s footprint — into 4 concentric distance bands
+//! measured from the previous layer's cross-section boundary. Overhang is
+//! derived from the slices, never a second mesh-slicing pass, matching
+//! OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`), which
+//! diffs consecutive `lslices`. No host-services, scheduler, or runtime
+//! dependency: this is pure geometry over [`ExPolygon`], reusing existing
+//! [`crate::polygon_ops`] boolean/offset primitives (no new polygon boolean
+//! code is implemented here). The caller (`PrePass::OverhangAnnotation`)
+//! supplies each object's per-layer footprints from the committed `SliceIR`.
 //!
 //! # Band thresholds and deviation from OrcaSlicer
 //!
@@ -54,10 +58,9 @@
 use std::collections::HashMap;
 
 use slicer_ir::slice_ir::QuartileBand;
-use slicer_ir::{ExPolygon, IndexedTriangleSet};
+use slicer_ir::ExPolygon;
 
 use crate::polygon_ops::{difference_ex, intersection_ex, offset, OffsetJoinType};
-use crate::slice_mesh_ex;
 
 /// Arc tolerance (mm) passed to the underlying `clipper2` offset calls.
 /// Small relative to expected line-width-scale thresholds (0.2-0.8mm range);
@@ -75,17 +78,17 @@ const OFFSET_ARC_TOLERANCE_MM: f32 = 0.01;
 /// traceability to the roadmap decision text, not as a runtime constant.
 const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
 
-/// Classifies overhanging cross-section area at every layer in `layer_zs`
-/// into 4 quartile distance bands, keyed by layer index.
+/// Classifies overhanging cross-section area at every layer into 4 quartile
+/// distance bands, keyed by layer index.
 ///
 /// # Parameters
-/// - `mesh`: single-object mesh in millimeters (see
-///   [`cross_section_at_z`]'s unit-convention doc-comment). Callers slicing a
-///   `MeshIR` object should pass `object_mesh.mesh` with any transform
-///   pre-applied.
-/// - `layer_zs`: per-layer Z heights in millimeters, ordered by increasing
-///   layer index (`layer_zs[i]` is layer `i`'s Z height). Layer 0 has no
-///   previous layer and therefore is never overhanging.
+/// - `layer_footprints`: one entry per layer, ordered by increasing Z, each
+///   `(layer_index, footprint)` pairing the global layer index (used as the
+///   returned map's key) with that layer's cross-section polygons in
+///   millimeters. Consecutive entries must be physically adjacent layers so
+///   that `diff(current, previous)` is the true unsupported area. For a single
+///   object these are its per-layer `SliceIR` polygons; the first entry has no
+///   predecessor and is therefore never overhanging.
 /// - `line_width_mm`: extrusion line width in millimeters used to derive the
 ///   band distance thresholds (`line_width_mm × {0.5, 1.0, 1.5}`). See the
 ///   module doc-comment's "Config wiring note" for how the host stage should
@@ -97,27 +100,24 @@ const BAND_BOUNDARY_MULTIPLIERS: [f32; 3] = [0.5, 1.0, 1.5];
 /// with no overhang have their key absent** — see the module doc-comment's
 /// "Empty-layer semantics" section.
 pub fn annotate_overhangs(
-    mesh: &IndexedTriangleSet,
-    layer_zs: &[f32],
+    layer_footprints: &[(u32, Vec<ExPolygon>)],
     line_width_mm: f32,
 ) -> HashMap<u32, Vec<QuartileBand>> {
     let mut result = HashMap::new();
-    if layer_zs.len() < 2 {
+    if layer_footprints.len() < 2 {
         return result;
     }
 
-    // `slice_mesh_ex` does one O(triangle-count) pass over the whole mesh
-    // and fans each triangle out to every Z-plane it straddles — it is
-    // built to be called once with the full batch of layer heights, not
-    // once per layer. Calling it here (via `cross_section_at_z`) twice per
-    // layer transition instead re-scanned the entire mesh 2x per layer,
-    // i.e. O(layers * triangles) — this is what made
-    // `PrePass::OverhangAnnotation` take 18s+ on 3D Benchy.
-    let cross_sections = slice_mesh_ex(mesh, layer_zs);
-
-    for i in 1..layer_zs.len() {
-        let previous = &cross_sections[i - 1];
-        let current = &cross_sections[i];
+    // One O(layers) sweep over already-computed cross-sections — the object's
+    // slice footprints, supplied by the caller. Overhang is derived from the
+    // slices (not a second mesh pass), matching OrcaSlicer's
+    // `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`), which diffs
+    // consecutive `lslices`. Consecutive entries must be adjacent layers in
+    // increasing-Z order; each entry's `u32` is the layer index used to key
+    // the returned map.
+    for i in 1..layer_footprints.len() {
+        let (_, previous) = &layer_footprints[i - 1];
+        let (layer_index, current) = &layer_footprints[i];
 
         if current.is_empty() {
             continue;
@@ -130,7 +130,7 @@ pub fn annotate_overhangs(
 
         let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
         if !bands.is_empty() {
-            result.insert(i as u32, bands);
+            result.insert(*layer_index, bands);
         }
     }
 
@@ -201,7 +201,21 @@ fn push_band(bands: &mut Vec<QuartileBand>, quartile: u8, polygons: Vec<ExPolygo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slicer_ir::Point3;
+    use crate::slice_mesh_ex;
+    use slicer_ir::{IndexedTriangleSet, Point3};
+
+    /// Slice `mesh` at each Z in `layer_zs` and pair each resulting footprint
+    /// with its position index, producing the `annotate_overhangs` input.
+    /// Overhang classification now consumes pre-computed cross-sections, so
+    /// tests that start from a mesh slice it once here (as the real
+    /// `PrePass::OverhangAnnotation` producer does from `SliceIR`).
+    fn footprints(mesh: &IndexedTriangleSet, layer_zs: &[f32]) -> Vec<(u32, Vec<ExPolygon>)> {
+        slice_mesh_ex(mesh, layer_zs)
+            .into_iter()
+            .enumerate()
+            .map(|(i, poly)| (i as u32, poly))
+            .collect()
+    }
 
     /// 10x10x10mm cube fixture, matching the winding convention used by
     /// `mesh_cross_section`'s own tests (bottom CW-from-above via
@@ -265,7 +279,7 @@ mod tests {
     fn straight_cube_layer0_has_no_previous_and_is_absent() {
         let mesh = flat_cube_mesh();
         let layer_zs = vec![0.5, 1.5];
-        let result = annotate_overhangs(&mesh, &layer_zs, 0.4);
+        let result = annotate_overhangs(&footprints(&mesh, &layer_zs), 0.4);
         assert!(
             !result.contains_key(&0),
             "layer 0 has no previous layer and must never be classified as overhanging"
@@ -347,27 +361,22 @@ mod tests {
         IndexedTriangleSet { vertices, indices }
     }
 
-    /// Regression test for the redundant-cross-sectioning bug that made
-    /// `PrePass::OverhangAnnotation` take 18s+ on 3D Benchy:
-    /// `annotate_overhangs` used to call `cross_section_at_z` (a single-Z
-    /// wrapper around `slice_mesh_ex`) twice per layer transition, and
-    /// `slice_mesh_ex` does a full O(triangle-count) scan over the whole
-    /// mesh on every call regardless of how many Z values it's given — it's
-    /// built to be called once with the full batch. Measured directly
-    /// against the old per-layer implementation: 1200 stacked cubes (14400
-    /// triangles, 1200 layers) took 39.8ms batched vs. 2.05s incremental
-    /// (52x). The threshold below leaves ~25x headroom above the batched
-    /// runtime while sitting ~2x under the incremental runtime, so it fails
-    /// fast and reliably if this ever regresses back to per-layer
-    /// single-Z cross-sectioning.
+    /// `annotate_overhangs` must be O(layers) in the number of pre-sliced
+    /// layers: it now consumes already-computed cross-sections and only runs
+    /// polygon boolean/offset work per layer transition (no mesh slicing at
+    /// all — that moved to `PrePass::Slice`, whose committed `SliceIR` the
+    /// `PrePass::OverhangAnnotation` producer reads instead of re-slicing).
+    /// Slicing here is test setup, done once and excluded from the timed
+    /// region; the assertion guards the band-partition sweep, not slicing.
     #[test]
     fn annotate_overhangs_is_fast_for_many_stacked_layers() {
         const CUBE_COUNT: usize = 1200;
         let mesh = stacked_cubes_mesh(CUBE_COUNT);
         let layer_zs: Vec<f32> = (0..CUBE_COUNT).map(|i| i as f32 * 1.05 + 0.5).collect();
+        let layers = footprints(&mesh, &layer_zs);
 
         let start = std::time::Instant::now();
-        let result = annotate_overhangs(&mesh, &layer_zs, 0.4);
+        let result = annotate_overhangs(&layers, 0.4);
         let elapsed = start.elapsed();
 
         assert!(
@@ -376,12 +385,9 @@ mod tests {
         );
         assert!(
             elapsed < std::time::Duration::from_secs(1),
-            "annotate_overhangs took {elapsed:?} for {CUBE_COUNT} stacked-cube \
-             layers (expected well under 1s; batched cross-sectioning \
-             measures ~40ms) — this smells like a regression to per-layer \
-             single-Z cross-sectioning (O(layers) full-mesh scans instead of \
-             one batched slice_mesh_ex call), which is what made \
-             PrePass::OverhangAnnotation take 18s+ on 3D Benchy"
+            "annotate_overhangs took {elapsed:?} for {CUBE_COUNT} pre-sliced \
+             stacked-cube layers (expected well under 1s) — the per-transition \
+             band partition should be cheap O(layers) polygon work"
         );
     }
 }

@@ -28,9 +28,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, IndexedTriangleSet, LayerPlanIR,
-    MeshIR, ModuleId, ObjectLayerRef, ObjectMesh, Point2, Point3, Polygon, PrepassRunnerError,
-    PrintEntity, RegionKey, ResolvedConfig, SemVer, StageId, Transform3d,
+    ActiveRegion, BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, IndexedTriangleSet,
+    LayerPlanIR, MeshIR, ModuleId, ObjectLayerRef, ObjectMesh, Point2, Point3, Polygon,
+    PrepassRunnerError, PrintEntity, RegionKey, ResolvedConfig, SemVer, StageId, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins_configured_instr, Blackboard,
@@ -168,19 +168,35 @@ fn flat_cube_mesh() -> MeshIR {
     }
 }
 
-fn two_global_layers() -> Vec<GlobalLayer> {
+fn active_region(object_id: &str) -> ActiveRegion {
+    ActiveRegion {
+        object_id: object_id.to_string(),
+        region_id: 0,
+        resolved_config: ResolvedConfig::default(),
+        effective_layer_height: 1.0,
+        nonplanar_shell: None,
+        is_catchup_layer: false,
+        catchup_z_bottom: 0.0,
+        tool_index: 0,
+    }
+}
+
+/// Two global layers, each with one active region for `object_id`, so
+/// `PrePass::Slice` produces `SliceIR` that `PrePass::OverhangAnnotation` (which
+/// now runs after Slice) derives overhang bands from.
+fn two_global_layers(object_id: &str) -> Vec<GlobalLayer> {
     vec![
         GlobalLayer {
             index: 0,
             z: 0.5,
-            active_regions: vec![],
+            active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
             is_sync_layer: false,
         },
         GlobalLayer {
             index: 1,
             z: 1.5,
-            active_regions: vec![],
+            active_regions: vec![active_region(object_id)],
             has_nonplanar: false,
             is_sync_layer: false,
         },
@@ -350,12 +366,19 @@ fn real_wall_entity(
     overhang_bands: &[slicer_ir::slice_ir::QuartileBand],
 ) -> PrintEntity {
     let (x0, y0, x1, y1) = square_mm;
+    // Inset the contour by half the 0.4mm line width, as a real outer wall is
+    // inset from the slice boundary. This also keeps the overhanging vertices
+    // clear of the rounded corners the `PrePass::Slice` closing radius leaves on
+    // the slice footprint (overhang is now derived from those post-closing
+    // polygons), so a vertex lands robustly inside the overhang region rather
+    // than exactly on its rounded edge.
+    let inset = 0.2_f32;
     let contour = Polygon {
         points: vec![
-            Point2::from_mm(x0, y0),
-            Point2::from_mm(x1, y0),
-            Point2::from_mm(x1, y1),
-            Point2::from_mm(x0, y1),
+            Point2::from_mm(x0 + inset, y0 + inset),
+            Point2::from_mm(x1 - inset, y0 + inset),
+            Point2::from_mm(x1 - inset, y1 - inset),
+            Point2::from_mm(x0 + inset, y1 - inset),
         ],
     };
     let points =
@@ -401,7 +424,7 @@ fn classifier_governing_quartile(entity: &PrintEntity) -> Option<u8> {
 fn overhang_pipeline_full_propagation() {
     // (a) Real PrePass::OverhangAnnotation builtin produces non-empty
     // quartile-banded overhang data for the ramp mesh.
-    let blackboard = run_real_overhang_prepass(overhang_ramp_mesh(), two_global_layers());
+    let blackboard = run_real_overhang_prepass(overhang_ramp_mesh(), two_global_layers("ramp"));
     let surface_classification = blackboard
         .surface_classification()
         .expect("SurfaceClassificationIR must be committed by PrePass::MeshAnalysis");
@@ -449,7 +472,7 @@ fn overhang_pipeline_full_propagation() {
 
 #[test]
 fn no_overhang_case() {
-    let blackboard = run_real_overhang_prepass(flat_cube_mesh(), two_global_layers());
+    let blackboard = run_real_overhang_prepass(flat_cube_mesh(), two_global_layers("cube"));
     let surface_classification = blackboard
         .surface_classification()
         .expect("SurfaceClassificationIR must be committed even with zero overhangs");

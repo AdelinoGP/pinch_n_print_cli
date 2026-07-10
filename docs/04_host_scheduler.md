@@ -174,12 +174,12 @@ fn validate_stage_id(module: &LoadedModule) -> Result<(), SchedulerError> {
 pub static STAGE_ORDER: &[StageId] = &[
     StageId::PrePassMeshAnalysis,
     StageId::PrePassLayerPlanning,
-    StageId::PrePassOverhangAnnotation,  // introduced P106; populates SurfaceClassificationIR.overhang_quartile_polygons
     StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
     StageId::PrePassSupportGeometry,     // optional; runs when a support-planner module is loaded
     StageId::PrePassPaintSegmentation,
     StageId::PrePassRegionMapping,   // host-built-in, not a module stage
     StageId::LayerSlice,             // host-built-in
+    StageId::PrePassOverhangAnnotation,  // introduced P106; runs AFTER Slice (P-overhang-inversion), derives overhang from the committed SliceIR
     StageId::LayerPaintRegionAnnotation, // host-built-in; WASM override contract — any module claiming this stage runs instead of the host
     StageId::LayerSlicePostProcess,
     StageId::LayerPerimeters,
@@ -204,7 +204,7 @@ pub static STAGE_ORDER: &[StageId] = &[
 ];
 ```
 
-`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` via mesh cross-section analysis. Reads `MeshIR` + per-layer slices from `PrePass::LayerPlanning`. Owned by `core-modules/overhang-annotator-default` (introduced in P106).
+`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Introduced in P106; moved after Slice by the overhang-after-Slice inversion.
 
 ### Intra-Stage DAG (within one stage)
 
@@ -1005,7 +1005,7 @@ must not run their own ad-hoc presence checks for these slots.
 | Stage                              | Required Slots                                                            |
 |------------------------------------|---------------------------------------------------------------------------|
 | `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
-| `PrePass::OverhangAnnotation`      | `MeshIR`, `LayerPlanIR`; writes `overhang_quartile_polygons` into `SurfaceClassificationIR` |
+| `PrePass::OverhangAnnotation`      | reads `SliceIR` (+ `LayerPlanIR`, `SurfaceClassificationIR`); writes `overhang_quartile_polygons` into `SurfaceClassificationIR`. Runs after `PrePass::Slice`. |
 | `PrePass::SeamPlanning`            | `LayerPlan`                                                               |
 | `PrePass::PaintSegmentation`       | `SliceIR`, `RegionMap`; produces split `SliceIR` via `replace_slice_ir`  |
 | `PrePass::RegionMapping`           | `LayerPlan`                                                               |
@@ -1413,7 +1413,8 @@ slice command
   ├─ execute_prepass()
     │    ├─ PrePassMeshAnalysis          → SurfaceClassificationIR   → Blackboard
     │    ├─ PrePassLayerPlanning         → LayerPlanIR               → Blackboard
-    │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons) → Blackboard  (P106)
+    │    ├─ PrePassSlice                 → SliceIR → Blackboard
+    │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons, from SliceIR) → Blackboard  (P106; after Slice)
     │    ├─ PrePassSeamPlanning          → SeamPlanIR                → Blackboard  (optional)
     │    ├─ PrePassSupportGeometry  → SupportGeometryIR+SupportPlanIR → Blackboard  (optional)
         │    ├─ PrePassPaintSegmentation→ PaintRegionIR             → Blackboard
