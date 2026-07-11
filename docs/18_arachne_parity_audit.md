@@ -76,7 +76,11 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   D-104d-MIN-WIDTH-TOP-SURFACE-NONE).
 - Test: `arachne_parity_arachne_path_only_one_wall_top_forces_single_wall_on_top`.
 
-### G4 — Wall gap uses Flow spacing, not raw width (ALGO, D-105)
+### G4 — Wall gap uses Flow spacing, not raw width (ALGO, D-105) — closed (packet 150)
+- **Closed (packet 150):** `slicer_core::flow::line_width_to_spacing` is now wired into
+  bead placement in both `classic-perimeters` and `arachne-perimeters` (was raw
+  width); see `docs/15_config_keys_reference.md` and `docs/DEVIATION_LOG.md` D-105
+  (now closed).
 - OrcaSlicer: `bead_width_0 = ext_perimeter_spacing`
   (`PerimeterGenerator.cpp:2129`); `WallToolPaths` receives
   `perimeter_spacing = perimeter_flow.scaled_spacing()`
@@ -88,7 +92,11 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   ≈0.3571 mm at 0.4 mm width / 0.2 mm layers.
 - Test: `arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width`.
 
-### G5 — `thick_bridges` bridging flow stubbed to 1.0 (ALGO, D-104g)
+### G5 — `thick_bridges` bridging flow stubbed to 1.0 (ALGO, D-104g) — closed (packet 150)
+- **Closed (packet 150):** `bridging_flow`'s `thick_bridges == true` branch now
+  computes the round cross-section formula `π·dmr²/(4·w·h)`
+  (`dmr = nozzle_diameter·sqrt(bridge_flow_ratio)`) instead of a hardcoded `1.0`;
+  see `docs/DEVIATION_LOG.md` D-104g (now closed).
 - OrcaSlicer: `overhang_flow = bridging_flow(frPerimeter, thick_bridges)`
   (`LayerRegion.cpp:135`, impl `:31-50`); with thick bridges the flow is a
   round cross-section of thread diameter (`Flow.hpp:106`), ≈1.57× a flat
@@ -98,7 +106,11 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   bridge-vertex flow factors: all 1.0.
 - Test: `arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one`.
 
-### G6 — No percent / float-or-percent config type (MODEL, D-104h)
+### G6 — No percent / float-or-percent config type (MODEL, D-104h) — closed (packet 150)
+- **Closed (packet 150):** new `percent`/`float_or_percent` config-schema types,
+  resolved module-side via `ConfigView::get_abs_value(key, base)`; see
+  `docs/03_wit_and_manifest.md` §Config Field Types Reference and
+  `docs/DEVIATION_LOG.md` D-104h (now closed).
 - OrcaSlicer: `min_width_top_surface` coFloatOrPercent 300%
   (`PrintConfig.cpp:1498-1511`); `min_feature_size` coPercent 25%
   (`:7217-7226`); `wall_transition_length` coPercent 100% (`:7169-7178`);
@@ -176,9 +188,9 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
 | G1 | `wall_direction` CCW/CW winding | `PerimeterGenerator.cpp:527-545` | missing | `..._wall_direction_controls_winding` |
 | G2 | `only_one_wall_first_layer` | `PerimeterGenerator.cpp:2137-2139` | missing | `..._only_one_wall_first_layer_forces_single_wall` |
 | G3 | `only_one_wall_top` (incl. second Arachne pass) | `PerimeterGenerator.cpp:2140-2246` | key read, inert | `..._only_one_wall_top_forces_single_wall_on_top` |
-| G4 | Flow spacing feeds bead widths | `PerimeterGenerator.cpp:2129,2172` | divergent (raw width) | `..._wall_gap_uses_flow_spacing_not_width` |
-| G5 | Thick-bridge round-section flow | `LayerRegion.cpp:135`; `Flow.hpp:106` | stubbed to 1.0 | `..._thick_bridges_flow_factor_not_stubbed_to_one` |
-| G6 | Percent-typed Arachne keys | `PrintConfig.cpp:1498-1511,7169-7226` | missing type | `..._percent_config_type_for_arachne_keys` |
+| G4 | Flow spacing feeds bead widths | `PerimeterGenerator.cpp:2129,2172` | closed (packet 150) — `line_width_to_spacing` now feeds bead placement | `..._wall_gap_uses_flow_spacing_not_width` |
+| G5 | Thick-bridge round-section flow | `LayerRegion.cpp:135`; `Flow.hpp:106` | closed (packet 150) — `π·dmr²/(4·w·h)` formula implemented | `..._thick_bridges_flow_factor_not_stubbed_to_one` |
+| G6 | Percent-typed Arachne keys | `PrintConfig.cpp:1498-1511,7169-7226` | closed (packet 150) — `percent`/`float_or_percent` types added | `..._percent_config_type_for_arachne_keys` |
 | G7 | `overhang_reverse` odd-layer reversal | `PerimeterGenerator.cpp:58-98,422-429` | registration-only | `..._overhang_reverse_flips_odd_layer_walls` |
 | G8 | Spiral vase forces classic | `LayerRegion.cpp:138-141` | missing | `..._spiral_vase_forces_classic_generator` |
 | G9 | `wall_maximum_resolution/deviation` | `PrintConfig.cpp:7242-7263` | internal-only | `..._wall_max_resolution_deviation_registered` |

@@ -1558,6 +1558,8 @@ IR path format:
 | `"enum"`        | Fixed set of string values | `values` (required)          |
 | `"float-list"`  | List of floats             | `min`, `max`, `min-length`, `max-length` |
 | `"string-list"` | List of strings            | `min-length`, `max-length`   |
+| `"percent"`     | Value expressed as a % of a caller-supplied base (resolved module-side via `ConfigView::get_abs_value(key, base)`) | `min`, `max`, `step` |
+| `"float_or_percent"` | Absolute float OR a percent literal, resolved at read time via `ConfigView::get_abs_value(key, base)` | `min`, `max`, `step`, `unit` |
 
 ### Common per-field keys (apply to every type)
 

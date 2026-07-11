@@ -94,6 +94,20 @@
   rejected, the helper already returns the correct value and has passing unit
   tests, the only gap is the caller.
 
+### Scope note (discovered during implementation)
+
+- Step 5's `bridging_flow` signature change (new `nozzle_diameter`/`bead_width`/
+  `layer_height` params) also required updating the `classic-perimeters` caller
+  (`modules/core-modules/classic-perimeters/src/lib.rs` — import + threading
+  `layer_height` through `emit_walls` + a new `layer_height` config read), so
+  `classic-perimeters.toml` also registers `layer_height` (0.2) in addition to
+  the packet's stated `nozzle_diameter`.
+- The host `ConfigValueStorage` (`crates/slicer-wasm-host/src/host.rs`)
+  required `Percent`/`FloatOrPercent` variants for percent values to survive
+  host→guest delivery — the design above under-specified this hop (it names
+  the WIT variant, the macro adapter, and `slicer_ir::ConfigValue`, but not
+  the intermediate host-side storage enum).
+
 ## Files in Scope (read + edit)
 
 Primary (the AC arbiters and their direct wiring):

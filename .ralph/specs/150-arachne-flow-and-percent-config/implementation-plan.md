@@ -82,7 +82,7 @@
   - "Run `cargo test -p slicer-runtime --test arachne_parity_gaps --
     arachne_parity_pipeline_percent_config_type_for_arachne_keys --exact`; FACT
     pass/fail."
-  - "Run `cargo test -p slicer-scheduler --test contract -- config_percent_type`;
+  - "Run `cargo test -p slicer-scheduler --test scheduler_contract -- config_percent_type`;
     FACT pass/fail."
 - Context cost: `M`.
 - Authoritative docs: `docs/03_wit_and_manifest.md` (delegate config-type

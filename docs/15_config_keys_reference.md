@@ -49,13 +49,15 @@ is the authoritative catalog of their defaults and ranges.
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
+| `layer_height` | float | `0.2` | — | `arachne-perimeters` |
 | `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
-| `min_feature_size` | float | `1000` | >= 0.0 | `arachne-perimeters` |
+| `min_feature_size` | percent | `25%` | base: `nozzle_diameter` | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
 | `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_width_top_surface` | float | `1.2` | >= 0.0 | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |
+| `nozzle_diameter` | float | `0.4` | — | `arachne-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
 | `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
@@ -72,7 +74,7 @@ is the authoritative catalog of their defaults and ranges.
 | `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
-| `wall_transition_length` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `wall_transition_length` | percent | `100%` | base: `nozzle_diameter` | `arachne-perimeters` |
 | `alternate_extra_wall` | bool | `false` | — | `classic-perimeters` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
@@ -84,9 +86,11 @@ is the authoritative catalog of their defaults and ranges.
 | `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
+| `layer_height` | float | `0.2` | — | `classic-perimeters` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `min_width_top_surface` | float | `1.2` | >= 0.0 | `classic-perimeters` |
 | `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
+| `nozzle_diameter` | float | `0.4` | — | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
 | `outer_wall_line_width` | float | `0.5` | [0.1, 2.0] | `classic-perimeters` |
@@ -480,7 +484,8 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 | `filter_out_gap_fill` | float | `0.0` | [0.0, 2.0] | `classic-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
-| `min_width_top_surface` | float | `1.2` | — | `classic-perimeters`, `arachne-perimeters` |
+| `min_width_top_surface` | float | `1.2` | — | `classic-perimeters` |
+| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 
@@ -501,7 +506,7 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 - `InnerOuter` — inner walls print first; better dimensional accuracy (default).
 - `InnerOuterInner` — inner walls first, outer wall next, remaining inner walls last; balances both goals by bracketing the outer wall.
 
-**`min_width_top_surface`** — OrcaSlicer `min_width_top_surface` (`coFloatOrPercent`, canonical default `300%` of line width). Minimum wall width applied when narrowing walls on top solid surfaces. Registered here as a fixed mm float (`1.2` ≈ 300% of the common `0.4` mm line width) rather than a percent-of-line-width type — this codebase's manifest schema does not yet have a `coFloatOrPercent`-equivalent field type. **Not yet consumed for its intended purpose:** the key is read-and-validated in both `classic-perimeters` and `arachne-perimeters`, but the `only_one_wall_top` narrowing threshold it is meant to gate does not yet reference it (see `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` in `docs/DEVIATION_LOG.md`).
+**`min_width_top_surface`** — OrcaSlicer `min_width_top_surface` (`coFloatOrPercent`, canonical default `300%` of line width). Minimum wall width applied when narrowing walls on top solid surfaces. `classic-perimeters` still registers this as a fixed mm float (`1.2` ≈ 300% of the common `0.4` mm line width). **Packet 150:** `arachne-perimeters`'s copy is retyped `float_or_percent`, base `inner_wall_line_width` (300%), resolved module-side via `ConfigView::get_abs_value`, closing G6/D-104h for this key. **Not yet consumed for its intended purpose on either module:** the key is read-and-validated in both `classic-perimeters` and `arachne-perimeters`, but the `only_one_wall_top` narrowing threshold it is meant to gate does not yet reference it (see `D-104d-MIN-WIDTH-TOP-SURFACE-NONE` in `docs/DEVIATION_LOG.md`, still open).
 
 ---
 
@@ -553,7 +558,7 @@ Keys registered on both `classic-perimeters` and `arachne-perimeters`, consumed 
 
 **`bridge_flow`** — OrcaSlicer `bridge_flow_ratio` equivalent. Scales the per-vertex `flow_factor` applied at `is_bridge` vertices; `1.0` is a no-op.
 
-**`thick_bridges`** — when `true`, `bridging_flow()` returns `1.0` instead of the configured `bridge_flow` ratio. This is a documented PnP-vs-OrcaSlicer divergence: OrcaSlicer's `thick_bridges=true` computes a height/nozzle-diameter-derived `Flow` (via `Flow::bridging_flow`) rather than simply disabling the ratio reduction; PnP's per-vertex `flow_factor` model cannot represent that per-path height/width computation, so the `thick_bridges` branch is a no-op placeholder pending a larger IR change (see `D-104g-FLOW-FACTOR-PERVERTEX-DIVERGENCE` in `docs/DEVIATION_LOG.md`).
+**`thick_bridges`** — when `true`, `bridging_flow()` now computes OrcaSlicer's round cross-section flow factor `π·dmr²/(4·w·h)` (`dmr = nozzle_diameter·sqrt(bridge_flow_ratio)`), instead of the configured `bridge_flow` ratio directly. **Packet 150:** replaced the previous hardcoded `1.0` stub with this per-vertex `Flow::bridging_flow` parity formula, closing G5 (see `D-104g-FLOW-FACTOR-PERVERTEX-DIVERGENCE` in `docs/DEVIATION_LOG.md`, now closed).
 
 ---
 
@@ -563,10 +568,10 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 | Key | Type | Default | Units | Module |
 |---|---|---|---|---|
-| `min_feature_size` | float | `1000` | slicer units (0.1 mm) | `arachne-perimeters` |
+| `min_feature_size` | percent | `25%` | % of `nozzle_diameter` | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | slicer units (0.1 mm) | `arachne-perimeters` |
-| `wall_transition_length` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `wall_transition_length` | percent | `100%` | % of `nozzle_diameter` | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | degrees | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | count (bead-index radius) | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | dimensionless ratio | `arachne-perimeters` |
@@ -577,13 +582,13 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 | `detect_thin_wall` | bool | `false` | boolean | `arachne-perimeters` |
 | `preferred_bead_width_outer` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
 
-**`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`; corrected here from the packet's original `25`-unit suggestion, which mistook the percentage for a raw slicer-unit value). Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
+**`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`). **Packet 150:** retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`), closing G6/D-104h. Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
 
 **`min_bead_width`** — OrcaSlicer `min_bead_width` (`PrintConfig.cpp` ~line 6873-6879, `coPercent` of nozzle diameter, upstream default `100%`; corrected here from the packet's original `200`-unit suggestion). The fixed bead width `WideningBeadingStrategy` emits for regions below `min_feature_size`; maps to its internal `min_bead_width` field (name matches verbatim).
 
 **`wall_transition_filter_deviation`** — OrcaSlicer `wall_transition_filter_deviation` (`PrintConfig.cpp` ~line 6799-6812, `coPercent` of nozzle diameter, upstream default `25%`; corrected here from the packet's original `200`-unit suggestion). Margin extending the extrusion-width range to reduce back-and-forth transitions between wall counts; maps to `DistributedBeadingStrategy`'s internal `transition_filter_dist` field (`crates/slicer-core/src/beading/distributed.rs`) — reserved there for a later decorator step, not yet read by `compute`.
 
-**`wall_transition_length`** — OrcaSlicer `wall_transition_length` (`PrintConfig.cpp` ~line 6788-6797, `coPercent` of nozzle diameter, upstream default `100%` — matches the packet's original `4000`-unit suggestion). Space allotted to split/join wall segments when transitioning between wall counts; maps to `DistributedBeadingStrategy`'s internal `default_transition_length` field — also reserved for a later decorator step.
+**`wall_transition_length`** — OrcaSlicer `wall_transition_length` (`PrintConfig.cpp` ~line 6788-6797, `coPercent` of nozzle diameter, upstream default `100%`). **Packet 150:** retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`), closing G6/D-104h. Space allotted to split/join wall segments when transitioning between wall counts; maps to `DistributedBeadingStrategy`'s internal `default_transition_length` field — also reserved for a later decorator step.
 
 **`wall_transition_angle`** — OrcaSlicer `wall_transition_angle` (`PrintConfig.cpp` ~line 6814-6825, `coFloat`, degrees, upstream default `10.0` — matches the packet's original suggestion exactly). Threshold wedge angle above which no wall-count transition occurs. Not yet consumed by any shipped strategy in this packet.
 

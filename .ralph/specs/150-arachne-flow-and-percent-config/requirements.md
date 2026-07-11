@@ -136,7 +136,7 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width --exact` | AC-3 flips green | FACT pass/fail; SNIPPETS ≤20 on fail |
 | `cargo test -p slicer-runtime --test arachne_parity_gaps -- arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one --exact` | AC-4 flips green | FACT pass/fail; SNIPPETS ≤20 on fail |
 | `cargo test -p classic-perimeters --lib -- nozzle_diameter` | AC-5 dead-read fix | FACT pass/fail |
-| `cargo test -p slicer-scheduler --test contract -- config_percent_type` | AC-N1 malformed rejection | FACT pass/fail; SNIPPETS ≤20 on fail |
+| `cargo test -p slicer-scheduler --test scheduler_contract -- config_percent_type` | AC-N1 malformed rejection | FACT pass/fail; SNIPPETS ≤20 on fail |
 | `cargo test -p slicer-runtime --test arachne_parity` | AC-6 14 locks stay green | FACT pass/fail; SNIPPETS ≤20 on fail |
 | `cargo test -p slicer-core --lib flow` | bridging_flow + spacing unit tests | FACT pass/fail |
 | `cargo check --workspace --all-targets` | compiles incl. test/bench targets | FACT pass/fail |
