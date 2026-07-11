@@ -12,9 +12,9 @@
 //!
 //! Converts a 3D triangle mesh into a series of 2D ExPolygon layers at specified Z heights.
 
-use slicer_ir::{ExPolygon, IndexedTriangleSet, Point2, Point3, Polygon};
+use slicer_ir::{mm_to_units, ExPolygon, IndexedTriangleSet, Point2, Point3, Polygon};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::polygon_ops::{self, union_ex, OffsetJoinType};
 
@@ -28,7 +28,21 @@ struct IntersectionLine {
     b_topology: EndpointTopology,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// An un-closed chain produced by the topology walk, pending reconciliation.
+///
+/// `start`/`end` are the `EndpointTopology` of the two endpoints; `points`
+/// is the actual polyline (start included, no trailing duplicate). Mirrors
+/// OrcaSlicer's `OpenPolyline` (`start`/`end` `IntersectionReference`,
+/// `points`, cached `length`, `consumed` flag).
+struct OpenPolyline {
+    start: EndpointTopology,
+    end: EndpointTopology,
+    points: Vec<Point2>,
+    length: f64,
+    consumed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum EndpointTopology {
     Vertex(i32),
     Edge(u64),
@@ -279,7 +293,7 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
         return Vec::new();
     }
 
-    let polygons = chain_lines(lines);
+    let polygons = make_loops(lines);
 
     // Convert Polygons to ExPolygons using boolean union
     // For simple cases (no holes), this just wraps each polygon
@@ -291,79 +305,412 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
     expolygons
 }
 
-/// Chain intersection lines into closed polygons using undirected
-/// point connectivity.
+/// OrcaSlicer-faithful loop chaining pipeline.
 ///
-/// Each physical intersection point lies on a unique mesh edge (or at a
-/// mesh vertex on the slicing plane). For a 2-manifold mesh, a clean
-/// slice produces a closed loop per island, where each point is shared
-/// by exactly two lines. The per-line `a`/`b` ordering depends on
-/// triangle winding and edge-iteration order, and is not consistent
-/// across adjacent triangles — a directed `a → b` walk fragments chains
-/// and leaves shared edges orphaned. Treating the connection as
-/// undirected recovers the full loop regardless of the emitted
-/// orientation on each side of each shared edge.
+/// `make_loops` reproduces `TriangleMeshSlicer::make_loops` as a four-stage
+/// pipeline:
+///   1. `chain_lines_by_triangle_connectivity` — greedy walk over mesh
+///      topology (edge/vertex ids), keeping dead-ends as `OpenPolyline`s
+///      instead of discarding the whole walk.
+///   2. `chain_open_polylines_exact` (×2: same, then reversed orientation) —
+///      reconcile open polylines by exact topology-id match.
+///   3. `chain_open_polylines_close_gaps` (×2: same, then reversed) — join
+///      open polylines whose endpoints are within `max_gap` (2 mm).
 ///
-/// The canonical edge-interpolation in `intersect_edge` gives bitwise-
-/// identical endpoint coordinates on both triangles of a shared edge,
-/// so point equality is reliable here.
-fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
+/// PNP's `EndpointTopology` (a vertex id or an edge key) is the direct
+/// equivalent of OrcaSlicer's `IntersectionReference` (point_id / edge_id);
+/// only one is ever set per endpoint, so a single `EndpointTopology` key
+/// drives both the connectivity walk and the reconciliation passes.
+fn make_loops(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
     if lines.is_empty() {
         return Vec::new();
     }
 
-    // Undirected endpoint index: each point maps to the list of line
-    // indices touching it at either end.
-    let mut by_point: HashMap<Point2, Vec<usize>> = HashMap::new();
-    for (idx, line) in lines.iter().enumerate() {
-        by_point.entry(line.a).or_default().push(idx);
-        by_point.entry(line.b).or_default().push(idx);
+    // A 2-manifold slice produces one intersection line per physical segment,
+    // but PNP's per-triangle `slice_make_lines` emits one line per *triangle*,
+    // so a face built from two coplanar triangles yields two coincident lines
+    // (e.g. a cube cross-section gives 8 lines for 4 unique segments). Drop
+    // exact duplicates so the topology walk sees each segment once. This is
+    // safe: a duplicate is never a distinct physical edge, and it matches the
+    // outcome of OrcaSlicer's edge-ownership de-duplication.
+    let lines = dedup_lines(lines);
+
+    let mut loops: Vec<Polygon> = Vec::new();
+    let mut open_polylines: Vec<OpenPolyline> = Vec::new();
+
+    chain_lines_by_triangle_connectivity(lines, &mut loops, &mut open_polylines);
+    chain_open_polylines_exact(&mut open_polylines, &mut loops, false);
+    chain_open_polylines_exact(&mut open_polylines, &mut loops, true);
+    let max_gap = mm_to_units(2.0) as i64; // 2 mm, in PNP scaled units
+    chain_open_polylines_close_gaps(&mut open_polylines, &mut loops, max_gap, false);
+    chain_open_polylines_close_gaps(&mut open_polylines, &mut loops, max_gap, true);
+
+    loops
+}
+
+/// Drop coincident intersection lines (same unordered pair of
+/// endpoints + topologies, order-independent). See `make_loops`.
+fn dedup_lines(lines: Vec<IntersectionLine>) -> Vec<IntersectionLine> {
+    let mut seen: HashSet<((Point2, EndpointTopology), (Point2, EndpointTopology))> =
+        HashSet::new();
+    let mut out = Vec::new();
+    for line in lines {
+        let e1 = (line.a, line.a_topology);
+        let e2 = (line.b, line.b_topology);
+        let key = if e1 <= e2 { (e1, e2) } else { (e2, e1) };
+        if seen.insert(key) {
+            out.push(line);
+        }
+    }
+    out
+}
+
+/// Stage 1 — greedy walk over triangle topology.
+///
+/// Unlike a point-equality walk, this keys off `EndpointTopology` so it
+/// survives the f32 rounding / winding differences that can desync
+/// otherwise-equal coordinates. The walk is orientation-agnostic: a next
+/// line is joined whether its `a` or `b` endpoint carries the matching
+/// topology (the line is reversed when it matches on `b`). This is
+/// equivalent to OrcaSlicer's directed walk for any manifold mesh, but
+/// does not depend on PNP's slice stage emitting "external-on-the-right"
+/// oriented lines.
+///
+/// A walk that returns to its start topology is a closed loop; anything
+/// else is preserved as an `OpenPolyline` and handed to the reconciliation
+/// passes (which is what fixes the benchy Z1.6 dangling-tail case — the
+/// old point walk discarded the entire walk on first dead-end).
+fn chain_lines_by_triangle_connectivity(
+    lines: Vec<IntersectionLine>,
+    loops: &mut Vec<Polygon>,
+    open_polylines: &mut Vec<OpenPolyline>,
+) {
+    let n = lines.len();
+    if n == 0 {
+        return;
     }
 
-    let mut used = vec![false; lines.len()];
-    let mut polygons = Vec::new();
+    let mut used = vec![false; n];
+    // Multimap: topology id -> list of (line index, is_a_endpoint).
+    let mut by_topo: HashMap<EndpointTopology, Vec<(usize, bool)>> = HashMap::new();
+    for (idx, line) in lines.iter().enumerate() {
+        by_topo
+            .entry(line.a_topology)
+            .or_default()
+            .push((idx, true));
+        by_topo
+            .entry(line.b_topology)
+            .or_default()
+            .push((idx, false));
+    }
 
-    for start_idx in 0..lines.len() {
-        if used[start_idx] {
+    for seed in 0..n {
+        if used[seed] {
             continue;
         }
+        used[seed] = true;
 
-        used[start_idx] = true;
-        let start_line = &lines[start_idx];
-        let mut loop_points: Vec<Point2> = vec![start_line.a, start_line.b];
-        let mut current_point = start_line.b;
-        let loop_closed = loop {
-            let Some(&next_idx) = by_point
-                .get(&current_point)
-                .and_then(|candidates| candidates.iter().find(|&&i| !used[i]))
-            else {
-                break false;
+        let mut points: Vec<Point2> = vec![lines[seed].a, lines[seed].b];
+        let start_topo = lines[seed].a_topology;
+        let mut end_topo = lines[seed].b_topology;
+        let mut closed = false;
+
+        loop {
+            let next = by_topo
+                .get(&end_topo)
+                .and_then(|entries| entries.iter().find(|&&(idx, _)| !used[idx]).copied());
+            let Some((next_idx, is_a)) = next else {
+                break;
             };
             used[next_idx] = true;
             let next_line = &lines[next_idx];
-            // Step to the endpoint of `next_line` that is NOT the point
-            // we arrived at; that's the walker's new frontier.
-            let next_point = if next_line.a == current_point {
-                next_line.b
+            // `next` meets the walk at `end_topo`; advance to its far endpoint.
+            let (far_point, far_topo) = if is_a {
+                (next_line.b, next_line.b_topology)
             } else {
-                next_line.a
+                (next_line.a, next_line.a_topology)
             };
-            if next_point == start_line.a {
-                // Closed the loop; don't re-push the start point.
-                break true;
+            points.push(far_point);
+            end_topo = far_topo;
+            if end_topo == start_topo {
+                closed = true;
+                break;
             }
-            loop_points.push(next_point);
-            current_point = next_point;
-        };
+        }
 
-        if loop_closed && loop_points.len() >= 3 {
-            polygons.push(Polygon {
-                points: simplify_polygon_points(loop_points),
+        if closed {
+            // `points` ends at the start location (a duplicate vertex) — drop it.
+            points.pop();
+            if points.len() >= 3 {
+                loops.push(Polygon {
+                    points: simplify_polygon_points(points),
+                });
+            }
+        } else {
+            let length = polyline_length(&points);
+            open_polylines.push(OpenPolyline {
+                start: start_topo,
+                end: end_topo,
+                points,
+                length,
+                consumed: false,
             });
         }
     }
+}
 
-    polygons
+/// Find a non-consumed open polyline whose start (and, when `try_reversed`,
+/// end) topology equals `end_topo`.
+fn find_exact_match(
+    open: &[OpenPolyline],
+    end_topo: EndpointTopology,
+    try_reversed: bool,
+    exclude: usize,
+) -> Option<(usize, bool)> {
+    for (i, opl) in open.iter().enumerate() {
+        if i == exclude || opl.consumed {
+            continue;
+        }
+        if opl.start == end_topo {
+            return Some((i, true));
+        }
+        if try_reversed && opl.end == end_topo {
+            return Some((i, false));
+        }
+    }
+    None
+}
+
+/// Stage 2 — reconcile open polylines by exact topology-id match.
+fn chain_open_polylines_exact(
+    open_polylines: &mut Vec<OpenPolyline>,
+    loops: &mut Vec<Polygon>,
+    try_connect_reversed: bool,
+) {
+    let mut sorted: Vec<usize> = (0..open_polylines.len())
+        .filter(|&i| !open_polylines[i].consumed)
+        .collect();
+    sorted.sort_by(|&a, &b| {
+        open_polylines[b]
+            .length
+            .partial_cmp(&open_polylines[a].length)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for &seed in &sorted {
+        if open_polylines[seed].consumed {
+            continue;
+        }
+        open_polylines[seed].consumed = true;
+
+        let mut cur_end = open_polylines[seed].end;
+        loop {
+            match find_exact_match(open_polylines, cur_end, try_connect_reversed, seed) {
+                None => {
+                    open_polylines[seed].consumed = false;
+                    break;
+                }
+                Some((j, is_start)) => {
+                    let pts = if is_start {
+                        open_polylines[j].points.clone()
+                    } else {
+                        let mut rev = open_polylines[j].points.clone();
+                        rev.reverse();
+                        rev
+                    };
+                    let tail = *open_polylines[seed].points.last().unwrap();
+                    let skip = pts.first().map_or(false, |p| *p == tail);
+                    open_polylines[seed]
+                        .points
+                        .extend(pts.iter().skip(if skip { 1 } else { 0 }).copied());
+                    open_polylines[seed].length += open_polylines[j].length;
+                    open_polylines[j].consumed = true;
+                    open_polylines[j].points.clear();
+                    cur_end = if is_start {
+                        open_polylines[j].end
+                    } else {
+                        open_polylines[j].start
+                    };
+
+                    if open_polylines[seed].start == cur_end {
+                        open_polylines[seed].points.pop();
+                        if open_polylines[seed].points.len() >= 3 {
+                            if try_connect_reversed
+                                && signed_area(&open_polylines[seed].points) < 0.0
+                            {
+                                open_polylines[seed].points.reverse();
+                            }
+                            loops.push(Polygon {
+                                points: simplify_polygon_points(
+                                    open_polylines[seed].points.clone(),
+                                ),
+                            });
+                        }
+                        open_polylines[seed].points.clear();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Brute-force nearest endpoint within `max_gap` (n per layer is tiny).
+/// Returns `(polyline index, is_start_endpoint, squared_distance)`.
+fn find_nearest_end(
+    open: &[OpenPolyline],
+    seed: usize,
+    tail: Point2,
+    max_gap: i64,
+    try_reversed: bool,
+) -> Option<(usize, bool, i64)> {
+    let max_gap2 = max_gap * max_gap;
+    let mut best: Option<(usize, bool, i64)> = None;
+    for (i, opl) in open.iter().enumerate() {
+        if i == seed || opl.consumed {
+            continue;
+        }
+        let candidates = [
+            (true, opl.points.first().copied()),
+            (
+                false,
+                if try_reversed {
+                    opl.points.last().copied()
+                } else {
+                    None
+                },
+            ),
+        ];
+        for (is_start, pt) in candidates {
+            if let Some(p) = pt {
+                let d2 = (p.x - tail.x).pow(2) + (p.y - tail.y).pow(2);
+                if d2 <= max_gap2 && best.map_or(true, |(_, _, bd)| d2 < bd) {
+                    best = Some((i, is_start, d2));
+                }
+            }
+        }
+    }
+    best
+}
+
+/// Stage 3 — reconcile open polylines by proximity within `max_gap`.
+fn chain_open_polylines_close_gaps(
+    open_polylines: &mut Vec<OpenPolyline>,
+    loops: &mut Vec<Polygon>,
+    max_gap: i64,
+    try_connect_reversed: bool,
+) {
+    // Recompute lengths (they may have changed in the exact pass).
+    for opl in open_polylines.iter_mut() {
+        if !opl.consumed {
+            opl.length = polyline_length(&opl.points);
+        }
+    }
+
+    let mut sorted: Vec<usize> = (0..open_polylines.len())
+        .filter(|&i| !open_polylines[i].consumed)
+        .collect();
+    sorted.sort_by(|&a, &b| {
+        open_polylines[b]
+            .length
+            .partial_cmp(&open_polylines[a].length)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for &seed in &sorted {
+        if open_polylines[seed].consumed {
+            continue;
+        }
+        open_polylines[seed].consumed = true;
+
+        let mut n_joined = 1;
+        loop {
+            let tail = *open_polylines[seed].points.last().unwrap();
+            let head = *open_polylines[seed].points.first().unwrap();
+            let closing2 = (tail.x - head.x).pow(2) + (tail.y - head.y).pow(2);
+            let max_gap2 = max_gap * max_gap;
+            let mut loop_closed = closing2 < max_gap2;
+
+            let next = find_nearest_end(open_polylines, seed, tail, max_gap, try_connect_reversed);
+            if let Some((_, _, dist2)) = next {
+                if loop_closed && closing2 < dist2 {
+                    // Avoid closing a tiny loop when a real join is available.
+                    let len = polyline_length(&open_polylines[seed].points);
+                    loop_closed = (closing2 as f64).sqrt() < 0.3 * len;
+                }
+            }
+
+            if loop_closed {
+                if closing2 != 0 {
+                    // Endpoints differ (gap) — keep both; nothing to pop.
+                } else {
+                    open_polylines[seed].points.pop();
+                }
+                if open_polylines[seed].points.len() >= 3 {
+                    if try_connect_reversed
+                        && n_joined > 1
+                        && signed_area(&open_polylines[seed].points) < 0.0
+                    {
+                        open_polylines[seed].points.reverse();
+                    }
+                    loops.push(Polygon {
+                        points: simplify_polygon_points(open_polylines[seed].points.clone()),
+                    });
+                }
+                open_polylines[seed].points.clear();
+                open_polylines[seed].consumed = true;
+                break;
+            }
+
+            match next {
+                None => {
+                    open_polylines[seed].consumed = false;
+                    break;
+                }
+                Some((j, is_start, _)) => {
+                    let pts = if is_start {
+                        open_polylines[j].points.clone()
+                    } else {
+                        let mut rev = open_polylines[j].points.clone();
+                        rev.reverse();
+                        rev
+                    };
+                    let tailpt = *open_polylines[seed].points.last().unwrap();
+                    let skip = pts.first().map_or(false, |p| *p == tailpt);
+                    open_polylines[seed]
+                        .points
+                        .extend(pts.iter().skip(if skip { 1 } else { 0 }).copied());
+                    n_joined += 1;
+                    open_polylines[j].consumed = true;
+                    open_polylines[j].points.clear();
+                }
+            }
+        }
+    }
+}
+
+fn polyline_length(points: &[Point2]) -> f64 {
+    let mut len = 0.0;
+    for w in points.windows(2) {
+        let dx = (w[1].x - w[0].x) as f64;
+        let dy = (w[1].y - w[0].y) as f64;
+        len += (dx * dx + dy * dy).sqrt();
+    }
+    len
+}
+
+fn signed_area(points: &[Point2]) -> f64 {
+    let n = points.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let mut a = 0.0;
+    for i in 0..n {
+        let p = points[i];
+        let q = points[(i + 1) % n];
+        a += (p.x as f64) * (q.y as f64) - (q.x as f64) * (p.y as f64);
+    }
+    a / 2.0
 }
 
 fn simplify_polygon_points(mut points: Vec<Point2>) -> Vec<Point2> {
@@ -414,15 +761,32 @@ pub fn apply_slice_closing_radius(polygons: Vec<ExPolygon>, r: f32) -> Vec<ExPol
     polygon_ops::offset(&inflated, -r, OffsetJoinType::Round, 0.0)
 }
 
-/// Convert polygons to ExPolygons using boolean union
+/// Convert chained loops into `ExPolygon`s with correct hole nesting.
+///
+/// OrcaSlicer's slice path is `make_loops` → `make_expolygons(loops, …,
+/// pftNonZero)` = `union_ex(loops, NonZero)`, which builds a Clipper PolyTree
+/// and reads the nesting hierarchy to attach each hole to its outer contour
+/// (`TriangleMeshSlicer.cpp:1819`). NonZero relies on `make_loops` emitting
+/// correctly-wound loops (outer CCW, holes CW). PNP's orientation-agnostic
+/// loop walk (see `make_loops`) deliberately does not preserve that winding,
+/// so we union under the **EvenOdd** rule instead: EvenOdd nests purely by
+/// containment parity and is therefore independent of the input winding. For a
+/// valid (non-self-overlapping) slice — every cross-section boundary of a
+/// manifold mesh — EvenOdd yields the identical `ExPolygon` set as OrcaSlicer's
+/// NonZero pass; the two only diverge on self-overlapping loops from invalid
+/// meshes, which are out of scope here.
+///
+/// Each ring is re-oriented to the Slic3r convention on extraction: outer
+/// contours CCW (positive signed area), holes CW (negative area), matching what
+/// OrcaSlicer's `union_ex` PolyTree emits and what perimeter/Arachne consumers
+/// downstream expect.
 fn polygons_to_expolygons(polygons: &[Polygon]) -> Vec<ExPolygon> {
+    use clipper2_rust::{boolean_op_tree_64, ClipType, FillRule, Point64, PolyTree64};
+
     if polygons.is_empty() {
         return Vec::new();
     }
 
-    use clipper2_rust::{FillRule, Point64};
-
-    // Convert polygons to clipper paths
     let paths: Vec<Vec<Point64>> = polygons
         .iter()
         .map(|poly| {
@@ -433,37 +797,63 @@ fn polygons_to_expolygons(polygons: &[Polygon]) -> Vec<ExPolygon> {
         })
         .collect();
 
-    // Perform union to resolve nesting and holes
-    // If we have multiple polygons, union them to get proper hierarchy
-    let result_paths = if paths.len() > 1 {
-        // Union all paths together
-        let mut result = vec![paths[0].clone()];
-        for path in paths.iter().skip(1) {
-            // Wrap the single path in a Vec to match function signature
-            let clips: Vec<Vec<Point64>> = vec![path.clone()];
-            result = clipper2_rust::union_64(&result, &clips, FillRule::NonZero);
-        }
-        result
-    } else {
-        paths
-    };
+    let mut tree = PolyTree64::new();
+    let clips: Vec<Vec<Point64>> = Vec::new();
+    boolean_op_tree_64(
+        ClipType::Union,
+        FillRule::EvenOdd,
+        &paths,
+        &clips,
+        &mut tree,
+    );
 
-    // Convert result paths back to ExPolygons
-    // For simplicity, treat each path as a separate ExPolygon with no holes
-    // In a full implementation, we'd need to detect which paths are holes
-    result_paths
-        .into_iter()
-        .map(|path| {
-            let points: Vec<Point2> = path
-                .into_iter()
-                .map(|p| Point2 { x: p.x, y: p.y })
-                .collect();
-            ExPolygon {
-                contour: Polygon { points },
-                holes: Vec::new(),
-            }
-        })
-        .collect()
+    // Root (nodes[0]) is a synthetic container; its children are the top-level
+    // outer contours. `is_hole` alternates by nesting depth (odd = contour,
+    // even = hole), so every contour node owns its direct-child holes, and any
+    // island nested inside a hole becomes a fresh outer contour one level down.
+    let mut out = Vec::new();
+    let root_children: Vec<usize> = tree.nodes[0].children().to_vec();
+    for child in root_children {
+        collect_expolygon(&tree, child, &mut out);
+    }
+    out
+}
+
+/// Build the `ExPolygon` rooted at contour node `node_idx`, attaching its direct
+/// hole children and recursing into islands nested inside those holes.
+fn collect_expolygon(tree: &clipper2_rust::PolyTree64, node_idx: usize, out: &mut Vec<ExPolygon>) {
+    let contour = oriented_ring(tree.nodes[node_idx].polygon(), true);
+
+    let mut holes = Vec::new();
+    for &hole_idx in tree.nodes[node_idx].children() {
+        let hole = oriented_ring(tree.nodes[hole_idx].polygon(), false);
+        if hole.len() >= 3 {
+            holes.push(Polygon { points: hole });
+        }
+        // Islands sitting inside this hole are outer contours one level deeper.
+        for &inner_idx in tree.nodes[hole_idx].children() {
+            collect_expolygon(tree, inner_idx, out);
+        }
+    }
+
+    if contour.len() >= 3 {
+        out.push(ExPolygon {
+            contour: Polygon { points: contour },
+            holes,
+        });
+    }
+}
+
+/// Convert a Clipper ring to `Point2`s oriented per the Slic3r convention:
+/// `want_ccw` forces CCW (positive signed area) for outer contours, else CW
+/// (negative area) for holes.
+fn oriented_ring(path: &[clipper2_rust::Point64], want_ccw: bool) -> Vec<Point2> {
+    let mut points: Vec<Point2> = path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect();
+    let is_ccw = signed_area(&points) > 0.0;
+    if is_ccw != want_ccw {
+        points.reverse();
+    }
+    points
 }
 
 /// Project a mesh face (upward or downward facing) onto the XY plane as a `Polygon`.
@@ -865,5 +1255,258 @@ mod tests {
             bot_min_x >= 20000,
             "Bottom projection should start at x=2mm"
         );
+    }
+
+    // --- chain_lines / make_loops (OrcaSlicer parity) tests ---
+
+    // A clean square loop with a dangling tail attached at a degree-3 vertex.
+    // The old point-walk discarded the WHOLE walk on the first dead-end, so
+    // the square was lost. The topology walk keeps the closed square and
+    // drops the open tail. This is the minimal benchy Z1.6 reproduction.
+    #[test]
+    fn chain_lines_square_with_dangling_tail() {
+        let a = Point2::from_mm(0.0, 0.0);
+        let v = Point2::from_mm(1.0, 0.0); // shared vertex (degree 3)
+        let c = Point2::from_mm(1.0, 1.0);
+        let d = Point2::from_mm(0.0, 1.0);
+        let e = Point2::from_mm(2.0, 0.0); // dead-end of the tail
+
+        // Square: L1(A..V), L2(V..C), L3(C..D), L4(D..A) chain on Edge/Vertex ids.
+        let l1 = IntersectionLine {
+            a,
+            b: v,
+            a_topology: EndpointTopology::Edge(1),
+            b_topology: EndpointTopology::Vertex(0), // shared vertex V
+        };
+        let l2 = IntersectionLine {
+            a: v,
+            b: c,
+            a_topology: EndpointTopology::Vertex(0),
+            b_topology: EndpointTopology::Edge(2),
+        };
+        let l3 = IntersectionLine {
+            a: c,
+            b: d,
+            a_topology: EndpointTopology::Edge(2),
+            b_topology: EndpointTopology::Edge(3),
+        };
+        let l4 = IntersectionLine {
+            a: d,
+            b: a,
+            a_topology: EndpointTopology::Edge(3),
+            b_topology: EndpointTopology::Edge(1),
+        };
+        // Dangling tail T: V..E, shares Vertex(0) with the square.
+        let tail = IntersectionLine {
+            a: v,
+            b: e,
+            a_topology: EndpointTopology::Vertex(0),
+            b_topology: EndpointTopology::Edge(5),
+        };
+
+        let result = chain_lines_to_expolygons(vec![l1, l2, l3, l4, tail]);
+        // The square loop survives; the open tail is dropped.
+        assert_eq!(
+            result.len(),
+            1,
+            "square loop must survive the dangling tail"
+        );
+        assert_eq!(result[0].contour.points.len(), 4);
+    }
+
+    // `polygons_to_expolygons` must rebuild the full nesting hierarchy from a
+    // flat loop list: outer contour → hole → island (a solid region inside the
+    // hole) becomes TWO ExPolygons — the outer-with-hole and the island — with
+    // Slic3r orientation (contour CCW, hole CW).
+    #[test]
+    fn polygons_to_expolygons_nests_island_in_hole() {
+        let square = |lo: f32, hi: f32| Polygon {
+            points: vec![
+                Point2::from_mm(lo, lo),
+                Point2::from_mm(hi, lo),
+                Point2::from_mm(hi, hi),
+                Point2::from_mm(lo, hi),
+            ],
+        };
+        // Deliberately mix input winding to prove the result is re-oriented.
+        let outer = square(0.0, 20.0); // CCW as written
+        let mut hole = square(4.0, 16.0);
+        hole.points.reverse(); // CW as written
+        let island = square(7.0, 13.0); // CCW as written
+
+        let mut result = polygons_to_expolygons(&[outer, hole, island]);
+        result.sort_by_key(|ep| ep.contour.points.iter().copied().min());
+        assert_eq!(
+            result.len(),
+            2,
+            "outer-with-hole plus island = 2 ExPolygons"
+        );
+
+        // Smallest-min-corner ExPolygon is the outer (min corner 0,0).
+        let outer_ex = &result[0];
+        assert_eq!(outer_ex.holes.len(), 1, "outer must own exactly the hole");
+        assert!(signed_area(&outer_ex.contour.points) > 0.0, "contour CCW");
+        assert!(signed_area(&outer_ex.holes[0].points) < 0.0, "hole CW");
+
+        let island_ex = &result[1];
+        assert!(island_ex.holes.is_empty(), "island has no holes");
+        assert!(signed_area(&island_ex.contour.points) > 0.0, "island CCW");
+        let island_min = island_ex.contour.points.iter().map(|p| p.x).min().unwrap();
+        assert_eq!(island_min, mm_to_units(7.0) as i64);
+    }
+
+    // Two open polylines whose topology endpoints chain and whose combined
+    // shape closes must join into one closed polygon via
+    // `chain_open_polylines_exact`. Here a square split at two cut points:
+    // P1 = A-B-C (edges E1-E2, E2-E3), P2 = C-D-A (edges E3-E4, E4-E1).
+    #[test]
+    fn chain_open_polylines_exact_joins_two() {
+        let a = Point2::from_mm(0.0, 0.0);
+        let b = Point2::from_mm(1.0, 0.0);
+        let c = Point2::from_mm(1.0, 1.0);
+        let d = Point2::from_mm(0.0, 1.0);
+
+        let mut open = vec![
+            OpenPolyline {
+                start: EndpointTopology::Edge(1),
+                end: EndpointTopology::Edge(3),
+                points: vec![a, b, c],
+                length: 2.0,
+                consumed: false,
+            },
+            OpenPolyline {
+                start: EndpointTopology::Edge(3),
+                end: EndpointTopology::Edge(1),
+                points: vec![c, d, a],
+                length: 2.0,
+                consumed: false,
+            },
+        ];
+        let mut loops: Vec<Polygon> = Vec::new();
+        chain_open_polylines_exact(&mut open, &mut loops, false);
+        assert_eq!(loops.len(), 1, "exact topology match must close the loop");
+        assert_eq!(loops[0].points.len(), 4);
+    }
+
+    // A square-annulus prism (outer 10×10 box with a 4×4 through-hole), sliced
+    // at mid-height, must produce exactly ONE ExPolygon whose contour is the
+    // outer square and with ONE hole (the inner square). The pre-fix
+    // `polygons_to_expolygons` emitted every loop as a solid contour with no
+    // holes → two solid islands (the hole filled as a solid square) — the
+    // canonical gcode-corruption symptom for any model with a hole.
+    fn square_annulus_prism() -> IndexedTriangleSet {
+        // 0..3 outer bottom, 4..7 outer top, 8..11 inner bottom, 12..15 inner top.
+        let v = |x: f32, y: f32, z: f32| Point3 { x, y, z };
+        let vertices = vec![
+            v(0.0, 0.0, 0.0),
+            v(10.0, 0.0, 0.0),
+            v(10.0, 10.0, 0.0),
+            v(0.0, 10.0, 0.0),
+            v(0.0, 0.0, 10.0),
+            v(10.0, 0.0, 10.0),
+            v(10.0, 10.0, 10.0),
+            v(0.0, 10.0, 10.0),
+            v(3.0, 3.0, 0.0),
+            v(7.0, 3.0, 0.0),
+            v(7.0, 7.0, 0.0),
+            v(3.0, 7.0, 0.0),
+            v(3.0, 3.0, 10.0),
+            v(7.0, 3.0, 10.0),
+            v(7.0, 7.0, 10.0),
+            v(3.0, 7.0, 10.0),
+        ];
+        #[rustfmt::skip]
+        let indices = vec![
+            // Outer vertical walls (outward normal), 2 tris per edge.
+            0, 1, 5,  0, 5, 4,
+            1, 2, 6,  1, 6, 5,
+            2, 3, 7,  2, 7, 6,
+            3, 0, 4,  3, 4, 7,
+            // Inner vertical walls (inward normal), 2 tris per edge.
+            8, 9, 13,  8, 13, 12,
+            9, 10, 14,  9, 14, 13,
+            10, 11, 15,  10, 15, 14,
+            11, 8, 12,  11, 12, 15,
+        ];
+        IndexedTriangleSet { vertices, indices }
+    }
+
+    #[test]
+    fn slice_annulus_prism_reconstructs_hole() {
+        let mesh = square_annulus_prism();
+        let layers = slice_mesh_ex(&mesh, &[5.0]);
+        assert_eq!(layers.len(), 1);
+        let layer = &layers[0];
+        assert_eq!(
+            layer.len(),
+            1,
+            "annulus must be ONE ExPolygon, not two solid islands; got {}",
+            layer.len()
+        );
+        assert_eq!(
+            layer[0].holes.len(),
+            1,
+            "annulus must reconstruct exactly one hole; got {}",
+            layer[0].holes.len()
+        );
+        // Outer contour spans 0..10 mm; hole spans 3..7 mm.
+        let contour_xs: Vec<i64> = layer[0].contour.points.iter().map(|p| p.x).collect();
+        assert_eq!(contour_xs.iter().copied().min().unwrap(), 0);
+        assert_eq!(
+            contour_xs.iter().copied().max().unwrap(),
+            mm_to_units(10.0) as i64
+        );
+        let hole_xs: Vec<i64> = layer[0].holes[0].points.iter().map(|p| p.x).collect();
+        assert_eq!(
+            hole_xs.iter().copied().min().unwrap(),
+            mm_to_units(3.0) as i64
+        );
+        assert_eq!(
+            hole_xs.iter().copied().max().unwrap(),
+            mm_to_units(7.0) as i64
+        );
+        // Contour must be CCW (positive area); hole must be CW (negative area).
+        assert!(
+            signed_area(&layer[0].contour.points) > 0.0,
+            "outer contour must be oriented CCW"
+        );
+        assert!(
+            signed_area(&layer[0].holes[0].points) < 0.0,
+            "hole must be oriented CW"
+        );
+    }
+
+    // Two open polylines whose endpoints are within 2 mm but share NO topology
+    // must join via `chain_open_polylines_close_gaps`. A 3 mm vertical segment
+    // P1 (ends > 2 mm apart, so it does not close on itself) and a parallel
+    // segment P2 offset 1 mm to the right; the gap pass bridges both ends.
+    #[test]
+    fn chain_open_polylines_close_gaps_joins_two() {
+        let a = Point2::from_mm(0.0, 0.0);
+        let b = Point2::from_mm(0.0, 3.0);
+        let c = Point2::from_mm(1.0, 3.0);
+        let d = Point2::from_mm(1.0, 0.0);
+
+        let mut open = vec![
+            OpenPolyline {
+                start: EndpointTopology::Edge(1),
+                end: EndpointTopology::Edge(2),
+                points: vec![a, b],
+                length: 3.0,
+                consumed: false,
+            },
+            OpenPolyline {
+                start: EndpointTopology::Edge(3),
+                end: EndpointTopology::Edge(4),
+                points: vec![c, d],
+                length: 3.0,
+                consumed: false,
+            },
+        ];
+        let mut loops: Vec<Polygon> = Vec::new();
+        let max_gap = mm_to_units(2.0) as i64;
+        chain_open_polylines_close_gaps(&mut open, &mut loops, max_gap, false);
+        assert_eq!(loops.len(), 1, "gap-close within 2 mm must close the loop");
+        assert_eq!(loops[0].points.len(), 4);
     }
 }

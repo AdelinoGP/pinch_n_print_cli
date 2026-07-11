@@ -1193,6 +1193,103 @@ fn holed_square_perimeter_parity() {
 }
 
 // ----------------------------------------------------------------------------
+// Regression (true topological hole): a SINGLE watertight manifold — a 20x20mm
+// frame with an 8x8mm centered through-hole (walls + annular top/bottom caps),
+// NOT the `holed_square` 4-strip union. A single manifold's cross-section is
+// two nested, non-overlapping loops (outer + hole). Before the
+// `polygons_to_expolygons` PolyTree fix, `slice_mesh_ex` unioned those two
+// same-wound loops under NonZero and FILLED the hole → the layer became a solid
+// 20x20 square → only the 3 outer wall loops, no hole perimeters (the gcode
+// bug). After the fix the hole is reconstructed → 6 wall loops (3 outer + 3
+// tracing the hole), and the hole loops are confined to the frame interior.
+// ----------------------------------------------------------------------------
+
+/// Watertight 20x20x3mm frame with an 8x8 centered through-hole, as ONE
+/// manifold (4 outer walls + 4 inner walls + annular bottom/top caps).
+fn annulus_frame_mesh() -> Vec<Tri> {
+    let (z0, z1) = (0.0f32, 3.0f32);
+    let o = [[0.0, 0.0], [20.0, 0.0], [20.0, 20.0], [0.0, 20.0]]; // outer, CCW
+    let h = [[6.0, 6.0], [14.0, 6.0], [14.0, 14.0], [6.0, 14.0]]; // hole, CCW
+    let p = |xy: [f32; 2], z: f32| -> [f32; 3] { [xy[0], xy[1], z] };
+    let mut tris: Vec<Tri> = Vec::new();
+
+    // Outer vertical walls (outward normal): traverse O0→O1→O2→O3.
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        tris.push([p(o[i], z0), p(o[j], z0), p(o[j], z1)]);
+        tris.push([p(o[i], z0), p(o[j], z1), p(o[i], z1)]);
+    }
+    // Inner vertical walls (inward normal): reverse traversal so the hole's
+    // wall faces its centre.
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        tris.push([p(h[j], z0), p(h[i], z0), p(h[i], z1)]);
+        tris.push([p(h[j], z0), p(h[i], z1), p(h[j], z1)]);
+    }
+    // Annular caps: 4 trapezoids (O_i,O_j,H_j,H_i). Bottom normal -Z, top +Z.
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        tris.push([p(o[i], z0), p(h[j], z0), p(o[j], z0)]);
+        tris.push([p(o[i], z0), p(h[i], z0), p(h[j], z0)]);
+        tris.push([p(o[i], z1), p(o[j], z1), p(h[j], z1)]);
+        tris.push([p(o[i], z1), p(h[j], z1), p(h[i], z1)]);
+    }
+    tris
+}
+
+#[test]
+fn annulus_true_hole_produces_inner_perimeters() {
+    let dir = std::env::temp_dir().join("pnp_annulus_true_hole");
+    std::fs::create_dir_all(&dir).expect("mk temp dir");
+    let mesh_path = dir.join("annulus_frame.stl");
+    let config_path = dir.join("config.json");
+    write_binary_stl(&mesh_path, &annulus_frame_mesh());
+    write_config_json(
+        &config_path,
+        &serde_json::json!({ "layer_height": 1.0, "first_layer_height": 1.0 }),
+    );
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("annulus_frame real pipeline run must succeed");
+
+    // Max walls in any single region across all captured layers.
+    let max_walls = perimeters
+        .iter()
+        .flat_map(|p| p.regions.iter())
+        .map(|r| r.walls.len())
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        max_walls, 6,
+        "true-hole frame must yield 6 wall loops (3 outer + 3 hole); got {max_walls} \
+         (before the hole-reconstruction fix the hole is filled → only 3 outer walls)"
+    );
+
+    // A wall entirely inside the frame interior ([4,16] mm on both axes, never
+    // reaching the 0/20 outer boundary) can only exist if the hole is a real
+    // hole — a filled solid's inner walls all hug the outer boundary.
+    let has_hole_wall = perimeters.iter().any(|p| {
+        p.regions.iter().any(|r| {
+            r.walls.iter().any(|w| {
+                !w.path.points.is_empty()
+                    && w.path
+                        .points
+                        .iter()
+                        .all(|pt| pt.x >= 4.0 && pt.x <= 16.0 && pt.y >= 4.0 && pt.y <= 16.0)
+            })
+        })
+    });
+    assert!(
+        has_hole_wall,
+        "expected at least one wall loop confined to the frame interior (tracing the \
+         8x8 hole); none found — the hole was filled solid"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ----------------------------------------------------------------------------
 // Fixture 3: bridge — two 5x5x10mm posts 25mm apart (gap x:[5,25]) joined by
 // a 30x5x3mm beam spanning the gap at z:[10,13]. Expect normal wall loops for
 // the post layers (z<10) and a bridge-flagged (`WallFeatureFlags.is_bridge`)
