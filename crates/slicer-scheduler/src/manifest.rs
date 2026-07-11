@@ -1211,18 +1211,28 @@ pub fn parse_percent_default(
     };
 
     if let Some(percent_str) = default_value.and_then(|v| v.as_str()) {
-        let n = percent_str
-            .trim()
-            .strip_suffix('%')
-            .and_then(|n| n.trim().parse::<f64>().ok())
-            .ok_or_else(malformed)?;
-        return Ok(match field_type {
-            "percent" => ConfigValue::Percent(n),
-            _ => ConfigValue::FloatOrPercent {
+        let trimmed = percent_str.trim();
+        if let Some(num_str) = trimmed.strip_suffix('%') {
+            // "<number>%" form → percent (or float_or_percent with is_percent: true).
+            let n = num_str.trim().parse::<f64>().ok().ok_or_else(malformed)?;
+            return Ok(match field_type {
+                "percent" => ConfigValue::Percent(n),
+                _ => ConfigValue::FloatOrPercent {
+                    value: n,
+                    is_percent: true,
+                },
+            });
+        } else if field_type == "float_or_percent" {
+            // Bare numeric string literal ("0.0") → float_or_percent, is_percent: false.
+            let n = trimmed.parse::<f64>().ok().ok_or_else(malformed)?;
+            return Ok(ConfigValue::FloatOrPercent {
                 value: n,
-                is_percent: true,
-            },
-        });
+                is_percent: false,
+            });
+        } else {
+            // "percent" strictly requires a "<number>%" string.
+            return Err(malformed());
+        }
     }
 
     if field_type == "float_or_percent" {

@@ -130,6 +130,59 @@ fn config_percent_type_accepts_well_formed_percent_default() {
     }
 }
 
+/// Like [`percent_type_manifest_toml`] but with `type = "float_or_percent"`,
+/// used to exercise the bare-numeric-string default path.
+fn float_or_percent_type_manifest_toml(id: &str, key: &str, default_literal: &str) -> String {
+    let mut manifest = percent_type_manifest_toml(id, key, default_literal);
+    manifest = manifest.replace("type = \"percent\"", "type = \"float_or_percent\"");
+    manifest
+}
+
+#[test]
+fn float_or_percent_bare_numeric_string_default_is_accepted() {
+    let temp_dir = tempfile::Builder::new()
+        .prefix("config-fop-bare-")
+        .tempdir()
+        .expect("create temp fixture dir");
+    let manifest_path = write_percent_fixture(
+        temp_dir.path(),
+        "good-fop",
+        &float_or_percent_type_manifest_toml(
+            "com.community.good-fop",
+            "overhang_reverse_threshold",
+            "\"0.0\"",
+        ),
+    );
+
+    let module = slicer_scheduler::load_module_from_paths(
+        &manifest_path,
+        &manifest_path.with_extension("wasm"),
+    )
+    .expect("bare numeric string \"0.0\" float_or_percent default must load (regression D-104h)");
+
+    let entry = module
+        .config_schema()
+        .entries
+        .get("overhang_reverse_threshold")
+        .expect("overhang_reverse_threshold entry present");
+    assert_eq!(entry.field_type, "float_or_percent");
+
+    let parsed = slicer_scheduler::manifest::parse_percent_default(
+        "overhang_reverse_threshold",
+        "float_or_percent",
+        Some(&toml::Value::String("0.0".to_string())),
+        &manifest_path,
+    )
+    .expect("bare numeric string \"0.0\" default parses");
+    match parsed {
+        slicer_ir::ConfigValue::FloatOrPercent { value, is_percent } => {
+            assert_eq!(value, 0.0);
+            assert!(!is_percent, "bare numeric string must be is_percent: false");
+        }
+        other => panic!("expected ConfigValue::FloatOrPercent, got {other:?}"),
+    }
+}
+
 #[test]
 fn perimeter_modules_declare_arc_tolerance() {
     let path = "../../modules/core-modules/classic-perimeters/classic-perimeters.toml";
