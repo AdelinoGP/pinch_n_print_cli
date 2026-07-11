@@ -33,8 +33,9 @@ downstream packet in the infill-parity roadmap (131–140) reads this contract.
 - `crates/slicer-macros/src/lib.rs`: bindgen glue for the new fields/param.
 - `crates/slicer-wasm-host/src/dispatch.rs` (~lines 435-454 arm): populate the four polygons
   from the `SliceIR` region, derive `tool-index` (variant-chain material →
-  `RegionMapIR.extensions["extruder"]` → 0) and `wall-source-region-id` (absence of a
-  per-variant `PerimeterIR` entry per `region_partition.rs:35-44`), marshal `prior-infill`
+  `RegionMapIR::config_for(region_key).extensions["extruder"]` → 0) and
+  `wall-source-region-id` (absence of a per-variant `PerimeterIR` entry per
+  `region_partition.rs:123-144`), marshal `prior-infill`
   from the blackboard's committed `InfillIR`; `crates/slicer-wasm-host/src/marshal/out.rs`:
   new-field marshaling.
 - Workspace blast-radius sweep: every exhaustive construction/match on `PerimeterRegionView`

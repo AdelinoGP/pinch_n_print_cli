@@ -12,8 +12,9 @@
   `ModifierScope::AllFeatures`; gains a geometric scope variant binding the delta to the
   sub-region `RegionKey`.
 - Modifier slicing: reuse the `slice_mesh_ex` path (`crates/slicer-core/src/algos/
-  prepass_slice.rs:286` idiom) applied to the modifier mesh — where this call lives (prepass
-  vs partition-time lazy slice) is Step 1's discovery output.
+  prepass_slice.rs:516` idiom — `slice_mesh_ex(&object_world_mesh(object), &zs)`) applied to
+  the modifier mesh — where this call lives (prepass vs partition-time lazy slice) is Step 1's
+  discovery output.
 - Neighboring tests or fixtures: `crates/slicer-runtime/tests/executor/` (new
   `modifier_region_split_tdd.rs`); `crates/slicer-runtime/tests/contract/` (AC-4 composition
   test reusing the 131 echo guest); wedge e2e SHA guard.
@@ -69,7 +70,7 @@
 
 ## Read-Only Context
 
-- `crates/slicer-core/src/algos/prepass_slice.rs` — lines 270-300 only — `slice_mesh_ex`
+- `crates/slicer-core/src/algos/prepass_slice.rs` — lines 505-520 only — `slice_mesh_ex`
   idiom.
 - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — the `paint_variant_region_id`
   synthesis lines only (rg first) — region-id minting pattern.

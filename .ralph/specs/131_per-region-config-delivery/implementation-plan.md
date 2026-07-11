@@ -13,12 +13,19 @@
 
 - Task IDs:
   - `TASK-256`
-- Objective: capture pre-change baselines (wedge, cube_4color, cube_fuzzy SHAs/assertions)
-  and enumerate every SHA-pinned or infill-output-shape test that a multi-region config
-  correction can affect; author `carve-list.md` (entries: test path, pinned value, carve
-  yes/no + reason).
-- Precondition: clean tree; packet 130 closed; NO edits from this packet yet.
-- Postcondition: `carve-list.md` exists with per-test entries and baselines; no code changed.
+- Objective: capture pre-change baselines — including the wedge default-config g-code
+  SHA-256 hex digest (compute via `sha2::{Sha256, Digest}` over the emitted g-code bytes; this
+  literal digest is later hardcoded into `wedge_per_region_config_delivery_byte_identical` in
+  Step 4) plus cube_4color/cube_fuzzy assertions — and enumerate every SHA-pinned or
+  infill-output-shape test that a multi-region config correction can affect; author
+  `carve-list.md` with one `### <test path>` heading per carved entry, each followed by a
+  `- Reason: ...` line and a `- Baseline: <SHA/assertion>` line (AC-4's machine-checkable
+  format).
+- Precondition: clean tree; FORWARD-DEP packet 130 has reached `status: implemented` (it is
+  `draft` at authoring time — this packet must not activate before 130 closes); NO edits from
+  this packet yet.
+- Postcondition: `carve-list.md` exists with per-test entries and baselines, including the
+  wedge SHA-256 digest recorded for Step 4 to hardcode; no code changed.
 - Files allowed to read: none directly (pure-dispatch step).
 - Files allowed to edit (≤ 3):
   - `.ralph/specs/131_per-region-config-delivery/carve-list.md` (new)
@@ -40,9 +47,12 @@
 
 - Task IDs:
   - `TASK-256`
-- Objective: add the config accessor to `slice-region-view` and `perimeter-region-view` in
-  `ir-types.wit`; bump world-layer 1.1.0 → 1.2.0 (+ any other exposing world found by rg);
-  SDK accessors on both view types; macros glue.
+- Objective: add `use slicer:config/config-types.{config-view};` to the `ir-handles`
+  interface and a `config: func() -> config-view` method to both `slice-region-view` and
+  `perimeter-region-view` in `ir-types.wit` (locked shape — reuses the existing resource
+  rather than duplicating per-key getters); bump world-layer by +0.1 from whatever version
+  130 landed at (+ any other exposing world found by rg); SDK accessors on both view types;
+  macros glue.
 - Precondition: Step 1 exit condition.
 - Postcondition: `cargo build --tests` compiles schema/sdk/macros; host may be red until
   Step 3.
@@ -70,16 +80,17 @@
 
 - Task IDs:
   - `TASK-256`
-- Objective: replace the first-match `effective_config_view` block
-  (`dispatch.rs:1629-1645`) with `RegionKey`-matched per-region resolution (lazy, memoized
-  per dispatch); implement the accessor host-side; object-level fallback for regions without
-  a pool entry.
+- Objective: replace the first-match `effective_config_view` block (`dispatch.rs:1629-1650`,
+  the exact expression at line 1640 — leave the unrelated lookalikes at `:1378` and `:1680`
+  untouched) with `RegionKey`-matched per-region resolution via
+  `RegionMapIR::config_for(&RegionKey)` (lazy, memoized per dispatch); implement the
+  accessor host-side; object-level fallback for regions without a pool entry.
 - Precondition: Step 2 exit condition.
 - Postcondition: `cargo check --workspace --all-targets` green; AC-2 structural grep returns
   0.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-wasm-host/src/dispatch.rs` — lines 1600-1730 only
-  - `crates/slicer-ir/src/slice_ir.rs` — lines 1176-1200 only
+  - `crates/slicer-ir/src/slice_ir.rs` — lines 1194-1232 only
 - Files allowed to edit (≤ 3):
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-wasm-host/src/host.rs` (only if the accessor resource impl lives there)
@@ -87,7 +98,7 @@
   - module bodies; test files
 - Expected sub-agent dispatches:
   - "Run `cargo check --workspace --all-targets`; FACT or LOCATIONS ≤30"
-  - "Run `rg -n 'global_layer_index == layer' crates/slicer-wasm-host/src/dispatch.rs | wc
+  - "Run `rg -n '\.find\(\|key\| key\.global_layer_index == layer\.index\)' crates/slicer-wasm-host/src/dispatch.rs | wc
     -l`; FACT (expect 0)"
 - Context cost: `M`
 - Authoritative docs: `docs/adr/0030-…` Decision point 3.
@@ -102,16 +113,21 @@
   - `TASK-256`
 - Objective: write `per_region_config_two_densities` (AC-1) and
   `per_region_config_single_region_unchanged` (AC-N1) against the echo-guest pattern; rebuild
-  guests; run the wedge guard (AC-N2); apply `#[ignore = "carved: infill-parity D6; restored
-  in packet 136"]` to exactly the carve-list entries and confirm the carved suites otherwise
-  pass.
+  guests; author `wedge_per_region_config_delivery_byte_identical` in
+  `crates/slicer-runtime/tests/e2e/` — hardcode the Step-1-captured SHA-256 digest as a
+  literal constant, re-hash the post-packet wedge g-code via `sha2::{Sha256, Digest}`, and
+  assert equality (AC-N2); apply `#[ignore = "carved: infill-parity D6; restored in packet
+  136"]` to exactly the carve-list entries and confirm the carved suites otherwise pass.
 - Precondition: Step 3 exit condition.
-- Postcondition: contract suite green incl. new tests; wedge SHA test green un-carved; carved
-  tests ignored with the exact marker string.
+- Postcondition: contract suite green incl. new tests; the new wedge SHA-256 test green
+  un-carved; carved tests ignored with the exact marker string.
 - Files allowed to read (with line-range hints when > 300 lines):
-  - the 130 echo guest + one contract test (idiom); carve-list.md
+  - the 130 echo guest + one contract test (idiom); carve-list.md; one existing wedge e2e
+    test (idiom for fixture path + slicer-cache invocation)
 - Files allowed to edit (≤ 3 per wave):
   - `crates/slicer-runtime/tests/contract/per_region_config_tdd.rs` (new) + harness mod line
+  - `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs` (new
+    `wedge_per_region_config_delivery_byte_identical` test fn)
   - carved test files (marker lines only; one wave per file batch)
 - Files explicitly out-of-bounds for this step:
   - any test not on the carve list
@@ -119,8 +135,8 @@
   - "Run `cargo xtask build-guests --check`; FACT; rebuild if STALE"
   - "Run `cargo test -p slicer-runtime --test contract -- per_region_config 2>&1 | tee
     target/test-output.log | grep '^test result'`; FACT + counts"
-  - "Run `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 | tee target/test-output.log
-    | grep '^test result'`; FACT"
+  - "Run `cargo test -p slicer-runtime --test e2e -- wedge_per_region_config_delivery_byte_identical
+    2>&1 | tee target/test-output.log | grep '^test result'`; FACT"
 - Context cost: `M`
 - Authoritative docs: none new.
 - OrcaSlicer refs: none.

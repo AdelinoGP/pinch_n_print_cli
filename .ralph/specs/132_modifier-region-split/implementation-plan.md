@@ -19,7 +19,8 @@
   (patterning paint's variant-id synthesis), (c) the modifier-mesh slicing site
   (prepass-cached vs partition-time lazy). Resolves all three `[FWD]` questions in
   `design.md`.
-- Precondition: packets 130 + 131 closed; clean tree.
+- Precondition: FORWARD-DEP packets 130 + 131 have reached `status: implemented` (both are
+  `draft` at authoring time — this packet must not activate before they close); clean tree.
 - Postcondition: memo (≤ 40 lines) appended to this packet's `design.md` §Open Questions
   answers; no code changed.
 - Files allowed to read: none directly (pure-dispatch step).

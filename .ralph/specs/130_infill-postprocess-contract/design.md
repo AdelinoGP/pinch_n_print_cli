@@ -22,7 +22,7 @@
   `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules for `PerimeterRegionView` /
   `perimeter-region-view` type identity; run `cargo build --tests` immediately after WIT
   edits.
-- The commit stays replace (`layer_executor.rs:1151-1156` untouched); the no-module
+- The commit stays replace (`layer_executor.rs:1209-1214` untouched); the no-module
   preservation guarantee comes from the zero-iteration stage loop (`layer_executor.rs:330`)
   and is pinned by AC-N1, not by new host code.
 - Per-region config stays invisible at this stage (single global `ConfigView`,
@@ -39,11 +39,13 @@
 - Exact changes: six fields on `perimeter-region-view` + accessors; `run-infill-postprocess`
   new param; SDK `PerimeterRegionView` struct/accessors/builder; `run_infill_postprocess`
   trait signature; macros arm; dispatch population (four polygons copied from the `SliceIR`
-  region; `tool-index` precedence variant-chain material → `RegionMapIR
-  extensions["extruder"]` → `DEFAULT_TOOL(0)`, reusing the extraction already used by
-  `region_mapping.rs:645-676`; `wall-source-region-id` from the per-variant-PerimeterIR-entry
-  absence check that `region_partition.rs:35-44` performs — hoist/share that predicate rather
-  than duplicating it); marshal/out.rs; ~30-file sweep; echo test-guest; contract tests.
+  region; `tool-index` precedence variant-chain material →
+  `RegionMapIR::config_for(key).extensions["extruder"]` (`extensions` lives on the interned
+  `ResolvedConfig`, not on `RegionMapIR` itself) → `DEFAULT_TOOL(0)`, reusing the extraction
+  already used by `region_mapping.rs:645-676`; `wall-source-region-id` from the
+  per-variant-PerimeterIR-entry absence check that `region_partition.rs:123-144` performs —
+  hoist/share that predicate rather than duplicating it); marshal/out.rs; ~30-file sweep;
+  echo test-guest; contract tests.
 - Rejected alternatives: Option 1a pre-populated builder (rejected in the grilling — muddies
   write-only builder semantics); host-side merge commit (rejected — needs consumed-path
   bookkeeping; full-re-emit is simpler and testable).
@@ -67,14 +69,17 @@ Sweep files (mechanical, compiler-driven): the ~30 constructors/matches — edit
 
 ## Read-Only Context
 
-- `crates/slicer-runtime/src/layer_executor.rs` — lines 320-340 and 1139-1160 only — confirm
-  loop-skip and replace-commit behavior for AC-N1 test design.
-- `crates/slicer-runtime/src/region_partition.rs` — lines 25-60 only — the virtual-variant
-  predicate to hoist.
+- `crates/slicer-runtime/src/layer_executor.rs` — lines 320-340 and 1205-1220 only — confirm
+  loop-skip and replace-commit behavior for AC-N1 test design (the
+  `LayerStageCommit::InfillPostProcess` arm is at 1209-1214; 1147-1159 is the
+  `PerimetersPostProcess` arm, a different variant).
+- `crates/slicer-runtime/src/region_partition.rs` — lines 112-150 only — the virtual-variant
+  predicate to hoist (the `perim_index` build + missing-entry skip; lines 1-58 are the
+  module doc comment).
 - `crates/slicer-core/src/algos/region_mapping.rs` — lines 640-680 only — material-tool
   extraction idiom.
-- `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1850 only — `ExtrusionPath3D`,
-  `InfillRegion`, `InfillIR` shapes.
+- `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1920 only — `ExtrusionPath3D` (1698),
+  `InfillRegion` (1888), `InfillIR` (1903) shapes.
 - One existing test-guest directory (e.g. an sdk-layer guest) — structure only, as the echo
   guest template.
 
@@ -144,5 +149,5 @@ Sweep files (mechanical, compiler-driven): the ~30 constructors/matches — edit
 - `[FWD]` Exact WIT shape of `prior-infill` (list of records vs resource view) — match the
   existing `ir-types.wit` idiom for list-of-record data; semantics (region-bucketed,
   read-only) are locked.
-- `[FWD]` Whether the `region_partition.rs:35-44` virtual-variant predicate is hoisted into a
-  shared helper or re-derived at dispatch — prefer hoisting; decide at the dispatch arm.
+- `[FWD]` Whether the `region_partition.rs:123-144` virtual-variant predicate is hoisted into
+  a shared helper or re-derived at dispatch — prefer hoisting; decide at the dispatch arm.

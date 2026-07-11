@@ -67,12 +67,13 @@ clipping is deleted separately (packet 135). No WIT, manifest, or host change.
 - `docs/specs/infill-parity-rectilinear-gyroid-linker.md` — Phase 0 (load §Phase 0 only,
   lines 124-176; open-question 2 resolution near end of file).
 - `docs/08_coordinate_system.md` — delegate a SUMMARY if unit questions arise (383 lines).
-- `docs/05_module_sdk.md` — load line 63 region only (helper surface list; Doc Impact target).
+- `docs/05_module_sdk.md` — load line 63 region only (pure-geometry primitives list in
+  §Guest Build Invariants; Doc Impact target).
 
 ## Doc Impact Statement (Required)
 
-- `docs/05_module_sdk.md` §SDK helper surface — add `clip_polylines` to the `polygon_ops`
-  helper mention — `rg -q 'clip_polylines' docs/05_module_sdk.md`
+- `docs/05_module_sdk.md` §Guest Build Invariants — add `clip_polylines` to the pure-geometry
+  primitives list that names `polygon_ops` (~line 63) — `rg -q 'clip_polylines' docs/05_module_sdk.md`
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

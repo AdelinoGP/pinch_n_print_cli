@@ -78,8 +78,8 @@
 
 - Task IDs:
   - `TASK-254`
-- Objective: add the `clip_polylines` mention to `docs/05_module_sdk.md`'s helper-surface
-  line; run the packet gates.
+- Objective: add the `clip_polylines` mention to `docs/05_module_sdk.md`'s pure-geometry
+  primitives list (§Guest Build Invariants, ~line 63); run the packet gates.
 - Precondition: Step 2 exit condition met.
 - Postcondition: Doc Impact grep hits; `cargo check --workspace --all-targets` green;
   `cargo xtask build-guests --check` adjudicated (clean, or rebuilt then clean).

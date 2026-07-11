@@ -20,7 +20,7 @@
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 - `polygon_ops` is available on wasm32 and NOT `host-algos`-gated
-  (`crates/slicer-core/src/lib.rs:26`); the new function must not introduce a cfg gate or a
+  (`crates/slicer-core/src/lib.rs:30`); the new function must not introduce a cfg gate or a
   non-wasm32-clean dependency. `clipper2-rust` is pure Rust — no build script, no FFI.
 
 ## Code Change Surface
@@ -47,7 +47,7 @@
 
 ## Read-Only Context
 
-- `crates/slicer-core/src/lib.rs` — line 26 region only — confirm `pub mod polygon_ops` has no
+- `crates/slicer-core/src/lib.rs` — line 30 region only — confirm `pub mod polygon_ops` has no
   cfg gate.
 - `crates/slicer-core/src/polygon_ops.rs` — imports region (~line 78) — copy the
   Paths64/Point conversion idiom used by the existing wrappers.

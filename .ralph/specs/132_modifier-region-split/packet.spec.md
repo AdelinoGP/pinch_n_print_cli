@@ -20,18 +20,23 @@ sharing the base region's walls (`wall_source_region_id = base`) — per ADR-003
 
 Host-only geometry and config-binding work: modifier-mesh slicing, fill-polygon splitting at
 region partition, `ModifierScope` extension, and `wall-source-region-id` population for
-modifier sub-regions. No WIT change (the contract fields shipped in 130; the config accessor
-in 131). No perimeter generation at modifier boundaries — walls stay merged on the base. No
+modifier sub-regions. No WIT change (the contract fields land with draft packet 130; the
+config accessor with draft packet 131 — see Prerequisites). No perimeter generation at modifier boundaries — walls stay merged on the base. No
 e2e 3MF fixture (that is M3, packet 136); tests here construct objects + modifier volumes
 programmatically.
 
 ## Prerequisites and Blockers
 
-- Depends on: `130_infill-postprocess-contract` (`wall-source-region-id` field exists),
-  `131_per-region-config-delivery` (sub-region config is deliverable and testable).
+- Depends on: FORWARD-DEP on draft `130_infill-postprocess-contract` (adds the
+  `wall-source-region-id` field this packet populates — name/shape reconciled with 130's
+  AC-4/AC-6: `option<region-id>`, `Some(base)` for shared-wall regions) and FORWARD-DEP on
+  draft `131_per-region-config-delivery` (adds the per-region config accessor AC-4 reads).
+  Neither symbol exists in the tree at authoring time (2026-07-10).
 - Unblocks: `133_infill-linker-module` (real wall-less-sibling fixtures), `136` (M3 e2e).
-- Activation blockers: none — semantics locked by ADR-0030; the exact IR plumbing is bounded
-  by Step 1's discovery contract (see `design.md` §Open Questions).
+- Activation blockers: packets 130 and 131 must reach `status: implemented` before this
+  packet activates — AC-2 and AC-4 (and the cross-step invariant in `requirements.md`)
+  consume their outputs. Semantics locked by ADR-0030; the exact IR plumbing is bounded by
+  Step 1's discovery contract (see `design.md` §Open Questions).
 
 ## Acceptance Criteria
 

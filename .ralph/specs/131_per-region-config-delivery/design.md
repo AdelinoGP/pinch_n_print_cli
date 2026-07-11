@@ -2,11 +2,14 @@
 
 ## Controlling Code Paths
 
-- Primary code path: `crates/slicer-wasm-host/src/dispatch.rs:1629-1645` —
+- Primary code path: `crates/slicer-wasm-host/src/dispatch.rs:1629-1650` —
   `effective_config_view` derivation: today `map.entries.keys().find(|key|
-  key.global_layer_index == layer.index)` picks an arbitrary entry; replaced by per-region
-  resolution keyed on the full `RegionKey` of the region being iterated, sourced from the
-  `RegionMapIR` interned pool (`crates/slicer-ir/src/slice_ir.rs:1176-1185`).
+  key.global_layer_index == layer.index)` (line 1640) picks an arbitrary entry; replaced by
+  per-region resolution keyed on the full `RegionKey` of the region being iterated, sourced
+  from the `RegionMapIR` interned pool via `RegionMapIR::config_for(&RegionKey)`
+  (`crates/slicer-ir/src/slice_ir.rs:1194-1204`, `:1232`). Two other sites match the looser
+  `global_layer_index == layer` substring (`:1378`, `:1680`) — both are unrelated lookups,
+  out of scope; do not touch them.
 - Secondary: `crates/slicer-schema/wit/deps/ir-types.wit` region-view resources gain the
   config accessor; `crates/slicer-sdk/src/views.rs` + `crates/slicer-macros/src/lib.rs` glue.
 - Neighboring tests or fixtures: `crates/slicer-runtime/tests/contract/` (new
@@ -23,6 +26,8 @@
 - Config keys are snake_case everywhere (CLAUDE.md §Config Key Naming Convention).
 - The baseline-before-edit ordering is a hard constraint (see requirements.md §Step
   Completion Expectations).
+- FORWARD-DEP: packet 130 is `status: draft` at authoring time — this packet's world-version
+  bump target is computed at activation (+0.1 from whatever 130 lands as), never hardcoded.
 
 ## Code Change Surface
 
@@ -33,10 +38,13 @@
   has no `RegionMapIR` entry, the accessor falls back to the object-level config (same value
   the old first-match produced on single-region layers — this is what makes AC-N1/AC-N2
   hold).
-- Exact changes: `dispatch.rs` derivation + accessor host impl; `ir-types.wit` accessor on
-  both region views; world-layer 1.1.0 → 1.2.0 (+ any other world exposing these views —
-  discover via rg, don't assume); SDK accessors; macros glue; contract tests; carve survey
-  artifacts.
+- Exact changes: `dispatch.rs` derivation + accessor host impl; `ir-types.wit` gains
+  `use slicer:config/config-types.{config-view};` in the `ir-handles` interface plus a
+  `config: func() -> config-view` method on both `slice-region-view` and
+  `perimeter-region-view`; world-layer bumped by +0.1 from whatever version 130 lands at
+  (+ any other world exposing these views — discover via rg, don't assume); SDK accessors;
+  macros glue; contract tests; carve survey artifacts; the pinned-SHA byte-identity test
+  (AC-N2).
 - Rejected alternatives: (a) replacing the module `ConfigView` param with a per-region one —
   breaks every module signature for no gain; (b) passing a config *list* keyed by region into
   each dispatch — pushes the join onto every module author; (c) fixing only the first-match
@@ -57,8 +65,12 @@
 
 ## Read-Only Context
 
-- `crates/slicer-ir/src/slice_ir.rs` — lines 1176-1200 only — `RegionMapIR` pool shape.
-- `crates/slicer-wasm-host/src/dispatch.rs` — lines 1600-1730 only.
+- `crates/slicer-ir/src/slice_ir.rs` — lines 1194-1232 only — `RegionMapIR` pool shape
+  (struct at 1194-1204; `config_for(&RegionKey) -> &ResolvedConfig` at 1232 is the resolution
+  idiom to reuse — `extensions` lives on `ResolvedConfig`, not on `RegionMapIR` itself).
+- `crates/slicer-wasm-host/src/dispatch.rs` — lines 1600-1730 only (the derivation block to
+  edit is 1629-1650; line 1378 is outside this range and irrelevant; line 1680 falls inside
+  this read range but is a separate `held_claims_map` resolution — read-only, do not edit).
 - One 130-era contract test + echo guest — idiom reuse.
 
 ## Out-of-Bounds Files
@@ -118,8 +130,12 @@
 
 ## Open Questions
 
-- `[FWD]` Accessor WIT shape: a `config()` returning the existing config-view resource vs
-  per-key getters — match how the module-level `ConfigView` is already modeled in WIT; the
-  semantic (per-region values, additive) is locked.
+- `FWD-RESOLVED` Accessor WIT shape: `config: func() -> config-view` on both
+  `slice-region-view` and `perimeter-region-view`, reusing the existing
+  `slicer:config/config-types.config-view` resource (`crates/slicer-schema/wit/deps/
+  config.wit:8`) rather than duplicating its six `get*`/`keys` methods per-key on two
+  resources. `ir-types.wit`'s `ir-handles` interface gains
+  `use slicer:config/config-types.{config-view};` alongside its existing `use
+  slicer:types/geometry...` import. AC-3 pins this shape.
 - `[FWD]` Which worlds beyond world-layer expose the two views (rg at implementation);
   version-bump all that do.

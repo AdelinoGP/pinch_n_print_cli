@@ -61,9 +61,9 @@
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-wasm-host/src/dispatch.rs` — lines 420-520 (postprocess arm + neighboring
     view-builder idiom) only
-  - `crates/slicer-runtime/src/region_partition.rs` — lines 25-60 (predicate to hoist)
+  - `crates/slicer-runtime/src/region_partition.rs` — lines 112-150 (predicate to hoist)
   - `crates/slicer-core/src/algos/region_mapping.rs` — lines 640-680 (material-tool idiom)
-  - `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1850 (`InfillRegion`/`InfillIR`)
+  - `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1920 (`InfillRegion`/`InfillIR`)
 - Files allowed to edit (≤ 3):
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-wasm-host/src/marshal/out.rs`

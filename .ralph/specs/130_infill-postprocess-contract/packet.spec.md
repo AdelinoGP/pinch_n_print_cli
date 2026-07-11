@@ -44,10 +44,11 @@ implement any linking (packet 133), does not change `LayerStageCommit::InfillPos
   view equal the `SliceIR` region's partitioned polygons (same counts, same vertex data). | `cargo test -p slicer-runtime --test contract -- infill_postprocess_partitioned_polygons 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-3. Given** a region whose `variant_chain` contains `("material", ToolIndex(2))`,
   **when** the view is built, **then** `tool_index == 2`; **given** a region with no material
-  variant but `RegionMapIR.extensions["extruder"] = 1`, **then** `tool_index == 1`; **given**
-  neither, **then** `tool_index == 0`. | `cargo test -p slicer-runtime --test contract -- infill_postprocess_tool_index_precedence 2>&1 | tee target/test-output.log | grep "^test result"`
+  variant whose interned config carries `extensions["extruder"] = 1` (resolved via
+  `RegionMapIR::config_for(region_key)` — `extensions` lives on `ResolvedConfig`, not on
+  `RegionMapIR`), **then** `tool_index == 1`; **given** neither, **then** `tool_index == 0`. | `cargo test -p slicer-runtime --test contract -- infill_postprocess_tool_index_precedence 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** a virtual variant region without a per-variant `PerimeterIR` entry (the
-  `region_partition.rs:35-44` case), **when** the view is built, **then** its
+  `region_partition.rs:123-144` case), **when** the view is built, **then** its
   `wall_source_region_id == Some(<base region_id>)`; **given** a region with its own
   `PerimeterIR` entry, **then** `wall_source_region_id == None`. | `cargo test -p slicer-runtime --test contract -- infill_postprocess_wall_source 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-5. Given** `PerimeterRegionViewBuilder` in the SDK test-support fixtures, **when** a

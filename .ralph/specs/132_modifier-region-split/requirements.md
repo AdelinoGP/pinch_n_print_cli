@@ -14,7 +14,7 @@ Infill-modifier volumes — the standard way users raise infill density locally 
 do nothing spatial in PnP: the loader ingests them (`loader.rs:547-622`), but
 `stamp_modifier_config_deltas` applies their config to the whole object
 (`region_mapping.rs:266-268` — the code itself documents "no bbox/polygon overlap check";
-only `ModifierScope::AllFeatures` is in use), and `prepass_slice.rs:286` slices only the
+only `ModifierScope::AllFeatures` is in use), and `prepass_slice.rs:516` slices only the
 solid mesh. With packet 131's per-region config delivery in place, the missing half is
 geometry: sub-regions must exist for the config to bind to. This packet creates them —
 wall-less, wall-sharing, fill-only — per ADR-0030, which also makes them the first mainstream
@@ -92,7 +92,7 @@ population of the wall-sharing groups that packet 133's linker connects along.
 - Large files in the read-only path that MUST be ranged or delegated:
   `crates/slicer-core/src/algos/region_mapping.rs` (read only the `ModifierScope` +
   `stamp_modifier_config_deltas` regions, ~lines 260-320 and 600-640),
-  `crates/slicer-core/src/algos/prepass_slice.rs` (slicing entry ~line 286 region),
+  `crates/slicer-core/src/algos/prepass_slice.rs` (slicing entry ~line 516 region),
   `crates/slicer-runtime/src/region_partition.rs` (full file allowed — it is the primary
   surface and small enough), `docs/02_ir_schemas.md` (sections only).
 - Likely temptation reads: the paint-segmentation pipeline (how paint splits regions) — do
