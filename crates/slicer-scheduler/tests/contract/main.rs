@@ -8,4 +8,5 @@
 mod claim_transition_matrix_tdd;
 mod core_module_ir_access_contract_tdd;
 mod module_manifest_tdd;
+mod spiral_vase_arachne_dispatch_tdd;
 mod stage_list_consistency_tdd;

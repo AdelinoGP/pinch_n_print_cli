@@ -192,6 +192,20 @@ fn config_key_declared(
 /// `crates/slicer-runtime/src/run.rs`).
 pub const WALL_GENERATOR_CONFIG_KEY: &str = "wall_generator";
 
+/// Config key selecting whether the slice is a "spiral vase" print.
+/// Mirrors OrcaSlicer's `spiral_mode` / `spiral_vase` setting. When `true`,
+/// the classic perimeter generator (`com.core.classic-perimeters`) is forced
+/// for the `perimeter-generator` claim regardless of `wall_generator`, because
+/// Arachne's variable-width walls are incompatible with spiral-vase mode
+/// (OrcaSlicer gates Arachne dispatch on `!spiral_mode` at
+/// `LayerRegion.cpp:138-141`).
+///
+/// Read directly from the raw CLI/JSON config source at module-load time, like
+/// [`WALL_GENERATOR_CONFIG_KEY`], because this selection has to happen before
+/// `ResolvedConfig` is built (module loading / claim dedup runs first; see
+/// `crates/slicer-runtime/src/run.rs`).
+pub const SPIRAL_VASE_CONFIG_KEY: &str = "spiral_vase";
+
 /// Default `wall_generator` value used when the config key is absent.
 /// Keeps every existing golden/regression test slicing with
 /// `classic-perimeters` unchanged (packet 112 Step 10).
@@ -247,27 +261,33 @@ pub fn dedup_same_claim_modules_for_test(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
 ) -> Vec<LoadedModule> {
-    dedup_same_claim_modules(modules, diagnostics, None)
+    dedup_same_claim_modules(modules, diagnostics, None, false)
 }
 
 /// Config-aware claim dedup: identical to [`dedup_same_claim_modules_for_test`]
 /// except `wall_generator` (the raw `config_source.get("wall_generator")`
-/// string value, or `None` if the key is absent) is threaded through to
-/// resolve the `perimeter-generator` claim. This is the entry point
+/// string value, or `None` if the key is absent) and `spiral_vase` (the raw
+/// `config_source.get("spiral_vase")` bool value, or `false` if absent) are
+/// threaded through to resolve the `perimeter-generator` claim. When
+/// `spiral_vase` is `true`, the classic perimeter generator is forced for that
+/// claim regardless of `wall_generator` (Arachne is incompatible with
+/// spiral-vase mode). This is the entry point
 /// `slicer_wasm_host::load_live_modules_for_plan_with_config` (the
 /// production live-loader) uses.
 pub fn dedup_same_claim_modules_with_wall_generator(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
+    spiral_vase: bool,
 ) -> Vec<LoadedModule> {
-    dedup_same_claim_modules(modules, diagnostics, wall_generator)
+    dedup_same_claim_modules(modules, diagnostics, wall_generator, spiral_vase)
 }
 
 fn dedup_same_claim_modules(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,
     wall_generator: Option<&str>,
+    spiral_vase: bool,
 ) -> Vec<LoadedModule> {
     use std::collections::BTreeMap;
 
@@ -301,7 +321,15 @@ fn dedup_same_claim_modules(
             continue; // sole holder; nothing to resolve
         }
         if claim == PERIMETER_GENERATOR_CLAIM {
-            let preferred = wall_generator_preferred_module_id(wall_generator);
+            // Spiral-vase mode is incompatible with Arachne's variable-width
+            // walls, so force the classic generator regardless of
+            // `wall_generator` (OrcaSlicer gates Arachne dispatch on
+            // `!spiral_mode`).
+            let preferred = if spiral_vase {
+                CLASSIC_PERIMETERS_MODULE_ID
+            } else {
+                wall_generator_preferred_module_id(wall_generator)
+            };
             if candidate_ids.iter().any(|id| id == preferred) {
                 winner_for.insert((stage.clone(), claim.clone()), preferred.to_string());
                 continue;
@@ -1048,7 +1076,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
 
         assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
         assert_eq!(kept[0].id, "com.core.classic-perimeters");
@@ -1079,7 +1107,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("arachne"));
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("arachne"), false);
 
         assert_eq!(kept.len(), 1, "exactly one holder survives per claim");
         assert_eq!(kept[0].id, "com.core.arachne-perimeters");
@@ -1107,7 +1135,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("bogus"));
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, Some("bogus"), false);
 
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].id, "com.core.classic-perimeters");
@@ -1122,7 +1150,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Infill", &["x"]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -1134,7 +1162,7 @@ mod dedup_tests {
             loaded("mod.b", "Layer::Perimeters", &[]),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
         assert_eq!(kept.len(), 2);
         assert!(diagnostics.is_empty());
     }
@@ -1266,7 +1294,7 @@ mod dedup_tests {
             ),
         ];
         let mut diagnostics = Vec::new();
-        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None);
+        let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics, None, false);
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // All three infill modules survive — per-region resolution picks the

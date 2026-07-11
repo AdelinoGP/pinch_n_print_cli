@@ -346,8 +346,16 @@ fn arachne_parity_pipeline_thick_bridges_flow_factor_not_stubbed_to_one() {
         .float("bridge_flow", 1.0)
         .bool("thick_bridges", true)
         .build();
+    // Packet-151 fixture correction: under corrected max_bead_count = 2*wall_count
+    // (= 4 for wall_count=2), the emitted Outer/Inner walls sit at half-widths
+    // ~5.0 / ~4.6 mm, well outside a 4×4 centred bridge area. The 4×4 area
+    // therefore intersected no wall vertices, so no is_bridge flag was ever set
+    // and the fixture guard tripped. Enlarging to a 12×12 centred area (mirrors
+    // the `native_bridge_region` 15-lock fixture fix) guarantees wall vertices
+    // fall strictly inside the bridge region so the real flow_factor assertion
+    // is exercised.
     let mut region = square_region(10.0, 0.2);
-    region.set_bridge_areas(vec![fixtures::square_mm(4.0)]);
+    region.set_bridge_areas(vec![fixtures::square_mm(12.0)]);
 
     let walls = run_walls(&config, &[region], 1);
     let bridge_flow_factors: Vec<f32> = walls
@@ -608,6 +616,29 @@ fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
          is_initial_layer (layer 0) only \
          (crates/slicer-core/src/arachne/remove_small.rs:44-80) and neither \
          it nor run_arachne_pipeline has any topmost-layer input | ref: \
-         WallToolPaths.cpp:684-700"
+          WallToolPaths.cpp:684-700"
+    );
+}
+
+/// AC-1 (packet 151): wall_count → max_bead_count = 2 × wall_count wiring.
+/// The toml registers both keys; the module reads wall_count when
+/// max_bead_count is absent (get_int → None, since ConfigView never merges
+/// schema defaults). On a 10 mm square with wall_count=3, the distinct
+/// Outer/Inner perimeter_index set must be {0,1,2} (3 walls), NOT
+/// {0,1,2,3,4} (the legacy max_bead_count=9 collapse).
+#[test]
+fn arachne_parity_wall_count_wires_max_bead_count() {
+    let regions = vec![square_region(10.0, 0.2)];
+    let config = base_config(3).build();
+    let walls = run_walls(&config, &regions, 1);
+    let indices = wall_index_set(&walls);
+    assert_eq!(
+        indices,
+        BTreeSet::from([0u32, 1, 2]),
+        "wall_count=3 must yield exactly {{0,1,2}} walls; got {:?} — wall_count \
+         is not being read by arachne_params_from_config, so the module is still \
+         falling back to defaults.max_bead_count=9 (Orca WallToolPaths.cpp:525: \
+         max_bead_count = 2 * inset_count)",
+        indices
     );
 }

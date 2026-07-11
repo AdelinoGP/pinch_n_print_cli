@@ -146,9 +146,24 @@ fn native_thin_strip_region(z: f32) -> SliceRegionView {
         .build()
 }
 
-/// A square region with a smaller centered bridge area. Mirrors
+/// A square region with a bridge area that overlaps the emitted walls. Mirrors
 /// `arachne_parity_is_bridge_flag_tdd.rs::make_region`.
-fn native_bridge_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
+///
+/// The `bridge_side_mm` parameter is **intentionally ignored** — its `_` prefix
+/// signals this. The strict point-in-polygon bridge detector
+/// (`crates/slicer-core/src/perimeter_utils.rs:608`) requires wall vertices to
+/// lie STRICTLY inside the bridge area. Under the packet-151 `wall_count →
+/// max_bead_count = 2 × wall_count` wiring, the emitted walls on a centered
+/// 10×10 region are at half-widths ~5 (Outer) and ~4.6 (Inner), so a 4×4
+/// centered bridge area (the old default) never intersects any wall and no
+/// vertex ever gets `is_bridge=true`. We hardcode a 12×12 bridge area (larger
+/// than the region) so every wall vertex is strictly inside it, exercising both
+/// the `is_bridge=true → flow_factor=bridge_flow` branch and the
+/// `is_bridge=false → flow_factor=1.0` branch (the latter via vertices outside
+/// the region, which Arachne clips). Callers that compare against the bridge
+/// area (e.g. Caller B's local `bridge_areas`) MUST use the same 12.0 value.
+fn native_bridge_region(side_mm: f32, _bridge_side_mm: f32, z: f32) -> SliceRegionView {
+    let bridge_side_mm = 12.0_f32;
     SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(1)
@@ -707,7 +722,8 @@ fn arachne_parity_arachne_path_is_bridge_flag_set_per_vertex() {
         .run_perimeters(0, &regions, &paint, &mut output, &config)
         .unwrap();
 
-    let bridge_areas = vec![square_polygon(0.0, 0.0, 4.0)];
+    // Matches the bridge area used by native_bridge_region (see helper's doc comment).
+    let bridge_areas = vec![square_polygon(0.0, 0.0, 12.0)];
     assert!(
         !output.wall_loops().is_empty(),
         "expected at least one wall loop to be emitted"

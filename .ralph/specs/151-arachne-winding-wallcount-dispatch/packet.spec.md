@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 151-arachne-winding-wallcount-dispatch
 task_ids:
   - none

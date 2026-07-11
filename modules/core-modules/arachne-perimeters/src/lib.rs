@@ -104,6 +104,25 @@ pub struct ArachnePerimeters;
 /// space, 1 unit = 100 nm) are converted to the millimeter space
 /// `ArachneParams` expects via [`units_to_mm`]; `min_length_factor` is a
 /// dimensionless ratio and needs no conversion.
+///
+/// Shoelace signed area of a closed/open path's projected (x, y) points.
+/// Positive ⇒ counter-clockwise (CCW), negative ⇒ clockwise (CW). Only the
+/// SIGN matters for G1 winding normalization — magnitudes are in whatever
+/// coordinate space `Point3WithWidth.x/.y` occupy (mm here), so no
+/// scaling is needed.
+fn signed_area_of_points(pts: &[slicer_ir::Point3WithWidth]) -> f64 {
+    if pts.len() < 2 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    for i in 0..pts.len() {
+        let a = &pts[i];
+        let b = &pts[(i + 1) % pts.len()];
+        area += (a.x as f64) * (b.y as f64) - (b.x as f64) * (a.y as f64);
+    }
+    area / 2.0
+}
+
 #[rustfmt::skip]
 fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let defaults = ArachneParams::default();
@@ -168,10 +187,12 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     } else {
         preferred_bead_width_outer_spacing
     };
-    let max_bead_count = config
-        .get_int("max_bead_count")
-        .map(|v| v as u32)
-        .unwrap_or(defaults.max_bead_count);
+    let max_bead_count_explicit = config.get_int("max_bead_count");
+    let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
+    let max_bead_count = match max_bead_count_explicit {
+        Some(v) => v as u32,
+        None => (2 * wall_count).max(1),
+    };
     let distribution_count = config
         .get_int("wall_distribution_count")
         .map(|v| v as u32)
@@ -252,20 +273,25 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             manual_outer_wall_offset
         };
 
-        // Distance-gate config keys for simplify_toolpaths (N13).
-        // Stored as squared mm² values; config keys are in mm (resolution/deviation).
+        // G9 (packet 151, Step 5): OrcaSlicer coFloat keys
+        // wall_maximum_resolution / wall_maximum_deviation REPLACE
+        // meshfix_maximum_resolution / meshfix_maximum_deviation for the Arachne
+        // wall simplification tolerances (WallToolPaths.cpp:487-503,702-719).
+        // Values are plain mm (config key units); square directly into mm². NO
+        // coordinate ÷100 — these are mm-based scalar tolerances, not toolpath
+        // coordinates (Orca research: REPLACE, not min()/merge).
         let smallest_line_segment_squared = config
-            .get_float("meshfix_maximum_resolution")
-            .map(|v| { let mm = units_to_mm(v as i64) as f64; mm * mm })
+            .get_float("wall_maximum_resolution")
+            .map(|v| v * v)
             .unwrap_or(defaults.smallest_line_segment_squared);
         let allowed_error_distance_squared = config
-            .get_float("meshfix_maximum_deviation")
-            .map(|v| { let mm = units_to_mm(v as i64) as f64; mm * mm })
+            .get_float("wall_maximum_deviation")
+            .map(|v| v * v)
             .unwrap_or(defaults.allowed_error_distance_squared);
-        let maximum_extrusion_area_deviation = config
-            .get_float("meshfix_maximum_extrusion_area_deviation")
-            .map(|v| units_to_mm(v as i64) as f64)
-            .unwrap_or(defaults.maximum_extrusion_area_deviation);
+        // The third tolerance (meshfix_maximum_extrusion_area_deviation) is a
+        // distinct parameter unrelated to the resolution/deviation pair; the
+        // packet does not touch it, so it keeps its pipeline default.
+        let maximum_extrusion_area_deviation = defaults.maximum_extrusion_area_deviation;
 
         ArachneParams {
             optimal_width,
@@ -373,6 +399,18 @@ impl LayerModule for ArachnePerimeters {
         let only_one_wall_top = config.get_bool("only_one_wall_top").unwrap_or(false);
         let _ = only_one_wall_top;
 
+        // wall_direction (packet 151, Step 2 / G1): OrcaSlicer coEnum
+        // wall_direction (PrintConfig.cpp:2188-2198, default CounterClockwise)
+        // forces contour (ExteriorSurface) winding CCW or CW via
+        // make_counter_clockwise/make_clockwise (PerimeterGenerator.cpp:527-545),
+        // holes always opposite. Default "counter_clockwise" must reproduce the
+        // prior default winding (AC-N2); absence from raw config falls back to
+        // CCW so no regression is introduced.
+        let wall_direction = config
+            .get_string("wall_direction")
+            .unwrap_or("counter_clockwise");
+        let contour_should_be_ccw = wall_direction != "clockwise";
+
         // alternate_extra_wall (T-149 AC-3, D-104e closed): OrcaSlicer adds
         // one extra wall loop on every second (0-indexed-odd) layer by
         // incrementing `loop_number` before constructing `WallToolPaths`
@@ -406,6 +444,42 @@ impl LayerModule for ArachnePerimeters {
             // `max_bead_count` units).
             params.max_bead_count += 2;
         }
+
+        // only_one_wall_first_layer (packet 151, Step 3 / G2): OrcaSlicer
+        // coBool key only_one_wall_first_layer forces a single perimeter wall on
+        // the first layer by setting `loop_number = 0` before constructing
+        // `WallToolPaths` (PerimeterGenerator.cpp:2137-2139). We achieve the
+        // same effect by clamping `max_bead_count` to 2 (one wall == two beads
+        // in the OverhangRestricted / LimitedBeadingStrategy logic). Placed
+        // after the `alternate_extra_wall` block above so the clamp wins —
+        // though the two conditions never co-fire (`is_initial_layer` is only
+        // true for layer_index == 0, while `alternate_extra_wall` only fires on
+        // odd layers).
+        let only_one_wall_first_layer = config
+            .get_bool("only_one_wall_first_layer")
+            .unwrap_or(false);
+        if only_one_wall_first_layer && params.is_initial_layer {
+            params.max_bead_count = 2;
+        }
+
+        // G7 (packet 151, Step 4): overhang-reverse winding. OrcaSlicer
+        // coBool key overhang_reverse flips the print direction of wall loops
+        // on odd layers containing overhang wall segments (anti-warping;
+        // PerimeterGenerator.cpp:68-77). This packet only wires the parity
+        // flip (detect_overhang_wall disabled + overhang_reverse enabled);
+        // the full steep-overhang threshold detection is out of scope.
+        // Read all three keys (the third is advisory for now).
+        let detect_overhang_wall = config.get_bool("detect_overhang_wall").unwrap_or(true);
+        let overhang_reverse = config.get_bool("overhang_reverse").unwrap_or(false);
+        let _overhang_reverse_internal_only = config
+            .get_bool("overhang_reverse_internal_only")
+            .unwrap_or(false);
+        let _overhang_reverse_threshold = config
+            .get_float("overhang_reverse_threshold")
+            .unwrap_or(0.0);
+        // Compose: when detect_overhang_wall==false && overhang_reverse==true,
+        // reverse contour winding on odd layers.
+        let g7_reverse = !detect_overhang_wall && overhang_reverse && (layer_index % 2 == 1);
 
         // bridge_flow / thick_bridges (packet 149, D4/D-104g): read once per
         // invocation, applied per-vertex below wherever is_bridge is true.
@@ -571,6 +645,30 @@ impl LayerModule for ArachnePerimeters {
                     WallBoundaryType::Interior
                 };
 
+                // G1 (packet 151, Step 2): normalize loop winding to
+                // wall_direction. Holes (non-ExteriorSurface) wind opposite the
+                // contour (PerimeterGenerator.cpp:527-545). For the default
+                // "counter_clockwise", contour wins when already CCW so the
+                // prior default winding is preserved (AC-N2) — no flip occurs.
+                let is_hole = boundary_type != WallBoundaryType::ExteriorSurface;
+                let base_want_ccw = if is_hole {
+                    !contour_should_be_ccw
+                } else {
+                    contour_should_be_ccw
+                };
+                let final_want_ccw = if g7_reverse {
+                    !base_want_ccw
+                } else {
+                    base_want_ccw
+                };
+                if path.points.len() >= 3 {
+                    let signed = signed_area_of_points(&path.points);
+                    let is_ccw = signed > 0.0;
+                    if is_ccw != final_want_ccw {
+                        path.points.reverse();
+                    }
+                }
+
                 walls.push(WallLoop {
                     perimeter_index: line.inset_idx,
                     loop_type,
@@ -651,5 +749,41 @@ impl LayerModule for ArachnePerimeters {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slicer_ir::{ConfigKey, ConfigValue};
+    use std::collections::HashMap;
+
+    /// G9 wiring (AC-6b, packet 151 Step 5): `ArachneParams.smallest_line_segment_squared`
+    /// must equal `wall_maximum_resolution²` (mm²) and `allowed_error_distance_squared`
+    /// must equal `wall_maximum_deviation²` (mm²) — NOT the `meshfix_*`-sourced defaults.
+    /// Values are plain mm and squared directly (no coordinate ÷100).
+    #[test]
+    fn wall_maximum_resolution_wired() {
+        let mut fields: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+        fields.insert(
+            "wall_maximum_resolution".to_string(),
+            ConfigValue::Float(0.5),
+        );
+        fields.insert(
+            "wall_maximum_deviation".to_string(),
+            ConfigValue::Float(0.025),
+        );
+        let config = ConfigView::from_map(fields);
+        let params = arachne_params_from_config(&config);
+        assert!(
+            (params.smallest_line_segment_squared - 0.25).abs() < 1e-9,
+            "expected smallest_line_segment_squared = 0.5² = 0.25 mm², got {}",
+            params.smallest_line_segment_squared
+        );
+        assert!(
+            (params.allowed_error_distance_squared - 0.000625).abs() < 1e-9,
+            "expected allowed_error_distance_squared = 0.025² = 0.000625 mm², got {}",
+            params.allowed_error_distance_squared
+        );
     }
 }

@@ -439,6 +439,46 @@ Cross-stage transitive rule:
 - If module `A` requires `B`, and `B` (directly or transitively) requires `C`, then `stage(C) <= stage(A)` must hold.
 - Any violation is fatal even when the direct dependency appears legal.
 
+### Perimeter-generator selection (`wall_generator` dedup + spiral-vase fallback)
+
+Both `com.core.classic-perimeters` and `com.core.arachne-perimeters` declare
+`holds = ["perimeter-generator"]` and are mutually `incompatible-with` each
+other. Two modules holding the same non-fill claim would normally be a fatal
+startup conflict, but the `perimeter-generator` claim is resolved *before*
+`validate_startup_dag` runs, at module-load dedup time, by
+`dedup_same_claim_modules_with_wall_generator`
+(`crates/slicer-scheduler/src/execution_plan.rs`, called from
+`crates/slicer-runtime/src/run.rs`). Dedup keeps exactly one holder, so
+`incompatible-with` never has a chance to fire.
+
+Selection rules, in order:
+
+1. **`wall_generator` config key** — read directly from the raw config source
+   at module-load time (before `ResolvedConfig` exists) via
+   `WALL_GENERATOR_CONFIG_KEY` / `DEFAULT_WALL_GENERATOR`. Values: `"classic"`
+   (default) or `"arachne"`. `dedup_same_claim_modules_with_wall_generator`
+   resolves the `perimeter-generator` claim by this key instead of alphabetical
+   order, falling back to `classic` if the preferred module is not among the
+   loaded candidates or the value is unrecognised. This closes
+   `D-112-WALL-GENERATOR-SELECT` (before it, dedup silently kept the
+   alphabetically-first candidate — `arachne-perimeters` — with no way for a
+   user to express intent).
+
+2. **Spiral-vase fallback (packet 151)** — when `spiral_vase = true`, the
+   scheduler forces `com.core.classic-perimeters` as the `perimeter-generator`
+   holder regardless of `wall_generator`. This mirrors OrcaSlicer, which gates
+   Arachne dispatch on `wall_generator == Arachne && !spiral_mode`
+   (`OrcaSlicerDocumented/src/libslic3r/LayerRegion.cpp:138-141`): spiral / vase
+   mode produces a single continuous Z-ramped wall that the Arachne
+   variable-width beading pipeline is not designed to emit, so upstream always
+   falls back to the classic perimeter generator in vase mode. The fallback
+   lives in the scheduler/runtime selection path, not in either perimeter
+   module (see G8 in `docs/18_arachne_parity_audit.md`).
+
+Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
+(see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):
+the resolved holder must remain constant across every layer for a given object.
+
 ### Write Conflict vs Claim Conflict — Enforcement Level Summary
 
 These two mechanisms are complementary, not redundant. Understanding the

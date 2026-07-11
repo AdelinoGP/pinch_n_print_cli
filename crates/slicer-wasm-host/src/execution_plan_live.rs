@@ -15,7 +15,7 @@ use slicer_scheduler::dag::{build_intra_stage_dag, Producer};
 use slicer_scheduler::execution_plan::{
     bind_module_config_view, build_execution_plan, dedup_same_claim_modules_with_wall_generator,
     ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest,
-    SortedStageModules, STAGE_ORDER, WALL_GENERATOR_CONFIG_KEY,
+    SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
     load_modules_from_roots, DiagnosticLevel, LoadDiagnostic, LoadError, LoadedModule,
@@ -212,11 +212,22 @@ pub fn load_live_modules_for_plan_with_config(
             _ => None,
         });
 
+    let spiral_vase = config_source
+        .get(SPIRAL_VASE_CONFIG_KEY)
+        .and_then(|v| match v {
+            ConfigValue::Bool(b) => Some(*b),
+            _ => None,
+        })
+        .unwrap_or(false);
+
     // Claim-uniqueness enforcement, config-aware for `perimeter-generator`.
+    // `spiral_vase` forces the classic perimeter generator (Arachne is
+    // incompatible with spiral-vase mode).
     let filtered_modules = dedup_same_claim_modules_with_wall_generator(
         &mut report.modules,
         &mut report.diagnostics,
         wall_generator,
+        spiral_vase,
     );
     report.modules = filtered_modules;
 

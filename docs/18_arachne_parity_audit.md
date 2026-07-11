@@ -51,7 +51,12 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
 (pipeline dispatch), **MODEL** (data/config model). All tests live in
 `arachne_parity_gaps.rs` unless stated otherwise.
 
-### G1 — `wall_direction` winding control (CONFIG + ALGO)
+### G1 — `wall_direction` winding control (CONFIG + ALGO) — closed (packet 151)
+- **Closed (packet 151):** `wall_direction` is now registered on
+  `arachne-perimeters.toml` (enum CCW/CW, default CCW) and applied to contour /
+  hole winding in the module; `wall_count` is registered and translated to
+  `max_bead_count = 2 × wall_count`. See `docs/DEVIATION_LOG.md`
+  D-151-WALLCOUNT-MAXBEAD-UNWIRED and AC-1/G1 tests.
 - OrcaSlicer: `PrintConfig.cpp:2188-2198` (enum CCW/CW, default CCW);
   applied via `make_counter_clockwise/make_clockwise` in
   `PerimeterGenerator.cpp:527-545`; holes wound opposite the contour.
@@ -59,7 +64,10 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   key not in `arachne-perimeters.toml`.
 - Test: `arachne_parity_pipeline_wall_direction_controls_winding`.
 
-### G2 — `only_one_wall_first_layer` (CONFIG + ALGO)
+### G2 — `only_one_wall_first_layer` (CONFIG + ALGO) — closed (packet 151)
+- **Closed (packet 151):** `only_one_wall_first_layer` is now registered on
+  `arachne-perimeters.toml` and forces a single wall (`max_bead_count = 2`) on
+  layer 0; see the G2 test (now green).
 - OrcaSlicer: `PrintConfig.cpp:1513-1517`; forces `loop_number = 0` on the
   first printed layer, `PerimeterGenerator.cpp:2137-2139`.
 - PnP: key unregistered, wall count never reduced on layer 0.
@@ -120,7 +128,11 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   them stale.
 - Test: `arachne_parity_pipeline_percent_config_type_for_arachne_keys`.
 
-### G7 — `overhang_reverse` registration-only (ALGO, D-104c)
+### G7 — `overhang_reverse` registration-only (ALGO, D-104c) — closed (packet 151)
+- **Closed (packet 151):** `overhang_reverse` odd-layer reversal is now wired in
+  `arachne-perimeters/src/lib.rs`, and `overhang_reverse_threshold` is
+  registered; see `docs/DEVIATION_LOG.md` D-104c-OVERHANG-REVERSE-NONE (now
+  closed) and the G7 test (AC-4, now green).
 - OrcaSlicer: with `detect_overhang_wall` off + `overhang_reverse` on,
   contour/holes unconditionally marked steep and reversed on odd layers
   (`PerimeterGenerator.cpp:422-429`; `detect_steep_overhang` `:58-98`;
@@ -131,7 +143,12 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   `overhang_reverse_threshold` unregistered. Toggling changes nothing.
 - Test: `arachne_parity_pipeline_overhang_reverse_flips_odd_layer_walls`.
 
-### G8 — Spiral vase does not force the classic generator (INTEG)
+### G8 — Spiral vase does not force the classic generator (INTEG) — closed (packet 151)
+- **Closed (packet 151):** the scheduler now forces
+  `com.core.classic-perimeters` when `spiral_vase = true`, regardless of
+  `wall_generator`, mirroring OrcaSlicer's `!spiral_mode` Arachne-dispatch gate;
+  see `docs/04_host_scheduler.md` §"Perimeter-generator selection" and the G8
+  test (now green).
 - OrcaSlicer: Arachne dispatch gated on `wall_generator == Arachne &&
   !spiral_mode` (`LayerRegion.cpp:138-141`).
 - PnP: `dedup_same_claim_modules_with_wall_generator`
@@ -140,7 +157,12 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   no spiral-vase input exists anywhere in the selection path.
 - Test: `arachne_parity_pipeline_spiral_vase_forces_classic_generator`.
 
-### G9 — `wall_maximum_resolution` / `wall_maximum_deviation` unregistered (CONFIG)
+### G9 — `wall_maximum_resolution` / `wall_maximum_deviation` unregistered (CONFIG) — closed (packet 151)
+- **Closed (packet 151):** both keys are now registered on
+  `arachne-perimeters.toml` (defaults 0.5 mm / 0.025 mm) and wired directly into
+  `ArachneParams.smallest_line_segment_squared` / `allowed_error_distance_squared`
+  as mm² (no min()/merge); see `docs/15_config_keys_reference.md` §"Wall count,
+  winding, and simplification tolerances" and the G9 test (now green).
 - OrcaSlicer: `PrintConfig.cpp:7242-7263` (defaults 0.5 mm / 0.025 mm),
   consumed by outline prep (`WallToolPaths.cpp:487-503`) and
   `simplifyToolPaths` (`:702-719`).
@@ -185,15 +207,15 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
 
 | # | OrcaSlicer feature | Ref | PnP status | Red test |
 |---|---|---|---|---|
-| G1 | `wall_direction` CCW/CW winding | `PerimeterGenerator.cpp:527-545` | missing | `..._wall_direction_controls_winding` |
-| G2 | `only_one_wall_first_layer` | `PerimeterGenerator.cpp:2137-2139` | missing | `..._only_one_wall_first_layer_forces_single_wall` |
+| G1 | `wall_direction` CCW/CW winding | `PerimeterGenerator.cpp:527-545` | closed (packet 151) — `wall_direction`/`wall_count` registered + winding applied | `..._wall_direction_controls_winding` |
+| G2 | `only_one_wall_first_layer` | `PerimeterGenerator.cpp:2137-2139` | closed (packet 151) — forces single wall on layer 0 | `..._only_one_wall_first_layer_forces_single_wall` |
 | G3 | `only_one_wall_top` (incl. second Arachne pass) | `PerimeterGenerator.cpp:2140-2246` | key read, inert | `..._only_one_wall_top_forces_single_wall_on_top` |
 | G4 | Flow spacing feeds bead widths | `PerimeterGenerator.cpp:2129,2172` | closed (packet 150) — `line_width_to_spacing` now feeds bead placement | `..._wall_gap_uses_flow_spacing_not_width` |
 | G5 | Thick-bridge round-section flow | `LayerRegion.cpp:135`; `Flow.hpp:106` | closed (packet 150) — `π·dmr²/(4·w·h)` formula implemented | `..._thick_bridges_flow_factor_not_stubbed_to_one` |
 | G6 | Percent-typed Arachne keys | `PrintConfig.cpp:1498-1511,7169-7226` | closed (packet 150) — `percent`/`float_or_percent` types added | `..._percent_config_type_for_arachne_keys` |
-| G7 | `overhang_reverse` odd-layer reversal | `PerimeterGenerator.cpp:58-98,422-429` | registration-only | `..._overhang_reverse_flips_odd_layer_walls` |
-| G8 | Spiral vase forces classic | `LayerRegion.cpp:138-141` | missing | `..._spiral_vase_forces_classic_generator` |
-| G9 | `wall_maximum_resolution/deviation` | `PrintConfig.cpp:7242-7263` | internal-only | `..._wall_max_resolution_deviation_registered` |
+| G7 | `overhang_reverse` odd-layer reversal | `PerimeterGenerator.cpp:58-98,422-429` | closed (packet 151) — odd-layer reversal wired + `overhang_reverse_threshold` registered | `..._overhang_reverse_flips_odd_layer_walls` |
+| G8 | Spiral vase forces classic | `LayerRegion.cpp:138-141` | closed (packet 151) — `spiral_vase` forces classic generator in scheduler | `..._spiral_vase_forces_classic_generator` |
+| G9 | `wall_maximum_resolution/deviation` | `PrintConfig.cpp:7242-7263` | closed (packet 151) — both keys registered + wired to `ArachneParams` | `..._wall_max_resolution_deviation_registered` |
 | G10 | `removeSmallLines` top-layer exception | `WallToolPaths.cpp:684-700` | conflated with layer 0 | `..._remove_small_lines_top_layer_exception` |
 | G11 | Concentric infill via Arachne | `FillConcentric.cpp:80-118` | missing (D-104f) | `arachne_parity.rs::..._concentric_infill_uses_arachne` |
 
