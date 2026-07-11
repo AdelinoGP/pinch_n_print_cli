@@ -247,7 +247,11 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         apply_cross_layer_tool_rotation(&mut owned_layers);
         let layer_irs: &[LayerCollectionIR] = &owned_layers;
 
-        let layer_count = layer_irs.len() as u32;
+        // Count of layers that actually produce g-code moves. This drives
+        // `; total layer number:` in the header and must equal the number of
+        // emitted `;LAYER_CHANGE` markers (see skip below). Layers with no moves
+        // are skipped so the viewer's layer list stays gap-free.
+        let mut emitted_layer_count: u32 = 0;
 
         // Push ExtrusionMode as index-0 so postpass modules (Step 4) can prepend
         // machine_start_gcode BEFORE it via commands.insert(0, Raw(...)).
@@ -279,6 +283,25 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         // Walk layers in order (already Z-sorted by LayerFinalization)
         for layer in layer_irs {
             let layer_z = layer.z;
+
+            // Skip layers that produce no g-code moves (no extrusion entities,
+            // travel moves, retracts, tool changes, or Z-hops). A `;LAYER_CHANGE`
+            // emitted with no following move leaves a gap in the viewer's
+            // layer_id sequence: libvgcode's Layers::update only opens a new
+            // layer when `vertex.layer_id == m_items.size()`, so every layer
+            // after the gap collapses into the last real layer and becomes
+            // invisible in OrcaSlicer's g-code preview. Annotations/comments
+            // alone do not create vertices, so a move-less layer is dropped
+            // entirely (matching OrcaSlicer, which never emits empty layers).
+            let has_output = !layer.ordered_entities.is_empty()
+                || !layer.travel_moves.is_empty()
+                || !layer.retracts.is_empty()
+                || !layer.tool_changes.is_empty()
+                || !layer.z_hops.is_empty();
+            if !has_output {
+                continue;
+            }
+            emitted_layer_count += 1;
 
             // Emit Orca layer-change headers BEFORE the first Move of this layer
             // Insert ;LAYER_CHANGE, ;Z:{z}, ;HEIGHT:{h} before the first command
@@ -694,7 +717,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             metadata: PrintMetadata {
                 estimated_print_time_s: 0, // Not calculated in this implementation
                 filament_used_mm,
-                layer_count,
+                layer_count: emitted_layer_count,
                 slicer_version: self.slicer_version.clone(),
             },
             ..Default::default()

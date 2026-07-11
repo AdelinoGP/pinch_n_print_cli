@@ -395,11 +395,41 @@ fn emit_zhop_generates_travel_sequence() {
 fn emit_metadata_accumulates_layer_count() {
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
-    // 3 layers
+    // 3 layers with geometry (empty layers are skipped, see emit_gcode)
     let layer_irs = &[
-        layer_collection_fixture(0, 0.2),
-        layer_collection_fixture(1, 0.4),
-        layer_collection_fixture(2, 0.6),
+        layer_with_entity(
+            0,
+            0.2,
+            print_entity_fixture(
+                vec![
+                    point3_with_width(0.0, 0.0, 0.2),
+                    point3_with_width(1.0, 0.0, 0.2),
+                ],
+                ExtrusionRole::OuterWall,
+            ),
+        ),
+        layer_with_entity(
+            1,
+            0.4,
+            print_entity_fixture(
+                vec![
+                    point3_with_width(0.0, 0.0, 0.4),
+                    point3_with_width(1.0, 0.0, 0.4),
+                ],
+                ExtrusionRole::OuterWall,
+            ),
+        ),
+        layer_with_entity(
+            2,
+            0.6,
+            print_entity_fixture(
+                vec![
+                    point3_with_width(0.0, 0.0, 0.6),
+                    point3_with_width(1.0, 0.0, 0.6),
+                ],
+                ExtrusionRole::OuterWall,
+            ),
+        ),
     ];
 
     let result = emitter.emit_gcode(layer_irs);
@@ -830,9 +860,22 @@ fn emit_is_deterministic_with_annotations() {
 }
 
 #[test]
-fn emit_emits_trailing_annotations_on_empty_layer() {
+fn emit_emits_trailing_annotations_on_nonempty_layer() {
     use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
-    let mut layer = layer_collection_fixture(0, 0.0);
+    // A layer must carry at least one move for OrcaSlicer's g-code preview to
+    // register it as a layer (libvgcode collapses gap layers). Annotations are
+    // still emitted on layers that have geometry.
+    let mut layer = layer_with_entity(
+        0,
+        0.2,
+        print_entity_fixture(
+            vec![
+                point3_with_width(0.0, 0.0, 0.2),
+                point3_with_width(1.0, 0.0, 0.2),
+            ],
+            ExtrusionRole::OuterWall,
+        ),
+    );
     layer.annotations = vec![LayerAnnotation {
         after_entity_index: 0,
         kind: LayerAnnotationKind::Comment("only".into()),
@@ -843,6 +886,69 @@ fn emit_emits_trailing_annotations_on_empty_layer() {
         .commands
         .iter()
         .any(|c| matches!(c, GCodeCommand::Comment { text } if text == "only")));
+}
+
+// Regression test for the OrcaSlicer g-code preview bug: an empty layer
+// (no moves) between two real layers must NOT be emitted. A `;LAYER_CHANGE`
+// with no following extrusion/travel move leaves a gap in libvgcode's
+// layer_id sequence; Layers::update only opens a new layer when
+// `vertex.layer_id == m_items.size()`, so every layer after the gap
+// collapses into the last real layer and becomes invisible in the preview
+// (reported as "viewer only shows up to layer 6").
+#[test]
+fn skips_empty_layer_between_real_layers_without_gap() {
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+
+    fn real(z: f32) -> LayerCollectionIR {
+        layer_with_entity(
+            0,
+            z,
+            print_entity_fixture(
+                vec![
+                    point3_with_width(0.0, 0.0, z),
+                    point3_with_width(1.0, 0.0, z),
+                ],
+                ExtrusionRole::OuterWall,
+            ),
+        )
+    }
+
+    // real @0.2, real @0.4, EMPTY @0.6, real @0.8, real @1.0
+    let empty = layer_collection_fixture(2, 0.6);
+    let layer_irs = &[real(0.2), real(0.4), empty, real(0.8), real(1.0)];
+
+    let ir = emitter.emit_gcode(layer_irs).unwrap();
+
+    // The empty layer must be dropped: 4 layers emitted, not 5.
+    assert_eq!(ir.metadata.layer_count, 4, "empty layer must be skipped");
+
+    // Every `;LAYER_CHANGE` must be immediately followed by a Move before the
+    // next `;LAYER_CHANGE` (no gap that the viewer would collapse).
+    let mut saw_layer_change = false;
+    let mut layer_change_has_move = false;
+    let mut all_layer_changes_have_moves = true;
+    for cmd in &ir.commands {
+        match cmd {
+            GCodeCommand::Raw { text } if text == ";LAYER_CHANGE" => {
+                if saw_layer_change && !layer_change_has_move {
+                    all_layer_changes_have_moves = false;
+                }
+                saw_layer_change = true;
+                layer_change_has_move = false;
+            }
+            GCodeCommand::Move { .. } if saw_layer_change => {
+                layer_change_has_move = true;
+            }
+            _ => {}
+        }
+    }
+    if saw_layer_change && !layer_change_has_move {
+        all_layer_changes_have_moves = false;
+    }
+    assert!(
+        all_layer_changes_have_moves,
+        "every ;LAYER_CHANGE must be followed by a Move (no viewer gap)"
+    );
 }
 
 // ============================================================================
