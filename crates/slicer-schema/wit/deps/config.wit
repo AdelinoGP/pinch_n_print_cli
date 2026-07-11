@@ -1,9 +1,14 @@
 package slicer:config;
 
 interface config-types {
+    record float-or-percent {
+        value: f64,
+        is-percent: bool,
+    }
     variant config-value {
         bool-val(bool), int-val(s64), float-val(f64),
         string-val(string), float-list(list<f64>), string-list(list<string>),
+        percent-val(f64), float-or-percent-val(float-or-percent),
     }
     resource config-view {
         get:        func(key: string) -> option<config-value>;

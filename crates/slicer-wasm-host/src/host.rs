@@ -47,6 +47,16 @@ pub enum ConfigValueStorage {
     FloatList(Vec<f64>),
     /// List of strings.
     StringList(Vec<String>),
+    /// Percent value (raw percent number; caller must resolve against a base
+    /// via `ConfigView::get_abs_value`, mirroring `slicer_ir::ConfigValue::Percent`).
+    Percent(f64),
+    /// Float-or-percent value, mirroring `slicer_ir::ConfigValue::FloatOrPercent`.
+    FloatOrPercent {
+        /// The literal numeric value.
+        value: f64,
+        /// Whether `value` should be interpreted as a percent of some base.
+        is_percent: bool,
+    },
 }
 
 /// Normalize subnormal `f64` values to `0.0` at the typed-config boundary.
@@ -86,6 +96,19 @@ pub fn config_value_to_storage(v: &slicer_ir::ConfigValue) -> ConfigValueStorage
         slicer_ir::ConfigValue::Int(i) => ConfigValueStorage::Int(*i),
         slicer_ir::ConfigValue::Float(f) => ConfigValueStorage::Float(*f),
         slicer_ir::ConfigValue::String(s) => ConfigValueStorage::Str(s.clone()),
+        // Percent-typed values round-trip through the dedicated `Percent` /
+        // `FloatOrPercent` `ConfigValueStorage` variants (packet 150), which
+        // map to the WIT `percent-val` / `float-or-percent-val` cases in
+        // `HostConfigView::get` below. This preserves the percent/absolute
+        // distinction end-to-end so a guest module's `get_abs_value` sees a
+        // real percent instead of a downgraded string.
+        slicer_ir::ConfigValue::Percent(p) => ConfigValueStorage::Percent(*p),
+        slicer_ir::ConfigValue::FloatOrPercent { value, is_percent } => {
+            ConfigValueStorage::FloatOrPercent {
+                value: *value,
+                is_percent: *is_percent,
+            }
+        }
         slicer_ir::ConfigValue::List(items) => {
             // Attempt homogeneous float or string list.
             let all_float = items
@@ -286,6 +309,7 @@ pub mod layer {
 
 // Re-export commonly used generated types for convenience.
 pub use layer::slicer::config::config_types::ConfigValue;
+pub use layer::slicer::config::config_types::FloatOrPercent;
 /// Re-export of the layer-module WIT `retract-mode` variant. Used by host-side
 /// `gcode-output-builder` handlers and `dispatch.rs` converters to forward the
 /// `RetractMode` end-to-end across the guest→host boundary.
@@ -2072,6 +2096,13 @@ impl ct::HostConfigView for HostExecutionContext {
             ConfigValueStorage::Str(s) => ConfigValue::StringVal(s.clone()),
             ConfigValueStorage::FloatList(fl) => ConfigValue::FloatList(fl.clone()),
             ConfigValueStorage::StringList(sl) => ConfigValue::StringList(sl.clone()),
+            ConfigValueStorage::Percent(p) => ConfigValue::PercentVal(*p),
+            ConfigValueStorage::FloatOrPercent { value, is_percent } => {
+                ConfigValue::FloatOrPercentVal(FloatOrPercent {
+                    value: *value,
+                    is_percent: *is_percent,
+                })
+            }
         }))
     }
 
@@ -2095,6 +2126,14 @@ impl ct::HostConfigView for HostExecutionContext {
         let data = self.table.get(&self_)?;
         Ok(data.fields.get(&key).and_then(|v| match v {
             ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
+            // Mirrors `slicer_ir::ConfigView::get_float`: a literal
+            // `FloatOrPercent` (is_percent == false) yields its value, but a
+            // bare `Percent` or a percent-flagged `FloatOrPercent` must NOT
+            // leak out as a plain float — callers need `get_abs_value`.
+            ConfigValueStorage::FloatOrPercent {
+                value,
+                is_percent: false,
+            } => Some(normalize_subnormal_boundary(*value)),
             _ => None,
         }))
     }
@@ -3869,5 +3908,78 @@ mod tests {
             .build();
 
         assert_eq!(ctx.effective_perimeter_origin(), None);
+    }
+
+    /// Regression lock (packet 150): `ConfigValue::Percent` must survive the
+    /// host→guest config-delivery boundary as a genuine percent, not be
+    /// silently downgraded to a `Str("25%")` / `StringVal("25%")`. That
+    /// downgrade defeated module-side `get_abs_value`, which needs to
+    /// distinguish "this is a percent of some base" from "this is a plain
+    /// string". Locks both hops: `slicer_ir::ConfigValue` →
+    /// `ConfigValueStorage` (`config_value_to_storage`), and
+    /// `ConfigValueStorage` → the WIT `config-value` the guest actually reads
+    /// (`HostConfigView::get`, what `config-view.get` dispatches to).
+    #[test]
+    fn percent_config_value_round_trips_through_storage_and_wit_get() {
+        use ct::HostConfigView as _;
+
+        // Hop 1: slicer_ir::ConfigValue -> ConfigValueStorage.
+        let storage = config_value_to_storage(&slicer_ir::ConfigValue::Percent(25.0));
+        match storage {
+            ConfigValueStorage::Percent(p) => {
+                assert!((p - 25.0).abs() < f64::EPSILON, "expected 25.0, got {p}");
+            }
+            other => panic!(
+                "expected ConfigValueStorage::Percent(25.0), got {other:?} \
+                 (percent downgraded to Str? regression reintroduced)"
+            ),
+        }
+
+        let fop_storage = config_value_to_storage(&slicer_ir::ConfigValue::FloatOrPercent {
+            value: 42.0,
+            is_percent: true,
+        });
+        match fop_storage {
+            ConfigValueStorage::FloatOrPercent { value, is_percent } => {
+                assert!(
+                    (value - 42.0).abs() < f64::EPSILON,
+                    "expected 42.0, got {value}"
+                );
+                assert!(is_percent, "expected is_percent: true");
+            }
+            other => panic!(
+                "expected ConfigValueStorage::FloatOrPercent{{ value: 42.0, is_percent: true }}, \
+                 got {other:?} (percent downgraded to Str? regression reintroduced)"
+            ),
+        }
+
+        // Hop 2: ConfigValueStorage -> WIT config-value, via the exact getter
+        // the guest's `config-view.get` dispatches to.
+        let mut ctx =
+            HostExecutionContextBuilder::new("com.test.percent-roundtrip", 0.0, 0.2).build();
+        let mut fields = HashMap::new();
+        fields.insert(
+            "infill_density".to_string(),
+            ConfigValueStorage::Percent(25.0),
+        );
+        let resource = ctx
+            .table
+            .push(ConfigViewData { fields })
+            .expect("push config-view resource");
+
+        let value = ctx
+            .get(resource, "infill_density".to_string())
+            .expect("get call succeeds")
+            .expect("value present for known key");
+        match value {
+            ConfigValue::PercentVal(p) => {
+                assert!((p - 25.0).abs() < f64::EPSILON, "expected 25.0, got {p}");
+            }
+            ConfigValue::StringVal(s) => panic!(
+                "regression reintroduced: percent downgraded to StringVal({s:?}) \
+                 instead of PercentVal(25.0)"
+            ),
+            _ => panic!("expected ConfigValue::PercentVal(25.0)"),
+        }
     }
 }

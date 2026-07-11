@@ -352,6 +352,8 @@ pub const VALID_CONFIG_TYPES: &[&str] = &[
     "enum",
     "float-list",
     "string-list",
+    "percent",
+    "float_or_percent",
 ];
 
 /// Recognized claim names for `[claims].holds` and `[claims].requires`.

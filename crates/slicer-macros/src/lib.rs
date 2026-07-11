@@ -598,6 +598,11 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
                         __SlicerWitConfigValue::StringList(v) => ::slicer_ir::ConfigValue::List(
                             v.into_iter().map(::slicer_ir::ConfigValue::String).collect()
                         ),
+                        __SlicerWitConfigValue::PercentVal(p) => ::slicer_ir::ConfigValue::Percent(p),
+                        __SlicerWitConfigValue::FloatOrPercentVal(fop) => ::slicer_ir::ConfigValue::FloatOrPercent {
+                            value: fop.value,
+                            is_percent: fop.is_percent,
+                        },
                     };
                     fields.insert(k, iv);
                 }

@@ -179,7 +179,10 @@ impl ConfigBoundsIndex {
 }
 
 fn is_numeric_field_type(field_type: &str) -> bool {
-    matches!(field_type, "int" | "float" | "float-list" | "int-list")
+    matches!(
+        field_type,
+        "int" | "float" | "float-list" | "int-list" | "percent" | "float_or_percent"
+    )
 }
 
 fn check_value(
@@ -200,6 +203,15 @@ fn check_value(
         // Non-numeric variants: variant mismatch (if any) is reported by
         // `apply_cli_key`'s TypeMismatch path; numeric bounds don't apply.
         ConfigValue::Bool(_) | ConfigValue::String(_) => Ok(()),
+        // `Percent` / `FloatOrPercent` (packet 150) ARE numeric per
+        // `is_numeric_field_type` above, so a module-declared `[min, max]`
+        // for a `percent` / `float_or_percent` key is enforced here against
+        // the raw percent number / literal value. The percent→absolute base
+        // is per-call-site and unknown at this point, so bounds cannot be
+        // applied to the resolved absolute value here — only to the raw
+        // number as declared in config.
+        ConfigValue::Percent(p) => check_scalar(key, *p, bounds, index),
+        ConfigValue::FloatOrPercent { value, .. } => check_scalar(key, *value, bounds, index),
     }
 }
 

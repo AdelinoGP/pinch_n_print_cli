@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use slicer_ir::{ModuleId, SemVer, StageId};
+use slicer_ir::{ConfigValue, ModuleId, SemVer, StageId};
 use toml::Value;
 
 /// Wire-format version for the JSON emitted by [`build_config_schema_json`] and
@@ -1083,6 +1083,12 @@ fn parse_config_field_entry(
 ) -> Result<ConfigFieldEntry, LoadError> {
     // Handle shorthand: value is just a string like "int" or "float"
     if let Some(type_str) = value.as_str() {
+        if type_str == "percent" || type_str == "float_or_percent" {
+            // Shorthand form carries no `default` — percent/float_or_percent
+            // fields always need one (they're base-value-relative), so this
+            // is rejected rather than silently defaulting to 0 (packet 150).
+            parse_percent_default(field_key, type_str, None, manifest_path)?;
+        }
         return Ok(ConfigFieldEntry {
             field_type: type_str.to_string(),
             ..Default::default()
@@ -1107,6 +1113,9 @@ fn parse_config_field_entry(
         "type",
     )?;
     let default = table.get("default").map(|v| v.to_string());
+    if field_type == "percent" || field_type == "float_or_percent" {
+        parse_percent_default(field_key, &field_type, table.get("default"), manifest_path)?;
+    }
     let min = get_float_opt(table, "min");
     let max = get_float_opt(table, "max");
     let step = get_float_opt(table, "step");
@@ -1163,6 +1172,71 @@ fn parse_config_field_entry(
         validate,
         tags,
     })
+}
+
+/// Parses and validates a `[config.schema.<key>]` `default` for the
+/// `"percent"` / `"float_or_percent"` field types (packet 150,
+/// OrcaSlicer `coPercent` / `coFloatOrPercent` parity — D-104h) into the
+/// [`ConfigValue`] it represents.
+///
+/// * `"percent"` requires a `"<number>%"` string default → `ConfigValue::Percent(n)`.
+/// * `"float_or_percent"` accepts either a `"<number>%"` string
+///   (→ `ConfigValue::FloatOrPercent { value: n, is_percent: true }`) or a
+///   bare numeric literal (→ `is_percent: false`).
+///
+/// Returns a [`LoadError`] naming `field_key` and the expected form when the
+/// default is missing or malformed. This intentionally never falls back to
+/// `0` — a malformed percent default is a manifest bug, not a `0%`.
+pub fn parse_percent_default(
+    field_key: &str,
+    field_type: &str,
+    default_value: Option<&toml::Value>,
+    manifest_path: &Path,
+) -> Result<ConfigValue, LoadError> {
+    let malformed = || {
+        let expected = if field_type == "float_or_percent" {
+            "a \"<number>%\" string or a bare numeric literal"
+        } else {
+            "a \"<number>%\" string"
+        };
+        LoadError {
+            path: manifest_path.to_path_buf(),
+            field: Some(format!("config.schema.{field_key}.default")),
+            kind: LoadErrorKind::Schema,
+            message: format!(
+                "config.schema.{field_key} has a malformed default for type \"{field_type}\": \
+                 expected {expected} (e.g. \"25%\"), got {default_value:?}"
+            ),
+        }
+    };
+
+    if let Some(percent_str) = default_value.and_then(|v| v.as_str()) {
+        let n = percent_str
+            .trim()
+            .strip_suffix('%')
+            .and_then(|n| n.trim().parse::<f64>().ok())
+            .ok_or_else(malformed)?;
+        return Ok(match field_type {
+            "percent" => ConfigValue::Percent(n),
+            _ => ConfigValue::FloatOrPercent {
+                value: n,
+                is_percent: true,
+            },
+        });
+    }
+
+    if field_type == "float_or_percent" {
+        if let Some(n) =
+            default_value.and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+        {
+            return Ok(ConfigValue::FloatOrPercent {
+                value: n,
+                is_percent: false,
+            });
+        }
+    }
+
+    Err(malformed())
 }
 
 fn get_string(

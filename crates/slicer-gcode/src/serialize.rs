@@ -339,6 +339,14 @@ fn serialize_config_block(
                     format!("{f}")
                 }
                 ConfigValue::String(s) => s.clone(),
+                ConfigValue::Percent(p) => format!("{p}%"),
+                ConfigValue::FloatOrPercent { value, is_percent } => {
+                    if *is_percent {
+                        format!("{value}%")
+                    } else {
+                        format!("{value}")
+                    }
+                }
                 ConfigValue::List(items) => {
                     let parts: Vec<String> = items
                         .iter()

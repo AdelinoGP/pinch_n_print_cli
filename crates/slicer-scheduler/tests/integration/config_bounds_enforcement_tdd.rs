@@ -276,3 +276,68 @@ fn bool_value_skips_numeric_bounds_check() {
         other => panic!("expected TypeMismatch, got {other:?}"),
     }
 }
+
+#[test]
+fn percent_bounds_rejects_value_below_min() {
+    // A `percent`-typed field (packet 150) IS numeric per
+    // `is_numeric_field_type`, so a declared min/max is enforced against
+    // the raw percent number itself (the resolution base is unknown here).
+    let bounds = single_module_bounds("min_width_top_surface", Some(0.0), None);
+    let mut source = HashMap::new();
+    source.insert(
+        "min_width_top_surface".to_string(),
+        ConfigValue::Percent(-5.0),
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("percent value below declared min must reject");
+    assert_out_of_range(err, "min_width_top_surface", -5.0, None);
+}
+
+#[test]
+fn percent_bounds_accepts_value_within_range() {
+    let bounds = single_module_bounds("min_width_top_surface", Some(0.0), None);
+    let mut source = HashMap::new();
+    source.insert(
+        "min_width_top_surface".to_string(),
+        ConfigValue::Percent(300.0),
+    );
+
+    resolve_global_config(&source, &bounds)
+        .expect("percent value within declared bounds must accept");
+}
+
+#[test]
+fn percent_bounds_rejects_float_or_percent_value_below_min() {
+    // `float_or_percent` is likewise numeric; bounds are checked against
+    // the raw literal `value` field regardless of `is_percent`.
+    let bounds = single_module_bounds("min_width_top_surface", Some(0.0), None);
+    let mut source = HashMap::new();
+    source.insert(
+        "min_width_top_surface".to_string(),
+        ConfigValue::FloatOrPercent {
+            value: -1.0,
+            is_percent: true,
+        },
+    );
+
+    let err = resolve_global_config(&source, &bounds)
+        .expect_err("float_or_percent value below declared min must reject");
+    assert_out_of_range(err, "min_width_top_surface", -1.0, None);
+}
+
+#[test]
+fn percent_bounds_accepts_float_or_percent_value_within_range() {
+    let bounds = single_module_bounds("min_width_top_surface", Some(0.0), None);
+    let mut source = HashMap::new();
+    source.insert(
+        "min_width_top_surface".to_string(),
+        ConfigValue::FloatOrPercent {
+            value: 300.0,
+            is_percent: true,
+        },
+    );
+
+    resolve_global_config(&source, &bounds)
+        .expect("float_or_percent value within declared bounds must accept");
+}

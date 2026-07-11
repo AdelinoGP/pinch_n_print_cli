@@ -266,6 +266,8 @@ fn variant_name(v: &ConfigValue) -> String {
         ConfigValue::Float(_) => "Float".to_string(),
         ConfigValue::String(_) => "String".to_string(),
         ConfigValue::List(_) => "List".to_string(),
+        ConfigValue::Percent(_) => "Percent".to_string(),
+        ConfigValue::FloatOrPercent { .. } => "FloatOrPercent".to_string(),
     }
 }
 

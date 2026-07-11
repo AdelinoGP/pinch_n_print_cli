@@ -689,6 +689,20 @@ pub enum ConfigValue {
     String(String),
     /// List of config values
     List(Vec<ConfigValue>),
+    /// Percent value (e.g. `25.0` meaning 25%). Always resolved relative to
+    /// a base via [`ConfigView::get_abs_value`]; never coerced by the plain
+    /// typed accessors (`get_float` etc. return `None`).
+    Percent(f64),
+    /// A value that is either a plain float (already absolute) or a
+    /// percent of some base, mirroring OrcaSlicer's `ConfigOptionFloatOrPercent`.
+    /// Mirrors the WIT `float-or-percent` record shape exactly.
+    FloatOrPercent {
+        /// The literal numeric value (absolute float, or percent magnitude
+        /// when `is_percent` is true).
+        value: f64,
+        /// True when `value` should be interpreted as a percent of a base.
+        is_percent: bool,
+    },
 }
 
 impl PartialEq for ConfigValue {
@@ -699,6 +713,17 @@ impl PartialEq for ConfigValue {
             (Self::Float(a), Self::Float(b)) => a.to_bits() == b.to_bits(),
             (Self::String(a), Self::String(b)) => a == b,
             (Self::List(a), Self::List(b)) => a == b,
+            (Self::Percent(a), Self::Percent(b)) => a.to_bits() == b.to_bits(),
+            (
+                Self::FloatOrPercent {
+                    value: va,
+                    is_percent: pa,
+                },
+                Self::FloatOrPercent {
+                    value: vb,
+                    is_percent: pb,
+                },
+            ) => va.to_bits() == vb.to_bits() && pa == pb,
             _ => false,
         }
     }
@@ -715,6 +740,11 @@ impl std::hash::Hash for ConfigValue {
             Self::Float(f) => f.to_bits().hash(state),
             Self::String(s) => s.hash(state),
             Self::List(v) => v.hash(state),
+            Self::Percent(p) => p.to_bits().hash(state),
+            Self::FloatOrPercent { value, is_percent } => {
+                value.to_bits().hash(state);
+                is_percent.hash(state);
+            }
         }
     }
 }
@@ -818,10 +848,18 @@ impl ConfigView {
     /// behavior in `slicer-runtime::wit_host::normalize_subnormal_boundary`
     /// and the schema parser's `normalize_subnormal`.
     /// Returns `None` if missing/other type.
+    ///
+    /// `Percent` never coerces here — no base is available. `FloatOrPercent`
+    /// only yields its literal when `is_percent` is `false`; when the value
+    /// is a percent, callers MUST resolve it via [`ConfigView::get_abs_value`].
     #[must_use]
     pub fn get_float(&self, key: &str) -> Option<f64> {
         match self.fields.get(key)? {
             ConfigValue::Float(f) => Some(if f.is_subnormal() { 0.0 } else { *f }),
+            ConfigValue::FloatOrPercent {
+                value,
+                is_percent: false,
+            } => Some(if value.is_subnormal() { 0.0 } else { *value }),
             _ => None,
         }
     }
@@ -831,6 +869,42 @@ impl ConfigView {
     pub fn get_string(&self, key: &str) -> Option<&str> {
         match self.fields.get(key)? {
             ConfigValue::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Read-time resolver for `percent` / `float_or_percent` config values,
+    /// mirroring OrcaSlicer's `ConfigOptionFloatOrPercent::get_abs_value`.
+    ///
+    /// * `Percent(p)` resolves to `p / 100.0 * base` when `base > 0.0`,
+    ///   otherwise `None` (a percent of a non-positive base is undefined).
+    /// * `FloatOrPercent { value, is_percent }` resolves the same way when
+    ///   `is_percent` is `true`; when `false`, `value` is already absolute
+    ///   and is returned unchanged regardless of `base`.
+    /// * `Float(f)` is already absolute and is returned unchanged.
+    /// * Any other variant, or a missing key, yields `None`.
+    #[must_use]
+    pub fn get_abs_value(&self, key: &str, base: f64) -> Option<f64> {
+        match self.fields.get(key)? {
+            ConfigValue::Percent(p) => {
+                if base > 0.0 {
+                    Some(p / 100.0 * base)
+                } else {
+                    None
+                }
+            }
+            ConfigValue::FloatOrPercent { value, is_percent } => {
+                if *is_percent {
+                    if base > 0.0 {
+                        Some(value / 100.0 * base)
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(*value)
+                }
+            }
+            ConfigValue::Float(f) => Some(*f),
             _ => None,
         }
     }
@@ -2217,5 +2291,132 @@ impl Default for GCodeIR {
             commands: Vec::new(),
             metadata: PrintMetadata::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod config_value_percent_tests {
+    //! Unit tests for `ConfigValue::Percent` / `ConfigValue::FloatOrPercent`
+    //! and `ConfigView::get_abs_value` (packet 150, Step 2, AC-2 / AC-N2).
+    //! Module path deliberately contains "config" and test fn names
+    //! contain "percent" / "percent_zero_base" so both
+    //! `cargo test -p slicer-ir --lib config -- percent` and
+    //! `cargo test -p slicer-ir --lib config -- percent_zero_base` select
+    //! them.
+    use super::{ConfigValue, ConfigView};
+    use std::collections::HashMap;
+
+    fn view_with(key: &str, value: ConfigValue) -> ConfigView {
+        let mut fields = HashMap::new();
+        fields.insert(key.to_string(), value);
+        ConfigView::from_map(fields)
+    }
+
+    #[test]
+    fn get_abs_value_resolves_percent_against_positive_base() {
+        let view = view_with("k", ConfigValue::Percent(25.0));
+        let resolved = view.get_abs_value("k", 0.4).expect("percent resolves");
+        assert!(
+            (resolved - 0.1).abs() < 1e-9,
+            "expected 0.1, got {resolved}"
+        );
+    }
+
+    #[test]
+    fn get_abs_value_resolves_float_or_percent_literal_regardless_of_base() {
+        let view = view_with(
+            "k",
+            ConfigValue::FloatOrPercent {
+                value: 1.2,
+                is_percent: false,
+            },
+        );
+        // Literal (non-percent) values are returned unchanged no matter the base.
+        assert_eq!(view.get_abs_value("k", 0.4), Some(1.2));
+        assert_eq!(view.get_abs_value("k", 0.0), Some(1.2));
+        assert_eq!(view.get_abs_value("k", -5.0), Some(1.2));
+    }
+
+    #[test]
+    fn get_abs_value_resolves_float_or_percent_percent_against_positive_base() {
+        let view = view_with(
+            "k",
+            ConfigValue::FloatOrPercent {
+                value: 25.0,
+                is_percent: true,
+            },
+        );
+        let resolved = view.get_abs_value("k", 0.4).expect("percent resolves");
+        assert!(
+            (resolved - 0.1).abs() < 1e-9,
+            "expected 0.1, got {resolved}"
+        );
+    }
+
+    #[test]
+    fn get_abs_value_percent_zero_base_returns_none() {
+        let view = view_with("k", ConfigValue::Percent(25.0));
+        assert_eq!(view.get_abs_value("k", 0.0), None);
+    }
+
+    #[test]
+    fn get_abs_value_percent_zero_base_negative_base_returns_none() {
+        let view = view_with("k", ConfigValue::Percent(25.0));
+        assert_eq!(view.get_abs_value("k", -1.0), None);
+    }
+
+    #[test]
+    fn get_abs_value_float_or_percent_percent_zero_base_returns_none() {
+        let view = view_with(
+            "k",
+            ConfigValue::FloatOrPercent {
+                value: 25.0,
+                is_percent: true,
+            },
+        );
+        assert_eq!(view.get_abs_value("k", 0.0), None);
+    }
+
+    #[test]
+    fn get_abs_value_float_resolves_unchanged() {
+        let view = view_with("k", ConfigValue::Float(3.5));
+        assert_eq!(view.get_abs_value("k", 0.0), Some(3.5));
+        assert_eq!(view.get_abs_value("k", 100.0), Some(3.5));
+    }
+
+    #[test]
+    fn get_abs_value_missing_key_returns_none() {
+        let view = ConfigView::new();
+        assert_eq!(view.get_abs_value("missing", 1.0), None);
+    }
+
+    #[test]
+    fn get_float_on_percent_value_returns_none() {
+        let view = view_with("k", ConfigValue::Percent(25.0));
+        assert_eq!(view.get_float("k"), None);
+    }
+
+    #[test]
+    fn get_float_on_float_or_percent_percent_returns_none() {
+        let view = view_with(
+            "k",
+            ConfigValue::FloatOrPercent {
+                value: 25.0,
+                is_percent: true,
+            },
+        );
+        assert_eq!(view.get_float("k"), None);
+    }
+
+    #[test]
+    fn get_float_on_float_or_percent_literal_returns_value() {
+        let view = view_with(
+            "k",
+            ConfigValue::FloatOrPercent {
+                value: 1.2,
+                is_percent: false,
+            },
+        );
+        assert_eq!(view.get_float("k"), Some(1.2));
     }
 }

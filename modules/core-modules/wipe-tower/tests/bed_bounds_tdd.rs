@@ -26,6 +26,8 @@ fn config_from_pairs(pairs: &[(&str, ConfigValue)]) -> slicer_ir::ConfigView {
             ConfigValue::Int(i) => builder = builder.int(*k, *i),
             ConfigValue::String(s) => builder = builder.string(*k, s.clone()),
             ConfigValue::List(l) => builder = builder.list(*k, l.clone()),
+            ConfigValue::Percent(p) => builder = builder.float(*k, *p),
+            ConfigValue::FloatOrPercent { value, .. } => builder = builder.float(*k, *value),
         }
     }
     builder.build()
