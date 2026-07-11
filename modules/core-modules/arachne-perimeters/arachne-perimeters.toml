@@ -35,13 +35,41 @@ max-ir-schema     = "5.0.0"
   # full per-key OrcaSlicer PrintConfig.cpp provenance and internal
   # Rust-field mapping notes.
 
-  [config.schema.min_feature_size]
+  # ── Physical / process parameters (packet 150, Step 4) ──────────────────
+  # Plain mm floats (docs/08_coordinate_system.md Z-axis convention / physical
+  # spec fields) — no scaled-units conversion. Used to (a) resolve percent-typed
+  # keys below against nozzle_diameter as base, and (b) convert configured line
+  # width to Flow SPACING via slicer_core::flow::line_width_to_spacing before
+  # handing widths to the beading pipeline (AC-3).
+
+  [config.schema.layer_height]
   type        = "float"
-  default     = 1000
+  default     = 0.2
+  min         = 0.01
+  max         = 1.0
+  unit        = "mm"
+  display     = "Layer height"
+  description = "Current layer height in mm. Mirrors layer-planner-default's own layer_height key (same convention: plain mm float, not scaled units). Consumed by arachne_params_from_config to convert optimal_width to Flow spacing via line_width_to_spacing (AC-3)."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.nozzle_diameter]
+  type        = "float"
+  default     = 0.4
+  min         = 0.01
+  unit        = "mm"
+  display     = "Nozzle diameter"
+  description = "Nozzle diameter in mm, plain float (matches classic-perimeters' own nozzle_diameter key convention). Consumed by arachne_params_from_config as the Flow-spacing nozzle_diameter clamp input and as the resolution base for percent-typed keys (min_feature_size, wall_transition_length)."
+  group       = "Arachne"
+  advanced    = true
+
+  [config.schema.min_feature_size]
+  type        = "percent"
+  default     = "25%"
   min         = 0
-  unit        = "units"
+  unit        = "%"
   display     = "Minimum feature size"
-  description = "Below this thickness a region is too narrow for normal bead distribution and is widened instead. Maps to WideningBeadingStrategy's internal min_input_width field. OrcaSlicer coPercent default 25% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Below this thickness a region is too narrow for normal bead distribution and is widened instead. Maps to WideningBeadingStrategy's internal min_input_width field. OrcaSlicer coPercent default 25% of nozzle diameter (PrintConfig.cpp:7217-7226). Retyped to percent (packet 150, D-104h parity fix) so it rescales with nozzle diameter instead of a pre-resolved absolute; base-value resolution against nozzle diameter is wired in a later packet-150 step."
   group       = "Arachne"
   advanced    = true
 
@@ -66,12 +94,12 @@ max-ir-schema     = "5.0.0"
   advanced    = true
 
   [config.schema.wall_transition_length]
-  type        = "float"
-  default     = 4000
+  type        = "percent"
+  default     = "100%"
   min         = 0
-  unit        = "units"
+  unit        = "%"
   display     = "Wall transition length"
-  description = "Space allotted to split/join wall segments when transitioning between wall counts. Maps to DistributedBeadingStrategy's internal default_transition_length field (reserved, not yet read by compute). OrcaSlicer coPercent default 100% of nozzle diameter; resolved here against a 0.4mm nozzle."
+  description = "Space allotted to split/join wall segments when transitioning between wall counts. Maps to DistributedBeadingStrategy's internal default_transition_length field (reserved, not yet read by compute). OrcaSlicer coPercent default 100% of nozzle diameter (PrintConfig.cpp:7169-7178). Retyped to percent (packet 150, D-104h parity fix) so it rescales with nozzle diameter instead of a pre-resolved absolute; base-value resolution against nozzle diameter is wired in a later packet-150 step."
   group       = "Arachne"
   advanced    = true
 
@@ -255,12 +283,12 @@ display = "Extra perimeter on overhangs (adds one wall loop inside region.overha
 group   = "Walls"
 
 [config.schema.min_width_top_surface]
-type        = "float"
-default     = 1.2
+type        = "float_or_percent"
+default     = "300%"
 min         = 0.0
-unit        = "mm"
+unit        = "%"
 display     = "Minimum top surface width"
-description = "OrcaSlicer coFloatOrPercent key min_width_top_surface, default 300% of line width (≈1.2mm at the common 0.4mm line width). No coFloatOrPercent/literal-percent representation precedent found in modules/core-modules/*/*.toml (grepped); represented here as a plain mm float per the docs/03_wit_and_manifest.md unit=\"mm\" convention (see tree_support_branch_diameter). Not yet consumed by run_perimeters in this packet."
+description = "OrcaSlicer coFloatOrPercent key min_width_top_surface, default 300% of inner wall line width (PrintConfig.cpp:1498-1511). Retyped to float_or_percent (packet 150, D-104h parity fix); base-value resolution against inner_wall_line_width is wired in a later packet-150 step. Not yet consumed by run_perimeters in this packet."
 group       = "Walls"
 
 [config.schema.alternate_extra_wall]

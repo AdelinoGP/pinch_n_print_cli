@@ -184,6 +184,14 @@ impl LayerModule for ClassicPerimeters {
             .get_float("nozzle_diameter")
             .map(|v| v as f32)
             .unwrap_or(inner_wall_line_width);
+        // layer_height (packet 150 step 5): needed alongside nozzle_diameter
+        // by bridging_flow's thick_bridges round-cross-section formula
+        // (D-104g); threaded through emit_walls the same way nozzle_diameter
+        // already is.
+        let layer_height = _config
+            .get_float("layer_height")
+            .map(|v| v as f32)
+            .unwrap_or(0.2);
 
         let base_wall_count = _config
             .get_int("wall_count")
@@ -351,6 +359,7 @@ impl LayerModule for ClassicPerimeters {
                         precise_outer_wall,
                         detect_thin_wall,
                         nozzle_diameter,
+                        layer_height,
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
@@ -380,6 +389,7 @@ impl LayerModule for ClassicPerimeters {
                         precise_outer_wall,
                         detect_thin_wall,
                         nozzle_diameter,
+                        layer_height,
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
@@ -411,6 +421,7 @@ impl LayerModule for ClassicPerimeters {
                         precise_outer_wall,
                         detect_thin_wall,
                         nozzle_diameter,
+                        layer_height,
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
@@ -440,6 +451,7 @@ impl LayerModule for ClassicPerimeters {
                         precise_outer_wall,
                         detect_thin_wall,
                         nozzle_diameter,
+                        layer_height,
                         gap_infill_speed,
                         filter_out_gap_fill,
                         rid,
@@ -469,6 +481,7 @@ impl LayerModule for ClassicPerimeters {
                     precise_outer_wall,
                     detect_thin_wall,
                     nozzle_diameter,
+                    layer_height,
                     gap_infill_speed,
                     filter_out_gap_fill,
                     rid,
@@ -537,6 +550,7 @@ impl ClassicPerimeters {
         precise_outer_wall: bool,
         detect_thin_wall: bool,
         nozzle_diameter: f32,
+        layer_height: f32,
         gap_infill_speed: f32,
         filter_out_gap_fill: f32,
         region_id: u64,
@@ -674,16 +688,18 @@ impl ClassicPerimeters {
             };
 
             for (poly_idx, poly) in wall_polys.iter().enumerate() {
-                let mut points = expolygon_to_path3d(
-                    &poly.contour,
-                    z,
-                    self.line_width_for(
-                        *perimeter_index,
-                        outer_wall_line_width,
-                        inner_wall_line_width,
-                    ),
-                    overhang_bands,
+                // Raw (pre-spacing) mm flow width for this wall's beads —
+                // reused below by bridging_flow's thick_bridges
+                // round-cross-section factor (packet 150 step 5): unlike
+                // arachne-perimeters, this module never converts wall line
+                // widths to spacing, so no flow_to_width recovery is needed.
+                let bead_flow_width_mm = self.line_width_for(
+                    *perimeter_index,
+                    outer_wall_line_width,
+                    inner_wall_line_width,
                 );
+                let mut points =
+                    expolygon_to_path3d(&poly.contour, z, bead_flow_width_mm, overhang_bands);
                 if points.is_empty() {
                     continue;
                 }
@@ -713,7 +729,13 @@ impl ClassicPerimeters {
                         let is_bridge = point_in_any_polygon(pt, bridge_areas);
                         feature_flags[i].is_bridge = is_bridge;
                         if is_bridge {
-                            points[i].flow_factor = bridging_flow(bridge_flow_ratio, thick_bridges);
+                            points[i].flow_factor = bridging_flow(
+                                bridge_flow_ratio,
+                                thick_bridges,
+                                nozzle_diameter,
+                                bead_flow_width_mm,
+                                layer_height,
+                            );
                         }
                     }
                 }
@@ -1163,5 +1185,69 @@ mod tests {
         // R2: inner_wall_line_width is now read per-invocation, not cached.
         // Verify the module still initialises without error (struct fields reduced).
         let _ = module.wall_count();
+    }
+
+    // Packet 150 Step 6 (AC-5): classic-perimeters reads `nozzle_diameter`
+    // (run_perimeters ~line 183, R4 thin-wall threshold) and `layer_height`
+    // (run_perimeters ~line 191, step-5 bridging_flow threading) from
+    // config, but classic-perimeters.toml never declared either key in
+    // [config.schema.*]. The host builds every guest's ConfigView via
+    // `ConfigView::from_declared` (docs/03 host-boundary enforcement),
+    // which drops any key absent from the manifest schema before the guest
+    // ever sees it — so both reads were permanently dead, silently falling
+    // back to inner_wall_line_width / a hardcoded 0.2 regardless of what a
+    // profile supplied. This test fails pre-Step-6 (schema sections absent)
+    // and passes now that both are registered.
+    #[test]
+    fn nozzle_diameter_and_layer_height_are_registered_in_manifest_schema() {
+        let manifest = include_str!("../classic-perimeters.toml");
+        assert!(
+            manifest.contains("[config.schema.nozzle_diameter]"),
+            "classic-perimeters.toml must declare [config.schema.nozzle_diameter] \
+             or the host's declared-key ConfigView filter drops it, making the \
+             run_perimeters read permanently dead"
+        );
+        assert!(
+            manifest.contains("[config.schema.layer_height]"),
+            "classic-perimeters.toml must declare [config.schema.layer_height] \
+             or the host's declared-key ConfigView filter drops it, making the \
+             run_perimeters read permanently dead"
+        );
+
+        // Behavioral corroboration: once declared and bound by the host, the
+        // exact read expression at run_perimeters
+        // (`_config.get_float("nozzle_diameter").unwrap_or(inner_wall_line_width)`)
+        // must honor a supplied nozzle_diameter that differs from
+        // inner_wall_line_width, not silently fall back to it.
+        let inner_wall_line_width: f32 = 0.4;
+        let mut fields = HashMap::new();
+        fields.insert("nozzle_diameter".to_string(), ConfigValue::Float(0.6));
+        let config = ConfigView::from_map(fields);
+        let nozzle_diameter = config
+            .get_float("nozzle_diameter")
+            .map(|v| v as f32)
+            .unwrap_or(inner_wall_line_width);
+        assert!(
+            (nozzle_diameter - 0.6).abs() < f32::EPSILON,
+            "expected supplied nozzle_diameter=0.6 to be read verbatim, got {nozzle_diameter}"
+        );
+        assert!(
+            (nozzle_diameter - inner_wall_line_width).abs() > f32::EPSILON,
+            "nozzle_diameter must not silently equal inner_wall_line_width when \
+             a differing value was supplied"
+        );
+
+        // Same corroboration for layer_height (`.unwrap_or(0.2)` fallback).
+        let mut layer_fields = HashMap::new();
+        layer_fields.insert("layer_height".to_string(), ConfigValue::Float(0.28));
+        let layer_config = ConfigView::from_map(layer_fields);
+        let layer_height = layer_config
+            .get_float("layer_height")
+            .map(|v| v as f32)
+            .unwrap_or(0.2);
+        assert!(
+            (layer_height - 0.28).abs() < f32::EPSILON,
+            "expected supplied layer_height=0.28 to be read verbatim, got {layer_height}"
+        );
     }
 }

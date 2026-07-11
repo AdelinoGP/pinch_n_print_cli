@@ -1739,6 +1739,15 @@ fn narrow_strip_widening_config() -> serde_json::Value {
     })
 }
 
+// Golden regenerated (packet 150 session): `loop_type` GapFill -> ThinWall.
+// NOTE the true cause is NOT packet 150's D-105 flow-spacing: this config is
+// degenerate (default optimal_width 0.4mm <= layer_height 1.0mm), so
+// `line_width_to_spacing` returns 0 and the raw-width fallback reproduces the
+// pre-spacing 0.4mm bead exactly — widths are unchanged (0.34/0.4mm). The flip
+// is the correct arachne classification of the single widened center-line bead
+// (`WideningBeadingStrategy`, is_odd + inset_idx 0 + detect_thin_wall) as
+// ThinWall, introduced by packet 148's `classify_line` refinement; the old
+// golden was recorded at packet 147 (pre-ThinWall) and had simply gone stale.
 #[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
 #[test]
 fn record_narrow_strip_widening() {
@@ -1849,6 +1858,12 @@ fn cube_4color_arachne_config() -> serde_json::Value {
     })
 }
 
+// Golden regenerated (packet 150, D-105 flow-spacing): this config is
+// non-degenerate (layer_height 0.2mm < optimal_width 0.4mm), so the beading
+// engine is now fed Flow SPACING instead of raw width —
+// `line_width_to_spacing(0.4, 0.2, 0.4) = 0.4 - 0.2*(1 - PI/4) = 0.3571mm`.
+// Outer/inner bead widths shift 0.4mm -> 0.3571mm and toolpath positions move
+// accordingly (e.g. outer wall x 113.324 -> 112.946). Correct D-105 consequence.
 #[ignore = "fixture recorder — run explicitly to (re)generate mesh/config/expected output"]
 #[test]
 fn record_cube_4color_arachne() {

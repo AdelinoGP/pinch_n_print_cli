@@ -243,6 +243,39 @@ display     = "Thick bridges"
 description = "OrcaSlicer coBool key thick_bridges; when true, bridge extrusions use full un-scarfed layer height instead of the thin/adaptive bridge height. Consumed by run_perimeters: D4 per-vertex bridge flow factor via slicer_core::flow::bridging_flow (thick_bridges=true short-circuits the ratio to 1.0)."
 group       = "Quality"
 
+# ── Packet 150 Step 6: dead-read fix ─────────────────────────────────────
+# nozzle_diameter was already read by run_perimeters (R4 thin-wall threshold)
+# but never declared here, so the host's declared-key ConfigView filter
+# silently dropped it and the read always fell back to inner_wall_line_width
+# (pre-existing dead read, packet 150's original scope).
+# layer_height is a NEW read introduced by packet 150 Step 5's bridging_flow
+# signature change (threaded through emit_walls for the thick_bridges
+# round-cross-section formula, mirroring nozzle_diameter) — it was never a
+# pre-existing dead read; it did not exist before this packet. It is declared
+# here from the start so it does not repeat the same silent-fallback bug.
+# Defaults below match the code-side fallback values exactly
+# (nozzle_diameter -> inner_wall_line_width, layer_height -> 0.2).
+
+[config.schema.nozzle_diameter]
+type        = "float"
+default     = 0.4
+min         = 0.1
+max         = 2.0
+unit        = "mm"
+display     = "Nozzle diameter"
+description = "OrcaSlicer coFloat key nozzle_diameter; read by run_perimeters for the R4 thin-wall threshold (min_width = nozzle_diameter/3) and threaded into bridging_flow. Falls back to inner_wall_line_width when absent."
+group       = "Walls"
+
+[config.schema.layer_height]
+type        = "float"
+default     = 0.2
+min         = 0.01
+max         = 2.0
+unit        = "mm"
+display     = "Layer height"
+description = "OrcaSlicer coFloat key layer_height; read by run_perimeters (packet 150 step 5) alongside nozzle_diameter for bridging_flow's thick_bridges round-cross-section formula (D-104g)."
+group       = "Quality"
+
 [config.overridable-per-region]
 keys = []
 

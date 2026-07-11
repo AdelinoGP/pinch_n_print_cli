@@ -523,8 +523,16 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
 
     const OUTER_WIDTH_MM: f32 = 0.5;
     const SPACING_WIDTH_MM: f32 = 0.4;
-    const EXPECTED_OFFSET_MM: f64 =
-        -((OUTER_WIDTH_MM as f64 / 2.0) - (SPACING_WIDTH_MM as f64 / 2.0));
+    const LAYER_HEIGHT_MM: f64 = 0.2; // matches lib.rs's `unwrap_or(0.2)` default (no "layer_height" key set below)
+                                      // Orca-parity precise-outer-wall inset: wall_0_inset =
+                                      // -(ext_perimeter_width/2 - ext_perimeter_spacing/2). Because spacing =
+                                      // width - layer_height*(1 - PI/4) (line_width_to_spacing), this reduces
+                                      // to the WIDTH-INDEPENDENT expression below: -layer_height*(1-PI/4)/2 ==
+                                      // -0.0214602 for LAYER_HEIGHT_MM = 0.2. Was `-0.05` (a raw-width-era
+                                      // value, stale after the AC-3 spacing conversion); corrected in packet
+                                      // 150 Step 4 alongside the lib.rs fix that pairs the outer wall's own
+                                      // spacing with its own raw width in `outer_wall_offset`.
+    const EXPECTED_OFFSET_MM: f64 = -(LAYER_HEIGHT_MM * (1.0 - std::f64::consts::PI / 4.0)) / 2.0;
     const TOLERANCE_MM: f32 = 1e-3;
 
     let make_config = |precise_outer_wall: bool| -> ConfigView {

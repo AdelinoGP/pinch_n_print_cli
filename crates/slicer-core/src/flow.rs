@@ -77,17 +77,49 @@ pub fn flow_to_width(spacing: f32, layer_height: f32) -> f32 {
     (spacing + layer_height * pi_minus_quarter).max(spacing)
 }
 
-/// Flow-rate multiplier applied to bridging extrusions (packet 149, D4).
+/// Flow-rate multiplier applied to bridging extrusions (packet 149 D4;
+/// packet 150 step 5 closes D-104g's `thick_bridges` stub).
 ///
-/// Mirrors OrcaSlicer's `LayerRegion.cpp` `bridging_flow`: the real formula is
+/// Mirrors OrcaSlicer's `LayerRegion.cpp` `bridging_flow`. The non-thick
+/// branch applies `bridge_flow_ratio` directly (the real formula is
 /// `base_flow.with_flow_ratio(bridge_flow_ratio)` — `bridge_flow_ratio` is a
-/// ratio applied on top of the base flow, not a standalone constant. The
-/// `thick_bridges == true` branch returning `1.0` (i.e. no flow reduction) is
-/// a Pinch 'n Print divergence from OrcaSlicer's per-path `Flow`
-/// height/nozzle-diameter model, registered as deviation D-104g.
-pub fn bridging_flow(bridge_flow_ratio: f32, thick_bridges: bool) -> f32 {
+/// ratio applied on top of the base flow, not a standalone constant; PnP's
+/// per-vertex `flow_factor` model applies the ratio as-is).
+///
+/// The `thick_bridges == true` branch now computes OrcaSlicer's
+/// round-cross-section flow factor: a bridge is extruded as a round thread
+/// of diameter `dmr = nozzle_diameter * sqrt(bridge_flow_ratio)`
+/// (`Flow::bridging_flow`, `Flow.hpp`/`Flow.cpp`), and the returned factor is
+/// that thread's cross-section area relative to a flat bead of the given
+/// `bead_width` × `layer_height`:
+///
+/// ```text
+/// dmr = nozzle_diameter * sqrt(bridge_flow_ratio)
+/// factor = (PI * dmr^2 / 4) / (bead_width * layer_height)
+/// ```
+///
+/// `nozzle_diameter`, `bead_width`, and `layer_height` must all be in the
+/// same unit (mm at all current call sites) — the result is a dimensionless
+/// area ratio, so a unit mismatch between them silently produces the wrong
+/// factor. Sanity case: nozzle=0.4mm, bridge_flow_ratio=1.0, bead_width=0.4mm,
+/// layer_height=0.2mm → dmr=0.4mm → factor ≈ 1.5708.
+///
+/// Degenerate inputs (`bead_width <= 0`, `layer_height <= 0`, or
+/// `nozzle_diameter <= 0`) fall back to the non-thick behavior
+/// (`bridge_flow_ratio`) rather than dividing by zero / producing NaN.
+pub fn bridging_flow(
+    bridge_flow_ratio: f32,
+    thick_bridges: bool,
+    nozzle_diameter: f32,
+    bead_width: f32,
+    layer_height: f32,
+) -> f32 {
     if thick_bridges {
-        1.0
+        if bead_width <= 0.0 || layer_height <= 0.0 || nozzle_diameter <= 0.0 {
+            return bridge_flow_ratio;
+        }
+        let dmr = nozzle_diameter * bridge_flow_ratio.sqrt();
+        core::f32::consts::PI * dmr * dmr / (4.0 * bead_width * layer_height)
     } else {
         bridge_flow_ratio
     }
@@ -134,5 +166,35 @@ mod tests {
         let w2 = flow_to_width(s, lh);
         // For the canonical case, round-trip should match within epsilon.
         assert!((w - w2).abs() < 0.001, "w={w} w2={w2}");
+    }
+
+    #[test]
+    fn bridging_flow_non_thick_returns_ratio_unchanged() {
+        // Non-thick branch is unchanged by the signature/formula update:
+        // it must still return bridge_flow_ratio verbatim, independent of
+        // nozzle_diameter/bead_width/layer_height.
+        assert_eq!(bridging_flow(1.0, false, 0.4, 0.4, 0.2), 1.0);
+        assert_eq!(bridging_flow(0.85, false, 0.4, 0.4, 0.2), 0.85);
+        assert_eq!(bridging_flow(0.85, false, 0.0, 0.0, 0.0), 0.85);
+    }
+
+    #[test]
+    #[allow(clippy::approx_constant)] // 1.5708 is the OrcaSlicer-derived expected value, not FRAC_PI_2 used intentionally.
+    fn bridging_flow_thick_round_cross_section_factor() {
+        // OrcaSlicer sanity case: nozzle=0.4, bridge_flow_ratio=1.0,
+        // bead_width=0.4, layer_height=0.2 -> dmr=0.4 ->
+        // factor = PI*0.16/(4*0.4*0.2) = PI*0.16/0.32 ~= 1.5708.
+        let f = bridging_flow(1.0, true, 0.4, 0.4, 0.2);
+        assert!((f - 1.5708).abs() < 0.01, "got {f}");
+    }
+
+    #[test]
+    fn bridging_flow_thick_degenerate_inputs_fall_back_to_ratio() {
+        // Zero/negative bead_width, layer_height, or nozzle_diameter would
+        // divide by zero / produce NaN under the round-cross-section
+        // formula; fall back to the non-thick ratio instead.
+        assert_eq!(bridging_flow(0.9, true, 0.4, 0.0, 0.2), 0.9);
+        assert_eq!(bridging_flow(0.9, true, 0.4, 0.4, 0.0), 0.9);
+        assert_eq!(bridging_flow(0.9, true, 0.0, 0.4, 0.2), 0.9);
     }
 }

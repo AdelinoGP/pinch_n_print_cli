@@ -61,7 +61,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_core::flow::bridging_flow;
+use slicer_core::flow::{bridging_flow, flow_to_width, line_width_to_spacing};
 use slicer_core::perimeter_utils::{generate_sharp_corner_seam_candidates, point_in_any_polygon};
 use slicer_ir::{
     extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
@@ -108,14 +108,66 @@ pub struct ArachnePerimeters;
 fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let defaults = ArachneParams::default();
 
-    let optimal_width = config
-        .get_float("optimal_width")
-        .map(|v| units_to_mm(v as i64) as f64)
-        .unwrap_or(defaults.optimal_width);
-    let preferred_bead_width_outer = config
+    // `layer_height`/`nozzle_diameter` are Z-axis-convention / physical-spec
+    // keys (docs/08_coordinate_system.md): stored and read as plain mm floats,
+    // never scaled units — no `units_to_mm` conversion, unlike the bead-width
+    // keys below. Defaults mirror layer-planner-default.toml's layer_height
+    // default (0.2mm) and this module's own optimal_width raw default
+    // (mm_to_units(0.4) = 4000 units = 0.4mm nozzle).
+    let layer_height_mm = config.get_float("layer_height").unwrap_or(0.2);
+    let nozzle_diameter_mm = config.get_float("nozzle_diameter").unwrap_or(0.4);
+
+    // AC-3: feed Flow SPACING (not raw width) to the beading pipeline.
+    // `optimal_width` stands in for OrcaSlicer's `ext_perimeter_spacing`
+    // (see the precise-outer-wall doc comment below) — bead_width_0 =
+    // ext_perimeter_spacing (PerimeterGenerator.cpp:2129), and WallToolPaths
+    // receives perimeter_spacing = perimeter_flow.scaled_spacing()
+    // (PerimeterGenerator.cpp:578,2172-2173; Flow.hpp:67). Convert the raw
+    // configured line width to spacing via line_width_to_spacing (mm in,
+    // mm out) BEFORE handing it to the beading strategy stack.
+    let optimal_width = {
+        let raw_width_mm = config
+            .get_float("optimal_width")
+            .map(|v| units_to_mm(v as i64) as f64)
+            .unwrap_or(defaults.optimal_width);
+        let spacing = line_width_to_spacing(
+            raw_width_mm as f32,
+            layer_height_mm as f32,
+            nozzle_diameter_mm as f32,
+        ) as f64;
+        // line_width_to_spacing returns 0 for degenerate width<=layer_height
+        // configs (Orca asserts width>=height); fall back to raw width to
+        // avoid zero-spacing bead collapse.
+        if spacing <= 0.0 {
+            raw_width_mm
+        } else {
+            spacing
+        }
+    };
+    // AC-3 (cont'd): OrcaSlicer sets `bead_width_0 = ext_perimeter_spacing`
+    // (PerimeterGenerator.cpp:2129) — the outer bead's target width fed to the
+    // beading engine is ALSO the spacing value, not the raw configured width.
+    // Keep the raw mm width separately (`preferred_bead_width_outer_raw`) for
+    // the precise_outer_wall inset formula below, which mirrors OrcaSlicer's
+    // `wall_0_inset = -(ext_perimeter_width/2 - ext_perimeter_spacing/2)` and
+    // needs the true (unconverted) `ext_perimeter_width`.
+    let preferred_bead_width_outer_raw = config
         .get_float("preferred_bead_width_outer")
         .map(|v| units_to_mm(v as i64) as f64)
         .unwrap_or(defaults.preferred_bead_width_outer);
+    let preferred_bead_width_outer_spacing = line_width_to_spacing(
+        preferred_bead_width_outer_raw as f32,
+        layer_height_mm as f32,
+        nozzle_diameter_mm as f32,
+    ) as f64;
+    // line_width_to_spacing returns 0 for degenerate width<=layer_height
+    // configs (Orca asserts width>=height); fall back to raw width to avoid
+    // zero-spacing bead collapse.
+    let preferred_bead_width_outer = if preferred_bead_width_outer_spacing <= 0.0 {
+        preferred_bead_width_outer_raw
+    } else {
+        preferred_bead_width_outer_spacing
+    };
     let max_bead_count = config
         .get_int("max_bead_count")
         .map(|v| v as u32)
@@ -131,9 +183,13 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let min_length_factor = config
         .get_float("min_length_factor")
         .unwrap_or(defaults.min_length_factor);
+    // `min_feature_size` is now `percent` (packet 150, D-104h): resolve via
+    // get_abs_value against nozzle_diameter (mm), which returns an
+    // already-absolute mm value directly (no units_to_mm needed) — matches
+    // the old get_float+units_to_mm result unit (mm) for the same 25%-of-0.4mm
+    // default (25% * 0.4mm = 0.1mm == units_to_mm(1000)).
     let min_feature_size = config
-        .get_float("min_feature_size")
-        .map(|v| units_to_mm(v as i64) as f64)
+        .get_abs_value("min_feature_size", nozzle_diameter_mm)
         .unwrap_or(defaults.min_feature_size);
     let min_bead_width = config
         .get_float("min_bead_width")
@@ -153,21 +209,33 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         let visvalingam_area_threshold = config.get_float("visvalingam_area_threshold").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.visvalingam_area_threshold);
         let min_width = config.get_float("min_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.min_width);
 
-        let wall_transition_length = config.get_float("wall_transition_length").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.wall_transition_length);
+        // `wall_transition_length` is now `percent` (packet 150, D-104h): resolve
+        // via get_abs_value against nozzle_diameter (mm) — already-absolute mm,
+        // matching the old get_float+units_to_mm result unit (mm) for the same
+        // 100%-of-0.4mm default.
+        let wall_transition_length = config.get_abs_value("wall_transition_length", nozzle_diameter_mm).unwrap_or(defaults.wall_transition_length);
         let wall_transition_angle = config.get_float("wall_transition_angle").map(|v| v.to_radians()).unwrap_or(defaults.wall_transition_angle);
         let initial_layer_min_bead_width = config.get_float("initial_layer_min_bead_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.initial_layer_min_bead_width);
 
-        // Precise outer wall (packet 148, Step 6): mirrors OrcaSlicer's
-        // `PerimeterGenerator.cpp:2146-2158` `apply_precise_outer_wall =
-        // precise_outer_wall && wall_sequence == InnerOuter` gate, and
-        // `wall_0_inset = -(ext_perimeter_width/2 - ext_perimeter_spacing/2)`
-        // when the gate is satisfied (else 0). `preferred_bead_width_outer`
-        // stands in for upstream's `ext_perimeter_width` (it is this
-        // pipeline's own dedicated "outermost bead" width field, per its own
-        // doc comment) and `optimal_width` stands in for
-        // `ext_perimeter_spacing` (the nominal/general wall width) — the two
-        // width-like config keys this function already reads; there is no
-        // separate "spacing" concept threaded through `ArachneParams`.
+        // Precise outer wall (packet 148, Step 6; corrected packet 150, Step
+        // 4): mirrors OrcaSlicer's `PerimeterGenerator.cpp:2146-2158`
+        // `apply_precise_outer_wall = precise_outer_wall && wall_sequence ==
+        // InnerOuter` gate, and `wall_0_inset = -(ext_perimeter_width/2 -
+        // ext_perimeter_spacing/2)` when the gate is satisfied (else 0).
+        // `preferred_bead_width_outer` stands in for upstream's
+        // `ext_perimeter_width` (it is this pipeline's own dedicated
+        // "outermost bead" width field, per its own doc comment). BOTH terms
+        // of the inset must derive from the SAME outer/external flow
+        // (`ext_perimeter_width` / `ext_perimeter_spacing`), not the general
+        // wall's `optimal_width` — so this pairs `preferred_bead_width_outer_raw`
+        // (the true unconverted `ext_perimeter_width`) with
+        // `preferred_bead_width_outer` (its own spacing, computed above via
+        // `line_width_to_spacing`, mirroring `ext_perimeter_spacing`),
+        // matching `wall_0_inset = -(ext_perimeter_width/2 -
+        // ext_perimeter_spacing/2)` exactly. (Packet 150 Step 4 first wired
+        // this to `optimal_width` — the general/inner wall's spacing — which
+        // was wrong: it mixed the outer wall's raw width with a different
+        // wall's spacing.)
         // `outer_wall_offset` remains directly overridable via its own
         // registered config key (read above pre-gate as the base/manual
         // value) when the precise-outer-wall gate does not apply, preserving
@@ -179,7 +247,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             .map(|s| s == "InnerOuter")
             .unwrap_or(true); // default wall_sequence is "InnerOuter"
         let outer_wall_offset = if precise_outer_wall && wall_sequence_is_inner_outer {
-            -((preferred_bead_width_outer / 2.0) - (optimal_width / 2.0))
+            -((preferred_bead_width_outer_raw / 2.0) - (preferred_bead_width_outer / 2.0))
         } else {
             manual_outer_wall_offset
         };
@@ -346,6 +414,19 @@ impl LayerModule for ArachnePerimeters {
             .map(|v| v as f32)
             .unwrap_or(1.0);
         let thick_bridges = config.get_bool("thick_bridges").unwrap_or(false);
+        // nozzle_diameter/layer_height (packet 150 step 5): re-read here (mm,
+        // same config keys + defaults as arachne_params_from_config's own
+        // local reads above) so the thick_bridges round-cross-section
+        // formula below has the physical-spec inputs it needs; ArachneParams
+        // does not carry them back out of that function.
+        let nozzle_diameter_mm = config
+            .get_float("nozzle_diameter")
+            .map(|v| v as f32)
+            .unwrap_or(0.4);
+        let layer_height_mm = config
+            .get_float("layer_height")
+            .map(|v| v as f32)
+            .unwrap_or(0.2);
 
         // Per-color (MMU) wiring (P112 Step 10B): `regions` already contains
         // one entry per paint-color cell (see PrePass::PaintSegmentation) plus
@@ -432,10 +513,26 @@ impl LayerModule for ArachnePerimeters {
                         };
                         if point_in_any_polygon(&units_pt, bridge_areas) {
                             feature_flags[i].is_bridge = true;
-                            // D4: bridge vertices get the bridging flow factor
-                            // (mirrors OrcaSlicer's LayerRegion.cpp bridging_flow).
-                            path.points[i].flow_factor =
-                                bridging_flow(bridge_flow_ratio, thick_bridges);
+                            // D4/packet 150 step 5: bridge vertices get the
+                            // bridging flow factor (mirrors OrcaSlicer's
+                            // LayerRegion.cpp bridging_flow). `path.points[i].width`
+                            // is the beading engine's own bead width, which is
+                            // fed by AC-3's SPACING-domain `optimal_width` (see
+                            // this file's `arachne_params_from_config`) — not
+                            // the raw pre-spacing flow width the Orca formula's
+                            // flat-bead denominator expects. Recover the raw mm
+                            // flow width via `flow_to_width` (inverse of
+                            // `line_width_to_spacing`) before handing it to
+                            // `bridging_flow`'s round-cross-section factor.
+                            let bead_flow_width_mm =
+                                flow_to_width(path.points[i].width, layer_height_mm);
+                            path.points[i].flow_factor = bridging_flow(
+                                bridge_flow_ratio,
+                                thick_bridges,
+                                nozzle_diameter_mm,
+                                bead_flow_width_mm,
+                                layer_height_mm,
+                            );
                         }
                     }
                 }

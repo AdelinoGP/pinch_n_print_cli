@@ -25,9 +25,22 @@ use slicer_sdk::views::SliceRegionView;
 
 const OUTER_WIDTH_MM: f32 = 0.5;
 const SPACING_WIDTH_MM: f32 = 0.4;
-/// Expected `ArachneParams.outer_wall_offset` (mm) when the gate is
-/// satisfied: `-(ext_perimeter_width/2 - ext_perimeter_spacing/2)`.
-const EXPECTED_OFFSET_MM: f64 = -((OUTER_WIDTH_MM as f64 / 2.0) - (SPACING_WIDTH_MM as f64 / 2.0));
+/// Fixture layer height (mm) — module fallback default, matches
+/// `make_region`'s implicit layer used by `run_perimeters` (no `layer_height`
+/// key set in `make_config`, so the 0.2mm module default applies).
+const LAYER_HEIGHT_MM: f64 = 0.2;
+/// Expected outer-wall min-x shift (mm) when the gate is satisfied.
+///
+/// Spacing-correct Orca-parity inset; was `-0.05` (raw-width era, computed
+/// from `-(ext_perimeter_width/2 - ext_perimeter_spacing/2)` using the raw
+/// configured widths directly). Corrected in packet 150 (D-105): both
+/// `optimal_width` and `preferred_bead_width_outer` are converted
+/// width->spacing via `line_width_to_spacing` before the beading engine sees
+/// them (AC-3), so the observed toolpath shift collapses to a width-independent
+/// function of layer height alone: `-(layer_height * (1 - PI/4)) / 2`. Derived
+/// in-test from `LAYER_HEIGHT_MM` (rot-proof, self-documenting) rather than
+/// hardcoded, and matches the `arachne_parity.rs` lock for this same formula.
+const EXPECTED_OFFSET_MM: f64 = -(LAYER_HEIGHT_MM * (1.0 - std::f64::consts::PI / 4.0)) / 2.0;
 const TOLERANCE_MM: f32 = 1e-3;
 
 /// Builds a config with distinct `optimal_width`/`preferred_bead_width_outer`
