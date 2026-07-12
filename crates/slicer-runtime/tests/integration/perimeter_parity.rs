@@ -180,6 +180,15 @@ pub fn run_pipeline_capturing_perimeters(
             config_source.entry(key).or_insert_with(|| value.clone());
         }
     }
+    // Mirror `slicer_runtime::run_slice`'s `slice_has_paint` host-injection
+    // (classic-perimeters.toml `[config.schema.slice_has_paint]`) so this
+    // harness exercises the same painted-slice medial-axis gate production
+    // does, instead of silently leaving it inert.
+    if mesh.objects.iter().any(|o| o.paint_data.is_some())
+        && !config_source.contains_key("slice_has_paint")
+    {
+        config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
+    }
     if !config_source.contains_key("wipe_tower_enabled") {
         use std::collections::BTreeSet;
         let mut tools: BTreeSet<u32> = BTreeSet::new();
@@ -1135,16 +1144,30 @@ fn solid_square_perimeter_parity() {
 // region (3 around the outer boundary + 3 around the hole boundary).
 // ----------------------------------------------------------------------------
 
-/// Note (recorded finding, see follow_up): the FIRST wall (w0, 5 points) is
-/// the exterior boundary's first ring — a clean rectangle, since insetting a
-/// CONVEX corner (the square's 4 outer corners) needs only a sharp miter
-/// point. The SECOND wall (w1, 57 points) is the hole boundary's first ring
-/// — it has many extra points because insetting a REFLEX/concave corner
-/// (the hole's 4 corners, concave from the solid material's offsetting
-/// perspective) requires an arc fillet, discretized per
-/// `perimeter_arc_tolerance` (default 0.0125mm). This is expected
+/// Note (recorded finding, see follow_up): walls interleave contour/hole per
+/// depth — w0 (Outer, 5 pts) is the exterior boundary's first ring, a clean
+/// rectangle (insetting a CONVEX corner, the square's 4 outer corners, needs
+/// only a sharp miter point); w1 (Outer, 57 pts) is the SAME depth's hole
+/// boundary ring — it has many extra points because insetting a
+/// REFLEX/concave corner (the hole's 4 corners, concave from the solid
+/// material's offsetting perspective) requires an arc fillet, discretized
+/// per `perimeter_arc_tolerance` (default 0.0125mm); w2/w3 and w4/w5 repeat
+/// the same contour/hole pairing for depths 1 and 2. This is expected
 /// offset-geometry behavior, not a bug — verified by inspecting the actual
 /// recorded point coordinates (a tight arc around each hole corner).
+///
+/// Re-baselined 2026-07-11 (gap-1 follow-up, D-150): `polygon_ops` now nests
+/// a wall depth's hole correctly under `ExPolygon.holes` instead of emitting
+/// it as an accidental second top-level `ExPolygon` (the pre-fix `offset`
+/// flattened every result path to a solid contour, so the hole ring only
+/// ever reached `emit_walls` by masquerading as an unrelated top-level
+/// "island" that its polygon-index loop happened to walk anyway).
+/// `emit_walls` now explicitly walks `poly.holes` per depth to emit the
+/// hole-ring wall, which is the same 6-wall, contour/hole-interleaved shape
+/// as before — this fixture's total wall count and pairing were never wrong,
+/// only vertex-list rotation shifted (Clipper2's `execute_tree` vs the old
+/// flat `execute` doesn't guarantee the same starting vertex), hence the
+/// re-record.
 fn holed_square_mesh() -> Vec<Tri> {
     let mut tris = Vec::new();
     tris.extend(solid_box([0.0, 0.0, 0.0], [6.0, 20.0, 3.0])); // left strip
@@ -1444,13 +1467,24 @@ fn overhang_ramp_perimeter_parity() {
 // layer 0..=9 fragments into 3 regions (id=1 tool0, id=2 tool1, id=3 tool2),
 // each region tracing its own Outer + Inner wall loops. This is the ADR-0013
 // Model A shape this fixture demonstrates.
-//   - Interior layers 1..=8 are uniform: region id=1 = 4 walls
-//     (Outer/Inner/Inner/ThinWall), id=2 = 3 walls (Outer/Inner/Inner, the
-//     widest wedge, no thin sliver), id=3 = 4 walls (…/ThinWall). The extra
-//     ThinWall in id=1/id=3 is the correct thin-wedge behavior near the narrow
-//     centroid corner (NOT a bug — a thin wedge legitimately gets a ThinWall).
+//   - Every layer is uniform: each region = 3 walls (Outer/Inner/Inner), no
+//     ThinWall. Re-baselined after D-150-MULTI-TOOL-TRIANGLE-PREEXISTING was
+//     root-caused and closed: `slice_has_paint` (classic-perimeters.toml
+//     `[config.schema.slice_has_paint]`, "host-injected") was declared but
+//     never actually injected by the host, so the painted-slice medial-axis
+//     gate added 2026-06-24 (see the `gap_fill_medial_axis_on_painted` comment
+//     in classic-perimeters/src/lib.rs) was permanently inert — medial axis
+//     ran on this fixture's painted per-color regions regardless, hitting the
+//     boostvoronoi `robust_fpt` `fpv.is_finite()` degenerate-input panic (see
+//     the medial_axis.rs `catch_unwind` backstop) non-deterministically across
+//     regions/layers and silently degrading wall geometry when it did. Fixed
+//     by injecting `slice_has_paint=true` (`slicer_runtime::run_slice` +
+//     this harness's mirror) whenever any object carries paint data, which
+//     correctly disables thin-wall/gap-fill medial axis for this fixture — no
+//     ThinWall is expected here now, on any layer, and the boostvoronoi panic
+//     no longer fires for this fixture at all.
 //   - Cap-contact layers 0 and 9 carry the SAME 3-region / same-wall-count
-//     partition, but their Outer walls have more points (8..12 vs 4): the cap
+//     partition, but their Outer walls have more points (5..6 vs 4): the cap
 //     projection is full-area on the contact layer, so the wedge geometry near
 //     the acute centroid corner produces extra offset-arc points. This is the
 //     expected top/bottom-segmentation contact-layer nuance, not a divergence.
@@ -1560,11 +1594,15 @@ fn multi_tool_triangle_config() -> serde_json::Value {
 // (two consecutive recorder runs produced byte-identical JSON), so it IS
 // recorded and gated by an active `multi_tool_triangle_perimeter_parity` test.
 //
-// Separately, an ambient, non-fatal `boostvoronoi` "is_finite" assertion panic
-// fires intermittently on background worker threads for THIS and for all other
-// fixtures alike; it is caught, does not alter captured output, and fails no
-// test — a pre-existing repo-wide numerical wobble, not specific to this
-// fixture.
+// An ambient, non-fatal `boostvoronoi` "is_finite" assertion panic still fires
+// on other fixtures in this suite (medial_axis.rs / voronoi_graph.rs both wrap
+// the builder in `catch_unwind` and degrade to an empty/error result on panic
+// — a pre-existing repo-wide numerical wobble in the boostvoronoi crate, not
+// specific to any one fixture). It NO LONGER fires for THIS fixture: it used
+// to, via classic-perimeters' medial-axis thin-wall/gap-fill call on this
+// fixture's painted per-color regions, until D-150-MULTI-TOOL-TRIANGLE-PREEXISTING
+// was root-caused to the inert `slice_has_paint` gate (see the fixture header
+// comment above) and fixed by actually wiring the host injection.
 //
 // The `#[ignore]`-marked recorder below regenerates `multi_tool_triangle.3mf`
 // + `config.json` + `expected_perimeter_ir.json`; re-run it after any

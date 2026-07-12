@@ -68,6 +68,65 @@ fn expolygon_to_paths(exp: &ExPolygon) -> Vec<Vec<Point64>> {
     paths
 }
 
+/// Reconstructs `ExPolygon` contour/hole/island nesting from a Clipper2
+/// `PolyTree64` (boolean-op or offset result). The root's direct children are
+/// top-level outer contours; each contour's direct children are its holes;
+/// islands nested inside a hole are fresh outer contours one level deeper
+/// (recursed). Every ring is re-oriented to the Slic3r convention (contour
+/// CCW, hole CW). Mirrors `triangle_mesh_slicer::polygons_to_expolygons`'s
+/// tree walk — see that function's doc comment for why PolyTree
+/// reconstruction is required instead of treating every result path as an
+/// independent solid contour (the latter silently drops holes, which for a
+/// Union/Difference/offset result means treating cutouts as solid area).
+fn expolygons_from_tree(tree: &clipper2_rust::PolyTree64) -> Vec<ExPolygon> {
+    let mut out = Vec::new();
+    for &child in tree.nodes[0].children() {
+        collect_expolygon_from_tree(tree, child, &mut out);
+    }
+    out
+}
+
+/// Build the `ExPolygon` rooted at contour node `node_idx`, attaching its
+/// direct hole children and recursing into islands nested inside those holes.
+fn collect_expolygon_from_tree(
+    tree: &clipper2_rust::PolyTree64,
+    node_idx: usize,
+    out: &mut Vec<ExPolygon>,
+) {
+    let contour = oriented_ring(tree.nodes[node_idx].polygon(), true);
+
+    let mut holes = Vec::new();
+    for &hole_idx in tree.nodes[node_idx].children() {
+        let hole = oriented_ring(tree.nodes[hole_idx].polygon(), false);
+        if hole.len() >= 3 {
+            holes.push(Polygon { points: hole });
+        }
+        // Islands sitting inside this hole are outer contours one level deeper.
+        for &inner_idx in tree.nodes[hole_idx].children() {
+            collect_expolygon_from_tree(tree, inner_idx, out);
+        }
+    }
+
+    if contour.len() >= 3 {
+        out.push(ExPolygon {
+            contour: Polygon { points: contour },
+            holes,
+        });
+    }
+}
+
+/// Orients a Clipper ring to the Slic3r convention: `want_ccw` forces CCW
+/// (positive signed area) for outer contours, else CW (negative area) for
+/// holes.
+fn oriented_ring(path: &[Point64], want_ccw: bool) -> Vec<Point2> {
+    let mut points: Vec<Point2> = path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect();
+    let is_ccw = signed_area_points(&points) > 0.0;
+    if is_ccw != want_ccw {
+        points.reverse();
+    }
+    points
+}
+
 /// Executes a boolean clip operation on polygon sets.
 pub fn clip_polygons(
     subject: &[ExPolygon],
@@ -75,38 +134,30 @@ pub fn clip_polygons(
     op: ClipOperation,
 ) -> Vec<ExPolygon> {
     use clipper2_rust::core::FillRule;
-    use clipper2_rust::{difference_64, intersect_64, union_64, xor_64};
+    use clipper2_rust::{boolean_op_tree_64, ClipType, PolyTree64};
 
-    // Flatten all polygons (contours + holes) into separate paths
-    // This is necessary because clipper2 operations work on flat path lists
-    // Note: This approach loses hole-contour relationships
+    // Flatten all polygons (contours + holes) into separate paths — clipper2
+    // boolean ops work on flat path lists as input regardless of hierarchy.
     let subject_paths: Vec<Vec<Point64>> = subject.iter().flat_map(expolygon_to_paths).collect();
     let clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
 
-    let result_paths = match op {
-        ClipOperation::Union => union_64(&subject_paths, &clip_paths, FillRule::NonZero),
-        ClipOperation::Intersection => intersect_64(&subject_paths, &clip_paths, FillRule::NonZero),
-        ClipOperation::Difference => difference_64(&subject_paths, &clip_paths, FillRule::NonZero),
-        ClipOperation::Xor => xor_64(&subject_paths, &clip_paths, FillRule::NonZero),
+    let clip_type = match op {
+        ClipOperation::Union => ClipType::Union,
+        ClipOperation::Intersection => ClipType::Intersection,
+        ClipOperation::Difference => ClipType::Difference,
+        ClipOperation::Xor => ClipType::Xor,
     };
 
-    // Convert result paths back to ExPolygon
-    // Note: This simple conversion treats every path as a separate ExPolygon with no holes.
-    // A full implementation would use PolyTree to reconstruct hierarchy.
-    result_paths
-        .into_iter()
-        .map(|path| {
-            // Reconstruct Polygon from Point64 vector
-            let points: Vec<Point2> = path
-                .into_iter()
-                .map(|p| Point2 { x: p.x, y: p.y })
-                .collect();
-            ExPolygon {
-                contour: Polygon { points },
-                holes: Vec::new(),
-            }
-        })
-        .collect()
+    let mut tree = PolyTree64::new();
+    boolean_op_tree_64(
+        clip_type,
+        FillRule::NonZero,
+        &subject_paths,
+        &clip_paths,
+        &mut tree,
+    );
+
+    expolygons_from_tree(&tree)
 }
 
 /// Computes the union of polygon sets.
@@ -215,9 +266,10 @@ pub fn offset(
 }
 
 /// Single inflate pass with every Clipper2 knob explicit. All offset-shaped
-/// wrappers in this module route through here so the path→`ExPolygon`
-/// conversion (each path a separate `ExPolygon`, no hole reconstruction —
-/// same limitation as `clip_polygons`) stays identical across them.
+/// wrappers in this module route through here. Uses `ClipperOffset::execute_tree`
+/// (rather than the `inflate_paths_64` free function, which only returns a flat
+/// path list) so the result's hole/island nesting survives — see
+/// [`expolygons_from_tree`].
 fn inflate_once(
     polygons: &[ExPolygon],
     delta_mm: f32,
@@ -225,14 +277,23 @@ fn inflate_once(
     miter_limit: f64,
     arc_tolerance_mm: f32,
 ) -> Vec<ExPolygon> {
-    use clipper2_rust::inflate_paths_64;
-    use clipper2_rust::{EndType, JoinType};
-
-    // Convert polygons to paths
-    let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
+    use clipper2_rust::{ClipperOffset, EndType, JoinType, PolyTree64};
 
     // Convert delta from mm to scaled units (1 unit = 100nm = 10^-4mm)
     let delta_units = (delta_mm as f64) * slicer_ir::UNITS_PER_MM;
+    if delta_units == 0.0 {
+        // Matches `inflate_paths_64`'s own delta==0.0 short-circuit: an
+        // insignificant offset is a no-op, so skip the offset/cleanup pass
+        // entirely and hand back the input unchanged (hole structure intact
+        // for free, since we never flatten it).
+        return polygons.to_vec();
+    }
+
+    // Convert polygons to paths
+    let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
+    if paths.is_empty() {
+        return Vec::new();
+    }
 
     // Map OffsetJoinType to clipper2_rust JoinType
     let join_type = match join {
@@ -241,28 +302,18 @@ fn inflate_once(
         OffsetJoinType::Square => JoinType::Square,
     };
 
-    let result_paths = inflate_paths_64(
-        &paths,
-        delta_units,
-        join_type,
-        EndType::Polygon,
+    let mut clip_offset = ClipperOffset::new(
         miter_limit,
         (arc_tolerance_mm as f64) * slicer_ir::UNITS_PER_MM,
+        false,
+        false,
     );
+    clip_offset.add_paths(&paths, join_type, EndType::Polygon);
 
-    result_paths
-        .into_iter()
-        .map(|path| {
-            let points: Vec<Point2> = path
-                .into_iter()
-                .map(|p| Point2 { x: p.x, y: p.y })
-                .collect();
-            ExPolygon {
-                contour: Polygon { points },
-                holes: Vec::new(),
-            }
-        })
-        .collect()
+    let mut tree = PolyTree64::new();
+    clip_offset.execute_tree(delta_units, &mut tree);
+
+    expolygons_from_tree(&tree)
 }
 
 /// Union of all subject ExPolygons with each other (no separate clip set).
@@ -349,8 +400,7 @@ pub fn offset2_ex(
     join: OffsetJoinType,
     miter_limit: f64,
 ) -> Vec<ExPolygon> {
-    use clipper2_rust::inflate_paths_64;
-    use clipper2_rust::{EndType, JoinType};
+    use clipper2_rust::{inflate_paths_64, ClipperOffset, EndType, JoinType, PolyTree64};
 
     let join_type = match join {
         OffsetJoinType::Miter => JoinType::Miter,
@@ -358,7 +408,11 @@ pub fn offset2_ex(
         OffsetJoinType::Square => JoinType::Square,
     };
 
-    // Pass 1: delta1 (typically negative / erode)
+    // Pass 1: delta1 (typically negative / erode). Flat paths only — hole
+    // nesting is re-derived once, from pass 2's PolyTree below. Clipper2's
+    // offset cleanup pass always emits correctly-wound rings regardless of
+    // whether the caller captures a tree, so feeding pass 2 with pass 1's
+    // flat output is equivalent to feeding it ExPolygons.
     let paths1: Vec<Vec<Point64>> = polys.iter().flat_map(expolygon_to_paths).collect();
     let delta1_units = delta1_mm * slicer_ir::UNITS_PER_MM;
     let intermediate = inflate_paths_64(
@@ -374,30 +428,16 @@ pub fn offset2_ex(
         return Vec::new();
     }
 
-    // Pass 2: delta2 (typically positive / dilate)
+    // Pass 2: delta2 (typically positive / dilate). Capture the PolyTree so
+    // the two-pass result's hole/island nesting survives — see
+    // [`expolygons_from_tree`].
     let delta2_units = delta2_mm * slicer_ir::UNITS_PER_MM;
-    let result_paths = inflate_paths_64(
-        &intermediate,
-        delta2_units,
-        join_type,
-        EndType::Polygon,
-        miter_limit,
-        0.0,
-    );
+    let mut clip_offset = ClipperOffset::new(miter_limit, 0.0, false, false);
+    clip_offset.add_paths(&intermediate, join_type, EndType::Polygon);
+    let mut tree = PolyTree64::new();
+    clip_offset.execute_tree(delta2_units, &mut tree);
 
-    result_paths
-        .into_iter()
-        .map(|path| {
-            let points: Vec<Point2> = path
-                .into_iter()
-                .map(|p| Point2 { x: p.x, y: p.y })
-                .collect();
-            ExPolygon {
-                contour: Polygon { points },
-                holes: Vec::new(),
-            }
-        })
-        .collect()
+    expolygons_from_tree(&tree)
 }
 
 /// Morphological open using configurable join type and miter limit.
@@ -443,7 +483,12 @@ pub fn keep_largest_contour_only(polys: &mut Vec<ExPolygon>) {
 /// Signed area of a polygon ring (contour) using the shoelace formula.
 /// Returns a positive value for CCW winding, negative for CW.
 fn signed_area(poly: &Polygon) -> f64 {
-    let pts = &poly.points;
+    signed_area_points(&poly.points)
+}
+
+/// Signed area of a point ring using the shoelace formula. Returns a
+/// positive value for CCW winding, negative for CW.
+fn signed_area_points(pts: &[Point2]) -> f64 {
     if pts.len() < 3 {
         return 0.0;
     }
@@ -713,6 +758,138 @@ mod tests {
         let b = square_10_offset(5, 0);
         let result = union_ex(&[a, b]);
         assert!(!result.is_empty());
+    }
+
+    /// Regression: `clip_polygons`/`union_ex` used to convert every Clipper
+    /// result path into an independent solid `ExPolygon` (`holes: Vec::new()`
+    /// unconditionally), discarding hole nesting entirely — see this file's
+    /// pre-fix history. An outer CCW ring + a strictly-nested CW ring, passed
+    /// as two flat "solid" `ExPolygon`s (exactly how a polygon-with-hole is
+    /// represented as flat Clipper paths), must union under `FillRule::NonZero`
+    /// into ONE `ExPolygon` with ONE hole, not two solid islands.
+    #[test]
+    fn union_ex_reconstructs_hole_from_opposite_wound_rings() {
+        let outer = make_expoly(&[(0, 0), (10, 0), (10, 10), (0, 10)], &[]); // CCW
+        let inner = make_expoly(&[(3, 3), (3, 7), (7, 7), (7, 3)], &[]); // CW
+        let result = union_ex(&[outer, inner]);
+        assert_eq!(
+            result.len(),
+            1,
+            "must merge into a single ExPolygon, not two solid islands"
+        );
+        assert_eq!(
+            result[0].holes.len(),
+            1,
+            "the CW inner ring must reconstruct as a hole, not a second solid contour"
+        );
+    }
+
+    /// Regression for the `apply_slice_closing_radius` bug (handoff gap 1):
+    /// `offset`'s underlying `inflate_once` used to flatten every result path
+    /// into an independent solid `ExPolygon`, so the OrcaSlicer
+    /// inflate-then-deflate `slice_closing_radius` round trip silently turned
+    /// any hole into a second solid contour. The hole here (0.8mm) is much
+    /// larger than 2x the closing radius (0.1mm), so it must survive both
+    /// dimensionally (not closed) and hierarchically (still nested as a hole).
+    #[test]
+    fn offset_erodes_hole_open_correctly_when_shrinking_solid() {
+        let annulus = make_expoly(
+            &[(0, 0), (20000, 0), (20000, 20000), (0, 20000)],
+            &[&[(6000, 6000), (6000, 14000), (14000, 14000), (14000, 6000)]],
+        );
+        // Erode (shrink solid) by 0.1mm — outer contour shrinks inward, hole grows.
+        let result = offset(&[annulus], -0.1, OffsetJoinType::Miter, 0.0);
+        assert_eq!(
+            result.len(),
+            1,
+            "erosion must stay a single ExPolygon with its hole, not split (got {result:?})"
+        );
+        assert_eq!(
+            result[0].holes.len(),
+            1,
+            "hole must survive erosion (grown, not vanished/flattened)"
+        );
+    }
+
+    #[test]
+    fn offset_iterative_erosion_mimics_emit_walls_loop() {
+        // Mirrors classic-perimeters emit_walls's iterative inset loop: i=0 by
+        // -0.2mm, i=1 by -0.4mm, i>=2 by -0.4mm each, feeding each result into
+        // the next. 1 unit = 100nm, so 10_000 units = 1mm: outer 20mm square
+        // (0,0)-(200000,200000), 8mm hole (60000,60000)-(140000,140000) — a
+        // 6mm gap each side, matching perimeter_parity.rs's real
+        // `annulus_frame_mesh` fixture dimensions. Plenty of room for 6
+        // iterations (~2.4mm total consumed of a 6mm gap).
+        let annulus = make_expoly(
+            &[(0, 0), (200000, 0), (200000, 200000), (0, 200000)],
+            &[&[
+                (60000, 60000),
+                (60000, 140000),
+                (140000, 140000),
+                (140000, 60000),
+            ]],
+        );
+        let mut current = vec![annulus];
+        let deltas = [-0.2, -0.4, -0.4, -0.4, -0.4, -0.4];
+        for (i, &delta) in deltas.iter().enumerate() {
+            let next = offset(&current, delta, OffsetJoinType::Miter, 0.0125);
+            assert!(!next.is_empty(), "iteration {i}: offset produced no output");
+            assert_eq!(
+                next.len(),
+                1,
+                "iteration {i}: must stay a single ExPolygon, not split into solid islands"
+            );
+            assert_eq!(
+                next[0].holes.len(),
+                1,
+                "iteration {i}: hole must survive this erosion step"
+            );
+            current = next;
+        }
+    }
+
+    #[test]
+    fn slice_closing_radius_round_trip_on_real_annulus_dimensions() {
+        // Exact production scenario: `apply_slice_closing_radius` (Round join,
+        // r=0.049mm, the ResolvedConfig default) applied to the same
+        // dimensions as perimeter_parity.rs's `annulus_frame_mesh` fixture
+        // (20mm outer, 6-14mm hole).
+        let annulus = make_expoly(
+            &[(0, 0), (200000, 0), (200000, 200000), (0, 200000)],
+            &[&[
+                (60000, 60000),
+                (60000, 140000),
+                (140000, 140000),
+                (140000, 60000),
+            ]],
+        );
+        let r = 0.049;
+        let inflated = offset(&[annulus], r, OffsetJoinType::Round, 0.0);
+        let result = offset(&inflated, -r, OffsetJoinType::Round, 0.0);
+        assert_eq!(result.len(), 1, "must stay a single ExPolygon");
+        assert_eq!(result[0].holes.len(), 1, "hole must survive the round trip");
+    }
+
+    #[test]
+    fn offset_round_trip_preserves_hole_nesting() {
+        // 2mm outer square (0,0)-(20000,20000), CCW; 0.8mm hole
+        // (6000,6000)-(14000,14000), CW.
+        let annulus = make_expoly(
+            &[(0, 0), (20000, 0), (20000, 20000), (0, 20000)],
+            &[&[(6000, 6000), (6000, 14000), (14000, 14000), (14000, 6000)]],
+        );
+        let inflated = offset(&[annulus], 0.1, OffsetJoinType::Round, 0.0);
+        let result = offset(&inflated, -0.1, OffsetJoinType::Round, 0.0);
+        assert_eq!(
+            result.len(),
+            1,
+            "must stay a single ExPolygon, not split into two solid islands"
+        );
+        assert_eq!(
+            result[0].holes.len(),
+            1,
+            "the 0.8mm hole must survive the closing-radius round trip as a hole"
+        );
     }
 
     #[test]

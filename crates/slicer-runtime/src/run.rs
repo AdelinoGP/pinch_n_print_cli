@@ -297,6 +297,21 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         }
     }
 
+    // Seed the host-injected `slice_has_paint` gate (classic-perimeters.toml
+    // `[config.schema.slice_has_paint]`, "Slice contains painted regions
+    // (host-injected)"): the module manifest declares this key expecting the
+    // host to populate it, but nothing ever did, so `medial_axis_enabled`'s
+    // painted-slice gate (added 2026-06-24 for exactly this boostvoronoi
+    // instability) was permanently inert — `_config.get_bool("slice_has_paint")`
+    // always saw `None` and fell back to `false` regardless of actual paint
+    // data. Set `true` whenever any object in the mesh carries paint data;
+    // never overrides an explicit user-supplied value.
+    if mesh_ir.objects.iter().any(|o| o.paint_data.is_some())
+        && !config_source.contains_key("slice_has_paint")
+    {
+        config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
+    }
+
     // Seed per-object config from `ObjectMesh.config.data`.
     for object in &mesh_ir.objects {
         for (subkey, value) in &object.config.data {

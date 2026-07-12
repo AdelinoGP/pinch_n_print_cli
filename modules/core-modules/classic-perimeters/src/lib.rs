@@ -34,7 +34,7 @@ use slicer_core::top_surface_split::split_top_surfaces;
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
     units_to_mm, variable_width, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D,
-    ExtrusionRole, LoopType, PaintSemantic, PaintValue, WallLoop, WidthProfile,
+    ExtrusionRole, LoopType, PaintSemantic, PaintValue, Polygon, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -161,6 +161,10 @@ impl LayerModule for ClassicPerimeters {
         // in a worker subprocess, skip it for painted slices (`slice_has_paint`
         // injected by the host) unless the user explicitly opts back in via
         // `gap_fill_medial_axis_on_painted`. Unpainted models keep full parity.
+        // (D-150, 2026-07-11: `slice_has_paint` was declared here but never
+        // actually injected by any host code, making this gate permanently
+        // inert until `slicer_runtime::run_slice`/`run.rs` was fixed to set it
+        // whenever any `ObjectMesh` carries `paint_data`.)
         let gap_fill_medial_axis_on_painted = _config
             .get_bool("gap_fill_medial_axis_on_painted")
             .unwrap_or(false);
@@ -687,44 +691,65 @@ impl ClassicPerimeters {
                 inner_speed_factor
             };
 
-            for (poly_idx, poly) in wall_polys.iter().enumerate() {
-                // Raw (pre-spacing) mm flow width for this wall's beads —
-                // reused below by bridging_flow's thick_bridges
-                // round-cross-section factor (packet 150 step 5): unlike
-                // arachne-perimeters, this module never converts wall line
-                // widths to spacing, so no flow_to_width recovery is needed.
-                let bead_flow_width_mm = self.line_width_for(
-                    *perimeter_index,
-                    outer_wall_line_width,
-                    inner_wall_line_width,
-                );
-                let mut points =
-                    expolygon_to_path3d(&poly.contour, z, bead_flow_width_mm, overhang_bands);
+            // Raw (pre-spacing) mm flow width for this wall's beads — reused
+            // below by bridging_flow's thick_bridges round-cross-section
+            // factor (packet 150 step 5): unlike arachne-perimeters, this
+            // module never converts wall line widths to spacing, so no
+            // flow_to_width recovery is needed. Constant across every ring
+            // (contour and holes alike) at this wall depth.
+            let bead_flow_width_mm = self.line_width_for(
+                *perimeter_index,
+                outer_wall_line_width,
+                inner_wall_line_width,
+            );
+
+            // Builds one `WallLoop` for a single ring (a contour or a hole of
+            // `wall_polys[poly_idx]`), or `None` if the ring degenerates to no
+            // points. `is_contour=false` (a hole ring) always uses the honest
+            // "no annotation available" default rather than misapplying the
+            // parent contour's paint/reprojection data to unrelated hole
+            // vertices — `build_wall_flags`'s index path AND its geometric
+            // reprojection path (`nearest_original_vertex`) both only ever
+            // search `.contour.points`, never `.holes`, so neither is
+            // currently correct for a hole ring. D14 painted-variant fuzzy
+            // skin still applies (it's whole-region, not per-vertex).
+            let build_ring_wall = |ring: &Polygon, poly_idx: usize, is_contour: bool| {
+                let mut points = expolygon_to_path3d(ring, z, bead_flow_width_mm, overhang_bands);
                 if points.is_empty() {
-                    continue;
+                    return None;
                 }
                 let num_points = points.len();
 
-                let ring_pts: Option<&[slicer_ir::Point2]> = if is_outer {
-                    None
+                let (mut feature_flags, boundary_type) = if is_contour {
+                    let ring_pts: Option<&[slicer_ir::Point2]> =
+                        if is_outer { None } else { Some(&ring.points) };
+                    let orig_polys: Option<&[ExPolygon]> =
+                        if is_outer { None } else { Some(polygons) };
+                    build_wall_flags(
+                        num_points,
+                        poly_idx,
+                        segment_annotations,
+                        is_outer,
+                        ring_pts,
+                        orig_polys,
+                        variant_fuzzy,
+                    )
                 } else {
-                    Some(&poly.contour.points)
+                    build_wall_flags(
+                        num_points,
+                        usize::MAX,
+                        segment_annotations,
+                        false,
+                        None,
+                        None,
+                        variant_fuzzy,
+                    )
                 };
-                let orig_polys: Option<&[ExPolygon]> = if is_outer { None } else { Some(polygons) };
-                let (mut feature_flags, boundary_type) = build_wall_flags(
-                    num_points,
-                    poly_idx,
-                    segment_annotations,
-                    is_outer,
-                    ring_pts,
-                    orig_polys,
-                    variant_fuzzy,
-                );
                 // Per-vertex is_bridge: set for each vertex strictly inside any bridge area.
-                // poly.contour.points has N entries (integer units); feature_flags has N+1
+                // ring.points has N entries (integer units); feature_flags has N+1
                 // (closing repeat appended by expolygon_to_path3d). The closing repeat is
                 // handled by mirror_first_to_last below.
-                for (i, pt) in poly.contour.points.iter().enumerate() {
+                for (i, pt) in ring.points.iter().enumerate() {
                     if i < feature_flags.len() {
                         let is_bridge = point_in_any_polygon(pt, bridge_areas);
                         feature_flags[i].is_bridge = is_bridge;
@@ -741,7 +766,7 @@ impl ClassicPerimeters {
                 }
                 slicer_sdk::mirror_first_to_last(&mut feature_flags);
 
-                let wall = WallLoop {
+                Some(WallLoop {
                     perimeter_index: *perimeter_index,
                     loop_type,
                     path: ExtrusionPath3D {
@@ -750,19 +775,29 @@ impl ClassicPerimeters {
                         speed_factor,
                     },
                     width_profile: WidthProfile {
-                        widths: vec![
-                            self.line_width_for(
-                                *perimeter_index,
-                                outer_wall_line_width,
-                                inner_wall_line_width
-                            );
-                            num_points
-                        ],
+                        widths: vec![bead_flow_width_mm; num_points],
                     },
                     feature_flags,
                     boundary_type,
-                };
-                walls.push(wall);
+                })
+            };
+
+            for (poly_idx, poly) in wall_polys.iter().enumerate() {
+                if let Some(wall) = build_ring_wall(&poly.contour, poly_idx, true) {
+                    walls.push(wall);
+                }
+                // A hole surviving this wall depth is itself a real boundary
+                // facing open space — it needs its own wall loop, exactly
+                // like the contour, or the print gets zero boundary control
+                // around the hole (D-150/gap-1 follow-up: `polygon_ops`
+                // correctly nests holes now, so `wall_polys` no longer
+                // smuggles a hole in as its own separate solid `ExPolygon`
+                // the way the pre-fix flattening bug did).
+                for hole in &poly.holes {
+                    if let Some(wall) = build_ring_wall(hole, poly_idx, false) {
+                        walls.push(wall);
+                    }
+                }
             }
         }
 
