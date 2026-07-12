@@ -436,6 +436,25 @@ interface host-services {
 }
 ```
 
+### `arachne-params` record
+
+`generate-arachne-walls` takes an `arachne-params` record (defined in the
+`common.wit` `host-services` interface, mirroring
+`slicer_core::arachne::pipeline::ArachneParams` field-for-field, packet 112
+Step 9A). Every distance/width field is in millimeters. The two layer-position
+bool fields are **G10 plumbing; set by the module from region top/bottom
+metadata**:
+
+- `is-initial-layer: bool` — true when the region is on the first printed
+  layer (`layer-index() == 0`).
+- `is-bottom-layer: bool` — true when the region is the bottom of a shell
+  (derived from `SliceRegionView` bottom metadata).
+- `is-topmost-layer: bool` — true when the region is the topmost solid shell
+  layer (derived from `SliceRegionView` top metadata; G10). Together with
+  `is-bottom-layer` it lets `remove_small_lines` express OrcaSlicer's
+  `is_top_or_bottom_layer` lenient-threshold condition instead of keying only
+  on `is-initial-layer`.
+
 ---
 
 ## `world-layer.wit`

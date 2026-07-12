@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 152-arachne-topmost-layer-behavior
 task_ids:
   - none

@@ -142,6 +142,15 @@ pub struct ArachneParams {
     /// aware beading strategies override `min_output_width` with
     /// `initial_layer_min_bead_width`.
     pub is_initial_layer: bool,
+    /// Whether this run corresponds to the bottom (first) layer of the print,
+    /// used by layer-aware beading strategies for topmost-layer behavior
+    /// handling (packet 152). Mechanical plumbing in Step 1; set by the
+    /// pipeline in later steps.
+    pub is_bottom_layer: bool,
+    /// Whether this run corresponds to the topmost layer of the print, used by
+    /// layer-aware beading strategies (packet 152, G3 topmost detection).
+    /// Mechanical plumbing in Step 1; set by the pipeline in later steps.
+    pub is_topmost_layer: bool,
     /// Squared distance gate (mm²) for `simplify_toolpaths`: segments shorter
     /// than this AND within `allowed_error_distance_squared` of the chord are
     /// removed. Sourced from `meshfix_maximum_resolution` (mm) squared.
@@ -196,6 +205,8 @@ impl Default for ArachneParams {
             initial_layer_min_bead_width: 0.34,
             outer_wall_offset: 0.0,
             is_initial_layer: false,
+            is_bottom_layer: false,
+            is_topmost_layer: false,
             // Distance-gate defaults for simplify_toolpaths (N13).
             // meshfix_maximum_resolution = 0.05mm, squared = 0.0025 mm².
             smallest_line_segment_squared: 0.0025,
@@ -384,6 +395,7 @@ pub fn run_arachne_pipeline(
         params.min_length_factor,
         params.min_width,
         params.is_initial_layer,
+        params.is_topmost_layer || params.is_bottom_layer,
     );
     let (toolpaths, inner_contour) = separate_out_inner_contour(without_small);
     let simplified = simplify_toolpaths(

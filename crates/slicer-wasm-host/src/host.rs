@@ -1819,6 +1819,8 @@ impl hs::Host for HostExecutionContext {
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f64,
             outer_wall_offset: params.outer_wall_offset as f64,
             is_initial_layer: params.is_initial_layer,
+            is_bottom_layer: params.is_bottom_layer,
+            is_topmost_layer: params.is_topmost_layer,
             smallest_line_segment_squared: params.smallest_line_segment_squared as f64,
             allowed_error_distance_squared: params.allowed_error_distance_squared as f64,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f64,

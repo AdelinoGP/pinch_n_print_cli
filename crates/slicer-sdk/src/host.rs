@@ -495,6 +495,17 @@ pub struct ArachneParams {
     /// aware beading strategies override `min_output_width` with
     /// `initial_layer_min_bead_width`.
     pub is_initial_layer: bool,
+    /// Whether this run corresponds to the bottom layer of the object (layer
+    /// index 0 in object coordinates). Mirrors `is_initial_layer` but kept
+    /// distinct (per packet 152): the classic "first/last layer" small-line
+    /// threshold keys on this alone. Both fire on layer 0.
+    pub is_bottom_layer: bool,
+    /// Whether this run corresponds to the topmost shell of the object
+    /// (`top_shell_index == Some(0)`, Orca's `upper_slices == nullptr`).
+    /// Region metadata, not a layer-wide property — only meaningful in the
+    /// per-region module path. Combined with `is_bottom_layer` it derives
+    /// `is_top_or_bottom_layer` for the G10 lenient small-line threshold.
+    pub is_topmost_layer: bool,
     /// Squared distance gate (mm²) from meshfix_maximum_resolution.
     pub smallest_line_segment_squared: f64,
     /// Squared error distance gate (mm²) from meshfix_maximum_deviation.
@@ -526,6 +537,8 @@ impl Default for ArachneParams {
             initial_layer_min_bead_width: 0.34,
             outer_wall_offset: 0.0,
             is_initial_layer: false,
+            is_bottom_layer: false,
+            is_topmost_layer: false,
             smallest_line_segment_squared: 0.0025,
             allowed_error_distance_squared: 0.000025,
             maximum_extrusion_area_deviation: 0.005,
@@ -566,6 +579,8 @@ pub fn generate_arachne_walls(
             initial_layer_min_bead_width: params.initial_layer_min_bead_width,
             outer_wall_offset: params.outer_wall_offset,
             is_initial_layer: params.is_initial_layer,
+            is_bottom_layer: params.is_bottom_layer,
+            is_topmost_layer: params.is_topmost_layer,
             smallest_line_segment_squared: params.smallest_line_segment_squared,
             allowed_error_distance_squared: params.allowed_error_distance_squared,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation,
@@ -628,6 +643,8 @@ package slicer:common {
             initial-layer-min-bead-width: f32,
             outer-wall-offset: f32,
             is-initial-layer: bool,
+            is-bottom-layer: bool,
+            is-topmost-layer: bool,
             smallest-line-segment-squared: f32,
             allowed-error-distance-squared: f32,
             maximum-extrusion-area-deviation: f32,
@@ -705,6 +722,8 @@ world sdk-arachne {
             initial_layer_min_bead_width: params.initial_layer_min_bead_width as f32,
             outer_wall_offset: params.outer_wall_offset as f32,
             is_initial_layer: params.is_initial_layer,
+            is_bottom_layer: params.is_bottom_layer,
+            is_topmost_layer: params.is_topmost_layer,
             smallest_line_segment_squared: params.smallest_line_segment_squared as f32,
             allowed_error_distance_squared: params.allowed_error_distance_squared as f32,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f32,

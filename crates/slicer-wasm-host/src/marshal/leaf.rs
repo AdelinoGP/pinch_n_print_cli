@@ -9,8 +9,9 @@
 use crate::host::{
     ExPolygon, ExtrusionPath3d, ExtrusionRole, PaintSemantic, PaintValue, Point2, Point3WithWidth,
     Polygon, WallFeatureFlag, WallLoopType, WallLoopView, WitMaterialBoundarySegment,
-    WitRetractMode, WitWallBoundaryType, BUILTIN_EXTRUSION_ROLE_BRIM_TAG, BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG,
-    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
+    WitRetractMode, WitWallBoundaryType, BUILTIN_EXTRUSION_ROLE_BRIM_TAG,
+    BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG, BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG,
+    BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
 // postpass type alias used by convert_postpass_retract_mode.

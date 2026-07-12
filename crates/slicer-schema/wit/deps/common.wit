@@ -41,6 +41,8 @@ interface host-services {
         initial-layer-min-bead-width: f32,
         outer-wall-offset: f32,
         is-initial-layer: bool,
+        is-bottom-layer: bool,
+        is-topmost-layer: bool,
         /// Squared distance gate (mm²) from meshfix_maximum_resolution.
         smallest-line-segment-squared: f32,
         /// Squared error distance gate (mm²) from meshfix_maximum_deviation.

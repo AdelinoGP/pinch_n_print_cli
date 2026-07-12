@@ -65,10 +65,11 @@ use slicer_core::flow::{bridging_flow, flow_to_width, line_width_to_spacing};
 use slicer_core::perimeter_utils::{
     build_wall_flags, generate_sharp_corner_seam_candidates, point_in_any_polygon,
 };
+use slicer_core::polygon_ops::{difference_ex, offset2_ex, OffsetJoinType};
 use slicer_ir::{
     extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
-    ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallLoop,
-    WidthProfile,
+    ConfigView, ExPolygon, ExtrusionLine, ExtrusionRole, LoopType, Point2, Polygon,
+    WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -313,6 +314,8 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             initial_layer_min_bead_width,
             outer_wall_offset,
             is_initial_layer: false,
+            is_bottom_layer: false,
+            is_topmost_layer: false,
             smallest_line_segment_squared,
             allowed_error_distance_squared,
             maximum_extrusion_area_deviation,
@@ -386,20 +389,24 @@ impl LayerModule for ArachnePerimeters {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let mut params = arachne_params_from_config(config);
+        // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
+        // in object coordinates). PnP historically folded this into
+        // is_initial_layer; both flags are kept distinct so downstream flag
+        // derivation (is_top_or_bottom_layer = is_bottom_layer ||
+        // is_topmost_layer, G10) can be wired later — and both fire on layer 0.
+        let is_bottom_layer = layer_index == 0;
         params.is_initial_layer = layer_index == 0;
+        params.is_bottom_layer = is_bottom_layer;
 
-        // only_one_wall_top (D-104d, deferred): mirrors classic's own
-        // only_one_wall_top gate (classic-perimeters/src/lib.rs, near its
-        // `min_width_top_surface` read) that re-runs the wall generator for a
-        // single remaining top-surface wall beyond the `min_width_top_surface`
-        // threshold (PerimeterGenerator.cpp:2160-2245; PrintConfig.cpp:1491-
-        // 1511). Arachne's beading-stack path does not yet re-run
-        // `generate_arachne_walls` for a single collapsed top-surface wall —
-        // behavior deferred, see D-104d-MIN-WIDTH-TOP-SURFACE-NONE. Read here
-        // so the config key round-trips correctly ahead of that follow-up;
-        // the value itself is intentionally unused until then.
+        // only_one_wall_top (G3 part 1): the config key round-trips correctly
+        // and is now CONSUMED (D-104d deferred behavior begins here). When set
+        // and the region is the topmost shell (top_shell_index == Some(0) in the
+        // PnP IR — Orca's upper_slices == nullptr), the wall stack is collapsed
+        // to a single wall (OrcaSlicer PerimeterGenerator.cpp:2140-2144 forces
+        // loop_number = 0 on the topmost layer). The actual clamp to one emitted
+        // wall happens per-region inside the region loop below, because
+        // topmost-ness is region metadata, not a layer-wide property.
         let only_one_wall_top = config.get_bool("only_one_wall_top").unwrap_or(false);
-        let _ = only_one_wall_top;
 
         // wall_direction (packet 151, Step 2 / G1): OrcaSlicer coEnum
         // wall_direction (PrintConfig.cpp:2188-2198, default CounterClockwise)
@@ -460,7 +467,7 @@ impl LayerModule for ArachnePerimeters {
         let only_one_wall_first_layer = config
             .get_bool("only_one_wall_first_layer")
             .unwrap_or(false);
-        if only_one_wall_first_layer && params.is_initial_layer {
+        if only_one_wall_first_layer && (params.is_initial_layer || is_bottom_layer) {
             params.max_bead_count = 2;
         }
 
@@ -513,18 +520,60 @@ impl LayerModule for ArachnePerimeters {
         // (`layer_executor.rs::assemble_ordered_entities`), independent of
         // this loop — so single-region (unpainted) and multi-region (painted)
         // inputs are handled by the exact same code path below.
+        // Base bead cap after the first-layer / alternate-extra-wall clamps
+        // above; captured once so the per-region topmost clamp below can reset
+        // to it for non-topmost regions (a topmost region in a mixed layer must
+        // not clamp its siblings).
+        let base_max_bead_count = params.max_bead_count;
         for region in regions {
+            // G3 part 1: a single wall on the topmost shell when only_one_wall_top
+            // is enabled. top_shell_index == Some(0) marks the exposed top
+            // (Orca's upper_slices == nullptr); PerimeterGenerator.cpp:2140-2144
+            // forces loop_number = 0 there, which we render as a single emitted
+            // wall (max_bead_count clamped to 2 == one wall, mirroring
+            // only_one_wall_first_layer). Per-region because topmost-ness is
+            // region metadata.
+            let is_topmost_layer = region.top_shell_index() == Some(0);
+            params.is_topmost_layer = is_topmost_layer;
+            if only_one_wall_top && is_topmost_layer {
+                params.max_bead_count = 2;
+            } else {
+                params.max_bead_count = base_max_bead_count;
+            }
             output.begin_region(region.object_id(), *region.region_id());
             let polygons = region.polygons();
             if polygons.is_empty() {
                 continue;
             }
             let z = region.z();
-            // AC-4/AC-5 (packet 148): fetched once per region and reused
-            // across every emitted line's vertices below, mirroring
-            // `expolygon_to_path3d`'s own per-vertex band-lookup pattern.
-            let bridge_areas = region.bridge_areas();
-            let overhang_bands = region.overhang_quartile_polygons();
+
+            // G3 part 2: non-topmost region with a top sub-area. When
+            // `only_one_wall_top` is enabled, the region is NOT the exposed top
+            // shell (`top_shell_index != Some(0)`, i.e. Orca's
+            // `upper_slices != nullptr`), AND the host supplied a top-region
+            // polygon, run the second `WallToolPaths` pass over the non-top
+            // remainder and merge it with the single top-area wall. The top-area
+            // source is `top_solid_fill` (PnP's precomputed top-region polygon);
+            // see `D-152-TOP-AREA-SOURCE` for the divergence from Orca's
+            // `diff_ex(infill_contour, upper_slices_clipped)`.
+            if only_one_wall_top && !is_topmost_layer && !region.top_solid_fill().is_empty() {
+                self.emit_only_one_wall_top_second_pass(
+                    region,
+                    polygons,
+                    z,
+                    &params,
+                    base_max_bead_count,
+                    config,
+                    contour_should_be_ccw,
+                    g7_reverse,
+                    layer_height_mm,
+                    nozzle_diameter_mm,
+                    bridge_flow_ratio,
+                    thick_bridges,
+                    output,
+                )?;
+                continue;
+            }
 
             let (lines, inner_contour) =
                 match slicer_sdk::host::generate_arachne_walls(polygons, &params) {
@@ -545,167 +594,27 @@ impl LayerModule for ArachnePerimeters {
                     }
                 };
 
-            let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
-            for line in &lines {
-                let (role, loop_type) = classify_line(line, params.print_thin_walls);
-                let mut path = extrusion_line_to_extrusion_path3d(line, role);
-                if path.points.is_empty() {
-                    continue;
-                }
-                for pt in &mut path.points {
-                    pt.z = z;
-                }
-                let num_points = path.points.len();
-                let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
-
-                // D-154: Arachne's beading-derived vertices have no index
-                // correspondence to `polygons`' original vertex ordering — not
-                // even for the outer wall, unlike classic-perimeters' simple
-                // polygon-offset walls — so paint attribution always uses
-                // `build_wall_flags`'s geometric-reprojection path (nearest
-                // original vertex/edge) rather than its index-based fallback.
-                // `ring_pts_units` (mm→units, matching `polygons`' coordinate
-                // space) is also reused below for the bridge-area lookup.
-                let ring_pts_units: Vec<Point2> = path
-                    .points
-                    .iter()
-                    .map(|p| Point2 {
-                        x: mm_to_units(p.x),
-                        y: mm_to_units(p.y),
-                    })
-                    .collect();
-                let is_outer = line.inset_idx == 0;
-                let (mut feature_flags, boundary_type) = build_wall_flags(
-                    num_points,
-                    usize::MAX, // unused by the reprojection path; no single original poly_idx applies to a beading-derived wall
-                    region.segment_annotations(),
-                    is_outer,
-                    Some(&ring_pts_units),
-                    Some(polygons),
-                    false, // D14 painted-variant fuzzy skin (variant_chain) is not wired into arachne-perimeters yet — out of scope here
-                );
-
-                // AC-3 (packet 148): is_thin_wall is set on every vertex of a
-                // ThinWall wall only — never on Outer/Inner walls, even if
-                // geometrically narrow (mirrors classic-perimeters' own
-                // is_thin_wall flag shape).
-                if loop_type == LoopType::ThinWall {
-                    for flag in &mut feature_flags {
-                        flag.is_thin_wall = true;
-                    }
-                }
-
-                // AC-4 (packet 148): is_bridge is set per-vertex, ONLY on
-                // Outer/Inner walls (never ThinWall/GapFill/NonPlanarShell),
-                // for every vertex whose path point lies inside one of the
-                // region's bridge areas. `region.bridge_areas()` is in
-                // units-space (same as `region.polygons()`); wall path
-                // points are in mm-space (set by
-                // `extrusion_line_to_extrusion_path3d`), so convert via
-                // `mm_to_units` at the lookup boundary, mirroring the
-                // mm_to_units conversion already used below for
-                // `infill_candidates`.
-                if !bridge_areas.is_empty()
-                    && matches!(loop_type, LoopType::Outer | LoopType::Inner)
-                {
-                    for i in 0..path.points.len() {
-                        let units_pt = ring_pts_units[i];
-                        if point_in_any_polygon(&units_pt, bridge_areas) {
-                            feature_flags[i].is_bridge = true;
-                            // D4/packet 150 step 5: bridge vertices get the
-                            // bridging flow factor (mirrors OrcaSlicer's
-                            // LayerRegion.cpp bridging_flow). `path.points[i].width`
-                            // is the beading engine's own bead width, which is
-                            // fed by AC-3's SPACING-domain `optimal_width` (see
-                            // this file's `arachne_params_from_config`) — not
-                            // the raw pre-spacing flow width the Orca formula's
-                            // flat-bead denominator expects. Recover the raw mm
-                            // flow width via `flow_to_width` (inverse of
-                            // `line_width_to_spacing`) before handing it to
-                            // `bridging_flow`'s round-cross-section factor.
-                            let bead_flow_width_mm =
-                                flow_to_width(path.points[i].width, layer_height_mm);
-                            path.points[i].flow_factor = bridging_flow(
-                                bridge_flow_ratio,
-                                thick_bridges,
-                                nozzle_diameter_mm,
-                                bead_flow_width_mm,
-                                layer_height_mm,
-                            );
-                        }
-                    }
-                }
-
-                // AC-5 (packet 148): overhang_quartile is set per-vertex on
-                // every wall type, for every vertex whose path point lies
-                // inside a `overhang_quartile_polygons` band's polygon(s).
-                // Mirrors `expolygon_to_path3d`'s own lookup
-                // (perimeter_utils.rs ~316-331): filter bands whose polygons
-                // contain the point, take the max quartile among matches.
-                // `point_in_polygon_winding` takes mm-space query
-                // coordinates and converts the (units-space) band polygon
-                // internally, so no coordinate conversion is needed here —
-                // `pt.x`/`pt.y` are already mm.
-                if !overhang_bands.is_empty() {
-                    for pt in &mut path.points {
-                        pt.overhang_quartile = overhang_bands
-                            .iter()
-                            .filter(|band| {
-                                band.polygons.iter().any(|poly| {
-                                    point_in_polygon_winding(poly, pt.x as f64, pt.y as f64, 0.0)
-                                })
-                            })
-                            .map(|band| band.quartile)
-                            .max();
-                    }
-                }
-
-                // G1 (packet 151, Step 2): normalize loop winding to
-                // wall_direction. Holes (non-ExteriorSurface) wind opposite the
-                // contour (PerimeterGenerator.cpp:527-545). For the default
-                // "counter_clockwise", contour wins when already CCW so the
-                // prior default winding is preserved (AC-N2) — no flip occurs.
-                let is_hole = boundary_type != WallBoundaryType::ExteriorSurface;
-                let base_want_ccw = if is_hole {
-                    !contour_should_be_ccw
-                } else {
-                    contour_should_be_ccw
-                };
-                let final_want_ccw = if g7_reverse {
-                    !base_want_ccw
-                } else {
-                    base_want_ccw
-                };
-                if path.points.len() >= 3 {
-                    let signed = signed_area_of_points(&path.points);
-                    let is_ccw = signed > 0.0;
-                    if is_ccw != final_want_ccw {
-                        path.points.reverse();
-                    }
-                }
-
-                walls.push(WallLoop {
-                    perimeter_index: line.inset_idx,
-                    loop_type,
-                    path,
-                    width_profile: WidthProfile { widths },
-                    feature_flags,
-                    boundary_type,
-                });
-            }
-
-            // AC-9: walls sorted by perimeter_index ascending. The pipeline's
-            // own `generate_toolpaths` bucketizes by ascending inset_idx
-            // already (`BTreeMap`-backed), but a stable sort here makes the
-            // ordering an explicit, guaranteed contract of this module's
-            // output rather than an incidental property of upstream stage
-            // internals.
+            // Walls are built from the Arachne `ExtrusionLine`s via `build_walls`
+            // (the same path the G3 part-2 second pass uses); `bridge_areas` /
+            // `overhang_bands` are recomputed inside `build_walls` per call.
+            let mut walls = self.build_walls(
+                &lines,
+                region,
+                z,
+                polygons,
+                &params,
+                contour_should_be_ccw,
+                g7_reverse,
+                layer_height_mm,
+                nozzle_diameter_mm,
+                bridge_flow_ratio,
+                thick_bridges,
+            )?;
+            // AC-9: walls sorted by perimeter_index ascending.
             walls.sort_by_key(|w| w.perimeter_index);
-
             for wall in walls {
                 output.push_wall_loop(wall)?;
             }
-
             // AC-6 (packet 148): sharp-corner seam candidates, once per
             // region polygon (island), against each input polygon's outer
             // contour (units-space `slicer_ir::Polygon`) — NOT the mm-space
@@ -765,6 +674,364 @@ impl LayerModule for ArachnePerimeters {
 
         Ok(())
     }
+}
+
+impl ArachnePerimeters {
+    /// Builds `WallLoop`s from Arachne `ExtrusionLine`s, applying the same
+    /// bridge/overhang/thin-wall/winding normalization as the single-pass
+    /// emission path (`run_perimeters`'s per-region loop).
+    fn build_walls(
+        &self,
+        lines: &[ExtrusionLine],
+        region: &SliceRegionView,
+        z: f32,
+        polygons: &[ExPolygon],
+        params: &ArachneParams,
+        contour_should_be_ccw: bool,
+        g7_reverse: bool,
+        layer_height_mm: f32,
+        nozzle_diameter_mm: f32,
+        bridge_flow_ratio: f32,
+        thick_bridges: bool,
+    ) -> Result<Vec<WallLoop>, ModuleError> {
+        let bridge_areas = region.bridge_areas();
+        let overhang_bands = region.overhang_quartile_polygons();
+        let mut walls: Vec<WallLoop> = Vec::with_capacity(lines.len());
+        for line in lines {
+            let (role, loop_type) = classify_line(line, params.print_thin_walls);
+            let mut path = extrusion_line_to_extrusion_path3d(line, role);
+            if path.points.is_empty() {
+                continue;
+            }
+            for pt in &mut path.points {
+                pt.z = z;
+            }
+            let num_points = path.points.len();
+            let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
+
+            // D-154: Arachne's beading-derived vertices have no index
+            // correspondence to `polygons`' original vertex ordering — not
+            // even for the outer wall, unlike classic-perimeters' simple
+            // polygon-offset walls — so paint attribution always uses
+            // `build_wall_flags`'s geometric-reprojection path (nearest
+            // original vertex/edge) rather than its index-based fallback.
+            // `ring_pts_units` (mm→units, matching `polygons`' coordinate
+            // space) is also reused below for the bridge-area lookup.
+            let ring_pts_units: Vec<Point2> = path
+                .points
+                .iter()
+                .map(|p| Point2 {
+                    x: mm_to_units(p.x),
+                    y: mm_to_units(p.y),
+                })
+                .collect();
+            let is_outer = line.inset_idx == 0;
+            let (mut feature_flags, boundary_type) = build_wall_flags(
+                num_points,
+                usize::MAX, // unused by the reprojection path; no single original poly_idx applies to a beading-derived wall
+                region.segment_annotations(),
+                is_outer,
+                Some(&ring_pts_units),
+                Some(polygons),
+                false, // D14 painted-variant fuzzy skin (variant_chain) is not wired into arachne-perimeters yet — out of scope here
+            );
+
+            // AC-3 (packet 148): is_thin_wall is set on every vertex of a
+            // ThinWall wall only — never on Outer/Inner walls, even if
+            // geometrically narrow (mirrors classic-perimeters' own
+            // is_thin_wall flag shape).
+            if loop_type == LoopType::ThinWall {
+                for flag in &mut feature_flags {
+                    flag.is_thin_wall = true;
+                }
+            }
+
+            // AC-4 (packet 148): is_bridge is set per-vertex, ONLY on
+            // Outer/Inner walls (never ThinWall/GapFill/NonPlanarShell),
+            // for every vertex whose path point lies inside one of the
+            // region's bridge areas.
+            if !bridge_areas.is_empty() && matches!(loop_type, LoopType::Outer | LoopType::Inner) {
+                for i in 0..path.points.len() {
+                    let units_pt = ring_pts_units[i];
+                    if point_in_any_polygon(&units_pt, bridge_areas) {
+                        feature_flags[i].is_bridge = true;
+                        // D4/packet 150 step 5: bridge vertices get the
+                        // bridging flow factor. Recover the raw mm flow width
+                        // via `flow_to_width` before handing it to
+                        // `bridging_flow`'s round-cross-section factor.
+                        let bead_flow_width_mm =
+                            flow_to_width(path.points[i].width, layer_height_mm);
+                        path.points[i].flow_factor = bridging_flow(
+                            bridge_flow_ratio,
+                            thick_bridges,
+                            nozzle_diameter_mm,
+                            bead_flow_width_mm,
+                            layer_height_mm,
+                        );
+                    }
+                }
+            }
+
+            // AC-5 (packet 148): overhang_quartile is set per-vertex on
+            // every wall type, for every vertex whose path point lies
+            // inside a `overhang_quartile_polygons` band's polygon(s).
+            if !overhang_bands.is_empty() {
+                for pt in &mut path.points {
+                    pt.overhang_quartile = overhang_bands
+                        .iter()
+                        .filter(|band| {
+                            band.polygons.iter().any(|poly| {
+                                point_in_polygon_winding(poly, pt.x as f64, pt.y as f64, 0.0)
+                            })
+                        })
+                        .map(|band| band.quartile)
+                        .max();
+                }
+            }
+
+            // G1 (packet 151, Step 2): normalize loop winding to
+            // wall_direction. Holes (non-ExteriorSurface) wind opposite the
+            // contour.
+            let is_hole = boundary_type != WallBoundaryType::ExteriorSurface;
+            let base_want_ccw = if is_hole {
+                !contour_should_be_ccw
+            } else {
+                contour_should_be_ccw
+            };
+            let final_want_ccw = if g7_reverse {
+                !base_want_ccw
+            } else {
+                base_want_ccw
+            };
+            if path.points.len() >= 3 {
+                let signed = signed_area_of_points(&path.points);
+                let is_ccw = signed > 0.0;
+                if is_ccw != final_want_ccw {
+                    path.points.reverse();
+                }
+            }
+
+            walls.push(WallLoop {
+                perimeter_index: line.inset_idx,
+                loop_type,
+                path,
+                width_profile: WidthProfile { widths },
+                feature_flags,
+                boundary_type,
+            });
+        }
+
+        Ok(walls)
+    }
+
+    /// G3 part 2 (packet 152 Step 4): second `WallToolPaths` pass for a
+    /// non-topmost region whose top surface is a SUB-AREA.
+    ///
+    /// Mirrors `PerimeterGenerator.cpp:2160-2246`: derive the top sub-area, run
+    /// a single wall over it, run a second pass over the non-top remainder with
+    /// `inner_loop_number + 1` walls, renumber each inner wall's `inset_idx`
+    /// (`perimeter_index`) by +1 BEFORE the merge, then concatenate.
+    ///
+    /// The top-area source here is PnP's `top_solid_fill` (the host's
+    /// precomputed top-region polygon) rather than Orca's
+    /// `diff_ex(infill_contour, upper_slices_clipped)` — PnP has no
+    /// `upper_slices`/lower-slices access on the region view. This divergence is
+    /// recorded in `D-152-TOP-AREA-SOURCE`.
+    fn emit_only_one_wall_top_second_pass(
+        &self,
+        region: &SliceRegionView,
+        polygons: &[ExPolygon],
+        z: f32,
+        params: &ArachneParams,
+        base_max_bead_count: u32,
+        config: &ConfigView,
+        contour_should_be_ccw: bool,
+        g7_reverse: bool,
+        layer_height_mm: f32,
+        nozzle_diameter_mm: f32,
+        bridge_flow_ratio: f32,
+        thick_bridges: bool,
+        output: &mut PerimeterOutputBuilder,
+    ) -> Result<(), ModuleError> {
+        // Step 1: top-area derivation. PnP uses `top_solid_fill` (see
+        // D-152-TOP-AREA-SOURCE); Orca derives
+        // `diff_ex(infill_contour, upper_slices_clipped)`.
+        let mut top_area: Vec<ExPolygon> = region.top_solid_fill().to_vec();
+
+        // Step 3: `min_width_top_surface` filter via `get_abs_value` (packet
+        // 150 resolution mechanism). Absolute value, NOT raw float.
+        let perimeter_width_mm = params.preferred_bead_width_outer;
+        let min_width_top = config
+            .get_abs_value("min_width_top_surface", perimeter_width_mm)
+            .unwrap_or(0.0);
+        if min_width_top > 0.0 {
+            top_area.retain(|ep| (ex_polygon_min_width_mm(ep) as f64) >= min_width_top);
+        }
+
+        // Step 4: `offset2_ex` shrink by `-top_surface_min_width` then expand by
+        // `+top_surface_min_width + 0.85*perimeter_width` (thin-lettering
+        // preservation; the `0.85` magic constant is kept verbatim from Orca).
+        let expanded = offset2_ex(
+            &top_area,
+            -min_width_top,
+            min_width_top + 0.85 * perimeter_width_mm,
+            OffsetJoinType::Miter,
+            3.0,
+        );
+        let top_expolygons = if expanded.is_empty() {
+            top_area
+        } else {
+            expanded
+        };
+
+        // Step 2 (bridge exclusion): Orca carves out `lower_slices_clipped`
+        // from the top area; PnP has no `lower_slices` access on the region
+        // view, so this step is SKIPPED — recorded in D-152-TOP-AREA-SOURCE.
+
+        // First contribution: the top sub-area's single wall (inset_idx == 0).
+        let mut top_params = *params;
+        top_params.max_bead_count = 2;
+        let (top_lines, _) =
+            match slicer_sdk::host::generate_arachne_walls(region.top_solid_fill(), &top_params) {
+                Ok(r) => r,
+                Err(e) => {
+                    slicer_sdk::host::log_warn(&format!(
+                        "arachne-perimeters: G3p2 top-area wall generation failed for region \
+                         object_id={} region_id={}: {e}",
+                        region.object_id(),
+                        region.region_id()
+                    ));
+                    return Ok(());
+                }
+            };
+        let mut top_walls = self.build_walls(
+            &top_lines,
+            region,
+            z,
+            region.top_solid_fill(),
+            params,
+            contour_should_be_ccw,
+            g7_reverse,
+            layer_height_mm,
+            nozzle_diameter_mm,
+            bridge_flow_ratio,
+            thick_bridges,
+        )?;
+
+        // Not-top remainder.
+        let not_top = difference_ex(polygons, &top_expolygons);
+        if not_top.is_empty() {
+            // Step 8: empty-top fallback — rerun over the full region with
+            // `inner_loop_number + 2` walls.
+            let mut fb_params = *params;
+            fb_params.max_bead_count = base_max_bead_count + 2;
+            let (fb_lines, _) = match slicer_sdk::host::generate_arachne_walls(polygons, &fb_params)
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    slicer_sdk::host::log_warn(&format!(
+                        "arachne-perimeters: G3p2 fallback generation failed for region \
+                             object_id={} region_id={}: {e}",
+                        region.object_id(),
+                        region.region_id()
+                    ));
+                    return Ok(());
+                }
+            };
+            let mut fb_walls = self.build_walls(
+                &fb_lines,
+                region,
+                z,
+                polygons,
+                params,
+                contour_should_be_ccw,
+                g7_reverse,
+                layer_height_mm,
+                nozzle_diameter_mm,
+                bridge_flow_ratio,
+                thick_bridges,
+            )?;
+            fb_walls.sort_by_key(|w| w.perimeter_index);
+            for w in fb_walls {
+                output.push_wall_loop(w)?;
+            }
+            return Ok(());
+        }
+
+        // Step 5: second pass over the non-top remainder with
+        // `inner_loop_number + 1` walls (here, the region's base bead count),
+        // inset 0.
+        let mut second_params = *params;
+        second_params.max_bead_count = base_max_bead_count;
+        let mut second_lines =
+            match slicer_sdk::host::generate_arachne_walls(&not_top, &second_params) {
+                Ok((lines, _)) => lines,
+                Err(e) => {
+                    slicer_sdk::host::log_warn(&format!(
+                        "arachne-perimeters: G3p2 second-pass generation failed for region \
+                         object_id={} region_id={}: {e}",
+                        region.object_id(),
+                        region.region_id()
+                    ));
+                    return Ok(());
+                }
+            };
+
+        // Step 6: renumber inner walls (+1) BEFORE merge. Mirrors Orca's
+        // `++el.inset_idx` on each inner perimeter (`PerimeterGenerator.cpp:
+        // 2160-2246`): every inner `ExtrusionLine` (inset_idx > 0) from the
+        // second pass gets its `inset_idx` incremented by 1 so the merged
+        // non-top remainder walls sit one inset deeper than the single top
+        // wall.
+        for line in &mut second_lines {
+            if line.inset_idx > 0 {
+                line.inset_idx += 1;
+            }
+        }
+        let mut second_walls = self.build_walls(
+            &second_lines,
+            region,
+            z,
+            &not_top,
+            params,
+            contour_should_be_ccw,
+            g7_reverse,
+            layer_height_mm,
+            nozzle_diameter_mm,
+            bridge_flow_ratio,
+            thick_bridges,
+        )?;
+
+        // Step 7: merge — top single wall + renumbered second-pass inner walls.
+        top_walls.sort_by_key(|w| w.perimeter_index);
+        for w in top_walls {
+            output.push_wall_loop(w)?;
+        }
+        second_walls.sort_by_key(|w| w.perimeter_index);
+        for w in second_walls {
+            output.push_wall_loop(w)?;
+        }
+        Ok(())
+    }
+}
+
+/// Minimum bounding-box extent (mm) of an `ExPolygon`'s outer contour. Used by
+/// the `min_width_top_surface` filter (G3 part 2) to drop top sub-areas too
+/// narrow to carry a bead.
+fn ex_polygon_min_width_mm(ep: &ExPolygon) -> f32 {
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for p in &ep.contour.points {
+        let x = units_to_mm(p.x);
+        let y = units_to_mm(p.y);
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+    }
+    (max_x - min_x).min(max_y - min_y)
 }
 
 #[cfg(test)]

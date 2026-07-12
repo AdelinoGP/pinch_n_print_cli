@@ -209,14 +209,14 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
 |---|---|---|---|---|
 | G1 | `wall_direction` CCW/CW winding | `PerimeterGenerator.cpp:527-545` | closed (packet 151) — `wall_direction`/`wall_count` registered + winding applied | `..._wall_direction_controls_winding` |
 | G2 | `only_one_wall_first_layer` | `PerimeterGenerator.cpp:2137-2139` | closed (packet 151) — forces single wall on layer 0 | `..._only_one_wall_first_layer_forces_single_wall` |
-| G3 | `only_one_wall_top` (incl. second Arachne pass) | `PerimeterGenerator.cpp:2140-2246` | key read, inert | `..._only_one_wall_top_forces_single_wall_on_top` |
+| G3 | `only_one_wall_top` (incl. second Arachne pass) | `PerimeterGenerator.cpp:2140-2246` | closed (packet 152) — G3 part-2 second-pass single-wall-top wired (`only_one_wall_top` + `min_width_top_surface` second pass over top area; see D-152-TOP-AREA-SOURCE) | `..._only_one_wall_top_forces_single_wall_on_top` |
 | G4 | Flow spacing feeds bead widths | `PerimeterGenerator.cpp:2129,2172` | closed (packet 150) — `line_width_to_spacing` now feeds bead placement | `..._wall_gap_uses_flow_spacing_not_width` |
 | G5 | Thick-bridge round-section flow | `LayerRegion.cpp:135`; `Flow.hpp:106` | closed (packet 150) — `π·dmr²/(4·w·h)` formula implemented | `..._thick_bridges_flow_factor_not_stubbed_to_one` |
 | G6 | Percent-typed Arachne keys | `PrintConfig.cpp:1498-1511,7169-7226` | closed (packet 150) — `percent`/`float_or_percent` types added | `..._percent_config_type_for_arachne_keys` |
 | G7 | `overhang_reverse` odd-layer reversal | `PerimeterGenerator.cpp:58-98,422-429` | closed (packet 151) — odd-layer reversal wired + `overhang_reverse_threshold` registered | `..._overhang_reverse_flips_odd_layer_walls` |
 | G8 | Spiral vase forces classic | `LayerRegion.cpp:138-141` | closed (packet 151) — `spiral_vase` forces classic generator in scheduler | `..._spiral_vase_forces_classic_generator` |
 | G9 | `wall_maximum_resolution/deviation` | `PrintConfig.cpp:7242-7263` | closed (packet 151) — both keys registered + wired to `ArachneParams` | `..._wall_max_resolution_deviation_registered` |
-| G10 | `removeSmallLines` top-layer exception | `WallToolPaths.cpp:684-700` | conflated with layer 0 | `..._remove_small_lines_top_layer_exception` |
+| G10 | `removeSmallLines` top-layer exception | `WallToolPaths.cpp:684-700` | closed (packet 152) — `is-topmost-layer`/`is-bottom-layer` added to `arachne-params`; `remove_small_lines` now keys the lenient threshold on top-or-bottom (G10) | `..._remove_small_lines_top_layer_exception` |
 | G11 | Concentric infill via Arachne | `FillConcentric.cpp:80-118` | missing (D-104f) | `arachne_parity.rs::..._concentric_infill_uses_arachne` |
 
 ## Porting reminders for the fixing agent

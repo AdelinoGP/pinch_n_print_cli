@@ -47,7 +47,7 @@ fn per_line_min_width_narrow_line_survives() {
     };
 
     // threshold = 0.1 * 0.5 = 0.05mm. Length 0.15mm > 0.05mm → kept.
-    let result = remove_small_lines(vec![narrow.clone()], 0.5, 0.4, false);
+    let result = remove_small_lines(vec![narrow.clone()], 0.5, 0.4, false, false);
     assert_eq!(
         result.len(),
         1,
@@ -62,7 +62,7 @@ fn per_line_min_width_narrow_line_survives() {
         is_odd: true,
         is_closed: false,
     };
-    let result_wide = remove_small_lines(vec![wide], 0.5, 0.4, false);
+    let result_wide = remove_small_lines(vec![wide], 0.5, 0.4, false, false);
     assert!(
         result_wide.is_empty(),
         "wide line (0.4mm width) should be removed — its per-line threshold (0.2mm) exceeds its length (0.15mm)"
@@ -93,7 +93,7 @@ fn initial_layer_uses_min_width_div_2() {
         is_odd: true,
         is_closed: false,
     };
-    let result = remove_small_lines(vec![line.clone()], 0.3, 0.4, false);
+    let result = remove_small_lines(vec![line.clone()], 0.3, 0.4, false, false);
     assert_eq!(
         result.len(),
         1,
@@ -101,7 +101,7 @@ fn initial_layer_uses_min_width_div_2() {
     );
 
     // Initial layer: threshold = 0.4 / 2 = 0.2mm. Length 0.15 < 0.2 → removed.
-    let result_initial = remove_small_lines(vec![line], 0.3, 0.4, true);
+    let result_initial = remove_small_lines(vec![line], 0.3, 0.4, true, false);
     assert!(
         result_initial.is_empty(),
         "initial layer: threshold = 0.4 / 2 = 0.2mm, length 0.15 < 0.2 → removed"
@@ -126,7 +126,7 @@ fn per_line_min_width_uses_minimum_junction_width() {
 
     // min junction width = 0.1mm. threshold = 0.1 * 0.5 = 0.05mm.
     // length ≈ 0.12mm > 0.05mm → kept.
-    let result = remove_small_lines(vec![line], 0.5, 0.4, false);
+    let result = remove_small_lines(vec![line], 0.5, 0.4, false, false);
     assert_eq!(
         result.len(),
         1,
@@ -151,7 +151,7 @@ fn closed_and_even_lines_always_survive() {
         is_closed: false,
     };
 
-    let result = remove_small_lines(vec![closed, even], 0.5, 0.4, false);
+    let result = remove_small_lines(vec![closed, even], 0.5, 0.4, false, false);
     assert_eq!(result.len(), 2, "closed and even lines always survive");
 }
 
@@ -172,7 +172,7 @@ fn all_primary_input_no_removals() {
         is_closed: true,
     };
 
-    let result = remove_small_lines(vec![primary.clone()], 1000.0, 1000.0, false);
+    let result = remove_small_lines(vec![primary.clone()], 1000.0, 1000.0, false, false);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0], primary);
 }

@@ -78,7 +78,7 @@ fn remove_small_before_simplify_short_odd_line_removed() {
     };
 
     // Canonical order: remove_small first.
-    let after_remove = remove_small_lines(vec![line.clone()], 0.5, 0.4, false);
+    let after_remove = remove_small_lines(vec![line.clone()], 0.5, 0.4, false, false);
     assert!(
         after_remove.is_empty(),
         "canonical order: short odd line should be removed before simplify runs"
@@ -86,7 +86,7 @@ fn remove_small_before_simplify_short_odd_line_removed() {
 
     // Old order: simplify first (2 junctions, simplify keeps ≥2), then remove.
     let after_simplify = simplify_toolpaths(vec![line], 0.01, 0.0, 0.0, 0.0);
-    let after_remove_old = remove_small_lines(after_simplify, 0.5, 0.4, false);
+    let after_remove_old = remove_small_lines(after_simplify, 0.5, 0.4, false, false);
     assert!(
         after_remove_old.is_empty(),
         "old order also removes this degenerate case (2 junctions, simplify is a no-op)"
@@ -110,7 +110,7 @@ fn line_above_threshold_survives_canonical_order() {
         is_closed: false,
     };
 
-    let after_remove = remove_small_lines(vec![line.clone()], 0.5, 0.4, false);
+    let after_remove = remove_small_lines(vec![line.clone()], 0.5, 0.4, false, false);
     assert_eq!(
         after_remove.len(),
         1,

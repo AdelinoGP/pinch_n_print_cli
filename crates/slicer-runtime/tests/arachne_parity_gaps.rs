@@ -571,6 +571,7 @@ fn arachne_parity_pipeline_wall_max_resolution_deviation_registered() {
 #[test]
 fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
     use slicer_ir::{ExtrusionJunction, ExtrusionLine};
+    use slicer_sdk::host::{generate_arachne_walls, ArachneParams};
 
     // One odd, unclosed 3 mm center line of uniform 0.4 mm width.
     // Topmost-layer threshold per Orca = min_width/2 = 0.2 mm → KEEP.
@@ -601,6 +602,7 @@ fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
         20.0,  // min_length_factor
         0.4,   // nominal min_width (unused by the per-line threshold)
         false, // is_initial_layer — a topmost layer can never set this
+        true,  // is_top_or_bottom_layer — the TOPMOST layer sets this
     );
 
     assert!(
@@ -617,6 +619,37 @@ fn arachne_parity_arachne_path_remove_small_lines_top_layer_exception() {
          (crates/slicer-core/src/arachne/remove_small.rs:44-80) and neither \
          it nor run_arachne_pipeline has any topmost-layer input | ref: \
           WallToolPaths.cpp:684-700"
+    );
+
+    // End-to-end wiring probe (packet 152 fix): the module's `params` now
+    // carries `is_topmost_layer` into the SDK mirror and the native bridge
+    // forwards it into `run_arachne_pipeline`, which derives
+    // `is_top_or_bottom_layer` (pipeline.rs:398 = is_topmost_layer ||
+    // is_bottom_layer) → `remove_small_lines` leniency. Before this fix the
+    // bridge hardcoded both flags false, so this would not even compile
+    // against the old SDK `ArachneParams`; here the topmost flag must flow
+    // through the exact `generate_arachne_walls` bridge the module calls.
+    let topmost_params = ArachneParams {
+        is_topmost_layer: true,
+        ..Default::default()
+    };
+    let probe_poly = slicer_ir::ExPolygon {
+        contour: slicer_ir::Polygon {
+            points: vec![
+                slicer_ir::Point2::from_mm(0.0, 0.0),
+                slicer_ir::Point2::from_mm(10.0, 0.0),
+                slicer_ir::Point2::from_mm(10.0, 10.0),
+                slicer_ir::Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: vec![],
+    };
+    let probed = generate_arachne_walls(&[probe_poly], &topmost_params)
+        .expect("topmost-flag must forward through the SDK bridge into the core pipeline");
+    assert!(
+        !probed.0.is_empty(),
+        "G10 end-to-end wiring broken: topmost-layer params did not reach the \
+         core Arachne pipeline via the module's generate_arachne_walls bridge"
     );
 }
 

@@ -15,7 +15,8 @@
 //!
 //! Canonical behaviour (WallToolPaths.cpp:838-856):
 //! - `min_width` per line = minimum junction width over the line's junctions.
-//! - On top/bottom layers: threshold = `min_width / 2`.
+//! - On top/bottom layers (`is_initial_layer || is_top_or_bottom_layer`):
+//!   threshold = `min_width / 2`.
 //! - On other layers: threshold = `min_width * min_length_factor`.
 //!
 //! # Invariants (checked before the length computation)
@@ -33,8 +34,9 @@ use slicer_ir::ExtrusionLine;
 ///
 /// The threshold is computed per line from the minimum junction width along
 /// that line:
-/// - Top/bottom layers (`is_initial_layer == true`): `min_junction_width / 2`
-///   (conservative — prevents top gaps, matching WallToolPaths.cpp:848).
+/// - Top/bottom layers (`is_initial_layer == true` or
+///   `is_top_or_bottom_layer == true`): `min_junction_width / 2`
+///   (conservative — prevents top/bottom gaps, matching WallToolPaths.cpp:848).
 /// - Other layers: `min_junction_width * min_length_factor`.
 ///
 /// `min_length_factor` is the configurable multiplier (typically 0.5,
@@ -44,16 +46,29 @@ pub fn remove_small_lines(
     min_length_factor: f64,
     _min_width: f64,
     is_initial_layer: bool,
+    is_top_or_bottom_layer: bool,
 ) -> Vec<ExtrusionLine> {
     lines
         .into_iter()
-        .filter(|line| !should_remove(line, min_length_factor, is_initial_layer))
+        .filter(|line| {
+            !should_remove(
+                line,
+                min_length_factor,
+                is_initial_layer,
+                is_top_or_bottom_layer,
+            )
+        })
         .collect()
 }
 
 /// Preserve conditions are checked first, before any length computation:
 /// closed lines and even lines are never eligible for removal.
-fn should_remove(line: &ExtrusionLine, min_length_factor: f64, is_initial_layer: bool) -> bool {
+fn should_remove(
+    line: &ExtrusionLine,
+    min_length_factor: f64,
+    is_initial_layer: bool,
+    is_top_or_bottom_layer: bool,
+) -> bool {
     if line.is_closed || !line.is_odd {
         return false;
     }
@@ -72,7 +87,7 @@ fn should_remove(line: &ExtrusionLine, min_length_factor: f64, is_initial_layer:
     }
 
     // WallToolPaths.cpp:848-854 — layer-type divisor.
-    let threshold = if is_initial_layer {
+    let threshold = if is_initial_layer || is_top_or_bottom_layer {
         min_width / 2.0
     } else {
         min_width * min_length_factor
@@ -94,4 +109,50 @@ fn polyline_length_xy(line: &ExtrusionLine) -> f64 {
             (dx * dx + dy * dy).sqrt()
         })
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slicer_ir::{ExtrusionJunction, Point3WithWidth};
+
+    fn short_odd_line(x_end: f32, width: f32) -> ExtrusionLine {
+        let junction = |x: f32| ExtrusionJunction {
+            p: Point3WithWidth {
+                x,
+                y: 0.0,
+                z: 0.0,
+                width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            },
+            perimeter_index: 0,
+        };
+        ExtrusionLine {
+            junctions: vec![junction(0.0), junction(x_end)],
+            inset_idx: 0,
+            is_odd: true,
+            is_closed: false,
+        }
+    }
+
+    /// AC-N1 lock: on a mid-stack layer (neither initial nor top/bottom),
+    /// short odd unclosed lines must still be strictly dropped even when the
+    /// per-line width is well above the lenient top/bottom divisor.
+    #[test]
+    fn non_top_layer_strict() {
+        let lines = vec![short_odd_line(3.0, 0.4), short_odd_line(4.0, 0.4)];
+
+        let surviving = remove_small_lines(
+            lines, 20.0,  // min_length_factor → strict threshold = 8 mm
+            0.4,   // nominal min_width (unused by the per-line threshold)
+            false, // is_initial_layer
+            false, // is_top_or_bottom_layer
+        );
+
+        assert!(
+            surviving.is_empty(),
+            "mid-stack strict removal must drop short odd unclosed lines"
+        );
+    }
 }

@@ -56,9 +56,9 @@ is the authoritative catalog of their defaults and ranges.
 | `min_feature_size` | percent | `25%` | base: `nozzle_diameter` | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
 | `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |  // behavioral as of P152 (G3 part-2 second-pass single-wall-top width gate wired)
 | `nozzle_diameter` | float | `0.4` | — | `arachne-perimeters` |
-| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |  // behavioral as of P152 (G3 part-2 second-pass single-wall-top wired)
 | `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
