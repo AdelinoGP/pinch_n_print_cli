@@ -21,7 +21,7 @@ use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::HostPerimeter
 use slicer_wasm_host::host::{
     convert_perimeter_output, ExPolygon, ExtrusionPath3d, ExtrusionRole,
     HostExecutionContextBuilder, Point2, Point3WithWidth, Polygon, WallFeatureFlag, WallLoopType,
-    WallLoopView,
+    WallLoopView, WitWallBoundaryType,
 };
 use slicer_wasm_host::marshal::OriginId;
 
@@ -80,6 +80,7 @@ fn make_wall_loop() -> WallLoopView {
             speed_factor: 1.0,
         },
         feature_flags: vec![make_feature_flag(), make_feature_flag()],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     }
 }
 

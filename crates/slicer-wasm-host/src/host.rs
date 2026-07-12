@@ -312,10 +312,15 @@ pub mod layer {
 // Re-export commonly used generated types for convenience.
 pub use layer::slicer::config::config_types::ConfigValue;
 pub use layer::slicer::config::config_types::FloatOrPercent;
+/// Re-exports of the layer-module WIT `wall-boundary-type` variant and its
+/// `material-boundary-segment` payload record, aliased to avoid colliding with
+/// `slicer_ir::WallBoundaryType` / `slicer_ir::MaterialBoundarySegment`.
+pub use layer::slicer::ir_handles::ir_handles::MaterialBoundarySegment as WitMaterialBoundarySegment;
 /// Re-export of the layer-module WIT `retract-mode` variant. Used by host-side
 /// `gcode-output-builder` handlers and `dispatch.rs` converters to forward the
 /// `RetractMode` end-to-end across the guest→host boundary.
 pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
+pub use layer::slicer::ir_handles::ir_handles::WallBoundaryType as WitWallBoundaryType;
 pub use layer::slicer::ir_handles::ir_handles::{
     GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, RegionKey, SeamCandidate,
     SeamPosition, SegmentAnnotationsEntry, SegmentAnnotationsPolygon, SemanticRegion,

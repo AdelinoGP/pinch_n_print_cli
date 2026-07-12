@@ -1952,6 +1952,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
                 SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
                 GcodeMoveCmd as WitGcodeMoveCmd,
+                MaterialBoundarySegment as WitMaterialBoundarySegment,
                 OrderedEntityView as WitOrderedEntityView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 QuartileBand as WitQuartileBand,
@@ -1960,6 +1961,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 SeamCandidate as WitSeamCandidate,
                 SeamPosition as WitSeamPosition,
                 SurfaceGroup as WitSurfaceGroup,
+                WallBoundaryType as WitWallBoundaryType,
                 WallFeatureFlag as WitWallFeatureFlag,
                 WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
             };
@@ -2056,6 +2058,26 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     custom,
                 }
             }
+            fn __slicer_wit_material_boundary_segment_to_ir(
+                seg: &WitMaterialBoundarySegment,
+            ) -> ::slicer_ir::MaterialBoundarySegment {
+                ::slicer_ir::MaterialBoundarySegment {
+                    point_range: seg.point_range_start..seg.point_range_end,
+                    near_tool: seg.near_tool,
+                    far_tool: seg.far_tool,
+                }
+            }
+            fn __slicer_wit_boundarytype_to_ir(bt: &WitWallBoundaryType) -> ::slicer_ir::WallBoundaryType {
+                match bt {
+                    WitWallBoundaryType::ExteriorSurface => ::slicer_ir::WallBoundaryType::ExteriorSurface,
+                    WitWallBoundaryType::Interior => ::slicer_ir::WallBoundaryType::Interior,
+                    WitWallBoundaryType::MaterialBoundary(segments) => {
+                        ::slicer_ir::WallBoundaryType::MaterialBoundary {
+                            segments: segments.iter().map(__slicer_wit_material_boundary_segment_to_ir).collect(),
+                        }
+                    }
+                }
+            }
             fn __slicer_wit_wallloop_to_ir(w: &WitWallLoopView) -> ::slicer_ir::WallLoop {
                 let ir_path = __slicer_wit_path_to_ir(&w.path);
                 let n_pts = ir_path.points.len();
@@ -2069,7 +2091,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         widths: (0..n_pts).map(|_| 0.4_f32).collect(),
                     },
                     feature_flags: w.feature_flags.iter().map(__slicer_wit_feature_to_ir).collect(),
-                    boundary_type: ::slicer_ir::WallBoundaryType::Interior,
+                    boundary_type: __slicer_wit_boundarytype_to_ir(&w.boundary_type),
                 }
             }
             fn __slicer_wit_semantic_to_ir(s: &WitPaintSemantic) -> ::slicer_ir::PaintSemantic {
@@ -2412,12 +2434,34 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     custom: custom_entries,
                 }
             }
+            fn __slicer_ir_material_boundary_segment_to_wit(
+                seg: &::slicer_ir::MaterialBoundarySegment,
+            ) -> WitMaterialBoundarySegment {
+                WitMaterialBoundarySegment {
+                    point_range_start: seg.point_range.start,
+                    point_range_end: seg.point_range.end,
+                    near_tool: seg.near_tool,
+                    far_tool: seg.far_tool,
+                }
+            }
+            fn __slicer_ir_boundarytype_to_wit(bt: &::slicer_ir::WallBoundaryType) -> WitWallBoundaryType {
+                match bt {
+                    ::slicer_ir::WallBoundaryType::ExteriorSurface => WitWallBoundaryType::ExteriorSurface,
+                    ::slicer_ir::WallBoundaryType::Interior => WitWallBoundaryType::Interior,
+                    ::slicer_ir::WallBoundaryType::MaterialBoundary { segments } => {
+                        WitWallBoundaryType::MaterialBoundary(
+                            segments.iter().map(__slicer_ir_material_boundary_segment_to_wit).collect(),
+                        )
+                    }
+                }
+            }
             fn __slicer_ir_wallloop_to_wit(w: &::slicer_ir::WallLoop) -> WitWallLoopView {
                 WitWallLoopView {
                     perimeter_index: w.perimeter_index,
                     loop_type: __slicer_ir_looptype_to_wit(&w.loop_type),
                     path: __slicer_ir_path_to_wit(&w.path),
                     feature_flags: w.feature_flags.iter().map(__slicer_ir_feature_to_wit).collect(),
+                    boundary_type: __slicer_ir_boundarytype_to_wit(&w.boundary_type),
                 }
             }
             fn __slicer_ir_region_key_to_wit(k: &::slicer_ir::RegionKey) -> WitRegionKey {

@@ -23,7 +23,7 @@
 use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
 use slicer_runtime::wit_host::{
     ExtrusionRole, HostExecutionContextBuilder, OriginId, Point3, Point3WithWidth, WallFeatureFlag,
-    WallLoopType, WallLoopView,
+    WallLoopType, WallLoopView, WitWallBoundaryType,
 };
 
 use crate::common::wasm_cache;
@@ -133,6 +133,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                 custom: vec![],
             },
         ],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     }
 }
 
@@ -675,6 +676,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
                 custom: vec![],
             },
         ],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     };
 
     let _seam_pos = Point3WithWidth {
@@ -777,6 +779,7 @@ fn seam_z_outside_layer_envelope_rejected() {
                 custom: vec![],
             },
         ],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     };
 
     // Seam Z is ABOVE the layer envelope ceiling (0.4) â€” should be rejected.

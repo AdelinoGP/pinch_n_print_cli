@@ -27,7 +27,7 @@ use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::{
 };
 use slicer_wasm_host::host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth,
-    WallLoopType, WallLoopView,
+    WallLoopType, WallLoopView, WitWallBoundaryType,
 };
 
 // â”€â”€ Helper: build an ExtrusionPath3d with a given Z â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -84,6 +84,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
             speed_factor: 1.0,
         },
         feature_flags: vec![],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     }
 }
 

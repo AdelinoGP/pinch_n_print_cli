@@ -14,7 +14,7 @@ interface ir-handles {
     record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
 
     record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
-    record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
+    record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag>, boundary-type: wall-boundary-type }
     record material-boundary-segment { point-range-start: u32, point-range-end: u32, near-tool: option<u32>, far-tool: option<u32> }
     variant wall-boundary-type { exterior-surface, material-boundary(list<material-boundary-segment>), interior }
     enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell, gap-fill }

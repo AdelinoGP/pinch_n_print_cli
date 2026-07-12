@@ -1798,6 +1798,53 @@ fn run_and_check_arachne_fixture(dir: &Path, mesh_filename: &str) -> Vec<Perimet
     actual
 }
 
+/// D-154 regression guard: `WallBoundaryType` must survive the guest→host WIT
+/// boundary unchanged. Before this fix, every marshal site
+/// (`crates/slicer-wasm-host/src/marshal/leaf.rs` ×2,
+/// `crates/slicer-macros/src/lib.rs`-generated code ×2) hardcoded
+/// `boundary_type: Interior` regardless of what either perimeter generator
+/// actually computed guest-side. This test drives the REAL compiled
+/// `arachne-perimeters.wasm` component through the production
+/// `WasmRuntimeDispatcher` (unlike `arachne-perimeters`' own
+/// `boundary_paint_tdd.rs` / `arachne_parity_outer_wall_boundary_type_tdd.rs`
+/// tests, which call `run_perimeters` natively in-process and never cross the
+/// WASM boundary at all) and asserts the host-observed value is
+/// `ExteriorSurface`, not `Interior`, for the outermost wall.
+#[test]
+fn arachne_outer_wall_boundary_type_survives_wasm_boundary() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mesh_path = tmp.path().join("mesh.stl");
+    let config_path = tmp.path().join("config.json");
+    write_binary_stl(&mesh_path, &solid_box([0.0, 0.0, 0.0], [10.0, 10.0, 1.0]));
+    write_config_json(
+        &config_path,
+        &serde_json::json!({
+            "layer_height": 1.0,
+            "first_layer_height": 1.0,
+            "wall_generator": "arachne"
+        }),
+    );
+
+    let perimeters =
+        run_pipeline_capturing_perimeters(&mesh_path, &config_path, &[core_modules_dir()])
+            .expect("arachne WASM pipeline run must succeed");
+
+    let outer_wall = perimeters
+        .iter()
+        .flat_map(|p| &p.regions)
+        .flat_map(|r| &r.walls)
+        .find(|w| w.perimeter_index == 0)
+        .expect("a perimeter_index == 0 wall loop must be emitted");
+
+    assert_eq!(
+        outer_wall.boundary_type,
+        WallBoundaryType::ExteriorSurface,
+        "outer wall boundary_type must survive the WASM boundary as \
+         ExteriorSurface, not the pre-fix hardcoded Interior; got {:?}",
+        outer_wall.boundary_type
+    );
+}
+
 // ----------------------------------------------------------------------------
 // Arachne fixture 1: tapered_wedge — a trapezoid tapering from an 8mm-wide
 // base (x=0, y in [-4,4]) down to a 2mm-wide tip (x=10mm, y in [-1,1]),

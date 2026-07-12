@@ -1250,7 +1250,7 @@ fn access_audits_live_path_read_performing() {
 use layer::slicer::types::geometry::ExtrusionPath3d as WitExtrusionPath3d;
 use slicer_runtime::wit_host::{
     layer, HostExecutionContextBuilder, HostPerimeterOutputBuilder, Point3 as WitPoint3,
-    Point3WithWidth, WallFeatureFlag, WallLoopView,
+    Point3WithWidth, WallFeatureFlag, WallLoopView, WitWallBoundaryType,
 };
 
 fn make_wall_loop_view() -> WallLoopView {
@@ -1287,6 +1287,7 @@ fn make_wall_loop_view() -> WallLoopView {
             skip_ironing: false,
             custom: Vec::new(),
         }],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     }
 }
 
@@ -1370,6 +1371,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
                 custom: Vec::new(),
             },
         ],
+        boundary_type: WitWallBoundaryType::ExteriorSurface,
     };
     let pos = Point3WithWidth {
         x: 5.0,

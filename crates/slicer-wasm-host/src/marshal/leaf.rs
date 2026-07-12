@@ -8,8 +8,8 @@
 
 use crate::host::{
     ExPolygon, ExtrusionPath3d, ExtrusionRole, PaintSemantic, PaintValue, Point2, Point3WithWidth,
-    Polygon, WallFeatureFlag, WallLoopType, WallLoopView, WitRetractMode,
-    BUILTIN_EXTRUSION_ROLE_BRIM_TAG, BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG,
+    Polygon, WallFeatureFlag, WallLoopType, WallLoopView, WitMaterialBoundarySegment,
+    WitRetractMode, WitWallBoundaryType, BUILTIN_EXTRUSION_ROLE_BRIM_TAG, BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG,
     BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
@@ -260,6 +260,61 @@ pub fn ir_to_wit_wall_feature_flag(f: &slicer_ir::WallFeatureFlags) -> WallFeatu
     }
 }
 
+/// Convert slicer-ir `MaterialBoundarySegment` to its WIT counterpart.
+pub fn ir_to_wit_material_boundary_segment(
+    seg: &slicer_ir::MaterialBoundarySegment,
+) -> WitMaterialBoundarySegment {
+    WitMaterialBoundarySegment {
+        point_range_start: seg.point_range.start,
+        point_range_end: seg.point_range.end,
+        near_tool: seg.near_tool,
+        far_tool: seg.far_tool,
+    }
+}
+
+/// Convert a WIT `MaterialBoundarySegment` to its slicer-ir counterpart.
+pub fn wit_to_ir_material_boundary_segment(
+    seg: &WitMaterialBoundarySegment,
+) -> slicer_ir::MaterialBoundarySegment {
+    slicer_ir::MaterialBoundarySegment {
+        point_range: seg.point_range_start..seg.point_range_end,
+        near_tool: seg.near_tool,
+        far_tool: seg.far_tool,
+    }
+}
+
+/// Convert slicer-ir `WallBoundaryType` to its WIT counterpart.
+pub fn ir_to_wit_wall_boundary_type(bt: &slicer_ir::WallBoundaryType) -> WitWallBoundaryType {
+    match bt {
+        slicer_ir::WallBoundaryType::ExteriorSurface => WitWallBoundaryType::ExteriorSurface,
+        slicer_ir::WallBoundaryType::Interior => WitWallBoundaryType::Interior,
+        slicer_ir::WallBoundaryType::MaterialBoundary { segments } => {
+            WitWallBoundaryType::MaterialBoundary(
+                segments
+                    .iter()
+                    .map(ir_to_wit_material_boundary_segment)
+                    .collect(),
+            )
+        }
+    }
+}
+
+/// Convert a WIT `WallBoundaryType` to its slicer-ir counterpart.
+pub fn wit_to_ir_wall_boundary_type(bt: &WitWallBoundaryType) -> slicer_ir::WallBoundaryType {
+    match bt {
+        WitWallBoundaryType::ExteriorSurface => slicer_ir::WallBoundaryType::ExteriorSurface,
+        WitWallBoundaryType::Interior => slicer_ir::WallBoundaryType::Interior,
+        WitWallBoundaryType::MaterialBoundary(segments) => {
+            slicer_ir::WallBoundaryType::MaterialBoundary {
+                segments: segments
+                    .iter()
+                    .map(wit_to_ir_material_boundary_segment)
+                    .collect(),
+            }
+        }
+    }
+}
+
 /// Convert slicer-ir `WallLoop` to WIT `WallLoopView`.
 pub fn ir_to_wit_wall_loop(wl: &slicer_ir::WallLoop) -> WallLoopView {
     WallLoopView {
@@ -271,6 +326,7 @@ pub fn ir_to_wit_wall_loop(wl: &slicer_ir::WallLoop) -> WallLoopView {
             .iter()
             .map(ir_to_wit_wall_feature_flag)
             .collect(),
+        boundary_type: ir_to_wit_wall_boundary_type(&wl.boundary_type),
     }
 }
 
@@ -436,7 +492,7 @@ pub fn convert_wall_loop(wl: &WallLoopView) -> Result<slicer_ir::WallLoop, Strin
             .iter()
             .map(convert_wall_feature_flag)
             .collect(),
-        boundary_type: slicer_ir::WallBoundaryType::Interior,
+        boundary_type: wit_to_ir_wall_boundary_type(&wl.boundary_type),
     })
 }
 

@@ -445,6 +445,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
     use slicer_runtime::wit_host::{
         convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, OriginId,
         PerimeterOutputCollected, Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        WitWallBoundaryType,
     };
     // One untagged wall_loop and one tagged seam_candidate => mixed mode.
     let output = PerimeterOutputCollected {
@@ -471,6 +472,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                 skip_ironing: false,
                 custom: vec![],
             }],
+            boundary_type: WitWallBoundaryType::ExteriorSurface,
         }],
         wall_loop_origins: vec![None],
         // Force "any_tagged" by including a tagged entry (the empty Vec is

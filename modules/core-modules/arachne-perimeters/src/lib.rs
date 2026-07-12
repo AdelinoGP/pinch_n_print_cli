@@ -62,11 +62,13 @@
 #![warn(unused_imports)]
 
 use slicer_core::flow::{bridging_flow, flow_to_width, line_width_to_spacing};
-use slicer_core::perimeter_utils::{generate_sharp_corner_seam_candidates, point_in_any_polygon};
+use slicer_core::perimeter_utils::{
+    build_wall_flags, generate_sharp_corner_seam_candidates, point_in_any_polygon,
+};
 use slicer_ir::{
     extrusion_line_to_extrusion_path3d, mm_to_units, point_in_polygon_winding, units_to_mm,
-    ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType,
-    WallFeatureFlags, WallLoop, WidthProfile,
+    ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType, WallLoop,
+    WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -556,11 +558,37 @@ impl LayerModule for ArachnePerimeters {
                 let num_points = path.points.len();
                 let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
 
+                // D-154: Arachne's beading-derived vertices have no index
+                // correspondence to `polygons`' original vertex ordering — not
+                // even for the outer wall, unlike classic-perimeters' simple
+                // polygon-offset walls — so paint attribution always uses
+                // `build_wall_flags`'s geometric-reprojection path (nearest
+                // original vertex/edge) rather than its index-based fallback.
+                // `ring_pts_units` (mm→units, matching `polygons`' coordinate
+                // space) is also reused below for the bridge-area lookup.
+                let ring_pts_units: Vec<Point2> = path
+                    .points
+                    .iter()
+                    .map(|p| Point2 {
+                        x: mm_to_units(p.x),
+                        y: mm_to_units(p.y),
+                    })
+                    .collect();
+                let is_outer = line.inset_idx == 0;
+                let (mut feature_flags, boundary_type) = build_wall_flags(
+                    num_points,
+                    usize::MAX, // unused by the reprojection path; no single original poly_idx applies to a beading-derived wall
+                    region.segment_annotations(),
+                    is_outer,
+                    Some(&ring_pts_units),
+                    Some(polygons),
+                    false, // D14 painted-variant fuzzy skin (variant_chain) is not wired into arachne-perimeters yet — out of scope here
+                );
+
                 // AC-3 (packet 148): is_thin_wall is set on every vertex of a
                 // ThinWall wall only — never on Outer/Inner walls, even if
                 // geometrically narrow (mirrors classic-perimeters' own
                 // is_thin_wall flag shape).
-                let mut feature_flags = vec![WallFeatureFlags::default(); num_points];
                 if loop_type == LoopType::ThinWall {
                     for flag in &mut feature_flags {
                         flag.is_thin_wall = true;
@@ -581,10 +609,7 @@ impl LayerModule for ArachnePerimeters {
                     && matches!(loop_type, LoopType::Outer | LoopType::Inner)
                 {
                     for i in 0..path.points.len() {
-                        let units_pt = Point2 {
-                            x: mm_to_units(path.points[i].x),
-                            y: mm_to_units(path.points[i].y),
-                        };
+                        let units_pt = ring_pts_units[i];
                         if point_in_any_polygon(&units_pt, bridge_areas) {
                             feature_flags[i].is_bridge = true;
                             // D4/packet 150 step 5: bridge vertices get the
@@ -634,16 +659,6 @@ impl LayerModule for ArachnePerimeters {
                             .max();
                     }
                 }
-
-                // AC-1 (packet 148): the outermost bead (inset_idx == 0) faces
-                // air or a gap, exactly like classic-perimeters' own outer
-                // wall — it gets ExteriorSurface. Deeper insets stay Interior
-                // (no material-boundary detection wired here yet).
-                let boundary_type = if line.inset_idx == 0 {
-                    WallBoundaryType::ExteriorSurface
-                } else {
-                    WallBoundaryType::Interior
-                };
 
                 // G1 (packet 151, Step 2): normalize loop winding to
                 // wall_direction. Holes (non-ExteriorSurface) wind opposite the

@@ -104,6 +104,7 @@ impl Guest for Component {
                     skip_ironing: false,
                     custom: vec![],
                 }],
+                boundary_type: slicer::ir_handles::ir_handles::WallBoundaryType::ExteriorSurface,
             };
             output.push_wall_loop(&wl).expect("push wall loop failed");
         }

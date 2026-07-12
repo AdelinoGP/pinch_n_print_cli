@@ -47,17 +47,21 @@ pub const BASE_SPEED: f32 = 50.0;
 /// different vertex counts and ordering, so naive index-based sampling assigns the
 /// wrong tool/material color to inner-wall vertices near concave features.
 ///
-/// When `inset_ring_points` and `original_polygons` are both `Some` and
-/// `is_outer = false`, this function uses **geometric reprojection**: for each
-/// inner-wall vertex, the nearest edge across all original contours is found, then
-/// the nearest endpoint vertex of that edge is selected, and its annotation is used.
-/// This is deterministic (pure function of inputs) and correct for all polygon
-/// shapes including concave ones.
+/// When `inset_ring_points` and `original_polygons` are both `Some`, this function
+/// uses **geometric reprojection** regardless of `is_outer`: for each wall vertex,
+/// the nearest edge across all original contours is found, then the nearest
+/// endpoint vertex of that edge is selected, and its annotation is used. This is
+/// deterministic (pure function of inputs) and correct for all polygon shapes
+/// including concave ones, and for any vertex set — including ones with no
+/// correspondence at all to the original contour's vertex count/ordering (e.g.
+/// Arachne's Voronoi-beading-derived walls).
 ///
-/// Outer walls (`is_outer = true`) always use index-based lookup (the outer wall IS
-/// the original contour's first inset, so vertex ordering is preserved). When
-/// `inset_ring_points` or `original_polygons` is `None`, index-based lookup is used
-/// as a fallback (backward-compatible path for callers that do not supply geometry).
+/// Classic's outer wall withholds `inset_ring_points`/`original_polygons` (passing
+/// `None`) because its offset preserves the original contour's vertex ordering
+/// 1:1, so index-based lookup is exact and cheaper. When either input is `None`,
+/// index-based lookup is used as a fallback (backward-compatible path for callers
+/// that do not supply geometry) — this is correct only when the caller's vertex
+/// ordering genuinely matches the original contour's.
 pub fn build_wall_flags(
     num_points: usize,
     poly_idx: usize,
@@ -79,10 +83,15 @@ pub fn build_wall_flags(
         }
     }
 
-    // Determine which annotation source to use for each flag slot.
-    // For inner walls with geometry available, use reprojection; otherwise fall back
-    // to the legacy index-based path (outer walls, or callers that pass None).
-    let use_reprojection = !is_outer && inset_ring_points.is_some() && original_polygons.is_some();
+    // Determine which annotation source to use for each flag slot. Reprojection
+    // is used whenever the caller supplies wall-vertex/original-polygon geometry,
+    // regardless of `is_outer`: classic's outer wall withholds this geometry (its
+    // offset preserves the original contour's vertex ordering 1:1, so index-based
+    // lookup is exact and cheaper), but Arachne has no wall type with that
+    // guarantee — its vertices come from Voronoi beading, not polygon offsetting —
+    // so Arachne callers must supply geometry unconditionally, including for their
+    // outer wall.
+    let use_reprojection = inset_ring_points.is_some() && original_polygons.is_some();
 
     if use_reprojection {
         let ring_pts = inset_ring_points.unwrap();
@@ -136,12 +145,18 @@ pub fn build_wall_flags(
         let boundary_type = if has_any_material {
             let transitions = find_all_transitions(&projected_mat_vals);
             if transitions.is_empty() {
-                WallBoundaryType::Interior
+                if is_outer {
+                    WallBoundaryType::ExteriorSurface
+                } else {
+                    WallBoundaryType::Interior
+                }
             } else {
                 WallBoundaryType::MaterialBoundary {
                     segments: transitions,
                 }
             }
+        } else if is_outer {
+            WallBoundaryType::ExteriorSurface
         } else {
             WallBoundaryType::Interior
         };

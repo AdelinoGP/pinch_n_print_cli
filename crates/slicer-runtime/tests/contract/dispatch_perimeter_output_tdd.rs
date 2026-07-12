@@ -7,7 +7,7 @@ use crate::common::*;
 fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
     use slicer_runtime::wit_host::{
         convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected, Point3,
-        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
     let output = PerimeterOutputCollected {
@@ -54,6 +54,7 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                     custom: vec![],
                 },
             ],
+            boundary_type: WitWallBoundaryType::ExteriorSurface,
         }],
         infill_areas: Vec::new(),
         seam_candidates: vec![(
@@ -83,7 +84,7 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
 fn perimeter_output_rejects_nan_in_wall_loop_path() {
     use slicer_runtime::wit_host::{
         convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
-        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
     let output = PerimeterOutputCollected {
@@ -110,6 +111,7 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
                 skip_ironing: false,
                 custom: vec![],
             }],
+            boundary_type: WitWallBoundaryType::ExteriorSurface,
         }],
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
@@ -126,7 +128,7 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
 fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
     use slicer_runtime::wit_host::{
         convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
-        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
     // 2 points but only 1 feature flag → cardinality mismatch per docs/03
@@ -167,6 +169,7 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                 },
                 // Missing second flag
             ],
+            boundary_type: WitWallBoundaryType::ExteriorSurface,
         }],
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
@@ -239,7 +242,7 @@ fn empty_perimeter_output_does_not_populate_arena() {
 fn perimeter_conversion_deterministic_across_repeated_calls() {
     use slicer_runtime::wit_host::{
         convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected, Point3,
-        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView, WitWallBoundaryType,
     };
 
     let mk_output = || PerimeterOutputCollected {
@@ -286,6 +289,7 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                     custom: vec![],
                 },
             ],
+            boundary_type: WitWallBoundaryType::ExteriorSurface,
         }],
         infill_areas: Vec::new(),
         seam_candidates: vec![(
