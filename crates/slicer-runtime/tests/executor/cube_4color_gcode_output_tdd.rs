@@ -1362,7 +1362,7 @@ fn cube_4color_painted_model_emits_top_and_bottom_solid_surfaces() {
 #[test]
 fn cube_4color_gapfill_does_not_flood_bisector_seams() {
     let outcome = slice_fixture_file(&cube_4color_path());
-    let gapfill = count_type(&outcome.gcode_text, "GapFill");
+    let gapfill = count_type(&outcome.gcode_text, "Gap infill");
     assert!(
         gapfill < 150,
         "GapFill block count {gapfill} exceeds the regression ceiling (150). The pre-fix \

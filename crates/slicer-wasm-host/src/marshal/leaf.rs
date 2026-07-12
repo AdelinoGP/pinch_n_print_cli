@@ -9,8 +9,8 @@
 use crate::host::{
     ExPolygon, ExtrusionPath3d, ExtrusionRole, PaintSemantic, PaintValue, Point2, Point3WithWidth,
     Polygon, WallFeatureFlag, WallLoopType, WallLoopView, WitRetractMode,
-    BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG, BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG,
-    BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
+    BUILTIN_EXTRUSION_ROLE_BRIM_TAG, BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG,
+    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
 // postpass type alias used by convert_postpass_retract_mode.
@@ -203,6 +203,9 @@ pub fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRol
         slicer_ir::ExtrusionRole::Skirt => {
             ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
         }
+        slicer_ir::ExtrusionRole::Brim => {
+            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_BRIM_TAG.to_string())
+        }
         slicer_ir::ExtrusionRole::InternalSolidInfill => {
             ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG.to_string())
         }
@@ -321,6 +324,9 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         }
         ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG => {
             slicer_ir::ExtrusionRole::Skirt
+        }
+        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_BRIM_TAG => {
+            slicer_ir::ExtrusionRole::Brim
         }
         ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG => {
             slicer_ir::ExtrusionRole::InternalSolidInfill

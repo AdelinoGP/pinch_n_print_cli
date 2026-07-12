@@ -1275,7 +1275,7 @@ Synthetic region-key convention for finalization-stage geometry:
 | Geometry kind | `RegionKey.object_id`         |
 |---------------|-------------------------------|
 | Skirt         | `"__skirt__"`                 |
-| Brim          | `"__brim__"`                  |
+| Brim          | role `ExtrusionRole::Brim` (object_id is a plain `"brim"`; the `__brim__` marker was retired — the role is the single source of truth) |
 | Wipe tower    | `"__wipe_tower__"`            |
 | Prime tower   | `"__prime_tower__"`           |
 

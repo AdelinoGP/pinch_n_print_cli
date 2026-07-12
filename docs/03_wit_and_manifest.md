@@ -183,6 +183,7 @@ using reserved `custom(string)` tags:
 
 - `PrimeTower` maps to `custom("slicer.builtin/prime-tower@1")`
 - `Skirt` maps to `custom("slicer.builtin/skirt@1")`
+- `Brim` maps to `custom("slicer.builtin/brim@1")`
 - Third-party modules must not mint either reserved tag.
 
 ---

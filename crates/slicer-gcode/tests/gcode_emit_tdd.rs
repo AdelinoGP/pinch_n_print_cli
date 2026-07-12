@@ -1083,10 +1083,17 @@ fn emits_orca_type_comments_at_role_boundaries() {
         ],
         ExtrusionRole::Skirt,
     );
-    let entity_wipe = print_entity_fixture(
+    let entity_brim = print_entity_fixture(
         vec![
             point3_with_width(6.0, 0.0, 0.2),
             point3_with_width(7.0, 0.0, 0.2),
+        ],
+        ExtrusionRole::Brim,
+    );
+    let entity_wipe = print_entity_fixture(
+        vec![
+            point3_with_width(7.0, 0.0, 0.2),
+            point3_with_width(8.0, 0.0, 0.2),
         ],
         ExtrusionRole::PrimeTower,
     );
@@ -1099,6 +1106,7 @@ fn emits_orca_type_comments_at_role_boundaries() {
         entity_support,
         entity_supp_iface,
         entity_skirt,
+        entity_brim,
         entity_wipe,
     ];
 
@@ -1127,9 +1135,10 @@ fn emits_orca_type_comments_at_role_boundaries() {
         "missing ;TYPE:Support interface for SupportInterface"
     );
     assert!(
-        text.contains(";TYPE:Skirt/Brim"),
-        "missing ;TYPE:Skirt/Brim for Skirt"
+        text.contains(";TYPE:Skirt"),
+        "missing ;TYPE:Skirt for Skirt"
     );
+    assert!(text.contains(";TYPE:Brim"), "missing ;TYPE:Brim for Brim");
     assert!(
         text.contains(";TYPE:Prime tower"),
         "missing ;TYPE:Prime tower for PrimeTower"
@@ -1143,7 +1152,8 @@ fn emits_orca_type_comments_at_role_boundaries() {
         ";TYPE:Sparse infill",
         ";TYPE:Support",
         ";TYPE:Support interface",
-        ";TYPE:Skirt/Brim",
+        ";TYPE:Skirt",
+        ";TYPE:Brim",
         ";TYPE:Prime tower",
     ];
     let lines: Vec<&str> = text.lines().collect();
@@ -1321,7 +1331,7 @@ fn omits_absent_role_labels_and_retraction_lines() {
     // Given a layer whose entities contain only OuterWall and SparseInfill roles
     // and whose postpass queue contains no retracts, unretracts, or support entities,
     // when the host serializes, then the output contains no ;TYPE:Support,
-    // no ;TYPE:Support interface, no ;TYPE:Skirt/Brim, no ;TYPE:Prime tower,
+    // no ;TYPE:Support interface, no ;TYPE:Skirt, no ;TYPE:Prime tower,
     // and no retract line matching G1 E-.
 
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
@@ -1361,7 +1371,7 @@ fn omits_absent_role_labels_and_retraction_lines() {
     );
     assert!(
         !text.contains(";TYPE:Skirt"),
-        "must not fabricate ;TYPE:Skirt/Brim"
+        "must not fabricate ;TYPE:Skirt"
     );
     assert!(
         !text.contains(";TYPE:Prime tower"),

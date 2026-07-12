@@ -157,6 +157,7 @@ impl DefaultGCodeEmitter {
             ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
             ExtrusionRole::SupportInterface => self.feedrate_config.support_interface_speed,
             ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
+            ExtrusionRole::Brim => self.feedrate_config.skirt_speed,
             ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
             ExtrusionRole::PrimeTower => self.feedrate_config.prime_tower_speed,
             ExtrusionRole::Ironing => {
@@ -203,6 +204,7 @@ fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
         (ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterial) => true,
         (ExtrusionRole::SupportInterface, ExtrusionRole::SupportInterface) => true,
         (ExtrusionRole::Skirt, ExtrusionRole::Skirt) => true,
+        (ExtrusionRole::Brim, ExtrusionRole::Brim) => true,
         (ExtrusionRole::WipeTower, ExtrusionRole::WipeTower) => true,
         (ExtrusionRole::PrimeTower, ExtrusionRole::PrimeTower) => true,
         (ExtrusionRole::Ironing, ExtrusionRole::Ironing) => true,
@@ -211,7 +213,15 @@ fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
     }
 }
 
-/// Returns the canonical OrcaSlicer ";TYPE:{label}" comment text for an extrusion role.
+/// Returns the canonical OrcaSlicer ";TYPE:{label}" comment text for an extrusion
+/// role.
+///
+/// Labels MUST match the strings OrcaSlicer's g-code viewer parses
+/// (`ExtrusionEntity::string_to_role` in `src/libslic3r/GCode/ExtrusionEntity.cpp`):
+/// any value not in that set renders as "Undefined" in the viewer. In particular
+/// `BridgeInfill` -> `Bridge` (not `Bridge infill`), `GapFill` -> `Gap infill`
+/// (not `GapFill`), and `Skirt`/`Brim` -> `Skirt`/`Brim` (not the
+/// unrecognised `Skirt/Brim`).
 fn orca_type_label(role: &ExtrusionRole) -> &'static str {
     match role {
         ExtrusionRole::OuterWall => ";TYPE:Outer wall",
@@ -221,15 +231,16 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::BottomSolidInfill => ";TYPE:Bottom surface",
         ExtrusionRole::InternalSolidInfill => ";TYPE:Internal solid infill",
         ExtrusionRole::SparseInfill => ";TYPE:Sparse infill",
-        ExtrusionRole::BridgeInfill => ";TYPE:Bridge infill",
+        ExtrusionRole::BridgeInfill => ";TYPE:Bridge",
         ExtrusionRole::SupportMaterial => ";TYPE:Support",
         ExtrusionRole::SupportInterface => ";TYPE:Support interface",
-        ExtrusionRole::Skirt => ";TYPE:Skirt/Brim",
+        ExtrusionRole::Skirt => ";TYPE:Skirt",
+        ExtrusionRole::Brim => ";TYPE:Brim",
         ExtrusionRole::WipeTower => ";TYPE:Prime tower",
         ExtrusionRole::PrimeTower => ";TYPE:Prime tower",
         ExtrusionRole::Ironing => ";TYPE:Ironing",
         ExtrusionRole::Custom(_) => ";TYPE:Custom",
-        ExtrusionRole::GapFill => ";TYPE:GapFill",
+        ExtrusionRole::GapFill => ";TYPE:Gap infill",
         _ => ";TYPE:Custom",
     }
 }

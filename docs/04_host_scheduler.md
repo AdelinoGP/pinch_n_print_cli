@@ -1354,7 +1354,8 @@ Field derivation:
 | `BridgeInfill`         | `Bridge`            |
 | `SupportMaterial`      | `Support`           |
 | `SupportInterface`     | `Support interface` |
-| `Skirt`                | `Skirt/Brim`        |
+| `Skirt`                | `Skirt`           |
+| `Brim`                 | `Brim`            |
 | `WipeTower`            | `Prime tower`       |
 | `PrimeTower`           | `Prime tower`       |
 | `Ironing`              | `Ironing`           |

@@ -1673,13 +1673,13 @@ fn wedge_multi_layer_top_bottom_evidence() {
 
     // Slot-ceiling reclassification (this is the assertion that exercises the
     // enclosure discriminator): the z≈28.0 interior-slot ceiling must now emit
-    // `;TYPE:Bridge infill` and must NOT emit `;TYPE:Bottom surface`. Pre-fix
+    // `;TYPE:Bridge` and must NOT emit `;TYPE:Bottom surface`. Pre-fix
     // this layer carried the mis-counted Bottom-surface blocks; post-fix the
     // flat bridge over the enclosed slot gap replaces them.
     let slot_ceiling = layer_type_markers(gcode, 28.0);
     assert!(
-        slot_ceiling.iter().any(|t| t == "Bridge infill"),
-        "packet-109: interior-slot ceiling at z=28.0 must emit `;TYPE:Bridge infill` \
+        slot_ceiling.iter().any(|t| t == "Bridge"),
+        "packet-109: interior-slot ceiling at z=28.0 must emit `;TYPE:Bridge` \
          — the enclosed flat gap span is a bridge. Markers found: {:?}. Preview:\n{}",
         slot_ceiling,
         preview(gcode, 30)
@@ -1852,7 +1852,7 @@ fn cli_rejects_top_shell_layers_string() {
 /// AC-11 (packet 36-rev1): wedge_gcode_contains_exact_bridge_infill_marker
 ///
 /// Runs slicer on Benchy STL with default config.
-/// Asserts output G-code contains at least one line equal to `;TYPE:Bridge infill`
+/// Asserts output G-code contains at least one line equal to `;TYPE:Bridge`
 /// (exact trimmed match), confirming the bridge infill pipeline is wired end-to-end.
 #[test]
 fn wedge_gcode_contains_exact_bridge_infill_marker() {
@@ -1877,10 +1877,10 @@ fn wedge_gcode_contains_exact_bridge_infill_marker() {
 
     let gcode = outcome.gcode.as_str();
 
-    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
+    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge");
     assert!(
         has_bridge,
-        "AC-11 FAILED: G-code must contain a line exactly equal to `;TYPE:Bridge infill`. \
+        "AC-11 FAILED: G-code must contain a line exactly equal to `;TYPE:Bridge`. \
          Bridge detection or rectilinear-infill emission may not be wired. \
          G-code preview:\n{}",
         preview(gcode, 30)
@@ -1929,10 +1929,10 @@ fn wedge_default_emits_bridge_infill_marker() {
     let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
-    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
+    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge");
     assert!(
         has_bridge,
-        "FILL-ROLE-AC-FC3 FAILED: G-code must contain `;TYPE:Bridge infill`. \
+        "FILL-ROLE-AC-FC3 FAILED: G-code must contain `;TYPE:Bridge`. \
          G-code preview:\n{}",
         preview(gcode, 30)
     );

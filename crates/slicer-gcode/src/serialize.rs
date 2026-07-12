@@ -28,7 +28,8 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
         ExtrusionRole::OuterWall
         | ExtrusionRole::InnerWall
         | ExtrusionRole::ThinWall
-        | ExtrusionRole::Skirt => cfg.gcode_resolution,
+        | ExtrusionRole::Skirt
+        | ExtrusionRole::Brim => cfg.gcode_resolution,
         // Infill family: relaxed tolerance.
         ExtrusionRole::SparseInfill
         | ExtrusionRole::TopSolidInfill

@@ -1665,6 +1665,11 @@ pub enum ExtrusionRole {
     BridgeInfill,
     /// Skirt / brim
     Skirt,
+    /// Brim (bed-adhesion loops). Shares the skirt/brim module's geometry
+    /// with `Skirt` but is a distinct role so the g-code viewer can label
+    /// it `;TYPE:Brim` (OrcaSlicer parity) rather than collapsing both
+    /// into one `;TYPE:Skirt/Brim` "Undefined" bucket.
+    Brim,
     /// Custom role
     Custom(String),
     /// Gap-fill extrusion (T-062b)
@@ -1679,6 +1684,7 @@ impl ExtrusionRole {
     pub const fn default_priority(&self) -> u32 {
         match self {
             Self::Skirt => 0,
+            Self::Brim => 110,
             Self::OuterWall => 1000,
             Self::InnerWall => 1500,
             Self::ThinWall => 1700,
@@ -1707,13 +1713,13 @@ impl ExtrusionRole {
     /// emission; an open path with one of these roles is a sign that some
     /// post-process step dropped the closing repeat.
     ///
-    /// Returns `true` for: `OuterWall`, `InnerWall`, `ThinWall`, `Skirt`.
+    /// Returns `true` for: `OuterWall`, `InnerWall`, `ThinWall`, `Skirt`, `Brim`.
     /// `Custom(_)` is conservatively treated as `false` — a custom-role path
     /// could be a polyline or a loop; the consumer should classify.
     pub const fn is_loop(&self) -> bool {
         matches!(
             self,
-            Self::OuterWall | Self::InnerWall | Self::ThinWall | Self::Skirt
+            Self::OuterWall | Self::InnerWall | Self::ThinWall | Self::Skirt | Self::Brim
         )
     }
 }

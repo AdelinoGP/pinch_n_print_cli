@@ -203,7 +203,7 @@ impl SkirtBrim {
             let x_max = bbox.x_max + offset;
             let y_max = bbox.y_max + offset;
 
-            let path = self.make_rect_loop(x_min, y_min, x_max, y_max, z);
+            let path = self.make_rect_loop(x_min, y_min, x_max, y_max, z, ExtrusionRole::Skirt);
 
             let region_key = RegionKey {
                 global_layer_index,
@@ -240,11 +240,14 @@ impl SkirtBrim {
             let x_max = bbox.x_max + offset;
             let y_max = bbox.y_max + offset;
 
-            let path = self.make_rect_loop(x_min, y_min, x_max, y_max, z);
+            let path = self.make_rect_loop(x_min, y_min, x_max, y_max, z, ExtrusionRole::Brim);
 
             let region_key = RegionKey {
                 global_layer_index,
-                object_id: "__brim__".to_string(),
+                // Brim is now a distinct `ExtrusionRole::Brim` (packet-?, R1):
+                // the `__brim__` object_id marker is dropped, the role is the
+                // single source of truth for g-code labeling and host routing.
+                object_id: "brim".to_string(),
                 region_id: 0,
                 variant_chain: Vec::new(),
             };
@@ -255,7 +258,7 @@ impl SkirtBrim {
         pairs
     }
 
-    /// Create a closed rectangular extrusion loop.
+    /// Create a closed rectangular extrusion loop with the given extrusion role.
     fn make_rect_loop(
         &self,
         x_min: f32,
@@ -263,6 +266,7 @@ impl SkirtBrim {
         x_max: f32,
         y_max: f32,
         z: f32,
+        role: ExtrusionRole,
     ) -> ExtrusionPath3D {
         let mk = |x: f32, y: f32| Point3WithWidth {
             x,
@@ -281,7 +285,7 @@ impl SkirtBrim {
                 mk(x_min, y_max),
                 mk(x_min, y_min), // close the loop
             ],
-            role: ExtrusionRole::Skirt,
+            role,
             speed_factor: 1.0,
         }
     }

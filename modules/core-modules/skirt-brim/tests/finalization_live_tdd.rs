@@ -127,13 +127,10 @@ fn run_finalization_pushes_brim_entities_on_layer_zero_only() {
         assert_eq!(*layer_index, 0, "brim must target layer 0 only");
         assert_eq!(
             path.role,
-            ExtrusionRole::Skirt,
-            "brim path role must be Skirt"
+            ExtrusionRole::Brim,
+            "brim path role must be Brim"
         );
-        assert_eq!(
-            region_key.object_id, "__brim__",
-            "object_id must be '__brim__'"
-        );
+        assert_eq!(region_key.object_id, "brim", "object_id must be 'brim'");
     }
     assert!(
         output.synthetic_layers().is_empty(),

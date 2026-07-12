@@ -274,7 +274,7 @@ fn brim_generates_paths() {
     let brim_count = layers[0]
         .ordered_entities
         .iter()
-        .filter(|e| e.region_key.object_id == "__brim__")
+        .filter(|e| e.role == ExtrusionRole::Brim)
         .count();
     assert!(
         brim_count > 0,
@@ -292,7 +292,7 @@ fn brim_generates_paths() {
     let brim_on_layer1 = layers[1]
         .ordered_entities
         .iter()
-        .any(|e| e.region_key.object_id == "__brim__");
+        .any(|e| e.role == ExtrusionRole::Brim);
     assert!(!brim_on_layer1, "layer 1 should NOT have brim entities");
 }
 

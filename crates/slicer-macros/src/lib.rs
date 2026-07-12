@@ -724,6 +724,9 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     ::slicer_sdk::ir::ExtrusionRole::Skirt => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
                     }
+                    ::slicer_sdk::ir::ExtrusionRole::Brim => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1"))
+                    }
                     ::slicer_sdk::ir::ExtrusionRole::InternalSolidInfill => {
                         ExtrusionRole::Custom(::std::string::String::from(
                             "slicer.builtin/internal-solid-infill@1",
@@ -956,6 +959,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     }
                     ::slicer_ir::ExtrusionRole::Skirt => {
                         ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::Brim => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1"))
                     }
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill => {
                         ExtrusionRole::Custom(::std::string::String::from(
@@ -2337,6 +2343,9 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     }
                     ::slicer_ir::ExtrusionRole::Skirt => {
                         WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::Brim => {
+                        WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1"))
                     }
                     ::slicer_ir::ExtrusionRole::InternalSolidInfill => {
                         WitExtrusionRole::Custom(::std::string::String::from(

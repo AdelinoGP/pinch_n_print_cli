@@ -27,6 +27,8 @@ pub struct ConfigViewData {
 pub const BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG: &str = "slicer.builtin/prime-tower@1";
 /// Reserved custom extrusion-role tag used to preserve Skirt through WIT boundaries.
 pub const BUILTIN_EXTRUSION_ROLE_SKIRT_TAG: &str = "slicer.builtin/skirt@1";
+/// Reserved custom extrusion-role tag used to preserve Brim through WIT boundaries.
+pub const BUILTIN_EXTRUSION_ROLE_BRIM_TAG: &str = "slicer.builtin/brim@1";
 /// Reserved custom extrusion-role tag used to preserve InternalSolidInfill through
 /// WIT boundaries (the WIT `extrusion-role` variant has no dedicated case).
 pub const BUILTIN_EXTRUSION_ROLE_INTERNAL_SOLID_TAG: &str =
@@ -1924,6 +1926,10 @@ mod layer_role_tests {
             ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
             ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
         ));
+        assert!(matches!(
+            ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Brim),
+            ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_BRIM_TAG
+        ));
     }
 }
 
@@ -3637,6 +3643,10 @@ mod finalization_impls {
             assert!(matches!(
                 ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
                 ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
+            ));
+            assert!(matches!(
+                ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Brim),
+                ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_BRIM_TAG
             ));
         }
 
