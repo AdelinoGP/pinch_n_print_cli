@@ -173,18 +173,18 @@ fn generate_junctions_resolves_beading_at_peak_not_boundary_side() {
     let strategy = FixedBeadingStrategy;
     let junctions = generate_junctions(&graph, &strategy);
 
-    let (from_j, _to_j) = junctions.get(&0).unwrap_or_else(|| {
+    let junctions_vec = junctions.get(&0).unwrap_or_else(|| {
         panic!(
             "upward edge (edges[0]) must have an entry in edge_junctions; got keys = {:?}",
             junctions.keys().collect::<Vec<_>>()
         )
     });
     assert!(
-        !from_j.is_empty(),
+        !junctions_vec.is_empty(),
         "expected at least one in-band bead for the upward edge"
     );
 
-    let emitted_width_mm = from_j[0].p.width;
+    let emitted_width_mm = junctions_vec[0].p.width;
     assert!(
         (emitted_width_mm - 0.9).abs() < 1e-3,
         "emitted junction width is {emitted_width_mm}mm, expected ~0.9mm (v1/peak's bead_widths[0]). \
@@ -275,24 +275,24 @@ fn generate_junctions_reads_width_from_beadings_own_array_per_bead_index() {
     let strategy = FixedBeadingStrategy;
     let junctions = generate_junctions(&graph, &strategy);
 
-    let (from_j, _to_j) = junctions.get(&0).unwrap_or_else(|| {
+    let junctions_vec = junctions.get(&0).unwrap_or_else(|| {
         panic!(
             "upward edge (edges[0]) must have an entry in edge_junctions; got keys = {:?}",
             junctions.keys().collect::<Vec<_>>()
         )
     });
     assert_eq!(
-        from_j.len(),
+        junctions_vec.len(),
         2,
         "expected exactly 2 in-band beads (indices 0 and 1; index 2's location, 9mm, exceeds \
          nothing but its width must differ from the others -- this fixture's from_r=0.5mm keeps \
          indices 0 and 1 in-band and the scan's mid-start (index 1) plus outward walk should \
          reach both), got {} junction(s)",
-        from_j.len()
+        junctions_vec.len()
     );
 
-    let width_bead0_mm = from_j[0].p.width;
-    let width_bead1_mm = from_j[1].p.width;
+    let width_bead0_mm = junctions_vec[0].p.width;
+    let width_bead1_mm = junctions_vec[1].p.width;
 
     assert!(
         (width_bead0_mm - 0.3).abs() < 1e-3,
@@ -398,9 +398,9 @@ fn generate_junctions_does_not_exclude_ribs() {
          canonical generateJunctions has no such gate anywhere and ribs are the primary \
          near-boundary junction carrier."
     );
-    let (from_j, to_j) = entry.expect("checked is_some above");
+    let junctions_vec = entry.expect("checked is_some above");
     assert!(
-        !from_j.is_empty() && !to_j.is_empty(),
+        !junctions_vec.is_empty(),
         "the rib's upward half has an edge_junctions entry but it is empty -- expected at least \
          one in-band bead from the spine vertex's bead_count=2 beading"
     );

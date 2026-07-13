@@ -134,11 +134,15 @@ use crate::voronoi::{Vertex, NO_INDEX};
 
 /// Per-edge junction fans produced by `generate_junctions`.
 ///
-/// `from_junctions` live at the half-edge's `start_vertex`; `to_junctions`
-/// live at the half-edge's resolved "to" vertex (its twin's start_vertex).
-/// Both vectors are ordered outermost bead (`perimeter_index == 0`) to
-/// innermost bead (`perimeter_index == n-1`).
-type EdgeJunctions = (Vec<ExtrusionJunction>, Vec<ExtrusionJunction>);
+/// One flat `Vec<ExtrusionJunction>` per (upward) edge, matching
+/// OrcaSlicer's `LineJunctions` layout (`ExtrusionJunction.hpp:85-87`). The
+/// junctions are pushed in peak-side-first order (highest `distance_to_boundary`
+/// / highest junction radius) to boundary-side-last (lowest radius), so
+/// `junctions[0]` is the peak-side junction and the last entry is the
+/// boundary-side junction. Each junction's `perimeter_index` equals its bead
+/// index at emission time, mirroring the canonical `junction.perimeter_index =
+/// junction_idx` assignment (`SkeletalTrapezoidation.cpp:2064-2077`).
+type EdgeJunctions = Vec<ExtrusionJunction>;
 
 /// Resolves a half-edge's "to" vertex index via its twin's `start_vertex`,
 /// matching [`crate::skeletal_trapezoidation::graph`]'s own convention.
@@ -162,32 +166,7 @@ fn to_mm_xy(v: Vertex) -> (f32, f32) {
     ((v.x / UNITS_PER_MM) as f32, (v.y / UNITS_PER_MM) as f32)
 }
 
-/// Placeholder `ExtrusionJunction` for filling in-band-break gaps in the
-/// per-bead junction vec (the canonical algorithm skips out-of-band beads
-/// rather than emitting them, so the surviving junctions' `perimeter_index`
-/// values are NOT contiguous from 0). The downstream `chain_junctions_for_bead`
-/// lookup `from_j.get(bead)` only retrieves junctions whose `perimeter_index`
-/// matches `bead`; default entries at other slots are never read because the
-/// `emit_chain_lines` loop iterates `bead_idx` and only calls
-/// `chain_junctions_for_bead(..., bead_idx)` for the junction whose
-/// `perimeter_index == bead_idx`. Kept as a function (not `Default`) because
-/// `ExtrusionJunction` doesn't implement `Default` and we don't want to
-/// proliferate a `Default` impl across the IR crate for this single use.
-fn default_extrusion_junction() -> ExtrusionJunction {
-    ExtrusionJunction {
-        p: Point3WithWidth {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            width: 0.0,
-            flow_factor: 0.0,
-            overhang_quartile: None,
-        },
-        perimeter_index: u32::MAX,
-    }
-}
-
-/// Builds the per-edge `from_junctions` / `to_junctions` fans for every
+/// Builds the per-edge flat junction fan for every
 /// upward half-edge of the skeletal graph.
 ///
 /// Mirrors OrcaSlicer's `generateJunctions`
@@ -335,8 +314,6 @@ pub fn generate_junctions(
         let to_pos = end_vertex.position;
         let (sx, sy) = to_mm_xy(from_pos);
         let (ex, ey) = to_mm_xy(to_pos);
-        let mut from_junctions: Vec<ExtrusionJunction> = Vec::new();
-        let mut to_junctions: Vec<ExtrusionJunction> = Vec::new();
 
         // First pass: find the outermost in-band bead index via the
         // canonical mid-to-outer scan (`SkeletalTrapezoidation.cpp:
@@ -367,7 +344,7 @@ pub fn generate_junctions(
             // No bead in the peak's beading lies within the edge's band.
             // Legitimate "no in-band beads" outcome; store an empty entry
             // so the downstream chain walk's `contains_key` check skips it.
-            edge_junctions.insert(edge_idx, (Vec::new(), Vec::new()));
+            edge_junctions.insert(edge_idx, Vec::new());
             continue;
         };
 
@@ -403,7 +380,7 @@ pub fn generate_junctions(
         // unaffected) and no `perimeter_index` value is lost (it was
         // going to be at the peak anyway).
         if (ex - sx).abs() <= f32::EPSILON && (ey - sy).abs() <= f32::EPSILON {
-            edge_junctions.insert(edge_idx, (Vec::new(), Vec::new()));
+            edge_junctions.insert(edge_idx, Vec::new());
             continue;
         }
         let mut collected: Vec<ExtrusionJunction> = Vec::new();
@@ -474,22 +451,13 @@ pub fn generate_junctions(
             });
         }
         collected.reverse();
-        // Store each junction at its `perimeter_index` (= bead index) slot
-        // so the downstream `chain_junctions_for_bead(chain, bead)` lookup
-        // `from_j.get(bead)` retrieves the correct junction for the line
-        // being built. Storing in push order (slot position) would put the
-        // innermost surviving bead at slot 0 when the in-band break fires
-        // early, routing it to the inset-0 line instead of its correct
-        // inset-N line (the 1.7mm / 5.0mm findings).
-        from_junctions.resize(start_idx + 1, default_extrusion_junction());
-        to_junctions.resize(start_idx + 1, default_extrusion_junction());
-        for junction in collected {
-            let slot = junction.perimeter_index as usize;
-            from_junctions[slot] = junction.clone();
-            to_junctions[slot] = junction;
-        }
-
-        edge_junctions.insert(edge_idx, (from_junctions, to_junctions));
+        // `collected` is already in peak-side-first order (highest radius /
+        // highest `distance_to_boundary` first) after the reverse, matching
+        // OrcaSlicer's `LineJunctions` layout. Each junction carries
+        // `perimeter_index = bead index`; the downstream
+        // `chain_junctions_for_bead(chain, bead)` lookup finds the junction
+        // whose `perimeter_index == bead`, so no padded slot array is needed.
+        edge_junctions.insert(edge_idx, collected);
     }
 
     edge_junctions
@@ -545,12 +513,26 @@ fn quad_peak_position(graph: &SkeletalTrapezoidationGraph, quad: &[usize]) -> us
 ///
 /// The chain is a list of edge indices `[e0, e1, ..., eN]` walked in order.
 /// For each edge we take the appropriate endpoint junction for bead `b`:
-/// - The first edge contributes its `from_junctions[b]` at the chain start.
+/// - The first edge contributes its `junctions[b]` at the chain start.
 /// - Each subsequent shared vertex contributes the wider of the current edge's
-///   `to_junctions[b]` and the next edge's `from_junctions[b]`; this is the
-///   faithful "pop overlapping perimeter_index values" merge adapted to our
-///   immutable per-edge fan storage.
-/// - The last edge contributes its `to_junctions[b]` at the chain end.
+///   `junctions[b]` and the next edge's `junctions[b]`; this is the faithful
+///   "pop overlapping perimeter_index values" merge adapted to our immutable
+///   per-edge fan storage.
+/// - The last edge contributes its `junctions[b]` at the chain end.
+///
+/// With the flat `LineJunctions`-style storage (one `Vec` per edge), both the
+/// start-vertex ("from") and end-vertex ("to") junctions for a bead live in the
+/// same Vec (the canonical algorithm computes one parametric position per bead
+/// and the downstream chain walk assigns it to a vertex). We locate the bead's
+/// junction by `perimeter_index == bead`, which is exactly what the old
+/// `from_j.get(bead)` / `to_j.get(bead)` (padded-slot) lookups returned.
+fn find_bead_in_junctions<'a>(
+    j: &'a [ExtrusionJunction],
+    bead: usize,
+) -> Option<&'a ExtrusionJunction> {
+    j.iter().find(|jj| jj.perimeter_index == bead as u32)
+}
+
 fn chain_junctions_for_bead(
     edge_junctions: &BTreeMap<usize, EdgeJunctions>,
     chain: &[usize],
@@ -559,16 +541,16 @@ fn chain_junctions_for_bead(
     let mut junctions = Vec::with_capacity(chain.len() + 1);
 
     for (i, &edge_idx) in chain.iter().enumerate() {
-        let Some((from_j, to_j)) = edge_junctions.get(&edge_idx) else {
+        let Some(edge_j) = edge_junctions.get(&edge_idx) else {
             continue;
         };
         if i == 0 {
-            if let Some(j) = from_j.get(bead) {
+            if let Some(j) = find_bead_in_junctions(edge_j, bead) {
                 junctions.push(j.clone());
             }
         }
         if i == chain.len() - 1 {
-            if let Some(j) = to_j.get(bead) {
+            if let Some(j) = find_bead_in_junctions(edge_j, bead) {
                 junctions.push(j.clone());
             }
         } else {
@@ -579,13 +561,13 @@ fn chain_junctions_for_bead(
             // to keeping the earlier edge's junction (this_to) when both
             // exist, since both represent the same bead at the same vertex.
             if let Some(next_edge) = chain.get(i + 1) {
-                let this_to = to_j.get(bead);
+                let this_to = find_bead_in_junctions(edge_j, bead).cloned();
                 let next_from = edge_junctions
                     .get(next_edge)
-                    .and_then(|(next_from_j, _)| next_from_j.get(bead));
+                    .and_then(|next_j| find_bead_in_junctions(next_j, bead).cloned());
                 let chosen = match (this_to, next_from) {
-                    (Some(a), _) => a.clone(),
-                    (None, Some(b)) => b.clone(),
+                    (Some(a), _) => a,
+                    (None, Some(b)) => b,
                     (None, None) => continue,
                 };
                 junctions.push(chosen);
@@ -677,10 +659,10 @@ fn is_odd_endpoint(
     if peak_v.transition_ratio != 0.0 {
         return false;
     }
-    // Must have junctions at this index.
+    // Must have a junction at this bead index in the edge's flat fan.
     let has_j = edge_junctions
         .get(&edge_idx)
-        .map(|(from_j, to_j)| (bead_idx as usize) < from_j.len().min(to_j.len()))
+        .map(|j| j.iter().any(|jj| jj.perimeter_index == bead_idx))
         .unwrap_or(false);
     if !has_j {
         return false;
@@ -724,8 +706,15 @@ fn emit_chain_lines(
     // length found on any edge, not the smallest.
     let mut max_beads: usize = 0;
     for &edge_idx in chain {
-        if let Some((from_j, to_j)) = edge_junctions.get(&edge_idx) {
-            max_beads = max_beads.max(from_j.len().min(to_j.len()));
+        if let Some(j) = edge_junctions.get(&edge_idx) {
+            // The flat fan's max `perimeter_index + 1` is the bead count this
+            // edge can contribute (equivalent to the old padded-vec length).
+            max_beads = max_beads.max(
+                j.iter()
+                    .map(|jj| jj.perimeter_index as usize + 1)
+                    .max()
+                    .unwrap_or(0),
+            );
         }
     }
     if max_beads == 0 {
@@ -1228,13 +1217,12 @@ mod tests {
 
             // NOTE: the two junctions are expected to be CO-LOCATED here,
             // not distinct. `generate_junctions` resolves ONE physical
-            // position per bead per edge and writes it into both the
-            // `from_junctions` and `to_junctions` slots (canonical
-            // `generateJunctions` computes one junction per bead, not two);
-            // for a chain of exactly one edge (this fixture's domain),
-            // `chain_junctions_for_bead` pushes that edge's `from_j[bead]`
-            // (chain start) and `to_j[bead]` (chain end) as the line's two
-            // endpoints, which are therefore the same point. This is
+            // position per bead per edge and writes it into the edge's single
+            // flat junction Vec (canonical `generateJunctions` computes one
+            // junction per bead, not two); for a chain of exactly one edge
+            // (this fixture's domain), `chain_junctions_for_bead` pushes that
+            // edge's `junctions[bead]` at both the chain start and chain end,
+            // which are therefore the same point. This is
             // independently pinned as the correct contract by
             // `arachne_junction_upward_half_edge_only.rs`'s
             // `ac_n1_upward_half_edge_emits_beads_along_radius_band`

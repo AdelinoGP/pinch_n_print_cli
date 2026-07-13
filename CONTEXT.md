@@ -262,11 +262,12 @@ underlying Voronoi diagram. Centrality, bead-count assignment, and
 propagation all operate over the quad/rib topology rather than raw
 Voronoi cells.
 
-### Junction fan
-The set of per-bead extrusion points (`ExtrusionJunction`s) placed at one
-end of a central edge, one per bead the `BeadingStrategy` stack assigns to
-that edge's radius. `connectJunctions` links each domain's junction fans,
-endpoint to endpoint, into continuous per-bead toolpaths.
+### Edge junctions
+The OrcaSlicer-faithful per-edge extrusion storage: one `Vec<ExtrusionJunction>`
+per edge (matching OrcaSlicer's `LineJunctions` typedef), ordered peak-side
+(high R) to boundary-side (low R), with `perimeter_index == junction_idx`.
+`connectJunctions` walks each domain as a single chain and emits these vectors;
+`stitch_extrusions` reconnects the fragments into closed perimeters.
 
 ### Domain-start
 A central edge with no predecessor in its topological domain (the

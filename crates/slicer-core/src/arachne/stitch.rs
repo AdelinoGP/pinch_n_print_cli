@@ -40,7 +40,7 @@
 //! endpoint_rank)` — a total order over integers — never by iterating a
 //! `HashMap` keyed on floating point gap distance.
 
-use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth};
+use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth, UNITS_PER_MM};
 use std::collections::BTreeMap;
 
 /// Which end of a chain (first or last junction) an endpoint refers to.
@@ -87,7 +87,7 @@ pub fn stitch_extrusions(lines: Vec<ExtrusionLine>, max_gap: f64) -> Vec<Extrusi
     }
 
     for ((inset_idx, is_odd), group) in open_groups {
-        let stitched = stitch_group(group, max_gap);
+        let stitched = stitch_group(group, max_gap, is_odd);
         output.extend(
             stitched
                 .into_iter()
@@ -118,6 +118,7 @@ fn endpoint_pos(chain: &[ExtrusionJunction], endpoint: Endpoint) -> Point3WithWi
 fn stitch_group(
     mut chains: Vec<Vec<ExtrusionJunction>>,
     max_gap: f64,
+    is_odd: bool,
 ) -> Vec<Vec<ExtrusionJunction>> {
     let max_gap_sq = max_gap * max_gap;
 
@@ -129,6 +130,15 @@ fn stitch_group(
             for j in (i + 1)..chains.len() {
                 for &ei in &[Endpoint::Start, Endpoint::End] {
                     for &ej in &[Endpoint::Start, Endpoint::End] {
+                        // canReverse parity gate (OrcaSlicer
+                        // PolylineStitcher::stitch): even (`!is_odd`) lines
+                        // must never be joined by reversing a chain, so the
+                        // same-side endpoint pairs (E,E) and (S,S) — which
+                        // require a reversal — are skipped. Odd lines retain
+                        // the full 4-way merge.
+                        if !is_odd && ei == ej {
+                            continue;
+                        }
                         let d2 =
                             dist_sq_xy(endpoint_pos(&chains[i], ei), endpoint_pos(&chains[j], ej));
                         if d2 > max_gap_sq {
@@ -217,6 +227,13 @@ fn merge_chains(
 /// chain's own two endpoints are within `max_gap`, close the loop
 /// (duplicating the start junction onto the end when they don't already
 /// coincide exactly) and set `is_closed = true`.
+///
+/// Tiny-polygon non-closure rule (OrcaSlicer `PolylineStitcher.hpp:136-141`):
+/// a chain is left open (never closed into a loop) when the total polyline
+/// length plus the closing-segment distance is `< 3 * max_gap`, or when the
+/// chain has `<= 2` junctions. Such small/short polylines may still extend
+/// into a longer open polyline later in the pipeline and must not be folded
+/// into a tiny closed loop.
 fn finalize_chain(
     mut junctions: Vec<ExtrusionJunction>,
     inset_idx: u32,
@@ -226,7 +243,33 @@ fn finalize_chain(
     let is_closed = if junctions.len() >= 2 {
         let start = junctions.first().expect("checked len >= 2").p;
         let end = junctions.last().expect("checked len >= 2").p;
-        dist_sq_xy(start, end) <= max_gap * max_gap
+        let closing_dist = dist_sq_xy(start, end).sqrt();
+        // Compute chain_length = sum of Euclidean XY distances between
+        // consecutive junctions along the polyline (OrcaSlicer
+        // chain.polylineLength() + delta, in scaled-mm units).
+        let chain_length: f64 = junctions
+            .windows(2)
+            .map(|w| dist_sq_xy(w[0].p, w[1].p).sqrt())
+            .sum();
+        // Tiny-poly rule (OrcaSlicer PolylineStitcher.hpp:136-141):
+        // if the total polyline length + closing-segment distance is
+        // < 3 * max_gap, OR the chain has <= 2 junctions, do not close
+        // (it might still extend into a longer polyline; 2-vertex polygons
+        // are also rejected).
+        //
+        // Unit reconciliation: the junction coordinates are in *mm*
+        // (Point3WithWidth's convention), but the call sites pass `max_gap`
+        // in *slicer units* (e.g. `0.4 * UNITS_PER_MM`). To compare the
+        // polyline against `3 * max_gap` in the same space OrcaSlicer does
+        // (mm), normalise `max_gap` down to mm. The closing-segment gate
+        // below stays in the raw `max_gap` units to preserve the existing
+        // closure contract exactly.
+        let max_gap_mm = max_gap / UNITS_PER_MM;
+        if chain_length + closing_dist < 3.0 * max_gap_mm || junctions.len() <= 2 {
+            false
+        } else {
+            closing_dist <= max_gap
+        }
     } else {
         false
     };

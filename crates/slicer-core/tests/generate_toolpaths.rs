@@ -379,10 +379,17 @@ fn generate_toolpaths_tapered_wedge() {
 /// well above every threshold this file's `centrality_params()` /
 /// `factory_params()` already establish (`min_central_distance` = 50 units,
 /// `optimal_width` = 20 units): the square's medial-axis depth (half its
-/// side length, 1000 units) comfortably clears both, so its outer wall gets
-/// a real, non-zero bead count.
+/// side length, 50_000 units) comfortably clears both, so its outer wall gets
+/// a real, non-zero bead count. The 10mm side gives a 4mm perimeter, well
+/// above the faithful tiny-poly threshold of `3 * max_gap` (1.2mm), so the
+/// outer wall must close rather than be left open as a tiny polygon.
 fn simple_square_fixture() -> ExPolygon {
-    expoly(vec![p(0, 0), p(2_000, 0), p(2_000, 2_000), p(0, 2_000)])
+    expoly(vec![
+        p(0, 0),
+        p(100_000, 0),
+        p(100_000, 100_000),
+        p(0, 100_000),
+    ])
 }
 
 /// AC-4 (packet 113c Step 4): a simple closed polygon's outer wall

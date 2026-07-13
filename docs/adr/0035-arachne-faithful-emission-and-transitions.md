@@ -120,6 +120,10 @@ determines correctness.
   registered during packets 141-147. The old entry remains as a record of what
   was tried and why it fell short, useful for any future agent tempted to
   reintroduce a similar simplification.
+- The `connectJunctions` storage layout and `stitch_extrusions` post-process are
+  now faithful ports of OrcaSlicer's `LineJunctions` + `PolylineStitcher::stitch`
+  (including the `canReverse` parity gate and the `3 * max_stitch_distance`
+  tiny-polygon non-closure rule); see packet 153 for the implementation.
 
 ## Future reviewers
 

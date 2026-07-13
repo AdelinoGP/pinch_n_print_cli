@@ -183,7 +183,7 @@ fn ac_n1_upward_half_edge_emits_beads_along_radius_band() {
 
     let junctions = generate_junctions(&graph, strategy.as_ref());
     let upward_idx = 0usize;
-    let (from_junctions, to_junctions) = junctions.get(&upward_idx).unwrap_or_else(|| {
+    let junctions_vec = junctions.get(&upward_idx).unwrap_or_else(|| {
         panic!(
             "upward half-edge (edges[0]) must have an entry in edge_junctions (AC-N1 core); \
              got keys = {:?}",
@@ -192,18 +192,8 @@ fn ac_n1_upward_half_edge_emits_beads_along_radius_band() {
     });
 
     assert!(
-        !from_junctions.is_empty(),
-        "from_junctions on the upward half-edge must be non-empty (in-band beads exist)"
-    );
-    assert!(
-        !to_junctions.is_empty(),
-        "to_junctions on the upward half-edge must be non-empty (in-band beads exist)"
-    );
-    // The two vectors have one entry per emitted in-band bead.
-    assert_eq!(
-        from_junctions.len(),
-        to_junctions.len(),
-        "from_junctions and to_junctions must have the same length (one entry per emitted bead)"
+        !junctions_vec.is_empty(),
+        "junctions on the upward half-edge must be non-empty (in-band beads exist)"
     );
 
     // Every emitted junction sits on the edge segment between the two
@@ -212,7 +202,7 @@ fn ac_n1_upward_half_edge_emits_beads_along_radius_band() {
     // beads; the canonical algorithm's in-band-only emission
     // (`SkeletalTrapezoidation.cpp:2064-2077`) places every junction
     // strictly on the edge.
-    for j in from_junctions.iter().chain(to_junctions.iter()) {
+    for j in junctions_vec.iter() {
         assert!(
             j.p.x >= -0.01 && j.p.x <= 10.01,
             "junction at ({:.3}, {:.3}) mm lies OFF the edge segment x ∈ [0, 10] mm — canonical \
@@ -224,29 +214,10 @@ fn ac_n1_upward_half_edge_emits_beads_along_radius_band() {
             j.p.y
         );
     }
-
-    // Every from/to junction pair is co-located: the canonical algorithm
-    // computes ONE parametric position per bead and writes it to both
-    // the `from_junctions` and `to_junctions` slots. Downstream
-    // `chain_junctions_for_bead` (in `connect_junctions`) is what
-    // splits them across the chain's vertices; at the per-edge
-    // `generate_junctions` level they are identical points.
-    for (f, t) in from_junctions.iter().zip(to_junctions.iter()) {
-        let dx = f.p.x - t.p.x;
-        let dy = f.p.y - t.p.y;
-        assert!(
-            dx.abs() <= 1e-4 && dy.abs() <= 1e-4,
-            "from_junction ({:.6}, {:.6}) and to_junction ({:.6}, {:.6}) must be co-located \
-             (canonical generateJunctions writes one parametric position per bead to both slots; \
-             SkeletalTrapezoidation.cpp:2071). Got dx={:.6}, dy={:.6}",
-            f.p.x,
-            f.p.y,
-            t.p.x,
-            t.p.y,
-            dx,
-            dy
-        );
-    }
+    // The flat `LineJunctions`-style storage holds one junction per bead per
+    // edge (canonical computes ONE parametric position per bead and the
+    // downstream `chain_junctions_for_bead` walk assigns it to a vertex), so
+    // there is no separate `from`/`to` co-location check to perform here.
 }
 
 // ---------------------------------------------------------------------------
