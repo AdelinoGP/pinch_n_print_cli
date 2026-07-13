@@ -232,3 +232,214 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   `generate-arachne-walls` host-service WIT contract — see WIT/type-change
   checklist in `CLAUDE.md`) with a top/bottom-layer flag distinct from
   `is_initial_layer`.
+
+---
+
+# Round 3 (2026-07-13) — Orchestrator gap augmentation
+
+Third augmentation of the audit. Filtered the 10 red tests in
+`arachne_parity_gaps.rs` (G1–G10 + G11's still-red lock) and surfaced three
+genuinely-new gaps not yet red-tested, all on `parity/arachne` @ `34ce576e`.
+
+**Deliverable of this round:** `crates/slicer-runtime/tests/arachne_parity_round2.rs`
+— 3 red tests, one per open gap, each failing with a
+`PARITY GAP: <feature> | expected | got | ref` message. Fixtures appended
+to `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs`
+(`ex_polygons_concentric_islands_mm`, `beading_stack_for_split_middle`,
+`simplify_input_intersection_distance_gate`). Run with:
+
+```bash
+cargo test -p slicer-runtime --test arachne_parity_round2
+```
+
+All 3 tests MUST fail until their gap is fixed. Do not `#[ignore]` or weaken
+them; each test body already asserts the correct end state, so closing a gap
+turns its test green with no rewrite.
+
+## Summary
+
+Re-verifying the Phase-1C "set, NOT consumed" notes shows two of them are
+stale: `initial_layer_min_bead_width` (`pipeline.rs:281-285` swaps
+`min_output_width` on `is_initial_layer`) and `wall_transition_angle`
+(`pipeline.rs:353` feeds `filter_central`) are both wired. The three
+genuinely-new gaps this round surfaces are: (G12) OrcaSlicer's
+"odd-after-enclosing" region ordering (`WallToolPaths::getRegionOrder`) is
+absent from the PnP pipeline; (G15) `BeadingStrategy::getSplitMiddleThreshold`
+is not part of the `BeadingStrategy` trait surface; (G20) `ExtrusionLine::simplify`
+is missing OrcaSlicer's `dist_greater` intersection-distance gate that prevents
+removing a junction whose replacement intersection would be too far from either
+neighbor. `G11` (concentric infill via Arachne) is already red in
+`arachne_parity.rs` and is intentionally NOT duplicated here.
+
+Two candidate gaps the round-2 synthesis subagent originally proposed were
+re-verified against the OrcaSlicer source and DROPPED:
+
+- ~~G18 — `ExtrusionJunction` equality ignoring `flow_factor`~~ — OrcaSlicer's
+  `ExtrusionJunction` struct has no `flow_factor`/`overhang_quartile` fields
+  (`OrcaSlicerDocumented/src/libslic3r/Arachne/utils/ExtrusionJunction.hpp:19-39`);
+  PnP's `Point3WithWidth` is a strict superset, and how equality treats those
+  extra fields is a PnP design decision, not a parity gap.
+- ~~G19 — `getNonlinearThicknesses` populating a nonlinear profile~~ —
+  OrcaSlicer's own `BeadingStrategy::getNonlinearThicknesses` returns `{}`
+  by default (`OrcaSlicerDocumented/src/libslic3r/Arachne/BeadingStrategy/BeadingStrategy.cpp:44-47`),
+  matching the Rust impl.
+
+## Gap summary table (round 3)
+
+| # | OrcaSlicer feature | Ref | PnP status | Red test |
+|---|---|---|---|---|
+| G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:809`; `PerimeterGenerator.cpp:2302` | missing — `pipeline.rs:383` flattens per-inset buckets in source order | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
+| G15 | `BeadingStrategy::getSplitMiddleThreshold` (split-middle rule) | `BeadingStrategy.hpp:97`; `BeadingStrategy.cpp:54-57`; `BeadingStrategy.cpp:72-73` | missing — `BeadingStrategy` trait does not expose the method; `redistribute.rs:31-37` documents the absence and delegates `optimal_bead_count` to parent | `arachne_parity_round2::..._beading_split_middle_threshold_exposed` |
+| G20 | `ExtrusionLine::simplify` `dist_greater` intersection-distance gate | `Arachne/utils/ExtrusionLine.cpp:163-175` | missing — `simplify.rs` tier-3 only checks `seg_len²` and `height_2`; no intersection-distance predicate | `arachne_parity_round2::..._simplify_intersection_distance_gate_present` |
+
+## Detailed gaps
+
+### G12: Wall region order — odd-after-enclosing (Algorithm)
+
+**OrcaSlicer:** `WallToolPaths::getRegionOrder` (`WallToolPaths.cpp:809`),
+called from `PerimeterGenerator.cpp:2302`, orders the emitted toolpath
+regions so an inner (odd) region is emitted *after* the enclosing even
+region.
+
+**Rust:** NOT PRESENT. `run_arachne_pipeline`
+(`crates/slicer-core/src/arachne/pipeline.rs:383`) does
+`buckets.into_iter().flatten()` — the per-inset buckets are emitted in
+source/inset order with no reordering pass.
+
+**Expected:** for nested concentric islands, the outer-wall `ExtrusionLine`s
+precede the inner-wall `ExtrusionLine`s in the returned `Vec`
+(odd-after-enclosing).
+
+**Current:** output ordering follows source polygon / inset index only; an
+inner region may be emitted before its enclosing region.
+
+**Test:** `arachne_parity_wall_region_order_odd_after_enclosing`
+
+**Panic message:** `PARITY GAP: wall region order odd-after-enclosing |
+expected: emitted wall regions ordered so inner (odd) region follows its
+enclosing even region (WallToolPaths.cpp:809, PerimeterGenerator.cpp:2302) |
+got: pipeline flattens per-inset buckets in source order with no
+getRegionOrder pass (pipeline.rs:383) | ref: WallToolPaths.cpp:809`
+
+### G15: `BeadingStrategy::getSplitMiddleThreshold` not on the trait (Data Model)
+
+**OrcaSlicer:** `BeadingStrategy::getSplitMiddleThreshold(lower_bead_count)`
+(`BeadingStrategy.hpp:97`, `.cpp:54-57`) returns the thickness at which the
+middle bead is split; `RedistributeBeadingStrategy` uses it for its
+`optimal_bead_count`/`getTransitionThickness` math (the threshold is also
+referenced at `BeadingStrategy.cpp:72-73` to pick
+`wall_split_middle_threshold` vs `wall_add_middle_threshold`).
+
+**Rust:** `BeadingStrategy` trait (`crates/slicer-core/src/beading/mod.rs`)
+has no such method; `redistribute.rs:31-37` explicitly notes the method is
+absent and delegates `optimal_bead_count`/`get_transition_thickness`/
+`optimal_thickness` to `parent` unchanged.
+
+**Expected:** the trait exposes `getSplitMiddleThreshold` and
+`RedistributeBeadingStrategy::optimal_bead_count` consults it (matching
+Orca's split-middle behavior).
+
+**Current:** method absent; `RedistributeBeadingStrategy` cannot split the
+middle bead, so its bead-count selection diverges from Orca for odd/middle
+regimes.
+
+**Test:** `arachne_parity_beading_split_middle_threshold_exposed`
+
+**Panic message:** `PARITY GAP: BeadingStrategy.getSplitMiddleThreshold |
+expected: trait method get_split_middle_threshold(lower_bead_count) present
+and consumed by RedistributeBeadingStrategy optimal bead count
+(BeadingStrategy.hpp:97) | got: method absent from BeadingStrategy trait
+(beading/mod.rs); RedistributeBeadingStrategy delegates optimal_bead_count
+to parent unchanged (redistribute.rs:31-37) | ref: BeadingStrategy.hpp:97`
+
+### G20: `ExtrusionLine::simplify` missing intersection-distance gate (Algorithm)
+
+**OrcaSlicer:** `ExtrusionLine::simplify`
+(`Arachne/utils/ExtrusionLine.cpp:163-175`) calls a `dist_greater` predicate
+that rejects removing a junction when the proposed intersection point lies
+more than `smallest_line_segment_squared` from either the `previous` or
+`current` neighbor, even when the segment length and height-2 tests would
+otherwise allow removal. This guards against artifact "spikes" when two
+near-coincident long segments create a far-away intersection.
+
+**Rust:** `simplify_extrusion_line` (`crates/slicer-core/src/arachne/simplify.rs`)
+tier-3 checks `seg_len_sq < smallest_line_segment_squared` and
+`height_2 ≤ allowed_error_distance_squared` but does not compute or compare
+the intersection distance to `previous`/`current`. The intersection gate is
+entirely absent.
+
+**Expected:** a near-colinear polyline whose two long segments cross at a
+point far from either endpoint (e.g. a "Z" shape that happens to be
+colinear) is preserved because the intersection lies too far from the
+surviving neighbors.
+
+**Current:** such a polyline is simplified away because only segment length
+and per-step height are checked.
+
+**Test:** `arachne_parity_simplify_intersection_distance_gate_present`
+
+**Panic message:** `PARITY GAP: simplify intersection distance gate |
+expected: ExtrusionLine::simplify rejects removal when the intersection of
+(prev,curr) extended lines lies more than smallest_line_segment_squared
+from either neighbor (ExtrusionLine.cpp:163-175) | got: simplify only checks
+seg_len² and height_2; no intersection-distance predicate (simplify.rs) |
+ref: ExtrusionLine.cpp:163-175`
+
+## Re-verified (NOT gaps — round-2 subagent claims stale or fabricated)
+
+- `initial_layer_min_bead_width` IS consumed: `pipeline.rs:281-285`
+  substitutes `initial_layer_min_output_width` for `min_output_width` when
+  `is_initial_layer`, and `WideningBeadingStrategy` receives it via
+  `with_initial_layer_min_bead_width`.
+- `wall_transition_angle` IS consumed: `pipeline.rs:353` passes
+  `beading_params.wall_transition_angle` into `filter_central` for
+  transition-angle gating.
+- `RedistributeBeadingStrategy` outer width: symmetric placement at
+  `thickness/2` for `bead_count <= 2` (`redistribute.rs:122-134`) matches
+  Orca's "symmetric when <2×outer".
+- `LimitedBeadingStrategy` border zero-width sentinel: present
+  (`limited.rs:130-142`), matching Orca's border bead width 0.
+- ~~G18~~ — dropped: Orca junction has no `flow_factor`; PnP superset
+  design decision, not a parity gap.
+- ~~G19~~ — dropped: Orca default also returns `{}`, matching PnP.
+
+## Round-3 fixture additions
+
+File: `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs`
+(appended below the existing round-2 fixture block):
+
+- `ex_polygons_concentric_islands_mm() -> Vec<ExPolygon>` (G12)
+- `beading_stack_for_split_middle() -> Box<dyn BeadingStrategy>` (G15)
+- `simplify_input_intersection_distance_gate() -> Vec<ExtrusionJunction>` (G20)
+
+## Round-3 test categorization (for the implementing agent)
+
+- **G12** (`arachne_parity_wall_region_order_odd_after_enclosing`,
+  Algorithm): ordering assertion over `run_arachne_pipeline(...).flatten()`
+  output. Fix = add a `get_region_order` pass between `buckets` flattening
+  and emission.
+- **G15** (`arachne_parity_beading_split_middle_threshold_exposed`, Data
+  Model): TDD-red via missing trait method. Fix = add
+  `fn get_split_middle_threshold(&self, lower_bead_count: usize) -> f64`
+  to `BeadingStrategy` (with default returning
+  `f64::INFINITY`/`self.optimal_width`, like the Orca default), override in
+  `DistributedBeadingStrategy` to return
+  `wall_split_middle_threshold * (lower_bead_count + 1)`, and have
+  `RedistributeBeadingStrategy::optimal_bead_count` consult it.
+- **G20** (`arachne_parity_simplify_intersection_distance_gate_present`,
+  Algorithm): tier-3 needs a new branch computing the intersection of the
+  extended `(prev, curr)` lines and rejecting removal when
+  `distance(intersection, prev).squared_norm() >
+  smallest_line_segment_squared` OR
+  `distance(intersection, curr).squared_norm() > smallest_line_segment_squared`.
+
+## Porting reminders for the fixing agent (additive)
+
+- G12 lives entirely in the Rust pipeline; no WIT/manifest change.
+- G15's `wall_split_middle_threshold` is an internal Arachne parameter
+  (no registered PnP config key yet); plumb it through `BeadingFactoryParams`
+  the same way `default_transition_length` and `transition_filter_dist` are
+  reserved today.
+- G20's intersection gate depends on the `(prev, curr)` neighbor
+  coordinates, which are already available in the existing tier-3 branch of
+  `simplify_line`; no new struct fields required.
