@@ -38,6 +38,7 @@
 
 use super::distributed::assert_beading_invariant;
 use super::{Beading, BeadingStrategy};
+use slicer_ir::UNITS_PER_MM;
 
 /// Decorator over another `BeadingStrategy` that caps `optimal_bead_count`
 /// (and any delegated `bead_count` above the cap) at `max_bead_count`,
@@ -99,15 +100,57 @@ impl LimitedBeadingStrategy {
 impl BeadingStrategy for LimitedBeadingStrategy {
     fn compute(&self, thickness: f64, bead_count: usize) -> Beading {
         if bead_count <= self.max_bead_count {
-            // Cap not exceeded: delegate unchanged, no sentinels needed.
-            let beading = self.parent.compute(thickness, bead_count);
+            // Under-cap branch: mirror OrcaSlicer
+            // `LimitedBeadingStrategy::compute` lines 69-84. Delegate to the
+            // parent, then if the resulting count is even AND exactly equal
+            // to `max_bead_count` (i.e. the requested count sat at the cap
+            // boundary, not below it), insert a single 0-width sentinel
+            // bead at the region centre marking where infill/skin should
+            // align. The sentinel's `toolpath_location` is the inner edge
+            // of the innermost real bead (centerline + half-width), matching
+            // `LimitedBeadingStrategy.cpp:77-80`.
+            let mut beading = self.parent.compute(thickness, bead_count);
+            let actual_count = beading.toolpath_locations.len();
+            if actual_count.is_multiple_of(2) && actual_count == self.max_bead_count {
+                let inner_idx = self.max_bead_count / 2 - 1;
+                let innermost_location = beading.toolpath_locations[inner_idx];
+                let innermost_width = beading.bead_widths[inner_idx];
+                let sentinel_location = innermost_location + innermost_width / 2.0;
+                beading
+                    .toolpath_locations
+                    .insert(self.max_bead_count / 2, sentinel_location);
+                beading.bead_widths.insert(self.max_bead_count / 2, 0.0);
+            }
             assert_beading_invariant(&beading);
             return beading;
         }
 
-        // Over cap: request the CAPPED count from the parent, then insert
-        // sentinels marking where the elided beads would have gone.
-        let mut beading = self.parent.compute(thickness, self.max_bead_count);
+        // Over cap: mirror OrcaSlicer's `LimitedBeadingStrategy::compute`
+        // (`LimitedBeadingStrategy.cpp:64-90`). The parent is recomputed at
+        // the *optimal* thickness for `max_bead_count` beads
+        // (`max_bead_count * optimal_width`), NOT the full region thickness,
+        // so the freshly placed beads are spaced a single `optimal_width`
+        // apart (one Flow spacing, not the raw region width). The surplus
+        // region thickness becomes `left_over` — i.e. infill, exactly as
+        // OrcaSlicer's `ret.left_over += thickness - ret.total_thickness`
+        // does. Then the result is mirrored symmetrically about the region
+        // centre, after which zero-width sentinels mark the capped boundary.
+        let optimal_thickness = self.parent.optimal_thickness(self.max_bead_count);
+        let mut beading = self.parent.compute(optimal_thickness, self.max_bead_count);
+        beading.left_over += thickness - beading.total_thickness;
+        beading.total_thickness = thickness;
+
+        // Enforce symmetry about the region centre (OrcaSlicer
+        // `LimitedBeadingStrategy.cpp:70-76`).
+        let n = beading.toolpath_locations.len();
+        if n % 2 == 1 {
+            beading.toolpath_locations[n / 2] = thickness / 2.0;
+            beading.bead_widths[n / 2] = thickness - optimal_thickness;
+        }
+        for i in 0..n.div_ceil(2) {
+            beading.toolpath_locations[n - 1 - i] = thickness - beading.toolpath_locations[i];
+        }
+
         let n = beading.bead_widths.len();
         let sentinel_count = bead_count - self.max_bead_count;
 
@@ -115,15 +158,30 @@ impl BeadingStrategy for LimitedBeadingStrategy {
         // Mirror position in the ORIGINAL (pre-insertion) index space.
         let right_index = n - left_index;
 
+        // Sentinel `toolpath_location` is the **inner edge** of the
+        // innermost real bead (centerline + half-width), per OrcaSlicer
+        // `LimitedBeadingStrategy.cpp:118-122,126-130`. The PnP f64 type
+        // is exact here (the C++ coord_t integer-division `+ width/2`
+        // hazard noted at line 116-117 of the C++ source does not apply).
         let left_location = if left_index > 0 {
-            beading.toolpath_locations[left_index - 1]
+            beading.toolpath_locations[left_index - 1] + beading.bead_widths[left_index - 1] / 2.0
         } else {
             0.0
         };
         let right_location = if right_index < n {
-            beading.toolpath_locations[right_index]
+            beading.toolpath_locations[right_index] - beading.bead_widths[right_index] / 2.0
         } else {
-            *beading.toolpath_locations.last().unwrap_or(&0.0)
+            // Degenerate fallback: mirror about the end of the vector.
+            // (Matches the pre-existing `unwrap_or(&0.0)` fallback at the
+            // *centreline*; corrected here to the inner-edge formulation,
+            // but the fallback path itself is unreachable for the
+            // distributed parent that the factory always wires in.)
+            let last_idx = beading.toolpath_locations.len().saturating_sub(1);
+            if last_idx > 0 {
+                beading.toolpath_locations[last_idx] - beading.bead_widths[last_idx] / 2.0
+            } else {
+                0.0
+            }
         };
 
         // Insert the left sentinel block first (lower index).
@@ -146,9 +204,34 @@ impl BeadingStrategy for LimitedBeadingStrategy {
     }
 
     fn optimal_bead_count(&self, thickness: f64) -> usize {
-        self.parent
-            .optimal_bead_count(thickness)
-            .min(self.max_bead_count)
+        // Mirror OrcaSlicer's `LimitedBeadingStrategy::getOptimalBeadCount`
+        // (`LimitedBeadingStrategy.cpp:115-127`): the cap is `max_bead_count
+        // + 1`, never `max_bead_count`. Returning `max_bead_count` here would
+        // force `compute` down the delegated (non-sentinel) branch and make
+        // the capped beads span the *full* region thickness at `optimal_width`
+        // spacing — i.e. hugely over-spaced walls. Capping at `max_bead_count
+        // + 1` lets `compute` take the over-cap branch, which recomputes at
+        // the optimal thickness and leaves the surplus as `left_over`
+        // (infill), matching OrcaSlicer's fixed-inset wall model.
+        let parent_count = self.parent.optimal_bead_count(thickness);
+        if parent_count <= self.max_bead_count {
+            parent_count
+        } else if parent_count == self.max_bead_count + 1 {
+            // 0.01 mm in slicer units (OrcaSlicer
+            // `LimitedBeadingStrategy.cpp:170` `scaled<coord_t>(0.01)` =
+            // 10µm = 100 PNP units). Matches the convention in
+            // `crates/slicer-core/src/beading/distributed.rs:199` and
+            // `crates/slicer-core/src/arachne/generate_toolpaths.rs:230`.
+            if thickness
+                < self.parent.optimal_thickness(self.max_bead_count + 1) - 0.01 * UNITS_PER_MM
+            {
+                self.max_bead_count
+            } else {
+                self.max_bead_count + 1
+            }
+        } else {
+            self.max_bead_count + 1
+        }
     }
 
     fn get_transition_thickness(&self, lower_bead_count: usize) -> f64 {

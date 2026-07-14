@@ -333,6 +333,32 @@ the outer boundary, producing toolpaths that cross the void. Each
 contour's graph is then processed independently through bead-count
 assignment and `connectJunctions`.
 
+### Fixed-inset wall model
+The OrcaSlicer wall-placement model that the D-105 beading fix implements: the
+beading strategy places capped walls at uniform `optimal_width` insets (one Flow
+spacing) with the surplus region thickness carried as `left_over` (infill),
+rather than distributing the cap's beads across the full polygon thickness. In
+PnP this is realized by `LimitedBeadingStrategy::compute` recomputing the parent
+at `optimal_thickness = max_bead_count * optimal_width`. The contrast is the
+pre-D-105 buggy behavior of `DistributedBeadingStrategy`, which distributes
+`max_bead_count` beads across the full region thickness, producing variable bead
+widths in different insets. The PnP cap of `optimal_bead_count` at
+`max_bead_count + 1` is the signal that triggers the fixed-inset model; the
+under-cap boundary (`bead_count == max_bead_count && even`) is the boundary case
+where a center sentinel marks where infill/skin should align.
+_Avoid_: distributed wall model, thickness-distributed beading
+
+### Discretize cases (Arachne)
+The three-case analysis of OrcaSlicer's `SkeletalTrapezoidation::discretize`,
+which determines which Voronoi edges get subdivided and how: (1) seg-seg or
+secondary → `{start, end}` with no subdivision; (2) point-segment → parabolic
+discretization; (3) point-point → a straight edge subdivided by
+`discretization_step_size` with angular marking vertices. A faithful port must
+distinguish all three. The PnP port's `discretize_edge` currently collapses
+cases 1 and 3 into one `!is_curved` branch — a latent divergence tracked by
+spec packet 154 (thin-strip collapse). The PnP `is_curved` flag (from boost
+voronoi) corresponds to case 2; `!is_curved` covers both case 1 and case 3.
+
 ## Flagged ambiguities
 
 ### "region"

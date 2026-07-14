@@ -147,8 +147,11 @@ fn factory_stack_composition_order_widening_only_when_thin_walls_true() {
 /// values and drives `compute` with `bead_count == 2`: for a thickness of
 /// exactly `2 * preferred_bead_width_outer = 12000`, Redistribute's
 /// `bead_count == 2` branch computes `actual_outer_thickness =
-/// thickness / bead_count = 6000`, so both beads come out at `6000.0` — the
-/// `preferred_bead_width_outer` value — never at `optimal_width` (4000.0).
+/// AC-8(a): with `max_bead_count = 2` and `bead_count = 2` (at the cap
+/// boundary, even), the under-cap branch of `LimitedBeadingStrategy::compute`
+/// inserts a single 0-width center sentinel (OrcaSlicer
+/// `LimitedBeadingStrategy.cpp:73-82`); the two real beads still come out at
+/// `preferred_bead_width_outer` (6000.0) — never at `optimal_width` (4000.0).
 #[test]
 fn factory_max_bead_count_le_2_selects_preferred_bead_width_outer() {
     let params = BeadingFactoryParams {
@@ -161,8 +164,27 @@ fn factory_max_bead_count_le_2_selects_preferred_bead_width_outer() {
 
     let beading = stack.compute(12000.0, 2);
 
-    assert_eq!(beading.bead_widths.len(), 2);
-    for (i, &width) in beading.bead_widths.iter().enumerate() {
+    // Under-cap branch with bead_count == max_bead_count (even) inserts one
+    // 0-width center sentinel; total = 2 real beads + 1 sentinel = 3 entries.
+    assert_eq!(
+        beading.bead_widths.len(),
+        3,
+        "under-cap branch at cap boundary (even) inserts one center sentinel"
+    );
+    // The two real beads (nonzero width) should reflect
+    // `preferred_bead_width_outer` (6000.0), not `optimal_width` (4000.0).
+    let nonzero_widths: Vec<f64> = beading
+        .bead_widths
+        .iter()
+        .copied()
+        .filter(|&w| w > 0.0)
+        .collect();
+    assert_eq!(
+        nonzero_widths.len(),
+        2,
+        "exactly 2 nonzero-width beads (1 sentinel of width 0.0)"
+    );
+    for (i, &width) in nonzero_widths.iter().enumerate() {
         assert!(
             (width - 6000.0).abs() < TOLERANCE,
             "bead_widths[{i}] should reflect preferred_bead_width_outer \
