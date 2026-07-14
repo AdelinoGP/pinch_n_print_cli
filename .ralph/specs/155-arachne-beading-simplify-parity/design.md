@@ -134,9 +134,19 @@
     `beading_factory_passes_split_middle_thresholds`,
     `beading_factory_threshold_propagates_through_full_stack`,
     `beading_factory_threshold_clamp_bounds_are_canonical`
+  - `crates/slicer-core/src/arachne/generate_toolpaths.rs` — a
+    `#[cfg(test)]` fixture (`FixedTestStrategy`) implements
+    `BeadingStrategy`; it needs the 2 required trait methods
+    (returning `0.99_f64`) to keep compiling. Test-only, mechanical
+    ripple from AC-1's required-method addition; no production code
+    in this file changes.
+  - `crates/slicer-core/tests/beading/{limited,outer_wall_inset,widening}.rs`
+    — companion unit-test updates for the corresponding decorator's
+    2 new forwarding accessors.
   - New test file
     `crates/slicer-core/tests/arachne_simplify_intersection_distance_gate_tdd.rs`
-    — 5 G20 tests (AC-7/AC-8/AC-9/AC-N3/AC-N4). **No `Cargo.toml` edit is
+    — 6 G20 tests (AC-7/AC-8/AC-9/AC-N3/AC-N4, plus a second AC-N4
+    falsifying case using a near-colinear closed triangle). **No `Cargo.toml` edit is
     required**: files directly under `crates/slicer-core/tests/*.rs` are
     auto-discovered by Cargo as integration-test binaries (this is how every
     existing `arachne_*.rs` test in that directory is registered — none of
@@ -198,12 +208,18 @@
 - `crates/slicer-core/src/beading/{widening,outer_wall_inset,limited}.rs`
   — role: decorators; expected change: 2 forwarding accessors each
   (mandatory — see Architecture Constraints).
-- `crates/slicer-core/tests/beading/{distributed,redistribute,factory}.rs`
-  — role: unit-test extensions for the G15 methods. Already registered as
-  separate binaries via `[[test]] path = "tests/beading/*.rs"` in
+- `crates/slicer-core/tests/beading/{distributed,redistribute,factory,limited,outer_wall_inset,widening}.rs`
+  — role: unit-test extensions for the G15 methods (the latter three are
+  companion updates for each decorator's 2 new forwarding accessors).
+  Already registered as separate binaries via
+  `[[test]] path = "tests/beading/*.rs"` in
   `crates/slicer-core/Cargo.toml:75-97` (they live in a subdirectory, so
   the explicit entry is required); no new registration needed for in-file
   additions.
+- `crates/slicer-core/src/arachne/generate_toolpaths.rs` — role: a
+  `#[cfg(test)]`-only `BeadingStrategy` fixture (`FixedTestStrategy`)
+  needs the 2 required trait methods to keep compiling; expected change:
+  2 trait-method stubs in the test module only, no production code.
 - New test file `crates/slicer-core/tests/arachne_simplify_intersection_distance_gate_tdd.rs`
   — role: G20 unit tests for AC-7/AC-8/AC-9/AC-N3/AC-N4. **No `Cargo.toml`
   edit needed** — top-level `tests/*.rs` files are auto-discovered by Cargo
@@ -268,11 +284,11 @@
   arachne_parity_simplify_intersection_distance_gate_present --exact`;
   FACT pass/fail or SNIPPETS (fail with assertion + ≤20 lines)" —
   purpose: validate AC-6.
-- "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`; FACT pass/fail" — purpose: validate AC-7.
-- "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`; FACT pass/fail" — purpose: validate AC-8.
-- "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`; FACT pass/fail" — purpose: validate AC-9.
-- "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`; FACT pass/fail" — purpose: validate AC-N3.
-- "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`; FACT pass/fail" — purpose: validate AC-N4.
+- "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`; FACT pass/fail" — purpose: validate AC-7.
+- "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`; FACT pass/fail" — purpose: validate AC-8.
+- "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`; FACT pass/fail" — purpose: validate AC-9.
+- "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`; FACT pass/fail" — purpose: validate AC-N3.
+- "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`; FACT pass/fail" — purpose: validate AC-N4.
 - "Run `cargo test -p slicer-runtime --test arachne_parity`; return
   FACT pass/fail or SNIPPETS (fail with assertion + ≤20 lines)" —
   purpose: validate AC-10.

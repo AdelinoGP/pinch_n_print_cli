@@ -75,6 +75,52 @@ fn load_fixture() -> Fixture {
 }
 
 #[test]
+fn redistribute_optimal_bead_count_consults_split_middle() {
+    // AC-4: the three RedistributeBeadingStrategy methods that recurse into
+    // `parent` on a thickness/bead_count reduced by the two outer beads, and
+    // that consult `parent.get_split_middle_threshold()` in the `case 1`
+    // branch of `get_transition_thickness` (NOT `case 0`) and the 2-bead
+    // branch of `optimal_bead_count`.
+    const W: f64 = 4000.0;
+    const MIN_VAR_RATIO: f64 = 0.5;
+    const SPLIT: f64 = 0.5;
+
+    let parent = DistributedBeadingStrategy::new(W, 0.0, 0.0, 5, f64::MAX, SPLIT, SPLIT);
+    let strategy = RedistributeBeadingStrategy::new(Box::new(parent), W, MIN_VAR_RATIO);
+
+    // optimal_bead_count sub-cases.
+    assert_eq!(strategy.optimal_bead_count(0.7 * W), 1);
+    assert_eq!(strategy.optimal_bead_count(1.6 * W), 2);
+    assert_eq!(strategy.optimal_bead_count(0.4 * W), 0);
+
+    // get_transition_thickness sub-cases.
+    assert_close(
+        strategy.get_transition_thickness(0),
+        MIN_VAR_RATIO * W,
+        "get_transition_thickness(0) = 0.5*W (case 0)",
+    );
+    // case 1 consults parent.get_split_middle_threshold() = 0.5 -> (1+0.5)*W.
+    assert_close(
+        strategy.get_transition_thickness(1),
+        (1.0 + SPLIT) * W,
+        "get_transition_thickness(1) = (1+split)*W (case 1)",
+    );
+    let parent_ref = DistributedBeadingStrategy::new(W, 0.0, 0.0, 5, f64::MAX, SPLIT, SPLIT);
+    assert_close(
+        strategy.get_transition_thickness(3),
+        parent_ref.get_transition_thickness(1) + 2.0 * W,
+        "get_transition_thickness(3) = parent(1) + 2*W",
+    );
+
+    // optimal_thickness(4): inner = max(0, 4-2) = 2, outer = 4-2 = 2.
+    assert_close(
+        strategy.optimal_thickness(4),
+        parent_ref.optimal_thickness(2) + 2.0 * W,
+        "optimal_thickness(4) = parent(2) + 2*W",
+    );
+}
+
+#[test]
 fn redistribute_outer_consistent() {
     let fixture = load_fixture();
     let parent = DistributedBeadingStrategy::new(
@@ -83,6 +129,8 @@ fn redistribute_outer_consistent() {
         fixture.parent_params.transition_filter_dist,
         fixture.parent_params.distribution_count,
         fixture.parent_params.wall_transition_angle,
+        0.99,
+        0.99,
     );
     let strategy = RedistributeBeadingStrategy::new(
         Box::new(parent),

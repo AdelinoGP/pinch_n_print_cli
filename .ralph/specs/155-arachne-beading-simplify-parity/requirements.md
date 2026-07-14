@@ -7,7 +7,7 @@
     following the precedent of packets 148/149/150/151/152/153/154 which also
     declare `task_ids: none`)
 - Backlog source: `docs/18_arachne_parity_audit.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -226,13 +226,13 @@ Files to inspect for this packet:
 | `cargo test -p slicer-core --test beading_redistribute -- redistribute_optimal_bead_count_consults_split_middle --exact` | AC-4 (G15 Redistribute port) | FACT pass/fail |
 | `cargo test -p slicer-core --test beading_factory -- beading_factory_passes_split_middle_thresholds --exact` | AC-5 (G15 factory clamp) | FACT pass/fail |
 | `cargo test -p slicer-core --test beading_factory -- beading_factory_threshold_clamp_bounds_are_canonical --exact` | AC-N1 (clamp bounds honored at both ends) | FACT pass/fail |
-| `cargo test -p slicer-core --test beading_redistribute -- redistribute_compute --exact` | AC-N2 (no compute regression) | FACT pass/fail |
+| `cargo test -p slicer-core --test beading_redistribute -- redistribute_outer_consistent --exact` | AC-N2 (no compute regression) | FACT pass/fail |
 | `cargo test -p slicer-runtime --test arachne_parity_round2 -- arachne_parity_simplify_intersection_distance_gate_present --exact` | AC-6 (G20 flips green) | FACT pass/fail; SNIPPETS ≤20 on fail |
-| `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact` | AC-7 (G20 dist_greater gate) | FACT pass/fail |
-| `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact` | AC-8 (G20 replacement else-branch) | FACT pass/fail |
-| `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact` | AC-9 (G20 Shoelace formula) | FACT pass/fail |
-| `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact` | AC-N3 (degenerate input) | FACT pass/fail |
-| `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact` | AC-N4 (closed-line guard) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact` | AC-7 (G20 dist_greater gate) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact` | AC-8 (G20 replacement else-branch) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact` | AC-9 (G20 Shoelace formula) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact` | AC-N3 (degenerate input) | FACT pass/fail |
+| `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact` | AC-N4 (closed-line guard) | FACT pass/fail |
 | `cargo test -p slicer-runtime --test arachne_parity` | AC-10 (14 round-1 locks stay green) | FACT pass/fail |
 | `cargo test -p slicer-core` | full slicer-core test sweep | FACT pass/fail |
 | `cargo check --workspace --all-targets` | compiles incl. test/bench targets | FACT pass/fail |

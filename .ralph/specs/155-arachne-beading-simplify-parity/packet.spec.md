@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 155-arachne-beading-simplify-parity
 task_ids:
   - none
@@ -41,7 +41,8 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   decorators** (`RedistributeBeadingStrategy`, `WideningBeadingStrategy`,
   `OuterWallInsetBeadingStrategy`, `LimitedBeadingStrategy`) implement both by
   forwarding to `self.parent`. The trait remains object-safe (`Box<dyn
-  BeadingStrategy>` still compiles at `factory.rs:174`). *Rationale: these
+  BeadingStrategy>` still compiles, e.g. at `factory.rs:188` and its other
+  `create_stack` usage sites at `:209,219,225,239,248`). *Rationale: these
   decorators do not inherit trait defaults through `parent` — each already
   implements every trait method explicitly and forwards. A default impl would
   be silently picked up at the `Limited` layer and shadow the real value, so
@@ -50,7 +51,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
 - **AC-2 (G15 threshold observable at top of stack). Given** a
   `BeadingStrategyFactory::create_stack` output built from
   `BeadingFactoryParams::default()` with `print_thin_walls = true` and
-  `outer_wall_offset = 100.0` (so the stack is
+  `outer_wall_offset = 1.0` (so the stack is
   `Distributed → Redistribute → Widening → OuterWallInset → Limited`, i.e.
   every decorator is present), **when** the test calls
   `stack.get_split_middle_threshold()` and `stack.get_add_middle_threshold()`
@@ -165,7 +166,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   predicate takes **three** arguments — `(p1, p2, threshold)` — and does the
   overflow-avoiding component-wise fast-reject before the squared-norm compare
   (`ExtrusionLine.cpp:180-188`). |
-  `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`
+  `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`
 - **AC-8 (G20 junction replacement). Given** an open `ExtrusionLine` where the
   same tier-3 special case fires but the intersection point lies **within**
   `smallest_line_segment_squared` of both `prev` and `curr` (and passes the
@@ -177,7 +178,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   restored to `previous_previous`; then `previous_previous = previous`,
   `previous = new_junction`, the new junction is pushed, and the loop
   `continue`s. |
-  `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`
+  `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`
 - **AC-9 (G20 Shoelace height_2 + accumulator). Given** the simplify walk,
   **when** the tier-2 and tier-3 gates compute their height, **then** the
   existing `point_line_distance_squared` height is replaced by OrcaSlicer's
@@ -192,7 +193,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   branch)). The test asserts the two formulas diverge for an input with a
   removed upstream junction (i.e. where `accumulated_area_removed != 0`),
   proving the accumulator is threaded, not recomputed per-junction. |
-  `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`
+  `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`
 - **AC-10 (regression lock). Given** the 14 green `arachne_parity.rs` locks
   + the round-2 G3/G10 closures, **when** the beading threshold + simplify
   changes land, **then** all 14 + G3/G10 still pass (no regressions). The
@@ -220,12 +221,13 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   (`WallToolPaths.cpp:619-640`) and are NOT to be widened. |
   `cargo test -p slicer-core --test beading_factory -- beading_factory_threshold_clamp_bounds_are_canonical --exact`
 - **AC-N2 (G15 beading regression). Given** the existing
-  `redistribute.rs::compute` tests (which assert the symmetric-outer-walls
-  behavior for `bead_count <= 2` per `crates/slicer-core/tests/beading/redistribute.rs:77-130`),
+  `redistribute.rs::compute` test (`redistribute_outer_consistent`, which
+  asserts the symmetric-outer-walls behavior for `bead_count <= 2` per
+  `crates/slicer-core/tests/beading/redistribute.rs:123-179`),
   **when** the new `optimal_bead_count`/`get_transition_thickness`/`optimal_thickness`
-  overrides are added, **then** the `compute` tests still pass — `compute` is
+  overrides are added, **then** the `compute` test still passes — `compute` is
   NOT touched by this packet; only the count/thickness methods change. |
-  `cargo test -p slicer-core --test beading_redistribute -- redistribute_compute --exact`
+  `cargo test -p slicer-core --test beading_redistribute -- redistribute_outer_consistent --exact`
 - **AC-N3 (G20 degenerate input). Given** an open `ExtrusionLine` with
   `junctions.len() == 2`, **when** `simplify_distance_gated` is called,
   **then** it returns the input unchanged (the `n <= 2` early-return at
@@ -233,7 +235,7 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   is never dereferenced). This matches OrcaSlicer's
   `min_path_size = is_closed ? 3 : 2; if (junctions.size() <= min_path_size) return;`
   (`ExtrusionLine.cpp:63-65`) for the open case. |
-  `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`
+  `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`
 - **AC-N4 (G20 closed-line early-return). Given** an `ExtrusionLine` with
   `is_closed = true` and 3 junctions, **when** `simplify_distance_gated` is
   called, **then** the result has exactly 3 junctions. OrcaSlicer's closed-line
@@ -242,15 +244,15 @@ Acceptance Criteria are stated **once**, here. `requirements.md` references them
   wrap-around at `ExtrusionLine.cpp:121-123`, the mid-loop ≤3 guard at
   `:114-118`, and the `front().p = back().p` copy at `:230-238`) is OUT OF
   SCOPE for this packet (deferred; see Open Questions). |
-  `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`
+  `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`
 
 ## Verification
 
 Gate commands only — full matrix in `requirements.md` §Verification Commands.
 
 - `cargo test -p slicer-runtime --test arachne_parity_round2 -- arachne_parity_beading_split_middle_threshold_exposed arachne_parity_simplify_intersection_distance_gate_present`
-- `cargo check --workspace --all-targets`
-- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo check --workspace --all-targets --features host-algos`
+- `cargo clippy --workspace --all-targets --features host-algos -- -D warnings`
 
 ## Authoritative Docs
 

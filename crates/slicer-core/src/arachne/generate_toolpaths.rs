@@ -1073,6 +1073,14 @@ mod tests {
         fn type_label(&self) -> &'static str {
             "FixedTestStrategy"
         }
+
+        fn get_split_middle_threshold(&self) -> f64 {
+            0.99_f64
+        }
+
+        fn get_add_middle_threshold(&self) -> f64 {
+            0.99_f64
+        }
     }
 
     /// Builds the smallest possible single central-edge domain: two vertices

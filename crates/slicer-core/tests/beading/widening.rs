@@ -82,7 +82,7 @@ fn load_fixture() -> Fixture {
 /// `optimal_width = 4000.0` convention.
 fn build_parent_chain() -> RedistributeBeadingStrategy {
     let distributed =
-        DistributedBeadingStrategy::new(4000.0, 0.0, 0.0, 2, 0.174_532_925_199_432_95);
+        DistributedBeadingStrategy::new(4000.0, 0.0, 0.0, 2, 0.174_532_925_199_432_95, 0.99, 0.99);
     RedistributeBeadingStrategy::new(Box::new(distributed), 4000.0, 0.5)
 }
 

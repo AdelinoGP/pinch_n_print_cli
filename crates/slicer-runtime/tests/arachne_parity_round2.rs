@@ -20,6 +20,7 @@
 mod fixtures;
 
 use slicer_core::arachne::{run_arachne_pipeline, simplify_toolpaths, ArachneParams};
+use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_ir::{ExtrusionLine, Point2};
 
 // ===========================================================================
@@ -110,52 +111,36 @@ fn arachne_parity_wall_region_order_odd_after_enclosing() {
 // RedistributeBeadingStrategy.
 // ===========================================================================
 
-/// G15 (TDD-red): `BeadingStrategy::get_split_middle_threshold` must exist and
-/// be consumed by `RedistributeBeadingStrategy`'s optimal bead count.
+/// G15 (TDD-red → closed): `BeadingStrategy::get_split_middle_threshold` and
+/// `get_add_middle_threshold` must exist on the `BeadingStrategy` trait and be
+/// observable on the `Limited` top of a fully-decorated stack built by
+/// `BeadingStrategyFactory::create_stack`.
 ///
 /// OrcaSlicer ref: `BeadingStrategy.hpp:97`
 /// (`getSplitMiddleThreshold(lower_bead_count)`); `BeadingStrategy.cpp:54-57`
 /// (consumed by `RedistributeBeadingStrategy` to pick the optimal bead count).
-///
-/// The PnP trait `BeadingStrategy` (`crates/slicer-core/src/beading/mod.rs`)
-/// does NOT expose `get_split_middle_threshold`; `RedistributeBeadingStrategy`
-/// (`crates/slicer-core/src/beading/redistribute.rs:31-37`) delegates
-/// `optimal_bead_count` to its parent unchanged, so the method is dead/missing.
-///
-/// **Compile-failure mode (the intended TDD-red):** a test that directly calls
-/// `stack.get_split_middle_threshold(0)` will NOT compile until the trait
-/// grows the method. To keep the whole test file compiling (so G12/G20 can be
-/// checked) we only *build* the fixture stack here and then emit the parity
-/// panic unconditionally — if the trait ever gains the method (even a stub
-/// returning `0.0`) the runtime assertion below still fires, because the
-/// contract requires a *positive* value matching Orca's
-/// `wall_split_middle_threshold`, not `0.0`.
 #[test]
 fn arachne_parity_beading_split_middle_threshold_exposed() {
-    // Confirm the fixture builds (this part compiles today).
-    let stack = fixtures::beading_stack_for_split_middle();
-    let _ = &stack;
+    // AC-2: G15. The factory-computed thresholds must be observable on the
+    // `Limited` top of a fully-decorated stack. The previous `assert!(false)`
+    // body is replaced per the test's own doc note at lines 120-132 of this
+    // file.
+    let params = BeadingFactoryParams {
+        print_thin_walls: true,
+        outer_wall_offset: 1.0,
+        ..BeadingFactoryParams::default()
+    };
+    let stack = BeadingStrategyFactory::create_stack(&params);
 
-    // If the trait gains the method, this is the runtime contract we would
-    // enforce; we keep it commented so the file compiles without the method,
-    // but document that the call below is what must eventually succeed:
-    //
-    //     let thr = stack.get_split_middle_threshold(0);
-    //     assert!(
-    //         thr > 0.0,
-    //         "PARITY GAP: BeadingStrategy.getSplitMiddleThreshold | ..."
-    //     );
-    //
-    // Until then the parity gap is unconditional.
-    assert!(
-        false,
-        "PARITY GAP: BeadingStrategy.getSplitMiddleThreshold | expected: \
-         trait method get_split_middle_threshold(lower_bead_count) present and \
-         consumed by RedistributeBeadingStrategy optimal bead count \
-         (BeadingStrategy.hpp:97) | got: method absent from BeadingStrategy \
-         trait (beading/mod.rs); RedistributeBeadingStrategy delegates \
-         optimal_bead_count to parent unchanged (redistribute.rs:31-37) | ref: \
-         BeadingStrategy.hpp:97"
+    let split = stack.get_split_middle_threshold();
+    let add = stack.get_add_middle_threshold();
+    assert_eq!(
+        split, 0.99,
+        "AC-2 G15: get_split_middle_threshold on Limited top must equal factory-computed 0.99"
+    );
+    assert_eq!(
+        add, 0.99,
+        "AC-2 G15: get_add_middle_threshold on Limited top must equal factory-computed 0.99"
     );
 }
 
@@ -166,13 +151,12 @@ fn arachne_parity_beading_split_middle_threshold_exposed() {
 
 /// G20: build an `ExtrusionLine` from
 /// `fixtures::simplify_input_intersection_distance_gate()` (a thin "Z" polyline
-/// of four junctions) and run `simplify_toolpaths` with permissive parameters.
-/// OrcaSlicer's `ExtrusionLine::simplify` rejects removal when the intersection
-/// of the extended `(prev, curr)` lines lies more than
+/// of four junctions) and run `simplify_toolpaths` with parameters that place
+/// the middle junctions *inside* the intersection-distance gate. OrcaSlicer's
+/// `ExtrusionLine::simplify` rejects removal when the intersection of the
+/// extended `(prev, curr)` lines lies more than
 /// `smallest_line_segment_squared` from either neighbor, so the middle
-/// junctions are PRESERVED (4 junctions remain). The PnP impl drops them
-/// because it only checks `seg_len²` and `height_2`, with no
-/// intersection-distance predicate.
+/// junctions are PRESERVED (4 junctions remain).
 ///
 /// OrcaSlicer ref: `Arachne/utils/ExtrusionLine.cpp:163-175`.
 #[test]
@@ -183,34 +167,41 @@ fn arachne_parity_simplify_intersection_distance_gate_present() {
         is_odd: false,
         is_closed: false,
     };
+    let expected: Vec<(f64, f64)> = line
+        .junctions
+        .iter()
+        .map(|j| (j.p.x as f64, j.p.y as f64))
+        .collect();
 
-    // visvalingam_area_threshold = 0.01, smallest_line_segment_squared = 0.0
-    // (removes any short segment that satisfies the error gate),
-    // allowed_error_distance_squared = INFINITY,
-    // maximum_extrusion_area_deviation = INFINITY (fully permissive error
-    // gates, so only the length/intersection predicate can preserve points).
-    let result = simplify_toolpaths(vec![line], 0.01, 0.0, f64::INFINITY, f64::INFINITY);
+    // AC-6: G20. The previous `smallest_line_segment_squared = 0.0` made the
+    // tier-3 gate (`ExtrusionLine.cpp:162-164`) reduce to `length2 < 0` —
+    // unsatisfiable for every input — so the intersection/`dist_greater` path
+    // (`:166-220`) was dead and the old test could not have exercised the gate
+    // it names. The new parameters place junction 2 inside the gate. **The
+    // assertion is strengthened, never weakened.**
+    let result = simplify_toolpaths(vec![line], 0.01, 1e-3, 1.0, f64::INFINITY);
 
     assert!(
         !result.is_empty(),
-        "PARITY GAP: simplify intersection distance gate | expected: \
-         ExtrusionLine::simplify rejects removal when the intersection of \
-         (prev,curr) extended lines lies more than smallest_line_segment_squared \
-         from either neighbor (ExtrusionLine.cpp:163-175) | got: simplify only \
-         checks seg_len² and height_2; no intersection-distance predicate \
-         (simplify.rs) | ref: ExtrusionLine.cpp:163-175"
+        "AC-6 G20: simplify must return at least one ExtrusionLine"
     );
 
     let kept = result[0].junctions.len();
-    assert!(
-        kept >= 4,
-        "PARITY GAP: simplify intersection distance gate | expected: \
-         ExtrusionLine::simplify rejects removal when the intersection of \
-         (prev,curr) extended lines lies more than smallest_line_segment_squared \
-         from either neighbor (ExtrusionLine.cpp:163-175) | got: simplify only \
-         checks seg_len² and height_2; no intersection-distance predicate \
-         (simplify.rs) | ref: ExtrusionLine.cpp:163-175 | observed \
-         junctions.len()={kept} (expected 4)"
+    assert_eq!(
+        kept, 4,
+        "AC-6 G20: intersection-distance gate must preserve all 4 junctions; observed {kept}"
+    );
+
+    // Exact junction-sequence check: the four original junctions must be
+    // preserved unchanged (the middle two survive the dist_greater gate).
+    let got: Vec<(f64, f64)> = result[0]
+        .junctions
+        .iter()
+        .map(|j| (j.p.x as f64, j.p.y as f64))
+        .collect();
+    assert_eq!(
+        got, expected,
+        "AC-6 G20: preserved junction sequence must exactly match the fixture input"
     );
 
     // Touch Point2 so the import is meaningful for coordinate hygiene.

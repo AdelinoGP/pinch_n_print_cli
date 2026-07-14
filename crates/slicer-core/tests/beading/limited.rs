@@ -94,6 +94,8 @@ fn build_strategy(fixture: &Fixture) -> LimitedBeadingStrategy {
         fixture.parent_params.transition_filter_dist,
         fixture.parent_params.distribution_count,
         fixture.parent_params.wall_transition_angle,
+        0.99,
+        0.99,
     );
     LimitedBeadingStrategy::new(Box::new(parent), fixture.max_bead_count)
 }

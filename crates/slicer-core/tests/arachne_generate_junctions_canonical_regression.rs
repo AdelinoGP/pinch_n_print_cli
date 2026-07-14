@@ -80,6 +80,14 @@ impl BeadingStrategy for FixedBeadingStrategy {
     fn type_label(&self) -> &'static str {
         "FixedTestStrategy"
     }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
 }
 
 /// Builds a single central twin-pair edge: `v0` (from, R = 1mm, `bead_count

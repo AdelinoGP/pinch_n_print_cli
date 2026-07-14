@@ -28,13 +28,13 @@
 //! always recomputed from scratch as `thickness - sum(bead_widths)` rather
 //! than inherited from the parent's own `left_over`.
 //!
-//! Scope boundary (not a deviation): upstream's `RedistributeBeadingStrategy`
-//! also overrides `getOptimalBeadCount`/`getOptimalThickness` with more
-//! complex logic that depends on a `getSplitMiddleThreshold()` method. This
-//! codebase's `BeadingStrategy` trait does not expose that method (expanding
-//! the trait surface is out of scope for this fix), so `optimal_bead_count`,
-//! `get_transition_thickness`, and `optimal_thickness` here simply delegate
-//! to `parent`, unchanged from before.
+//! Upstream's `RedistributeBeadingStrategy` also overrides
+//! `getOptimalBeadCount`/`getOptimalThickness`/`getTransitionThickness` with
+//! logic that recurses into `parent` on a thickness/bead_count reduced by the
+//! two outer beads, then re-adds the two outer `optimal_width_outer` beads.
+//! These three methods are ported below (packet 155, Step 3) and consult
+//! `parent.get_split_middle_threshold()` in the `case 1` branch of
+//! `get_transition_thickness` and the 2-bead branch of `optimal_bead_count`.
 //!
 //! All values are in slicer units (1 unit = 100 nm) — see
 //! `docs/08_coordinate_system.md`.
@@ -145,19 +145,55 @@ impl BeadingStrategy for RedistributeBeadingStrategy {
     }
 
     fn optimal_bead_count(&self, thickness: f64) -> usize {
-        self.parent.optimal_bead_count(thickness)
+        // Ported from OrcaSlicer RedistributeBeadingStrategy.cpp:73-85.
+        if thickness < self.minimum_variable_line_ratio * self.optimal_width_outer {
+            0
+        } else if thickness <= 2.0 * self.optimal_width_outer {
+            if thickness
+                > (1.0 + self.parent.get_split_middle_threshold()) * self.optimal_width_outer
+            {
+                2
+            } else {
+                1
+            }
+        } else {
+            self.parent
+                .optimal_bead_count(thickness - 2.0 * self.optimal_width_outer)
+                + 2
+        }
     }
 
     fn get_transition_thickness(&self, lower_bead_count: usize) -> f64 {
-        self.parent.get_transition_thickness(lower_bead_count)
+        // Ported from OrcaSlicer RedistributeBeadingStrategy.cpp:54-59.
+        // The split-middle threshold is consulted in the `1` branch (NOT the
+        // `0` branch): `case 0` yields `minimum_variable_line_ratio * W`.
+        match lower_bead_count {
+            0 => self.minimum_variable_line_ratio * self.optimal_width_outer,
+            1 => (1.0 + self.parent.get_split_middle_threshold()) * self.optimal_width_outer,
+            _ => {
+                self.parent.get_transition_thickness(lower_bead_count - 2)
+                    + 2.0 * self.optimal_width_outer
+            }
+        }
     }
 
     fn optimal_thickness(&self, bead_count: usize) -> f64 {
-        self.parent.optimal_thickness(bead_count)
+        // Ported from OrcaSlicer RedistributeBeadingStrategy.cpp:50-52.
+        let inner = (bead_count as i64 - 2).max(0) as usize;
+        let outer = bead_count - inner;
+        self.parent.optimal_thickness(inner) + self.optimal_width_outer * outer as f64
     }
 
     fn type_label(&self) -> &'static str {
         "Redistribute"
+    }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        self.parent.get_split_middle_threshold()
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        self.parent.get_add_middle_threshold()
     }
 
     fn type_chain(&self) -> String {

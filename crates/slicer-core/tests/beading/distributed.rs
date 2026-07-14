@@ -82,6 +82,8 @@ fn distributed_beading_strategy_orca_table() {
         fixture.params.transition_filter_dist,
         fixture.params.distribution_count,
         fixture.params.wall_transition_angle,
+        0.99,
+        0.99,
     );
 
     assert_eq!(fixture.cases.len(), 10, "fixture must contain 10 cases");
@@ -148,4 +150,46 @@ fn beading_invariant_locations_len_eq_widths_len() {
         left_over: 0.0,
     };
     assert_beading_invariant(&malformed);
+}
+
+/// AC-3: `optimal_bead_count` must use OrcaSlicer's `getOptimalBeadCount`
+/// truncation formula (DistributedBeadingStrategy.cpp:132-144), not the old
+/// `.round()` heuristic. The falsifying case `optimal_width = 4000`, split =
+/// add = 0.99, thickness = 7500 must yield 1 bead (the old `.round()` impl
+/// returned `round(1.875) = 2`).
+///
+/// Parity drives the selected threshold: an odd naive count uses the split
+/// threshold; an even naive count uses the add threshold.
+#[test]
+fn distributed_optimal_bead_count_uses_split_middle_threshold() {
+    const OPTIMAL_WIDTH: f64 = 4000.0;
+
+    let make = |split: f64, add: f64| -> DistributedBeadingStrategy {
+        DistributedBeadingStrategy::new(OPTIMAL_WIDTH, 0.0, 0.0, 2, 0.0, split, add)
+    };
+
+    // Falsifying case: odd naive count (1) with split threshold 0.99.
+    let s = make(0.99, 0.99);
+    assert_eq!(
+        s.optimal_bead_count(7500.0),
+        1,
+        "thickness 7500 with split=add=0.99 must yield 1 bead (parity odd)"
+    );
+
+    // split = add = 0.5: remainder 3500 >= 4000*0.5=2000 -> +1 bead.
+    let s = make(0.5, 0.5);
+    assert_eq!(
+        s.optimal_bead_count(7500.0),
+        2,
+        "thickness 7500 with 0.5 must yield 2 beads"
+    );
+
+    // Even naive count (2) with add threshold 0.5: remainder 0 >= 4000*0.5=2000
+    // is false -> no +1 bead.
+    let s = make(0.5, 0.5);
+    assert_eq!(
+        s.optimal_bead_count(8000.0),
+        2,
+        "thickness 8000 with 0.5 must yield 2 beads"
+    );
 }

@@ -83,6 +83,28 @@ pub trait BeadingStrategy: Send + Sync {
     /// packet to verify decorator composition order.
     fn type_label(&self) -> &'static str;
 
+    /// Returns the threshold (in slicer units) above which a middle bead may
+    /// be split into two beads during bead-count transitions. Matches
+    /// OrcaSlicer's `double getSplitMiddleThreshold() const` — no arguments.
+    ///
+    /// This is a required (no-default) method: each decorator implements it
+    /// explicitly and forwards to `parent`, so a default impl would be picked
+    /// up silently at the `Limited` layer and shadow `Distributed`'s real
+    /// value, making AC-2 unsatisfiable.
+    fn get_split_middle_threshold(&self) -> f64;
+
+    /// Returns the threshold (in slicer units) below which a middle bead is
+    /// added (grown from nothing) during bead-count transitions. This is a
+    /// net-new PnP symbol with no OrcaSlicer equivalent: OrcaSlicer exposes
+    /// the corresponding constant as a base-class field, which the PnP
+    /// decorator pattern must instead surface through an explicit getter.
+    ///
+    /// This is a required (no-default) method for the same reason as
+    /// `get_split_middle_threshold`: a default impl would be silently picked
+    /// up at the `Limited` layer and shadow `Distributed`'s real value,
+    /// making AC-2 unsatisfiable.
+    fn get_add_middle_threshold(&self) -> f64;
+
     /// Returns the wall-transition angle (radians) this strategy uses when
     /// deciding whether a bead-count transition is geometrically allowable.
     ///

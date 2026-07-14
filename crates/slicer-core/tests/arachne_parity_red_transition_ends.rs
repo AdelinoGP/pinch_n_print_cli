@@ -44,6 +44,8 @@ fn default_strategy() -> DistributedBeadingStrategy {
         1000.0,   // transition_filter_dist (0.1mm)
         2,        // distribution_count
         f64::MAX, // wall_transition_angle
+        0.99,
+        0.99,
     )
 }
 

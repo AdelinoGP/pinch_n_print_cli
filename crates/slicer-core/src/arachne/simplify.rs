@@ -36,7 +36,7 @@
 //! (width, flow_factor, overhang_quartile, perimeter_index) untouched — no
 //! averaging or interpolation of width across a dropped run.
 
-use slicer_ir::{ExtrusionJunction, ExtrusionLine};
+use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth};
 
 /// Runs distance-gated simplification on every line's junction polyline.
 ///
@@ -106,6 +106,7 @@ fn simplify_line(
     if use_distance_gates {
         let simplified = simplify_distance_gated(
             &junctions,
+            is_closed,
             smallest_line_segment_squared,
             allowed_error_distance_squared,
             maximum_extrusion_area_deviation,
@@ -130,20 +131,33 @@ fn simplify_line(
 
 /// Canonical single linear pass with distance gates (ExtrusionLine.cpp:56-243).
 ///
-/// Three-tier removal per interior junction:
-/// 1. Ultra-short bypass (segment < 5µm = 0.005mm)
-/// 2. Near-colinear fast path (height_2 ≤ 0.001 AND distance_to_infinite ≤
-///    0.001 AND area_deviation ≤ maximum_extrusion_area_deviation)
-/// 3. Primary gate (segment² < smallest_line_segment_squared AND
-///    height_2 ≤ allowed_error_distance_squared)
+/// Tracks `previous` and `previous_previous` as `ExtrusionJunction` value
+/// copies (ExtrusionLine.cpp:75,79) and ports the tier-3 special case
+/// (ExtrusionLine.cpp:166-220): when the next vertex is far away
+/// (`next_length2 > 4 * smallest_line_segment_squared`), the intersection of
+/// the infinite lines through `(previous_previous → previous)` and
+/// `(current → next)` is computed and, unless the intersection is too far from
+/// `previous`, the previously-pushed junction is popped and replaced by the
+/// intersection carrying `current`'s width and `perimeter_index` verbatim.
+///
+/// Height at the tier-2 and tier-3 gate sites uses the OrcaSlicer Shoelace
+/// formula `height_2 = area_removed_so_far² / base_length_2`
+/// (ExtrusionLine.cpp:151), where `area_removed_so_far` is the running
+/// `accumulated_area_removed` plus the constant `negative_area_closing`.
 fn simplify_distance_gated(
     junctions: &[ExtrusionJunction],
+    is_closed: bool,
     smallest_line_segment_squared: f64,
     allowed_error_distance_squared: f64,
     maximum_extrusion_area_deviation: f64,
 ) -> Vec<ExtrusionJunction> {
     let n = junctions.len();
-    if n <= 2 {
+
+    // Minimum-size guard (ExtrusionLine.cpp:63-65): open lines need at least
+    // 3 junctions to have a simplifiable interior; closed lines need at least
+    // 4, since the implicit closing edge consumes one more vertex.
+    let min_path_size = if is_closed { 3 } else { 2 };
+    if n <= min_path_size {
         return junctions.to_vec();
     }
 
@@ -151,33 +165,103 @@ fn simplify_distance_gated(
     let mut result: Vec<ExtrusionJunction> = Vec::with_capacity(n);
     result.push(junctions[0].clone());
 
-    // Track the last retained junction index for segment-length checks.
-    let mut last_retained = 0;
+    // Track previous and previous_previous as value copies (not indices).
+    let mut previous_previous = junctions[0].clone();
+    let mut previous = junctions[0].clone();
 
-    for i in 1..n - 1 {
-        let prev = &junctions[last_retained];
-        let curr = &junctions[i];
-        let next = junctions.get(i + 1);
+    // Signed area of the closing edge junctions[0] → junctions[1]
+    // (ExtrusionLine.cpp: negative_area_closing). Constant for the whole walk.
+    let negative_area_closing = {
+        let c0 = &junctions[0];
+        let c1 = &junctions[1];
+        (c0.p.x as f64) * (c1.p.y as f64) - (c1.p.x as f64) * (c0.p.y as f64)
+    };
 
-        let Some(next) = next else {
-            // No next junction found — retain this one.
-            result.push(curr.clone());
-            last_retained = i;
-            continue;
+    // Running accumulator of removed triangle area (declared once outside the
+    // loop). Reset to the current iteration's removed area on retain/replace.
+    let mut accumulated_area_removed = 0.0;
+
+    let mut curr = 1usize;
+    while curr < n - 1 {
+        let current = junctions[curr].clone();
+        let next = junctions[curr + 1].clone();
+
+        let next_length2 = {
+            let dx = (next.p.x - previous.p.x) as f64;
+            let dy = (next.p.y - previous.p.y) as f64;
+            dx * dx + dy * dy
         };
 
-        // Segment length squared (prev → curr).
-        let seg_dx = (curr.p.x - prev.p.x) as f64;
-        let seg_dy = (curr.p.y - prev.p.y) as f64;
-        let seg_len_sq = seg_dx * seg_dx + seg_dy * seg_dy;
+        // Tier 3 special case: the next vertex is far away, so the previous
+        // vertex might be a feature we need to keep or relocate
+        // (ExtrusionLine.cpp:166-220).
+        if next_length2 > 4.0 * smallest_line_segment_squared {
+            if let Some((ix, iy)) =
+                line_intersection_infinite(&previous_previous, &previous, &current, &next)
+            {
+                let removed_area_next = triangle_signed_area_x2(&previous, &current, &next);
 
-        // Perpendicular height squared from curr to chord (prev → next).
-        let height_2 = point_line_distance_squared(prev, curr, next);
+                // Reject path: if the intersection is too far from `previous`,
+                // preserve `previous` and advance (current becomes the new
+                // previous, retained).
+                if dist_greater(
+                    (ix, iy),
+                    (previous.p.x as f64, previous.p.y as f64),
+                    smallest_line_segment_squared,
+                ) {
+                    result.push(current.clone());
+                    previous_previous = previous.clone();
+                    previous = current.clone();
+                    accumulated_area_removed = removed_area_next;
+                    curr += 1;
+                    continue;
+                }
+
+                // Replacement path: pop the previously-pushed junction,
+                // restore previous = previous_previous, push the intersection
+                // carrying `current`'s width and perimeter_index verbatim,
+                // re-advance both cursors.
+                result.pop();
+                let intersection = ExtrusionJunction {
+                    p: Point3WithWidth {
+                        x: ix as f32,
+                        y: iy as f32,
+                        z: current.p.z,
+                        width: current.p.width,
+                        flow_factor: current.p.flow_factor,
+                        overhang_quartile: current.p.overhang_quartile,
+                    },
+                    perimeter_index: current.perimeter_index,
+                };
+                result.push(intersection.clone());
+                previous = intersection;
+                accumulated_area_removed = removed_area_next;
+                curr += 1;
+                continue;
+            }
+        }
+
+        // Height via OrcaSlicer Shoelace formula (ExtrusionLine.cpp:151).
+        let removed_area_next = triangle_signed_area_x2(&previous, &current, &next);
+        let area_removed_so_far = accumulated_area_removed + negative_area_closing;
+        let base_length2 = {
+            let dx = (next.p.x - previous.p.x) as f64;
+            let dy = (next.p.y - previous.p.y) as f64;
+            dx * dx + dy * dy
+        };
+        let height_2 = (area_removed_so_far * area_removed_so_far) / base_length2.max(1e-18);
+
+        // Segment length squared (previous → current).
+        let seg_dx = (current.p.x - previous.p.x) as f64;
+        let seg_dy = (current.p.y - previous.p.y) as f64;
+        let seg_len_sq = seg_dx * seg_dx + seg_dy * seg_dy;
 
         // Tier 1: Ultra-short bypass (ExtrusionLine.cpp ~5µm).
         let ultra_short_threshold = 0.000025; // 0.005mm squared = 2.5e-5 mm²
         if seg_len_sq < ultra_short_threshold {
             // Remove: ultra-short segment.
+            accumulated_area_removed += removed_area_next;
+            curr += 1;
             continue;
         }
 
@@ -186,14 +270,16 @@ fn simplify_distance_gated(
         // converted to mm²: 0.001² = 1e-6 mm² for height and inline distance.
         let near_colinear_height = 1e-6; // (0.001mm)² = 1µm²
         let near_colinear_inline = 1e-6; // (0.001mm)² = 1µm²
-        let inline_dist = point_to_infinite_line_distance_squared(prev, next, curr);
+        let inline_dist = point_to_infinite_line_distance_squared(&previous, &next, &current);
         if height_2 <= near_colinear_height
             && inline_dist <= near_colinear_inline
             && maximum_extrusion_area_deviation > 0.0
         {
-            let area_dev = calculate_extrusion_area_deviation_error(prev, curr, next);
+            let area_dev = calculate_extrusion_area_deviation_error(&previous, &current, &next);
             if area_dev <= maximum_extrusion_area_deviation {
                 // Remove: near-colinear with acceptable area deviation.
+                accumulated_area_removed += removed_area_next;
+                curr += 1;
                 continue;
             }
         }
@@ -202,17 +288,86 @@ fn simplify_distance_gated(
         if seg_len_sq < smallest_line_segment_squared && height_2 <= allowed_error_distance_squared
         {
             // Remove: short segment within error tolerance.
+            accumulated_area_removed += removed_area_next;
+            curr += 1;
             continue;
         }
 
         // Retain this junction.
-        result.push(curr.clone());
-        last_retained = i;
+        result.push(current.clone());
+        previous_previous = previous.clone();
+        previous = current.clone();
+        accumulated_area_removed = removed_area_next;
+        curr += 1;
     }
 
     // Always retain the last junction.
     result.push(junctions[n - 1].clone());
     result
+}
+
+/// Twice the signed area of triangle `(a, b, c)` via the cross product
+/// `(a − c) × (b − c)` — the OrcaSlicer `removed_area_next` term
+/// (ExtrusionLine.cpp:151 area term). Used by the Shoelace height formula and
+/// by `accumulated_area_removed`.
+fn triangle_signed_area_x2(
+    a: &ExtrusionJunction,
+    b: &ExtrusionJunction,
+    c: &ExtrusionJunction,
+) -> f64 {
+    let ax = a.p.x as f64;
+    let ay = a.p.y as f64;
+    let bx = b.p.x as f64;
+    let by = b.p.y as f64;
+    let cx = c.p.x as f64;
+    let cy = c.p.y as f64;
+    (ax - cx) * (by - cy) - (bx - cx) * (ay - cy)
+}
+
+/// Intersection of the infinite lines through `a`–`b` and `c`–`d`.
+/// Returns `None` when the lines are (near-)parallel. Coordinates are mm (f64).
+fn line_intersection_infinite(
+    a: &ExtrusionJunction,
+    b: &ExtrusionJunction,
+    c: &ExtrusionJunction,
+    d: &ExtrusionJunction,
+) -> Option<(f64, f64)> {
+    let ax = a.p.x as f64;
+    let ay = a.p.y as f64;
+    let bx = b.p.x as f64;
+    let by = b.p.y as f64;
+    let cx = c.p.x as f64;
+    let cy = c.p.y as f64;
+    let dx = d.p.x as f64;
+    let dy = d.p.y as f64;
+
+    let r_px = bx - ax;
+    let r_py = by - ay;
+    let s_px = dx - cx;
+    let s_py = dy - cy;
+
+    let denom = r_px * s_py - r_py * s_px;
+    if denom.abs() < 1e-18 {
+        return None;
+    }
+
+    let t = ((cx - ax) * s_py - (cy - ay) * s_px) / denom;
+    Some((ax + t * r_px, ay + t * r_py))
+}
+
+/// Overflow-avoiding distance-greater predicate (ExtrusionLine.cpp:180-188).
+///
+/// Returns `true` when `p1` is farther from `p2` than `threshold_sq` (the
+/// squared form): first a component-wise fast-reject (any coordinate magnitude
+/// exceeds `threshold_sq`), then the precise squared-norm comparison
+/// `(p1 − p2).squaredNorm() > threshold_sq²`.
+fn dist_greater(p1: (f64, f64), p2: (f64, f64), threshold_sq: f64) -> bool {
+    let dx = p1.0 - p2.0;
+    let dy = p1.1 - p2.1;
+    if dx > threshold_sq || dx < -threshold_sq || dy > threshold_sq || dy < -threshold_sq {
+        return true;
+    }
+    dx * dx + dy * dy > threshold_sq * threshold_sq
 }
 
 /// Legacy iterative area-only sweep (packet 113a). Kept as fallback when

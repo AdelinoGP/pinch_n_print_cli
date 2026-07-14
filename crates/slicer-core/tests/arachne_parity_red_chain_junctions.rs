@@ -120,6 +120,14 @@ impl slicer_core::beading::BeadingStrategy for SymmetricBeadingStrategy {
     fn type_label(&self) -> &'static str {
         "SymmetricBeadingStrategy"
     }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
 }
 
 /// Builds a 2-upward-edge central chain: e0 (v0 -> v1, upward) and

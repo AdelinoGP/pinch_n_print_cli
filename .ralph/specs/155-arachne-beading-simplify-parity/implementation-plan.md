@@ -133,7 +133,7 @@
   (Step 2).
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-core --test beading_redistribute -- redistribute_optimal_bead_count_consults_split_middle --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test beading_redistribute -- redistribute_compute --exact`; FACT pass/fail (AC-N2 lock)."
+  - "Run `cargo test -p slicer-core --test beading_redistribute -- redistribute_outer_consistent --exact`; FACT pass/fail (AC-N2 lock)."
 - Context cost: `S`.
 - Authoritative docs: none new.
 - OrcaSlicer refs: `RedistributeBeadingStrategy.cpp:50-85` — delegate
@@ -193,11 +193,11 @@
     return SUMMARY (≤200 words) + at most two 30-line SNIPPETs
     (the tier-3 block at `:162-220` + the `dist_greater` lambda at
     `:180-188`)."
-  - "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`; FACT pass/fail (AC-N3)."
-  - "Run `cargo test -p slicer-core --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`; FACT pass/fail (AC-N4)."
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_intersection_distance_gate_preserves_junction --exact`; FACT pass/fail."
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_junction_replacement_moves_to_intersection --exact`; FACT pass/fail."
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_distance_gated_uses_shoelace_height_2 --exact`; FACT pass/fail."
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_degenerate_two_junctions_unchanged --exact`; FACT pass/fail (AC-N3)."
+  - "Run `cargo test -p slicer-core --features host-algos --test arachne_simplify_intersection_distance_gate_tdd -- simplify_closed_line_minimum_size_preserved --exact`; FACT pass/fail (AC-N4)."
 - Context cost: `M` (the highest-risk single step in this packet).
 - Authoritative docs: none new.
 - OrcaSlicer refs: `ExtrusionLine.cpp:56-243` — delegate SUMMARY +
@@ -349,14 +349,15 @@
   - "Run `cargo test -p slicer-core`; FACT pass/fail (final unit
     sweep)."
 - Context cost: `S`.
-- Authoritative docs: `docs/07_implementation_status.md` (delegate
-  SUMMARY of the current M2 chain status; the implementer updates
-  the M2 entry to mark P155 (or whatever packet number is assigned)
-  complete).
+- Authoritative docs: none. `docs/07_implementation_status.md` is
+  explicitly NOT touched by this packet — per `requirements.md` and
+  `task-map.md`, G15/G20 are audit-doc-tracked only (`task_ids: none`),
+  and `packet.spec.md`'s Doc Impact Statement does not list
+  `docs/07_implementation_status.md` among its required sections.
 - OrcaSlicer refs: none.
 - Verification: all 5 dispatches above.
 - Exit condition: every AC green, every doc grep hits, clippy
-  clean, guests fresh, `docs/07` updated.
+  clean, guests fresh.
 
 ## Per-Step Budget Roll-Up
 
@@ -378,9 +379,10 @@ Aggregate: M. Largest single step: M (Step 4). No step is L.
 - Every step exit condition is met.
 - Packet acceptance criteria green (each verification command
   dispatched and returned PASS).
-- `docs/07_implementation_status.md` updated for the M2 chain
-  (via worker dispatch — never edited by loading the full backlog
-  into the implementer's context).
+- `docs/07_implementation_status.md` is intentionally NOT touched —
+  G15/G20 are tracked solely via `docs/18_arachne_parity_audit.md`
+  per `requirements.md`/`task-map.md` (`task_ids: none`); it is not
+  part of this packet's Doc Impact Statement.
 - `docs/18_arachne_parity_audit.md` Gap summary table updated.
 - `docs/DEVIATION_LOG.md` D-155 + D-156 entries added.
 - `CONTEXT.md` glossary entries added.

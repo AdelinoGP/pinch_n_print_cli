@@ -41,6 +41,14 @@ impl BeadingStrategy for FixedBeading {
     fn type_label(&self) -> &'static str {
         "FixedBeadingStub"
     }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
 }
 
 /// 5-bead fixture: outermost to innermost widths/locations, arbitrary but

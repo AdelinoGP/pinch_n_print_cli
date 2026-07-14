@@ -301,8 +301,8 @@ re-verified against the OrcaSlicer source and DROPPED:
 | # | OrcaSlicer feature | Ref | PnP status | Red test |
 |---|---|---|---|---|
 | G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:809`; `PerimeterGenerator.cpp:2302` | missing — `pipeline.rs:383` flattens per-inset buckets in source order | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
-| G15 | `BeadingStrategy::getSplitMiddleThreshold` (split-middle rule) | `BeadingStrategy.hpp:97`; `BeadingStrategy.cpp:54-57`; `BeadingStrategy.cpp:72-73` | missing — `BeadingStrategy` trait does not expose the method; `redistribute.rs:31-37` documents the absence and delegates `optimal_bead_count` to parent | `arachne_parity_round2::..._beading_split_middle_threshold_exposed` |
-| G20 | `ExtrusionLine::simplify` `dist_greater` intersection-distance gate | `Arachne/utils/ExtrusionLine.cpp:163-175` | missing — `simplify.rs` tier-3 only checks `seg_len²` and `height_2`; no intersection-distance predicate | `arachne_parity_round2::..._simplify_intersection_distance_gate_present` |
+| G15 | `BeadingStrategy::getSplitMiddleThreshold` (split-middle rule) | `BeadingStrategy.hpp:97`; `BeadingStrategy.cpp:54-57`; `BeadingStrategy.cpp:72-73` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._beading_split_middle_threshold_exposed` |
+| G20 | `ExtrusionLine::simplify` `dist_greater` intersection-distance gate | `Arachne/utils/ExtrusionLine.cpp:163-175` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._simplify_intersection_distance_gate_present` |
 
 ## Detailed gaps
 
@@ -335,7 +335,7 @@ getRegionOrder pass (pipeline.rs:383) | ref: WallToolPaths.cpp:809`
 
 ### G15: `BeadingStrategy::getSplitMiddleThreshold` not on the trait (Data Model)
 
-**OrcaSlicer:** `BeadingStrategy::getSplitMiddleThreshold(lower_bead_count)`
+**PnP status:** closed (packet 155-arachne-beading-simplify-parity) — the `BeadingStrategy` trait gained `get_split_middle_threshold` + `get_add_middle_threshold` (required, both forwarding through all four decorators to `DistributedBeadingStrategy`), and `RedistributeBeadingStrategy`'s `optimal_bead_count`/`get_transition_thickness`/`optimal_thickness` now consult the split-middle threshold. See `docs/DEVIATION_LOG.md` D-155.
 (`BeadingStrategy.hpp:97`, `.cpp:54-57`) returns the thickness at which the
 middle bead is split; `RedistributeBeadingStrategy` uses it for its
 `optimal_bead_count`/`getTransitionThickness` math (the threshold is also
@@ -366,7 +366,7 @@ to parent unchanged (redistribute.rs:31-37) | ref: BeadingStrategy.hpp:97`
 
 ### G20: `ExtrusionLine::simplify` missing intersection-distance gate (Algorithm)
 
-**OrcaSlicer:** `ExtrusionLine::simplify`
+**PnP status:** closed (packet 155-arachne-beading-simplify-parity) — `simplify_distance_gated` now tracks `previous_previous`, ports OrcaSlicer's `next_length2 > 4 * smallest_line_segment_squared` special case, `intersection_infinite`, the `dist_greater` gate, and the junction-replacement else-branch. The G20 RED test's parameters were changed (per AC-6) because the originals could not reach the gate. See `docs/DEVIATION_LOG.md` D-156.
 (`Arachne/utils/ExtrusionLine.cpp:163-175`) calls a `dist_greater` predicate
 that rejects removing a junction when the proposed intersection point lies
 more than `smallest_line_segment_squared` from either the `previous` or

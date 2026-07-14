@@ -121,6 +121,18 @@ pub struct BeadingFactoryParams {
     /// `WideningBeadingStrategy`'s base width instead of `optimal_width`.
     /// Maps to the `preferred_bead_width_outer` config key.
     pub preferred_bead_width_outer: f64,
+    /// Threshold (fraction of `optimal_width`) above which a middle bead may be
+    /// split into two beads during bead-count transitions when the current
+    /// bead count is odd. Computed by `create_stack` from OrcaSlicer's
+    /// `WallToolPaths.cpp:619-640` clamp formula; `Default` seeds `0.99`.
+    #[serde(default)]
+    pub wall_split_middle_threshold: f64,
+    /// Threshold (fraction of `optimal_width`) below which a middle bead is
+    /// added during bead-count transitions when the current bead count is even.
+    /// Computed by `create_stack` from OrcaSlicer's
+    /// `WallToolPaths.cpp:619-640` clamp formula; `Default` seeds `0.99`.
+    #[serde(default)]
+    pub wall_add_middle_threshold: f64,
 }
 
 impl Default for BeadingFactoryParams {
@@ -154,6 +166,8 @@ impl Default for BeadingFactoryParams {
             minimum_variable_line_ratio: 0.5,
             print_thin_walls: false,
             preferred_bead_width_outer: 4000.0,
+            wall_split_middle_threshold: 0.99,
+            wall_add_middle_threshold: 0.99,
             wall_transition_angle: 10.0_f64.to_radians(),
             initial_layer_min_bead_width: 3400.0,
         }
@@ -184,12 +198,22 @@ impl BeadingStrategyFactory {
             params.optimal_width
         };
 
+        // OrcaSlicer `WallToolPaths.cpp:619-640` middle-threshold clamp
+        // formulas (canonical `[0.01, 0.99]` bounds — AC-N1 lock, do not alter).
+        let wall_split_middle_threshold =
+            (2.0 * params.min_output_width / params.preferred_bead_width_outer - 1.0)
+                .clamp(0.01, 0.99);
+        let wall_add_middle_threshold =
+            (params.min_output_width / params.optimal_width).clamp(0.01, 0.99);
+
         let distributed: Box<dyn BeadingStrategy> = Box::new(DistributedBeadingStrategy::new(
             effective_optimal_width,
             params.default_transition_length,
             params.transition_filter_dist,
             params.distribution_count,
             params.wall_transition_angle,
+            wall_split_middle_threshold,
+            wall_add_middle_threshold,
         ));
 
         let redistribute: Box<dyn BeadingStrategy> = Box::new(RedistributeBeadingStrategy::new(

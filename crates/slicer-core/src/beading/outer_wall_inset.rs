@@ -109,6 +109,14 @@ impl BeadingStrategy for OuterWallInsetBeadingStrategy {
         "OuterWallInset"
     }
 
+    fn get_split_middle_threshold(&self) -> f64 {
+        self.parent.get_split_middle_threshold()
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        self.parent.get_add_middle_threshold()
+    }
+
     fn type_chain(&self) -> String {
         format!("{}({})", self.type_label(), self.parent.type_chain())
     }

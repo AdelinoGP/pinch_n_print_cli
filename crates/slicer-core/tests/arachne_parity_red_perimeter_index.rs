@@ -71,6 +71,14 @@ impl BeadingStrategy for FixedBeadingStrategy {
     fn type_label(&self) -> &'static str {
         "FixedTestStrategy"
     }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        0.99_f64
+    }
 }
 
 /// Minimal single-central-edge domain with `bead_count = 2` at the PEAK

@@ -359,6 +359,12 @@ cases 1 and 3 into one `!is_curved` branch — a latent divergence tracked by
 spec packet 154 (thin-strip collapse). The PnP `is_curved` flag (from boost
 voronoi) corresponds to case 2; `!is_curved` covers both case 1 and case 3.
 
+### split-middle threshold
+A `BeadingStrategy` parameter (OrcaSlicer `wall_split_middle_threshold`, PnP `get_split_middle_threshold`) that sets the thickness at which the middle bead of an odd-bead-count region is split into two, distinguishing the "split" parity branch from the "add" branch in `DistributedBeadingStrategy::optimal_bead_count` and `RedistributeBeadingStrategy`'s transition-thickness math. In PnP it is a required trait method forwarded by all four decorators to the innermost `DistributedBeadingStrategy`. See also **intersection-distance gate** and **Fixed-inset wall model**; recorded as a parity residual in `docs/DEVIATION_LOG.md` D-155.
+
+### intersection-distance gate
+The `dist_greater` predicate in `ExtrusionLine::simplify` (`Arachne/utils/ExtrusionLine.cpp:163-175`) that rejects removing a junction when the intersection of the extended `(prev_prev, prev)` and `(curr, next)` lines lies farther than `smallest_line_segment_squared` from either `prev` or `curr`, even when the segment-length and height-2 tests would otherwise allow removal — guarding against artifact "spikes" on near-colinear polylines. Ported into PnP's `simplify_distance_gated` tier-3 special case (packet 155, G20). See also **Split-middle threshold**; the G20 RED test's parameters were corrected under `docs/DEVIATION_LOG.md` D-156.
+
 ## Flagged ambiguities
 
 ### "region"

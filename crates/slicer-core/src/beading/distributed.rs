@@ -51,6 +51,14 @@ pub struct DistributedBeadingStrategy {
     /// value is not used by `compute` itself, but it is read by callers that
     /// need to know the configured transition-angle threshold.
     wall_transition_angle: f64,
+    /// Threshold (fraction of `optimal_width`) above which a middle bead may be
+    /// split into two beads during bead-count transitions when the current
+    /// bead count is odd. Matches OrcaSlicer's `getSplitMiddleThreshold()`.
+    wall_split_middle_threshold: f64,
+    /// Threshold (fraction of `optimal_width`) below which a middle bead is
+    /// added during bead-count transitions when the current bead count is even.
+    /// Matches OrcaSlicer's `getAddMiddleThreshold()`.
+    wall_add_middle_threshold: f64,
 }
 
 impl DistributedBeadingStrategy {
@@ -63,6 +71,8 @@ impl DistributedBeadingStrategy {
         transition_filter_dist: f64,
         distribution_count: usize,
         wall_transition_angle: f64,
+        wall_split_middle_threshold: f64,
+        wall_add_middle_threshold: f64,
     ) -> Self {
         Self {
             optimal_width,
@@ -70,6 +80,8 @@ impl DistributedBeadingStrategy {
             transition_filter_dist,
             distribution_count,
             wall_transition_angle,
+            wall_split_middle_threshold,
+            wall_add_middle_threshold,
         }
     }
 }
@@ -175,11 +187,30 @@ impl BeadingStrategy for DistributedBeadingStrategy {
     }
 
     fn optimal_bead_count(&self, thickness: f64) -> usize {
-        (thickness / self.optimal_width).round().max(0.0) as usize
+        // Ported from OrcaSlicer DistributedBeadingStrategy.cpp:132-144.
+        // Integer truncation (not rounding) of thickness / optimal_width, then
+        // a remainder test against a parity-selected minimum line width.
+        let naive_count = (thickness / self.optimal_width).trunc();
+        let remainder = thickness - naive_count * self.optimal_width;
+        let minimum_line_width = self.optimal_width
+            * if naive_count as usize % 2 == 1 {
+                self.wall_split_middle_threshold
+            } else {
+                self.wall_add_middle_threshold
+            };
+        (naive_count as usize) + (remainder >= minimum_line_width) as usize
     }
 
     fn get_transition_thickness(&self, lower_bead_count: usize) -> f64 {
-        (lower_bead_count as f64 + 0.5) * self.optimal_width
+        // Ported from OrcaSlicer BeadingStrategy.cpp:90-102.
+        let threshold = if lower_bead_count % 2 == 1 {
+            self.wall_split_middle_threshold
+        } else {
+            self.wall_add_middle_threshold
+        };
+        let lower_optimum = self.optimal_thickness(lower_bead_count);
+        let upper_optimum = self.optimal_thickness(lower_bead_count + 1);
+        lower_optimum + (upper_optimum - lower_optimum) * threshold
     }
 
     fn optimal_thickness(&self, bead_count: usize) -> f64 {
@@ -188,6 +219,14 @@ impl BeadingStrategy for DistributedBeadingStrategy {
 
     fn type_label(&self) -> &'static str {
         "Distributed"
+    }
+
+    fn get_split_middle_threshold(&self) -> f64 {
+        self.wall_split_middle_threshold
+    }
+
+    fn get_add_middle_threshold(&self) -> f64 {
+        self.wall_add_middle_threshold
     }
 
     fn wall_transition_angle(&self) -> f64 {
