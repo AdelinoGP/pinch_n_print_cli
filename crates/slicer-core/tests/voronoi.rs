@@ -1,3 +1,5 @@
+//! Acceptance fixtures for `slicer_core::voronoi`. See doc comment below
+//! (only visible when built with the `host-algos` feature) for full detail.
 #![cfg(feature = "host-algos")]
 #![allow(missing_docs)]
 

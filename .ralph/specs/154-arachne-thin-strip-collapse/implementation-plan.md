@@ -15,83 +15,90 @@
 ### Step 1: Diagnose the responsible root-cause location
 
 - Task IDs: none (tracked by `docs/DEVIATION_LOG.md` D-105D)
-- Objective: Determine which candidate is responsible for the thin-strip medial-axis collapse.
-  Reproduce the failure across all 4 thin-strip tests + the G4 test; delegate OrcaSlicer reads for
-  (a) `discretize` case analysis — seg-seg vs point-point for a thin rectangle spine; (b)
-  `WallToolPaths.cpp` thin-strip behavior — does OrcaSlicer itself drop/zero-length-loop or emit a
-  real wall; (c) `connectJunctions`/`getNextUnconnected` single-edge-domain handling; and trace
-  `BeadingPropagation` locally for a single-edge-domain degenerate bead count. Write the verdict
-  into `design.md` §Step 1 Findings, naming exactly one responsible mechanism (A/B/C/D).
+- Objective: Determine which of the **revised** candidates (A′ / B′ / C′ / D′ — see `design.md`
+  §Controlling Code Paths) is responsible for the thin-strip collapse. Reproduce the failure across
+  the 4 thin-strip tests + G4, then test A′ and B′ locally in that order. **Read `design.md`
+  §Canonical Facts first** — C-1…C-8 already answer the OrcaSlicer questions the draft planned to
+  dispatch (spine is seg-seg branch 1; canonical emits zero junctions on a flat spine; PnP already
+  matches; `collapseSmallEdges` snap_dist is correctly converted). Re-dispatching them is wasted
+  budget. Write the verdict into `design.md` §Step 1 Findings in the exact `verdict: <X>` form.
 - Precondition: none (first step).
-- Postcondition: AC-1 green — `design.md` §Step 1 Findings names the responsible mechanism with
-  evidence.
-- Files allowed to read: `crates/slicer-core/src/arachne/generate_toolpaths.rs`
-  (`connectJunctions`/`getNextUnconnected`); `crates/slicer-core/src/skeletal_trapezoidation/
-  propagation.rs` (`BeadingPropagation`); `crates/slicer-core/src/skeletal_trapezoidation/
-  graph.rs` (`discretize_edge`); the 4 thin-strip test files + G4 test file; `docs/DEVIATION_LOG.md`
-  D-105D; `docs/adr/0034-*.md`; `docs/18_arachne_parity_audit.md` §G4.
+- Postcondition: AC-1 green — §Step 1 Findings carries a `verdict:` line naming one mechanism with
+  `file:line` evidence.
+- Files allowed to read: `crates/slicer-core/src/arachne/generate_toolpaths.rs` (Candidates A′/C′);
+  `crates/slicer-core/src/skeletal_trapezoidation/rib.rs` (Candidate B′); the 4 thin-strip test
+  files + G4 test file; `docs/DEVIATION_LOG.md` D-105D; `docs/adr/0034-*.md`;
+  `docs/18_arachne_parity_audit.md` §G4.
 - Files allowed to edit (≤ 3): `.ralph/specs/154-arachne-thin-strip-collapse/design.md` (append
   findings). No source edit in this step.
-- Files explicitly out-of-bounds: `OrcaSlicerDocumented/` — delegate; classic-perimeters; the
-  D-105/B/C/E fixes.
+- Files explicitly out-of-bounds: `OrcaSlicerDocumented/` — delegate; `propagation.rs` and
+  `graph.rs::discretize_edge` (draft candidates B and C, retired by F-3/F-4); classic-perimeters;
+  the D-105/B/C/E fixes.
 - Expected sub-agent dispatches:
-  - "Run the 4 thin-strip tests + G4; return SNIPPETS (≤ 20 lines each) of the failing assertion
-    and the wall-loop state (length, junction count, `is_closed`)." — purpose: establish failure
-    shape
-  - (delegated) "Summarize `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidation.cpp`
-    `discretize`/`discretize_edge` case analysis: for a thin rectangle strip is the medial-axis
-    spine seg-seg (case 1, `{start,end}`) or point-point (case 3, subdivided)? Return SUMMARY (≤
-    200 words) + one 30-line excerpt. No other code." — purpose: resolve Candidate C
-  - (delegated) "Summarize `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp` thin-
-    strip special cases: does OrcaSlicer emit a zero-length loop / drop a thin strip, or emit a
-    real wall? Return SUMMARY (≤ 200 words). No code." — purpose: resolve Candidate D
-  - (delegated) "Summarize `OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidationGraph.cpp`
-    `connectJunctions`/`getNextUnconnected` for a single-edge (two-node) spine domain: how is a
-    one-edge domain traversed? Return SUMMARY (≤ 200 words). No code." — purpose: resolve
-    Candidate A
-  - "Trace `BeadingPropagation` in `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`
-    for a single-edge domain; return LOCATIONS (file:line + 1-line note) for the bead-count
-    assignment that could collapse all junctions to one vertex." — purpose: resolve Candidate B
+  - "Run `cargo test -p arachne-perimeters --test arachne_parity_is_thin_wall_flag_tdd`, `cargo
+    test -p slicer-runtime --test arachne_parity`, and `cargo test -p slicer-runtime --test
+    arachne_parity_gaps -- arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width --exact`;
+    return SNIPPETS (≤ 20 lines each) of the failing assertion and the wall-loop state (length,
+    junction count, `is_closed`)." — purpose: establish failure shape
+  - "In `crates/slicer-core/src/arachne/generate_toolpaths.rs`, using the single-edge-domain
+    fixture at `:1112`: does `resolve_to_vertex` (`:149`) / `quad_peak_position` (`:491`) resolve
+    EVERY quad's peak to the same vertex for a thin strip? Return FACT: distinct peak-vertex count
+    + the per-bead junction positions emitted." — purpose: resolve Candidate A′ (prime suspect)
+  - "In `crates/slicer-core/src/skeletal_trapezoidation/rib.rs` `build_quad_rib_topology` (`:101`):
+    for a thin rectangle, how many rib edges exist and what is their endpoints'
+    `distance_to_boundary` range? Return FACT (rib count + R range)." — purpose: resolve Candidate
+    B′ — per C-5 these R-varying edges must carry ALL of a thin strip's junctions
+  - **(No OrcaSlicer dispatch required.)** The `connectJunctions` chaining rule is pinned in C-5;
+    C-7 near-exonerates C′ and C-8 near-kills D′. Delegate only if a finding contradicts C-5.
+  - "In `crates/slicer-core/src/arachne/generate_toolpaths.rs` `emit_chain_lines` (`:693`): does it
+    append successive rib-quad segments onto the TAIL of the same `ExtrusionLine` using a ~0.01 mm
+    proximity join (canonical `addToolpathSegment`, `SkeletalTrapezoidation.cpp:1906-1925`), or does
+    it start a new line per quad? Return FACT + the join tolerance if any." — purpose: the
+    highest-value single check per C-5
 - Context cost: M
-- Authoritative docs: `docs/DEVIATION_LOG.md` (D-105D), `docs/adr/0034-*.md`, `docs/18_arachne_parity_audit.md` §G4.
-- OrcaSlicer refs: `SkeletalTrapezoidation.cpp` (`discretize`), `WallToolPaths.cpp`,
-  `SkeletalTrapezoidationGraph.cpp` (`connectJunctions`) — all delegated, default SUMMARY-only.
-- Verification: `rg -q 'Step 1 Findings' .ralph/specs/154-arachne-thin-strip-collapse/design.md` — dispatch as FACT pass/fail (AC-1).
-- Exit condition: AC-1 green; `design.md` §Step 1 Findings names exactly one responsible
-  mechanism with evidence. If Candidate D, skip to Step 5. Otherwise proceed to Steps 2-4
-  (mechanism-specific).
+- Authoritative docs: `design.md` §Canonical Facts (read first); `docs/DEVIATION_LOG.md` (D-105D),
+  `docs/adr/0034-*.md`, `docs/18_arachne_parity_audit.md` §G4.
+- OrcaSlicer refs: **none** — C-1…C-8 (including the `connectJunctions` chaining rule) are all
+  pre-answered in `design.md`.
+- Verification: `rg -q "verdict: (A′|B′|C′|D′)" .ralph/specs/154-arachne-thin-strip-collapse/design.md`
+  — dispatch as FACT pass/fail (AC-1).
+- Exit condition: AC-1 green; §Step 1 Findings carries one `verdict:` line with `file:line`
+  evidence. If D′, skip to Step 5 — but only with positive OrcaSlicer `file:line` evidence that
+  canonical also degenerates (C-5 says it should not). Otherwise proceed to Steps 2-4.
 
 ### Step 2: Implement the faithful fix (mechanism-specific, TBD pending Step 1)
 
 - Task IDs: none
-- Objective: Implement the faithful fix for the mechanism Step 1 named. The exact surface is
-  determined by the verdict: A → `generate_toolpaths.rs` `connectJunctions`/`getNextUnconnected`
-  single-edge-domain traversal; B → `propagation.rs` `BeadingPropagation` degenerate bead count; C
-  → `graph.rs` `discretize_edge` case-3 port (only if Step 1 proved case 3 genuinely required for
-  the thin strip). The mechanism MUST be traceable to a specific OrcaSlicer
-  `discretize`/`WallToolPaths`/`connectJunctions` case (AC-N2) and MUST NOT subdivide `!is_curved`
-  edges > `2 * optimal_width` (AC-N1).
-- Precondition: Step 1 green (responsible mechanism named).
+- Objective: Implement the faithful fix for the mechanism Step 1 named. Surface by verdict:
+  **A′** → the quad chain walk in `generate_toolpaths.rs` (`resolve_to_vertex` `:149` /
+  `quad_peak_position` `:491` / `chain_junctions_for_bead` `:536` / `emit_chain_lines` `:693`);
+  **B′** → `rib.rs` `build_quad_rib_topology` (`:101`) vs canonical `graph.makeRib()`; **C′** →
+  `generate_local_maxima_single_beads` (`generate_toolpaths.rs:803`) vs canonical
+  `generateLocalMaximaSingleBeads` (`SkeletalTrapezoidation.cpp:1529`). The mechanism MUST be
+  traceable to a specific OrcaSlicer `file:line` (AC-N3), MUST NOT reintroduce
+  `from_polygons_with_beading` (AC-N1), MUST NOT add junction emission on flat/equal-R edges
+  (AC-N2 — canonical skips them, C-3/C-4), and MUST NOT add interior nodes to the two-node
+  seg-seg spine (AC-N3 — that topology is canonical, C-2).
+- Precondition: Step 1 green (responsible mechanism named via a `verdict:` line).
 - Postcondition: the targeted source fix is in place and compiles; AC-2..AC-5 trend toward green.
 - Files allowed to read: the implicated candidate file (full) + its existing tests/fixtures; the
   relevant OrcaSlicer reference for the chosen case.
-- Files allowed to edit (≤ 3): exactly one of `generate_toolpaths.rs` / `propagation.rs` /
-  `graph.rs` (Step 1's verdict decides); its fixture JSON if needed.
-- Files explicitly out-of-bounds: `OrcaSlicerDocumented/` — delegate; the other two candidate
-  files (not implicated); classic-perimeters; the D-105/B/C/E fixes.
+- Files allowed to edit (≤ 3): exactly one of `generate_toolpaths.rs` / `rib.rs` (Step 1's verdict
+  decides); its fixture JSON if needed.
+- Files explicitly out-of-bounds: `OrcaSlicerDocumented/` — delegate; the non-implicated candidate
+  file; `propagation.rs` and `graph.rs::discretize_edge` (retired candidates, F-3/F-4);
+  classic-perimeters; the D-105/B/C/E fixes.
 - Expected sub-agent dispatches:
-  - (delegated, if A) "Summarize `OrcaSlicerDocumented/.../SkeletalTrapezoidationGraph.cpp`
-    `connectJunctions`/`getNextUnconnected` for a one-edge domain; return SUMMARY (≤ 200 words).
-    No code." — purpose: ground the faithful A fix
-  - (delegated, if B) "Summarize `OrcaSlicerDocumented/.../SkeletalTrapezoidation.cpp`
-    `BeadingPropagation` bead-count assignment for a degenerate single-edge domain; return
-    SUMMARY (≤ 200 words). No code." — purpose: ground the faithful B fix
-  - (delegated, if C) "Summarize `OrcaSlicerDocumented/.../SkeletalTrapezoidation.cpp`
-    `discretize` case 3 (point-point) subdivision including `discretization_step_size` and marking
-    vertices; return up to a 30-line excerpt. No other code." — purpose: ground the faithful C fix
-- Context cost: S (if A/B) / M (if C)
-- Authoritative docs: `docs/adr/0034-*.md` (faithfulness constraint).
-- OrcaSlicer refs: determined by Step 1's verdict.
+  - (delegated, if A′ or C′) "`OrcaSlicerDocumented/src/libslic3r/Arachne/
+    SkeletalTrapezoidation.cpp:1934` `connectJunctions()` (and `:1529`
+    `generateLocalMaximaSingleBeads` if C′): return a ≤30-line excerpt of the junction-accumulation
+    walk across the `prev`/`next` quad chain. No other code." — purpose: ground the faithful port
+  - (delegated, if B′) "`OrcaSlicerDocumented/src/libslic3r/Arachne/SkeletalTrapezoidationGraph.cpp`
+    `makeRib()`: return a ≤30-line excerpt showing when a rib is inserted and what its endpoints
+    are. No other code." — purpose: ground the faithful B′ fix
+- Context cost: S (if A′) / M (if B′ or C′)
+- Authoritative docs: `docs/adr/0034-*.md` (faithfulness constraint); `design.md` §Canonical Facts.
+- OrcaSlicer refs: determined by Step 1's verdict (see the two dispatches above).
 - Verification: per-mechanism narrow compile + the relevant thin-strip test; e.g. `cargo test -p
   arachne-perimeters --test arachne_parity_is_thin_wall_flag_tdd 2>&1 | tee target/test-output-
   thin-flag.log | tail -5; grep -q '^test result: ok' target/test-output-thin-flag.log` (AC-2).
@@ -113,9 +120,9 @@
   - "Run `cargo test -p arachne-perimeters --test arachne_parity_is_thin_wall_flag_tdd --test
     arachne_parity_thin_wall_loop_type_tdd` and `cargo test -p slicer-runtime --test arachne_parity
     --test arachne_parity_gaps`; return FACT pass/fail per test." — purpose: gate AC-2..AC-5
-  - "Grep `crates/slicer-core/src/skeletal_trapezoidation/graph.rs` for any re-introduced
-    `from_polygons_with_beading` / `2 * optimal_width` subdivision; return CLEAN or the offending
-    lines." — purpose: AC-N1 gate
+  - "Run the AC-N1/AC-N2/AC-N3 commands from `packet.spec.md` verbatim; return FACT pass/fail per
+    command." — purpose: faithfulness gates (no reintroduced fabrication; the equal-R skip in
+    `generate_junctions` survives; the mechanism cites an OrcaSlicer `file:line`)
 - Context cost: S
 - Authoritative docs: none beyond Step 2.
 - OrcaSlicer refs: none (validation only).
@@ -129,10 +136,10 @@
   - AC-5: `cargo test -p slicer-runtime --test arachne_parity_gaps --
     arachne_parity_pipeline_wall_gap_uses_flow_spacing_not_width --exact 2>&1 | tee target/test-output-g4.log
     | tail -5; grep -q '^test result: ok' target/test-output-g4.log`
-  - AC-N1: `rg -L 'from_polygons_with_beading|subdivide.*2 \* optimal_width'
-    crates/slicer-core/src/skeletal_trapezoidation/graph.rs || echo CLEAN`
-  - AC-N2: `rg -q 'OrcaSlicer' .ralph/specs/154-arachne-thin-strip-collapse/design.md`
-- Exit condition: all six criteria green.
+  - AC-N1: `! rg -q 'from_polygons_with_beading' crates/slicer-core/src/skeletal_trapezoidation/graph.rs`
+  - AC-N2: `rg -q 'if from_r >= to_r \{' crates/slicer-core/src/arachne/generate_toolpaths.rs`
+  - AC-N3: `rg -q 'SkeletalTrapezoidation(Graph)?\.(cpp|hpp):[0-9]+' .ralph/specs/154-arachne-thin-strip-collapse/design.md`
+- Exit condition: all seven criteria green (AC-2..AC-5, AC-N1..AC-N3).
 
 ### Step 4: Workspace gate (compile / clippy / guest coherence)
 
@@ -158,10 +165,14 @@
 - Task IDs: none
 - Objective: Re-record the 6 stale goldens (4 thin-strip + G4) against verified OrcaSlicer-parity
   behavior; close `D-105D` in `docs/DEVIATION_LOG.md` with the verified root cause and faithful
-  mechanism; record the investigation outcome under `docs/18_arachne_parity_audit.md` §G4. If
-  Step 1 concluded Candidate D (OrcaSlicer identical), this step IS the fix (golden re-blessing,
-  no source change) and still satisfies CR-1 via re-blessed goldens.
-- Precondition: Steps 3-4 green (or, for Candidate D, Step 1 green).
+  mechanism **and correct its symbol list** (the row cites `connectJunctions` /
+  `getNextUnconnected` / `BeadingPropagation` as PnP symbols; none exists — `design.md` F-1/F-2/F-3,
+  AC-6); **open a new deviation row `D-154-DISCRETIZE-POINT-POINT-CASE`** for the `discretize_edge` branch-1/branch-3
+  conflation (F-4, AC-7); record the investigation outcome under `docs/18_arachne_parity_audit.md` §G4. If
+  Step 1 concluded D′ (OrcaSlicer identical), this step IS the fix (golden re-blessing, no source
+  change) and still satisfies CR-1 — but only with the positive OrcaSlicer `file:line` evidence
+  Step 1's exit condition demands.
+- Precondition: Steps 3-4 green (or, for D′, Step 1 green).
 - Postcondition: AC-6 green; all 6 goldens re-blessed; D-105D closed; G4 note recorded.
 - Files allowed to read: `docs/DEVIATION_LOG.md` (D-105D + surrounding rows full);
   `docs/18_arachne_parity_audit.md` §G4; the 6 golden test files.
@@ -180,34 +191,38 @@
 - Authoritative docs: `docs/DEVIATION_LOG.md`, `docs/18_arachne_parity_audit.md`.
 - OrcaSlicer refs: none (documentation/fixture step).
 - Verification:
-  - AC-6: `rg -q 'D-105D' docs/DEVIATION_LOG.md && rg -q 'Closed' docs/DEVIATION_LOG.md`
+  - AC-6: `rg -q '^\| D-105D \|.*\| *Closed' docs/DEVIATION_LOG.md`
+  - AC-7: `rg -q '^\| D-154-DISCRETIZE-POINT-POINT-CASE \|' docs/DEVIATION_LOG.md`
   - AC-2..AC-5 re-confirmed after re-bless: the same commands as Step 3.
   - `rg -q 'thin-strip' docs/18_arachne_parity_audit.md` (G4 note present)
-- Exit condition: AC-6 green; all 6 goldens re-blessed and committed; D-105D closed; G4 note
-  recorded; `packet.spec.md` ready to move from `status: active` to `status: implemented`.
+- Exit condition: AC-6 and AC-7 green; all 6 goldens re-blessed; D-105D closed **with its symbol
+  list corrected**; the `discretize_edge` gap filed as its own Open row; G4 note recorded;
+  `packet.spec.md` ready to move from `status: active` to `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1: Diagnose root cause | M | 4 delegated OrcaSlicer reads + local `BeadingPropagation` trace; gates everything |
+| Step 1: Diagnose root cause | S/M | 3 local traces (A′ peak-vertex, A′ chain-join, B′ ribs); ZERO OrcaSlicer dispatches — C-1…C-8 pre-answered; gates everything |
 | Step 2: Faithful fix (mechanism-specific) | S (A/B) / M (C) | TBD pending Step 1 verdict |
 | Step 3: Validate 4 thin-strip + G4 | S | AC-2..AC-5 + AC-N1/AC-N2 |
 | Step 4: Workspace gate | S | check / clippy / build-guests --check |
 | Step 5: Re-bless goldens + close D-105D | S | 6 goldens + deviation-log + G4 note |
 
-Sum: M aggregate (Step 1 dominates). No step is L. If Step 1 concludes Candidate D, Steps 2-4 are
+Sum: M aggregate (Step 1 dominates, but is cheaper than the draft's — 3 of 4 OrcaSlicer dispatches
+are pre-answered in `design.md` §Canonical Facts). No step is L. If Step 1 concludes D′, Steps 2-4 are
 skipped and the cost drops to S.
 
 ## Packet Completion Gate
 
-- Step 1 findings exist and name the responsible mechanism.
-- Steps 2-4 complete (or skipped via Candidate D) with AC-2, AC-3, AC-4, AC-5, AC-N1, AC-N2 green.
-- Step 5 complete: all 6 goldens re-blessed; D-105D closed; G4 note recorded.
+- Step 1 findings carry a `verdict: <X>` line naming the responsible mechanism (AC-1).
+- Steps 2-4 complete (or skipped via D′) with AC-2..AC-5 and AC-N1..AC-N3 green.
+- Step 5 complete: all 6 goldens re-blessed; D-105D closed with its symbol list corrected (AC-6);
+  the `discretize_edge` branch-1/branch-3 gap filed as a new Open row (AC-7); G4 note recorded.
 - `cargo xtask build-guests --check` clean (or no guest-relevant edit, with the check run as
   precaution).
-- No `from_polygons_with_beading` / `2 * optimal_width` subdivision re-introduced (AC-N1).
-- The mechanism is traceable to a specific OrcaSlicer case (AC-N2).
+- No `from_polygons_with_beading` subdivision re-introduced (AC-N1); the equal-R skip in
+  `generate_junctions` survives (AC-N2); the mechanism cites an OrcaSlicer `file:line` (AC-N3).
 - `packet.spec.md` ready to move from `status: active` to `status: implemented`.
 
 ## Acceptance Ceremony
@@ -217,5 +232,5 @@ skipped and the cost drops to S.
 - Record the verified root cause and faithful mechanism explicitly before moving to
   `status: implemented`.
 - Confirm the implementer's peak context usage stayed under 70%.
-- If Step 1 concluded Candidate D, explicitly record that the "fix" was golden re-blessing (no
+- If Step 1 concluded D′, explicitly record that the "fix" was golden re-blessing (no
   code change) with the OrcaSlicer file:line evidence that OrcaSlicer behaves identically.

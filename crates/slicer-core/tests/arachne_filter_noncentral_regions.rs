@@ -1,3 +1,5 @@
+//! Regression coverage for the `filterNoncentralRegions` gap-dissolving
+//! behavior (dumbbell-polygon fixture) in the arachne pipeline.
 #![cfg(feature = "host-algos")]
 #![allow(missing_docs)]
 

@@ -1,3 +1,7 @@
+//! Faithfulness invariants for the arachne graph construction /
+//! `connectJunctions` adaptation, plus a `test_voronoi.cpp` degenerate-input
+//! triage note. See doc comment below (only visible when built with the
+//! `host-algos` feature) for full detail.
 #![cfg(feature = "host-algos")]
 #![allow(missing_docs)]
 

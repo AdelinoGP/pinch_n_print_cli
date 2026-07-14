@@ -3,8 +3,9 @@
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
 //
-// Original C++ source path: src/libslic3r/Arachne/WallToolPaths.cpp:565-604,
-// src/libslic3r/MultiMaterialSegmentation.cpp
+// Original C++ source path: src/libslic3r/Arachne/WallToolPaths.cpp:86-201
+// (stage 2's `simplify()`), src/libslic3r/Arachne/WallToolPaths.cpp:565-604
+// (the remaining 8-stage pipeline), src/libslic3r/MultiMaterialSegmentation.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
@@ -14,8 +15,8 @@
 
 use crate::arachne::ToolIndex;
 use crate::polygon_ops::{
-    expolygons_simplify, intersection_ex, offset, offset2_ex, remove_duplicates,
-    remove_small_and_small_holes, union_ex, OffsetJoinType,
+    intersection_ex, offset, offset2_ex, remove_duplicates, remove_small_and_small_holes, union_ex,
+    OffsetJoinType,
 };
 use slicer_ir::{point_in_polygon_winding, ExPolygon, Point2, Polygon, UNITS_PER_MM};
 
@@ -209,54 +210,263 @@ fn triple_offset(polys: &[ExPolygon], params: &PreprocessParams) -> Vec<ExPolygo
     offset(&shrink_grow, -eps as f32, params.join, 0.0)
 }
 
-/// Stage 2: simplify. `polygon_ops.rs` exposes RDP simplification
-/// ([`expolygons_simplify`], tolerance in workspace units) but not a
-/// `smallest_segment`-merge pass, so that half is implemented locally
-/// ([`merge_short_segments`]) before delegating to `expolygons_simplify`.
+/// Stage 2: simplify (`WallToolPaths.cpp:86-201`'s `simplify()`, called from
+/// the `Polygons` wrapper at `WallToolPaths.cpp:232-245`/`:487-496`).
+///
+/// This is a single distance-gated linear pass, **not** length-only vertex
+/// merging followed by a separate Ramer-Douglas-Peucker pass — canonical has
+/// no RDP step here. A vertex is removed only when it is both (a) adjacent
+/// to a short segment (`< smallest_line_segment_squared`, i.e.
+/// `smallest_segment_mm`) *and* (b) removing it would deviate the outline by
+/// no more than `allowed_error_distance_squared` (`allowed_distance_mm`),
+/// with a small unconditional "always allowed to delete" floor for
+/// near-degenerate (near-zero-length / near-exactly-colinear) vertices. See
+/// [`simplify_ring`] for the per-ring port. Rings (and, for the contour
+/// specifically, whole polygons) that collapse below 3 points are dropped —
+/// `WallToolPaths.cpp:239-243`'s "erase from the collection".
 fn simplify_stage(
     polys: &[ExPolygon],
     smallest_segment_mm: f64,
     allowed_distance_mm: f64,
 ) -> Vec<ExPolygon> {
     let smallest_segment_units = smallest_segment_mm * UNITS_PER_MM;
-    let merged: Vec<ExPolygon> = polys
+    let allowed_distance_units = allowed_distance_mm * UNITS_PER_MM;
+    let smallest_line_segment_squared = smallest_segment_units * smallest_segment_units;
+    let allowed_error_distance_squared = allowed_distance_units * allowed_distance_units;
+
+    polys
         .iter()
-        .map(|exp| ExPolygon {
-            contour: merge_short_segments(&exp.contour, smallest_segment_units),
-            holes: exp
+        .filter_map(|exp| {
+            let contour = simplify_ring(
+                &exp.contour,
+                smallest_line_segment_squared,
+                allowed_error_distance_squared,
+            );
+            if contour.points.len() < 3 {
+                // Canonical: a polygon whose contour collapses below a
+                // triangle is erased from the collection entirely.
+                return None;
+            }
+            let holes = exp
                 .holes
                 .iter()
-                .map(|h| merge_short_segments(h, smallest_segment_units))
-                .collect(),
+                .map(|h| {
+                    simplify_ring(
+                        h,
+                        smallest_line_segment_squared,
+                        allowed_error_distance_squared,
+                    )
+                })
+                .filter(|h| h.points.len() >= 3)
+                .collect();
+            Some(ExPolygon { contour, holes })
         })
-        .collect();
-    let allowed_distance_units = allowed_distance_mm * UNITS_PER_MM;
-    expolygons_simplify(&merged, allowed_distance_units)
+        .collect()
 }
 
-/// Drops consecutive vertices closer together than `min_len_units`,
-/// approximating OrcaSlicer/Cura's `smallest_segment` merge. Never reduces a
-/// ring below 3 points (falls back to the original ring unmodified).
-fn merge_short_segments(poly: &Polygon, min_len_units: f64) -> Polygon {
+/// "Always allowed to delete" floor: canonical hardcodes `scaled(0.005)` (5
+/// micron = 0.005 mm) regardless of the caller's `smallest_segment`/
+/// `allowed_distance` parameters (`WallToolPaths.cpp:138,157-158`). Ported to
+/// this workspace's unit scale (1 unit = 100 nm): `0.005 mm * UNITS_PER_MM =
+/// 50 units`.
+const SIMPLIFY_ULTRA_SHORT_UNITS: f64 = 0.005 * UNITS_PER_MM;
+
+/// Faithful port of `Arachne::simplify(Polygon&, int64_t, int64_t)`
+/// (`WallToolPaths.cpp:86-201`) for a single ring (contour or hole).
+///
+/// Returns a ring with fewer than 3 points when the whole ring collapses;
+/// callers must check `.points.len() < 3` and drop accordingly (mirrors
+/// canonical's `thiss.points.clear()` at line 88 for the `size() < 3` input
+/// case, generalized to also cover the ring simplifying down to nothing).
+///
+/// # Overflow note
+///
+/// Coordinates are workspace units (1 unit = 100 nm), so Shoelace cross
+/// products (`x*y` terms) reach roughly `1e14` for a room-scale model and
+/// the *squared* deviation term (`area_removed_so_far * area_removed_so_far`,
+/// canonical line 155) would reach roughly `1e28` — this overflows `i64`
+/// (and is uncomfortably close to `i128`'s ~`1.7e38` ceiling once further
+/// products are added). Canonical dodges this by casting to `double` right
+/// before the multiply (`WallToolPaths.cpp:155`); this port does the same:
+/// exact-integer accumulation (`i128`, which safely holds every individual
+/// Shoelace/length term at this workspace's realistic coordinate range) up
+/// until the point where canonical itself would overflow, then `f64` for the
+/// squaring/division that produces `height_2`.
+fn simplify_ring(
+    poly: &Polygon,
+    smallest_line_segment_squared: f64,
+    allowed_error_distance_squared: f64,
+) -> Polygon {
     let pts = &poly.points;
-    if pts.len() <= 3 {
+    let n = pts.len();
+    if n < 3 {
+        // Canonical line 88: thiss.points.clear(); return.
+        return Polygon { points: Vec::new() };
+    }
+    if n == 3 {
+        // Canonical line 92: never simplify a triangle.
         return poly.clone();
     }
-    let mut out: Vec<Point2> = Vec::with_capacity(pts.len());
-    for &p in pts.iter() {
-        if let Some(&last) = out.last() {
-            let dx = (p.x - last.x) as f64;
-            let dy = (p.y - last.y) as f64;
-            if (dx * dx + dy * dy).sqrt() < min_len_units {
+
+    let mut new_path: Vec<Point2> = Vec::with_capacity(n);
+    let mut previous = pts[n - 1];
+    let mut previous_previous = pts[n - 2];
+    let mut current = pts[0];
+    let mut accumulated_area_removed = shoelace_term(previous, current);
+
+    for point_idx in 0..n {
+        current = pts[point_idx % n];
+
+        let next = if point_idx + 1 < n {
+            pts[point_idx + 1]
+        } else if point_idx + 1 == n && new_path.len() > 1 {
+            // Spill over to the (partially built) new polygon so the last
+            // vertex's removed-area check still has a valid "next".
+            new_path[0]
+        } else {
+            pts[(point_idx + 1) % n]
+        };
+
+        let removed_area_next = shoelace_term(current, next);
+        let negative_area_closing = shoelace_term(next, previous);
+        accumulated_area_removed += removed_area_next;
+
+        let length2 = dist_sq(current, previous);
+
+        if (length2 as f64) < SIMPLIFY_ULTRA_SHORT_UNITS * SIMPLIFY_ULTRA_SHORT_UNITS {
+            // Always allowed to delete segments < 5 micron.
+            continue;
+        }
+
+        let area_removed_so_far = accumulated_area_removed + negative_area_closing;
+        let base_length_2 = dist_sq(next, previous);
+
+        if base_length_2 == 0 {
+            // Two segments form a line back and forth with no area -> remove vertex.
+            continue;
+        }
+
+        // h^2 = L^2 / b^2 (L = 2*Area via Shoelace doubling, b = base length).
+        // See the overflow note above for why this multiply is done in f64.
+        let area_removed_so_far_f = area_removed_so_far as f64;
+        let height_2 = (area_removed_so_far_f * area_removed_so_far_f) / (base_length_2 as f64);
+
+        if height_2 <= SIMPLIFY_ULTRA_SHORT_UNITS * SIMPLIFY_ULTRA_SHORT_UNITS
+            && distance_to_infinite(current, previous, next) <= SIMPLIFY_ULTRA_SHORT_UNITS
+        {
+            // Almost exactly colinear (barring rounding); guard vs.
+            // cancellation of +/- areas via the direct distance check.
+            continue;
+        }
+
+        if (length2 as f64) < smallest_line_segment_squared
+            && height_2 <= allowed_error_distance_squared
+        {
+            // Removing the vertex doesn't introduce too much error.
+            let next_length2 = dist_sq(current, next);
+            if (next_length2 as f64) > 4.0 * smallest_line_segment_squared {
+                // Special case: next line is long. Removing would cause
+                // artifacts. Instead move this point to the intersection of
+                // the two lines (preserving direction), and drop the
+                // previous point we wanted to keep — but only if the
+                // intersection is itself safe.
+                let intersection_point =
+                    intersection_infinite(previous_previous, previous, current, next);
+                let safe = match intersection_point {
+                    Some(ip) => {
+                        distance_to_infinite_squared(ip, previous, current)
+                            <= allowed_error_distance_squared
+                            && (dist_sq(ip, previous) as f64) <= smallest_line_segment_squared
+                            && (dist_sq(ip, next) as f64) <= smallest_line_segment_squared
+                    }
+                    None => false,
+                };
+                if safe {
+                    // New point seems valid.
+                    current = intersection_point.expect("checked Some above");
+                    if !new_path.is_empty() {
+                        // A previous point was added; remove it.
+                        new_path.pop();
+                        previous = previous_previous;
+                    }
+                }
+                // Else: can't find a better spot, and the line is > 5
+                // micron. Leave it in (falls through to "don't remove").
+            } else {
+                // Remove the vertex.
                 continue;
             }
         }
-        out.push(p);
+
+        // Don't remove the vertex.
+        accumulated_area_removed = removed_area_next;
+        previous_previous = previous;
+        previous = current; // "previous" only updates if we DON'T remove the vertex.
+        new_path.push(current);
     }
-    if out.len() < 3 {
-        return poly.clone();
+
+    Polygon { points: new_path }
+}
+
+/// Shoelace cross-product term `a.x*b.y - a.y*b.x` for two consecutive ring
+/// vertices, exact in `i128` (see [`simplify_ring`]'s overflow note).
+fn shoelace_term(a: Point2, b: Point2) -> i128 {
+    (a.x as i128) * (b.y as i128) - (a.y as i128) * (b.x as i128)
+}
+
+/// Squared Euclidean distance between two points, exact in `i128`.
+fn dist_sq(a: Point2, b: Point2) -> i128 {
+    let dx = (a.x - b.x) as i128;
+    let dy = (a.y - b.y) as i128;
+    dx * dx + dy * dy
+}
+
+/// Squared perpendicular distance from point `p` to the infinite line
+/// through `a` and `b`. Degenerate (`a == b`) falls back to squared distance
+/// from `p` to `a`.
+fn distance_to_infinite_squared(p: Point2, a: Point2, b: Point2) -> f64 {
+    let abx = (b.x - a.x) as f64;
+    let aby = (b.y - a.y) as f64;
+    let apx = (p.x - a.x) as f64;
+    let apy = (p.y - a.y) as f64;
+    let len_sq = abx * abx + aby * aby;
+    if len_sq <= 0.0 {
+        return apx * apx + apy * apy;
     }
-    Polygon { points: out }
+    let cross = abx * apy - aby * apx;
+    (cross * cross) / len_sq
+}
+
+/// Perpendicular distance from point `p` to the infinite line through `a`
+/// and `b`.
+fn distance_to_infinite(p: Point2, a: Point2, b: Point2) -> f64 {
+    distance_to_infinite_squared(p, a, b).sqrt()
+}
+
+/// Intersection point of infinite line `a1`-`a2` with infinite line
+/// `b1`-`b2`, or `None` if the lines are parallel (or coincident).
+/// Coordinates round to the nearest workspace unit, matching canonical's
+/// integer `Point` intersection result.
+fn intersection_infinite(a1: Point2, a2: Point2, b1: Point2, b2: Point2) -> Option<Point2> {
+    let (x1, y1) = (a1.x as f64, a1.y as f64);
+    let (x2, y2) = (a2.x as f64, a2.y as f64);
+    let (x3, y3) = (b1.x as f64, b1.y as f64);
+    let (x4, y4) = (b2.x as f64, b2.y as f64);
+
+    let denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if denom == 0.0 {
+        return None;
+    }
+
+    let a_cross = x1 * y2 - y1 * x2;
+    let b_cross = x3 * y4 - y3 * x4;
+    let px = (a_cross * (x3 - x4) - (x1 - x2) * b_cross) / denom;
+    let py = (a_cross * (y3 - y4) - (y1 - y2) * b_cross) / denom;
+
+    Some(Point2 {
+        x: px.round() as i64,
+        y: py.round() as i64,
+    })
 }
 
 /// Stages 3 and 6: fix self-intersections.

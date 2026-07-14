@@ -89,6 +89,18 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
   bead placement in both `classic-perimeters` and `arachne-perimeters` (was raw
   width); see `docs/15_config_keys_reference.md` and `docs/DEVIATION_LOG.md` D-105
   (now closed).
+- **Packet 154 note (2026-07-14) — thin-strip collapse was masking G4's own
+  observability, not G4's wiring.** The 4 thin-strip parity tests (and, on
+  narrow geometry, the G4 test itself) were RED for a period after D-105
+  landed — but the cause was an unrelated, upstream defect: `preprocess.rs`
+  stage 2 dropped a thin strip's corner on segment length alone before the
+  medial-axis graph was ever built, collapsing the graph to one vertex and
+  zeroing the wall loop's length (root-caused and fixed as D-105D). G4's own
+  Flow-spacing wiring — the `line_width_to_spacing` wiring landed in packet
+  150 above — was already correct throughout and its own test was already
+  green; packet 154 did not touch G4's wiring and did not need to. This note
+  exists only to record that the thin-strip red tests were never a G4
+  regression.
 - OrcaSlicer: `bead_width_0 = ext_perimeter_spacing`
   (`PerimeterGenerator.cpp:2129`); `WallToolPaths` receives
   `perimeter_spacing = perimeter_flow.scaled_spacing()`

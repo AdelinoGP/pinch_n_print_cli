@@ -34,13 +34,17 @@ fn to_units(x_mm: f64, y_mm: f64) -> Point2 {
 }
 
 fn square(x0_mm: f64, y0_mm: f64, side_mm: f64) -> ExPolygon {
+    rect(x0_mm, y0_mm, side_mm, side_mm)
+}
+
+fn rect(x0_mm: f64, y0_mm: f64, w_mm: f64, h_mm: f64) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
             points: vec![
                 to_units(x0_mm, y0_mm),
-                to_units(x0_mm + side_mm, y0_mm),
-                to_units(x0_mm + side_mm, y0_mm + side_mm),
-                to_units(x0_mm, y0_mm + side_mm),
+                to_units(x0_mm + w_mm, y0_mm),
+                to_units(x0_mm + w_mm, y0_mm + h_mm),
+                to_units(x0_mm, y0_mm + h_mm),
             ],
         },
         holes: Vec::new(),
@@ -375,6 +379,46 @@ fn preprocess_drops_tiny_features_with_warn() {
             .iter()
             .any(|&(cx, cy)| (cx - 50.0005).abs() < 1.0e-3 && (cy - 50.0005).abs() < 1.0e-3),
         "expected the tiny feature's centroid near (50.0005, 50.0005) mm, got: {dropped:?}"
+    );
+}
+
+/// Regression pin for the thin-strip corner-collapse bug (packet 154): stage
+/// 2's old `merge_short_segments` dropped vertices based on adjacent segment
+/// length alone, with no deviation guard. For a 0.25mm x 5mm strip, both
+/// 0.25mm end-cap edges are shorter than `smallest_segment_mm` (0.5mm
+/// default), so a corner was dropped and the 4-point rectangle collapsed
+/// into a 3-point triangle before the medial-axis graph was built —
+/// ultimately producing an empty `wall_loops()` for the whole strip.
+///
+/// Canonical `simplify()` (`WallToolPaths.cpp:86-201`) AND-gates removal on
+/// segment length *and* an `allowed_distance_mm` deviation bound (0.025mm
+/// default): dropping either short end-cap corner would deviate the outline
+/// by ~0.25mm, far past that allowance, so canonical — and this port — must
+/// keep all 4 corners through stage 2.
+#[test]
+fn simplify_preserves_thin_strip_corners_deviation_bound() {
+    let strip = vec![rect(0.0, 0.0, 0.25, 5.0)];
+    let params = PreprocessParams::default();
+
+    let stages = preprocess_input_outline_with_stages(&strip, &params);
+    assert_eq!(
+        stages.len(),
+        9,
+        "the pipeline must expose exactly 9 stage outputs"
+    );
+
+    let stage2 = &stages[1];
+    assert!(
+        !stage2.is_empty(),
+        "0.25mm x 5mm strip must survive stage 2 (simplify): {stage2:?}"
+    );
+    let stage2_vertex_count: usize = stage2.iter().map(|p| p.contour.points.len()).sum();
+    assert_eq!(
+        stage2_vertex_count, 4,
+        "stage 2 (simplify) must preserve all 4 corners of a thin strip whose \
+         end-cap edges are short (< smallest_segment_mm) but whose corner-removal \
+         deviation (~0.25mm) exceeds allowed_distance_mm (0.025mm default): \
+         stage2={stage2:?}"
     );
 }
 
