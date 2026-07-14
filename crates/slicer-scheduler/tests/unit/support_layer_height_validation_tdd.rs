@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use slicer_ir::ResolvedConfig;
 use slicer_scheduler::{validate_support_layer_heights, ConfigResolutionError};
 
-fn cfg(layer_height: f32, support_layer_height_mm: f32) -> ResolvedConfig {
+fn cfg(layer_height: f64, support_layer_height_mm: f32) -> ResolvedConfig {
     ResolvedConfig {
         layer_height,
         support_layer_height_mm,

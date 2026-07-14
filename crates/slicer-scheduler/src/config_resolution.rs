@@ -500,7 +500,10 @@ pub fn validate_support_layer_heights(
 ) -> Result<(), ConfigResolutionError> {
     for (object_id, cfg) in per_object_configs {
         let support_h = cfg.support_layer_height_mm;
-        let effective_h = cfg.layer_height;
+        // `cfg.layer_height` is `f64` (parity with OrcaSlicer's `coordf_t`
+        // layer-Z computation); cast to `f32` for the support-thinness check,
+        // which compares display values, not Z-formula inputs.
+        let effective_h = cfg.layer_height as f32;
         if support_h > 0.0 && support_h < effective_h {
             return Err(ConfigResolutionError::SupportLayerHeightTooFine {
                 object_id: object_id.clone(),

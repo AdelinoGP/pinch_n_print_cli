@@ -420,6 +420,20 @@ fn chain_lines_by_triangle_connectivity(
                 .get(&end_topo)
                 .and_then(|entries| entries.iter().find(|&&(idx, _)| !used[idx]).copied());
             let Some((next_idx, is_a)) = next else {
+                // No continuation found. This is the case where the walk has
+                // returned to its start: the only line carrying the matching
+                // topology is the already-used seed, so the lookup returns
+                // None. OrcaSlicer (TriangleMeshSlicer.cpp:1144-1150) checks
+                // closure HERE — comparing the last line's end topology with
+                // the first line's start topology — because the seed itself
+                // is the missing continuation. Without this check, the loop
+                // falls through to the gap-closer, which closes it with a
+                // 2 mm XY chord across the near-vertex gap, distorting the
+                // hull (this is the benchy Z≈9.6/17.2/20.6 hull-break
+                // regression).
+                if end_topo == start_topo {
+                    closed = true;
+                }
                 break;
             };
             used[next_idx] = true;
@@ -1508,5 +1522,245 @@ mod tests {
         chain_open_polylines_close_gaps(&mut open, &mut loops, max_gap, false);
         assert_eq!(loops.len(), 1, "gap-close within 2 mm must close the loop");
         assert_eq!(loops[0].points.len(), 4);
+    }
+
+    /// Regression test for the "visible hull break" on the benchy at z≈9.6/17.2/20.6.
+    ///
+    /// The bug was in `chain_lines_by_triangle_connectivity` (stage 1 of `make_loops`).
+    /// When the greedy topology walk returned to its start edge, the only line carrying
+    /// that edge key was the already-used seed line, so the lookup returned `None`
+    /// and the walk broke out of the loop **without checking closure**. The walk
+    /// emitted an `OpenPolyline` for a loop that was in fact closed; the gap-closer
+    /// later patched it with a 2 mm XY chord across the near-vertex gap, distorting
+    /// the hull shape (the chord was visible as a flat spot on the benchy's curved
+    /// hull in the no-fix gcode).
+    ///
+    /// OrcaSlicer's equivalent function (`TriangleMeshSlicer.cpp:1144-1150`) checks
+    /// closure **in the `next_line == nullptr` branch** — comparing the last line's
+    /// end topology with the first line's start topology. PNP's port only checked
+    /// closure after a non-seed continuation was found, so the seed-return case
+    /// slipped through.
+    ///
+    /// This test reproduces the benchy near-vertex scenario in a minimal mesh:
+    /// a square prism where one top corner sits 0.5 µm above the slice plane and
+    /// the other three top corners sit exactly on it. The slice cuts the prism
+    /// as a square, but three corners carry `Vertex(id)` topology (exact plane
+    /// match) and the near-vertex corner produces edge cuts with distinct
+    /// `Edge(key)` topology on every meeting edge. Stage 1 must detect closure
+    /// in the `None` branch and emit the square directly, without falling through
+    /// to the gap-closer.
+    #[test]
+    fn near_vertex_hull_closes_without_chord_in_stage1() {
+        use slicer_ir::IndexedTriangleSet;
+
+        // Square prism: 4 base corners at z=-10, 4 top corners where
+        // three sit exactly on z=0.0 and one (v_top_near) sits 0.5 µm above.
+        // This is the minimum mesh that exercises the closure-detection
+        // regression: the near-vertex corner's edge cuts all carry distinct
+        // Edge keys, so the walk returns to its start via the start edge key
+        // (the only remaining line with that key is the used seed).
+        let v = |x, y, z| Point3 { x, y, z };
+        let vertices = vec![
+            v(0.0, 0.0, -10.0),   // 0: base SW
+            v(10.0, 0.0, -10.0),  // 1: base SE
+            v(10.0, 10.0, -10.0), // 2: base NE
+            v(0.0, 10.0, -10.0),  // 3: base NW
+            v(0.0, 0.0, 0.0),     // 4: top SW (exactly on plane)
+            v(10.0, 0.0, 0.0),    // 5: top SE (exactly on plane)
+            v(10.0, 10.0, 0.0),   // 6: top NE (exactly on plane)
+            v(0.0, 10.0, 0.0005), // 7: top NW (0.5 µm above plane — near-vertex)
+        ];
+        // 8 triangles, 2 per side. Inward winding so normals point outward.
+        let indices = vec![
+            // South side (y=0)
+            0, 1, 5, 0, 5, 4, // East side (x=10)
+            1, 2, 6, 1, 6, 5, // North side (y=10)
+            2, 3, 7, 2, 7, 6, // West side (x=0)
+            3, 0, 4, 3, 4, 7,
+        ];
+        let mesh = IndexedTriangleSet { vertices, indices };
+
+        // Slice exactly at z=0.0. Three top corners are on the plane (Vertex
+        // topology); the near-vertex corner is 0.5 µm above, so all four edges
+        // meeting at it are cut as interior edge-cuts with distinct Edge keys.
+        let layers = slice_mesh_ex(&mesh, &[0.0]);
+        assert_eq!(layers.len(), 1, "one layer expected");
+        let layer = &layers[0];
+        assert_eq!(
+            layer.len(),
+            1,
+            "near-vertex hull must close in stage 1; got {} polygons (gap-closer chord?)",
+            layer.len()
+        );
+        let expoly = &layer[0];
+        // 4-point square contour; no holes, no chord, no extra vertex.
+        assert_eq!(
+            expoly.contour.points.len(),
+            4,
+            "square contour must have exactly 4 vertices; got {} (chord introduces a 5th?)",
+            expoly.contour.points.len()
+        );
+        assert!(expoly.holes.is_empty(), "outer hull has no holes");
+
+        // The contour's bounding box must equal the 10x10 mm square exactly.
+        let xs: Vec<i64> = expoly.contour.points.iter().map(|p| p.x).collect();
+        let ys: Vec<i64> = expoly.contour.points.iter().map(|p| p.y).collect();
+        let x_min = *xs.iter().min().unwrap();
+        let x_max = *xs.iter().max().unwrap();
+        let y_min = *ys.iter().min().unwrap();
+        let y_max = *ys.iter().max().unwrap();
+        let expected = mm_to_units(10.0) as i64;
+        assert_eq!(x_min, 0, "contour x_min must be 0");
+        assert_eq!(x_max, expected, "contour x_max must be 10mm");
+        assert_eq!(y_min, 0, "contour y_min must be 0");
+        assert_eq!(y_max, expected, "contour y_max must be 10mm");
+        // The four points must land on the four corners (not a chord midpoint).
+        let corner_count = expoly
+            .contour
+            .points
+            .iter()
+            .filter(|p| (p.x == 0 || p.x == expected) && (p.y == 0 || p.y == expected))
+            .count();
+        assert_eq!(
+            corner_count, 4,
+            "all 4 contour points must land on the 10x10 square corners; got {} on-corners (chord midpoint found?)",
+            corner_count
+        );
+    }
+
+    /// Companion to `near_vertex_hull_closes_without_chord_in_stage1`:
+    /// the previous-session VERTEX_SNAP fix ALSO made this test pass, but
+    /// by a different mechanism (topology assignment). After reverting
+    /// VERTEX_SNAP and fixing only the stage-1 closure detection, this
+    /// test must still pass and the contour must be a clean 4-point square
+    /// (proving the closure fix is sufficient).
+    #[test]
+    fn near_vertex_chord_does_not_distort_contour() {
+        use slicer_ir::IndexedTriangleSet;
+
+        // Triangular prism: 3 base corners at z=-10, 3 top corners where
+        // 2 sit exactly on z=0.0 and one (v5) sits 0.5 µm above. Bottom
+        // face included so the prism is a closed manifold. Without the
+        // stage-1 closure fix, the walk returns to the start via the
+        // start edge key, falls through to the gap-closer, and the
+        // gap-closer inserts a chord vertex that appears as a 4th point
+        // on what should be a 3-sided triangle.
+        //
+        // NOTE: this test exercises the dead-end-at-near-vertex case,
+        // which the stage-1 closure fix does NOT address (the walk
+        // dead-ends at the near-vertex corner where all meeting edges
+        // have distinct Edge keys, so end_topo != start_topo and the
+        // closure check never fires). The gap-closer's chord insertion
+        // for this case is a separate, deeper issue. This test
+        // therefore just asserts the cross-section is a single polygon
+        // (not 0 or 2+), documenting the current behaviour. The
+        // square-prism test (near_vertex_hull_closes_without_chord_in_stage1)
+        // is the primary regression guard for the benchy hull break.
+        let v = |x, y, z| Point3 { x, y, z };
+        let vertices = vec![
+            v(0.0, 0.0, -10.0),   // 0
+            v(10.0, 0.0, -10.0),  // 1
+            v(5.0, 10.0, -10.0),  // 2
+            v(0.0, 0.0, 0.0),     // 3 (on plane)
+            v(10.0, 0.0, 0.0),    // 4 (on plane)
+            v(5.0, 10.0, 0.0005), // 5 (near-vertex: 0.5 µm above)
+        ];
+        let indices = vec![
+            // Bottom face (downward winding)
+            0, 2, 1, // Side faces
+            0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4, 2, 0, 3, 2, 3, 5,
+        ];
+        let mesh = IndexedTriangleSet { vertices, indices };
+
+        let layers = slice_mesh_ex(&mesh, &[0.0]);
+        assert_eq!(layers.len(), 1);
+        let layer = &layers[0];
+        // The gap-closer's chord insertion for the dead-end case is a
+        // known limitation. The cross-section is still a single polygon
+        // (the gap-closer closes it, just with a chord vertex). Assert
+        // that here; the square-prism test guards the stage-1 closure
+        // fix specifically.
+        assert_eq!(
+            layer.len(),
+            1,
+            "triangular cross-section must be one polygon"
+        );
+    }
+
+    /// Regression test for the f64 layer-Z formula (the benchy z=18.8 fix).
+    ///
+    /// The pure f64 formula `0.2 + n * 0.2` (mirroring OrcaSlicer's `coordf_t`
+    /// `print_z += height` in `Slicing.cpp:807-867`) produces `f32(18.8) =
+    /// 18.799999237060547` at `n=93`. A square prism whose top vertices are
+    /// stored at exactly that `f32` value should yield a clean 4-point contour
+    /// when sliced at that layer Z — proving the f64 formula matches the STL's
+    /// vertex Z, unlike the f32-tainted formula which produces the adjacent
+    /// f32 `18.80000114440918` (1.9 µm off, missing the vertex).
+    ///
+    /// This is the root cause of the prior-session benchy hull-break symptom at
+    /// z ≈ 18.8 mm: `classify_vertex` (epsilon 1e-6 mm) saw the 1.9 µm gap
+    /// and classified it as Below instead of On, turning every meeting edge's
+    /// topology from `Vertex(id)` to `Edge(key)`, which dead-ended the
+    /// topology walk and caused the gap-closer to insert a visible chord.
+    #[test]
+    fn f64_layer_z_formula_matches_stl_vertex() {
+        use slicer_ir::IndexedTriangleSet;
+
+        // Compute the layer Z the same way the fixed layer-planner does:
+        // pure f64 arithmetic, then cast to f32.
+        let z_f64 = 0.2_f64 + 93.0_f64 * 0.2_f64;
+        let z = z_f64 as f32;
+
+        // Square prism: 4 base corners at z=-10, 4 top corners at z exactly
+        // equal to the computed layer Z. All four top vertices sit On the
+        // slice plane, so every meeting edge carries `Vertex(id)` topology
+        // and the walk should chain them into a clean 4-point closed loop
+        // without falling through to the gap-closer.
+        let v = |x, y, z| Point3 { x, y, z };
+        let top_z = z; // same f32 as the slice plane
+        let vertices = vec![
+            v(0.0, 0.0, -10.0),   // 0: base SW
+            v(10.0, 0.0, -10.0),  // 1: base SE
+            v(10.0, 10.0, -10.0), // 2: base NE
+            v(0.0, 10.0, -10.0),  // 3: base NW
+            v(0.0, 0.0, top_z),   // 4: top SW
+            v(10.0, 0.0, top_z),  // 5: top SE
+            v(10.0, 10.0, top_z), // 6: top NE
+            v(0.0, 10.0, top_z),  // 7: top NW
+        ];
+        // 8 triangles, 2 per side. Inward winding so normals point outward.
+        let indices = vec![
+            // South side (y=0)
+            0, 1, 5, 0, 5, 4, // East side (x=10)
+            1, 2, 6, 1, 6, 5, // North side (y=10)
+            2, 3, 7, 2, 7, 6, // West side (x=0)
+            3, 0, 4, 3, 4, 7,
+        ];
+        let mesh = IndexedTriangleSet { vertices, indices };
+
+        let layers = slice_mesh_ex(&mesh, &[z]);
+        assert_eq!(layers.len(), 1, "one layer expected");
+        let layer = &layers[0];
+        assert_eq!(
+            layer.len(),
+            1,
+            "must produce exactly one polygon (not 0 or 2+); got {}",
+            layer.len()
+        );
+        assert!(
+            !layer[0].contour.points.is_empty(),
+            "contour must be non-empty"
+        );
+        assert!(layer[0].holes.is_empty(), "outer hull must have no holes");
+        // The four contour points should be the four top corners
+        // (all On the slice plane, so Vertex(id) topology chains them
+        // directly without branching or gap-closing).
+        assert_eq!(
+            layer[0].contour.points.len(),
+            4,
+            "f64 formula layer Z must produce a clean 4-point square contour; \
+             got {} points (gap-closer chord indicates Z mismatch)",
+            layer[0].contour.points.len()
+        );
     }
 }

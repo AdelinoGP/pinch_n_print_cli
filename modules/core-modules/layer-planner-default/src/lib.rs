@@ -31,10 +31,17 @@ use slicer_sdk::prelude::*;
 /// from the config view. For multi-object prints with different layer heights,
 /// it synchronizes via LCM intervals and inserts catch-up layers.
 pub struct DefaultLayerPlanner {
-    /// Base layer height in mm.
-    layer_height: f32,
-    /// First layer height in mm.
-    first_layer_height: f32,
+    /// Base layer height in mm. `f64` so the layer-Z formula
+    /// `first + n * step` computes in untainted `f64`, matching OrcaSlicer's
+    /// `coordf_t` (`double`) `print_z += height` loop
+    /// (`Slicing.cpp:859`). The f32 bit pattern of `0.2` is
+    /// `0.20000000298...`; an `f32` round-trip here would re-taint the
+    /// value and drift the formula onto an adjacent `f32` at ~every 10th
+    /// layer (benchy z=18.8 regression). See `extract_f64` in
+    /// `resolved_config.rs` for the full rationale.
+    layer_height: f64,
+    /// First layer height in mm. `f64` for the same reason as `layer_height`.
+    first_layer_height: f64,
 }
 
 #[slicer_module]
@@ -43,7 +50,7 @@ impl PrepassModule for DefaultLayerPlanner {
         let layer_height = config
             .get("layer_height")
             .and_then(|v| match v {
-                ConfigValue::Float(f) => Some(*f as f32),
+                ConfigValue::Float(f) => Some(*f),
                 _ => None,
             })
             .unwrap_or(0.2);
@@ -51,7 +58,7 @@ impl PrepassModule for DefaultLayerPlanner {
         let first_layer_height = config
             .get("first_layer_height")
             .and_then(|v| match v {
-                ConfigValue::Float(f) => Some(*f as f32),
+                ConfigValue::Float(f) => Some(*f),
                 _ => None,
             })
             .unwrap_or(layer_height);
@@ -90,7 +97,10 @@ impl PrepassModule for DefaultLayerPlanner {
                 .or_else(|| {
                     host::object_bounds(obj_id)
                         .ok()
-                        .map(|bounds| bounds.max.z - bounds.min.z)
+                        // `BoundingBox3` stores `Point3.z: f32`; widen to `f64`
+                        // so `ObjectPlan.height` is `f64` (the Z formula's
+                        // termination check compares in `f64`).
+                        .map(|bounds| (bounds.max.z - bounds.min.z) as f64)
                 })
                 .unwrap_or(0.0);
             if height <= 0.0 {
@@ -129,12 +139,12 @@ impl PrepassModule for DefaultLayerPlanner {
 /// Get the per-object layer height override from config, or fall back to default.
 ///
 /// Looks for config key `"layer_height:<object_id>"`. If not found, returns `default`.
-pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f32) -> f32 {
+pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f64) -> f64 {
     let key = format!("layer_height:{}", object_id);
     config
         .get(&key)
         .and_then(|v| match v {
-            ConfigValue::Float(f) => Some(*f as f32),
+            ConfigValue::Float(f) => Some(*f),
             _ => None,
         })
         .unwrap_or(default)
@@ -143,10 +153,10 @@ pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f32) -
 /// Get the object height from config.
 ///
 /// Looks for config key `"object_height:<object_id>"`. Returns `None` if not found.
-pub fn object_height(config: &ConfigView, object_id: &str) -> Option<f32> {
+pub fn object_height(config: &ConfigView, object_id: &str) -> Option<f64> {
     let key = format!("object_height:{}", object_id);
     config.get(&key).and_then(|v| match v {
-        ConfigValue::Float(f) => Some(*f as f32),
+        ConfigValue::Float(f) => Some(*f),
         _ => None,
     })
 }
@@ -157,11 +167,16 @@ struct ObjectPlan {
     /// Object ID.
     object_id: ObjectId,
     /// Object height in mm.
-    height: f32,
-    /// Layer height for this object in mm.
-    layer_height: f32,
-    /// First layer height in mm.
-    first_layer_height: f32,
+    ///
+    /// `f64` so the layer-Z formula's termination check (`z > height + 1e-6`)
+    /// compares in the same precision as the formula itself. `height` only
+    /// bounds the loop; it does not enter the Z value, so an `f32` source
+    /// (e.g. `host::object_bounds`'s `Point3.z: f32`) is widened here once.
+    height: f64,
+    /// Layer height for this object in mm. `f64` — feeds the Z formula.
+    layer_height: f64,
+    /// First layer height in mm. `f64` — feeds the Z formula.
+    first_layer_height: f64,
 }
 
 /// A merged global layer with per-object participation info.
@@ -174,12 +189,35 @@ struct MergedLayer {
 }
 
 /// Generate uniform Z-plane sequence for a single object.
+///
+/// Z values are computed in `f64` using the direct formula
+/// `first_layer_height + n * layer_height` and then converted to `f32` at
+/// the return boundary. `ObjectPlan` fields are `f64` (sourced from
+/// `ResolvedConfig`'s `f64` `layer_height`/`first_layer_height`), so the
+/// formula runs in untainted `f64` — the `f32` bit pattern of `0.2` is
+/// `0.20000000298...`, which (if narrowed to `f32` and re-widened) would
+/// drift `93 * 0.20000000298... = 18.80000028...` onto the adjacent `f32`
+/// `18.80000114...` instead of the STL's `f32(18.8) = 18.79999924`,
+/// missing the vertex in `classify_vertex` and breaking the topology
+/// walk (the benchy z=18.8 regression). OrcaSlicer computes layer Z in
+/// `coordf_t` (= `double`) — see
+/// `OrcaSlicerDocumented/src/libslic3r/Slicing.cpp:807-867`
+/// (`generate_object_layers`); this function mirrors that, casting to
+/// `f32` only here (equivalent to OrcaSlicer's `float(print_z)` at
+/// `slice_facet`'s `slice_z` parameter, `TriangleMeshSlicer.cpp:158`).
 fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
     let mut layers = Vec::new();
-    let mut z = plan.first_layer_height;
-    while z <= plan.height + 1e-6 {
-        layers.push(z);
-        z += plan.layer_height;
+    let first = plan.first_layer_height;
+    let step = plan.layer_height;
+    let height = plan.height;
+    let mut n: u32 = 0;
+    loop {
+        let z_f64 = first + (n as f64) * step;
+        if z_f64 > height + 1e-6 {
+            break;
+        }
+        layers.push(z_f64 as f32);
+        n += 1;
     }
     layers
 }
@@ -188,7 +226,7 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
 ///
 /// For objects with different layer heights, this inserts sync layers at LCM intervals
 /// and catch-up layers where needed.
-fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f32) -> Vec<MergedLayer> {
+fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f64) -> Vec<MergedLayer> {
     if plans.is_empty() {
         return Vec::new();
     }
@@ -208,17 +246,23 @@ fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f32) -> Vec<
 /// Merge layers for objects that all share the same layer height.
 fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
     // Find max height across all objects
-    let max_height = plans.iter().map(|p| p.height).fold(0.0f32, f32::max);
+    let max_height = plans.iter().map(|p| p.height).fold(0.0f64, f64::max);
 
     let first = &plans[0];
     let mut layers = Vec::new();
-    let mut z = first.first_layer_height;
-    let lh = first.layer_height;
+    let first_z_f64 = first.first_layer_height;
+    let lh_f64 = first.layer_height;
 
-    while z <= max_height + 1e-6 {
+    let mut n: u32 = 0;
+    loop {
+        let z_f64 = first_z_f64 + (n as f64) * lh_f64;
+        if z_f64 > max_height + 1e-6 {
+            break;
+        }
+        let z = z_f64 as f32;
         let regions: Vec<RegionLayerProposal> = plans
             .iter()
-            .filter(|p| z <= p.height + 1e-6)
+            .filter(|p| z_f64 <= p.height + 1e-6)
             .map(|p| {
                 let effective_lh = if layers.is_empty() {
                     p.first_layer_height
@@ -228,7 +272,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 RegionLayerProposal {
                     object_id: p.object_id.clone(),
                     region_id: "0".to_string(),
-                    effective_layer_height: effective_lh,
+                    effective_layer_height: effective_lh as f32,
                     is_catchup: false,
                     catchup_z_bottom: 0.0,
                 }
@@ -238,7 +282,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
         if !regions.is_empty() {
             layers.push(MergedLayer { z, regions });
         }
-        z += lh;
+        n += 1;
     }
     layers
 }
@@ -263,9 +307,10 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
 
     for &z in &all_zs {
         let mut regions = Vec::new();
+        let z_f64 = z as f64;
 
         for (i, plan) in plans.iter().enumerate() {
-            if z > plan.height + 1e-6 {
+            if z_f64 > plan.height + 1e-6 {
                 continue;
             }
 
@@ -282,7 +327,7 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 regions.push(RegionLayerProposal {
                     object_id: plan.object_id.clone(),
                     region_id: "0".to_string(),
-                    effective_layer_height: effective_lh,
+                    effective_layer_height: effective_lh as f32,
                     is_catchup: false,
                     catchup_z_bottom: 0.0,
                 });

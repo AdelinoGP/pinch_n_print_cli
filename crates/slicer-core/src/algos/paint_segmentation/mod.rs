@@ -1147,7 +1147,10 @@ pub fn execute_paint_segmentation(
                 cfg.top_shell_layers as usize,
                 cfg.bottom_shell_layers as usize,
                 cfg.line_width,
-                cfg.layer_height,
+                // `cfg.layer_height` is `f64` (Z-formula precision); cast to
+                // `f32` here — shell-window math uses it as a thickness, not
+                // as a Z-plane coordinate, so f32 precision is sufficient.
+                cfg.layer_height as f32,
             ),
             // TODO: when per-object/per-region paint configs are wired through
             // execute_paint_segmentation, prefer the region-specific config
