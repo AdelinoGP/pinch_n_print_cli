@@ -246,6 +246,38 @@ the polygon boundary. Marked by the faithful `dR < dD * sin(transitioning_angle/
 predicate; the sequence of central edges within one topological domain is
 what `connectJunctions` stitches into a single toolpath.
 
+### Region order
+The Arachne ordering pass over finalized extrusion lines, before they become
+`WallLoop`s. It applies OrcaSlicer's odd-after-enclosing constraint so an
+inner region follows its enclosing outer region. It uses spatial adjacency
+constraints and a deterministic topological walk, with the selected wall
+sequence governing direction. It establishes a proposed region order; the
+perimeter module owns committing that proposal as the final `WallLoop` print
+order.
+
+### Region-order constraint set
+The directed before/after relation between spatially adjacent Arachne
+extrusion lines. A valid region-order constraint set is acyclic because it
+contains only canonical adjacent-inset relations; cycle recovery is not part
+of region ordering.
+
+### Committed wall sequence
+The final print order for walls governed by `wall_sequence`, established by
+the perimeter module. Path optimization may reduce travel within this order,
+but must not invert the selected wall sequence.
+
+### Wall sequence
+The configured three-state ordering policy for a region's walls: `InnerOuter`,
+`OuterInner`, or `InnerOuterInner`. It is resolved by the perimeter module and
+preserved across execution boundaries; it is not reducible to an outer-first
+boolean.
+
+### SparsePointGrid
+A sparse spatial-hash utility used by Arachne region ordering to find nearby
+extrusion junctions without allocating a dense grid. Its cell size is the
+search radius itself; queries return candidates from cells intersecting the
+query area. The caller owns the precise eligibility predicate.
+
 ### Rib edge
 An `EdgeType::EXTRA_VD` perpendicular-foot edge pair inserted after every
 transferred spine edge during Arachne graph construction, connecting a

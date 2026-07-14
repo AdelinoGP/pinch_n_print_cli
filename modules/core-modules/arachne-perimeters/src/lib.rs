@@ -319,6 +319,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             smallest_line_segment_squared,
             allowed_error_distance_squared,
             maximum_extrusion_area_deviation,
+            outer_to_inner: false,
         }
     }
 }
@@ -397,6 +398,9 @@ impl LayerModule for ArachnePerimeters {
         let is_bottom_layer = layer_index == 0;
         params.is_initial_layer = layer_index == 0;
         params.is_bottom_layer = is_bottom_layer;
+        let wall_sequence = config.get_string("wall_sequence").unwrap_or("InnerOuter");
+        params.outer_to_inner = wall_sequence == "OuterInner"
+            || (wall_sequence == "InnerOuterInner" && !params.is_initial_layer);
 
         // only_one_wall_top (G3 part 1): the config key round-trips correctly
         // and is now CONSUMED (D-104d deferred behavior begins here). When set

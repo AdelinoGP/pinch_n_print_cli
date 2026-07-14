@@ -1824,6 +1824,7 @@ impl hs::Host for HostExecutionContext {
             smallest_line_segment_squared: params.smallest_line_segment_squared as f64,
             allowed_error_distance_squared: params.allowed_error_distance_squared as f64,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f64,
+            outer_to_inner: false,
         };
 
         let to_wit_lines = |lines: Vec<slicer_ir::ExtrusionLine>| -> Vec<ir::ExtrusionLine> {

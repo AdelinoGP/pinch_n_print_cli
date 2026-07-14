@@ -25,22 +25,22 @@ use slicer_ir::{ExtrusionLine, Point2};
 
 // ===========================================================================
 // G12 — wall region ordering: inner (odd) region must follow enclosing even
-// region (OrcaSlicer `WallToolPaths::getRegionOrder`, WallToolPaths.cpp:809;
-// PerimeterGenerator.cpp:2302).
+// region (OrcaSlicer `WallToolPaths::getRegionOrder`; PerimeterGenerator's
+// finalized-extrusion walk).
 // ===========================================================================
 
 /// G12: drive `run_arachne_pipeline` with two concentric square islands and
 /// assert the outer-wall (`inset_idx == 0`) `ExtrusionLine`s precede the
 /// inner-wall (`inset_idx >= 1`) ones in the returned `Vec`.
 ///
-/// OrcaSlicer ref: `WallToolPaths.cpp:809` (`getRegionOrder` reorders so an
-/// inner/odd region follows its enclosing even region);
-/// `PerimeterGenerator.cpp:2302` (region emission order). The PnP pipeline
-/// flattens per-inset buckets in source order and performs no
-/// `getRegionOrder` pass (`crates/slicer-core/src/arachne/pipeline.rs:383`).
+/// The direct-core fixture establishes only finalized-line ordering. Separate
+/// guest-host and end-to-end tests cover three-state wall-sequence propagation.
 #[test]
 fn arachne_parity_wall_region_order_odd_after_enclosing() {
-    let params = ArachneParams::default();
+    let params = ArachneParams {
+        outer_to_inner: true,
+        ..ArachneParams::default()
+    };
 
     let lines = match run_arachne_pipeline(
         &fixtures::ex_polygons_concentric_islands_mm(),
@@ -51,11 +51,9 @@ fn arachne_parity_wall_region_order_odd_after_enclosing() {
         Err(_) => panic!(
             "PARITY GAP: wall region order odd-after-enclosing | expected: \
              emitted wall regions ordered so inner (odd) region follows its \
-             enclosing even region (WallToolPaths.cpp:809, \
-             PerimeterGenerator.cpp:2302) | got: pipeline flattens per-inset \
-             buckets in source order with no getRegionOrder pass \
-             (pipeline.rs:383) | ref: WallToolPaths.cpp:809 | observed \
-             outer_max=N/A inner_min=N/A"
+              enclosing even region (WallToolPaths::getRegionOrder) | got: \
+              pipeline did not produce finalized region order | observed \
+              first_inner=N/A last_outer=N/A"
         ),
     };
 
@@ -63,46 +61,35 @@ fn arachne_parity_wall_region_order_odd_after_enclosing() {
         panic!(
             "PARITY GAP: wall region order odd-after-enclosing | expected: \
              emitted wall regions ordered so inner (odd) region follows its \
-             enclosing even region (WallToolPaths.cpp:809, \
-             PerimeterGenerator.cpp:2302) | got: pipeline flattens per-inset \
-             buckets in source order with no getRegionOrder pass \
-             (pipeline.rs:383) | ref: WallToolPaths.cpp:809 | observed \
-             outer_max=N/A inner_min=N/A"
+              enclosing even region (WallToolPaths::getRegionOrder) | got: \
+              pipeline returned no finalized lines | observed \
+              first_inner=N/A last_outer=N/A"
         );
     }
 
-    // First index of any line whose inset_idx >= 1 (an inner/odd wall).
-    let outer_max = lines.iter().position(|l| l.inset_idx >= 1);
-    // Last index of any line whose inset_idx == 0 (an outer/even wall).
-    let inner_min = lines.iter().rposition(|l| l.inset_idx == 0);
+    // First index of any inner wall and last index of any outer wall.
+    let first_inner = lines.iter().position(|l| l.inset_idx >= 1);
+    let last_outer = lines.iter().rposition(|l| l.inset_idx == 0);
 
-    let (outer_max, inner_min) = match (outer_max, inner_min) {
+    let (first_inner, last_outer) = match (first_inner, last_outer) {
         (Some(o), Some(i)) => (o, i),
         _ => panic!(
             "PARITY GAP: wall region order odd-after-enclosing | expected: \
              emitted wall regions ordered so inner (odd) region follows its \
-             enclosing even region (WallToolPaths.cpp:809, \
-             PerimeterGenerator.cpp:2302) | got: pipeline flattens per-inset \
-             buckets in source order with no getRegionOrder pass \
-             (pipeline.rs:383) | ref: WallToolPaths.cpp:809 | observed \
-             outer_max={outer_max:?} inner_min={inner_min:?}"
+              enclosing even region (WallToolPaths::getRegionOrder) | got: \
+              pipeline omitted an outer or inner line | observed \
+              first_inner={first_inner:?} last_outer={last_outer:?}"
         ),
     };
 
-    // If the pipeline already ordered regions correctly the inner (odd)
-    // region would follow the enclosing even region, i.e. the first inner
-    // index would be greater than the last outer index. The current
-    // source-order flattening makes the first inner index smaller, so this
-    // assertion (outer_max >= inner_min) holds and the test FAILS (red).
+    // The first inner line must follow the last enclosing outer line.
     assert!(
-        outer_max >= inner_min,
+        first_inner > last_outer,
         "PARITY GAP: wall region order odd-after-enclosing | expected: \
          emitted wall regions ordered so inner (odd) region follows its \
-         enclosing even region (WallToolPaths.cpp:809, \
-         PerimeterGenerator.cpp:2302) | got: pipeline flattens per-inset \
-         buckets in source order with no getRegionOrder pass \
-         (pipeline.rs:383) | ref: WallToolPaths.cpp:809 | observed \
-         outer_max={outer_max} inner_min={inner_min}"
+          enclosing even region (WallToolPaths::getRegionOrder) | got: \
+          finalized pipeline order violates the enclosing-region precedence | observed \
+          first_inner={first_inner} last_outer={last_outer}"
     );
 }
 

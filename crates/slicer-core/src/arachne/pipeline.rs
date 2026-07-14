@@ -50,8 +50,8 @@ use slicer_ir::{ExPolygon, ExtrusionLine, UNITS_PER_MM};
 use crate::arachne::generate_toolpaths::generate_toolpaths;
 use crate::arachne::preprocess::{preprocess_input_outline, PreprocessParams};
 use crate::arachne::{
-    remove_empty_toolpaths, remove_small_lines, separate_out_inner_contour, simplify_toolpaths,
-    stitch_extrusions,
+    region_order::reorder_by_region_order, remove_empty_toolpaths, remove_small_lines,
+    separate_out_inner_contour, simplify_toolpaths, stitch_extrusions,
 };
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
@@ -165,6 +165,8 @@ pub struct ArachneParams {
     /// near-colinear fast-path guard (`calculateExtrusionAreaDeviationError`).
     /// Maps to the `meshfix_maximum_extrusion_area_deviation` config key.
     pub maximum_extrusion_area_deviation: f64,
+    /// true = outer walls emitted first (matches OrcaSlicer's is_outer_wall_first)
+    pub outer_to_inner: bool,
 }
 
 impl Default for ArachneParams {
@@ -214,6 +216,7 @@ impl Default for ArachneParams {
             allowed_error_distance_squared: 0.000025,
             // meshfix_maximum_extrusion_area_deviation = 0.005 mm².
             maximum_extrusion_area_deviation: 0.005,
+            outer_to_inner: false,
         }
     }
 }
@@ -387,7 +390,8 @@ pub fn run_arachne_pipeline(
     // floored at 0.0 so a pathological near-zero `preferred_bead_width_outer`
     // never produces a negative gap threshold.
     let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
-    let stitched = stitch_extrusions(lines, max_gap);
+    let mut stitched = stitch_extrusions(lines, max_gap);
+    reorder_by_region_order(&mut stitched, params.outer_to_inner);
     // Canonical post-process order (WallToolPaths.cpp:679-699):
     // stitch → removeSmallLines → separateOutInnerContour → simplify → removeEmpty
     let without_small = remove_small_lines(

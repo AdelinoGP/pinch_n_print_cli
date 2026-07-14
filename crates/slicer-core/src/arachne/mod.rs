@@ -73,9 +73,11 @@ pub mod generate_toolpaths;
 #[cfg(feature = "host-algos")]
 pub mod pipeline;
 pub mod preprocess;
+pub mod region_order;
 pub mod remove_small;
 pub mod separate_inner_contour;
 pub mod simplify;
+pub mod sparse_point_grid;
 pub mod stitch;
 
 #[cfg(feature = "host-algos")]

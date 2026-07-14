@@ -300,7 +300,7 @@ re-verified against the OrcaSlicer source and DROPPED:
 
 | # | OrcaSlicer feature | Ref | PnP status | Red test |
 |---|---|---|---|---|
-| G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:809`; `PerimeterGenerator.cpp:2302` | missing — `pipeline.rs:383` flattens per-inset buckets in source order | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
+| G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:809`; `PerimeterGenerator.cpp:2302` | closed (packet 156-arachne-region-order) | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
 | G15 | `BeadingStrategy::getSplitMiddleThreshold` (split-middle rule) | `BeadingStrategy.hpp:97`; `BeadingStrategy.cpp:54-57`; `BeadingStrategy.cpp:72-73` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._beading_split_middle_threshold_exposed` |
 | G20 | `ExtrusionLine::simplify` `dist_greater` intersection-distance gate | `Arachne/utils/ExtrusionLine.cpp:163-175` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._simplify_intersection_distance_gate_present` |
 
@@ -313,25 +313,22 @@ called from `PerimeterGenerator.cpp:2302`, orders the emitted toolpath
 regions so an inner (odd) region is emitted *after* the enclosing even
 region.
 
-**Rust:** NOT PRESENT. `run_arachne_pipeline`
-(`crates/slicer-core/src/arachne/pipeline.rs:383`) does
-`buckets.into_iter().flatten()` — the per-inset buckets are emitted in
-source/inset order with no reordering pass.
+**PnP status:** closed (this packet). `region_order.rs` faithfully ports
+`getRegionOrder` and the topological walk, and `run_arachne_pipeline` applies
+the pass to flattened `Vec<ExtrusionLine>` values before stitching.
 
 **Expected:** for nested concentric islands, the outer-wall `ExtrusionLine`s
 precede the inner-wall `ExtrusionLine`s in the returned `Vec`
 (odd-after-enclosing).
 
-**Current:** output ordering follows source polygon / inset index only; an
-inner region may be emitted before its enclosing region.
+**Current:** nested regions are emitted in odd-after-enclosing order, with
+deterministic tie-breaking and a deterministic fallback when no unblocked
+candidate is available.
 
 **Test:** `arachne_parity_wall_region_order_odd_after_enclosing`
 
-**Panic message:** `PARITY GAP: wall region order odd-after-enclosing |
-expected: emitted wall regions ordered so inner (odd) region follows its
-enclosing even region (WallToolPaths.cpp:809, PerimeterGenerator.cpp:2302) |
-got: pipeline flattens per-inset buckets in source order with no
-getRegionOrder pass (pipeline.rs:383) | ref: WallToolPaths.cpp:809`
+**Former panic message:** `PARITY GAP: wall region order odd-after-enclosing`
+(`getRegionOrder` pass now closes this gap).
 
 ### G15: `BeadingStrategy::getSplitMiddleThreshold` not on the trait (Data Model)
 

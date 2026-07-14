@@ -512,6 +512,8 @@ pub struct ArachneParams {
     pub allowed_error_distance_squared: f64,
     /// Area deviation threshold (mm²) for near-colinear fast-path guard.
     pub maximum_extrusion_area_deviation: f64,
+    /// Whether outer walls are emitted before inner walls.
+    pub outer_to_inner: bool,
 }
 
 impl Default for ArachneParams {
@@ -542,6 +544,7 @@ impl Default for ArachneParams {
             smallest_line_segment_squared: 0.0025,
             allowed_error_distance_squared: 0.000025,
             maximum_extrusion_area_deviation: 0.005,
+            outer_to_inner: false,
         }
     }
 }
@@ -584,6 +587,7 @@ pub fn generate_arachne_walls(
             smallest_line_segment_squared: params.smallest_line_segment_squared,
             allowed_error_distance_squared: params.allowed_error_distance_squared,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation,
+            outer_to_inner: params.outer_to_inner,
         };
         slicer_core::arachne::pipeline::run_arachne_pipeline(
             polygons,

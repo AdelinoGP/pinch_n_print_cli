@@ -2,387 +2,325 @@
 
 ## Execution Rules
 
-- One atomic step at a time.
-- Each step maps back to the audit gap G12 (backlog source
-  `docs/18_arachne_parity_audit.md`; no `docs/07` task IDs).
-- TDD first (the red gap test already exists; the new unit
-  tests are added alongside each module), then implementation,
-  then the narrowest falsifying validation.
-- Each step honors the context-discipline preamble shared by
-  `spec-packet-generator`, `swarm`, and `spec-review`. The
-  fields below are the budget contract for the step.
+- Execute one step at a time and do not combine its edit list with another
+  step. A later step may not compensate for an unmet earlier exit condition.
+- All OrcaSlicer reads are delegated. Every cargo test writes combined output
+  to `target/test-output.log` and is inspected from that log.
+- This is audit-driven: `task_ids: none` is intentional. `docs/07` has no G12
+  row; do not repurpose unrelated `TASK-156`.
 
-## Steps
+## Step 1: Lock canonical core behavior with RED tests
 
-### Step 1: Add `SparsePointGrid` utility (with unit tests)
-
-- Gaps: G12.
-- Objective: create
-  `crates/slicer-core/src/arachne/sparse_point_grid.rs` with
-  the `SparsePointGrid<T, F>` struct, `insert`, and
-  `get_nearby` methods. **The grid's cell size is the `searching_radius`
-  passed to the constructor, stored verbatim** — OrcaSlicer does
-  `GridT grid(searching_radius)` (`WallToolPaths.cpp:1022`) and
-  `SparsePointGrid`'s ctor keeps it as the cell size
-  (`SparsePointGrid.hpp:31-38` → `SparseGrid.hpp:106`). **There is NO
-  `/ sqrt(2)` derivation in OrcaSlicer** — an earlier draft of this packet
-  asserted one and cited a line range that does not contain it. Correctness
-  comes from `get_nearby` scanning every cell the query circle can touch
-  (a 3×3 neighborhood when `radius <= cell_size`, wider otherwise) and then
-  filtering by exact Euclidean distance, exactly as `SparseGrid.hpp:137-146`
-  does. Guard `cell_size == 0` (AC-N5) so cell-index computation cannot
-  divide by zero. Register the module in
-  `crates/slicer-core/src/arachne/mod.rs`. Add AC-3 + AC-N4 unit tests in
+- Objective: make the existing core tests prove the exact missing semantics:
+  pair exclusions, edge deduplication, candidate-cell lookup, canonical
+  finalized-line walk behavior, and permutation/acyclicity.
+- Precondition: packet remains `draft`; the current `region_order.rs` and
+  `sparse_point_grid.rs` compile.
+- Postcondition: focused tests fail only on the known partial-port behavior;
+  they compile and do not use `#[ignore]` or a placeholder assertion.
+- Files allowed to read: `crates/slicer-core/tests/region_order_tdd.rs`;
+  `crates/slicer-core/tests/sparse_point_grid_tdd.rs`; the matching core files
+  only to name the public API.
+- Files allowed to edit (<=3): `crates/slicer-core/tests/region_order_tdd.rs`;
   `crates/slicer-core/tests/sparse_point_grid_tdd.rs`.
-- Precondition: packet active. No other packet in flight.
-- Postcondition: AC-3 + AC-N4 green; module compiles;
-  `cargo test -p slicer-core` clean.
-- Files allowed to read: `crates/slicer-core/src/arachne/mod.rs`
-  (whole file, load directly); `crates/slicer-ir/src/slice_ir.rs:1618-1632`
-  (`Point3WithWidth` — the width field is `width`, not `w`); any existing
-  `HashMap<(i64, i64), ...>` usage in
-  `crates/slicer-core/src/skeletal_trapezoidation/` for pattern reference
-  (delegate SUMMARY of one example).
-- Files allowed to edit (≤3):
-  `crates/slicer-core/src/arachne/sparse_point_grid.rs` (NEW),
-  `crates/slicer-core/src/arachne/mod.rs`,
-  `crates/slicer-core/tests/sparse_point_grid_tdd.rs` (NEW).
-  **No `Cargo.toml` edit** — top-level `crates/slicer-core/tests/*.rs` files
-  are auto-discovered by Cargo as integration-test binaries (every existing
-  `arachne_*.rs` test there is registered this way, with no `[[test]]`
-  entry). The earlier draft's cap-bust for a registration entry was based on
-  a false premise and is withdrawn.
-- Files out-of-bounds: the new `region_order.rs` (Step 2);
-  the pipeline (Step 4); the module (Step 4).
 - Expected sub-agent dispatches:
-  - "Delegate OrcaSlicer `SparsePointGrid.hpp` API; return
-    SUMMARY (≤200 words) + at most two 30-line SNIPPETs
-    (the cell-radius derivation, the `insert`/`get_nearby`
-    signatures)."
-  - "Run `cargo test -p slicer-core --test sparse_point_grid_tdd -- sparse_point_grid_get_nearby_returns_only_nearby_points --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test sparse_point_grid_tdd -- sparse_point_grid_single_insert_get_nearby_self --exact`; FACT pass/fail."
-- Context cost: `M` (the new struct + 2 methods + 2 tests +
-  module registration is substantial).
-- Authoritative docs: none new.
-- OrcaSlicer refs: `SparsePointGrid.hpp:31-38, 44, 54-58` and
-  `SparseGrid.hpp:106, 137-146` — delegate SUMMARY; never load.
-- Verification: the 3 dispatches above.
-- Exit condition: AC-3 + AC-N4 green.
+  - Delegate canonical `getRegionOrder` guards and set semantics from
+    `OrcaSlicerDocumented/src/libslic3r/Arachne/WallToolPaths.cpp`; return
+    `SNIPPETS` (<=3 snippets, <=30 lines each).
+  - Run `cargo test -p slicer-core --test region_order_tdd --no-run`; return
+    `FACT` pass/fail.
+  - Run each intended RED filter; return `SNIPPETS` with its assertion only.
+- Context cost: S.
+- Authoritative docs: `docs/18_arachne_parity_audit.md` G12 section.
+- OrcaSlicer refs: `Arachne/WallToolPaths.cpp`; `Arachne/utils/SparseGrid.hpp`;
+  `PerimeterGenerator.cpp` finalized-extrusion walk.
+- Narrow verification:
+  - `cargo test -p slicer-core --test region_order_tdd -- region_order_get_matches_canonical_pair_guards --exact`
+  - `cargo test -p slicer-core --test sparse_point_grid_tdd -- sparse_point_grid_returns_touched_cell_candidates --exact`
+- Exit condition: the tests compile and fail against the partial implementation
+  for the named semantic gaps.
 
-### Step 2: Port `get_region_order` (with unit tests)
+## Step 2: Port canonical constraints, grid, and walk
 
-- Gaps: G12.
-- Objective: create
-  `crates/slicer-core/src/arachne/region_order.rs` with the
-  `get_region_order(input: &[ExtrusionLine], outer_to_inner: bool) -> Vec<(usize, usize)>`
-  function. Faithful Rust port of `WallToolPaths.cpp:973-1058`:
-  - compute `max_line_w = max over all junctions of j.p.width`; **return an
-    empty constraint set if it is 0** (`:996-1002`, AC-N5);
-  - `searching_radius = max_line_w * 1.9` (`:1019-1020`);
-  - build the grid with **cell size = `searching_radius`** (`:1022`),
-    payload = `(junction, line_index)`, locator = `j.p`;
-  - for every junction, query `get_nearby` and emit constraints per the
-    exact predicate at `:1044-1054` — the `is_odd` branch is
-    **direction-independent** (an odd wall is always preceded by its
-    enclosing lower-`inset_idx` even wall); only the even/even branch flips
-    on `outer_to_inner`. A pair `(a, b)` means "**a before b**" (confirmed by
-    the consumer's `for (auto [before, after] : ...)` at
-    `PerimeterGenerator.cpp:2789`).
-
-  **Then print the constraint count for the G12 fixture.** If it is zero, the
-  fixture does not exercise the constraint set and the G12 test would close
-  vacuously — stop and tighten the fixture before proceeding (see
-  `design.md` §Risks).
-
-  Register the module in `crates/slicer-core/src/arachne/mod.rs`. Add AC-2 +
-  AC-N1 + AC-N2 + AC-N3 + AC-N5 unit tests in
+- Objective: correct core region ordering without changing the public pipeline
+  contract yet. Apply canonical pair guards before the odd/even predicate, use
+  unique edge storage, make the grid candidate-only, and remove force-emission
+  recovery.
+- Precondition: Step 1 RED tests exist and their failures are recorded.
+- Postcondition: generated constraints are canonical and acyclic; every core
+  order test is green; `topological_walk` returns a permutation for acyclic
+  input without a PnP-only cycle path.
+- Files allowed to read: `crates/slicer-core/src/arachne/region_order.rs`;
+  `crates/slicer-core/src/arachne/sparse_point_grid.rs`;
+  `crates/slicer-ir/src/slice_ir.rs` ranges defining `ExtrusionLine` and
+  `ExtrusionJunction`.
+- Files allowed to edit (<=3): `crates/slicer-core/src/arachne/region_order.rs`;
+  `crates/slicer-core/src/arachne/sparse_point_grid.rs`;
   `crates/slicer-core/tests/region_order_tdd.rs`.
-- Precondition: Step 1 landed (`SparsePointGrid` exists).
-- Postcondition: AC-2 + AC-N1 + AC-N2 + AC-N3 + AC-N5 green.
-- Files allowed to read:
-  `crates/slicer-core/src/arachne/sparse_point_grid.rs`
-  (the new file from Step 1);
-  **`crates/slicer-ir/src/slice_ir.rs:1618-1632, 1819-1825, 1836-1849`** —
-  `Point3WithWidth` / `ExtrusionJunction` / `ExtrusionLine`. Note this is the
-  **`slicer-ir`** crate, not `slicer-core` (an earlier draft named
-  `crates/slicer-core/src/slice_ir.rs`, which does not exist), and the width
-  field is **`p.width`**, not `w`.
-- Files allowed to edit (≤3):
-  `crates/slicer-core/src/arachne/region_order.rs` (NEW),
-  `crates/slicer-core/src/arachne/mod.rs`,
-  `crates/slicer-core/tests/region_order_tdd.rs` (NEW).
-  **No `Cargo.toml` edit** — see Step 1.
-- Files out-of-bounds: the topological walk (Step 3); the
-  pipeline (Step 4); the module (Step 4).
 - Expected sub-agent dispatches:
-  - "Delegate OrcaSlicer `WallToolPaths.cpp:973-1058`
-    `getRegionOrder` walk; return SUMMARY (≤200 words) +
-    at most three 30-line SNIPPETs (the `max_line_w`/`searching_radius`
-    derivation at `:996-1020`, the grid construction at `:1003-1022`, and
-    the `is_odd` constraint emission at `:1044-1054`)."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_get_emits_adjacent_constraints --exact`; FACT pass/fail."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_empty_input_returns_empty --exact`; FACT pass/fail (AC-N1)."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_single_line_preserved --exact`; FACT pass/fail (AC-N2)."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_no_adjacency_falls_back_to_nearest_neighbor --exact`; FACT pass/fail (AC-N3)."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_zero_max_line_width_returns_no_constraints --exact`; FACT pass/fail (AC-N5)."
-- Context cost: `M` (the port is substantial; the spatial
-  adjacency logic + the `is_odd` special-casing + 5 tests).
-- Authoritative docs: none new.
-- OrcaSlicer refs: `WallToolPaths.cpp:973-1058` and `WallToolPaths.hpp:211`
-  — delegate SUMMARY; never load.
-- Verification: the 6 dispatches above.
-- Exit condition: AC-2 + AC-N1 + AC-N2 + AC-N3 + AC-N5 green, **and** the
-  G12 fixture's constraint count is confirmed non-zero.
+  - Delegate a comparison of the two core functions to the Orca locations in
+    Step 1; return `LOCATIONS` (<=15) enumerating semantic mismatches.
+  - Run `cargo test -p slicer-core --test region_order_tdd`; return `FACT`.
+  - Run `cargo test -p slicer-core --test sparse_point_grid_tdd`; return
+    `FACT`.
+- Context cost: M.
+- Authoritative docs: `docs/08_coordinate_system.md` (coordinates remain
+  f32-mm; no unit conversion is introduced).
+- OrcaSlicer refs: `WallToolPaths.cpp` `getRegionOrder`;
+  `utils/SparseGrid.hpp` lookup; `PerimeterGenerator.cpp` walk.
+- Narrow verification:
+  - `cargo test -p slicer-core --test region_order_tdd`
+  - `cargo test -p slicer-core --test sparse_point_grid_tdd`
+- Exit condition: both test binaries pass and a static inspection confirms no
+  force-emission branch remains.
 
-### Step 3: Port `topological_walk` + `reorder_by_region_order` (with unit tests)
+## Step 3: Order finalized pipeline output
 
-- Gaps: G12.
-- Objective: extend
-  `crates/slicer-core/src/arachne/region_order.rs` with
-  `topological_walk(lines: &[ExtrusionLine], constraints: &[(usize, usize)]) -> Vec<usize>`
-  and the convenience wrapper
-  `reorder_by_region_order(lines: &mut Vec<ExtrusionLine>, outer_to_inner: bool)`.
-  Faithful Rust port of `PerimeterGenerator.cpp:2781-2857`:
-  - build `blocked: Vec<usize>` (in-degree) and `blocking: Vec<Vec<usize>>`
-    (out-edges) from the constraint pairs (`:2782-2795`);
-  - **initial cursor = the first junction of the FIRST INPUT LINE**
-    (`lines[0].junctions[0].p`), falling back to `(0.0, 0.0)` **only when the
-    input is empty** (`:2798-2799`:
-    `all_extrusions.empty() ? Point::Zero() : all_extrusions.front()->junctions.front().p`).
-    An earlier draft claimed the walk always starts at `(0,0)` and picks the
-    line nearest the origin — **that is wrong; do not implement it**;
-  - among unblocked candidates, iterate **open lines (`is_closed == false`)
-    before closed ones** (`:2815-2818` sorts ascending on the `is_closed`
-    bool). Distance is **not** a sort key — it is evaluated per-candidate
-    inside that iteration order (`:2820-2842`);
-  - after each emission, advance the cursor to the emitted line's first
-    junction and decrement `blocked` for everything it was `blocking`;
-  - break remaining ties by `original_index` ascending (a PnP determinism
-    addition where OrcaSlicer leans on `std::sort` stability — record in
-    D-157).
-
-  Add the AC-4 unit test **plus** a safety-net test with 4+ lines and
-  non-trivial constraints (per `design.md` §Context Cost Estimate).
-- Precondition: Step 2 landed (`get_region_order` exists).
-- Postcondition: AC-4 green; `reorder_by_region_order` is
-  callable.
-- Files allowed to read:
-  `crates/slicer-core/src/arachne/region_order.rs` (the
-  file from Step 2, load directly).
-- Files allowed to edit (≤3):
-  `crates/slicer-core/src/arachne/region_order.rs`,
-  `crates/slicer-core/tests/region_order_tdd.rs`.
-- Files out-of-bounds: the pipeline (Step 4a); the module (Step 4b).
+- Objective: move the region-order call to after Arachne's final line
+  post-processing, immediately before `run_arachne_pipeline` returns.
+- Precondition: Step 2 is green.
+- Postcondition: constraints are built from stitched, simplified, non-empty
+  lines; the direct G12 fixture continues to assert outer-before-inner for the
+  final output and output remains a permutation.
+- Files allowed to read: `crates/slicer-core/src/arachne/pipeline.rs` range
+  from `generate_toolpaths` through the return; `region_order.rs`; G12 runtime
+  fixture/test files.
+- Files allowed to edit (<=3): `crates/slicer-core/src/arachne/pipeline.rs`;
+  `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
+  `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs`.
 - Expected sub-agent dispatches:
-  - "Delegate OrcaSlicer `PerimeterGenerator.cpp:2781-2857`
-    topological walk; return SUMMARY (≤200 words) + at most two 30-line
-    SNIPPETs (the `blocked`/`blocking` adjacency build at `:2782-2795`, and
-    the cursor init + candidate sort + greedy selection at `:2798-2842`)."
-  - "Run `cargo test -p slicer-core --test region_order_tdd -- region_order_topological_walk_respects_constraints --exact`; FACT pass/fail."
-- Context cost: `M` (the greedy walk + adjacency build +
-  open-before-closed preference + 2 tests).
-- Authoritative docs: none new.
-- OrcaSlicer refs: `PerimeterGenerator.cpp:2781-2857` —
-  delegate SUMMARY; never load.
-- Verification: the 2 dispatches above.
-- Exit condition: AC-4 green.
+  - Delegate Orca generation-to-walk ordering from `WallToolPaths.cpp` and
+    `PerimeterGenerator.cpp`; return `SUMMARY` <=200 words.
+  - Run the AC-4 test; return `FACT` pass/fail.
+- Context cost: S.
+- Authoritative docs: `docs/18_arachne_parity_audit.md` G12 fixture section.
+- OrcaSlicer refs: `WallToolPaths.cpp` generation/post-processing sequence;
+  `PerimeterGenerator.cpp` ordered-extrusion construction.
+- Narrow verification:
+  - `cargo test -p slicer-runtime --test arachne_parity_round2 -- arachne_parity_wall_region_order_odd_after_enclosing --exact`
+- Exit condition: the region-order call is after empty-line removal and the
+  targeted test passes.
 
-### Step 4a: Wire the region-order pass into the pipeline
+## Step 4a: Declare the complete sequence in WIT, SDK, and core parameters
 
-- Gaps: G12.
-- Objective: extend `crates/slicer-core/src/arachne/pipeline.rs`:
-  - Add `ArachneParams::outer_to_inner: bool` to the struct def
-    (`:75-168`) and the `Default` impl (`:170-219`), **default `false`**
-    (OrcaSlicer's `wall_sequence` defaults to `InnerOuter`, which yields
-    `is_outer_wall_first == false` — `PrintConfig.cpp:2084`,
-    `PerimeterGenerator.cpp:2761-2766`).
-  - Call `reorder_by_region_order(&mut lines, params.outer_to_inner)` after
-    the `let lines: Vec<ExtrusionLine> = buckets.into_iter().flatten().collect();`
-    at `:383` and before the `stitch_extrusions(lines, max_gap)` at `:390`.
-  - Fix up any in-repo `ArachneParams { .. }` literal constructions that now
-    miss the field (the compiler enumerates them).
-- Precondition: Step 3 landed (`reorder_by_region_order` exists).
-- Postcondition: `cargo check --workspace --all-targets` clean; AC-5's call
-  ordering is in place. (AC-1/AC-6 close in Step 4b, once the module supplies
-  the real `outer_to_inner`.)
-- Files allowed to read:
-  `crates/slicer-core/src/arachne/pipeline.rs:328-411` (the
-  `run_arachne_pipeline` body, range-read).
-- Files allowed to edit (≤3):
-  `crates/slicer-core/src/arachne/pipeline.rs`,
-  `crates/slicer-core/src/arachne/region_order.rs` (to add
-  `pub use` re-exports if needed).
-- Files out-of-bounds: the module (Step 4b), `path-optimization-default`,
-  the scheduler, the IR/WIT boundary.
+- Objective: add WIT `enum wall-sequence { inner-outer, outer-inner,
+  inner-outer-inner }`, add `wall-sequence: wall-sequence` to
+  `arachne-params`, and replace the lossy `outer_to_inner: bool` field in the
+  SDK and core `ArachneParams` mirrors with the existing
+  `slicer_core::perimeter_utils::WallSequence` variant set.
+- Precondition: Step 3 is green; the three modes and initial-layer behavior
+  are documented in the packet contract.
+- Postcondition: WIT, SDK, and core use exactly the three named variants and
+  neither ArachneParams type exposes `outer_to_inner`.
+- Files allowed to read: `crates/slicer-schema/wit/deps/common.wit` record;
+  `crates/slicer-sdk/src/host.rs` Arachne conversion;
+  `crates/slicer-core/src/arachne/pipeline.rs` ArachneParams definition.
+- Files allowed to edit (<=3): `crates/slicer-schema/wit/deps/common.wit`;
+  `crates/slicer-sdk/src/host.rs`; `crates/slicer-core/src/arachne/pipeline.rs`.
 - Expected sub-agent dispatches:
-  - "Run `cargo check --workspace --all-targets`; FACT pass/fail or SNIPPETS
-    (compile error) on fail."
-- Context cost: `M`.
-- Authoritative docs: none new.
-- OrcaSlicer refs: `PerimeterGenerator.cpp:2761-2766` (the polarity of
-  `is_outer_wall_first`) — delegate; never load.
-- Verification: the dispatch above.
-- Exit condition: pipeline compiles with the new field + call in place.
+  - Delegate `outer_to_inner` call-site inventory; return
+    `LOCATIONS` <=20.
+  - Run `cargo check -p slicer-sdk`; return `FACT`.
+  - Run `cargo check -p slicer-core`; return `FACT`.
+- Context cost: M.
+- Authoritative docs: `docs/03_wit_and_manifest.md`; `docs/05_module_sdk.md`.
+- OrcaSlicer refs: `PrintConfig.hpp` sequence enum and `PrintConfig.cpp`
+  default.
+- Narrow verification:
+  - `cargo check -p slicer-sdk`
+  - `cargo check -p slicer-core`
+- Exit condition: the two narrow checks pass; the only remaining
+  `outer_to_inner` production sites are the WASM host and Arachne module paths
+  assigned to Step 4b.
 
-### Step 4b: Derive `outer_to_inner` in the module + verify AC-6/AC-7/AC-8
+## Step 4b: Propagate the sequence through core, host, and module
 
-- Gaps: G12.
-- Objective: extend `modules/core-modules/arachne-perimeters/src/lib.rs`:
-  - In `arachne_params_from_config` (`:130`), the `wall_sequence` config key
-    is **already read** at `:269-272`. Derive the bool with the **correct
-    polarity**:
-    ```
-    outer_to_inner = (wall_sequence == "OuterInner")
-                  || (wall_sequence == "InnerOuterInner" && !is_initial_layer)
-    ```
-    matching `PerimeterGenerator.cpp:2761-2766` (Orca disables the sandwich
-    mode's outer-first behavior on layer 0). **The earlier draft of this
-    packet had this inverted** — it claimed default `true` "matching
-    `InnerOuter`" and described `OuterInner` as "inner walls first". Both are
-    backwards. The module's existing `wall_sequence_is_inner_outer` at
-    `:269-272` already uses the correct polarity; the new derivation must
-    agree with it, not contradict it.
-  - Pass the resolved bool into `ArachneParams::outer_to_inner`.
-  - **Then verify AC-8 explicitly**: confirm the new pre-module reorder and
-    the pre-existing post-module
-    `slicer_core::perimeter_utils::wall_sequence_reorder`
-    (`perimeter_utils.rs:723`) do **not** both flip the outer/inner
-    direction. If they do, STOP — raise it to the user; do not silently
-    disable either pass (see `design.md` §Open Questions `[BLOCK]`).
-- Precondition: Step 4a landed.
-- Postcondition: AC-1 + AC-5 + AC-6 + AC-7 + AC-8 green.
-- Files allowed to read:
-  `modules/core-modules/arachne-perimeters/src/lib.rs:108-290`
-  (the `arachne_params_from_config` body incl. the existing `wall_sequence`
-  read, range-read); `crates/slicer-core/src/perimeter_utils.rs:723` +
-  its surrounding fn (range-read, for the AC-8 check).
-- Files allowed to edit (≤3):
+- Objective: reconstruct the exact WIT `wall-sequence` value in the WASM host
+  and resolve the existing `wall_sequence` config string into the matching
+  `WallSequence` variant in the perimeter module.
+- Precondition: Step 4a's WIT/SDK/core checks pass and name the three exact
+  wall-sequence variants.
+- Postcondition: no production path substitutes `false` or a default for a
+  module-selected sequence; all ArachneParams literal sites compile.
+- Files allowed to read: `crates/slicer-wasm-host/src/host.rs` Arachne
+  reconstruction; `modules/core-modules/arachne-perimeters/src/lib.rs` config
+  resolution; `crates/slicer-sdk/src/host.rs` ArachneParams literal shape.
+- Files allowed to edit (<=3): `crates/slicer-wasm-host/src/host.rs`;
   `modules/core-modules/arachne-perimeters/src/lib.rs`.
-- Files out-of-bounds: the pipeline (Step 4a), `path-optimization-default`,
-  the scheduler, the IR/WIT boundary, `perimeter_utils.rs` (read-only — AC-8
-  requires it to stay unchanged).
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-runtime --test arachne_parity_round2 --
-    arachne_parity_wall_region_order_odd_after_enclosing --exact`;
-    return FACT pass/fail or SNIPPETS (fail with assertion + ≤20 lines)."
-  - "Run `cargo test -p slicer-core --test wall_sequence_reorder_tdd`;
-    FACT pass/fail (AC-8 — the pre-existing reorder must stay green)."
-  - "Run `cargo test -p slicer-runtime --test arachne_parity`;
-    return FACT pass/fail (AC-7 14-locks regression lock) or SNIPPETS
-    (fail with assertion + ≤20 lines)."
-  - "Run `cargo xtask build-guests --check`; FACT clean/STALE — the module
-    source changed, so the guest WASM **will** be stale until rebuilt."
-- Context cost: `M`.
-- Authoritative docs: `docs/15_config_keys_reference.md` (load the
-  `wall_sequence` entry directly).
-- OrcaSlicer refs: `PerimeterGenerator.cpp:2761-2766`, `PrintConfig.hpp:187-192`
-  (the `WallSequence` enum), `PrintConfig.cpp:2084` (the `InnerOuter` default)
-  — delegate SUMMARY; never load.
-- Verification: the 4 dispatches above.
-- Exit condition: AC-1 + AC-5 + AC-6 + AC-7 + AC-8 green; guests rebuilt.
+  - Inventory every remaining `outer_to_inner` production reference after
+    Step 4a; return `LOCATIONS` <=20.
+  - Run `cargo check --workspace --all-targets`; return `FACT`.
+  - Run `cargo xtask build-guests --check`; return `FACT clean/STALE`.
+  - If stale, run `cargo xtask build-guests`; return `FACT`.
+- Context cost: M.
+- Authoritative docs: `docs/03_wit_and_manifest.md`; `docs/05_module_sdk.md`.
+- OrcaSlicer refs: `PrintConfig.hpp` sequence enum and `PrintConfig.cpp`
+  default.
+- Narrow verification:
+  - `cargo check --workspace --all-targets`
+  - `cargo xtask build-guests --check`
+  - `cargo xtask build-guests` (only when the freshness check reports STALE)
+- Exit condition: workspace check passes and guest artifacts are rebuilt if the
+  freshness check reports stale.
 
-### Step 5: Doc updates + `cargo xtask build-guests --check` + final gates
+## Step 5: Prove WIT sequence propagation
 
-- Gaps: G12.
-- Objective: update
-  `docs/18_arachne_parity_audit.md` Gap summary table to
-  mark G12 closed; update the detailed-gap "PnP status"
-  entry to "closed (this packet)"; add D-157 (region-order
-  port) to `docs/DEVIATION_LOG.md`; add *region order* and
-  *SparsePointGrid* glossary entries to `CONTEXT.md`; run
-  `cargo xtask build-guests --check` to confirm the
-  slicer-core changes did not break guest builds; run the
-  final `cargo check --workspace --all-targets`,
-  `cargo clippy --workspace --all-targets -- -D warnings`,
-  and the 4 AC-grep checks from `packet.spec.md` §Doc
-  Impact.
-- Precondition: Step 4 landed.
-- Postcondition: packet acceptance ceremony green; every
-  AC green; every doc grep returns a hit; guest WASM
-  fresh.
-- Files allowed to read: `docs/18_arachne_parity_audit.md`,
-  `docs/DEVIATION_LOG.md` (the D-105B/C/E entries only),
-  `CONTEXT.md` (the current glossary section only).
-- Files allowed to edit (≤3):
-  `docs/18_arachne_parity_audit.md`,
-  `docs/DEVIATION_LOG.md`, `CONTEXT.md`.
-- Files out-of-bounds: source code (no changes in this
-  step).
+- Objective: add a real guest-host integration test to the existing
+  `arachne_parity_round2` target that distinguishes all three resolved modes,
+  including `InnerOuterInner` on layer 0 and a later layer.
+- Precondition: Step 4b propagation check is green and guests have been rebuilt.
+- Postcondition: AC-5 has a registered, non-placeholder assertion over the
+  host-observed sequence and its target command is runnable.
+- Files allowed to read: `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
+  its fixture module; existing guest-host Arachne tests.
+- Files allowed to edit (<=3): `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
+  `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs` only if a layer
+  fixture is necessary.
 - Expected sub-agent dispatches:
-  - "Run `cargo xtask build-guests --check`; return FACT
-    clean / STALE."
-  - "Run `cargo check --workspace --all-targets`; FACT
-    pass/fail."
-  - "Run `cargo clippy --workspace --all-targets -- -D
-    warnings`; FACT pass/fail."
-  - "Run each of the 4 doc-grep checks from
-    `packet.spec.md` §Doc Impact; return FACT hit/no-hit
-    for each."
-  - "Run `cargo test -p slicer-core`; FACT pass/fail
-    (final unit sweep)."
-- Context cost: `S`.
-- Authoritative docs: `docs/07_implementation_status.md`
-  (delegate SUMMARY of the current M2 chain status; the
-  implementer updates the M2 entry to mark this packet
-  complete).
-- OrcaSlicer refs: none.
-- Verification: all 5 dispatches above.
-- Exit condition: every AC green, every doc grep hits,
-  clippy clean, guests fresh, `docs/07` updated.
+  - Locate the narrowest existing runtime helper that invokes the real Arachne
+    guest-host boundary; return `LOCATIONS` <=10.
+  - Run the AC-5 filter; return `FACT` pass/fail.
+- Context cost: S.
+- Authoritative docs: `docs/03_wit_and_manifest.md` boundary contract.
+- OrcaSlicer refs: `PrintConfig.hpp` and `PerimeterGenerator.cpp` sequence
+  interpretation.
+- Narrow verification:
+  - `cargo test -p slicer-runtime --test arachne_parity_round2 -- arachne_wall_sequence_survives_wasm_boundary --exact`
+- Exit condition: the AC-5 command executes exactly one real-boundary test and
+  passes for every mode/layer case.
+
+## Step 6: Resolve and commit sequence-aware walls
+
+- Objective: make `arachne-perimeters` resolve all modes, including the
+  layer-sensitive `InnerOuterInner` behavior, then commit `WallLoop`s without
+  an unconditional ascending `perimeter_index` sort that reverses that result.
+- Precondition: Step 5 WIT propagation test is green.
+- Postcondition: module output honors all three modes and retains canonical
+  region-order precedence; config is interpreted only in the module.
+- Files allowed to read: `modules/core-modules/arachne-perimeters/src/lib.rs`
+  config resolution and wall build/commit ranges; `crates/slicer-ir/src/slice_ir.rs`
+  `WallLoop` fields; existing module tests.
+- Files allowed to edit (<=3): `modules/core-modules/arachne-perimeters/src/lib.rs`;
+  `modules/core-modules/arachne-perimeters/tests/wall_sequence_commit_tdd.rs`;
+  `modules/core-modules/arachne-perimeters/Cargo.toml` only if the test target
+  needs explicit registration.
+- Expected sub-agent dispatches:
+  - Delegate canonical `InnerOuterInner` ordering behavior; return `SNIPPETS`
+    <=3 from `PerimeterGenerator.cpp`.
+  - Run the module test binary; return `FACT`.
+  - Run `cargo xtask build-guests --check`; return `FACT clean/STALE`.
+- Context cost: M.
+- Authoritative docs: ADR-0011; `docs/15_config_keys_reference.md` wall_sequence.
+- OrcaSlicer refs: `PerimeterGenerator.cpp` wall-sequence consumer.
+- Narrow verification:
+  - `cargo test -p arachne-perimeters --test wall_sequence_commit_tdd`
+  - `cargo xtask build-guests --check`
+- Exit condition: one fixture per mode passes, with an explicit layer-0 and
+  later-layer sandwich assertion.
+
+## Step 7: Preserve sequence through path optimization
+
+- Objective: remove optimizer role grouping that reverses a committed
+  wall-sequence relation while retaining permitted nearest-neighbor travel
+  choices.
+- Precondition: Step 6 module tests are green.
+- Postcondition: optimizer output preserves selected committed sequence for
+  Arachne walls in all modes; unrelated optimizer behavior has a regression
+  guard.
+- Files allowed to read: `modules/core-modules/path-optimization-default/src/lib.rs`;
+  its existing tests; the WIT view fields it consumes.
+- Files allowed to edit (<=3): `modules/core-modules/path-optimization-default/src/lib.rs`;
+  `crates/slicer-runtime/tests/arachne_wall_sequence_e2e_tdd.rs`; the existing
+  runtime test aggregator only if the target is aggregated.
+- Expected sub-agent dispatches:
+  - Delegate consumer ordering trace from Arachne output to optimizer result;
+    return `LOCATIONS` <=15.
+  - Run the end-to-end test; return `FACT`.
+- Context cost: M.
+- Authoritative docs: `docs/01_system_architecture.md` ordering ownership;
+  ADR-0011.
+- OrcaSlicer refs: `PerimeterGenerator.cpp` final wall-sequence ordering.
+- Narrow verification:
+  - `cargo test -p slicer-runtime --test arachne_wall_sequence_e2e_tdd`
+- Exit condition: all three sequence-mode assertions pass and input order is
+  not used solely as an accidental tie-break.
+
+## Step 8: Audit, WIT, and deviation documentation
+
+- Objective: replace stale G12 closure claims with accurate references and
+  record the real WIT/ownership change; only then mark the packet implemented.
+- Precondition: Steps 1-7 are green and guests are fresh.
+- Postcondition: audit, WIT documentation, and deviation log accurately
+  reflect the completed work; packet status remains draft pending Step 9.
+- Files allowed to read: `docs/18_arachne_parity_audit.md` G12 ranges;
+  `docs/DEVIATION_LOG.md` D-157; ADR-0011; the packet files.
+- Files allowed to edit (<=3): `docs/18_arachne_parity_audit.md`;
+  `docs/DEVIATION_LOG.md`; `docs/03_wit_and_manifest.md`.
+- Expected sub-agent dispatches:
+  - Run each packet Doc Impact grep; return `FACT hit/no-hit`.
+  - Run all pipe-suffixed AC commands; return one `FACT` per command.
+  - Run `cargo check --workspace --all-targets` and clippy; return `FACT`.
+- Context cost: S.
+- Authoritative docs: those listed in packet Doc Impact.
+- OrcaSlicer refs: none; all parity facts were resolved in Steps 1-7.
+- Narrow verification:
+  - `cargo xtask build-guests --check`
+  - `cargo check --workspace --all-targets`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+- Exit condition: the three named document greps pass and D-157 accurately
+  records only intentional behaviorally equivalent deviations.
+
+## Step 9: Architecture documentation and acceptance ceremony
+
+- Objective: document final wall-sequence ownership and optimizer preservation,
+  then run the complete acceptance ceremony and packet review.
+- Precondition: Step 8 documentation greps pass.
+- Postcondition: architecture docs and ADR-0011 describe the implemented
+  ownership boundary; all AC commands pass; only then may packet status change
+  to `implemented`.
+- Files allowed to read: `docs/01_system_architecture.md` ordering section;
+  `docs/adr/0011-perimeter-module-owns-wall-sequencing.md`; packet AC list.
+- Files allowed to edit (<=3): `docs/01_system_architecture.md`;
+  `docs/adr/0011-perimeter-module-owns-wall-sequencing.md`;
+  `.ralph/specs/156-arachne-region-order/packet.spec.md`.
+- Expected sub-agent dispatches:
+  - Run every pipe-suffixed AC command; return one `FACT` per command.
+  - Run `cargo xtask build-guests --check`, workspace check, and clippy; return
+    `FACT` per command.
+  - Run each Doc Impact grep; return `FACT hit/no-hit`.
+- Context cost: S.
+- Authoritative docs: packet Doc Impact list.
+- OrcaSlicer refs: none; all parity facts were resolved in Steps 1-7.
+- Narrow verification:
+  - `rg -q 'own wall sequencing' docs/01_system_architecture.md`
+  - `rg -q 'final print order' docs/adr/0011-perimeter-module-owns-wall-sequencing.md`
+  - `cargo check --workspace --all-targets`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+- Exit condition: every AC command and Doc Impact grep passes; a full packet
+  review has no open blocker; only then change packet status to `implemented`.
 
 ## Per-Step Budget Roll-Up
 
-| Step | Context Cost | Notes |
+| Step | Cost | Reason |
 | --- | --- | --- |
-| Step 1 | M | New `SparsePointGrid` struct + 2 methods + 2 tests + module registration. |
-| Step 2 | M | `get_region_order` port + 5 tests + the fixture constraint-count check. |
-| Step 3 | M | `topological_walk` + `reorder_by_region_order` wrapper + 2 tests. |
-| Step 4a | M | Pipeline: new `ArachneParams` field + the reorder call. |
-| Step 4b | M | Module: `outer_to_inner` derivation + AC-6/AC-7/AC-8 verification + guest rebuild. |
-| Step 5 | S | Doc updates + final gates. |
+| 1 | S | Focused test contracts only. |
+| 2 | M | Canonical core port. |
+| 3 | S | Single pipeline placement and fixture assertion. |
+| 4a | S | WIT declaration and SDK/runtime binding shape. |
+| 4b | M | Core, host, and module propagation. |
+| 5 | S | Real WIT-boundary integration evidence. |
+| 6 | M | Module commitment and three-mode behavior. |
+| 7 | M | Cross-module optimizer behavior. |
+| 8 | S | Audit, WIT, and deviation documentation. |
+| 9 | S | Architecture documentation and acceptance. |
 
-Aggregate: **M**. Largest single step: M. **No step is L.** The original
-plan's L-rated Step 4 has been split into 4a (pipeline) and 4b (module),
-which have a clean seam: 4a's exit is a compiling pipeline with the field and
-call in place; 4b supplies the real config-derived value and runs the
-regression sweep. The claim that "this step cannot be split without losing
-the pipeline + module coupling" was wrong — the coupling is a single `bool`.
-**No extended-band run is required.**
+Aggregate context cost: M. No step is L.
 
 ## Packet Completion Gate
 
-- All 6 steps complete (1, 2, 3, 4a, 4b, 5).
-- Every step exit condition is met.
-- Packet acceptance criteria green (each verification
-  command dispatched and returned PASS).
-- `docs/07_implementation_status.md` updated for the M2
-  chain (via worker dispatch — never edited by loading
-  the full backlog into the implementer's context).
-- `docs/18_arachne_parity_audit.md` Gap summary table
-  updated.
-- `docs/DEVIATION_LOG.md` D-157 entry added.
-- `CONTEXT.md` glossary entries added.
-- `packet.spec.md` ready to move to
-  `status: implemented`.
-
-## Acceptance Ceremony
-
-- Re-dispatch every pipe-suffixed acceptance criterion
-  command from `packet.spec.md` (AC-1 through AC-8 +
-  AC-N1 through AC-N5 = 13 commands).
-- Confirm packet-level verification commands are green
-  (the 3 gate commands in `packet.spec.md` §Verification).
-- Record any remaining packet-local risk explicitly before
-  moving to `status: implemented`. Known residuals (all must appear in
-  D-157): the `original_index` tie-break is a PnP determinism addition
-  (OrcaSlicer relies on `std::sort` stability); the `SparsePointGrid` stays
-  in `crates/slicer-core::arachne` rather than being promoted to
-  `crates/slicer-helpers`, and is monomorphised on one payload type rather
-  than templated; wall-sequence direction is now resolved in two places in
-  `slicer-core` (the new pre-module pass and the existing post-module
-  `perimeter_utils::wall_sequence_reorder`) with the composition argument
-  recorded per AC-8.
-- Confirm the implementer's peak context usage stayed within the **standard**
-  band (≤150k). The packet is M and no step is L, so **no extended-band
-  escalation is expected**; if one occurs, log it as a packet-authoring
-  lesson.
+- Every step exit condition is met in order.
+- Every pipe-suffixed AC command passes with dispatched evidence.
+- `cargo xtask build-guests --check`, workspace check, and all-targets clippy
+  pass.
+- G12 is marked closed only after a full packet review returns APPROVED.
