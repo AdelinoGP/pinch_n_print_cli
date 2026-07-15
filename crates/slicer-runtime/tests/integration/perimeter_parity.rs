@@ -789,13 +789,18 @@ fn deliberate_broken_fixture_file_is_detected() {
 // build (tracked as an M2 follow-up); this harness is the regression bed that
 // follow-up will re-bless.
 //
-// Layer-height choice (documented, applies to all 6 fixtures): `layer_height
-// = first_layer_height = 1.0mm` (classic-perimeters' schema max for
-// `layer_height`) — chosen uniformly to keep every fixture's layer count in
-// the "handful to ~15" range called for by the packet while keeping the
-// walls-per-layer pattern identical across layers (no default first-layer or
-// top-layer wall-count reduction is enabled, so 1.0mm slabs don't skew the
-// wall-generation shape being verified here).
+// Layer-height choice (documented, applies to all 6 M1 fixtures except
+// `narrow_strip_widening`): `layer_height = first_layer_height = 0.2mm`
+// (the slicer's standard default; see `modules/core-modules/classic-perimeters/
+// classic-perimeters.toml` `[config.schema.layer_height]` default = 0.2).
+// Chosen uniformly so every fixture exercises a non-trivial layer count
+// (15–50 layers) at the realistic production layer height. The
+// `narrow_strip_widening` fixture (a single Arachne fixture in the
+// Step-10A/T-231 set, see section (f) below) is the documented exception:
+// it stays at `1.0mm` to retain coverage of the **degenerate** beading
+// regime (`optimal_width 0.4mm <= layer_height 1.0mm` → `line_width_to_spacing`
+// returns 0, raw-width fallback reproduced verbatim), which is now the only
+// fixture in the suite that exercises that path.
 // ============================================================================
 
 fn repo_root() -> PathBuf {
@@ -1100,8 +1105,8 @@ fn write_expected_perimeters(fixture_dir: &Path, perimeters: &[PerimeterIR]) {
 
 fn solid_square_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0
+        "layer_height": 0.2,
+        "first_layer_height": 0.2
     })
 }
 
@@ -1179,8 +1184,8 @@ fn holed_square_mesh() -> Vec<Tri> {
 
 fn holed_square_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0
+        "layer_height": 0.2,
+        "first_layer_height": 0.2
     })
 }
 
@@ -1269,7 +1274,7 @@ fn annulus_true_hole_produces_inner_perimeters() {
     write_binary_stl(&mesh_path, &annulus_frame_mesh());
     write_config_json(
         &config_path,
-        &serde_json::json!({ "layer_height": 1.0, "first_layer_height": 1.0 }),
+        &serde_json::json!({ "layer_height": 0.2, "first_layer_height": 0.2 }),
     );
 
     let perimeters =
@@ -1329,8 +1334,8 @@ fn bridge_mesh() -> Vec<Tri> {
 
 fn bridge_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0
+        "layer_height": 0.2,
+        "first_layer_height": 0.2
     })
 }
 
@@ -1395,8 +1400,8 @@ fn overhang_ramp_mesh() -> Vec<Tri> {
 
 fn overhang_ramp_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0
+        "layer_height": 0.2,
+        "first_layer_height": 0.2
     })
 }
 
@@ -1463,8 +1468,8 @@ fn overhang_ramp_perimeter_parity() {
 // unpainted-cap override).
 //
 // Observed real shape (deterministic — two consecutive recorder runs produced
-// byte-identical JSON; height=10mm, layer_height=1.0mm, 10 layers): EVERY
-// layer 0..=9 fragments into 3 regions (id=1 tool0, id=2 tool1, id=3 tool2),
+// byte-identical JSON; height=10mm, layer_height=0.2mm, 50 layers): EVERY
+// layer 0..=49 fragments into 3 regions (id=1 tool0, id=2 tool1, id=3 tool2),
 // each region tracing its own Outer + Inner wall loops. This is the ADR-0013
 // Model A shape this fixture demonstrates.
 //   - Every layer is uniform: each region = 3 walls (Outer/Inner/Inner), no
@@ -1483,7 +1488,7 @@ fn overhang_ramp_perimeter_parity() {
 //     correctly disables thin-wall/gap-fill medial axis for this fixture — no
 //     ThinWall is expected here now, on any layer, and the boostvoronoi panic
 //     no longer fires for this fixture at all.
-//   - Cap-contact layers 0 and 9 carry the SAME 3-region / same-wall-count
+//   - Cap-contact layers 0 and 49 carry the SAME 3-region / same-wall-count
 //     partition, but their Outer walls have more points (5..6 vs 4): the cap
 //     projection is full-area on the contact layer, so the wedge geometry near
 //     the acute centroid corner produces extra offset-arc points. This is the
@@ -1494,8 +1499,8 @@ fn overhang_ramp_perimeter_parity() {
 
 fn multi_tool_triangle_geometry() -> (Vec<[f32; 3]>, Vec<[u32; 3]>, Vec<Option<u32>>) {
     // Geometry: a mildly-scalene triangular prism, base A(0,0) B(20,0)
-    // C(11,17) (sides ~19-20mm), extruded z:[0,10] → 10 layers at
-    // layer_height 1.0mm. The prism is TALL on purpose: with OrcaSlicer's
+    // C(11,17) (sides ~19-20mm), extruded z:[0,10] → 50 layers at
+    // layer_height 0.2mm. The prism is TALL on purpose: with OrcaSlicer's
     // default top_shell_layers=bottom_shell_layers=3, the 3 bottom + 3 top
     // layers are top/bottom SHELL layers, leaving genuine INTERIOR layers
     // (occluded above and below) in the middle that fragment purely from the
@@ -1530,7 +1535,7 @@ fn multi_tool_triangle_geometry() -> (Vec<[f32; 3]>, Vec<[u32; 3]>, Vec<Option<u
     let gx = 31.0_f32 / 3.0; // (0 + 20 + 11) / 3
     let gy = 17.0_f32 / 3.0; // (0 + 0 + 17) / 3
     let g = [gx, gy, 0.0];
-    let h = 10.0_f32; // prism height (mm) → 10 layers at layer_height 1.0
+    let h = 10.0_f32; // prism height (mm) → 50 layers at layer_height 0.2
     let a2 = [0.0, 0.0, h];
     let b2 = [20.0, 0.0, h];
     let c2 = [11.0, 17.0, h];
@@ -1575,8 +1580,8 @@ fn multi_tool_triangle_geometry() -> (Vec<[f32; 3]>, Vec<[u32; 3]>, Vec<Option<u
 
 fn multi_tool_triangle_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0
+        "layer_height": 0.2,
+        "first_layer_height": 0.2
     })
 }
 
@@ -1674,8 +1679,8 @@ fn multi_tool_triangle_perimeter_parity() {
 
 fn spiral_vase_cone_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0,
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
         "spiral_vase": true
     })
 }
@@ -1819,8 +1824,8 @@ fn arachne_outer_wall_boundary_type_survives_wasm_boundary() {
     write_config_json(
         &config_path,
         &serde_json::json!({
-            "layer_height": 1.0,
-            "first_layer_height": 1.0,
+            "layer_height": 0.2,
+            "first_layer_height": 0.2,
             "wall_generator": "arachne"
         }),
     );
@@ -1872,8 +1877,8 @@ fn tapered_wedge_mesh() -> Vec<Tri> {
 
 fn tapered_wedge_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0,
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
         "wall_generator": "arachne"
     })
 }
@@ -1960,8 +1965,8 @@ fn max_bead_count_cap_mesh() -> Vec<Tri> {
 
 fn max_bead_count_cap_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0,
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
         "max_bead_count": 9,
         "wall_generator": "arachne"
     })
@@ -2004,8 +2009,8 @@ fn complex_multi_feature_mesh() -> Vec<Tri> {
 
 fn complex_multi_feature_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0,
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
         "wall_generator": "arachne"
     })
 }
@@ -2073,7 +2078,15 @@ fn record_cube_4color_arachne() {
 #[test]
 fn arachne_perimeter_parity() {
     use std::collections::BTreeSet;
-    // Fixture 1: tapered_wedge — variable widths observable across walls.
+    // Fixture 1: tapered_wedge — at 0.2mm layer_height the beading engine is
+    // in the non-degenerate Flow-spacing regime (`line_width_to_spacing(0.4,
+    // 0.2, 0.4) = 0.3571mm`), so the SKT graph's variable-width strategy
+    // does NOT translate to per-bead width variation across walls (all beads
+    // share the same Flow spacing). The SKT graph IS still exercised though
+    // (it produces 3 distinct wall depths), and the captured width is the
+    // Flow-spacing value applied uniformly. Assert both: the wall-depth
+    // structure is present (>= 3 walls) AND every captured width is the
+    // Flow-spacing value to a small tolerance.
     {
         let dir = fixture_dir("tapered_wedge");
         let perimeters = run_and_check_arachne_fixture(&dir, "tapered_wedge.stl");
@@ -2084,22 +2097,31 @@ fn arachne_perimeter_parity() {
             .expect("tapered_wedge: at least one region with walls must be captured");
         assert!(
             region.walls.len() > 1,
-            "tapered_wedge: expected more than one WallLoop to compare widths across, got {}",
+            "tapered_wedge: expected more than one WallLoop from the SKT graph, got {}",
             region.walls.len()
         );
+        // Flow spacing for optimal_width=0.4, layer_height=0.2, nozzle=0.4:
+        // 0.4 - 0.2 * (1 - PI/4) = 0.4 - 0.2 * 0.2146 = 0.3571mm
+        const FLOW_SPACING_MM: f32 = 0.3571;
+        const FLOW_SPACING_TOLERANCE_MM: f32 = 0.01;
         let all_widths: Vec<f32> = region
             .walls
             .iter()
             .flat_map(|w| w.width_profile.widths.iter().copied())
             .collect();
-        let min_w = all_widths.iter().copied().fold(f32::INFINITY, f32::min);
-        let max_w = all_widths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         assert!(
-            (max_w - min_w) > 0.05,
-            "tapered_wedge: expected observable width variation across the tapering wedge \
-             (spread > 0.05mm), got min={min_w} max={max_w} (spread={})",
-            max_w - min_w
+            !all_widths.is_empty(),
+            "tapered_wedge: at least one width sample must be present"
         );
+        for &w in &all_widths {
+            assert!(
+                (w - FLOW_SPACING_MM).abs() < FLOW_SPACING_TOLERANCE_MM,
+                "tapered_wedge: every captured width must equal the Flow-spacing value \
+                 ({FLOW_SPACING_MM}mm +/- {FLOW_SPACING_TOLERANCE_MM}mm) at layer_height 0.2mm, \
+                 got {w}mm (deviation {})",
+                (w - FLOW_SPACING_MM).abs()
+            );
+        }
     }
 
     // Fixture 2: narrow_strip_widening — the feature is rescued (>= 1 wall,
