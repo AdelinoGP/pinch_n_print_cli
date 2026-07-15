@@ -2,6 +2,10 @@
 
 `docs/` is the canonical source for architecture, IR schemas, WIT contracts, scheduler behavior, and the coordinate system. **Read the relevant doc before answering architecture questions or modifying contracts** — do not rely on summaries here. For the full doc index with one-line descriptions of each file, read @.claude/doc-index.md.
 
+For pipeline geometry diagnosis, read `docs/19_visual_debug.md` alongside
+`docs/17_agent_debugging.md`; the former defines visual-debug bundles and the
+latter defines timing, DAG, and manifest diagnosis.
+
 ## Build & Test Commands
 
 ```bash

@@ -14,6 +14,9 @@ The mechanisms are zero-dependency CLI extensions to `pnp_cli`:
 
 Spec: `docs/specs/agent-cli-debugging.md`.
 Event contract: `docs/09_progress_events.md`.
+Geometry-stage visualization: `docs/19_visual_debug.md`. Use it independently
+when the question is where a visible toolpath defect first appears; this guide
+remains the surface for timing, DAG, and manifest diagnosis.
 
 ## Live slice instrumentation
 
