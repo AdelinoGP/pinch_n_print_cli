@@ -35,7 +35,7 @@ without inverting it.
 
 ## Expected Change Surface
 
-- `crates/slicer-core/src/arachne/{region_order.rs,sparse_point_grid.rs,pipeline.rs}`
+- `crates/slicer-core/src/arachne/{region_order.rs,sparse_point_grid.rs,pipeline.rs,separate_inner_contour.rs}`
 - `crates/slicer-schema/wit/deps/common.wit` and generated-binding consumers
 - `crates/slicer-sdk/src/host.rs`, `crates/slicer-wasm-host/src/host.rs`
 - `modules/core-modules/arachne-perimeters/src/lib.rs`

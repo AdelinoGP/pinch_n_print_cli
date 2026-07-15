@@ -252,7 +252,8 @@
 ## Step 8: Audit, WIT, and deviation documentation
 
 - Objective: replace stale G12 closure claims with accurate references and
-  record the real WIT/ownership change; only then mark the packet implemented.
+  record the real WIT/ownership change; packet status remains `draft` pending
+  Step 9 acceptance ceremony.
 - Precondition: Steps 1-7 are green and guests are fresh, excluding only the
   documented unrelated D-104f concentric-infill red.
 - Postcondition: audit, WIT documentation, and deviation log accurately

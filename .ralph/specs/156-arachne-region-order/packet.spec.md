@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 156-arachne-region-order
 task_ids:
   - none
@@ -49,7 +49,7 @@ module, and optimizer contracts as required to preserve the existing config.
   `get_region_order` runs, then it excludes same-line, same-inset, and
   non-adjacent-inset pairs; applies the canonical odd/even predicate; and
   returns each `(before, after)` pair once. |
-  `cargo test -p slicer-core --test region_order_tdd -- region_order_get_matches_canonical_pair_guards --exact`
+  `cargo test -p slicer-core --test region_order_tdd -- region_order_get_matches_canonical_pair_guards region_order_excludes_same_line_same_inset_and_non_adjacent_insets region_order_deduplicates_constraints_from_multiple_junction_pairs region_order_constraints_are_unique_and_acyclic`
 - **AC-2 (candidate grid).** Given points in cells touched by a query circle,
   when `SparsePointGrid::get_nearby` runs, then it returns candidate-cell
   contents without an independent exact-distance filter. |
@@ -105,13 +105,16 @@ module, and optimizer contracts as required to preserve the existing config.
 
 - `docs/18_arachne_parity_audit.md`: correct G12's canonical references and
   keep G12 implementation-complete but not closed until AC-1 through AC-8 and
-  the final acceptance review pass.
+  the final acceptance review pass. Pin the pending state —
+  `rg -q 'closure remains pending' docs/18_arachne_parity_audit.md`.
 - `docs/03_wit_and_manifest.md`: document the extended `arachne-params`
-  boundary — `rg -q 'arachne-params' docs/03_wit_and_manifest.md`
+  boundary and the three-state WIT enum, including the optimizer-preservation
+  clause — `rg -q 'arachne-params' docs/03_wit_and_manifest.md && rg -q 'wall-sequence' docs/03_wit_and_manifest.md && rg -q 'preserve' docs/03_wit_and_manifest.md`.
 - `docs/01_system_architecture.md` and ADR-0011: reconcile final committed
-  wall sequence with optimizer behavior — `rg -q 'own wall sequencing' docs/01_system_architecture.md && rg -q 'final print order' docs/adr/0011-perimeter-module-owns-wall-sequencing.md`
+  wall sequence with optimizer behavior — `rg -q 'own wall sequencing' docs/01_system_architecture.md && rg -q 'optimiz' docs/01_system_architecture.md && rg -q 'final print order' docs/adr/0011-perimeter-module-owns-wall-sequencing.md`.
 - `docs/DEVIATION_LOG.md`: retain D-157's intentional behaviorally equivalent
-  deviations and keep its closure pending the final acceptance ceremony.
+  deviations and keep its closure pending the final acceptance ceremony. Pin
+  the pending state — `rg -q 'pending final packet acceptance ceremony' docs/DEVIATION_LOG.md`.
 - `CONTEXT.md`: the packet-refinement session already added the resolved
   glossary terms; verify they remain — `rg -q 'Committed wall sequence' CONTEXT.md`
 
