@@ -420,3 +420,41 @@ Ambiguous between two mechanisms — qualify which:
 - **Segment annotation** — the paint is carried per contour point of the base
   region's contour, with no region-split. Use for continuous quantities and
   per-segment metadata (e.g. seam placement, scalar coefficients).
+
+### Visual-debug tap
+A request-gated, read-only capture point at a scheduler stage's committed
+output, used by `pnp_cli visual-debug` to produce per-stage/per-layer PNG
+evidence. A tap never adds a module, WIT, or **Blackboard** API and never
+changes slice geometry — it reads IR the pipeline already committed.
+
+### Tap class
+Which capture mechanism a **visual-debug tap** uses, determined by where its
+source IR lives (ADR-0040). Three classes: **Blackboard-read** (source is a
+whole-print **Blackboard slot** committed during prepass; captured post-prepass
+with no per-layer work), **arena** (source is an `apply` commit into a per-layer
+`LayerArena` slot; per-layer closure truncatable at the furthest tap), and
+**PostPass-whole-print** (source is post-finalization `Vec<LayerCollectionIR>`
+or emitted `GCodeIR`; requires running the full pipeline prefix). A request's
+furthest selected tap fixes the class, and therefore the cost, of the run.
+
+### Dependency closure (visual-debug)
+The minimal set of pipeline work executed to reach a request's furthest selected
+**tap**, then stop. For Blackboard-read taps it is prepass through the committing
+stage; for arena taps, prepass plus the per-layer stage sequence truncated at the
+tap over only selected layers; for PostPass taps it is the whole-print prefix
+(all layers → finalization → postpass). Every executed-but-unrendered expansion
+and its reason is recorded in the bundle manifest.
+
+### Blackboard slot
+One write-once field of the **Blackboard** holding a whole-print IR product
+(`SurfaceClassificationIR`, `LayerPlanIR`, `SeamPlanIR`, `SupportGeometryIR`/
+`SupportPlanIR`, `SliceIR`, `RegionMapIR`), committed during prepass and read via
+its accessor. The committed slot accessor is the read boundary a Blackboard-read
+**tap** captures from — an owned clone of the slot payload, never a live borrow.
+
+### Region-key join
+Matching `RegionMapIR.entries` (keyed by `RegionKey { global_layer_index,
+object_id, region_id, variant_chain }`) to the `SliceIR` region carrying the same
+four identifiers, so RegionMapping can be rendered as real region geometry tinted
+by its `RegionPlan` dispatch/config instead of a fabricated diagram (ADR-0037
+Amendment, packet 161).

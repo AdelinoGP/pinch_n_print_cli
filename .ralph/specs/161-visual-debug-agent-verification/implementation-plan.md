@@ -3,144 +3,165 @@
 ## Execution Rules
 
 - Work one atomic step at a time; map every step to `TASK-271`.
-- Use contract tests first, then guidance, then deterministic and overhead verification.
-- Every field below is an independent context-budget contract; do not infer missing packet exports.
+- TDD per feature: author the named `*_tdd.rs` assertion first, then implement to green.
+- After any edit to `crates/slicer-ir/**` or `crates/slicer-runtime/**`, run
+  `cargo xtask build-guests --check` before attributing a guest/host failure.
+- Every field below is an independent context-budget contract; capture reads
+  committed slots/arena/finalized IR only — add no module/WIT/Blackboard API.
 
 ## Steps
 
-### Step 1: Confirm forward seams and reusable fixtures
+### Step 1: Reconcile drifted design and IR docs
 
 - Task IDs: `TASK-271`
-- Objective: inventory packet-157 lifecycle, packet-159 typed capture, and packet-160 final-renderer exports plus deterministic fixtures without implementing missing surfaces.
-- Precondition: packets 159 and 160 exist as generated/draft prerequisites.
-- Postcondition: `[FWD-157-1]`, `[FWD-159-1]`, and `[FWD-160-1]` have exact symbols or named activation blockers.
-- Files allowed to read, with ranges when over 300 lines:
-  - `.ralph/specs/159-visual-debug-intermediate-renderer/**` - contract artifacts only.
-  - `.ralph/specs/160-visual-debug-gcode-renderer/**` - contract artifacts only.
-  - Packet-157 implementation/test seam - exact locations returned by dispatch.
-- Files allowed to edit (at most 3):
-  - None; read-only discovery.
-- Files explicitly out of bounds:
-  - Renderer/parser/capture implementation, CLI contract, WIT/IR/schema, WASM, coordinate helpers, Orca sources, and ordinary slice production code.
-- Expected sub-agent dispatches:
-  - Question: identify the three exact published integration/test seams; scope: named packet artifacts and bounded implementation locations; return: `LOCATIONS` at most 20 entries.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/visual-pipeline-debug.md` - lines 112-163, 180-221.
-  - `docs/19_visual_debug.md` - lines 18-50.
-  - `docs/17_agent_debugging.md` - lines 7-19.
-  - `docs/adr/0038-visual-debug-skill-pairs-with-debug-pipeline.md` - complete decision.
-- Verification:
-  - Bounded seam inventory - `LOCATIONS` or explicit `[BLOCK]`.
-- Exit condition: exact seams are recorded, or activation remains blocked with no guessed API.
-
-### Step 2: Add agent skill and guide examples
-
-- Task IDs: `TASK-271`
-- Objective: document independent visual-debug source selection, request examples, manifest-first inspection, warnings, scale/cost guidance, failure behavior, and debug-pipeline cross-links.
-- Precondition: Step 1 confirms the command examples are packet-157 compatible; unresolved renderer exports do not block prose-only guidance.
-- Postcondition: skill and examples satisfy AC-1, AC-2, and AC-N1 without claiming renderer ownership, Orca parity, WASM behavior, or coordinate changes.
-- Files allowed to read, with ranges when over 300 lines:
-  - `docs/19_visual_debug.md` - lines 9-58.
-  - `docs/17_agent_debugging.md` - lines 7-19, 21-55, 103-132.
-  - `docs/adr/0038-visual-debug-skill-pairs-with-debug-pipeline.md` - complete.
-- Files allowed to edit (at most 3):
-  - `.claude/skills/visual-debug/SKILL.md`
-  - `.claude/skills/visual-debug/examples/model-backed.md`
-  - `.claude/skills/visual-debug/examples/standalone-gcode.md`
-- Files explicitly out of bounds:
-  - All renderer/parser/capture/CLI implementation, `docs/19_visual_debug.md`, `docs/17_agent_debugging.md`, WIT/IR/schema, WASM, coordinate helpers, Orca sources, and ordinary slice paths.
-- Expected sub-agent dispatches:
-  - Question: validate the two examples against the documented request and evidence boundary; scope: the two new example files and listed docs; return: `FACT` in 5 lines or fewer.
-- Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/visual-pipeline-debug.md` - lines 20-35, 61-110, 215-221.
-  - `docs/19_visual_debug.md` - complete.
-  - `docs/17_agent_debugging.md` - lines 7-19, 21-55, 103-132.
-- Verification:
-  - `python3 -c "from pathlib import Path; ..."` - FACT pass/fail for commands, manifest-first guidance, and cross-links.
-- Exit condition: both source-mode examples and the negative routing guidance are present and exact.
-
-### Step 3: Add contract and deterministic evidence tests
-
-- Task IDs: `TASK-271`
-- Objective: pin all documented intermediate tap fields in the runtime seam, pin the packet-160 final-renderer manifest at its owning `pnp-cli` seam, then compare complete model and standalone-G-code bundles byte-for-byte.
-- Precondition: Step 1's forward seams are confirmed; otherwise record a named failing `[FWD]` test and do not substitute implementation.
-- Postcondition: AC-3, AC-4, AC-5, and AC-N2 have focused tests covering exact fields, both source modes, deterministic ordering/bytes, and invalid-request failure.
-- Files allowed to read, with ranges when over 300 lines:
-  - Exact packet-159/160/157 seam files returned by Step 1.
-  - Existing visual-debug test fixtures in the two named test directories only.
-  - `docs/specs/visual-pipeline-debug.md` - lines 180-213.
-- Files allowed to edit (at most 3):
-   - `crates/slicer-runtime/tests/visual_debug_agent_contract_tdd.rs`
-   - `crates/pnp-cli/tests/visual_debug_gcode_renderer_tdd.rs`
-   - `crates/pnp-cli/tests/visual_debug_agent_determinism_tdd.rs`
-  - Existing test fixture helper only if the confirmed seam requires a minimal constructor.
-- Files explicitly out of bounds:
-  - Any renderer/parser/capture/CLI production file, WIT/IR/schema, modules, WASM, coordinate code, Orca sources, and ordinary slice production path.
-- Expected sub-agent dispatches:
-  - Question: identify the smallest real fixtures and exact field accessors for every documented tap and both source modes; scope: confirmed seams and existing tests; return: `SNIPPETS` at most 3 snippets, 30 lines each.
+- Objective: correct the `docs/specs/visual-pipeline-debug.md` tap inventory (SeamPlanIR `region_key`/`chosen_candidate.point` not `seam_xy`; `RegionPlan.config` as `ConfigId`; mm-unit flags on seam/branch; drop the standalone LayerPlanning row -> overlay note; RegionMapping as a `SliceIR` join) and add a normative `SupportGeometryIR` definition to `docs/02_ir_schemas.md`.
+- Precondition: field shapes grounded from `crates/slicer-ir/src/slice_ir.rs`.
+- Postcondition: AC-8 passes; downstream steps cite correct field names.
+- Files allowed to edit (<=3): `docs/specs/visual-pipeline-debug.md`, `docs/02_ir_schemas.md`.
+- Out of bounds: all code; other docs.
+- Dispatch: exact `SupportGeometryIR`/`SupportGeometryKey` shape — `SNIPPETS` <=1, 30 lines.
 - Context cost: `M`
-- Authoritative docs:
-  - `docs/specs/visual-pipeline-debug.md` - lines 112-141 and 180-213.
-  - `docs/11_operational_governance_and_acceptance_gate.md` - lines 86-117 and 167-179.
-  - `docs/01_system_architecture.md` - lines 621-665.
-- Verification:
-   - `cargo test -p slicer-runtime --all-targets --test visual_debug_agent_contract_tdd -- intermediate_tap_manifest_contracts --exact 2>&1 | tee target/test-output.log` - FACT from the log.
-   - `cargo test -p pnp-cli --all-targets --test visual_debug_gcode_renderer_tdd -- final_gcode_manifest_contracts --exact 2>&1 | tee target/test-output.log` - FACT from the log.
-   - `cargo test -p pnp-cli --all-targets --test visual_debug_agent_determinism_tdd -- visual_debug_bundles_are_byte_deterministic --exact 2>&1 | tee target/test-output.log` - FACT from the log.
-   - Exit condition: tests assert exact fields, complete metadata, byte identity, ordering, and invalid-request failure rather than merely PNG existence.
+- Verification: the AC-8 `python3` check - FACT pass/fail.
+- Exit: docs assert the corrected fields and the `SupportGeometryIR` definition.
 
-### Step 4: Prove ordinary-slice opt-out and run closure gates
+### Step 2: Packet-160 cleanup and TravelMove doc fix
 
 - Task IDs: `TASK-271`
-- Objective: prove no visual-debug work occurs in ordinary slicing and run focused quality gates.
-- Precondition: Steps 2 and 3 pass, or any unresolved draft seam is recorded as a named blocker.
-- Postcondition: AC-6 passes; focused contract/determinism/overhead tests, all-target check, and clippy provide bounded evidence.
-- Files allowed to read, with ranges when over 300 lines:
-  - `target/test-output.log` - summary or bounded failure ranges only.
-  - Changed packet-local skill/examples/tests only for diagnostics.
-- Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/tests/visual_debug_agent_overhead_tdd.rs`
-  - Packet-local skill/example/test files only for a packet-local failure.
-- Files explicitly out of bounds:
-  - Ordinary slice production code, renderers/parsers/capture, WIT/IR/schema, modules, WASM, coordinate code, Orca sources, lockfiles, generated output, and unrelated packets.
-- Expected sub-agent dispatches:
-   - Question: run the four focused tests, all-target check, and clippy; scope: repository commands only; return: `FACT` in 5 lines or fewer.
+- Objective: remove the stale "not yet wired" header and blanket `#![allow(dead_code)]` from `visual_debug_gcode.rs` (:32-37); correct the `TravelMove` doc comment in `slice_ir.rs` (:2080) to state millimeters, not "100 nm".
+- Postcondition: AC-9 passes; no new clippy dead-code warnings introduced.
+- Files allowed to edit (<=3): `crates/pnp-cli/src/visual_debug_gcode.rs`, `crates/slicer-ir/src/slice_ir.rs`.
+- Out of bounds: `TravelMove` type/fields (doc comment only); all other code.
 - Context cost: `S`
-- Authoritative docs:
-  - `docs/specs/visual-pipeline-debug.md` - lines 41-59.
-  - `docs/11_operational_governance_and_acceptance_gate.md` - lines 86-117.
-  - `docs/07_implementation_status.md` - line 243 only.
-- Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_agent_overhead_tdd 2>&1 | tee target/test-output.log` - FACT from the log.
-  - `cargo check --workspace --all-targets` - FACT pass/fail.
-  - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail.
-- Exit condition: ordinary slice has no visual-debug signal/artifact and all packet-local gates pass with no known unintended side effect.
+- Verification: the AC-9 `python3` check; `cargo xtask build-guests --check` (slice_ir edit); `cargo clippy -p pnp-cli --all-targets -- -D warnings` - FACT.
+- Exit: header/allow gone, `TravelMove` doc says mm, guests fresh, clippy clean.
+
+### Step 3: Blackboard-read capture — SliceIR family
+
+- Task IDs: `TASK-271`
+- Objective: add a Blackboard-read capture entry point reading committed slots off `PrepassContext` (`run.rs:636`) via `Blackboard` accessors (`blackboard.rs:141-271`); add `CapturedIr::Slice(SliceIR)` and tap ids for `Layer::Slice`, `PaintSegmentation`, `Layer::PaintRegionAnnotation`/`SlicePostProcess`; wire them in `visual_debug.rs` `run_model_source`.
+- Postcondition: these taps capture the `SliceIR` slot with no per-layer arena execution; AC-1 (SliceIR subset) passes.
+- Files allowed to edit (<=3): `crates/slicer-runtime/src/layer_executor.rs`, `crates/pnp-cli/src/visual_debug.rs`, `crates/slicer-runtime/tests/visual_debug_blackboard_tap_tdd.rs`.
+- Out of bounds: per-layer arena path; render code; validation.
+- Dispatch: exact `PrepassContext`/`Blackboard` slot accessor names — `LOCATIONS` <=20.
+- Context cost: `M`
+- Verification: `cargo test -p slicer-runtime --all-targets --test visual_debug_blackboard_tap_tdd -- blackboard_tap_capture_contracts --exact 2>&1 | tee target/test-output.log` - FACT from log; `cargo xtask build-guests --check`.
+- Exit: SliceIR-family taps capture prepass-only with pinned fields.
+
+### Step 4: Blackboard-read capture — classification/seam/support/regionmapping
+
+- Task IDs: `TASK-271`
+- Objective: add `CapturedIr` variants for `SurfaceClassificationIR` (MeshAnalysis, OverhangAnnotation), `SeamPlanIR` (SeamPlanning), the SupportGeometry composite (`SupportGeometryIR`+`SupportPlanIR`), and the RegionMapping composite (`RegionMapIR`+`SliceIR` for the render-time join); wire tap ids in `visual_debug.rs`.
+- Postcondition: all eight Blackboard taps capture their committed slot(s); AC-1 passes fully with corrected fields (`chosen_candidate.point`, `region_key`, `ConfigId`).
+- Files allowed to edit (<=3): `crates/slicer-runtime/src/layer_executor.rs`, `crates/pnp-cli/src/visual_debug.rs`, `crates/slicer-runtime/tests/visual_debug_blackboard_tap_tdd.rs`.
+- Out of bounds: render code; validation; arena path.
+- Dispatch: exact field accessors + `schema_version` for the four source types — `SNIPPETS` <=3, 30 lines.
+- Context cost: `M`
+- Verification: the AC-1 test - FACT from log; `cargo xtask build-guests --check`.
+- Exit: every Blackboard tap captures pinned, correctly-named fields.
+
+### Step 5: PostPass whole-print capture
+
+- Task IDs: `TASK-271`
+- Objective: add a PostPass capture path that runs the full prefix (all layers -> finalization -> `execute_postpass`, `postpass.rs:87/:135`) and captures the finalized `Vec<LayerCollectionIR>` (LayerFinalization) and `GCodeIR` (GCodeEmit); record whole-print `executed_stage_ids`/`executed_layer_indices` in the manifest; render only selected layers.
+- Postcondition: AC-2 passes; GCodeEmit selection triggers emission; ordinary emission behavior unchanged.
+- Files allowed to edit (<=3): `crates/slicer-runtime/src/layer_executor.rs`, `crates/pnp-cli/src/visual_debug.rs`, `crates/slicer-runtime/tests/visual_debug_postpass_tap_tdd.rs`. (Only if `execute_postpass` does not already surface the finalized/emitted IRs read-only, add a minimal read hook in `crates/slicer-runtime/src/postpass.rs` and split this step.)
+- Out of bounds: changing what G-code is emitted; scheduler edges.
+- Context cost: `M`
+- Verification: the AC-2 test - FACT from log; `cargo xtask build-guests --check`.
+- Exit: PostPass taps capture finalized/emitted IR and record the closure.
+
+### Step 6: Renderer — new-variant geometry, RegionMapping join, mixed units
+
+- Task IDs: `TASK-271`
+- Objective: extend `visual_debug_render.rs` to render the new `CapturedIr` geometry variants; implement the RegionMapping `RegionMapIR`->`SliceIR` join on `(global_layer_index, object_id, region_id, variant_chain)` tinted by `RegionPlan` (`config_for()`); project Point2 (100 nm) and f32-mm sources into one shared viewport; wire render dispatch in `visual_debug.rs`.
+- Postcondition: AC-4 and the RegionMapping-geometry portion of AC-3 pass; no synthetic-diagram symbol is added.
+- Files allowed to edit (<=3): `crates/slicer-runtime/src/visual_debug_render.rs`, `crates/pnp-cli/src/visual_debug.rs`, `crates/slicer-runtime/tests/visual_debug_render_tap_tdd.rs`.
+- Out of bounds: capture code; coordinate helper crates.
+- Context cost: `M`
+- Verification: `cargo test -p slicer-runtime --all-targets --test visual_debug_render_tap_tdd -- mixed_unit_shared_viewport --exact 2>&1 | tee target/test-output.log` - FACT; `cargo xtask build-guests --check`.
+- Exit: mixed-unit geometry and RegionMapping join render in one correct viewport.
+
+### Step 7: Renderer — seam and LayerPlanning overlays
+
+- Task IDs: `TASK-271`
+- Objective: render `SeamPlanIR` seam-point overlays (mm) and expose `LayerPlanIR` sync/non-planar/active-region flags as an opt-in `diagnostic_overlay` annotation on geometry taps; assert the synthetic-diagram render mode does not exist.
+- Postcondition: AC-3 passes fully (join + overlay + no synthetic mode).
+- Files allowed to edit (<=3): `crates/slicer-runtime/src/visual_debug_render.rs`, `crates/pnp-cli/src/visual_debug.rs`, `crates/slicer-runtime/tests/visual_debug_render_tap_tdd.rs`.
+- Out of bounds: capture code; a second render mode.
+- Context cost: `M`
+- Verification: `cargo test -p slicer-runtime --all-targets --test visual_debug_render_tap_tdd -- regionmapping_join_and_layerplanning_overlay --exact 2>&1 | tee target/test-output.log` - FACT.
+- Exit: overlays render; no synthetic mode; LayerPlanning has no standalone tap.
+
+### Step 8: Two-phase fail-closed validation and selectors
+
+- Task IDs: `TASK-271`
+- Objective: in `validate_request` (:199) add phase-1 rejection of unknown visualization kinds, `diagnostic_overlay` on a G-code source, and `LayerSelector::Name`; add `LayerSelector::Range { start, end }` with `#[serde(deny_unknown_fields)]`; implement phase-2 resolution of `Index`/range/z-only against the schedule (model `LayerPlanIR.global_layers`; gcode parsed `;Z:`) failing closed on no match; add `ValidationError` variants; make the former silent-drop sites (:340/:407/:701-705) unreachable.
+- Postcondition: AC-N1..AC-N4 pass; no requested output is ever silently omitted.
+- Files allowed to edit (<=3): `crates/pnp-cli/src/visual_debug.rs`, `crates/pnp-cli/tests/visual_debug_validation_tdd.rs`, `crates/pnp-cli/src/visual_debug_gcode.rs` (only if the gcode-branch selector reject moves into the unified validator).
+- Out of bounds: renderer; capture; manifest schema ownership.
+- Context cost: `M`
+- Verification: `cargo test -p pnp-cli --all-targets --test visual_debug_validation_tdd 2>&1 | tee target/test-output.log` - FACT from log.
+- Exit: unknown kinds, overlay-on-gcode, `Name`, and malformed ranges are rejected; range/z-only resolve or fail closed.
+
+### Step 9: Agent skill and guide examples
+
+- Task IDs: `TASK-271`
+- Objective: add an independent `.claude/skills/visual-debug/SKILL.md` (source selection, request authoring, manifest-first inspection, warnings, resolution cost, fail-closed failure behavior, `debug-pipeline` cross-links) and model-backed + standalone-G-code examples.
+- Postcondition: AC-6 and AC-N5 pass without claiming Orca parity, WASM behavior, or coordinate changes.
+- Files allowed to edit (<=3): `.claude/skills/visual-debug/SKILL.md`, `.claude/skills/visual-debug/examples/model-backed.md`, `.claude/skills/visual-debug/examples/standalone-gcode.md`.
+- Out of bounds: `docs/19_visual_debug.md` beyond Step 1; all code.
+- Context cost: `S`
+- Verification: the AC-6 and AC-N5 `python3` checks - FACT pass/fail.
+- Exit: skill selects visual-debug, is manifest-first, routes non-geometry work to `debug-pipeline`.
+
+### Step 10: Determinism, overhead, and closure gates
+
+- Task IDs: `TASK-271`
+- Objective: add byte-determinism tests for model (including one whole-print PostPass tap) and standalone-G-code bundles, and the ordinary-slice no-overhead proof; run the closure gates.
+- Postcondition: AC-5 and AC-7 pass; all-target check, clippy, and guest-freshness are clean.
+- Files allowed to edit (<=3): `crates/pnp-cli/tests/visual_debug_agent_determinism_tdd.rs`, `crates/slicer-runtime/tests/visual_debug_agent_overhead_tdd.rs`, plus a bounded packet-local fix only for a packet-local failure.
+- Out of bounds: ordinary slice production path (observe only).
+- Context cost: `M`
+- Verification: the AC-5 and AC-7 tests - FACT from log; `cargo xtask build-guests --check`; `cargo check --workspace --all-targets`; `cargo clippy --workspace --all-targets -- -D warnings`.
+- Exit: both modes byte-deterministic, ordinary slice has no visual-debug signal, gates clean.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | S | Forward-contract inventory only. |
-| Step 2 | S | Skill and two guide examples. |
-| Step 3 | M | Cross-crate contract and byte-determinism tests. |
-| Step 4 | S | Overhead proof and bounded quality gates. |
+| Step 1 | M | Docs reconcile (spec fields + docs/02 SupportGeometryIR). |
+| Step 2 | S | Cleanup + TravelMove doc. |
+| Step 3 | M | Blackboard capture, SliceIR family. |
+| Step 4 | M | Blackboard capture, classification/seam/support/regionmapping. |
+| Step 5 | M | PostPass whole-print capture. |
+| Step 6 | M | Renderer geometry + join + mixed units. |
+| Step 7 | M | Renderer seam/LayerPlanning overlays. |
+| Step 8 | M | Fail-closed validation + selectors. |
+| Step 9 | S | Agent skill + examples. |
+| Step 10 | M | Determinism, overhead, gates. |
 
-Split before activation if aggregate cost exceeds M or any step is L.
+Aggregate is `L` (ten steps, no single step above `M`). Per the monolithic decision
+the packet stays whole; if `spec-review --preflight` rules it non-atomic, split at
+the Blackboard-vs-PostPass seam (Steps 3-4/6-8/9 vs Step 5) before activation.
 
 ## Packet Completion Gate
 
-- All steps and exits complete.
-- Every pipe-suffixed AC command returns PASS.
-- Forward contracts are resolved or the packet remains draft with explicit blockers.
-- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read.
-- `packet.spec.md` is ready for `status: implemented` only after the independent reviewer clears the draft.
+- All ten steps and exits complete; every pipe-suffixed AC command returns PASS.
+- `cargo xtask build-guests --check` reports fresh; `cargo check`/`clippy
+  --workspace --all-targets` clean.
+- Update `docs/07_implementation_status.md` (TASK-271) through a worker dispatch,
+  never a full backlog read.
+- `packet.spec.md` is ready for `status: implemented` only after the independent
+  reviewer clears the packet.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Record remaining packet-local risk and all resolved `[FWD]` contracts.
-- Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
+- Run the gated full suite once at closure via `cargo xtask test --summary
+  --workspace` (guest-freshness entry point), after all narrow commands pass;
+  dispatch it to a sub-agent returning `FACT PASS/FAIL` — never absorb full output.
+- Record remaining packet-local risk; confirm context stayed at or below 150k
+  standard (or at/below 300k only with a logged swarm ESCALATION).
 
-All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so test, bench, and example targets compile.
+All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and
+verification commands must use `--all-targets`.

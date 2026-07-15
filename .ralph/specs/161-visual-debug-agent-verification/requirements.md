@@ -4,74 +4,140 @@
 
 - Grouped task IDs: `TASK-271`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
-- Aggregate context cost: `M`
-- Dependencies: packets `159-visual-debug-intermediate-renderer`, `160-visual-debug-gcode-renderer`, and `ADR-0038`; both renderer packets are generated/draft.
+- Packet status: `active`
+- Aggregate context cost: `L` (XL surface: three capture subsystems + validation + docs + agent surface + verification, absorbed into one packet by decision)
+- Dependencies: landed packets 157/158/159/160 (real symbols, not forward contracts); `ADR-0037` (with the packet-161 Amendment), `ADR-0038`, `ADR-0040`, `ADR-0041`.
 
 ## Problem Statement
 
-The visual-debug infrastructure has renderer contracts but no agent-facing operating surface or final verification slice. TASK-271 closes that gap by teaching agents when and how to use visual evidence, preserving `debug-pipeline` ownership of timing/DAG/manifest diagnosis, and proving that the two renderer outputs are contract-complete, deterministic, and absent from ordinary slicing.
+The visual-pipeline-debug queue (commit `a453158`) promised post-stage taps for
+every scheduler stage, a fail-closed bundle contract, and an agent surface.
+Packets 157-160 shipped only the seven `Layer::*` arena taps plus the standalone
+`final_gcode` path, left three request-selection paths silently dropping requested
+output, and never authored the agent skill; the design and IR docs also drifted
+(stale `SeamPlanIR`/`RegionPlan` field names, missing `SupportGeometryIR` in
+`docs/02`). TASK-271 closes the queue by finishing the tap inventory across the
+three capture mechanisms, making selection fail closed, adding the skill, fixing
+the docs and the packet-160 cleanup, and proving the full surface is
+contract-complete, deterministic, and absent from ordinary slicing.
 
 ## In Scope
 
-- Add an independent `.claude/skills/visual-debug/SKILL.md` with source selection, request authoring, manifest-first bundle inspection, warning handling, scale guidance, failure handling, and cross-links to `debug-pipeline`.
-- Add concrete model-backed and standalone-G-code guide examples under `.claude/skills/visual-debug/examples/`.
-- Add focused typed-tap and manifest contract tests covering every documented intermediate tap source field, post-stage identity, image metadata, schema version, and warnings in `slicer-runtime`, plus the packet-160 final-renderer manifest contract at its owning `pnp-cli` seam.
-- Add deterministic-bundle tests for model-backed intermediate output and standalone final-G-code output, including byte-level manifests and PNGs.
-- Add a repeated-run proof that ordinary `pnp_cli slice` has no visual-debug capture, allocation, serialization, rendering, process, manifest, or PNG overhead when visual debugging is not invoked.
-- Preserve explicit forward contracts for packet 159, packet 160, and their packet 157 dependency until those generated/draft exports are confirmed.
+- **Blackboard-read taps (ADR-0040):** capture the eight taps whose source is a
+  committed whole-print Blackboard slot — MeshAnalysis (`SurfaceClassificationIR`),
+  SeamPlanning (`SeamPlanIR`), SupportGeometry (`SupportGeometryIR` +
+  `SupportPlanIR`), PaintSegmentation (`SliceIR`), RegionMapping (`RegionMapIR`
+  joined to `SliceIR`), OverhangAnnotation (`SurfaceClassificationIR.overhang_quartile_polygons`),
+  `Layer::Slice` (`SliceIR`), and `Layer::PaintRegionAnnotation`/`SlicePostProcess`
+  (`SliceIR.segment_annotations`) — via a capture entry point that reads the slot
+  after `prepare_prepass_context` with no per-layer execution.
+- **PostPass whole-print taps (ADR-0040):** capture `PostPass::LayerFinalization`
+  (finalized `Vec<LayerCollectionIR>`) and `PostPass::GCodeEmit` (`GCodeIR`) after
+  the full pipeline prefix; render only selected layers; record the whole-print
+  closure in the manifest.
+- **Render (ADR-0037 Amendment):** RegionMapping as real `SliceIR` geometry via region-key
+  join tinted by `RegionPlan`; LayerPlanning signal as an opt-in `diagnostic_overlay`
+  annotation on geometry taps; no synthetic-diagram render mode; correct handling
+  of mixed units (Point2 100 nm vs f32 mm) in one shared viewport.
+- **Fail-closed validation (ADR-0041):** two-phase validation; reject unknown
+  visualization kinds, `diagnostic_overlay` on a G-code source, and `Name`
+  selectors; add an explicit `{start,end}` range variant with `deny_unknown_fields`;
+  resolve `Index`/range/z-only selectors against the schedule and fail closed on
+  no match — never a silent partial bundle.
+- **Cleanups and docs:** remove the stale header and blanket `#![allow(dead_code)]`
+  in `visual_debug_gcode.rs`; correct the `TravelMove` doc comment (mm, not 100 nm);
+  add a normative `SupportGeometryIR` to `docs/02_ir_schemas.md`; correct the
+  drifted tap-inventory field names, LayerPlanning row, and RegionMapping
+  description in `docs/specs/visual-pipeline-debug.md`.
+- **Agent surface:** add an independent `.claude/skills/visual-debug/SKILL.md`
+  plus model-backed and standalone-G-code examples, cross-linked to but independent
+  of `debug-pipeline`.
+- **Verification:** contract tests for every implemented tap (corrected fields +
+  schema version), byte determinism for both source modes including a whole-print
+  PostPass tap, fail-closed negatives, and the ordinary-slice no-overhead proof.
 
 ## Out of Scope
 
-- Renderer, rasterizer, PNG encoder, typed capture adapter, final-G-code parser, or bundle lifecycle implementation.
-- Request validation, source-mode selection, CLI command contract, overwrite behavior, or changes to ordinary `pnp_cli slice` behavior.
-- WIT, IR schema, manifest schema ownership, scheduler edges, module manifests, host services, SDK, guest artifacts, or WASM implementation/build changes.
-- Coordinate-system changes or new mm/unit conversion logic; no geometry is ported or constructed by this packet.
-- OrcaSlicer parity, Orca source translation, pixel/perceptual comparison, HTML gallery, or frontend integration.
+- New module, WIT, or Blackboard API; scheduler edges; module-visible tap access
+  (ADR-0037 — capture reads committed slots/arena only).
+- Any change to ordinary `pnp_cli slice` behavior or to G-code emission semantics
+  (the GCodeEmit tap reads the emitted `GCodeIR`; it does not alter emission).
+- OrcaSlicer parity or source translation; pixel/perceptual bundle comparison;
+  HTML gallery or frontend integration.
+- New coordinate-system logic beyond using the existing canonical helpers; no new
+  mm/unit conversion math is invented — mm and 100 nm sources are projected with
+  existing helpers.
+- Named-layer addressing (layers are anonymous; `Name` is rejected, not resolved).
 
 ## Authoritative Docs
 
-- `docs/specs/visual-pipeline-debug.md` - complete direct read; lines 20-35, 41-59, 99-131, 143-178, 180-221, and 223-235 govern scope, contracts, taps, agent surface, and no-overhead behavior.
-- `docs/19_visual_debug.md` - complete direct read; request authoring, bundle inspection, warnings, resolution cost, and failure behavior.
-- `docs/17_agent_debugging.md` - complete direct read; independent timing, DAG, and manifest diagnosis surface.
-- `docs/adr/0038-visual-debug-skill-pairs-with-debug-pipeline.md` - complete direct read; independent skill decision and evidence boundaries.
-- `docs/01_system_architecture.md` - lines 65-109, 246-387, 460-497, 621-665; stage ordering, typed ownership, postpass, and memory boundaries.
-- `docs/11_operational_governance_and_acceptance_gate.md` - complete direct read; determinism, recoverability, coupling, and evidence rules.
-- `docs/07_implementation_status.md` - delegated bounded lookup for TASK-271 at line 243.
-- `.ralph/specs/159-visual-debug-intermediate-renderer/**` - published draft contract; bounded read of packet artifacts only.
-- `.ralph/specs/160-visual-debug-gcode-renderer/**` - published draft contract; bounded read of packet artifacts only.
+- `docs/specs/visual-pipeline-debug.md` - complete design; scope, success criteria, tap inventory, bundle contract, determinism, no-overhead. Field names corrected by this packet.
+- `docs/adr/0037-…` (with the packet-161 Amendment), `docs/adr/0040-…`, `docs/adr/0041-…` - the accepted decisions implemented here.
+- `docs/adr/0038-visual-debug-skill-pairs-with-debug-pipeline.md` - independent skill decision.
+- `docs/02_ir_schemas.md` - IR versioning rules and the `SupportGeometryIR` reconcile target.
+- `docs/08_coordinate_system.md` - canonical 10,000 units/mm system; mm-vs-100 nm hazard.
+- `docs/19_visual_debug.md`, `docs/17_agent_debugging.md` - agent surface and the `debug-pipeline` evidence boundary.
+- `docs/07_implementation_status.md` - delegated bounded lookup for TASK-271.
 
 ## Acceptance Summary
 
 Reference, never copy, criteria from `packet.spec.md`.
 
-- Positive: `AC-1` through `AC-6` cover the independent skill, examples, all-tap contract coverage, final-renderer manifest coverage, deterministic bundles, and no-overhead proof.
-- Negative: `AC-N1` through `AC-N2` cover routing non-geometry diagnosis to `debug-pipeline` and rejecting an invalid source/tap request before rendering or bundle creation.
-- Cross-packet impact: packet 159 owns typed intermediate rendering; packet 160 owns final-G-code parsing/rendering; packet 157 owns request and bundle lifecycle; packet 161 consumes those surfaces and owns agent guidance and verification only.
-- Forward contracts: `[FWD-159-1]` packet 159 must publish the stable typed-renderer test/export seam and image-entry fields needed to assert every documented intermediate tap. `[FWD-160-1]` packet 160 must publish the stable final-G-code invocation/test seam, parser-version field, warning ordering, and image-entry fields. `[FWD-157-1]` packet 157 must publish the validated request and complete bundle handoff used by both deterministic tests. These are not replacement APIs.
+- Positive: `AC-1` (Blackboard-read taps), `AC-2` (PostPass whole-print taps),
+  `AC-3` (RegionMapping join + LayerPlanning overlay + no synthetic mode), `AC-4`
+  (mixed-unit shared viewport), `AC-5` (byte determinism, both modes), `AC-6`
+  (agent skill + examples), `AC-7` (ordinary-slice no-overhead), `AC-8` (doc
+  reconcile), `AC-9` (cleanup + `TravelMove` doc).
+- Negative: `AC-N1` (unknown kind rejected), `AC-N2` (overlay on gcode rejected),
+  `AC-N3` (`Name` + malformed range rejected), `AC-N4` (range/z-only resolve or
+  fail closed), `AC-N5` (`debug-pipeline` routing).
+- Cross-packet impact: this packet extends the landed capture (`layer_executor.rs`),
+  renderer (`visual_debug_render.rs`), and CLI validation/wiring (`visual_debug.rs`,
+  `visual_debug_gcode.rs`) rather than consuming them as frozen seams; it adds no
+  module-visible API.
 
 ## Verification Commands
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-runtime --all-targets --test visual_debug_agent_contract_tdd -- intermediate_tap_manifest_contracts --exact` | Assert exact documented intermediate tap fields, manifest metadata, schema version, and warnings. | FACT pass/fail; SNIPPETS <=20 lines on failure |
-| `cargo test -p pnp-cli --all-targets --test visual_debug_gcode_renderer_tdd -- final_gcode_manifest_contracts --exact` | Assert exact final-renderer output, layer/tap association, and manifest fields at the owning seam. | FACT pass/fail; SNIPPETS <=20 lines on failure |
-| `cargo test -p pnp-cli --all-targets --test visual_debug_agent_determinism_tdd -- visual_debug_bundles_are_byte_deterministic --exact` | Compare model and standalone-G-code manifests and PNG bytes across clean repeated runs. | FACT pass/fail; SNIPPETS <=20 lines on failure |
-| `cargo test -p slicer-runtime --all-targets --test visual_debug_agent_overhead_tdd -- ordinary_slice_has_no_visual_debug_overhead --exact` | Prove ordinary slice does not enter or allocate the visual-debug path. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p slicer-runtime --all-targets --test visual_debug_blackboard_tap_tdd -- blackboard_tap_capture_contracts --exact` | Pin every Blackboard-read tap's corrected source fields, schema version, and prepass-only closure. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p slicer-runtime --all-targets --test visual_debug_postpass_tap_tdd -- postpass_whole_print_tap_contracts --exact` | Assert PostPass taps capture finalized/emitted IR after the whole-print prefix and record the closure. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p slicer-runtime --all-targets --test visual_debug_render_tap_tdd -- regionmapping_join_and_layerplanning_overlay --exact` | Assert RegionMapping join geometry, LayerPlanning overlay, and absence of a synthetic mode. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p slicer-runtime --all-targets --test visual_debug_render_tap_tdd -- mixed_unit_shared_viewport --exact` | Assert Point2 and mm sources share one correct viewport. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p pnp-cli --all-targets --test visual_debug_validation_tdd -- anonymous_name_and_malformed_range_rejected --exact` | Assert fail-closed rejection of `Name` and malformed range selectors. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p pnp-cli --all-targets --test visual_debug_validation_tdd -- range_and_zonly_selectors_resolve_or_fail_closed --exact` | Assert range/z-only resolution and fail-closed on no match. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p pnp-cli --all-targets --test visual_debug_agent_determinism_tdd -- visual_debug_bundles_are_byte_deterministic --exact` | Compare model (incl. PostPass) and G-code manifests and PNG bytes across clean runs. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p slicer-runtime --all-targets --test visual_debug_agent_overhead_tdd -- ordinary_slice_has_no_visual_debug_overhead --exact` | Prove ordinary slice enters no visual-debug path. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo xtask build-guests --check` | Prove guest WASM is fresh after `slicer-ir`/`slicer-runtime` edits before attributing any guest/host test failure. | FACT clean/STALE |
 | `cargo check --workspace --all-targets` | Compile all changed and test targets. | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Enforce workspace lint gate. | FACT pass/fail |
+| `cargo xtask test --summary --workspace` | Acceptance-ceremony full suite (gated guest-freshness entry point); only at closure after all narrow commands pass. | FACT PASS/FAIL; full-output path |
 
 ## Step Completion Expectations
 
-- The skill never requires `debug-pipeline` before a geometry investigation, and both guides state their distinct evidence boundaries.
-- Contract assertions enumerate exact documented source, output, layer, tap, path, viewport, legend, schema/parser, and warning fields rather than relying only on image existence or counts; final-renderer assertions run in `pnp-cli`.
-- Determinism tests use clean output directories for both source modes and compare complete manifest/PNG bytes, image/layer/tap/warning ordering, paths, and warnings.
-- Negative verification covers both `debug-pipeline` routing and request validation before renderer or bundle creation.
-- The overhead proof observes the ordinary slice path without adding instrumentation to that path.
-- Any unresolved renderer or lifecycle export remains a named `[FWD]` failure, never an inferred compatibility shim.
+- Blackboard-read taps execute prepass only (no `LayerArena`, no per-layer
+  dispatch); PostPass taps execute the whole-print prefix and render only selected
+  layers, with the closure recorded in the manifest.
+- Every contract assertion enumerates exact, corrected source fields (not image
+  existence or counts): `SeamPlanIR.chosen_candidate.point` + `region_key` (not
+  `seam_xy`), `RegionPlan.config` as a `ConfigId`, mm units for seam/branch/gcode
+  geometry, and each `CapturedIr` variant's schema version.
+- Validation is fail-closed in both phases; no requested visualization or layer is
+  ever silently omitted from a successful bundle; the manifest `warnings` fields
+  carry only rendered-with-caveats notes, never dropped selections.
+- Determinism tests use clean output directories and compare complete manifest/PNG
+  bytes and all ordering for both source modes, including one whole-print PostPass tap.
+- The overhead proof observes the ordinary slice path without adding instrumentation
+  to it.
+- Editing `slicer-ir`/`slicer-runtime` invalidates guest bindgen; `cargo xtask
+  build-guests --check` must run before attributing any guest/host test failure to
+  this packet's changes.
 
 ## Context Discipline Notes
 
-- Read packet 159 and packet 160 only for published contracts and forward seams; do not inspect renderer implementation broadly.
-- `docs/01_system_architecture.md` is large; use only the listed ranges and delegated symbol lookups.
-- Cargo commands and test-output inspection are delegated and return FACT or bounded failure snippets.
+- The change surface spans production runtime/CLI code, IR/design docs, a skill,
+  and tests; use `design.md`'s files-in-scope list and delegate broad reads.
+- `docs/specs/visual-pipeline-debug.md` and `docs/02_ir_schemas.md` are large; use
+  only the listed ranges and delegated symbol lookups.
+- Cargo commands and test-output inspection are delegated and return FACT or
+  bounded failure snippets; never absorb full test output.
