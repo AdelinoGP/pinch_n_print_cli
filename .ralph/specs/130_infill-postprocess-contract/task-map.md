@@ -1,7 +1,7 @@
 # Task Map: 130_infill-postprocess-contract
 
 Single-task-ID packet (`TASK-255`); the map is retained because the preflight gate (S0)
-requires all five contract files. Backlog row: `docs/07_implementation_status.md:228`.
+requires all five contract files. Backlog row: `TASK-255` in `docs/07_implementation_status.md`.
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |

@@ -41,8 +41,9 @@ is the authoritative source).
   but the two packets are technically independent.
 - **Adjacent packets (not in this packet's scope):** packets
   148/149/150/151/152/153/154 (the earlier M2 + perimeter-parity
-  closure chain). They are all `status: implemented` per
-  `docs/07_implementation_status.md:312-330` and their changes
+  closure chain). They are all `status: implemented` per their
+  entries in the M2 section of `docs/07_implementation_status.md`
+  and their own `packet.spec.md` files, and their changes
   are already in the tree at `parity/arachne @ 34ce576e`.
 - **Audit doc updates (this packet's responsibility):**
   - Mark G15 + G20 closed in the Gap summary table (line 292-293).

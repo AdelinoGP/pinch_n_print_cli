@@ -1,7 +1,7 @@
 # Task Map: 131_per-region-config-delivery
 
 Single-task-ID packet (`TASK-256`); the map is retained because the preflight gate (S0)
-requires all five contract files. Backlog row: `docs/07_implementation_status.md:229`.
+requires all five contract files. Backlog row: `TASK-256` in `docs/07_implementation_status.md`.
 FORWARD-DEP: packet 130 must be `status: implemented` before activation (serial WIT-churn
 ordering; see `packet.spec.md` §Prerequisites and Blockers).
 

@@ -18,7 +18,7 @@ numerical output. Packet 31b documented this explicitly:
 OrcaSlicer numerical parity was not deliverable then because the codebase did
 not yet have the infrastructure (paint kernel parity, region-splitting model,
 extracted helpers) it required. `TASK-163b` remains open in
-`docs/07_implementation_status.md:120` against this gap.
+`docs/07_implementation_status.md` against this gap.
 
 This spec plans the next iteration of support work. It is sequenced after
 packet 95 (`.ralph/specs/95_paint-segmentation-orca-port/`) lands, because

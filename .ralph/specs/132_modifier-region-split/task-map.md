@@ -1,7 +1,7 @@
 # Task Map: 132_modifier-region-split
 
 Single-task-ID packet (`TASK-257`); the map is retained because the preflight gate (S0)
-requires all five contract files. Backlog row: `docs/07_implementation_status.md:230`.
+requires all five contract files. Backlog row: `TASK-257` in `docs/07_implementation_status.md`.
 FORWARD-DEP: packets 130 and 131 must be `status: implemented` before activation (see
 `packet.spec.md` §Prerequisites and Blockers).
 

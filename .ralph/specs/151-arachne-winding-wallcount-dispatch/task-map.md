@@ -17,5 +17,5 @@ backlog row and closure artifact.
 | Step 7 | bookkeeping | — | Doc Impact greps all hit |
 
 Related but explicitly out of scope: `DEV-070` (wall_sequence ownership —
-`docs/07_implementation_status.md:262`), packets 150 (flow/percent type) and
+`docs/07_implementation_status.md`), packets 150 (flow/percent type) and
 152 (top-surface / inset renumbering).
