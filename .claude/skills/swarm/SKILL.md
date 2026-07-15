@@ -1,6 +1,6 @@
 ---
 name: swarm
-description: Planner-Worker orchestration to implement or refine an active spec packet under .ralph/specs/. Planner stays small via strict context budget; workers do reads, edits, validation, and OrcaSlicer parity checks.
+description: Planner-Worker orchestration to implement or refine an active spec packet under .ralph/specs/, including OrcaSlicer parity checks.
 type: anthropic-skill
 version: "1.5"
 metadata:
@@ -9,18 +9,16 @@ metadata:
 
 # Swarm — Planner-Worker Packet Implementation
 
-You are the planner on a Rust workspace. **Workers are the delegation primitive.** Every code read, code edit, cargo run, doc fact-check, and OrcaSlicer parity check is a worker dispatch. If you find yourself reading code or running cargo directly, you have stopped being the planner.
+You are the planner on a Rust workspace. **Workers are the delegation primitive.** Every code read, edit, cargo run, doc fact-check, and OrcaSlicer parity check is a worker dispatch. If you find yourself reading code or running cargo directly, you have stopped being the planner. This overrides anything below that pushes broad reads, full logs, or large pastes.
 
-This block overrides anything below it that pushes you to read broadly, accumulate full logs, or paste large files.
-
-Ancillary content lives in `references/`:
-- `references/worker-prompt-template.md` — read before composing each worker prompt in Phase 3.2.
+Ancillary content in `references/`:
+- `references/worker-prompt-template.md` — read before composing each worker prompt (Phase 3.2).
 - `references/output-format.md` — read at completion to emit the Swarm Execution Report.
 - `references/usage-examples.md` — read only if the user asks for invocation examples or you hit a known troubleshooting case.
 
 ## Context budget
 
-The window is large (1M-class); the binding constraint is planning quality and per-turn cost, not fitting the window. Reasoning degrades once context fills with raw logs, full files, and stale transcripts — long before a large window is full — and every retained token is re-paid in cache cost and latency on each subsequent turn. **All budgets are absolute token counts, never window percentages.**
+The window is large (1M-class); the binding constraint is planning quality and per-turn cost. Reasoning degrades once context fills with raw logs, full files, and stale transcripts — long before a large window is full — and every retained token is re-paid in cache cost and latency per turn. **All budgets are absolute token counts, never window percentages.**
 
 Two bands:
 
@@ -46,10 +44,9 @@ The planner reads directly only:
 
 Everything else is a worker dispatch — in both bands.
 
-### What extended headroom buys (and what it never buys)
+### Extended headroom buys (and never buys)
 
-Extra budget is spent only on **structured state** — the categories that degrade planning least per token:
-
+Spend extra budget only on **structured state** — the categories that degrade planning least per token:
 - more review/fix iterations (their bounded structured returns)
 - the full AC × evidence matrix retained across iterations instead of compressed
 - per-step command summaries retained across all iterations (no mid-run ledger compression)
@@ -74,7 +71,7 @@ ESCALATION
 - Stop line: 300k hard
 ```
 
-One escalation per run. There is no band above extended: at 300k the only moves are finalize or `Status: PARTIAL` handoff.
+One escalation per run. No band above extended: at 300k the only moves are finalize or `Status: PARTIAL` handoff.
 
 ## Subagent contract
 
@@ -118,23 +115,21 @@ The worker MUST NOT return full diffs, full logs, or repeated packet excerpts.
 
 - One read = one hypothesis. State the hypothesis before reading; if the read does not test it, delegate.
 - Load each packet file once; compile into the execution manifest (Step 1.4) and work from the manifest thereafter.
-- For `Cargo.toml`: never read directly — dispatch SUMMARY of relevant `[dependencies]`/`[features]`/`[workspace]` sections.
-- For trait/generic confusion: ask a worker for the monomorphized error or the concrete impl. Don't read trait hierarchies in the planner.
+- `Cargo.toml`: never read directly — dispatch SUMMARY of relevant `[dependencies]`/`[features]`/`[workspace]` sections.
+- Trait/generic confusion: ask a worker for the monomorphized error or concrete impl. Don't read trait hierarchies in the planner.
 - Never paste full macro expansions; delegate to summarize.
-- Workspace navigation: `cargo metadata --format-version=1 --no-deps` (via worker, summarized) beats reading every `Cargo.toml`.
+- `cargo metadata --format-version=1 --no-deps` (via worker, summarized) beats reading every `Cargo.toml`.
 - Test failures: worker returns failing test name, assertion, and ≤ 20 lines of relevant code — not the full test file.
 - A `cargo check` worker dispatch beats reading more code to chase a bug.
 
 ## Checkpoints
 
 Standard band:
-
 - **100k**: state remaining budget; drop non-essential transcripts; re-confirm the manifest is the working state. Compress iteration history to a step ledger plus a one-line outcome per iteration.
 - **120k — decision point**: stop reading. Either finalize/hand off within remaining headroom, or escalate to extended band via the protocol above. Not deciding = finalize.
 - **150k**: STOP (if not escalated). Emit a Swarm Execution Report with `Status: PARTIAL`, the current step ledger, the next concrete dispatch list, and the files to reopen.
 
 Extended band:
-
 - **200k**: compress to the ledger; delta-only review; only targeted-fix workers.
 - **240k**: stop dispatching everything except the acceptance ceremony and the final full review.
 - **300k**: HARD STOP. `Status: PARTIAL` report + handoff. No exceptions — a `PARTIAL` report with a clean handoff is always better than a degraded final report.
@@ -157,6 +152,8 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 - `mode` (optional): `implement`, `refine-draft`, or `review-only`. Inferred from packet status and user request if omitted.
 - `state_backend` (optional): `session-memory` or `packet-checkpoint`. Use the checkpoint only when the run must survive session loss or handoff.
 
+If no packet is supplied and there is not exactly one `active` packet, stop and ask the user.
+
 ## Status handling
 
 - `active`: full implementation allowed. Lock the packet before dispatching workers.
@@ -164,17 +161,14 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 - `implemented`: closed unless the user explicitly asks for an audit, regression review, or reopen.
 - `superseded`: do not implement; resolve and use the successor packet.
 
-If no packet is supplied and there is not exactly one `active` packet, stop and ask the user.
-
 ## Repo contract
 
-- Exactly one packet may be `active` at a time.
-- `draft`, `active`, `implemented`, `superseded` are meaningful states — do not collapse into a single readiness check.
+- Exactly one packet may be `active` at a time. `draft`, `active`, `implemented`, `superseded` are meaningful states — do not collapse into a single readiness check.
 - Every acceptance criterion in `packet.spec.md` ends with a pipe-suffixed runnable verification command.
 - Validation/enforcement packets need at least one negative or rejection criterion before activation.
 - `implementation-plan.md` is authoritative for step ordering, expected files, narrow verification commands, **and per-step context cost estimates**.
 - `task-map.md` bridges packet work back to `docs/07_implementation_status.md`, especially for reopened or superseded work.
-- `docs/07_implementation_status.md` is the backlog/progress ledger, not the technical source of truth — edit only when the packet completion gate or the actual task state requires it.
+- `docs/07_implementation_status.md` is the backlog/progress ledger, not the technical source of truth — edit only when the completion gate or actual task state requires it.
 - If `supersedes: ...` is set, read the predecessor's `packet.spec.md` first.
 - The planner MUST compile packet docs once into a compact execution manifest and use that manifest plus rolling deltas thereafter.
 - Worker outputs MUST be structured and bounded.
