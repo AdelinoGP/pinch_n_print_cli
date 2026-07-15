@@ -5,7 +5,7 @@ task_ids:
   - TASK-270
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Packet 160 is the final-G-code renderer slice and depends on packet 157.
+copy_note: Packet 157 is implemented (commit 3e33ca01) and packet 158 is implemented; both live in crates/pnp-cli/src/visual_debug.rs. That file already has a placeholder `VisualDebugSource::Gcode` arm (visual_debug.rs:519-561) that builds `ImageEntry` values without opening the G-code file, parsing it, iterating requested layers, or writing PNG bytes — no PNG-encoding dependency exists in crates/pnp-cli/Cargo.toml today. This packet replaces that placeholder with a real parser/renderer; `main.rs` and `lib.rs` need no changes.
 ---
 
 # Packet Contract: 160-visual-debug-gcode-renderer
@@ -20,16 +20,17 @@ This packet owns parsing serialized final G-code after `PostPass::TextPostProces
 
 ## Prerequisites and Blockers
 
-- Depends on: packet 157 visual-debug request/bundle contract and ADR-0039.
+- Depends on: packet 157 (`status: implemented`, commit `3e33ca01`, TASK-267) and packet 158 (`status: implemented`, TASK-268); both live entirely in `crates/pnp-cli/src/visual_debug.rs`.
 - Unblocks: packet 161 visual-debug agent verification.
-- Activation blockers: Independent preflight review and the packet 157 forward contracts below. Packet 157 is active, not assumed implemented; packet 160 must not begin integration until these contracts are verified.
+- Activation blockers: none remaining. The integration seam is grounded below; the only open item is a bounded implementation-time PNG-crate selection (Step 2), not a packet-level blocker.
 
-### [FWD] Packet 157 Dependency Contracts
+### Grounded Packet 157/158 Integration Facts
 
-- **Request export:** packet 157 must expose the parsed and normalized standalone request shape for `source.kind: "gcode"`, including `source.path`, `layers`, `taps`, `visualizations`, `resolution_scale`, and optional `gcode_line_width_mm`. The renderer consumes this validated shape and must not reimplement request validation. Verification/acceptance condition: packet 157 AC-2, AC-4, and AC-N4 pass, including the packet 157 request-contract test binary.
-- **Bundle export:** packet 157 must expose the successful bundle lifecycle handoff that accepts all requested PNG artifacts and their manifest entries, writes them under the output directory, and publishes no partial bundle on failure, including explicit overwrite handling. The renderer supplies complete artifacts and warnings before commit. Verification/acceptance condition: packet 157 AC-5, AC-N5, and AC-N6 pass, including the packet 157 lifecycle test binary.
-- **Manifest export:** packet 157 must expose the versioned manifest and image-entry shape with `source.kind`, `tap`, layer index, applicable Z, visualization, PNG path, shared viewport, legend version, source parser-version slot, and warnings, plus deterministic serialization. The renderer fills the G-code parser-version slot and warning/image-entry data without changing manifest ownership. Verification/acceptance condition: packet 157 AC-3 and AC-4 pass, including the packet 157 manifest test binary.
-- **Dependency gate:** packet 157's request, bundle, and manifest acceptance tests must pass and its exports must be available at the integration seam before packet 160 Step 2 starts; otherwise packet 160 remains blocked and does not guess replacement types or lifecycle behavior.
+- **Request shape (verified, `crates/pnp-cli/src/visual_debug.rs:16-48`):** `VisualDebugRequest` already has `source: VisualDebugSource`, an untagged-tag enum with `kind = "model"` and `kind = "gcode"` variants (`Gcode { path, .. }`); `layers: Vec<LayerSelector>`, `taps: Vec<TapSelector>` (`TapSelector` is untagged — `"final_gcode"` needs no new enum variant, just a free-form tap name string), `visualizations: Vec<VisualizationSpec>`, `resolution_scale: u32`, and `gcode_line_width_mm: Option<f64>` (already present and already validated as required for a Gcode-source `filled_areas` request at `visual_debug.rs:197-215`). This packet consumes these fields as-is and must not add new request fields or re-validate what `validate_request` already enforces.
+- **Manifest/image-entry shape (verified, `visual_debug.rs:220-288`):** `Manifest` and `ImageEntry` already carry `gcode_parser_version: Option<String>` alongside `ir_schema_version`, plus `source`, `tap`, `layer_index`, `layer_z`, `visualization`, `png_path`, `viewport`, `legend_version`, `warnings`, and `typed_capture`. No manifest schema change is needed; this packet only populates existing fields with real values instead of the current placeholder's synthesized ones.
+- **Integration seam (verified, `visual_debug.rs:480-621`, `run_visual_debug`):** the `VisualDebugSource::Gcode { path, .. }` match arm at `visual_debug.rs:519-561` is a **placeholder**, not real behavior — it never opens the file at `path`, never parses G-code, only uses `req.layers.first()` for every synthesized `ImageEntry` (so it cannot yet satisfy "one PNG per selected rendered layer"), and never writes PNG bytes. This packet replaces that arm's body. `main.rs` and `lib.rs` require no changes: `main.rs`'s `Cmd::VisualDebug` clap surface (`main.rs:85-93`) is generic (`--request`/`--output`/`--overwrite`) and dispatches to `visual_debug::run_cli` (`main.rs:437-447`) with no source-kind-specific logic; `lib.rs` already declares `pub mod visual_debug;` and needs no new top-level module entry (the new parser/renderer module can be declared privately inside `visual_debug.rs`).
+- **No PNG-writing facility exists yet (verified):** `crates/pnp-cli/Cargo.toml` has no `png`/`image` dependency, and the only artifact ever atomically committed today is `manifest.json` (temp-file-then-rename at `visual_debug.rs:604-620`). This packet is the first to add a real PNG-encoding dependency and file-write step; the existing manifest atomic-commit ordering (PNGs written before `manifest.json` is renamed into place) is the invariant this packet must preserve so a failed run never leaves a successful-looking `manifest.json` behind.
+- **`Viewport` is pixel dimensions only (verified, `visual_debug.rs:264-267, 499-503`):** `Viewport { width, height }` is derived solely from `resolution_scale` and is already computed identically before the source dispatch match for both `Model` and `Gcode` arms — it is not a geometric mm-space bounding box and this packet does not change its shape. "One model-wide XY viewport for all emitted PNGs" (AC-4) means this packet must internally compute a model-wide XY bounding box (mm-space, plus documented fixed margin) from all parsed supported moves across the rendered layers, and use that one bounding box to project geometry consistently into the already-shared pixel canvas — not a manifest or `Viewport` struct change.
 
 ## Acceptance Criteria
 
@@ -53,14 +54,15 @@ This packet owns parsing serialized final G-code after `PostPass::TextPostProces
 
 ## Authoritative Docs
 
-- `docs/specs/visual-pipeline-debug.md` - direct read of the complete 235-line proposal; final-G-code source, supported subset, render contract, warnings, and packet boundary.
-- `docs/19_visual_debug.md` - direct read of the complete 58-line usage contract; standalone request, bundle inspection, unclassified extrusion, and failure behavior.
+- `docs/specs/visual-pipeline-debug.md` - direct read of the complete 288-line proposal (grew from 235 lines when packet 158 added its Typed Post-Stage Capture subsection); this packet's authoritative ranges are lines 61-98 (Command And Request Contract, standalone mode, `gcode_line_width_mm`), 119-125 and 186-195 (Bundle Contract intro and Visualization Types, explicitly skipping the packet-158-owned "Typed Post-Stage Capture" subsection at 126-185), 218-231 (Final G-code Path), 233-267 (Stage Tap Inventory, `final_gcode` row at line 266), and 276-288 (Candidate Packets, "Final G-code renderer" row at line 283).
+- `docs/19_visual_debug.md` - direct read of the complete 95-line usage contract (grew from 58 lines when packet 158 added its Model-Backed Typed Captures subsection); this packet's authoritative ranges are lines 16-33 (Request Shape) and 35-43 (Reading A Bundle), plus the standalone-G-code `gcode_line_width_mm`/`unclassified`/warnings guidance embedded at lines 82-87 inside the otherwise packet-158-owned "Model-Backed Typed Captures" section.
 - `docs/adr/0039-visual-debug-is-a-separate-opt-in-artifact-command.md` - direct read of the complete 41-line accepted decision; separate command, opt-in artifact lifecycle, and no partial evidence.
 - `docs/01_system_architecture.md` - direct read of lines 460-497 and 562-589; postpass serialization and final text source boundary.
 - `docs/11_operational_governance_and_acceptance_gate.md` - direct read of the complete 179-line governance contract; determinism, recoverability, and acceptance evidence obligations.
 - `docs/07_implementation_status.md` - delegated bounded lookup for TASK-270 at lines 239-242; backlog ownership and dependency context.
 - `docs/specs/visual-pipeline-debug-plan.md` - direct read of the complete 15-line packet queue; packet 160 dependency ordering.
-- `.ralph/specs/157-visual-debug-request-bundle-contract/packet.spec.md` - direct read of the packet contract; dependency-owned request, manifest, and lifecycle fields.
+- `.ralph/specs/157-visual-debug-request-bundle-contract/packet.spec.md` - direct read of the packet contract (`status: implemented`); dependency-owned request, manifest, and lifecycle fields.
+- `.ralph/specs/158-visual-debug-typed-tap-capture/packet.spec.md` - direct read of the packet contract (`status: implemented`); confirms the typed-tap capture fields (`executed_stage_ids`, `layer_expansions`, `executed_layer_indices`) this packet must leave empty/unused for the standalone G-code path, and confirms `crates/pnp-cli/src/visual_debug.rs` as the sole integration file.
 
 ## Doc Impact Statement (Required)
 
