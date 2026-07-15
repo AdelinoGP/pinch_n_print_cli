@@ -2,8 +2,9 @@
 
 ## Controlling Code Paths
 
-- Primary code path: packet-158 renderer-owned typed capture handoff into the runtime/CLI visual-debug intermediate renderer, viewport planner, fixed palette, overlay compositor, and PNG encoder.
-- Neighboring tests/fixtures: `crates/slicer-runtime/tests/visual_debug_intermediate_renderer_tdd.rs` and the smallest deterministic typed-capture fixtures exported by packet 158.
+- Primary code path: packet-158's renderer-owned typed capture handoff (a `slicer-runtime` capture entry point called from `crates/pnp-cli/src/visual_debug.rs::run_visual_debug`) into a new `slicer-runtime` intermediate renderer (viewport planner, fixed palette, overlay compositor, PNG encoder) whose output `crates/pnp-cli/src/visual_debug.rs` assembles into `ImageEntry`/`Manifest`.
+- Grounded fact: `slicer-runtime` cannot import `crates/pnp-cli/src/visual_debug.rs`'s `Manifest`/`ImageEntry` types (dependency direction is `pnp-cli -> slicer-runtime`), so the renderer itself must be a pure function returning runtime-owned PNG bytes/metadata, with `pnp-cli` writing the file and populating `ImageEntry`.
+- Neighboring tests/fixtures: `crates/pnp-cli/tests/visual_debug_intermediate_renderer_tdd.rs` (new, follows `visual_debug_request_bundle_tdd.rs`'s convention) and the smallest deterministic typed-capture fixtures exported by packet 158.
 - Final G-code comparison: explicitly out of scope; packet 160 owns the independent serialized final-G-code renderer.
 
 ## Architecture Constraints
@@ -18,16 +19,16 @@
 ## Code Change Surface
 
 - Selected approach: add a renderer-owned intermediate pipeline that normalizes packet-158 capture records into render primitives, computes the bundle viewport once, applies fixed semantic colors and legend metadata, composites optional overlays, and writes deterministic PNGs through the pure-Rust encoder.
-- Exact functions, traits, manifests, tests, and fixtures: packet 158's exported typed capture and image-entry handoff; the runtime visual-debug renderer module; the owning runtime manifest/bundle integration seam; `crates/slicer-runtime/tests/visual_debug_intermediate_renderer_tdd.rs`; and a focused deterministic typed-capture fixture. Exact symbol names are `[FWD]` until packet 158's export dispatch confirms them.
+- Exact functions, traits, manifests, tests, and fixtures: packet 158's exported typed capture and image-entry handoff; a new `slicer-runtime` visual-debug renderer module; `crates/pnp-cli/src/visual_debug.rs`'s additive `ImageEntry` attachment call site; `crates/pnp-cli/tests/visual_debug_intermediate_renderer_tdd.rs` (new); and a focused deterministic typed-capture fixture. Exact symbol names are `[FWD]` until packet 158's export dispatch confirms them.
 - Rejected alternatives and reasons: rendering from serialized G-code is packet 160 and cannot localize intermediate defects; a debug WASM module violates ADR-0037 ownership; per-image viewports prevent stage comparison; inferred bead width loses typed geometry semantics; external image tools violate release-time portability and determinism.
 
 ## Files in Scope (read + edit)
 
-- `crates/slicer-runtime/src/` - role: intermediate renderer, viewport/palette/overlay composition, PNG encoding, and packet-158 handoff; expected change: add the renderer without changing scheduler capture.
-- `crates/slicer-runtime/tests/visual_debug_intermediate_renderer_tdd.rs` - role: focused renderer contract coverage; expected change: add positive, determinism, and failure-path assertions.
-- Packet-158-owned visual-debug integration source identified by `[FWD-158-2]` - role: additive image-entry handoff; expected change: only the fields required to attach renderer-produced PNG metadata and paths, if packet 158 does not already export them.
+- `crates/slicer-runtime/src/` - role: intermediate renderer, viewport/palette/overlay composition, and PNG encoding as a pure function of typed capture data; expected change: add the renderer without changing scheduler capture and without depending on `pnp-cli` types.
+- `crates/pnp-cli/tests/visual_debug_intermediate_renderer_tdd.rs` - role: focused renderer contract coverage (new file); expected change: add positive, determinism, and failure-path assertions driven through `run_visual_debug`/the CLI request path, matching `visual_debug_request_bundle_tdd.rs`'s convention.
+- `crates/pnp-cli/src/visual_debug.rs` identified by `[FWD-158-2]` - role: additive `ImageEntry` handoff; expected change: only the fields required to attach renderer-produced PNG metadata and paths returned by the new `slicer-runtime` renderer call, if packet 158 does not already wire this.
 
-The two concrete runtime/test surfaces and the packet-158 seam are the only edit categories; implementation must not broaden them without a new packet.
+The two concrete runtime/test surfaces and the `crates/pnp-cli/src/visual_debug.rs` seam are the only edit categories; implementation must not broaden them without a new packet.
 
 ## Read-Only Context
 
@@ -40,7 +41,7 @@ The two concrete runtime/test surfaces and the packet-158 seam are the only edit
 
 ## Out-of-Bounds Files
 
-- `crates/pnp-cli/` command parsing, request validation, source-mode selection, output lifecycle, overwrite behavior, and base manifest semantics - packet 157 owns them; only an existing renderer dispatch seam may be consumed.
+- `crates/pnp-cli/src/visual_debug.rs`'s command parsing (`validate_request`, `VisualDebugRequest`), source-mode selection, output lifecycle, overwrite behavior, and base manifest semantics - packet 157 owns them; only the additive `ImageEntry`-attachment call site may be consumed/edited.
 - Scheduler/executor capture paths and layer-retention logic - packet 158 owns them.
 - Final G-code parser/renderer surfaces - packet 160 owns them.
 - `crates/slicer-schema/wit/`, module manifests, IR schema definitions, `modules/`, guest artifacts, and WASM build inputs - no contract or guest changes are permitted.
@@ -51,8 +52,8 @@ The two concrete runtime/test surfaces and the packet-158 seam are the only edit
 ## Expected Sub-Agent Dispatches
 
 - Question: What exact public packet-158 capture records, tap/layer ordering, and renderer handoff symbols are available? Scope: `.ralph/specs/158-visual-debug-typed-tap-capture/**`; return: `LOCATIONS` at most 20 entries; purpose: resolve `[FWD-158-1]` and `[FWD-158-2]` without inventing APIs.
-- Question: Which existing runtime module owns visual-debug bundle image entries and the narrowest renderer invocation seam? Scope: `crates/slicer-runtime/src/**`; return: `LOCATIONS` at most 20 entries; purpose: avoid moving packet-157/158 ownership.
-- Question: Which exact typed fields and fixture constructors are available for polygon, `Point3WithWidth`, overlay, and synthetic diagram inputs? Scope: packet-158 export plus targeted `crates/slicer-ir/src/**` and `crates/slicer-runtime/tests/**`; return: `SNIPPETS` at most 3 snippets, 30 lines each; purpose: build compile-pinned renderer tests against real types.
+- Question: Which existing `slicer-runtime` module is the narrowest seam for a new pure renderer invocation (typed capture in, PNG bytes/metadata out), given that `ImageEntry`/`Manifest` are `pnp-cli`-owned and unreachable from `slicer-runtime`? Scope: `crates/slicer-runtime/src/**`; return: `LOCATIONS` at most 20 entries; purpose: avoid moving packet-157/158 ownership.
+- Question: Which exact typed fields and fixture constructors are available for polygon, `Point3WithWidth`, overlay, and synthetic diagram inputs? Scope: packet-158 export plus targeted `crates/slicer-ir/src/**` and `crates/pnp-cli/tests/**`; return: `SNIPPETS` at most 3 snippets, 30 lines each; purpose: build compile-pinned renderer tests against real types.
 - Question: Which `png` crate version/features and license evidence are acceptable in the workspace? Scope: manifests and dependency policy only; return: `FACT` in 5 lines or fewer; purpose: close the pure-Rust encoder decision without browsing lockfiles.
 
 ## Data and Contract Notes
@@ -66,7 +67,7 @@ The two concrete runtime/test surfaces and the packet-158 seam are the only edit
 
 ## Locked Assumptions and Invariants
 
-- Packet 158 remains draft and is not treated as implemented; all three handoff statements above are forward contracts to verify before activation.
+- Packet 158 is `active` but has no merged capture code as of this refinement; all three handoff statements above are forward contracts to verify against packet 158's actual implementation before this packet activates.
 - The v1 palette, legend version, fixed margin, and `1024 x 1024` base raster are implementation-owned constants derived from the documented contract, not user-configurable request fields.
 - A successful render has no dangling source borrows and no successful partial image set.
 - Ordinary slice execution has no renderer allocation or invocation because this packet only consumes the existing opt-in visual-debug path.

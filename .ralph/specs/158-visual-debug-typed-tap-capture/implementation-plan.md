@@ -8,27 +8,28 @@
 
 ## Steps
 
-### Step 1: Confirm Packet 157 Export Seam
+### Step 1: Confirm The `slicer-runtime` Capture Entry Point
 
 - Task IDs: `TASK-268`
-- Objective: Identify the exact packet-157 exported request, selected-tap, manifest, and bundle integration symbols without defining a parallel contract.
-- Precondition: Packet 157 is the declared prerequisite, and its artifact directory may be unavailable in the current checkout.
-- Postcondition: A bounded symbol inventory identifies the source file and exact public fields required for typed capture, or implementation is blocked without edits.
+- Objective: Packet 157's own symbols are already grounded (`crates/pnp-cli/src/visual_debug.rs:14-370`: `VisualDebugRequest`, `VisualDebugSource::Model`, `TapSelector`, `LayerSelector`, `Manifest`, `ImageEntry`, `run_visual_debug`). This step instead identifies the exact narrowest new `slicer-runtime` pub entry point that `run_visual_debug` can call to run the fixed-stage dependency closure and get back renderer-owned typed capture values, since `slicer-runtime` cannot import `pnp-cli`'s types (dependency direction is `pnp-cli -> slicer-runtime`).
+- Precondition: Packet 157 is implemented (commit `3e33ca01`); `run_visual_debug`'s `Model` branch currently performs no real execution (placeholder `ImageEntry` per tap x visualization from `req.taps`/`req.layers.first()`, no tap validation).
+- Postcondition: A bounded symbol inventory identifies the existing `slicer-runtime` pub surface (`execution_plan`, `layer_executor`, `run`, `blackboard`) to build on, and the exact new function/module name and runtime-owned return type for the capture entry point, or implementation is blocked without edits.
 - Files allowed to read, with ranges when over 300 lines:
-  - `.ralph/specs/157-visual-debug-request-bundle-contract/**`
+  - `crates/slicer-runtime/src/lib.rs` - pub surface only.
+  - `crates/pnp-cli/src/visual_debug.rs` - complete, 381 lines.
 - Files allowed to edit (at most 3):
   - None; read-only discovery.
 - Files explicitly out of bounds:
-  - Runtime source, generated code, `target/`, and all other packet directories.
+  - Generated code, `target/`, and all other packet directories.
 - Expected sub-agent dispatches:
-  - Question: What exact public request, tap, manifest, and bundle integration symbols does packet 157 export, and where are they defined? Scope: `.ralph/specs/157-visual-debug-request-bundle-contract/**`; return: `LOCATIONS` at most 20 entries.
+  - Question: Which existing `slicer-runtime` pub function/module is the narrowest seam for running the fixed-stage dependency closure and returning renderer-owned typed capture values to a caller in another crate? Scope: `crates/slicer-runtime/src/lib.rs` pub surface, `crates/slicer-runtime/src/run.rs`, `crates/slicer-runtime/src/layer_executor.rs`; return: `LOCATIONS` at most 20 entries.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/specs/visual-pipeline-debug-plan.md` - complete 15-line queue.
   - `docs/specs/visual-pipeline-debug.md` - lines 61-117 and 143-163.
 - Verification:
-  - Bounded packet-157 export lookup - `LOCATIONS` or an explicit blocker.
-- Exit condition: Exact packet-157 export symbols are recorded; otherwise packet remains draft and no implementation begins.
+  - Bounded `slicer-runtime` capture-entry-point lookup - `LOCATIONS` or an explicit blocker.
+- Exit condition: Exact new `slicer-runtime` entry point name, signature shape, and return type are recorded; otherwise packet remains blocked and no implementation begins.
 
 ### Step 2: Add Failing Typed Capture Contract Tests
 
@@ -37,23 +38,23 @@
 - Precondition: Step 1 provides the exact packet-157 integration seam and a model-backed fixture/request path.
 - Postcondition: Focused tests fail for the missing capture behavior and assert exact typed capture/manifest fields without testing PNGs or G-code.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/**` - targeted fixture/helper files only, delegated symbol lookup for the selected fixture.
-  - `crates/pnp-cli/**` - exact visual-debug command dispatch file returned by bounded symbol lookup only.
-  - Packet-157-owned request/manifest source - exact ranges returned by Step 1.
+  - `crates/pnp-cli/tests/**` - `visual_debug_request_bundle_tdd.rs` and targeted fixture/helper files only.
+  - `crates/pnp-cli/src/visual_debug.rs` - complete, 381 lines.
+  - Step 1's identified `slicer-runtime` capture entry point - exact ranges returned by Step 1.
 - Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/tests/visual_debug_typed_tap_capture_tdd.rs`
-  - `crates/pnp-cli/` - minimal command-to-runtime dispatch seam only; no parsing, validation, bundle lifecycle, overwrite, or base manifest changes.
+  - `crates/pnp-cli/tests/visual_debug_typed_tap_capture_tdd.rs`
+  - `crates/pnp-cli/src/visual_debug.rs` - minimal command-to-runtime dispatch seam only; no changes to `validate_request`, `VisualDebugRequest`, or bundle lifecycle/overwrite/atomic-write logic.
 - Files explicitly out of bounds:
   - `modules/`, WIT/schema files, renderer/G-code surfaces, guest artifacts, and unrelated tests.
 - Expected sub-agent dispatches:
-  - Question: What smallest existing model-backed fixture and test harness can exercise packet-157's visual-debug command? Scope: `crates/slicer-runtime/tests/**`; return: `LOCATIONS` at most 20 entries.
+  - Question: What smallest existing model-backed fixture and test harness in `crates/pnp-cli/tests/visual_debug_request_bundle_tdd.rs` can exercise packet-157's visual-debug command? Scope: `crates/pnp-cli/tests/**`; return: `LOCATIONS` at most 20 entries.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/visual-pipeline-debug.md` - lines 99-110, 180-213.
   - `docs/01_system_architecture.md` - lines 65-109, 246-500, 567-665.
   - `docs/09_progress_events.md` - lines 74-109 and 139-143.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail; expected red before implementation.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail; expected red before implementation.
 - Exit condition: Tests compile and fail only on the unimplemented typed capture behavior, with no renderer/G-code assertions.
 
 ### Step 3: Implement Request-Gated Typed Closure Capture
@@ -64,14 +65,13 @@
 - Postcondition: Selected taps capture exact documented typed source fields after commit; closure stops at the furthest tap; extra execution is explained; ordinary slices remain capture-free.
 - Files allowed to read, with ranges when over 300 lines:
   - `crates/slicer-runtime/src/**` - exact executor/command files returned by bounded dispatch only.
-  - `crates/pnp-cli/**` - exact visual-debug dispatch file returned by bounded dispatch only.
-  - Packet-157-owned request/manifest source - exact ranges returned by Step 1.
+  - `crates/pnp-cli/src/visual_debug.rs` - complete, 381 lines.
+  - Step 1's identified `slicer-runtime` capture entry point - exact ranges returned by Step 1.
   - `crates/slicer-ir/src/**` - exact source structs/fields returned by bounded dispatch only.
 - Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/src/` - selected runtime executor/capture files only.
-  - `crates/pnp-cli/` - minimal command-to-runtime dispatch seam only; packet 157's parsing/validation and bundle/model ownership remain unchanged.
-  - Packet-157-owned request/manifest source file - additive capture integration only if Step 1 identifies it as required.
-  - `crates/slicer-runtime/tests/visual_debug_typed_tap_capture_tdd.rs` - test fixtures/assertions only.
+  - `crates/slicer-runtime/src/` - selected runtime executor/capture files only (new capture-execution module and adapter registry).
+  - `crates/pnp-cli/src/visual_debug.rs` - minimal command-to-runtime dispatch seam only: replace the `Model`-source placeholder loop with the new `slicer-runtime` capture call, tap validation, all-selected-layers iteration, and `ImageEntry`/`Manifest` assembly. `validate_request`, `VisualDebugRequest`, and bundle lifecycle/overwrite/atomic-write logic remain unchanged.
+  - `crates/pnp-cli/tests/visual_debug_typed_tap_capture_tdd.rs` - test fixtures/assertions only.
 - Files explicitly out of bounds:
   - WIT, manifests, IR schema definitions, modules, WASM artifacts, renderers, G-code parser, skills, and coordinates.
 - Expected sub-agent dispatches:
@@ -82,7 +82,7 @@
   - `docs/specs/visual-pipeline-debug.md` - lines 99-110 and 143-163, plus the stage inventory at lines 195-213.
   - `docs/01_system_architecture.md` - lines 246-500 and 633-665.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail; bounded failure SNIPPETS <=20 lines.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail; bounded failure SNIPPETS <=20 lines.
   - `cargo check --workspace --all-targets` - FACT pass/fail.
 - Exit condition: All packet-local tests pass and no selected capture retains arena-backed data or executes outside the requested closure.
 
@@ -105,7 +105,7 @@
   - `docs/11_operational_governance_and_acceptance_gate.md` - complete 179-line acceptance gate.
   - `docs/09_progress_events.md` - lines 84-109.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd` - FACT pass/fail.
   - `cargo check --workspace --all-targets` - FACT pass/fail.
   - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail.
 - Exit condition: All targeted positive and negative tests plus both workspace quality gates pass with no known packet-local regressions.

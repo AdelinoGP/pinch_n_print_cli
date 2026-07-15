@@ -6,7 +6,7 @@
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
-- Dependency: packet `158-visual-debug-typed-tap-capture` (generated/draft; renderer capture export is a forward contract)
+- Dependency: packet `158-visual-debug-typed-tap-capture` (status `active`; renderer capture export is still a forward contract until 158's implementation lands)
 
 ## Problem Statement
 
@@ -61,7 +61,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-runtime --all-targets --test visual_debug_intermediate_renderer_tdd` | Run all typed geometry, width sweep, overlay, viewport/palette, determinism, and negative renderer tests. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p pnp-cli --all-targets --test visual_debug_intermediate_renderer_tdd` | Run all typed geometry, width sweep, overlay, viewport/palette, determinism, and negative renderer tests. | FACT pass/fail; SNIPPETS <=20 lines on failure |
 | `cargo check --workspace --all-targets` | Compile runtime, renderer, CLI integration, and all test targets. | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Enforce the workspace quality gate. | FACT pass/fail |
 
@@ -76,5 +76,6 @@ Reference, never copy, criteria from `packet.spec.md`.
 ## Context Discipline Notes
 
 - `docs/01_system_architecture.md` is large; read only the ranges listed in this packet and delegate any symbol lookup.
-- Packet 158 is draft and may not expose its final symbols in the current checkout; resolve `[FWD-158-1]` through `[FWD-158-3]` with bounded `LOCATIONS`/`SUMMARY` dispatches before editing.
+- Packet 158 is now `active` (grounded against implemented packet 157, commit `3e33ca01`) but still has no capture code merged; resolve `[FWD-158-1]` through `[FWD-158-3]` with bounded `LOCATIONS`/`SUMMARY` dispatches against packet 158's actual implementation before editing, not against its spec packet alone.
+- Grounded fact: packet 157's `Manifest`/`ImageEntry` types live in `crates/pnp-cli/src/visual_debug.rs`, and `slicer-runtime` cannot import them (dependency direction is `pnp-cli -> slicer-runtime`). This packet's renderer logic (rasterization, viewport, palette, PNG encoding) is expected to live in `slicer-runtime` as a pure function of typed capture data, while `crates/pnp-cli/src/visual_debug.rs` calls it and assembles the resulting `ImageEntry` values — mirroring packet 158's own pnp-cli/slicer-runtime split.
 - Do not read packet 160 or implementation code broadly to infer the renderer seam; use bounded dispatches and return only the requested symbols or facts.

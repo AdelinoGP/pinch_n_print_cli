@@ -1,11 +1,11 @@
 ---
-status: draft
+status: active
 packet: 158-visual-debug-typed-tap-capture
 task_ids:
   - TASK-268
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Packet 157 must export the request and manifest model before this packet is implemented.
+copy_note: Packet 157 is implemented (commit 3e33ca01, TASK-267 closed); its request/manifest model lives entirely in crates/pnp-cli/src/visual_debug.rs. slicer-runtime cannot import those types (pnp-cli depends on slicer-runtime, not the reverse), so this packet adds a new slicer-runtime capture API that crates/pnp-cli/src/visual_debug.rs::run_visual_debug calls and translates into its own Manifest/ImageEntry values.
 ---
 
 # Packet Contract: 158-visual-debug-typed-tap-capture
@@ -20,29 +20,29 @@ This packet adds the runtime tap registry/adapter layer, post-stage capture timi
 
 ## Prerequisites and Blockers
 
-- Depends on: packet `157-visual-debug-request-bundle-contract` and its exported request/manifest model; ADR-0037.
+- Depends on: packet `157-visual-debug-request-bundle-contract` (implemented, commit `3e33ca01`) and its request/manifest model in `crates/pnp-cli/src/visual_debug.rs`; ADR-0037.
 - Unblocks: packet `159-visual-debug-intermediate-renderer`.
-- Activation blockers: packet 157's exported Rust symbols and capture/manifest extension seam must be confirmed before implementation.
+- Activation blockers: none remaining. Packet 157's exported Rust symbols (`VisualDebugRequest`, `TapSelector`, `LayerSelector`, `Manifest`, `ImageEntry`, `run_visual_debug` at `crates/pnp-cli/src/visual_debug.rs:14-370`) are grounded; the one remaining `[FWD]` (exact narrowest `slicer-runtime` capture entry point) is a bounded Step 1 implementation dispatch, not an activation blocker.
 
 ## Acceptance Criteria
 
-- **AC-1. Given** a model-backed packet-157 request selecting one documented typed tap and one selected layer, **when** `pnp_cli visual-debug --request request.json --output bundle-dir` executes, **then** the packet-157 manifest contains exactly one typed capture entry for that requested tap and layer, with the requested tap identity preserved and a non-empty typed capture payload available to the downstream renderer, without a PNG being required or produced by this packet. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- typed_tap_capture_records_selected_layer --exact`
-- **AC-2. Given** a model-backed request selecting taps at two scheduler stages, **when** the visual-debug execution runs, **then** every prerequisite stage in fixed scheduler order runs through the furthest selected tap, each selected capture is taken after that stage's host hook/commit boundary, and no stage after the furthest selected tap is executed. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- dependency_closure_stops_at_furthest_tap --exact`
-- **AC-3. Given** a model-backed request selecting a subset of layers for a typed tap, **when** the selected closure executes, **then** the manifest records only the requested layer captures while any additional layers required for correctness are recorded as executed-but-unrendered expansion with a non-empty reason, and no unselected layer capture is retained. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- selected_layers_bound_capture_retention --exact`
-- **AC-4. Given** the same model-backed request and deterministic inputs executed twice, **when** both runs complete, **then** the typed capture entries have identical tap identities, layer indices, source schema versions, and serialized payload ordering. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- typed_capture_is_deterministic --exact`
-- **AC-N1. Given** an ordinary `pnp_cli slice` invocation with no visual-debug request, **when** the slice executes, **then** no visual-debug tap is registered, no capture allocation or serialization occurs, and no visual-debug manifest entry is emitted. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- ordinary_slice_has_no_tap_capture --exact`
-- **AC-N2. Given** a visual-debug request containing an unknown or unsupported typed tap, **when** request execution begins, **then** it fails with a typed validation error naming the unsupported tap and produces no successful partial capture bundle or manifest success result. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- unknown_tap_is_rejected_without_success --exact`
-- **AC-N3. Given** a selected tap whose source IR is unavailable at its documented post-stage boundary, **when** capture is attempted, **then** execution fails rather than retaining a dangling borrow, fabricating geometry, or reporting a successful partial capture. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- unavailable_tap_source_fails_without_partial_success --exact`
+- **AC-1. Given** a model-backed packet-157 request selecting one documented typed tap and one selected layer, **when** `pnp_cli visual-debug --request request.json --output bundle-dir` executes, **then** the packet-157 manifest contains exactly one typed capture entry for that requested tap and layer, with the requested tap identity preserved and a non-empty typed capture payload available to the downstream renderer, without a PNG being required or produced by this packet. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- typed_tap_capture_records_selected_layer --exact`
+- **AC-2. Given** a model-backed request selecting taps at two scheduler stages, **when** the visual-debug execution runs, **then** every prerequisite stage in fixed scheduler order runs through the furthest selected tap, each selected capture is taken after that stage's host hook/commit boundary, and no stage after the furthest selected tap is executed. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- dependency_closure_stops_at_furthest_tap --exact`
+- **AC-3. Given** a model-backed request selecting a subset of layers for a typed tap, **when** the selected closure executes, **then** the manifest records only the requested layer captures while any additional layers required for correctness are recorded as executed-but-unrendered expansion with a non-empty reason, and no unselected layer capture is retained. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- selected_layers_bound_capture_retention --exact`
+- **AC-4. Given** the same model-backed request and deterministic inputs executed twice, **when** both runs complete, **then** the typed capture entries have identical tap identities, layer indices, source schema versions, and serialized payload ordering. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- typed_capture_is_deterministic --exact`
+- **AC-N1. Given** an ordinary `pnp_cli slice` invocation with no visual-debug request, **when** the slice executes, **then** no visual-debug tap is registered, no capture allocation or serialization occurs, and no visual-debug manifest entry is emitted. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- ordinary_slice_has_no_tap_capture --exact`
+- **AC-N2. Given** a visual-debug request containing an unknown or unsupported typed tap, **when** request execution begins, **then** it fails with a typed validation error naming the unsupported tap and produces no successful partial capture bundle or manifest success result. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- unknown_tap_is_rejected_without_success --exact`
+- **AC-N3. Given** a selected tap whose source IR is unavailable at its documented post-stage boundary, **when** capture is attempted, **then** execution fails rather than retaining a dangling borrow, fabricating geometry, or reporting a successful partial capture. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- unavailable_tap_source_fails_without_partial_success --exact`
 
 ## Negative Test Cases
 
-- **AC-N4. Given** a request that selects a typed tap but does not select any layer applicable to that tap, **when** validation runs, **then** it rejects the request with an actionable validation error and does not execute the pipeline closure. | `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd -- tap_without_applicable_layer_is_rejected --exact`
+- **AC-N4. Given** a request that selects a typed tap but does not select any layer applicable to that tap, **when** validation runs, **then** it rejects the request with an actionable validation error and does not execute the pipeline closure. | `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd -- tap_without_applicable_layer_is_rejected --exact`
 
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd`
+- `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd`
 
 ## Authoritative Docs
 

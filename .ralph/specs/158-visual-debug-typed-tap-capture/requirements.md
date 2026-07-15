@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-268`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `active`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -58,7 +58,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-runtime --all-targets --test visual_debug_typed_tap_capture_tdd` | Run the focused typed tap capture contract and negative tests. | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `cargo test -p pnp-cli --all-targets --test visual_debug_typed_tap_capture_tdd` | Run the focused typed tap capture contract and negative tests. | FACT pass/fail; SNIPPETS <=20 lines on failure |
 | `cargo check --workspace --all-targets` | Compile runtime, CLI, and all test targets after the capture seam is wired. | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Enforce workspace lint and architecture-quality gate. | FACT pass/fail |
 
@@ -72,5 +72,5 @@ Reference, never copy, criteria from `packet.spec.md`.
 ## Context Discipline Notes
 
 - `docs/01_system_architecture.md` is large; only the ranges specified above may be read directly.
-- Packet 157 is a prerequisite artifact and is absent at authoring time; implementers must delegate a bounded symbol lookup against its exported request/manifest model before editing.
+- Packet 157 is implemented (commit `3e33ca01`); its request/manifest model is grounded at `crates/pnp-cli/src/visual_debug.rs:14-370` and its test convention at `crates/pnp-cli/tests/visual_debug_request_bundle_tdd.rs`. `slicer-runtime` cannot import these types (dependency direction is `pnp-cli -> slicer-runtime`), so implementers must delegate a bounded symbol lookup for the new `slicer-runtime` capture entry point, not for packet 157's own types.
 - Runtime symbol tracing and cargo verification must be delegated with bounded FACT, LOCATIONS, or SNIPPETS returns.

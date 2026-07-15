@@ -11,24 +11,25 @@
 ### Step 1: Confirm Packet 158 Renderer Handoff
 
 - Task IDs: `TASK-269`
-- Objective: Identify the exact packet-158 renderer-owned capture, typed field, ordering, and manifest image-entry symbols needed by the renderer.
-- Precondition: Packet 158 exists as a generated/draft prerequisite and its implementation/export may not be present.
-- Postcondition: A bounded inventory confirms `[FWD-158-1]` through `[FWD-158-3]`, or the packet remains draft with a concrete blocker and no implementation edits.
+- Objective: Identify the exact packet-158 renderer-owned capture, typed field, ordering, and manifest image-entry symbols needed by the renderer, against packet 158's actual code (not just its spec packet).
+- Precondition: Packet 158 is `active` and grounded against implemented packet 157, but at authoring time of this step still has no merged capture code in `crates/slicer-runtime/src/` or `crates/pnp-cli/src/visual_debug.rs`.
+- Postcondition: A bounded inventory confirms `[FWD-158-1]` through `[FWD-158-3]` against packet 158's real implementation, or the packet remains blocked with a concrete blocker and no implementation edits.
 - Files allowed to read, with ranges when over 300 lines:
   - `.ralph/specs/158-visual-debug-typed-tap-capture/**` - packet contract only; bounded export lookup.
+  - `crates/pnp-cli/src/visual_debug.rs` and packet 158's `slicer-runtime` capture entry point - once merged; exact ranges returned by the dispatch below.
 - Files allowed to edit (at most 3):
   - None; read-only discovery.
 - Files explicitly out of bounds:
-  - Runtime source, generated code, `target/`, lockfiles, and all other packet directories.
+  - Generated code, `target/`, lockfiles, and all other packet directories.
 - Expected sub-agent dispatches:
-  - Question: What exact renderer-owned capture and manifest handoff does packet 158 publish? Scope: `.ralph/specs/158-visual-debug-typed-tap-capture/**`; return: `LOCATIONS` at most 20 entries.
+  - Question: Has packet 158 (TASK-268) merged its `slicer-runtime` capture entry point and `crates/pnp-cli/src/visual_debug.rs` integration yet? If so, what exact renderer-owned capture type, typed field set, ordering guarantee, and `ImageEntry`-attachment seam does it expose? Scope: `.ralph/specs/158-visual-debug-typed-tap-capture/**` plus `crates/slicer-runtime/src/` and `crates/pnp-cli/src/visual_debug.rs` if present; return: `LOCATIONS` at most 20 entries, or `FACT` stating packet 158 is not yet merged.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/specs/visual-pipeline-debug.md` - lines 112-163 and 180-213.
   - `docs/adr/0037-render-pngs-from-ir-stage-taps-not-gcode-only.md` - complete direct read.
 - Verification:
   - Bounded packet-158 export lookup - `LOCATIONS` or an explicit `[BLOCK]` result.
-- Exit condition: Exact handoff symbols and all required typed fields are recorded, or activation is explicitly blocked without edits.
+- Exit condition: Exact handoff symbols and all required typed fields are recorded against packet 158's merged code, or activation is explicitly blocked without edits.
 
 ### Step 2: Add Failing Intermediate Renderer Contract Tests
 
@@ -37,23 +38,23 @@
 - Precondition: Step 1 confirms a usable packet-158 capture fixture/export or records the concrete missing seam.
 - Postcondition: `visual_debug_intermediate_renderer_tdd` compiles and fails only on missing renderer behavior, with exact manifest fields, dimensions, PNG existence/bytes, and no partial-success assertions.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/tests/**` - targeted visual-debug fixture/helper files only.
-  - Packet-158-owned export source - exact ranges returned by Step 1.
+  - `crates/pnp-cli/tests/**` - targeted visual-debug fixture/helper files only (`visual_debug_request_bundle_tdd.rs` and packet 158's typed-tap-capture test file once it lands).
+  - Packet-158-owned export source (`crates/pnp-cli/src/visual_debug.rs` and its new `slicer-runtime` capture entry point) - exact ranges returned by Step 1.
   - `crates/slicer-ir/src/**` - exact typed field definitions returned by bounded dispatch.
 - Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/tests/visual_debug_intermediate_renderer_tdd.rs`
+  - `crates/pnp-cli/tests/visual_debug_intermediate_renderer_tdd.rs`
   - Existing packet-158 fixture helper only if the confirmed export requires a minimal additive test constructor.
 - Files explicitly out of bounds:
   - CLI parsing/lifecycle, scheduler capture, final G-code renderer, WIT/schema, modules, WASM, skills, Orca references, and ordinary slice tests.
 - Expected sub-agent dispatches:
-  - Question: What smallest real typed-capture fixture can express polygons, `Point3WithWidth.width`, and documented overlays? Scope: targeted packet-158 exports and `crates/slicer-runtime/tests/**`; return: `SNIPPETS` at most 3 snippets, 30 lines each.
+  - Question: What smallest real typed-capture fixture can express polygons, `Point3WithWidth.width`, and documented overlays? Scope: targeted packet-158 exports and `crates/pnp-cli/tests/**`; return: `SNIPPETS` at most 3 snippets, 30 lines each.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/specs/visual-pipeline-debug.md` - lines 119-141 and 195-213.
   - `docs/19_visual_debug.md` - lines 30-50.
   - `docs/11_operational_governance_and_acceptance_gate.md` - lines 102-117 and 167-179.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail; expected red before implementation.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail; expected red before implementation.
 - Exit condition: Tests fail on absent renderer behavior, not on invented symbols, missing fixture types, or unrelated compilation failures.
 
 ### Step 3: Implement Typed Geometry, Viewport, Overlay, and PNG Rendering
@@ -63,15 +64,16 @@
 - Precondition: Step 2 has precise failing tests and Step 1's handoff inventory is complete.
 - Postcondition: All positive and negative renderer tests pass; every image has the shared viewport, fixed legend/palette metadata, exact scale dimensions, deterministic bytes, and no arena-backed borrow.
 - Files allowed to read, with ranges when over 300 lines:
-  - `crates/slicer-runtime/src/**` - exact visual-debug renderer and bundle integration files returned by bounded symbol lookup.
+  - `crates/slicer-runtime/src/**` - exact visual-debug renderer files returned by bounded symbol lookup.
+  - `crates/pnp-cli/src/visual_debug.rs` - complete, 381 lines - bundle/manifest integration (pnp-cli-owned; `slicer-runtime` cannot import its types).
   - Packet-158-owned handoff source - exact ranges returned by Step 1.
   - `crates/slicer-ir/src/**` - exact source fields returned by bounded dispatch.
 - Files allowed to edit (at most 3):
-  - `crates/slicer-runtime/src/` - renderer, palette/viewport, overlay, and PNG integration files only.
-  - `crates/slicer-runtime/tests/visual_debug_intermediate_renderer_tdd.rs` - fixture/assertion updates only.
-  - Packet-158-owned handoff source - additive image-entry attachment only if confirmed necessary by Step 1.
+  - `crates/slicer-runtime/src/` - renderer, palette/viewport, overlay, and PNG integration files only (pure function of typed capture data to PNG bytes/metadata; no pnp-cli type dependency).
+  - `crates/pnp-cli/tests/visual_debug_intermediate_renderer_tdd.rs` - fixture/assertion updates only.
+  - `crates/pnp-cli/src/visual_debug.rs` - additive `ImageEntry` attachment calling the new `slicer-runtime` renderer, only if confirmed necessary by Step 1.
 - Files explicitly out of bounds:
-  - `crates/pnp-cli/` parsing/validation/lifecycle, scheduler/executor capture, final G-code renderer, WIT/schema, module manifests, modules, WASM, skills, Orca references, and ordinary slice paths.
+  - `crates/pnp-cli/src/visual_debug.rs`'s parsing/validation/lifecycle (`validate_request`, `VisualDebugRequest`, bundle create/overwrite/atomic-write), scheduler/executor capture (packet 158's `slicer-runtime` capture entry point internals), final G-code renderer, WIT/schema, module manifests, modules, WASM, skills, Orca references, and ordinary slice paths.
 - Expected sub-agent dispatches:
   - Question: What exact runtime invocation and image-entry append functions can be used without taking ownership from packets 157 or 158? Scope: targeted `crates/slicer-runtime/src/**` and packet-158 handoff; return: `LOCATIONS` at most 20 entries.
   - Question: What dependency feature and license record are required for the pure-Rust PNG encoder? Scope: manifest/dependency policy only; return: `FACT` in 5 lines or fewer.
@@ -81,7 +83,7 @@
   - `docs/01_system_architecture.md` - lines 246-387 and 621-665.
   - `docs/adr/0037-render-pngs-from-ir-stage-taps-not-gcode-only.md` - complete direct read.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail; bounded failure snippets only.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail; bounded failure snippets only.
   - `cargo check --workspace --all-targets` - FACT pass/fail.
 - Exit condition: Focused tests pass and the renderer has no inferred width, per-image viewport drift, nondeterministic output, partial-success path, or ownership change.
 
@@ -104,7 +106,7 @@
   - `docs/11_operational_governance_and_acceptance_gate.md` - complete direct read.
   - `docs/07_implementation_status.md` - delegated TASK-269 location only.
 - Verification:
-  - `cargo test -p slicer-runtime --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail.
+  - `cargo test -p pnp-cli --all-targets --test visual_debug_intermediate_renderer_tdd 2>&1 | tee target/test-output.log` - FACT pass/fail.
   - `cargo check --workspace --all-targets` - FACT pass/fail.
   - `cargo clippy --workspace --all-targets -- -D warnings` - FACT pass/fail.
   - `cargo xtask build-guests --check` - FACT pass/fail; rebuild and rerun the focused test if stale.
