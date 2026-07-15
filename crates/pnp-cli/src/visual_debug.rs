@@ -1,11 +1,13 @@
 #![allow(missing_docs)]
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const VERSION: &str = "1.0.0";
 
@@ -133,6 +135,16 @@ pub enum VisualDebugError {
     Validation(ValidationError),
     NonEmptyOutputRequiresOverwrite,
     Write(String),
+    /// A requested tap is not one of the documented, supported taps
+    /// (packet 158). Carries the offending tap name verbatim.
+    UnsupportedTap(String),
+    /// A tap was selected but no requested layer resolves to a real layer
+    /// in the model (packet 158).
+    NoApplicableLayer,
+    /// Typed tap capture failed for a reason other than an unsupported tap
+    /// or an inapplicable layer (model/module load failure, unavailable tap
+    /// source, or a fatal executor error) (packet 158).
+    CaptureFailed(String),
 }
 
 impl fmt::Display for VisualDebugError {
@@ -143,6 +155,12 @@ impl fmt::Display for VisualDebugError {
                 write!(f, "output directory is non-empty; use --overwrite")
             }
             Self::Write(e) => write!(f, "write error: {e}"),
+            Self::UnsupportedTap(tap) => write!(f, "unsupported visual-debug tap: '{tap}'"),
+            Self::NoApplicableLayer => write!(
+                f,
+                "no requested layer applies to this model; nothing to capture"
+            ),
+            Self::CaptureFailed(e) => write!(f, "typed tap capture failed: {e}"),
         }
     }
 }
@@ -210,6 +228,29 @@ pub struct Manifest {
     pub gcode_parser_version: Option<String>,
     pub images: Vec<ImageEntry>,
     pub warnings: Vec<String>,
+    /// The per-layer stage closure that actually ran for a typed-tap
+    /// capture, in fixed scheduler order (packet 158). Empty when no typed
+    /// capture was requested (including the standalone G-code path).
+    #[serde(default)]
+    pub executed_stage_ids: Vec<String>,
+    /// Layers the closure executed for scheduler-fixed-order correctness
+    /// but that were not in the request's selected layers (packet 158):
+    /// executed, not rendered/retained.
+    #[serde(default)]
+    pub layer_expansions: Vec<LayerExpansionEntry>,
+    /// Global layer indices the closure actually ran the truncated stage
+    /// sequence for (follow-up fix: layer-skip). Empty when no typed
+    /// capture was requested. Equal to the request's selected layers today
+    /// — a non-selected layer is never executed, so it never appears here.
+    #[serde(default)]
+    pub executed_layer_indices: Vec<i64>,
+}
+
+/// One entry in [`Manifest::layer_expansions`].
+#[derive(Debug, Serialize)]
+pub struct LayerExpansionEntry {
+    pub layer_index: i64,
+    pub reason: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -238,6 +279,12 @@ pub struct ImageEntry {
     pub ir_schema_version: Option<String>,
     pub gcode_parser_version: Option<String>,
     pub warnings: Vec<String>,
+    /// Renderer-owned typed IR payload for a typed-tap capture (packet
+    /// 158). `None` for placeholder / standalone G-code entries; a rendered
+    /// visualization is out of scope for this packet, so `png_path` stays
+    /// empty whenever this is `Some`.
+    #[serde(default)]
+    pub typed_capture: Option<serde_json::Value>,
 }
 
 fn tap_name(tap: &TapSelector) -> String {
@@ -254,18 +301,271 @@ fn layer_info(layer: Option<&LayerSelector>) -> (i64, Option<f64>) {
     }
 }
 
+/// Resolve `req.layers` selectors to concrete global layer indices for the
+/// typed-tap capture executor (packet 158). Only `Index` and
+/// `Detail { index: Some(_), .. }` selectors resolve to a layer index —
+/// `Name` selectors and z-only `Detail` selectors require a live layer
+/// schedule to resolve and are not supported by this packet's closure
+/// executor; they contribute no index (surfacing as
+/// [`VisualDebugError::NoApplicableLayer`] if they are the only selectors
+/// supplied).
+fn resolve_requested_layer_indices(layers: &[LayerSelector]) -> Vec<u32> {
+    let mut out = Vec::new();
+    for layer in layers {
+        match layer {
+            LayerSelector::Index(i) if *i >= 0 => out.push(*i as u32),
+            LayerSelector::Detail { index: Some(i), .. } if *i >= 0 => out.push(*i as u32),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Parse the visual-debug request's `source.config` file (the same
+/// `--config` JSON format `pnp_cli slice` accepts) into a raw config-source
+/// map. `None` (no `config` supplied) yields an empty map — resolved config
+/// defaults still apply.
+fn load_visual_debug_config(
+    config: Option<&Path>,
+) -> Result<HashMap<String, slicer_ir::ConfigValue>, VisualDebugError> {
+    let Some(path) = config else {
+        return Ok(HashMap::new());
+    };
+    let text = fs::read_to_string(path).map_err(|e| {
+        VisualDebugError::CaptureFailed(format!("failed to read config {}: {e}", path.display()))
+    })?;
+    slicer_runtime::parse_cli_config_source(&text).map_err(|e| {
+        VisualDebugError::CaptureFailed(format!("failed to parse config {}: {e}", path.display()))
+    })
+}
+
+/// The `Model`-source body of [`run_visual_debug`] (packet 158): validates
+/// the requested taps and layers, and — only when taps were actually
+/// requested — loads the model and modules, runs the scheduler dependency
+/// closure through the furthest requested tap, and translates the typed
+/// captures into `ImageEntry` rows. An empty `taps` list produces an empty
+/// bundle (no model load, no module load, no execution) exactly like the
+/// packet-157 placeholder, so requests that only exercise the standalone
+/// bundle contract (create/overwrite/atomicity) are unaffected.
+#[allow(clippy::type_complexity)]
+fn run_model_source(
+    model: &Option<PathBuf>,
+    config: &Option<PathBuf>,
+    module_dirs: &[PathBuf],
+    req: &VisualDebugRequest,
+    viewport: &Viewport,
+) -> Result<
+    (
+        ManifestSource,
+        Option<String>,
+        Option<String>,
+        Vec<ImageEntry>,
+        Vec<String>,
+        Vec<LayerExpansionEntry>,
+        Vec<i64>,
+    ),
+    VisualDebugError,
+> {
+    let source = ManifestSource {
+        kind: "model".into(),
+        model: model.clone(),
+        path: None,
+    };
+
+    let tap_ids: Vec<String> = req.taps.iter().map(tap_name).collect();
+    for tap in &tap_ids {
+        if !slicer_runtime::SUPPORTED_TAP_STAGE_IDS.contains(&tap.as_str()) {
+            return Err(VisualDebugError::UnsupportedTap(tap.clone()));
+        }
+    }
+    if tap_ids.is_empty() {
+        // No taps selected: nothing to capture. Model/modules are never
+        // touched (AC-N1 — ordinary slicing and no-tap requests must not
+        // pay any capture cost).
+        return Ok((
+            source,
+            Some(VERSION.into()),
+            None,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ));
+    }
+
+    let layer_indices = resolve_requested_layer_indices(&req.layers);
+    if layer_indices.is_empty() {
+        return Err(VisualDebugError::NoApplicableLayer);
+    }
+
+    let model_path = model
+        .clone()
+        .expect("validate_request: model source requires `model`");
+    let mesh = slicer_model_io::load_model(&model_path).map_err(|e| {
+        VisualDebugError::CaptureFailed(format!(
+            "failed to load model {}: {e}",
+            model_path.display()
+        ))
+    })?;
+    let config_source = load_visual_debug_config(config.as_deref())?;
+
+    let ctx =
+        slicer_runtime::prepare_prepass_context(Arc::new(mesh), config_source, module_dirs, false)
+            .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+
+    let capture_request = slicer_runtime::CaptureRequest {
+        stage_ids: tap_ids,
+        layer_indices,
+    };
+    let output = slicer_runtime::execute_captured_stages(
+        &ctx.plan,
+        &ctx.blackboard,
+        &ctx.layer_runner,
+        &ctx.wasm_handles,
+        &capture_request,
+    )
+    .map_err(|e| match e {
+        slicer_runtime::CaptureExecutionError::UnknownTap { tap } => {
+            VisualDebugError::UnsupportedTap(tap)
+        }
+        slicer_runtime::CaptureExecutionError::NoApplicableLayer => {
+            VisualDebugError::NoApplicableLayer
+        }
+        other => VisualDebugError::CaptureFailed(other.to_string()),
+    })?;
+
+    let images: Vec<ImageEntry> = output
+        .captures
+        .iter()
+        .map(|capture| ImageEntry {
+            source: "model".into(),
+            tap: capture.stage_id.clone(),
+            layer_index: capture.layer_index as i64,
+            layer_z: Some(capture.layer_z as f64),
+            visualization: "typed_ir".into(),
+            png_path: String::new(),
+            viewport: viewport.clone(),
+            legend_version: VERSION.into(),
+            ir_schema_version: Some(capture.ir.schema_version_string()),
+            gcode_parser_version: None,
+            warnings: Vec::new(),
+            typed_capture: serde_json::to_value(&capture.ir).ok(),
+        })
+        .collect();
+    let layer_expansions: Vec<LayerExpansionEntry> = output
+        .expansions
+        .iter()
+        .map(|expansion| LayerExpansionEntry {
+            layer_index: expansion.layer_index as i64,
+            reason: expansion.reason.clone(),
+        })
+        .collect();
+    let executed_layer_indices: Vec<i64> = output
+        .executed_layer_indices
+        .iter()
+        .map(|i| *i as i64)
+        .collect();
+
+    Ok((
+        source,
+        Some(VERSION.into()),
+        None,
+        images,
+        output.closure_stage_ids,
+        layer_expansions,
+        executed_layer_indices,
+    ))
+}
+
 pub fn run_visual_debug(
     req: VisualDebugRequest,
     output_dir: &Path,
     overwrite: bool,
 ) -> Result<PathBuf, VisualDebugError> {
     let ValidatedRequest(req) = validate_request(req).map_err(VisualDebugError::Validation)?;
+
+    // Non-destructive guard only: reject a non-empty `output_dir` without
+    // `--overwrite` before doing any other work. This never mutates
+    // `output_dir`, so its position relative to the fallible source
+    // resolution below is immaterial.
     if output_dir.exists() {
         let mut entries =
             fs::read_dir(output_dir).map_err(|e| VisualDebugError::Write(e.to_string()))?;
         if entries.next().is_some() && !overwrite {
             return Err(VisualDebugError::NonEmptyOutputRequiresOverwrite);
         }
+    }
+
+    let scale = req.resolution_scale;
+    let viewport = Viewport {
+        width: 1024 * scale,
+        height: 1024 * scale,
+    };
+    // Resolve/capture the source BEFORE touching `output_dir` destructively
+    // (packet 158 fix): tap/layer validation and typed-tap capture can fail
+    // (`UnsupportedTap`, `NoApplicableLayer`, `CaptureFailed`). A rejected
+    // request must never wipe or replace an existing bundle — previously the
+    // `--overwrite` wipe below ran unconditionally before this fallible
+    // step, so an invalid request (e.g. an unknown tap) silently deleted an
+    // existing bundle's manifest and left the directory empty.
+    let (source, ir, parser, images, executed_stage_ids, layer_expansions, executed_layer_indices) =
+        match &req.source {
+            VisualDebugSource::Model {
+                model,
+                config,
+                module_dirs,
+                ..
+            } => run_model_source(model, config, module_dirs, &req, &viewport)?,
+            VisualDebugSource::Gcode { path, .. } => {
+                let source = ManifestSource {
+                    kind: "gcode".into(),
+                    model: None,
+                    path: path.clone(),
+                };
+                let taps = if req.taps.is_empty() {
+                    vec![String::new()]
+                } else {
+                    req.taps.iter().map(tap_name).collect()
+                };
+                let layer = req.layers.first();
+                let (layer_index, layer_z) = layer_info(layer);
+                let mut images = Vec::new();
+                for visualization in &req.visualizations {
+                    let name = visualization.kind();
+                    for tap in &taps {
+                        images.push(ImageEntry {
+                            source: "gcode".into(),
+                            tap: tap.clone(),
+                            layer_index,
+                            layer_z,
+                            visualization: name.to_owned(),
+                            png_path: format!("images/{}_{}_l{}.png", tap, name, layer_index),
+                            viewport: viewport.clone(),
+                            legend_version: VERSION.into(),
+                            ir_schema_version: None,
+                            gcode_parser_version: Some(VERSION.into()),
+                            warnings: Vec::new(),
+                            typed_capture: None,
+                        });
+                    }
+                }
+                (
+                    source,
+                    None,
+                    Some(VERSION.to_string()),
+                    images,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )
+            }
+        };
+
+    // Only now — after the fallible source resolution above has succeeded —
+    // mutate `output_dir`: wipe it (if `--overwrite`'d and non-empty) or
+    // create it. A request that failed above never reaches this point, so
+    // an existing bundle is left untouched on any validation/capture error.
+    if output_dir.exists() {
         if overwrite {
             for entry in
                 fs::read_dir(output_dir).map_err(|e| VisualDebugError::Write(e.to_string()))?
@@ -285,58 +585,6 @@ pub fn run_visual_debug(
         fs::create_dir_all(output_dir).map_err(|e| VisualDebugError::Write(e.to_string()))?;
     }
 
-    let scale = req.resolution_scale;
-    let viewport = Viewport {
-        width: 1024 * scale,
-        height: 1024 * scale,
-    };
-    let (source, ir, parser) = match &req.source {
-        VisualDebugSource::Model { model, .. } => (
-            ManifestSource {
-                kind: "model".into(),
-                model: model.clone(),
-                path: None,
-            },
-            Some(VERSION.into()),
-            None,
-        ),
-        VisualDebugSource::Gcode { path, .. } => (
-            ManifestSource {
-                kind: "gcode".into(),
-                model: None,
-                path: path.clone(),
-            },
-            None,
-            Some(VERSION.into()),
-        ),
-    };
-    let source_name = source.kind.clone();
-    let taps = if req.taps.is_empty() {
-        vec![String::new()]
-    } else {
-        req.taps.iter().map(tap_name).collect()
-    };
-    let layer = req.layers.first();
-    let (layer_index, layer_z) = layer_info(layer);
-    let mut images = Vec::new();
-    for visualization in &req.visualizations {
-        let name = visualization.kind();
-        for tap in &taps {
-            images.push(ImageEntry {
-                source: source_name.clone(),
-                tap: tap.clone(),
-                layer_index,
-                layer_z,
-                visualization: name.to_owned(),
-                png_path: format!("images/{}_{}_l{}.png", tap, name, layer_index),
-                viewport: viewport.clone(),
-                legend_version: VERSION.into(),
-                ir_schema_version: ir.clone(),
-                gcode_parser_version: parser.clone(),
-                warnings: Vec::new(),
-            });
-        }
-    }
     let manifest = Manifest {
         schema_version: VERSION.into(),
         source,
@@ -347,6 +595,9 @@ pub fn run_visual_debug(
         gcode_parser_version: parser,
         images,
         warnings: Vec::new(),
+        executed_stage_ids,
+        layer_expansions,
+        executed_layer_indices,
     };
     let manifest_path = output_dir.join("manifest.json");
     let temp_path = output_dir.join("manifest.json.tmp");

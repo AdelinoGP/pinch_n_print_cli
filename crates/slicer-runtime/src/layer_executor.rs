@@ -23,7 +23,10 @@ use slicer_wasm_host::{
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::progress_events::ProgressEvent;
 use crate::slice_postprocess::SlicePostProcessPaintAnnotationError;
-use crate::{Blackboard, BlackboardError, ExecutionPlan, LayerArena, ModuleAccessAudit};
+use crate::{
+    Blackboard, BlackboardError, CompiledStage, ExecutionPlan, LayerArena, ModuleAccessAudit,
+    STAGE_ORDER,
+};
 use slicer_core::algos::prepass_slice::LayerSliceError;
 
 /// Base extruder; tool-resolution fallback so a region IDENTITY can never
@@ -275,33 +278,7 @@ fn execute_single_layer_inner(
     // Test fixtures that bypass the prepass executor must call
     // `common::seed::seed_slice_ir` before `execute_per_layer`; a missing
     // commit surfaces as a hard `FatalLayer` error (spec §Commit 2).
-    if arena.slice().is_none() {
-        let slice_vec = blackboard
-            .slice_ir()
-            .ok_or_else(|| LayerExecutionError::FatalLayer {
-                layer_index: layer.index,
-                stage_id: "PrePass::Slice".to_string(),
-                module_id: "host:slice".to_string(),
-                message: "blackboard slice_ir empty when Tier 2 started".to_string(),
-            })?;
-        let slice = slice_vec
-            .get(layer.index as usize)
-            .cloned()
-            .ok_or_else(|| LayerExecutionError::FatalLayer {
-                layer_index: layer.index,
-                stage_id: "PrePass::Slice".to_string(),
-                module_id: "host:slice".to_string(),
-                message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
-            })?;
-        arena
-            .set_slice(slice)
-            .map_err(|_| LayerExecutionError::FatalLayer {
-                layer_index: layer.index,
-                stage_id: "PrePass::Slice".to_string(),
-                module_id: "host:slice".to_string(),
-                message: "slice arena slot already occupied".to_string(),
-            })?;
-    }
+    hydrate_slice_arena(&mut arena, blackboard, layer)?;
 
     // Execute stages sequentially in deterministic order.
     // Immediately before `Layer::PathOptimization` runs, freeze the assembled
@@ -309,22 +286,7 @@ fn execute_single_layer_inner(
     // optimization commit path (and any downstream per-layer stage) can see
     // the same entity sequence that the host emitter will consume.
     for stage in &plan.per_layer_stages {
-        if stage.stage_id == "Layer::PathOptimization" && arena.layer_collection().is_none() {
-            let ordered_entities = assemble_ordered_entities(
-                layer.index,
-                arena.perimeter(),
-                arena.infill(),
-                arena.support(),
-                blackboard.region_map().map(|arc| arc.as_ref()),
-                arena.slice(),
-            );
-            arena.set_layer_collection(LayerCollectionIR {
-                global_layer_index: layer.index,
-                z: layer.z,
-                ordered_entities,
-                ..Default::default()
-            });
-        }
+        prestage_layer_collection_if_path_optimization(&mut arena, stage, layer, blackboard);
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
@@ -528,6 +490,463 @@ fn execute_single_layer_inner(
         layer_output.travel_moves.extend(mapped);
     }
     Ok((layer_output, audits))
+}
+
+/// Hydrate the per-layer arena's `SliceIR` slot from the prepass-committed
+/// `Vec<SliceIR>` on the blackboard, unless already staged. Shared by
+/// [`execute_single_layer_inner`] and [`execute_captured_stages`] (packet
+/// 158) so the two per-layer entry points hydrate identically.
+fn hydrate_slice_arena(
+    arena: &mut LayerArena,
+    blackboard: &Blackboard,
+    layer: &GlobalLayer,
+) -> Result<(), LayerExecutionError> {
+    if arena.slice().is_some() {
+        return Ok(());
+    }
+    let slice_vec = blackboard
+        .slice_ir()
+        .ok_or_else(|| LayerExecutionError::FatalLayer {
+            layer_index: layer.index,
+            stage_id: "PrePass::Slice".to_string(),
+            module_id: "host:slice".to_string(),
+            message: "blackboard slice_ir empty when Tier 2 started".to_string(),
+        })?;
+    let slice = slice_vec
+        .get(layer.index as usize)
+        .cloned()
+        .ok_or_else(|| LayerExecutionError::FatalLayer {
+            layer_index: layer.index,
+            stage_id: "PrePass::Slice".to_string(),
+            module_id: "host:slice".to_string(),
+            message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
+        })?;
+    arena
+        .set_slice(slice)
+        .map_err(|_| LayerExecutionError::FatalLayer {
+            layer_index: layer.index,
+            stage_id: "PrePass::Slice".to_string(),
+            module_id: "host:slice".to_string(),
+            message: "slice arena slot already occupied".to_string(),
+        })
+}
+
+/// Immediately before `Layer::PathOptimization` runs, freeze the assembled
+/// `LayerCollectionIR.ordered_entities` into the arena so the
+/// path-optimization commit path (and any downstream per-layer stage) can
+/// see the same entity sequence the host emitter will consume. Shared by
+/// [`execute_single_layer_inner`] and [`execute_captured_stages`] (packet 158).
+fn prestage_layer_collection_if_path_optimization(
+    arena: &mut LayerArena,
+    stage: &CompiledStage,
+    layer: &GlobalLayer,
+    blackboard: &Blackboard,
+) {
+    if stage.stage_id != "Layer::PathOptimization" || arena.layer_collection().is_some() {
+        return;
+    }
+    let ordered_entities = assemble_ordered_entities(
+        layer.index,
+        arena.perimeter(),
+        arena.infill(),
+        arena.support(),
+        blackboard.region_map().map(|arc| arc.as_ref()),
+        arena.slice(),
+    );
+    arena.set_layer_collection(LayerCollectionIR {
+        global_layer_index: layer.index,
+        z: layer.z,
+        ordered_entities,
+        ..Default::default()
+    });
+}
+
+// ── Typed tap capture (packet 158) ─────────────────────────────────────────
+//
+// Request-gated, post-commit IR capture at the executor boundary. Runs only
+// the scheduler dependency closure required to reach the furthest selected
+// tap, then stops (docs/specs/visual-pipeline-debug.md "Dependency
+// Closure"; ADR-0037). Scope for this packet is the `Layer::*` stages whose
+// committed output is one of the four arena-owned IR types
+// (`PerimeterIR`/`InfillIR`/`SupportIR`/`LayerCollectionIR`) reachable from
+// [`apply`]; PrePass and G-code taps are out of scope here.
+
+/// Per-layer stage IDs this packet supports as typed-capture taps. Mirrors
+/// the `Layer::*` rows of the Stage Tap Inventory
+/// (`docs/specs/visual-pipeline-debug.md`) whose source is an [`apply`]
+/// commit boundary.
+pub const SUPPORTED_TAP_STAGE_IDS: &[&str] = &[
+    "Layer::Perimeters",
+    "Layer::PerimetersPostProcess",
+    "Layer::Infill",
+    "Layer::InfillPostProcess",
+    "Layer::Support",
+    "Layer::SupportPostProcess",
+    "Layer::PathOptimization",
+];
+
+/// A renderer-owned, post-commit IR snapshot. Always an owned clone taken
+/// immediately after [`apply`] returns `Ok` — never a borrow into
+/// `LayerArena` (ADR-0037).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", content = "value")]
+pub enum CapturedIr {
+    /// `Layer::Perimeters` / `Layer::PerimetersPostProcess` commit.
+    Perimeter(PerimeterIR),
+    /// `Layer::Infill` / `Layer::InfillPostProcess` commit.
+    Infill(InfillIR),
+    /// `Layer::Support` / `Layer::SupportPostProcess` commit.
+    Support(SupportIR),
+    /// `Layer::PathOptimization` commit.
+    LayerCollection(LayerCollectionIR),
+}
+
+impl CapturedIr {
+    /// The captured IR type's own `schema_version`, formatted `MAJOR.MINOR.PATCH`.
+    pub fn schema_version_string(&self) -> String {
+        let v = match self {
+            Self::Perimeter(ir) => ir.schema_version,
+            Self::Infill(ir) => ir.schema_version,
+            Self::Support(ir) => ir.schema_version,
+            Self::LayerCollection(ir) => ir.schema_version,
+        };
+        format!("{}.{}.{}", v.major, v.minor, v.patch)
+    }
+}
+
+/// One typed tap capture: the requested stage's committed IR for one layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StageCapture {
+    /// The tap (per-layer stage id) this capture was taken at.
+    pub stage_id: StageId,
+    /// Global layer index this capture belongs to.
+    pub layer_index: u32,
+    /// Layer Z (mm) at capture time.
+    pub layer_z: f32,
+    /// The renderer-owned captured IR.
+    pub ir: CapturedIr,
+}
+
+/// A layer the closure executed for a genuine, real scheduler-fixed-order
+/// correctness dependency even though it was not in the request's selected
+/// layer set: executed, not rendered/retained (docs/specs/
+/// visual-pipeline-debug.md "Dependency Closure"). No tap in
+/// `SUPPORTED_TAP_STAGE_IDS` has such a dependency today (Tier 2 per-layer
+/// work is cross-layer-independent — see [`execute_captured_stages`]), so
+/// this never appears in practice; it exists so a future tap that does need
+/// one reports a specific, real reason here instead of the closure silently
+/// running every layer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerExpansion {
+    /// The layer that was executed but not captured.
+    pub layer_index: u32,
+    /// Human-readable reason it was required.
+    pub reason: String,
+}
+
+/// Request for [`execute_captured_stages`]: the taps (per-layer stage ids)
+/// and layers a visual-debug request selected. Both must be validated
+/// (non-empty, resolvable) by the caller before matching against the plan;
+/// [`execute_captured_stages`] performs the plan-relative validation itself
+/// and fails closed rather than executing a partial closure.
+#[derive(Debug, Clone)]
+pub struct CaptureRequest {
+    /// Selected taps, as per-layer stage ids (see [`SUPPORTED_TAP_STAGE_IDS`]).
+    pub stage_ids: Vec<StageId>,
+    /// Selected global layer indices.
+    pub layer_indices: Vec<u32>,
+}
+
+/// Successful output of [`execute_captured_stages`].
+#[derive(Debug, Clone, Default)]
+pub struct CaptureOutput {
+    /// Retained typed captures, one per requested (tap, layer) pair,
+    /// deterministically ordered by (`STAGE_ORDER` position, layer_index).
+    pub captures: Vec<StageCapture>,
+    /// Layers executed for correctness but not captured, ordered by
+    /// layer_index.
+    pub expansions: Vec<LayerExpansion>,
+    /// The truncated per-layer stage closure that actually ran, in fixed
+    /// `STAGE_ORDER` order — the prerequisite stages through and including
+    /// the furthest selected tap, and nothing after it.
+    pub closure_stage_ids: Vec<StageId>,
+    /// Global layer indices the closure actually ran the truncated stage
+    /// sequence for, ascending (follow-up fix: layer-skip). Equal to the
+    /// request's validated, plan-applicable `layer_indices` — a non-selected
+    /// layer never appears here because it was never executed (see
+    /// [`execute_captured_stages`]).
+    pub executed_layer_indices: Vec<u32>,
+}
+
+/// Failure modes specific to typed tap capture (packet 158). Every variant
+/// fails outright — never a partial success (docs/specs/
+/// visual-pipeline-debug.md Success Criterion 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaptureExecutionError {
+    /// A requested tap is not a supported, documented tap.
+    UnknownTap {
+        /// The offending tap name, verbatim from the request.
+        tap: String,
+    },
+    /// No requested layer index resolves to a real layer in the plan.
+    NoApplicableLayer,
+    /// A requested tap's source IR was unavailable at its documented
+    /// commit boundary (e.g. no module bound to that stage in this plan).
+    TapSourceUnavailable {
+        /// The tap whose source was unavailable.
+        stage_id: StageId,
+        /// The layer at which it was unavailable.
+        layer_index: u32,
+    },
+    /// The underlying per-layer executor failed.
+    Layer(LayerExecutionError),
+}
+
+impl fmt::Display for CaptureExecutionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnknownTap { tap } => write!(f, "unsupported visual-debug tap: '{tap}'"),
+            Self::NoApplicableLayer => write!(
+                f,
+                "no requested layer applies to this plan; nothing to capture"
+            ),
+            Self::TapSourceUnavailable {
+                stage_id,
+                layer_index,
+            } => write!(
+                f,
+                "tap '{stage_id}' source IR unavailable at layer {layer_index}: \
+                 no module committed it at its documented boundary"
+            ),
+            Self::Layer(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for CaptureExecutionError {}
+
+impl From<LayerExecutionError> for CaptureExecutionError {
+    fn from(e: LayerExecutionError) -> Self {
+        Self::Layer(e)
+    }
+}
+
+fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr> {
+    match stage_id {
+        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
+            arena.perimeter().cloned().map(CapturedIr::Perimeter)
+        }
+        "Layer::Infill" | "Layer::InfillPostProcess" => {
+            arena.infill().cloned().map(CapturedIr::Infill)
+        }
+        "Layer::Support" | "Layer::SupportPostProcess" => {
+            arena.support().cloned().map(CapturedIr::Support)
+        }
+        "Layer::PathOptimization" => arena
+            .layer_collection()
+            .cloned()
+            .map(CapturedIr::LayerCollection),
+        _ => None,
+    }
+}
+
+/// Request-gated, typed post-stage capture at the executor boundary
+/// (packet 158).
+///
+/// Executes only the scheduler dependency closure required to reach the
+/// furthest tap in `request.stage_ids`: `plan.per_layer_stages` is
+/// truncated (in fixed `STAGE_ORDER` order) to the prerequisite stages
+/// through and including that tap; nothing after it runs. That truncated
+/// closure runs ONLY for layers in `request.layer_indices` — Tier 2
+/// per-layer work has no cross-layer dependency for the `Layer::*` stages
+/// this packet supports (docs/01_system_architecture.md "Tier 2 —
+/// Per-Layer": "Each layer runs independently. Layers share no mutable
+/// state. The Blackboard is read-only during this tier."), so a
+/// non-selected layer is never required for correctness in this closure's
+/// scope and is not executed at all — no arena is created, no module is
+/// invoked, no `apply` call runs. [`CaptureOutput::expansions`] therefore
+/// stays empty for every request today; the type is retained so a future
+/// tap with a genuine, real correctness dependency can report a
+/// specifically-worded [`LayerExpansion`] rather than the closure silently
+/// over-running.
+///
+/// A capture is taken immediately after [`apply`] returns `Ok` for a
+/// requested (tap, layer) pair — a post-commit, renderer-owned clone, never
+/// a borrow into `LayerArena` (ADR-0037). If a requested tap's arena slot is
+/// still empty once its stage has run (no module committed it), the whole
+/// call fails with [`CaptureExecutionError::TapSourceUnavailable`] rather
+/// than returning a partial bundle.
+pub fn execute_captured_stages(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    request: &CaptureRequest,
+) -> Result<CaptureOutput, CaptureExecutionError> {
+    for tap in &request.stage_ids {
+        if !SUPPORTED_TAP_STAGE_IDS.contains(&tap.as_str()) {
+            return Err(CaptureExecutionError::UnknownTap { tap: tap.clone() });
+        }
+    }
+    if request.stage_ids.is_empty() {
+        return Ok(CaptureOutput::default());
+    }
+
+    let real_layer_indices: HashSet<u32> = plan.global_layers.iter().map(|l| l.index).collect();
+    let applicable: HashSet<u32> = request
+        .layer_indices
+        .iter()
+        .copied()
+        .filter(|i| real_layer_indices.contains(i))
+        .collect();
+    if applicable.is_empty() {
+        return Err(CaptureExecutionError::NoApplicableLayer);
+    }
+
+    let requested: HashSet<&str> = request.stage_ids.iter().map(|s| s.as_str()).collect();
+    let Some(furthest_idx) = plan
+        .per_layer_stages
+        .iter()
+        .rposition(|s| requested.contains(s.stage_id.as_str()))
+    else {
+        // None of the (validated, documented) requested taps have any
+        // module bound to their stage in this plan — their source can
+        // never become available in this closure.
+        let mut missing_taps: Vec<&String> = request.stage_ids.iter().collect();
+        missing_taps.sort();
+        return Err(CaptureExecutionError::TapSourceUnavailable {
+            stage_id: missing_taps[0].clone(),
+            layer_index: *applicable.iter().min().expect("applicable is non-empty"),
+        });
+    };
+    let truncated_stages = &plan.per_layer_stages[..=furthest_idx];
+    let closure_stage_ids: Vec<StageId> = truncated_stages
+        .iter()
+        .map(|s| s.stage_id.clone())
+        .collect();
+
+    // Only the requested (applicable) layers ever execute the closure — see
+    // the "no cross-layer dependency" note on this function's doc comment.
+    // A non-selected layer is skipped entirely, not merely un-retained.
+    let mut sorted_layers: Vec<&GlobalLayer> = plan
+        .global_layers
+        .iter()
+        .filter(|l| applicable.contains(&l.index))
+        .collect();
+    sorted_layers.sort_by_key(|l| l.index);
+    let executed_layer_indices: Vec<u32> = sorted_layers.iter().map(|l| l.index).collect();
+
+    let mut captures = Vec::new();
+    // Stays empty: no tap in `SUPPORTED_TAP_STAGE_IDS` has a genuine
+    // cross-layer correctness dependency today, so no layer is ever
+    // executed-but-not-retained. See [`LayerExpansion`] for when a real one
+    // would be recorded here.
+    let expansions: Vec<LayerExpansion> = Vec::new();
+
+    for layer in sorted_layers {
+        let mut arena = LayerArena::new();
+        hydrate_slice_arena(&mut arena, blackboard, layer)?;
+
+        for stage in truncated_stages {
+            prestage_layer_collection_if_path_optimization(&mut arena, stage, layer, blackboard);
+
+            for module in &stage.modules {
+                if !module_invocation_allowed_on_layer(
+                    module.region_split_semantics(),
+                    arena.slice(),
+                ) {
+                    continue;
+                }
+                let (instance_pool, wasm_component) = wasm_handles
+                    .get(module.module_id().as_str())
+                    .map(|(p, c)| (Arc::clone(p), c.clone()))
+                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
+                let live_module = CompiledModuleLive::new(
+                    module.module_id(),
+                    instance_pool,
+                    wasm_component,
+                    module.claims(),
+                    Arc::clone(module.config_view()),
+                );
+                let input = LayerStageInput {
+                    mesh: Arc::clone(blackboard.mesh()),
+                    paint_regions: None,
+                    seam_plan: blackboard.seam_plan().cloned(),
+                    support_plan: blackboard.support_plan().cloned(),
+                    region_map: blackboard.region_map().cloned(),
+                    slice: arena.slice(),
+                    perimeter: arena.perimeter(),
+                    layer_collection: arena.layer_collection(),
+                    surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                };
+                let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
+
+                let commit = runner
+                    .run_stage(&stage.stage_id, layer, &live_module, input)
+                    .map_err(|e| {
+                        CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
+                            layer_index: layer.index,
+                            stage_id: stage.stage_id.clone(),
+                            module_id: module.module_id().to_owned(),
+                            message: e.to_string(),
+                        })
+                    })?;
+
+                if let Some(staged) = commit {
+                    let ctx = StageApplyContext {
+                        stage_id: &stage.stage_id,
+                        module_id: module.module_id().as_str(),
+                        layer_index: layer.index,
+                        seam_plan: seam_plan_ir_for_commit,
+                    };
+                    apply(&mut arena, staged, &ctx).map_err(|e| {
+                        CaptureExecutionError::Layer(LayerExecutionError::FatalLayer {
+                            layer_index: layer.index,
+                            stage_id: stage.stage_id.clone(),
+                            module_id: module.module_id().to_owned(),
+                            message: e.to_string(),
+                        })
+                    })?;
+                }
+            }
+
+            if requested.contains(stage.stage_id.as_str()) {
+                match capture_ir_for_stage(&stage.stage_id, &arena) {
+                    Some(ir) => captures.push(StageCapture {
+                        stage_id: stage.stage_id.clone(),
+                        layer_index: layer.index,
+                        layer_z: layer.z,
+                        ir,
+                    }),
+                    None => {
+                        return Err(CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: stage.stage_id.clone(),
+                            layer_index: layer.index,
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    captures.sort_by_key(|c| {
+        (
+            STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+    // `expansions` is always empty (see the field's initializer above), so
+    // there is nothing to sort.
+
+    Ok(CaptureOutput {
+        captures,
+        expansions,
+        closure_stage_ids,
+        executed_layer_indices,
+    })
 }
 
 /// Maps a per-layer stage ID to the canonical IR field path it writes.

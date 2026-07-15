@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 158-visual-debug-typed-tap-capture
 task_ids:
   - TASK-268

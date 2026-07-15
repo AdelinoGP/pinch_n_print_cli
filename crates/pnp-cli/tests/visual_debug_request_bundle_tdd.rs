@@ -8,6 +8,22 @@ use assert_cmd::Command;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 
+/// Workspace root, computed the same way as
+/// `visual_debug_typed_tap_capture_tdd.rs` — used only by the one test
+/// (`ac_manifest_serializes_required_index_and_entry_fields`) that exercises
+/// a real, supported tap and therefore needs a real model/config/module_dirs
+/// on disk (a non-empty `taps` list runs an actual typed-tap capture, unlike
+/// every other test in this file, which uses `taps: []` and never touches
+/// the filesystem paths in `model_request()`).
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates/pnp-cli has a parent")
+        .parent()
+        .expect("workspace root above crates/")
+        .to_path_buf()
+}
+
 fn write_request(dir: &Path, body: Value) -> PathBuf {
     fs::create_dir_all(dir).expect("request directory");
     let path = dir.join("request.json");
@@ -108,8 +124,32 @@ fn ac_gcode_request_accepts_as_exclusive_source() {
 #[test]
 fn ac_manifest_serializes_required_index_and_entry_fields() {
     let tmp = TempDir::new().expect("tempdir");
+
+    // Packet 158 (AC-N2) now validates tap names against the documented,
+    // supported tap inventory (`SUPPORTED_TAP_STAGE_IDS` in
+    // `crates/slicer-runtime/src/layer_executor.rs`), so the fixture's tap
+    // name must be real — `"taps.ir_view"` is not, and is now correctly
+    // rejected. `"Layer::Perimeters"` is real and has a bound module in
+    // `modules/core-modules` (see
+    // `docs/specs/visual-pipeline-debug.md` "Stage Tap Inventory"). A real,
+    // non-empty `taps` list runs an actual typed-tap capture (AC-N4: the
+    // tap needs an applicable selected layer, already `[0]` via
+    // `model_request()`), so the model/config/module_dirs must also be
+    // real, resolvable paths — `model_request()`'s placeholder strings are
+    // only safe when `taps` is empty (every other test in this file).
+    let config_path = tmp.path().join("config.json");
+    fs::write(&config_path, br#"{"layer_height": 1.0}"#).expect("write bounded config");
     let mut request_body = model_request();
-    request_body["taps"] = json!(["taps.ir_view"]);
+    request_body["source"]["model"] = json!(workspace_root()
+        .join("resources")
+        .join("regression_wedge.stl")
+        .to_string_lossy());
+    request_body["source"]["config"] = json!(config_path.to_string_lossy());
+    request_body["source"]["module_dirs"] = json!([workspace_root()
+        .join("modules")
+        .join("core-modules")
+        .to_string_lossy()]);
+    request_body["taps"] = json!(["Layer::Perimeters"]);
     request_body["visualizations"] = json!(["filament_lines"]);
     let request = write_request(tmp.path(), request_body);
     let output = tmp.path().join("bundle");

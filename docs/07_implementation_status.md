@@ -218,7 +218,7 @@
 - [ ] TASK-264 — Lightning `Layer` + `Generator` port + prepass producer wiring (packet 139). Spec: lightning-infill-parity Phase L3.
 - [ ] TASK-265 — `lightning-infill` module rewrite: sample `LightningTreeIR` per layer, raw emit, close DEV-081, contained lightning re-bless (packet 140). Spec: lightning-infill-parity Phase L4.
 - [x] TASK-267 — Visual Pipeline Debug request and bundle contract: add `pnp_cli visual-debug` request validation, bundle lifecycle, overwrite behavior, and manifest model without stage taps or rendering. Spec: visual-pipeline-debug candidate packet 1.
-- [ ] TASK-268 — Visual Pipeline Debug typed tap capture: add request-gated post-stage capture adapters and minimal dependency-closure execution. Spec: visual-pipeline-debug candidate packet 2.
+- [x] TASK-268 — Visual Pipeline Debug typed tap capture: add request-gated post-stage capture adapters and minimal dependency-closure execution. Spec: visual-pipeline-debug candidate packet 2. Implemented in packet 158-visual-debug-typed-tap-capture.
 - [ ] TASK-269 — Visual Pipeline Debug intermediate renderer: render typed geometry, swept widths, overlays, shared viewport/palette, and PNG output. Spec: visual-pipeline-debug candidate packet 3.
 - [ ] TASK-270 — Visual Pipeline Debug final G-code renderer: parse the PnP G0/G1 subset and emit final PNGs with unclassified and unsupported-construct warnings. Spec: visual-pipeline-debug candidate packet 4.
 - [ ] TASK-271 — Visual Pipeline Debug agent surface and verification: add the skill, guide examples, contract tests, determinism checks, and no-overhead measurements. Spec: visual-pipeline-debug candidate packet 5.

@@ -100,10 +100,17 @@ renderer must not infer a physical bead width from E values.
 
 For model mode, a requested tap means the post-stage, post-host-hook state.
 The executor runs all prerequisite stages and enabled modules needed to reach
-the furthest selected tap, then stops. A request may require additional layers
-or whole-print work for correctness, such as overhang classification or layer
-finalization. Those layers are executed but not rendered unless selected. The
-bundle manifest records every such expansion and its reason.
+the furthest selected tap, then stops. A request may in principle require
+additional layers or whole-print work for correctness — such as consuming
+overhang classification or layer finalization — beyond what the request
+selected; the bundle manifest would record any such expansion and its real
+reason. For the `Layer::*` per-layer taps this executor supports today
+(`Layer::Perimeters` through `Layer::PathOptimization`), no such dependency
+exists: Tier 2 per-layer work runs independently per layer with no shared
+mutable state (`docs/01_system_architecture.md` "Tier 2 — Per-Layer"), so a
+layer the request did not select is never executed at all — not merely
+un-rendered. Expansion is reserved for a future tap that does have a genuine
+correctness dependency; it is not the default behavior.
 
 This follows the scheduler's fixed stage order and four-phase execution in
 `docs/04_host_scheduler.md`; taps do not create scheduler edges, module
@@ -115,6 +122,52 @@ A bundle contains `manifest.json` and PNGs. `manifest.json` is the sole
 machine-readable index. Each image entry records source mode, requested tap,
 layer index and Z where applicable, visualization type, PNG path, viewport,
 legend version, IR schema version or G-code parser version, and warnings.
+
+### Typed Post-Stage Capture (packet 158)
+
+Before the intermediate renderer exists, a model-backed request with a
+non-empty `taps` list runs request-gated, typed post-stage capture at the
+executor boundary instead of producing PNGs. This is a strict subset of the
+render-path contract above: it reuses the same dependency-closure execution
+and manifest shape, but each `images[]` entry's `png_path` is empty and its
+`typed_capture` field carries the renderer-owned payload directly — a tagged
+`{"kind": ..., "value": ...}` JSON object mirroring `CapturedIr`
+(`crates/slicer-runtime/src/layer_executor.rs`): `kind` is one of
+`"Perimeter"`, `"Infill"`, `"Support"`, or `"LayerCollection"`, and `value` is
+that stage's committed IR (`PerimeterIR`, `InfillIR`, `SupportIR`, or
+`LayerCollectionIR`), taken as an owned clone immediately after the stage's
+`apply` commits — never a borrow into `LayerArena` (ADR-0037). `typed_capture`
+is `null`/absent for placeholder and standalone-G-code entries. Selected-layer
+retention means only `(tap, layer)` pairs the request actually selected
+produce an `images[]` entry. For every tap this capture path supports, the
+closure does not merely skip rendering a non-selected layer — it does not
+execute that layer at all (no arena, no module invocation, no `apply` call):
+those `Layer::*` stages have no cross-layer correctness dependency, per
+"Dependency Closure" above.
+
+The manifest additionally records, only for a typed-tap capture (empty for
+every other request shape, including the standalone G-code path):
+
+- `executed_stage_ids`: the truncated per-layer stage closure that actually
+  ran, in fixed `STAGE_ORDER` order — every prerequisite stage through and
+  including the furthest selected tap, and nothing after it.
+- `executed_layer_indices`: the global layer indices the closure actually ran
+  that stage closure for. Equal to the request's selected, plan-applicable
+  layers today, since no supported tap has a cross-layer dependency.
+- `layer_expansions`: reserved for a layer the closure had to execute (but not
+  render) for a genuine correctness dependency even though it was not
+  selected — each entry would carry `layer_index` and a specific,
+  non-generic `reason`. Empty for every request today; a selected layer
+  never appears here.
+
+Supported taps for this capture path are exactly `SUPPORTED_TAP_STAGE_IDS`
+(`crates/slicer-runtime/src/layer_executor.rs`): the `Layer::*` per-layer
+stages in the "Stage Tap Inventory" table below, from `Layer::Perimeters`
+through `Layer::PathOptimization`. An unsupported tap name, or a request
+whose selected layers do not resolve to a real layer in the model, is
+rejected before the model or modules are loaded — never a partial bundle.
+This capture path produces no PNGs; rendering is a later packet
+("Intermediate renderer" in Candidate Packets below).
 
 All images use one model-wide XY extent plus a documented fixed margin. The
 viewport is calculated in the canonical coordinate system: `Point2` values

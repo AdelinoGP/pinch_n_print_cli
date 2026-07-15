@@ -590,3 +590,168 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         wallclock_ms,
     })
 }
+
+/// Assembled scheduler/runtime context after prepass execution, ready for a
+/// bounded per-layer closure (e.g.
+/// [`crate::layer_executor::execute_captured_stages`]).
+///
+/// Built by [`prepare_prepass_context`]; used by `pnp-cli`'s visual-debug
+/// command (packet 158) so it does not have to duplicate module loading,
+/// config resolution, and plan construction to run a typed-tap capture.
+pub struct PrepassContext {
+    /// Execution plan with `global_layers` promoted from the
+    /// prepass-committed `LayerPlanIR` (mirrors `run_pipeline_core`'s Step 2b).
+    pub plan: crate::ExecutionPlan,
+    /// Blackboard after prepass execution.
+    pub blackboard: crate::Blackboard,
+    /// Per-module wasmtime handles, keyed by `ModuleId`.
+    pub wasm_handles: std::collections::HashMap<
+        slicer_ir::ModuleId,
+        (
+            Arc<slicer_wasm_host::WasmInstancePool>,
+            Option<Arc<slicer_wasm_host::WasmComponent>>,
+        ),
+    >,
+    /// Dispatcher ready to run per-layer (Tier 2) stages against the same
+    /// `wasmtime::Engine` used for prepass.
+    pub layer_runner: WasmRuntimeDispatcher,
+}
+
+/// Load modules, resolve config, build the live execution plan, and run
+/// prepass — the shared prefix of [`run_slice`] up through Tier 1, factored
+/// out so callers that only need a bounded Tier 2 closure (typed tap
+/// capture, packet 158) do not have to duplicate it.
+///
+/// Deliberately narrower than `run_slice`'s setup: it skips the 14-pass
+/// startup DAG validation, thumbnail/CONFIG_BLOCK wiring, relative-E and
+/// MMU wipe-tower heuristics, `validate_support_layer_heights`, and
+/// per-tool config resolution — none of which affect per-layer arena
+/// commits, and all of which belong to gcode-emission concerns this entry
+/// point never reaches.
+///
+/// # Errors
+///
+/// Returns [`SliceRunError`] if module loading, config resolution, plan
+/// construction, or prepass execution fails.
+pub fn prepare_prepass_context(
+    mesh_ir: Arc<MeshIR>,
+    mut config_source: std::collections::HashMap<String, ConfigValue>,
+    module_dirs: &[PathBuf],
+    no_default_module_paths: bool,
+) -> Result<PrepassContext, SliceRunError> {
+    // Seed planner-visible per-object world heights — required for
+    // `layer-planner-default` (and any layer planner) to produce a
+    // non-empty `LayerPlanIR`; without it prepass fails fatally with
+    // "no objects with positive height" (mirrors `run_slice`).
+    for object in &mesh_ir.objects {
+        let key = format!("object_height:{}", object.id);
+        if config_source.contains_key(&key) {
+            continue;
+        }
+        if let Some((z_min, z_max)) = object.world_z_extent {
+            config_source.insert(key, ConfigValue::Float((z_max - z_min) as f64));
+        }
+    }
+
+    // Seed the host-injected `slice_has_paint` gate (mirrors `run_slice`):
+    // set `true` whenever any object carries paint data, never overriding
+    // an explicit user-supplied value.
+    if mesh_ir.objects.iter().any(|o| o.paint_data.is_some())
+        && !config_source.contains_key("slice_has_paint")
+    {
+        config_source.insert("slice_has_paint".to_string(), ConfigValue::Bool(true));
+    }
+
+    // Seed per-object config from `ObjectMesh.config.data` (mirrors `run_slice`).
+    for object in &mesh_ir.objects {
+        for (subkey, value) in &object.config.data {
+            let key = format!("object_config:{}:{}", object.id, subkey);
+            if config_source.contains_key(&key) {
+                continue;
+            }
+            config_source.insert(key, value.clone());
+        }
+    }
+
+    let search_roots = assemble_search_roots(module_dirs, no_default_module_paths);
+    let mut loaded =
+        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
+            .map_err(|e| {
+                SliceRunError(format!(
+                    "failed to load modules from {} root(s) {:?}: {e}",
+                    search_roots.len(),
+                    search_roots
+                ))
+            })?;
+
+    let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
+    let default_resolved_config = resolve_global_config(&config_source, &config_bounds)
+        .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+
+    let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
+    let resolved_configs_map = resolve_per_object_configs(
+        &default_resolved_config,
+        &config_source,
+        &object_ids,
+        &config_bounds,
+    )
+    .map_err(|e| SliceRunError(format!("config resolution failed: {e}")))?;
+
+    let wasm_handles: std::collections::HashMap<
+        slicer_ir::ModuleId,
+        (
+            Arc<slicer_wasm_host::WasmInstancePool>,
+            Option<Arc<slicer_wasm_host::WasmComponent>>,
+        ),
+    > = loaded
+        .bindings
+        .iter()
+        .map(|b| {
+            (
+                b.module.id().to_string(),
+                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+            )
+        })
+        .collect();
+
+    let mut plan = build_live_execution_plan(
+        loaded.sorted_stages,
+        loaded.bindings,
+        &config_source,
+        Arc::new(Vec::new()),
+        Arc::new(std::collections::HashMap::new()),
+        &mut loaded.diagnostics,
+    )
+    .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
+
+    let engine = Arc::clone(&loaded.engine);
+    let prepass_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let mut blackboard = crate::Blackboard::new(Arc::clone(&mesh_ir), 0);
+    let empty_raw: std::collections::HashMap<slicer_ir::ConfigKey, ConfigValue> =
+        std::collections::HashMap::new();
+
+    crate::prepass::execute_prepass_with_builtins_configured(
+        &plan,
+        &mut blackboard,
+        &prepass_runner,
+        &resolved_configs_map,
+        &default_resolved_config,
+        &empty_raw,
+        &config_bounds,
+        &wasm_handles,
+    )
+    .map_err(|e| SliceRunError(format!("prepass failed: {e}")))?;
+
+    if let Some(layer_plan) = blackboard.layer_plan() {
+        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
+    }
+
+    let layer_runner = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    Ok(PrepassContext {
+        plan,
+        blackboard,
+        wasm_handles,
+        layer_runner,
+    })
+}

@@ -142,6 +142,12 @@ pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,
     ir_path_for_layer_stage, LayerExecutionError, LayerProgressSink, NoopLayerProgressSink,
 };
+// Typed tap capture (packet 158): request-gated, post-commit IR capture at
+// the executor boundary, consumed by `pnp-cli`'s visual-debug command.
+pub use layer_executor::{
+    execute_captured_stages, CaptureExecutionError, CaptureOutput, CaptureRequest, CapturedIr,
+    LayerExpansion, StageCapture, SUPPORTED_TAP_STAGE_IDS,
+};
 pub use layer_finalization::{
     execute_layer_finalization, execute_layer_finalization_with_instrumentation,
     FinalizationOutputBuilder,
@@ -158,7 +164,10 @@ pub use prepass::{
     execute_prepass_with_builtins_configured_instr, PrepassExecutionError,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
-pub use run::{run_slice, SliceOutcome, SliceRunError, SliceRunOptions};
+pub use run::{
+    prepare_prepass_context, run_slice, PrepassContext, SliceOutcome, SliceRunError,
+    SliceRunOptions,
+};
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
     paint_annotation_warnings_to_progress_events, SlicePostProcessPaintAnnotationError,
