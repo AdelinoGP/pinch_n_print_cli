@@ -4,9 +4,9 @@
 
 - Grouped task IDs: `TASK-269`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
-- Dependency: packet `158-visual-debug-typed-tap-capture` (status `active`; renderer capture export is still a forward contract until 158's implementation lands)
+- Dependency: packet `158-visual-debug-typed-tap-capture` (status `implemented`, commit `68b10706`; renderer capture export is grounded against merged code — see `design.md` Open Questions)
 
 ## Problem Statement
 
@@ -18,7 +18,7 @@ Packet 158 supplies request-gated typed post-stage captures but intentionally st
 - Render `filament_lines` from typed path centerlines colored by semantic role.
 - Render `filled_areas` from direct `ExPolygon` geometry where available.
 - Render typed paths using swept extrusion-width shapes from `Point3WithWidth.width`; never infer width from unrelated values.
-- Render stage-specific `diagnostic_overlay` content from documented fields including seams, travel anchors, region/object identifiers, layer bounds, and execution annotations.
+- Render stage-specific `diagnostic_overlay` content from documented fields, scoped to what packet 158 actually captures: seam coordinates and region/object identifiers on `Perimeter`/`Infill`/`Support` captures; travel anchors and execution annotations only on `LayerCollection` captures; layer bounds computed as a renderer-derived XY bounding box of the captured geometry (not a source field).
 - Compose overlays with either geometry visualization without changing the selected geometry view's semantic meaning.
 - Calculate one model-wide XY viewport with the documented fixed margin and reuse it for every selected image in the bundle.
 - Implement the v1 fixed semantic palette and legend version for perimeter families, infill families, travel, support, support interface, and unclassified typed final extrusion where present.
@@ -55,7 +55,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 - Positive: `AC-1` through `AC-5` prove typed polygon rendering, width sweeps, stable composable overlays, bundle-wide viewport/palette/scale, and byte determinism.
 - Negative: `AC-N1` through `AC-N3` reject invalid typed geometry, missing width, and unsupported scale without successful partial output.
 - Cross-packet impact: packet 157 remains the owner of request and bundle lifecycle; packet 158 remains the owner of capture and dependency closure; packet 159 consumes their exports and owns only rasterization and image-entry rendering metadata; packet 160 owns final G-code rendering.
-- Forward contracts: `[FWD-158-1]` packet 158 must expose stable typed capture values with exact source-field identity and deterministic ordering; `[FWD-158-2]` packet 158 must expose an additive image-entry/bundle handoff that does not require the renderer to parse requests or manage output lifecycle; `[FWD-158-3]` packet 158 must define how synthetic non-geometry capture records are handed to the renderer for diagnostic diagrams.
+- Forward contracts (all resolved 2026-07-15 against commit `68b10706`; see `design.md` Open Questions): `[FWD-158-1]` resolved — `StageCapture`/`CapturedIr` (`crates/slicer-runtime/src/layer_executor.rs:591-679`) exposes stable typed capture values with tap identity, layer index, schema version, and deterministic ordering; `warnings` is not carried (stays hardcoded empty). `[FWD-158-2]` resolved — `ImageEntry.png_path`/`typed_capture` (`crates/pnp-cli/src/visual_debug.rs:269-288`, populated at 437-454) is already the additive handoff; this packet fills `png_path` only. `[FWD-158-3]` resolved — no synthetic non-geometry capture kind exists; all four `CapturedIr` variants are geometry-bearing, so `diagnostic_overlay` is always composited over a geometry view, never a standalone diagram.
 
 ## Verification Commands
 
@@ -76,6 +76,6 @@ Reference, never copy, criteria from `packet.spec.md`.
 ## Context Discipline Notes
 
 - `docs/01_system_architecture.md` is large; read only the ranges listed in this packet and delegate any symbol lookup.
-- Packet 158 is now `active` (grounded against implemented packet 157, commit `3e33ca01`) but still has no capture code merged; resolve `[FWD-158-1]` through `[FWD-158-3]` with bounded `LOCATIONS`/`SUMMARY` dispatches against packet 158's actual implementation before editing, not against its spec packet alone.
+- Packet 158 is now `implemented` (commit `68b10706`); `[FWD-158-1]` through `[FWD-158-3]` are resolved against its actual implementation (see `design.md` Open Questions) — no further grounding dispatch is needed before Step 2.
 - Grounded fact: packet 157's `Manifest`/`ImageEntry` types live in `crates/pnp-cli/src/visual_debug.rs`, and `slicer-runtime` cannot import them (dependency direction is `pnp-cli -> slicer-runtime`). This packet's renderer logic (rasterization, viewport, palette, PNG encoding) is expected to live in `slicer-runtime` as a pure function of typed capture data, while `crates/pnp-cli/src/visual_debug.rs` calls it and assembles the resulting `ImageEntry` values — mirroring packet 158's own pnp-cli/slicer-runtime split.
 - Do not read packet 160 or implementation code broadly to infer the renderer seam; use bounded dispatches and return only the requested symbols or facts.

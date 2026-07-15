@@ -1,11 +1,11 @@
 ---
-status: draft
+status: implemented
 packet: 159-visual-debug-intermediate-renderer
 task_ids:
   - TASK-269
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Packet 158 is status active (grounded against implemented packet 157, commit 3e33ca01) but has no merged capture code yet; its renderer-owned capture export remains a forward contract that must be confirmed against packet 158's real implementation before this packet's implementation begins. Note also: slicer-runtime cannot import crates/pnp-cli's Manifest/ImageEntry types (pnp-cli depends on slicer-runtime, not the reverse), so this packet's renderer must be a pure function in slicer-runtime, with crates/pnp-cli/src/visual_debug.rs assembling the ImageEntry/Manifest.
+copy_note: Packet 158 is status implemented (commit 68b10706); its renderer-owned capture export (StageCapture/CapturedIr in crates/slicer-runtime/src/layer_executor.rs:591-679) is grounded against real merged code as of 2026-07-15 (see design.md Open Questions) — no forward-contract risk remains. Note also: slicer-runtime cannot import crates/pnp-cli's Manifest/ImageEntry types (pnp-cli depends on slicer-runtime, not the reverse), so this packet's renderer must be a pure function in slicer-runtime, with crates/pnp-cli/src/visual_debug.rs assembling the ImageEntry/Manifest by filling the already-existing ImageEntry.png_path field.
 ---
 
 # Packet Contract: 159-visual-debug-intermediate-renderer
@@ -20,9 +20,9 @@ This packet adds the intermediate visual-debug rasterization path for typed capt
 
 ## Prerequisites and Blockers
 
-- Depends on: packet `158-visual-debug-typed-tap-capture` (status `active`, no capture code merged yet); the `png` dependency decision and packet-158 renderer-owned capture export.
+- Depends on: packet `158-visual-debug-typed-tap-capture` (status `implemented`, commit `68b10706`) — capture export is merged and grounded (see `design.md`).
 - Unblocks: packet `161` visual-debug agent surface and verification work; packet `160` remains an independent final G-code renderer path.
-- Activation blockers: `[FWD]` packet 158 must publish the exact renderer-owned capture types, tap/layer ordering contract, and manifest image-entry extension seam; `[FWD]` the implementation must record the enabled `png` features and license review before activation.
+- Activation blockers: none remaining. All three `[FWD-158-*]` forward contracts resolved 2026-07-15 against packet 158's merged implementation (see `design.md` Open Questions). The `png` crate is confirmed absent from the workspace and must be added fresh to `crates/slicer-runtime/Cargo.toml`; recording its enabled features and license note is an implementation-time evidence obligation (Step 3/Step 4), not an activation gate.
 
 ## Acceptance Criteria
 

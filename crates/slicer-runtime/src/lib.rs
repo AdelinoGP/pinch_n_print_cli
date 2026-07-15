@@ -23,6 +23,7 @@ pub mod report;
 pub mod run;
 pub mod slice_postprocess;
 pub mod slice_postprocess_prepass;
+pub mod visual_debug_render;
 
 // Modules moved to slicer-scheduler — re-exported here for backward compatibility.
 // kept: transitional shim for downstream consumers (slicer-runtime tests, benches,
@@ -152,6 +153,8 @@ pub use layer_finalization::{
     execute_layer_finalization, execute_layer_finalization_with_instrumentation,
     FinalizationOutputBuilder,
 };
+// Intermediate renderer (packet 159): pure typed-capture-in, PNG-bytes-out
+// rendering, consumed by `pnp-cli`'s visual-debug command.
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
@@ -176,6 +179,10 @@ pub use slice_postprocess::{
 };
 pub use slice_postprocess_prepass::{
     commit_shell_classification_builtin, ShellClassificationError,
+};
+pub use visual_debug_render::{
+    compute_viewport_bounds, render_stage_capture, GeometryView, RenderError, RenderView,
+    RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX,
 };
 // kept: consumed by crates/slicer-runtime/tests/e2e/threemf_subtypes_synthetic_e2e_tdd.rs:602
 pub use slicer_core::algos::region_mapping::execute_region_mapping;

@@ -145,6 +145,12 @@ pub enum VisualDebugError {
     /// or an inapplicable layer (model/module load failure, unavailable tap
     /// source, or a fatal executor error) (packet 158).
     CaptureFailed(String),
+    /// The intermediate renderer (packet 159) rejected a requested
+    /// visualization for a typed capture — an unsupported `resolution_scale`,
+    /// a missing/empty documented geometry field, or a `filled_areas`
+    /// request over a typed path with no usable width. Carries the
+    /// renderer's own typed-error message verbatim.
+    RenderFailed(String),
 }
 
 impl fmt::Display for VisualDebugError {
@@ -161,6 +167,7 @@ impl fmt::Display for VisualDebugError {
                 "no requested layer applies to this model; nothing to capture"
             ),
             Self::CaptureFailed(e) => write!(f, "typed tap capture failed: {e}"),
+            Self::RenderFailed(e) => write!(f, "intermediate render failed: {e}"),
         }
     }
 }
@@ -285,6 +292,74 @@ pub struct ImageEntry {
     /// empty whenever this is `Some`.
     #[serde(default)]
     pub typed_capture: Option<serde_json::Value>,
+    /// The shared, bundle-wide world-space (mm) viewport this entry was
+    /// rendered against (follow-up gap fix, AC-4): populated verbatim from
+    /// the single `slicer_runtime::compute_viewport_bounds` call
+    /// `run_model_source` makes once per bundle, before its per-capture
+    /// render loop. Additive alongside `viewport` (pixel raster
+    /// width/height) — AC-4 treats "viewport bounds" (world-space) and
+    /// "raster dimensions" (pixel) as two distinct properties, and only
+    /// `viewport` covered the latter before this field existed. `None` for
+    /// an unrendered `typed_ir`-only entry (no visualization requested) or a
+    /// standalone G-code-source placeholder entry — both never call the
+    /// renderer, so no bounds were computed. Every entry produced by the
+    /// per-capture render loop below carries the identical value, byte for
+    /// byte, because they all share one `viewport_bounds` binding.
+    #[serde(default)]
+    pub world_bounds_mm: Option<slicer_runtime::ViewportBoundsMm>,
+}
+
+/// Map one requested `VisualizationSpec` to the intermediate renderer's
+/// (packet 159) `RenderView`, or `None` for a visualization kind this
+/// packet does not render (skipped, not an error — out-of-scope kinds are
+/// packet 157/160's concern, not this handoff's).
+///
+/// `diagnostic_overlay` composes with a base geometry view named via
+/// `options.base` (`"filled_areas"` | `"filament_lines"`), defaulting to
+/// `"filled_areas"` when `options` omits it or isn't a `Detail` spec.
+fn render_view_for_visualization(viz: &VisualizationSpec) -> Option<slicer_runtime::RenderView> {
+    use slicer_runtime::{GeometryView, RenderView};
+    match viz.kind() {
+        "filled_areas" => Some(RenderView::Geometry(GeometryView::FilledAreas)),
+        "filament_lines" => Some(RenderView::Geometry(GeometryView::FilamentLines)),
+        "diagnostic_overlay" => {
+            let base = match viz {
+                VisualizationSpec::Detail { options, .. } => {
+                    options.get("base").and_then(|v| v.as_str())
+                }
+                VisualizationSpec::Name(_) => None,
+            };
+            Some(match base {
+                Some("filament_lines") => {
+                    RenderView::DiagnosticOverlay(GeometryView::FilamentLines)
+                }
+                _ => RenderView::DiagnosticOverlay(GeometryView::FilledAreas),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Filename disambiguator for a resolved `RenderView`: `Some(base)` only for
+/// `DiagnosticOverlay`, naming the composed base geometry view
+/// (`"filled_areas"` | `"filament_lines"`) so two `diagnostic_overlay`
+/// visualizations with different `options.base` never collide on the same
+/// filename (Finding 1). `None` for a plain `Geometry` view — its `viz.kind()`
+/// already names the geometry view unambiguously, so no suffix is needed.
+fn diagnostic_overlay_base_suffix(view: slicer_runtime::RenderView) -> Option<&'static str> {
+    use slicer_runtime::{GeometryView, RenderView};
+    match view {
+        RenderView::DiagnosticOverlay(GeometryView::FilledAreas) => Some("filled_areas"),
+        RenderView::DiagnosticOverlay(GeometryView::FilamentLines) => Some("filament_lines"),
+        RenderView::Geometry(_) => None,
+    }
+}
+
+/// Sanitize a tap/stage id (e.g. `"Layer::Perimeters"`) for use as a
+/// filesystem path component: `:` is reserved on Windows (drive letters /
+/// alternate data streams), so it is replaced with `_`.
+fn sanitize_path_component(s: &str) -> String {
+    s.chars().map(|c| if c == ':' { '_' } else { c }).collect()
 }
 
 fn tap_name(tap: &TapSelector) -> String {
@@ -363,6 +438,7 @@ fn run_model_source(
         Vec<String>,
         Vec<LayerExpansionEntry>,
         Vec<i64>,
+        Vec<(String, Vec<u8>)>,
     ),
     VisualDebugError,
 > {
@@ -386,6 +462,7 @@ fn run_model_source(
             source,
             Some(VERSION.into()),
             None,
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -434,10 +511,18 @@ fn run_model_source(
         other => VisualDebugError::CaptureFailed(other.to_string()),
     })?;
 
-    let images: Vec<ImageEntry> = output
-        .captures
-        .iter()
-        .map(|capture| ImageEntry {
+    // Renderer-owned typed IR → PNG rendering (packet 159): additive to
+    // packet 158's typed capture above. When the request selected no
+    // `visualizations`, behavior is unchanged from packet 158 — one
+    // unrendered `ImageEntry` per capture, `png_path` empty. When it did,
+    // render each requested visualization for each capture (packet 159's
+    // pure `slicer_runtime::render_stage_capture`) against one shared,
+    // bundle-wide viewport (AC-4) computed once over every selected
+    // capture's geometry.
+    let mut images: Vec<ImageEntry> = Vec::new();
+    let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+    if req.visualizations.is_empty() {
+        images.extend(output.captures.iter().map(|capture| ImageEntry {
             source: "model".into(),
             tap: capture.stage_id.clone(),
             layer_index: capture.layer_index as i64,
@@ -450,8 +535,64 @@ fn run_model_source(
             gcode_parser_version: None,
             warnings: Vec::new(),
             typed_capture: serde_json::to_value(&capture.ir).ok(),
-        })
-        .collect();
+            world_bounds_mm: None,
+        }));
+    } else {
+        let viewport_bounds = slicer_runtime::compute_viewport_bounds(&output.captures);
+        for capture in &output.captures {
+            for viz in &req.visualizations {
+                let Some(render_view) = render_view_for_visualization(viz) else {
+                    continue;
+                };
+                let rendered = slicer_runtime::render_stage_capture(
+                    capture,
+                    render_view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                )
+                .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                // `viz.kind()` alone collides for two `diagnostic_overlay`
+                // visualizations with different `options.base` (both kind
+                // "diagnostic_overlay") — append the resolved base geometry
+                // view so two different bases never share a filename/manifest
+                // row (Finding 1). Non-overlay kinds have no such ambiguity:
+                // `viz.kind()` already names the geometry view directly.
+                let base_suffix = diagnostic_overlay_base_suffix(render_view);
+                let file_name = match base_suffix {
+                    Some(base) => format!(
+                        "{}_{}_{}_l{}.png",
+                        sanitize_path_component(&capture.stage_id),
+                        viz.kind(),
+                        base,
+                        capture.layer_index
+                    ),
+                    None => format!(
+                        "{}_{}_l{}.png",
+                        sanitize_path_component(&capture.stage_id),
+                        viz.kind(),
+                        capture.layer_index
+                    ),
+                };
+                let relative_path = format!("images/{file_name}");
+                rendered_files.push((relative_path.clone(), rendered.png_bytes));
+                images.push(ImageEntry {
+                    source: "model".into(),
+                    tap: capture.stage_id.clone(),
+                    layer_index: capture.layer_index as i64,
+                    layer_z: Some(capture.layer_z as f64),
+                    visualization: viz.kind().to_string(),
+                    png_path: relative_path,
+                    viewport: viewport.clone(),
+                    legend_version: VERSION.into(),
+                    ir_schema_version: Some(capture.ir.schema_version_string()),
+                    gcode_parser_version: None,
+                    warnings: Vec::new(),
+                    typed_capture: serde_json::to_value(&capture.ir).ok(),
+                    world_bounds_mm: Some(viewport_bounds),
+                });
+            }
+        }
+    }
     let layer_expansions: Vec<LayerExpansionEntry> = output
         .expansions
         .iter()
@@ -474,6 +615,7 @@ fn run_model_source(
         output.closure_stage_ids,
         layer_expansions,
         executed_layer_indices,
+        rendered_files,
     ))
 }
 
@@ -508,58 +650,68 @@ pub fn run_visual_debug(
     // `--overwrite` wipe below ran unconditionally before this fallible
     // step, so an invalid request (e.g. an unknown tap) silently deleted an
     // existing bundle's manifest and left the directory empty.
-    let (source, ir, parser, images, executed_stage_ids, layer_expansions, executed_layer_indices) =
-        match &req.source {
-            VisualDebugSource::Model {
-                model,
-                config,
-                module_dirs,
-                ..
-            } => run_model_source(model, config, module_dirs, &req, &viewport)?,
-            VisualDebugSource::Gcode { path, .. } => {
-                let source = ManifestSource {
-                    kind: "gcode".into(),
-                    model: None,
-                    path: path.clone(),
-                };
-                let taps = if req.taps.is_empty() {
-                    vec![String::new()]
-                } else {
-                    req.taps.iter().map(tap_name).collect()
-                };
-                let layer = req.layers.first();
-                let (layer_index, layer_z) = layer_info(layer);
-                let mut images = Vec::new();
-                for visualization in &req.visualizations {
-                    let name = visualization.kind();
-                    for tap in &taps {
-                        images.push(ImageEntry {
-                            source: "gcode".into(),
-                            tap: tap.clone(),
-                            layer_index,
-                            layer_z,
-                            visualization: name.to_owned(),
-                            png_path: format!("images/{}_{}_l{}.png", tap, name, layer_index),
-                            viewport: viewport.clone(),
-                            legend_version: VERSION.into(),
-                            ir_schema_version: None,
-                            gcode_parser_version: Some(VERSION.into()),
-                            warnings: Vec::new(),
-                            typed_capture: None,
-                        });
-                    }
+    let (
+        source,
+        ir,
+        parser,
+        images,
+        executed_stage_ids,
+        layer_expansions,
+        executed_layer_indices,
+        rendered_files,
+    ) = match &req.source {
+        VisualDebugSource::Model {
+            model,
+            config,
+            module_dirs,
+            ..
+        } => run_model_source(model, config, module_dirs, &req, &viewport)?,
+        VisualDebugSource::Gcode { path, .. } => {
+            let source = ManifestSource {
+                kind: "gcode".into(),
+                model: None,
+                path: path.clone(),
+            };
+            let taps = if req.taps.is_empty() {
+                vec![String::new()]
+            } else {
+                req.taps.iter().map(tap_name).collect()
+            };
+            let layer = req.layers.first();
+            let (layer_index, layer_z) = layer_info(layer);
+            let mut images = Vec::new();
+            for visualization in &req.visualizations {
+                let name = visualization.kind();
+                for tap in &taps {
+                    images.push(ImageEntry {
+                        source: "gcode".into(),
+                        tap: tap.clone(),
+                        layer_index,
+                        layer_z,
+                        visualization: name.to_owned(),
+                        png_path: format!("images/{}_{}_l{}.png", tap, name, layer_index),
+                        viewport: viewport.clone(),
+                        legend_version: VERSION.into(),
+                        ir_schema_version: None,
+                        gcode_parser_version: Some(VERSION.into()),
+                        warnings: Vec::new(),
+                        typed_capture: None,
+                        world_bounds_mm: None,
+                    });
                 }
-                (
-                    source,
-                    None,
-                    Some(VERSION.to_string()),
-                    images,
-                    Vec::new(),
-                    Vec::new(),
-                    Vec::new(),
-                )
             }
-        };
+            (
+                source,
+                None,
+                Some(VERSION.to_string()),
+                images,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        }
+    };
 
     // Only now — after the fallible source resolution above has succeeded —
     // mutate `output_dir`: wipe it (if `--overwrite`'d and non-empty) or
@@ -583,6 +735,17 @@ pub fn run_visual_debug(
         }
     } else {
         fs::create_dir_all(output_dir).map_err(|e| VisualDebugError::Write(e.to_string()))?;
+    }
+
+    // Write the intermediate renderer's (packet 159) PNG bytes before the
+    // manifest that references them by `png_path`, so a write failure here
+    // never leaves a manifest pointing at a nonexistent image.
+    for (relative_path, bytes) in &rendered_files {
+        let file_path = output_dir.join(relative_path);
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| VisualDebugError::Write(e.to_string()))?;
+        }
+        fs::write(&file_path, bytes).map_err(|e| VisualDebugError::Write(e.to_string()))?;
     }
 
     let manifest = Manifest {

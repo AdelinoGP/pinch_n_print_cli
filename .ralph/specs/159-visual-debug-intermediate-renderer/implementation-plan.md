@@ -8,12 +8,13 @@
 
 ## Steps
 
-### Step 1: Confirm Packet 158 Renderer Handoff
+### Step 1: Confirm Packet 158 Renderer Handoff — ALREADY SATISFIED (2026-07-15)
 
 - Task IDs: `TASK-269`
 - Objective: Identify the exact packet-158 renderer-owned capture, typed field, ordering, and manifest image-entry symbols needed by the renderer, against packet 158's actual code (not just its spec packet).
 - Precondition: Packet 158 is `active` and grounded against implemented packet 157, but at authoring time of this step still has no merged capture code in `crates/slicer-runtime/src/` or `crates/pnp-cli/src/visual_debug.rs`.
 - Postcondition: A bounded inventory confirms `[FWD-158-1]` through `[FWD-158-3]` against packet 158's real implementation, or the packet remains blocked with a concrete blocker and no implementation edits.
+- **Resolution recorded during a refine-draft pass (packet 158 is now `implemented`, commit `68b10706`): the bounded inventory ran and all three FWD contracts resolved cleanly. Full grounded facts live in `design.md`'s Open Questions section. An implement-mode run may skip re-dispatching this step's sub-agent and proceed directly to Step 2, re-verifying only that no further packet-158 changes have landed since 2026-07-15.**
 - Files allowed to read, with ranges when over 300 lines:
   - `.ralph/specs/158-visual-debug-typed-tap-capture/**` - packet contract only; bounded export lookup.
   - `crates/pnp-cli/src/visual_debug.rs` and packet 158's `slicer-runtime` capture entry point - once merged; exact ranges returned by the dispatch below.

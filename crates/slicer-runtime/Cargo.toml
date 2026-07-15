@@ -24,6 +24,7 @@ clap = { workspace = true, features = ["derive"] }
 log = "0.4"
 directories = "6"
 rstar = "0.12"
+png = "0.18"
 
 [dev-dependencies]
 wasmtime = { workspace = true }
