@@ -2,64 +2,57 @@
 
 ## Execution Rules
 
-- One atomic step at a time.
-- Each step must map back to the packet's grouped task IDs.
-- TDD first, then implementation, then the narrowest falsifying validation.
-- Each step honors the context-discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`. The fields below are not optional metadata — they are the budget contract for this step.
+- Work one atomic step at a time; map every step to grouped task IDs.
+- Use TDD, then implementation, then the narrowest falsifying validation.
+- Every field below is a context-budget contract and must be filled independently; never write "see Step 1".
 
 ## Steps
 
-### Step 1: [short step title]
+### Step 1: [title]
 
-- Task IDs:
-  - `TASK-000`
+- Task IDs: `TASK-000`
 - Objective:
 - Precondition:
 - Postcondition:
-- Files allowed to read (with line-range hints when > 300 lines):
-  - `[path/to/file]` — lines `[N-M]`
-- Files allowed to edit (≤ 3):
-  - `[path/to/file]`
-- Files explicitly out-of-bounds for this step:
-  - `[anything that's tempting but must be delegated]`
+- Files allowed to read, with ranges when over 300 lines:
+  - `[path]` - lines `[N-M]`
+- Files allowed to edit (at most 3):
+  - `[path]`
+- Files explicitly out of bounds:
+  - `[path/category]`
 - Expected sub-agent dispatches:
-  - `[question; scope; return-format]`
-- Context cost: `S | M` (never L; if L, split this step)
+  - Question: [question]; scope: `[path/glob]`; return: `[bounded format]`
+- Context cost: `S | M` (split an L step)
 - Authoritative docs:
-  - `[docs/01_system_architecture.md]` — read lines `[N-M]` or delegate a SUMMARY
+  - `[docs/path.md]` - range or delegated SUMMARY
 - OrcaSlicer refs:
-  - `[OrcaSlicerDocumented/path]` — delegate; never load
+  - `[OrcaSlicerDocumented/path]` - delegate; never load
 - Verification:
-  - `[targeted command]` — dispatch as FACT pass/fail or SNIPPETS on failure
+  - `[targeted command]` - FACT pass/fail or bounded failure SNIPPETS
 - Exit condition:
 
-### Step 2: [short step title]
-
-(Same field set as Step 1. Do not abbreviate or write "see Step 1" for any field — each step's budget contract is independent.)
-
-For read-only discovery steps, state the expected inventory, decision, or count that proves the step is complete. Read-only discovery steps are usually pure-dispatch steps (the implementer does no direct reading, only adjudicates returned LOCATIONS or FACTs).
+Repeat this complete field set for every step. A read-only discovery step states the inventory, decision, or count proving completion and normally delegates the read.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
 | Step 1 | S/M | |
-| Step 2 | S/M | |
 
-If the sum exceeds M aggregate, or any single step is L, the packet must be split before activation.
+Split before activation if aggregate cost exceeds M or any step is L.
 
 ## Packet Completion Gate
 
-- All steps complete.
-- Every step exit condition is met.
-- Packet acceptance criteria green (each verification command dispatched and returned PASS).
-- `docs/07_implementation_status.md` updated for the packet task IDs (via worker dispatch — never edited by loading the full backlog into the implementer's context).
-- Reopened or superseded packet status transitions reconciled.
-- `packet.spec.md` ready to move to `status: implemented`.
+- All steps and exits complete.
+- Every pipe-suffixed AC command returns PASS.
+- Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read.
+- Reconcile reopened/superseded status transitions.
+- `packet.spec.md` is ready for `status: implemented`.
 
 ## Acceptance Ceremony
 
-- Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md`.
-- Confirm packet-level verification commands are green.
-- Record any remaining packet-local risk explicitly before moving to `status: implemented`.
-- Confirm the implementer's peak context usage stayed within its declared band (≤150k standard; ≤300k only with a logged ESCALATION block); if not, log it as a packet-authoring lesson for future spec-packet-generator runs.
+- Re-dispatch every pipe-suffixed AC and packet-level gate command.
+- Record remaining packet-local risk.
+- Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
+
+All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.

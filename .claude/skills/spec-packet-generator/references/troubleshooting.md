@@ -1,13 +1,14 @@
+---
+when: Read when packet generation hits one of these failure modes.
+keywords: scope, task mapping, active packet, OrcaSlicer, overwrite, budget
+---
+
 # Troubleshooting
 
-**When to read:** you hit one of the failure modes below during packet generation.
-
-**Topics:** broad prompts, ambiguous task mapping, missing tasks, active-packet conflicts, missing OrcaSlicer refs, existing directories, context budget exhaustion.
-
-- **Prompt too broad.** Narrow it to one remediation slice and explain the cut before generating files.
-- **Task mapping unclear.** Delegate a LOCATIONS dispatch over `docs/07` and present the candidates from the return; ask the user to confirm one via `AskUserQuestion`.
-- **No relevant task ids in `docs/07`.** Stop and tell the user the prompt is outside the canonical backlog.
-- **Another packet is already active.** Keep the new packet as `draft` and call out the conflict.
-- **OrcaSlicer reference missing.** Note that the packet has no OrcaSlicer dependency rather than inventing one.
-- **Existing packet directory already present.** Ask whether to overwrite, revise in place, or choose a new slug — never overwrite without explicit approval.
-- **Your own context is approaching the 120k reading budget.** Stop populating files. Emit the partial packet, hand off remaining files as a numbered TODO list, and tell the user to resume in a fresh session with the partial packet as input.
+- **Prompt too broad:** narrow to one remediation slice and explain the cut before generating.
+- **Task mapping unclear:** delegate a `LOCATIONS` search over `docs/07`; present candidates and confirm one via `AskUserQuestion`.
+- **No relevant `docs/07` task:** stop; the request is outside the canonical backlog.
+- **Another packet active:** keep the new packet `draft` and report the conflict.
+- **No OrcaSlicer reference:** state that no OrcaSlicer dependency was found; never invent one.
+- **Packet directory exists:** ask whether to overwrite, revise in place, or choose another slug.
+- **Approaching the 120k read budget:** stop populating files; emit partial work and a numbered fresh-session handoff.

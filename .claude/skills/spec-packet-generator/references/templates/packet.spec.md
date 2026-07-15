@@ -4,21 +4,21 @@ packet: [spec-slug]
 task_ids:
   - TASK-000
 backlog_source: docs/07_implementation_status.md
-context_cost_estimate: S | M    # aggregate cost; never L for an active packet
-copy_note: This file lives in the spec-packet-generator skill. The skill writes a copy into ./.ralph/specs/<spec-slug>/ with status set to draft or active.
+context_cost_estimate: S | M
+copy_note: Template only; emitted copies use draft or explicitly approved active status.
 ---
 
 # Packet Contract: [spec-slug]
 
-Template note: this template is marked `status: implemented` so preflight review ignores it if it is ever read in place. The generator overwrites the status when emitting a real packet.
+This template is `implemented` so preflight ignores it in place. Replace all placeholders in emitted copies.
 
 ## Goal
 
-One sentence: the single remediation slice this packet owns. Solution-shaped, not motivation-shaped (motivation belongs in `requirements.md` Problem Statement).
+[One solution-shaped sentence. Motivation belongs in `requirements.md`.]
 
 ## Scope Boundaries
 
-Prose paragraph, 2–3 sentences. State the bounding box of the change in solution terms. Full in/out-of-scope lists live in `requirements.md`; this section is the preflight-visible summary, not a duplicate.
+[A 2-3 sentence prose bounding box. Full lists belong in `requirements.md`.]
 
 ## Prerequisites and Blockers
 
@@ -28,58 +28,46 @@ Prose paragraph, 2–3 sentences. State the bounding box of the change in soluti
 
 ## Acceptance Criteria
 
-Acceptance Criteria are stated **once**, here. `requirements.md` references them by ID, never copies them.
+State ACs only here; `requirements.md` references their IDs.
 
-- **AC-1. Given** [initial condition], **when** [action], **then** [observable result]. | `verification-command`
-- **AC-2. Given** [second condition], **when** [second action], **then** [second observable result]. | `verification-command`
+- **AC-1. Given** [condition], **when** [action], **then** [exact observable result]. | `[delegation-friendly verification command]`
+- **AC-2. Given** [condition], **when** [action], **then** [exact observable result]. | `[verification command]`
 
-Each criterion must end with a pipe `|` and a runnable verification command. If multiple criteria share the same verification, repeat the command in each criterion (do not write "see AC-N").
-
-Name exact assertion content in the criterion text. Prefer exact fields, paths, counts, error variants, or output fragments over phrases like "all required fields" or "correct diagnostics".
-
-Each verification command must be **delegation-friendly**: it produces a small, parseable output (exit code, single assertion, JSON path). Commands that dump > 200 lines of log on success should be wrapped or filtered so a sub-agent can return a FACT.
+Every AC names exact fields, paths, counts, errors, variants, or output fragments and ends with its own runnable command. Repeat shared commands; never write "see AC-N". Commands that dump more than 200 successful output lines must be wrapped or filtered so a subagent can return a FACT.
 
 ## Negative Test Cases
 
-- **AC-N1. Given** [rejection or failure condition], **when** [action], **then** [observable failure or validation result]. | `verification-command`
+- **AC-N1. Given** [rejection/failure condition], **when** [action], **then** [observable rejection]. | `[verification command]`
 
-Include this section whenever the packet changes validation, enforcement, contract boundaries, or error-handling behavior.
+Include this section for validation, enforcement, contract-boundary, or error-path changes.
 
 ## Verification
 
-Gate commands only — the 2–3 commands the preflight / closure gate runs. The full verification matrix lives in `requirements.md` §Verification Commands.
+List only 2-3 closure-gate commands; the full matrix belongs in `requirements.md`. Use `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` as defaults.
 
-- `cargo check --workspace`
-- `cargo clippy --workspace -- -D warnings`
-- `[the single targeted integration test that proves the packet's main contract]`
+- `cargo check --workspace --all-targets`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `[targeted integration test proving the primary contract]`
 
 ## Authoritative Docs
 
-- `docs/01_system_architecture.md`
-- `docs/02_ir_schemas.md`
-- `docs/03_wit_and_manifest.md`
-
-For each doc, note whether the implementer should load it directly or delegate the read (delegate when the doc is > 300 lines or only one section is needed).
+- `[docs/path.md]` - [state direct range read or delegated summary; delegate when the doc is over 300 lines or only one section applies]
 
 ## Doc Impact Statement (Required)
 
-State exactly **one** of the following:
+Choose exactly one:
 
-1. **`none`** — and a one-line rationale why no `/docs/` change is needed. Acceptable examples: "test-only acceptance harness", "internal refactor with no public surface change", "bug fix that does not alter contracts". Refactors that change any IR field, WIT type, scheduler rule, claim ID, manifest schema, host service, or module SDK contract are **not** eligible for `none`.
+- **`none`** - [one-line rationale; only for work that changes no IR, WIT, scheduler, claim, manifest, host-service, or SDK contract].
+- Specific same-packet doc edits; each entry must list a verification grep, for example: `docs/02_ir_schemas.md` section "<name>" - `rg -q '<anchor>' docs/02_ir_schemas.md`. The full list must contain one grep per edited section.
 
-2. **A list of specific doc sections that this packet adds or modifies**, with one verification grep per section so closure can be checked mechanically:
-
-   - `docs/02_ir_schemas.md` §"<section name>" — `rg -q '<unique anchor phrase>' docs/02_ir_schemas.md`
-   - `docs/03_wit_and_manifest.md` §"<section name>" — `rg -q '<unique anchor phrase>' docs/03_wit_and_manifest.md`
-
-The doc edits must land in the same packet (not deferred to a follow-up); the verification greps are appended to the Acceptance Criteria above and gate packet close. The `spec-review` skill checks this section is non-empty and that every grep returns a hit before a packet may flip to `status: implemented`.
+Append doc greps to the ACs. `spec-review` requires this section and verifies each grep before `status: implemented`.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
 
-(Include the verbatim opening paragraph from `references/snippets/orca-delegation.md`, then list the specific `OrcaSlicerDocumented/` files this packet borrows from. Skip this entire section if no OrcaSlicer parity is involved.)
+[When parity applies, replace this placeholder with the exact snippet and packet-specific paths. Otherwise omit the entire section.]
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
 
-(Include the verbatim block from `references/snippets/context-discipline.md`. This snippet is mandatory for every packet.)
+[Replace with the exact mandatory context-discipline snippet.]

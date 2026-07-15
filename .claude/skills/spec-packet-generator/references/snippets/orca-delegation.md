@@ -1,12 +1,13 @@
-# Snippet: orca-delegation
+---
+when: Include when a packet consults `OrcaSlicerDocumented/` for parity.
+keywords: OrcaSlicer, delegation, packet.spec.md, requirements.md
+---
 
-**When to include**: any packet that needs to consult `OrcaSlicerDocumented/` for parity (constants, defaults, algorithm shape, edge cases). Skip entirely for packets that touch no OrcaSlicer behavior (e.g., pure host scheduler refactor, internal IR re-export cleanup).
+# OrcaSlicer Delegation Snippet
 
-**Where to include**: as the `OrcaSlicer Reference Obligations` section heading + opening paragraph in `packet.spec.md` AND `requirements.md` (both files genuinely need it — `packet.spec.md` for preflight visibility, `requirements.md` for the implementer's authoritative reference list). Add `<!-- snippet: orca-delegation -->` on the line above each occurrence.
+Copy the block exactly into `packet.spec.md` and `requirements.md`, then replace the path bullet. Skip it for work with no OrcaSlicer behavior. Never add a third copy to `design.md`.
 
-**Verbatim opening paragraph** (then list the specific `OrcaSlicerDocumented/` files inline below):
-
-```
+```markdown
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
 
@@ -17,6 +18,4 @@ Files to inspect for this packet:
 - `OrcaSlicerDocumented/<path>` — <one-line statement of what behavior, constant, or edge case is being borrowed (or deliberately not borrowed)>
 ```
 
-**Do not paraphrase** the opening paragraph. The file-list bullets below it are packet-specific and must be filled in by the generator.
-
-**Anti-pattern to avoid**: a third occurrence of this paragraph in `design.md`. `design.md` may *reference* the OrcaSlicer parity surface in its "Controlling Code Paths" section ("OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations"), but must not restate the delegation rules.
+Do not paraphrase the opening paragraph; only the file bullets are packet-specific.

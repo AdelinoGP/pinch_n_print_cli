@@ -1,8 +1,9 @@
+---
+when: Read when asked how to invoke this skill.
+keywords: invocation, input, task_ids, spec_slug, status
+---
+
 # Usage Examples
-
-**When to read:** when the user asks how to invoke this skill, or you need to show an example invocation string.
-
-**Topics:** invocation, parameters, status flags.
 
 ```text
 /spec-packet-generator input:"Rework TASK-121 and TASK-122 into one manifest contract packet" task_ids:TASK-121,TASK-122

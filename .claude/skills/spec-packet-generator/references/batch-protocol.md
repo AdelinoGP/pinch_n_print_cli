@@ -1,58 +1,60 @@
 ---
-when: Read this when the spec-packet-generator input decomposes into more than one packet, or the input is a `docs/specs/` plan file with a `## Packet Queue` section (resume). SKILL.md's Batch Protocol laws — plan file as anchor, mode by size, author ≠ reviewer — apply throughout and are not repeated here.
-keywords: batch, plan file, packet queue, inline, orchestrated, authoring subagent, reviewer subagent, exports ledger, resume
+when: Read when input decomposes into multiple packets or resumes a `docs/specs/` plan containing `## Packet Queue`.
+keywords: batch, queue, inline, orchestrated, exports, resume
 ---
 
-# Batch Protocol — plan file, modes, and dispatch contracts
+# Batch Protocol
 
-## Plan file
+The core laws in `SKILL.md` remain authoritative: plan-file anchor, 2-3 inline versus 4+ orchestrated, and author-reviewer independence.
 
-Location: `docs/specs/<slug>-plan.md` (the existing home for plan documents). Contents: the approved plan **verbatim** — never condensed; if the plan already lives in a committed file, reference its path — then:
+## Plan File
+
+Use `docs/specs/<slug>-plan.md`. Store the approved plan verbatim; if it already has a committed home, reference that path. Append:
 
 ```markdown
 ## Packet Queue
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | <slug>      | <goal>              | TASK-…   | —          | pending | — |
-| 2 | <slug>      | <goal>              | TASK-…   | #1         | pending | — |
+| 1 | <slug>      | <goal>              | TASK-... | -          | pending | - |
+| 2 | <slug>      | <goal>              | TASK-... | #1         | pending | - |
 ```
 
-`status`: `pending` · `generated` (5 files written, PREFLIGHT PASS) · `blocked` (gate failed after 2 fix rounds, or an unanswerable `[BLOCK]` question) · `superseded` (absorbed/dropped — note where in the goal column). Update the row the moment its packet's outcome is known.
+Statuses:
 
-Present the queue (slugs, goals, task ids, dependency order — `depends on` always points backward) via `AskUserQuestion` and get **one approval**: it is the Step-5 metadata gate's standing answer for every entry; re-ask only when grounding falsifies an entry's scope. The skill never commits — the report reminds the user to commit the plan file and packet dirs together.
+- `pending`: not generated.
+- `generated`: required packet files written and `PREFLIGHT PASS`.
+- `blocked`: unanswerable `[BLOCK]` question or gate failure after two fix rounds.
+- `superseded`: absorbed/dropped; identify where in the goal column.
 
-## Mode by size
+Update each row immediately. Dependencies always point backward. Present slugs, goals, task IDs, and dependency order via `AskUserQuestion`; one approval covers every entry unless grounding changes scope. This skill never commits; report that the plan and packet directories should be committed together.
 
-- **2–3 packets — inline.** This session authors each packet sequentially in dependency order through the normal workflow (Steps 2–16 per packet), updating the queue row after each Step-14 gate.
-- **4+ packets — orchestrated.** This session dispatches authoring and reviewer subagents and authors nothing itself.
+## Modes
 
-## Orchestrated mode
+- **2-3 packets, inline:** author sequentially in dependency order through the complete per-packet workflow, updating the row after preflight.
+- **4+ packets, orchestrated:** the orchestrator authors nothing. Process dependency order sequentially.
 
-Sequential, in dependency order.
+An authoring subagent receives at most two adjacent packets, or three only when tightly coupled. Its prompt includes the plan path, assigned queue rows, prior exports ledger, Step-4 grounding obligations, the Steps 7-13 generation workflow, the file-purpose ownership model, snippet verbatim rule, AC contract, self-review checklist, and the preflight completion rule. It may read the tree greedily because its context is disposable. It returns per packet:
 
-**Authoring subagent** — assigned up to 2 adjacent packets, up to 3 only when coupled (each consumes the previous one's net-new symbols). Its prompt carries: the plan file path, its queue rows, the accumulated exports ledger from prior packets, and the packet workflow obligations (grounding per Step 4, files per Steps 7–13, self-review per Step 12). It reads the tree directly and greedily — its context is disposable; the delegation discipline protects the orchestrator, not subagents. It returns:
+- packet directory;
+- every net-new symbol later packets may consume as name, crate, and shape;
+- `[FWD]` questions;
+- or `BLOCKED: <precise question>` before writing when a scope-changing premise is unresolved.
 
-- per packet: the packet dir + an **exports ledger** entry for every net-new symbol (name, crate, shape) later packets may consume;
-- any `[FWD]` questions it recorded in `design.md`;
-- OR an early `BLOCKED: <precise question>` return **before writing files** on a `[BLOCK]`-class ambiguity (scope-changing, plan premise falsified). The orchestrator relays via `AskUserQuestion` and re-dispatches with the answer.
+Relay `BLOCKED` through `AskUserQuestion`, then redispatch with the answer.
 
-**Reviewer subagent** — independent per packet, never the author: runs the S0–S8 preflight gate (`spec-review --preflight <packet dir>`), returns the gate table + verdict only.
+An independent reviewer subagent, never the author, runs `spec-review --preflight <packet-dir>` and returns only its S0-S8 table and verdict.
 
-**Orchestrator loop** per packet: dispatch author → dispatch reviewer → read `packet.spec.md` in full and check plan conformance (the plan item is covered, no scope creep, deps match the queue) → on `PREFLIGHT PASS` + conformance, mark the row `generated`, append its exports to the ledger, continue. The orchestrator never opens `design.md` or `implementation-plan.md`.
+For each packet: dispatch author, dispatch reviewer, then read only `packet.spec.md` and check plan coverage, scope, and dependencies. On pass and conformance, mark `generated` and append exports. Never open `design.md` or `implementation-plan.md` as orchestrator.
 
-**Failure:** `PREFLIGHT BLOCKED` → return the gate findings to the authoring subagent for a fix pass, re-review; at most 2 rounds, then mark the row `blocked`. A blocked packet's dependents stay `pending` — their premises consume uncertified exports; independent packets continue.
+On `PREFLIGHT BLOCKED`, return findings to the author and re-review, for at most two rounds. Then mark `blocked`. Dependents remain `pending`; independent packets continue. If the 100k checkpoint fires, finish the in-flight packet, update the queue, and stop.
 
-**Budget:** SKILL.md checkpoints govern. If the 100k checkpoint fires mid-batch: finish the in-flight packet, update the queue, stop — remaining rows stay `pending`.
+## Resume
 
-## Resume (invocation with a plan file)
+1. Read the plan file in full and work from it, not memory.
+2. Select the first `pending` row whose dependencies are all `generated`.
+3. Rebuild exports with one SUMMARY per generated dependency: list net-new symbols by name, crate, and shape.
+4. Choose mode by remaining count: 2-3 inline, 4+ orchestrated.
+5. When exhausted, report the final queue.
 
-1. Read the plan file in full — it is the anchor; work from it, not from any recollection of the plan.
-2. Select the first `pending` row whose `depends on` rows are all `generated`. Rebuild the exports ledger with one SUMMARY dispatch per `generated` dependency: "list the net-new symbols `<packet dir>` creates — name, crate, shape."
-3. Continue in the mode the remaining `pending` count dictates (2–3 → inline; 4+ → orchestrated).
-4. Queue exhausted → report the final table; the batch is complete.
-
-## Edge cases
-
-- **Grounding falsifies an entry's premise** (the symbol/behavior it targets doesn't exist as the plan claimed): revise the entry's goal or mark it `superseded` — user approval either way — recording what the tree actually showed.
-- **The user revises the plan mid-batch:** replace the plan text wholesale, reconcile `pending` rows against the new text (re-approve changed rows). `generated` rows are never edited retroactively — a changed plan that invalidates a generated packet is a new packet (Cross-Packet Mutation Rule).
+If grounding falsifies an entry, revise its goal or mark it `superseded`, with user approval and evidence. If the user revises the plan, replace its text wholesale and reapprove changed pending rows. Never retroactively edit generated packets; create a new packet when the revision invalidates one.
