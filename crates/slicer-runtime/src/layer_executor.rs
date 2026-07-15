@@ -12,9 +12,10 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use slicer_ir::{
-    ConfigValue, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, LayerStageCommit,
-    ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR, SliceIR, StageId,
-    SupportIR, WallFeatureFlags,
+    ConfigValue, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
+    LayerStageCommit, ModuleId, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR,
+    SeamPlanIR, SliceIR, StageId, SupportGeometryIR, SupportIR, SupportPlanIR,
+    SurfaceClassificationIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -585,6 +586,72 @@ pub const SUPPORTED_TAP_STAGE_IDS: &[&str] = &[
     "Layer::PathOptimization",
 ];
 
+// ── Blackboard-read tap capture (packet 161, Step 3) ───────────────────────
+//
+// A second, distinct tap family (ADR-0040 "three tap classes"): these taps
+// source from the committed, whole-print `Vec<SliceIR>` Blackboard slot
+// (`Blackboard::slice_ir`) rather than a per-layer `LayerArena` commit. They
+// are read directly off a `Blackboard` obtained from
+// `crate::run::prepare_prepass_context` — prepass only, no per-layer
+// scheduler closure, no module dispatch, no `LayerStageRunner` involved (see
+// [`execute_blackboard_taps`]).
+
+/// SliceIR-family Blackboard-read taps this packet supports
+/// (`docs/specs/visual-pipeline-debug.md` Stage Tap Inventory). All four read
+/// the same committed `Vec<SliceIR>` slot; the tap id is capture identity
+/// only — it does not change which fields are cloned. `Layer::PaintRegionAnnotation`
+/// and `Layer::SlicePostProcess` are the pre/post pair for the same post-edit
+/// annotation view (mirrors the `Layer::Perimeters`/`Layer::PerimetersPostProcess`
+/// pairing in [`SUPPORTED_TAP_STAGE_IDS`]).
+///
+/// Packet 161 Step 4 adds five more Blackboard-read taps, each sourcing a
+/// different prepass composite instead of `Vec<SliceIR>` (still validated
+/// against the same committed `Vec<SliceIR>` layer universe — see
+/// [`execute_blackboard_taps`]):
+/// - `PrePass::MeshAnalysis` and `PrePass::OverhangAnnotation` both read the
+///   committed `SurfaceClassificationIR` (`CapturedIr::SurfaceClassification`).
+/// - `PrePass::SeamPlanning` reads the committed `SeamPlanIR`
+///   (`CapturedIr::SeamPlan`).
+/// - `PrePass::SupportGeometry` reads the committed `SupportGeometryIR` +
+///   `SupportPlanIR` composite (`CapturedIr::SupportGeometry`).
+/// - `PrePass::RegionMapping` reads the committed `RegionMapIR` retained
+///   alongside the whole-print `Vec<SliceIR>` for a render-time join
+///   (`CapturedIr::RegionMapping`).
+pub const BLACKBOARD_TAP_STAGE_IDS: &[&str] = &[
+    "Layer::Slice",
+    "PrePass::PaintSegmentation",
+    "Layer::PaintRegionAnnotation",
+    "Layer::SlicePostProcess",
+    "PrePass::MeshAnalysis",
+    "PrePass::OverhangAnnotation",
+    "PrePass::SeamPlanning",
+    "PrePass::SupportGeometry",
+    "PrePass::RegionMapping",
+];
+
+/// PostPass whole-print taps (ADR-0040 "three tap classes", packet 161 Step
+/// 5): the third tap class. Unlike [`SUPPORTED_TAP_STAGE_IDS`] (bounded
+/// per-layer arena closure) and [`BLACKBOARD_TAP_STAGE_IDS`] (prepass-only,
+/// already-committed reads), these two taps source from driving the *whole*
+/// per-layer -> finalization -> postpass pipeline prefix — every stage,
+/// every layer — via [`crate::postpass::execute_postpass_with_capture`]'s
+/// optional `PostPassCapture` sink:
+/// - `PostPass::LayerFinalization` reads the finalized, travel-reconciled
+///   `Vec<LayerCollectionIR>` (`CapturedIr::LayerFinalization`) — the same
+///   stage id the scheduler already assigns the module-based finalization
+///   stage (`ExecutionPlan::layer_finalization_stage`).
+/// - `PostPass::GCodeEmit` reads the initially emitted `GCodeIR`
+///   (`CapturedIr::GCodeEmit`), before any `GCodePostProcess` module runs —
+///   the same stage id `execute_postpass_with_capture` already uses to
+///   instrument the host-built-in emission stage.
+///
+/// A request selecting either tap pays the cost of the whole print (not a
+/// truncated per-layer closure): `pnp-cli`'s visual-debug command records
+/// this as a documented whole-print closure deviation in the manifest's
+/// `executed_stage_ids`/`executed_layer_indices` rather than silently
+/// pretending it only ran the requested layers.
+pub const POSTPASS_TAP_STAGE_IDS: &[&str] = &["PostPass::LayerFinalization", "PostPass::GCodeEmit"];
+
 /// A renderer-owned, post-commit IR snapshot. Always an owned clone taken
 /// immediately after [`apply`] returns `Ok` — never a borrow into
 /// `LayerArena` (ADR-0037).
@@ -599,16 +666,84 @@ pub enum CapturedIr {
     Support(SupportIR),
     /// `Layer::PathOptimization` commit.
     LayerCollection(LayerCollectionIR),
+    /// Blackboard-read SliceIR-family tap (packet 161, Step 3): one
+    /// whole-print `SliceIR` entry, selected by `global_layer_index`, from
+    /// the committed `Vec<SliceIR>` Blackboard slot. Covers
+    /// `Layer::Slice`, `PrePass::PaintSegmentation`,
+    /// `Layer::PaintRegionAnnotation`, and `Layer::SlicePostProcess` (see
+    /// [`BLACKBOARD_TAP_STAGE_IDS`]).
+    Slice(SliceIR),
+    /// Blackboard-read composite tap (packet 161, Step 4): the whole-print
+    /// committed `SurfaceClassificationIR`, unfiltered by layer (its only
+    /// per-layer-keyed field, `overhang_quartile_polygons`, stays keyed in
+    /// the captured payload for the renderer to filter at render time).
+    /// Covers `PrePass::MeshAnalysis` and `PrePass::OverhangAnnotation`.
+    SurfaceClassification(SurfaceClassificationIR),
+    /// Blackboard-read tap (packet 161, Step 4): the whole-print committed
+    /// `SeamPlanIR`. Covers `PrePass::SeamPlanning`.
+    SeamPlan(SeamPlanIR),
+    /// Blackboard-read composite tap (packet 161, Step 4): the committed
+    /// `SupportGeometryIR` (coarse outlines) paired with the committed
+    /// `SupportPlanIR` (planned branch geometry) — both prepass artifacts
+    /// documented as `PrePass::SupportGeometry`'s source
+    /// (`docs/specs/visual-pipeline-debug.md` Stage Tap Inventory).
+    SupportGeometry {
+        /// Coarse support outline IR.
+        geometry: SupportGeometryIR,
+        /// Planned branch-geometry IR.
+        plan: SupportPlanIR,
+    },
+    /// Blackboard-read composite tap (packet 161, Step 4): the committed
+    /// `RegionMapIR` retained alongside the whole-print `Vec<SliceIR>` for
+    /// the renderer to join by `RegionKey` at render time (Step 6) — this
+    /// capture step performs no join. Covers `PrePass::RegionMapping`.
+    RegionMapping {
+        /// Region-to-dispatch mapping IR.
+        region_map: RegionMapIR,
+        /// Whole-print slice IR, retained for the render-time join.
+        slice_ir: Vec<SliceIR>,
+    },
+    /// PostPass whole-print capture (packet 161, Step 5): the finalized,
+    /// travel-reconciled `Vec<LayerCollectionIR>` fed into G-code emission,
+    /// captured unfiltered by layer (mirrors `RegionMapping`'s
+    /// whole-composite-then-render-time-filter pattern) — the renderer
+    /// selects the request's chosen layers at render time (Step 6). Covers
+    /// `PostPass::LayerFinalization`.
+    LayerFinalization(Vec<LayerCollectionIR>),
+    /// PostPass whole-print capture (packet 161, Step 5): the `GCodeIR` as
+    /// initially emitted, before any `GCodePostProcess` module runs. Covers
+    /// `PostPass::GCodeEmit`.
+    GCodeEmit(GCodeIR),
 }
 
 impl CapturedIr {
     /// The captured IR type's own `schema_version`, formatted `MAJOR.MINOR.PATCH`.
+    ///
+    /// For the two composite variants (`SupportGeometry`, `RegionMapping`)
+    /// this reports the primary IR's version (`SupportGeometryIR`,
+    /// `RegionMapIR` respectively) — the secondary IR's own
+    /// `schema_version` field is still directly inspectable on the captured
+    /// struct itself. `LayerFinalization` reports its first layer's
+    /// `schema_version` (falling back to
+    /// `slicer_ir::CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` for an empty
+    /// print, which never occurs downstream of a real capture) since
+    /// `LayerCollectionIR`'s schema version is not print-wide state.
     pub fn schema_version_string(&self) -> String {
         let v = match self {
             Self::Perimeter(ir) => ir.schema_version,
             Self::Infill(ir) => ir.schema_version,
             Self::Support(ir) => ir.schema_version,
             Self::LayerCollection(ir) => ir.schema_version,
+            Self::Slice(ir) => ir.schema_version,
+            Self::SurfaceClassification(ir) => ir.schema_version,
+            Self::SeamPlan(ir) => ir.schema_version,
+            Self::SupportGeometry { geometry, .. } => geometry.schema_version,
+            Self::RegionMapping { region_map, .. } => region_map.schema_version,
+            Self::LayerFinalization(layers) => layers
+                .first()
+                .map(|l| l.schema_version)
+                .unwrap_or(slicer_ir::CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION),
+            Self::GCodeEmit(ir) => ir.schema_version,
         };
         format!("{}.{}.{}", v.major, v.minor, v.patch)
     }
@@ -946,6 +1081,186 @@ pub fn execute_captured_stages(
         expansions,
         closure_stage_ids,
         executed_layer_indices,
+    })
+}
+
+/// Request-gated, Blackboard-read capture (packet 161, Steps 3-4): every tap
+/// in [`BLACKBOARD_TAP_STAGE_IDS`].
+///
+/// Distinct closure from [`execute_captured_stages`] (ADR-0040 "three tap
+/// classes"): this reads already-committed prepass artifacts straight off
+/// `Blackboard` getters. It never constructs a [`LayerArena`], never takes a
+/// `LayerStageRunner`/`WasmInstancePool`, and never invokes a module — there
+/// is no per-layer scheduler closure to run because every source is already
+/// fully committed by prepass (`crate::run::prepare_prepass_context` runs
+/// prepass, then this function reads off its `blackboard` field). Each
+/// clone happens once, immediately — never a live borrow retained past this
+/// call.
+///
+/// The committed, whole-print `Vec<SliceIR>` (`blackboard.slice_ir()`) is the
+/// layer universe every Blackboard-read tap validates `request.layer_indices`
+/// against, SliceIR-family or composite alike: in the real pipeline every
+/// prepass artifact this function reads (`SurfaceClassificationIR`,
+/// `SeamPlanIR`, `SupportGeometryIR`/`SupportPlanIR`, `RegionMapIR`) is
+/// committed for the same whole print, alongside `PrePass::Slice`, before any
+/// per-layer tier runs. The four SliceIR-family taps capture the single
+/// `SliceIR` entry matching the requested layer; the five composite taps
+/// (`PrePass::MeshAnalysis`, `PrePass::OverhangAnnotation`,
+/// `PrePass::SeamPlanning`, `PrePass::SupportGeometry`,
+/// `PrePass::RegionMapping`) are not themselves layer-indexed at the top
+/// level, so each applicable requested layer gets the *whole* committed
+/// composite, unfiltered — the renderer performs any per-layer filtering or
+/// `RegionKey` join at render time (Step 6), never this capture step.
+///
+/// `CaptureOutput::closure_stage_ids` is always empty here (no arena stage
+/// sequence ran); `CaptureOutput::expansions` is always empty (no cross-layer
+/// dependency exists for a whole-print, already-committed slot).
+///
+/// # Errors
+///
+/// - [`CaptureExecutionError::UnknownTap`] if a requested tap is not in
+///   [`BLACKBOARD_TAP_STAGE_IDS`].
+/// - [`CaptureExecutionError::NoApplicableLayer`] if no requested layer index
+///   matches a `global_layer_index` present in the committed `Vec<SliceIR>`.
+/// - [`CaptureExecutionError::TapSourceUnavailable`] if the `Vec<SliceIR>`
+///   Blackboard slot itself was never committed (prepass never ran
+///   `PrePass::Slice` — should not happen downstream of
+///   `prepare_prepass_context`, but fails closed rather than panicking), or
+///   if a requested composite tap's own Blackboard slot was never committed.
+pub fn execute_blackboard_taps(
+    blackboard: &Blackboard,
+    request: &CaptureRequest,
+) -> Result<CaptureOutput, CaptureExecutionError> {
+    for tap in &request.stage_ids {
+        if !BLACKBOARD_TAP_STAGE_IDS.contains(&tap.as_str()) {
+            return Err(CaptureExecutionError::UnknownTap { tap: tap.clone() });
+        }
+    }
+    if request.stage_ids.is_empty() {
+        return Ok(CaptureOutput::default());
+    }
+
+    let Some(slice_ir) = blackboard.slice_ir() else {
+        let mut missing_taps: Vec<&String> = request.stage_ids.iter().collect();
+        missing_taps.sort();
+        let layer_index = request
+            .layer_indices
+            .iter()
+            .copied()
+            .min()
+            .ok_or(CaptureExecutionError::NoApplicableLayer)?;
+        return Err(CaptureExecutionError::TapSourceUnavailable {
+            stage_id: missing_taps[0].clone(),
+            layer_index,
+        });
+    };
+
+    let real_layer_indices: HashSet<u32> = slice_ir.iter().map(|s| s.global_layer_index).collect();
+    let applicable: HashSet<u32> = request
+        .layer_indices
+        .iter()
+        .copied()
+        .filter(|i| real_layer_indices.contains(i))
+        .collect();
+    if applicable.is_empty() {
+        return Err(CaptureExecutionError::NoApplicableLayer);
+    }
+
+    let mut sorted_layer_indices: Vec<u32> = applicable.into_iter().collect();
+    sorted_layer_indices.sort_unstable();
+
+    let mut captures = Vec::new();
+    for &layer_index in &sorted_layer_indices {
+        // `real_layer_indices` was built from `slice_ir`, so this `find`
+        // always succeeds for every index in `sorted_layer_indices`.
+        let ir = slice_ir
+            .iter()
+            .find(|s| s.global_layer_index == layer_index)
+            .expect("layer_index came from real_layer_indices, derived from slice_ir");
+        for tap in &request.stage_ids {
+            let captured_ir = match tap.as_str() {
+                "Layer::Slice"
+                | "PrePass::PaintSegmentation"
+                | "Layer::PaintRegionAnnotation"
+                | "Layer::SlicePostProcess" => CapturedIr::Slice(ir.clone()),
+                "PrePass::MeshAnalysis" | "PrePass::OverhangAnnotation" => {
+                    let sc = blackboard.surface_classification().ok_or(
+                        CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: tap.clone(),
+                            layer_index,
+                        },
+                    )?;
+                    CapturedIr::SurfaceClassification((**sc).clone())
+                }
+                "PrePass::SeamPlanning" => {
+                    let sp = blackboard.seam_plan().ok_or(
+                        CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: tap.clone(),
+                            layer_index,
+                        },
+                    )?;
+                    CapturedIr::SeamPlan((**sp).clone())
+                }
+                "PrePass::SupportGeometry" => {
+                    let geometry = blackboard.support_geometry().ok_or(
+                        CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: tap.clone(),
+                            layer_index,
+                        },
+                    )?;
+                    let plan = blackboard.support_plan().ok_or(
+                        CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: tap.clone(),
+                            layer_index,
+                        },
+                    )?;
+                    CapturedIr::SupportGeometry {
+                        geometry: (**geometry).clone(),
+                        plan: (**plan).clone(),
+                    }
+                }
+                "PrePass::RegionMapping" => {
+                    let region_map = blackboard.region_map().ok_or(
+                        CaptureExecutionError::TapSourceUnavailable {
+                            stage_id: tap.clone(),
+                            layer_index,
+                        },
+                    )?;
+                    CapturedIr::RegionMapping {
+                        region_map: (**region_map).clone(),
+                        slice_ir: (**slice_ir).clone(),
+                    }
+                }
+                _ => {
+                    unreachable!("tap validated against BLACKBOARD_TAP_STAGE_IDS at function entry")
+                }
+            };
+            captures.push(StageCapture {
+                stage_id: tap.clone(),
+                layer_index,
+                layer_z: ir.z,
+                ir: captured_ir,
+            });
+        }
+    }
+
+    // Deterministic ordering: tap position in `STAGE_ORDER`, then layer index
+    // — mirrors `execute_captured_stages`'s sort.
+    captures.sort_by_key(|c| {
+        (
+            STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+
+    Ok(CaptureOutput {
+        captures,
+        expansions: Vec::new(),
+        closure_stage_ids: Vec::new(),
+        executed_layer_indices: sorted_layer_indices,
     })
 }
 

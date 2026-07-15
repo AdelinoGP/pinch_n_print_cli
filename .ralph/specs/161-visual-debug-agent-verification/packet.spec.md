@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 161-visual-debug-agent-verification
 task_ids:
   - TASK-271

@@ -28,13 +28,6 @@
 //! line. Role-less extrusion (an extrusion move seen before any `;TYPE:`
 //! marker) is retained with role `"unclassified"`, never dropped or guessed,
 //! plus one bundle-wide `"unclassified"` warning.
-//!
-//! Step 2 (this file) is not yet wired into `visual_debug.rs`'s dispatch —
-//! that is packet 160 Step 3's job. Until then this module's public surface
-//! is only exercised by its own `#[cfg(test)]` suite below, so an
-//! allow(dead_code) is expected and documented here rather than silenced
-//! per-item.
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -134,7 +127,12 @@ pub struct RenderedImage {
     pub layer_z: Option<f64>,
     pub visualization: GcodeVisualization,
     pub png_bytes: Vec<u8>,
+    /// Not yet read by any caller until packet 160 Step 3 wires this module
+    /// into `visual_debug.rs`'s dispatch; retained for the eventual
+    /// `ImageEntry` width/height fields.
+    #[allow(dead_code)]
     pub width: u32,
+    #[allow(dead_code)]
     pub height: u32,
 }
 

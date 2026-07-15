@@ -50,12 +50,84 @@ pub enum VisualDebugSource {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum LayerSelector {
     Index(i64),
     Name(String),
-    Detail { index: Option<i64>, z: Option<f64> },
+    /// An explicit `{start, end}` layer-index range (inclusive), resolved
+    /// against the real layer schedule in Phase 2 (ADR-0041).
+    Range {
+        start: i64,
+        end: i64,
+    },
+    Detail {
+        index: Option<i64>,
+        z: Option<f64>,
+    },
+}
+
+/// Manual `Deserialize` for [`LayerSelector`]: serde's derive has no
+/// per-variant `deny_unknown_fields` for an untagged enum (it is only a
+/// container attribute), so a naive `#[serde(untagged)]` derive lets an
+/// object with unrecognized fields (e.g. a malformed `{start, end, ...}`)
+/// silently fall through to `Detail` with every known field defaulted to
+/// `None` — the exact bug ADR-0041 fixes. This impl enforces each object
+/// variant's field set exactly: `{start, end}` only for `Range`, and a
+/// subset of `{index, z}` only for `Detail`; anything else is a hard
+/// deserialization error, never a silent empty `Detail`.
+impl<'de> Deserialize<'de> for LayerSelector {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        match value {
+            serde_json::Value::Number(n) => n
+                .as_i64()
+                .map(LayerSelector::Index)
+                .ok_or_else(|| D::Error::custom("layer selector index must be an integer")),
+            serde_json::Value::String(s) => Ok(LayerSelector::Name(s)),
+            serde_json::Value::Object(map) => {
+                let keys: std::collections::BTreeSet<&str> =
+                    map.keys().map(String::as_str).collect();
+                let range_keys: std::collections::BTreeSet<&str> =
+                    ["start", "end"].into_iter().collect();
+                let detail_keys: [&str; 2] = ["index", "z"];
+                if keys == range_keys {
+                    let start = map["start"].as_i64().ok_or_else(|| {
+                        D::Error::custom("layer selector range 'start' must be an integer")
+                    })?;
+                    let end = map["end"].as_i64().ok_or_else(|| {
+                        D::Error::custom("layer selector range 'end' must be an integer")
+                    })?;
+                    Ok(LayerSelector::Range { start, end })
+                } else if keys.iter().all(|k| detail_keys.contains(k)) {
+                    let index = match map.get("index") {
+                        None | Some(serde_json::Value::Null) => None,
+                        Some(v) => Some(v.as_i64().ok_or_else(|| {
+                            D::Error::custom("layer selector 'index' must be an integer")
+                        })?),
+                    };
+                    let z = match map.get("z") {
+                        None | Some(serde_json::Value::Null) => None,
+                        Some(v) => Some(v.as_f64().ok_or_else(|| {
+                            D::Error::custom("layer selector 'z' must be a number")
+                        })?),
+                    };
+                    Ok(LayerSelector::Detail { index, z })
+                } else {
+                    Err(D::Error::custom(format!(
+                        "unrecognized layer selector object fields {:?}; expected an integer \
+                         index, a {{start, end}} range, or an {{index, z}} detail",
+                        map.keys().collect::<Vec<_>>()
+                    )))
+                }
+            }
+            other => Err(D::Error::custom(format!("invalid layer selector: {other}"))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +172,38 @@ pub enum ValidationError {
     /// selector is meaningless, not a valid alias for layer 0.
     GcodeUnsupportedLayerSelector,
     MissingField(String),
+    /// Phase 1 (ADR-0041): the request names a visualization kind this
+    /// packet does not recognize for any source (`filled_areas`,
+    /// `filament_lines`, `diagnostic_overlay` are the only supported
+    /// kinds). Previously silently skipped by `render_view_for_visualization`'s
+    /// dispatch loop (a `None`/`continue`) — now rejected before any render
+    /// or bundle write.
+    UnknownVisualizationKind {
+        kind: String,
+    },
+    /// Phase 1 (ADR-0041): `diagnostic_overlay` requires a `Model` source —
+    /// the standalone final-G-code source has no `PrepassContext`/blackboard
+    /// to source the overlay's LayerPlanning flags from. Previously silently
+    /// dropped by the gcode branch's visualization filter; now a named
+    /// source/visualization mismatch.
+    DiagnosticOverlayRequiresModelSource,
+    /// Phase 1 (ADR-0041, Model source): a `LayerSelector::Name` selector
+    /// has no resolution target — `GlobalLayer` carries `index`/`z`/flags
+    /// but no name — so it is rejected rather than silently discarded (the
+    /// prior behavior of `resolve_requested_layer_indices`'s catch-all arm).
+    /// The standalone G-code source's equivalent rejection is
+    /// `GcodeUnsupportedLayerSelector` (preserved separately: it long
+    /// predates this packet and its exact variant is pinned by an existing
+    /// test).
+    AnonymousLayerSelector,
+    /// Phase 2 (ADR-0041): a selector (`Index`/`Range`/z-only `Detail`)
+    /// resolved against the real layer schedule (model:
+    /// `LayerPlanIR.global_layers`; gcode: parsed `;Z:` layers) matched no
+    /// layer. Fails closed before any bundle write rather than silently
+    /// contributing zero layers.
+    LayerSelectorResolvesToNoLayer {
+        selector: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -116,6 +220,21 @@ impl fmt::Display for ValidationError {
                  Detail with an index); Name/z-only selectors are not supported"
             ),
             Self::MissingField(field) => write!(f, "missing required field: {field}"),
+            Self::UnknownVisualizationKind { kind } => {
+                write!(f, "unknown visualization kind: '{kind}'")
+            }
+            Self::DiagnosticOverlayRequiresModelSource => write!(
+                f,
+                "diagnostic_overlay requires a model source; the standalone gcode source has \
+                 no PrepassContext/blackboard to source it from"
+            ),
+            Self::AnonymousLayerSelector => write!(
+                f,
+                "layers are anonymous; LayerSelector::Name has no resolution target"
+            ),
+            Self::LayerSelectorResolvesToNoLayer { selector } => {
+                write!(f, "layer selector {selector} matched no scheduled layer")
+            }
         }
     }
 }
@@ -203,6 +322,26 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
+    // Phase 1 (ADR-0041): visualization-kind and source/visualization
+    // mismatch checks, before any render or bundle write. Unrecognized
+    // kinds and a `diagnostic_overlay` request against a G-code source were
+    // previously silently dropped downstream (the model dispatch loop's
+    // `None`/`continue`, and the gcode branch's visualization filter); both
+    // are now named, fail-closed rejections.
+    for viz in &req.visualizations {
+        let kind = viz.kind();
+        if !matches!(
+            kind,
+            "filled_areas" | "filament_lines" | "diagnostic_overlay"
+        ) {
+            return Err(ValidationError::UnknownVisualizationKind {
+                kind: kind.to_string(),
+            });
+        }
+        if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. }) {
+            return Err(ValidationError::DiagnosticOverlayRequiresModelSource);
+        }
+    }
     match &req.source {
         VisualDebugSource::Model {
             model,
@@ -220,6 +359,21 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                 return Err(ValidationError::MissingSource);
             }
             req.source.validate_model_config()?;
+            // Phase 1 (ADR-0041, Model source): layers are anonymous —
+            // `GlobalLayer` carries `index`/`z`/flags but no name — so
+            // `LayerSelector::Name` has no resolution target and is
+            // rejected here rather than silently discarded by
+            // `resolve_requested_layer_indices`'s old catch-all arm. (The
+            // standalone G-code source rejects `Name` separately, via the
+            // pre-existing `GcodeUnsupportedLayerSelector` check in its own
+            // branch of `run_visual_debug`.)
+            if req
+                .layers
+                .iter()
+                .any(|l| matches!(l, LayerSelector::Name(_)))
+            {
+                return Err(ValidationError::AnonymousLayerSelector);
+            }
         }
         VisualDebugSource::Gcode { path, model } => {
             if path.is_some() && model.is_some() {
@@ -330,18 +484,20 @@ pub struct ImageEntry {
 }
 
 /// Map one requested `VisualizationSpec` to the intermediate renderer's
-/// (packet 159) `RenderView`, or `None` for a visualization kind this
-/// packet does not render (skipped, not an error — out-of-scope kinds are
-/// packet 157/160's concern, not this handoff's).
+/// (packet 159) `RenderView`. `validate_request`'s Phase 1 (ADR-0041)
+/// rejects any visualization kind this dispatch does not recognize before a
+/// `ValidatedRequest` can exist, so every kind reaching this function is
+/// guaranteed to be one of the three below — the former silent
+/// `None`/`continue` drop is unreachable.
 ///
 /// `diagnostic_overlay` composes with a base geometry view named via
 /// `options.base` (`"filled_areas"` | `"filament_lines"`), defaulting to
 /// `"filled_areas"` when `options` omits it or isn't a `Detail` spec.
-fn render_view_for_visualization(viz: &VisualizationSpec) -> Option<slicer_runtime::RenderView> {
+fn render_view_for_visualization(viz: &VisualizationSpec) -> slicer_runtime::RenderView {
     use slicer_runtime::{GeometryView, RenderView};
     match viz.kind() {
-        "filled_areas" => Some(RenderView::Geometry(GeometryView::FilledAreas)),
-        "filament_lines" => Some(RenderView::Geometry(GeometryView::FilamentLines)),
+        "filled_areas" => RenderView::Geometry(GeometryView::FilledAreas),
+        "filament_lines" => RenderView::Geometry(GeometryView::FilamentLines),
         "diagnostic_overlay" => {
             let base = match viz {
                 VisualizationSpec::Detail { options, .. } => {
@@ -349,14 +505,14 @@ fn render_view_for_visualization(viz: &VisualizationSpec) -> Option<slicer_runti
                 }
                 VisualizationSpec::Name(_) => None,
             };
-            Some(match base {
-                Some("filament_lines") => {
-                    RenderView::DiagnosticOverlay(GeometryView::FilamentLines)
-                }
+            match base {
+                Some("filament_lines") => RenderView::DiagnosticOverlay(GeometryView::FilamentLines),
                 _ => RenderView::DiagnosticOverlay(GeometryView::FilledAreas),
-            })
+            }
         }
-        _ => None,
+        other => unreachable!(
+            "validate_request rejects unknown visualization kind {other:?} before this dispatch runs"
+        ),
     }
 }
 
@@ -388,32 +544,71 @@ fn tap_name(tap: &TapSelector) -> String {
         TapSelector::Detail { id } => id.clone(),
     }
 }
-fn layer_info(layer: Option<&LayerSelector>) -> (i64, Option<f64>) {
-    match layer {
-        Some(LayerSelector::Index(i)) => (*i, None),
-        Some(LayerSelector::Detail { index, z }) => (index.unwrap_or(0), *z),
-        _ => (0, None),
-    }
+/// One real, scheduled layer against which `LayerSelector::Index` / `Range`
+/// / a z-only `Detail` resolve in Phase 2 (ADR-0041). Source-agnostic: the
+/// `Model` source builds this from `LayerPlanIR.global_layers`; the
+/// standalone G-code source builds it from parsed `;Z:` layers
+/// (`visual_debug_gcode::ParsedLayer`).
+#[derive(Debug, Clone, Copy)]
+struct ScheduledLayer {
+    index: i64,
+    z: Option<f64>,
 }
 
-/// Resolve `req.layers` selectors to concrete global layer indices for the
-/// typed-tap capture executor (packet 158). Only `Index` and
-/// `Detail { index: Some(_), .. }` selectors resolve to a layer index —
-/// `Name` selectors and z-only `Detail` selectors require a live layer
-/// schedule to resolve and are not supported by this packet's closure
-/// executor; they contribute no index (surfacing as
-/// [`VisualDebugError::NoApplicableLayer`] if they are the only selectors
-/// supplied).
-fn resolve_requested_layer_indices(layers: &[LayerSelector]) -> Vec<u32> {
-    let mut out = Vec::new();
-    for layer in layers {
-        match layer {
-            LayerSelector::Index(i) if *i >= 0 => out.push(*i as u32),
-            LayerSelector::Detail { index: Some(i), .. } if *i >= 0 => out.push(*i as u32),
-            _ => {}
+/// Resolve every selector in `layers` against the real `schedule` (Phase 2,
+/// ADR-0041), failing closed the instant any individual selector matches no
+/// scheduled layer — a request is never silently satisfied by a subset of
+/// its selectors, and no partial bundle is ever written for the rest.
+/// `LayerSelector::Name` must already be rejected by `validate_request`'s
+/// Phase 1 (Model source) or the gcode branch's own pre-check (G-code
+/// source) by the time this runs; there is no schedule-based resolution for
+/// an anonymous name in either universe.
+fn resolve_layers_against_schedule(
+    layers: &[LayerSelector],
+    schedule: &[ScheduledLayer],
+) -> Result<Vec<i64>, ValidationError> {
+    let mut resolved = std::collections::BTreeSet::new();
+    for selector in layers {
+        let matches: Vec<i64> = match selector {
+            LayerSelector::Index(i) => schedule
+                .iter()
+                .filter(|l| l.index == *i)
+                .map(|l| l.index)
+                .collect(),
+            LayerSelector::Range { start, end } => schedule
+                .iter()
+                .filter(|l| l.index >= *start && l.index <= *end)
+                .map(|l| l.index)
+                .collect(),
+            LayerSelector::Detail { index: Some(i), .. } => schedule
+                .iter()
+                .filter(|l| l.index == *i)
+                .map(|l| l.index)
+                .collect(),
+            LayerSelector::Detail {
+                index: None,
+                z: Some(z),
+            } => schedule
+                .iter()
+                .filter(|l| l.z.is_some_and(|lz| (lz - z).abs() < 1e-6))
+                .map(|l| l.index)
+                .collect(),
+            LayerSelector::Detail {
+                index: None,
+                z: None,
+            } => Vec::new(),
+            LayerSelector::Name(_) => unreachable!(
+                "LayerSelector::Name must already be rejected before schedule resolution runs"
+            ),
+        };
+        if matches.is_empty() {
+            return Err(ValidationError::LayerSelectorResolvesToNoLayer {
+                selector: format!("{selector:?}"),
+            });
         }
+        resolved.extend(matches);
     }
-    out
+    Ok(resolved.into_iter().collect())
 }
 
 /// Parse the visual-debug request's `source.config` file (the same
@@ -431,6 +626,181 @@ fn load_visual_debug_config(
     })?;
     slicer_runtime::parse_cli_config_source(&text).map_err(|e| {
         VisualDebugError::CaptureFailed(format!("failed to parse config {}: {e}", path.display()))
+    })
+}
+
+/// Shared error mapping for both capture closures (arena `execute_captured_stages`
+/// and Blackboard-read `execute_blackboard_taps`, packet 161 Step 3): both
+/// return `slicer_runtime::CaptureExecutionError`, so one mapping keeps the
+/// two call sites in [`run_model_source`] from drifting.
+fn map_capture_error(e: slicer_runtime::CaptureExecutionError) -> VisualDebugError {
+    match e {
+        slicer_runtime::CaptureExecutionError::UnknownTap { tap } => {
+            VisualDebugError::UnsupportedTap(tap)
+        }
+        slicer_runtime::CaptureExecutionError::NoApplicableLayer => {
+            VisualDebugError::NoApplicableLayer
+        }
+        other => VisualDebugError::CaptureFailed(other.to_string()),
+    }
+}
+
+/// Drives the whole-print pipeline prefix (all layers -> finalization ->
+/// postpass) so the two PostPass taps (`PostPass::LayerFinalization`,
+/// `PostPass::GCodeEmit` — packet 161, Step 5, the third tap class per
+/// ADR-0040) can read IR that only exists after the whole print's per-layer
+/// and finalization tiers complete — unlike the arena
+/// (`execute_captured_stages`) and Blackboard-read (`execute_blackboard_taps`)
+/// closures, there is no bounded per-layer truncation available here: the
+/// finalized `Vec<LayerCollectionIR>` and the emitted `GCodeIR` are each a
+/// single whole-print artifact.
+///
+/// This is the one documented minimal-closure deviation: the returned
+/// [`slicer_runtime::CaptureOutput`]'s `closure_stage_ids` and
+/// `executed_layer_indices` report every stage and every real layer in the
+/// print, not just the request's selected subset — even though only the
+/// request's selected layers end up as [`slicer_runtime::StageCapture`] rows
+/// (the renderer, packet 161 Step 6, further restricts
+/// `CapturedIr::LayerFinalization` to just the requested layer when it
+/// renders it; `CapturedIr::GCodeEmit` has no per-layer marker to restrict
+/// on at all — see `gcode_shapes`'s doc comment in
+/// `visual_debug_render.rs` — so it renders the whole captured `GCodeIR`
+/// unfiltered).
+///
+/// The `DefaultGCodeEmitter`/`DefaultGCodeSerializer` instances constructed
+/// here are deliberately minimal — no per-object/per-tool resolved-config
+/// threading, no thumbnail/CONFIG_BLOCK wiring — mirroring
+/// `prepare_prepass_context`'s own "deliberately narrower than `run_slice`"
+/// scope note: none of that machinery changes the finalized
+/// `LayerCollectionIR`/`GCodeIR` shape this capture needs, only cosmetic
+/// G-code formatting choices that belong to `pnp_cli slice`'s production
+/// emission path, not visual-debug capture.
+fn run_postpass_taps(
+    ctx: &mut slicer_runtime::PrepassContext,
+    request: &slicer_runtime::CaptureRequest,
+) -> Result<slicer_runtime::CaptureOutput, VisualDebugError> {
+    for tap in &request.stage_ids {
+        if !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
+            return Err(VisualDebugError::UnsupportedTap(tap.clone()));
+        }
+    }
+    if request.stage_ids.is_empty() {
+        return Ok(slicer_runtime::CaptureOutput::default());
+    }
+
+    // Tier 2: run every per-layer stage for every layer (no truncation —
+    // the finalization/emission tiers below need every layer's committed
+    // LayerCollectionIR).
+    let (mut layer_irs, _layer_audits) = slicer_runtime::execute_per_layer_with_events(
+        &ctx.plan,
+        &ctx.blackboard,
+        &ctx.layer_runner,
+        &slicer_runtime::NoopLayerProgressSink,
+        &ctx.wasm_handles,
+    )
+    .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+
+    // Tier 3: layer finalization (module-based, if any is bound in this plan).
+    slicer_runtime::execute_layer_finalization(
+        &ctx.plan,
+        &ctx.blackboard,
+        &ctx.layer_runner,
+        &mut layer_irs,
+        &ctx.wasm_handles,
+    )
+    .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+
+    // Tier 4: postpass, with the read-only capture sink enabled so we get
+    // back the finalized (travel-reconciled) layers and the initially
+    // emitted GCodeIR without altering what would ordinarily be emitted.
+    let emitter = slicer_runtime::DefaultGCodeEmitter::new("pnp_cli visual-debug".to_string());
+    let serializer = slicer_runtime::DefaultGCodeSerializer::new();
+    let mut capture = slicer_runtime::postpass::PostPassCapture::default();
+    slicer_runtime::postpass::execute_postpass_with_capture(
+        &ctx.plan,
+        &layer_irs,
+        &ctx.blackboard,
+        &emitter,
+        &serializer,
+        &mut ctx.layer_runner,
+        &slicer_runtime::NoopInstrumentation,
+        &ctx.wasm_handles,
+        Some(&mut capture),
+    )
+    .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+
+    let real_layer_indices: std::collections::BTreeSet<u32> = capture
+        .finalized_layers
+        .iter()
+        .map(|l| l.global_layer_index)
+        .collect();
+    let applicable: std::collections::BTreeSet<u32> = request
+        .layer_indices
+        .iter()
+        .copied()
+        .filter(|i| real_layer_indices.contains(i))
+        .collect();
+    if applicable.is_empty() {
+        return Err(VisualDebugError::NoApplicableLayer);
+    }
+
+    let mut captures = Vec::new();
+    for &layer_index in &applicable {
+        let layer_z = capture
+            .finalized_layers
+            .iter()
+            .find(|l| l.global_layer_index == layer_index)
+            .map(|l| l.z)
+            .unwrap_or(0.0);
+        for tap in &request.stage_ids {
+            let ir = match tap.as_str() {
+                "PostPass::LayerFinalization" => {
+                    slicer_runtime::CapturedIr::LayerFinalization(capture.finalized_layers.clone())
+                }
+                "PostPass::GCodeEmit" => {
+                    slicer_runtime::CapturedIr::GCodeEmit(capture.gcode_ir.clone())
+                }
+                _ => unreachable!("tap validated against POSTPASS_TAP_STAGE_IDS at function entry"),
+            };
+            captures.push(slicer_runtime::StageCapture {
+                stage_id: tap.clone(),
+                layer_index,
+                layer_z,
+                ir,
+            });
+        }
+    }
+    captures.sort_by_key(|c| {
+        (
+            slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+
+    // Whole-print closure (this function's documented minimal-closure
+    // deviation): every per-layer / finalization / postpass stage, and
+    // every real layer in the print — not just the request's selected
+    // subset — because neither tap's source IR exists until the whole
+    // print has run through postpass.
+    let mut closure_stage_ids: Vec<String> = ctx
+        .plan
+        .per_layer_stages
+        .iter()
+        .map(|s| s.stage_id.clone())
+        .collect();
+    closure_stage_ids.push("PostPass::LayerFinalization".to_string());
+    closure_stage_ids.push("PostPass::GCodeEmit".to_string());
+    closure_stage_ids.extend(ctx.plan.postpass_stages.iter().map(|s| s.stage_id.clone()));
+    closure_stage_ids.push("PostPass::GCodeSerialize".to_string());
+
+    Ok(slicer_runtime::CaptureOutput {
+        captures,
+        expansions: Vec::new(),
+        closure_stage_ids,
+        executed_layer_indices: real_layer_indices.into_iter().collect(),
     })
 }
 
@@ -470,7 +840,10 @@ fn run_model_source(
 
     let tap_ids: Vec<String> = req.taps.iter().map(tap_name).collect();
     for tap in &tap_ids {
-        if !slicer_runtime::SUPPORTED_TAP_STAGE_IDS.contains(&tap.as_str()) {
+        if !slicer_runtime::SUPPORTED_TAP_STAGE_IDS.contains(&tap.as_str())
+            && !slicer_runtime::layer_executor::BLACKBOARD_TAP_STAGE_IDS.contains(&tap.as_str())
+            && !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str())
+        {
             return Err(VisualDebugError::UnsupportedTap(tap.clone()));
         }
     }
@@ -490,8 +863,12 @@ fn run_model_source(
         ));
     }
 
-    let layer_indices = resolve_requested_layer_indices(&req.layers);
-    if layer_indices.is_empty() {
+    // A literal empty `layers` list has no selector to resolve at all — fail
+    // before ever touching the model/config/modules (AC-N4's coarse guard,
+    // preserved from the prior implementation). A non-empty list may still
+    // contain a selector that resolves to no layer once the real schedule
+    // is known (Phase 2, below) — that is a distinct, later failure mode.
+    if req.layers.is_empty() {
         return Err(VisualDebugError::NoApplicableLayer);
     }
 
@@ -506,30 +883,129 @@ fn run_model_source(
     })?;
     let config_source = load_visual_debug_config(config.as_deref())?;
 
-    let ctx =
+    let mut ctx =
         slicer_runtime::prepare_prepass_context(Arc::new(mesh), config_source, module_dirs, false)
             .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
 
-    let capture_request = slicer_runtime::CaptureRequest {
-        stage_ids: tap_ids,
-        layer_indices,
+    // Phase 2 (ADR-0041): resolve every requested layer selector
+    // (`Index`/`Range`/z-only `Detail`) against the real, just-committed
+    // layer schedule (`LayerPlanIR.global_layers`, a prepass-committed
+    // Blackboard slot — available immediately after `prepare_prepass_context`
+    // returns, before Tier 2 per-layer execution). Fails closed before any
+    // capture/render/bundle write the moment any selector matches no layer.
+    let schedule: Vec<ScheduledLayer> = ctx
+        .blackboard
+        .layer_plan()
+        .map(|lp| {
+            lp.global_layers
+                .iter()
+                .map(|gl| ScheduledLayer {
+                    index: i64::from(gl.index),
+                    z: Some(f64::from(gl.z)),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let layer_indices: Vec<u32> = resolve_layers_against_schedule(&req.layers, &schedule)
+        .map_err(VisualDebugError::Validation)?
+        .into_iter()
+        .map(|i| i as u32)
+        .collect();
+
+    // Split the requested taps into the three closures that source them
+    // (ADR-0040 "three tap classes"): the seven arena taps still run
+    // `execute_captured_stages`'s truncated per-layer closure; the
+    // SliceIR-family/composite taps (packet 161, Steps 3-4) route to the
+    // Blackboard-read closure instead — prepass only, no arena, no module
+    // dispatch; the two PostPass taps (packet 161, Step 5) route to
+    // `run_postpass_taps`, which drives the whole-print pipeline prefix
+    // (all layers -> finalization -> postpass) since their source IR does
+    // not exist until that whole prefix has run. Tap membership across the
+    // three `*_TAP_STAGE_IDS` sets is disjoint (validated above).
+    let (arena_tap_ids, rest): (Vec<String>, Vec<String>) = tap_ids
+        .into_iter()
+        .partition(|t| slicer_runtime::SUPPORTED_TAP_STAGE_IDS.contains(&t.as_str()));
+    let (blackboard_tap_ids, postpass_tap_ids): (Vec<String>, Vec<String>) =
+        rest.into_iter().partition(|t| {
+            slicer_runtime::layer_executor::BLACKBOARD_TAP_STAGE_IDS.contains(&t.as_str())
+        });
+
+    let mut arena_output = slicer_runtime::CaptureOutput::default();
+    if !arena_tap_ids.is_empty() {
+        let capture_request = slicer_runtime::CaptureRequest {
+            stage_ids: arena_tap_ids,
+            layer_indices: layer_indices.clone(),
+        };
+        arena_output = slicer_runtime::execute_captured_stages(
+            &ctx.plan,
+            &ctx.blackboard,
+            &ctx.layer_runner,
+            &ctx.wasm_handles,
+            &capture_request,
+        )
+        .map_err(map_capture_error)?;
+    }
+
+    let mut blackboard_output = slicer_runtime::CaptureOutput::default();
+    if !blackboard_tap_ids.is_empty() {
+        let capture_request = slicer_runtime::CaptureRequest {
+            stage_ids: blackboard_tap_ids,
+            layer_indices: layer_indices.clone(),
+        };
+        blackboard_output = slicer_runtime::layer_executor::execute_blackboard_taps(
+            &ctx.blackboard,
+            &capture_request,
+        )
+        .map_err(map_capture_error)?;
+    }
+
+    let mut postpass_output = slicer_runtime::CaptureOutput::default();
+    if !postpass_tap_ids.is_empty() {
+        let capture_request = slicer_runtime::CaptureRequest {
+            stage_ids: postpass_tap_ids,
+            layer_indices: layer_indices.clone(),
+        };
+        postpass_output = run_postpass_taps(&mut ctx, &capture_request)?;
+    }
+
+    // Merge the three closures' outputs into one, deterministically ordered
+    // the same way each closure orders its own captures (STAGE_ORDER
+    // position, then layer index) so a bundle mixing arena, Blackboard-read,
+    // and PostPass taps still produces one stable manifest order.
+    let mut captures = arena_output.captures;
+    captures.extend(blackboard_output.captures);
+    captures.extend(postpass_output.captures);
+    captures.sort_by_key(|c| {
+        (
+            slicer_runtime::STAGE_ORDER
+                .iter()
+                .position(|s| *s == c.stage_id.as_str())
+                .unwrap_or(usize::MAX),
+            c.layer_index,
+        )
+    });
+    let mut expansions = arena_output.expansions;
+    expansions.extend(blackboard_output.expansions);
+    expansions.extend(postpass_output.expansions);
+    // Blackboard-read taps contribute no arena closure (ADR-0040: prepass
+    // only). PostPass taps contribute their own whole-print closure
+    // (`run_postpass_taps`'s documented minimal-closure deviation — every
+    // stage, not just the arena path's truncated per-layer sequence) when
+    // requested.
+    let mut closure_stage_ids = arena_output.closure_stage_ids;
+    closure_stage_ids.extend(postpass_output.closure_stage_ids);
+    let mut executed_layer_indices: std::collections::BTreeSet<u32> =
+        arena_output.executed_layer_indices.into_iter().collect();
+    executed_layer_indices.extend(blackboard_output.executed_layer_indices);
+    executed_layer_indices.extend(postpass_output.executed_layer_indices);
+    let executed_layer_indices: Vec<u32> = executed_layer_indices.into_iter().collect();
+
+    let output = slicer_runtime::CaptureOutput {
+        captures,
+        expansions,
+        closure_stage_ids,
+        executed_layer_indices,
     };
-    let output = slicer_runtime::execute_captured_stages(
-        &ctx.plan,
-        &ctx.blackboard,
-        &ctx.layer_runner,
-        &ctx.wasm_handles,
-        &capture_request,
-    )
-    .map_err(|e| match e {
-        slicer_runtime::CaptureExecutionError::UnknownTap { tap } => {
-            VisualDebugError::UnsupportedTap(tap)
-        }
-        slicer_runtime::CaptureExecutionError::NoApplicableLayer => {
-            VisualDebugError::NoApplicableLayer
-        }
-        other => VisualDebugError::CaptureFailed(other.to_string()),
-    })?;
 
     // Renderer-owned typed IR → PNG rendering (packet 159): additive to
     // packet 158's typed capture above. When the request selected no
@@ -561,16 +1037,37 @@ fn run_model_source(
         let viewport_bounds = slicer_runtime::compute_viewport_bounds(&output.captures);
         for capture in &output.captures {
             for viz in &req.visualizations {
-                let Some(render_view) = render_view_for_visualization(viz) else {
-                    continue;
-                };
-                let rendered = slicer_runtime::render_stage_capture(
-                    capture,
+                let render_view = render_view_for_visualization(viz);
+                // `LayerPlanIR` diagnostic overlay (packet 161, Step 7):
+                // `LayerPlanning` has no standalone tap/`CapturedIr`
+                // variant, so its sync/non-planar/active-region flags only
+                // ever reach a rendered image here, threaded from the
+                // Model-source `PrepassContext::blackboard` opt-in — never
+                // drawn for a plain `RenderView::Geometry` request (see
+                // `render_stage_capture`'s doc comment), and never available
+                // at all for the standalone G-code source (no
+                // `PrepassContext`/blackboard exists on that path).
+                let layer_plan_layer = if matches!(
                     render_view,
-                    req.resolution_scale,
-                    viewport_bounds,
-                )
-                .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                    slicer_runtime::RenderView::DiagnosticOverlay(_)
+                ) {
+                    ctx.blackboard.layer_plan().and_then(|lp| {
+                        lp.global_layers
+                            .iter()
+                            .find(|gl| gl.index == capture.layer_index)
+                    })
+                } else {
+                    None
+                };
+                let rendered =
+                    slicer_runtime::visual_debug_render::render_stage_capture_with_layer_plan(
+                        capture,
+                        render_view,
+                        req.resolution_scale,
+                        viewport_bounds,
+                        layer_plan_layer,
+                    )
+                    .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
                 // `viz.kind()` alone collides for two `diagnostic_overlay`
                 // visualizations with different `options.base` (both kind
                 // "diagnostic_overlay") — append the resolved base geometry
@@ -695,13 +1192,21 @@ pub fn run_visual_debug(
                 model: None,
                 path: Some(gcode_path.clone()),
             };
+            // `validate_request`'s Phase 1 (ADR-0041) already rejected any
+            // unrecognized visualization kind and any `diagnostic_overlay`
+            // request against this G-code source, so only `filament_lines`/
+            // `filled_areas` can reach this dispatch — the former silent
+            // `filter_map`/`_ => None` drop is unreachable.
             let visualizations: Vec<visual_debug_gcode::GcodeVisualization> = req
                 .visualizations
                 .iter()
-                .filter_map(|v| match v.kind() {
-                    "filament_lines" => Some(visual_debug_gcode::GcodeVisualization::FilamentLines),
-                    "filled_areas" => Some(visual_debug_gcode::GcodeVisualization::FilledAreas),
-                    _ => None,
+                .map(|v| match v.kind() {
+                    "filament_lines" => visual_debug_gcode::GcodeVisualization::FilamentLines,
+                    "filled_areas" => visual_debug_gcode::GcodeVisualization::FilledAreas,
+                    other => unreachable!(
+                        "validate_request rejects unknown/mismatched visualization kind \
+                         {other:?} before this dispatch runs"
+                    ),
                 })
                 .collect();
 
@@ -738,22 +1243,38 @@ pub fn run_visual_debug(
                 }
                 // The standalone final-G-code source has no named-layer
                 // table (only `;LAYER_CHANGE`/`;Z:` markers indexed by parse
-                // order): a non-index-based selector (`Name`, or a z-only
-                // `Detail`) is meaningless here, not a valid alias for layer
-                // 0 — `layer_info`'s catch-all `_ => (0, None)` arm must
-                // never be reached silently for this source.
+                // order): a `LayerSelector::Name` is meaningless here, not a
+                // valid alias for layer 0 — reject it explicitly rather than
+                // ever falling through to a silent default.
                 for layer in &req.layers {
-                    if !matches!(
-                        layer,
-                        LayerSelector::Index(_) | LayerSelector::Detail { index: Some(_), .. }
-                    ) {
+                    if matches!(layer, LayerSelector::Name(_)) {
                         return Err(VisualDebugError::Validation(
                             ValidationError::GcodeUnsupportedLayerSelector,
                         ));
                     }
                 }
+                // Phase 2 (ADR-0041): resolve every requested layer selector
+                // (`Index`/`Range`/z-only `Detail`) against the real, parsed
+                // `;Z:` layer schedule. Fails closed before any render/bundle
+                // write the moment any selector matches no layer.
+                let gcode_text = fs::read_to_string(&gcode_path).map_err(|e| {
+                    VisualDebugError::CaptureFailed(format!(
+                        "failed to read gcode file {}: {e}",
+                        gcode_path.display()
+                    ))
+                })?;
+                let parsed_for_schedule = visual_debug_gcode::parse_gcode(&gcode_text);
+                let schedule: Vec<ScheduledLayer> = parsed_for_schedule
+                    .layers
+                    .iter()
+                    .map(|l| ScheduledLayer {
+                        index: l.layer_index,
+                        z: l.layer_z,
+                    })
+                    .collect();
                 let layer_indices: Vec<i64> =
-                    req.layers.iter().map(|l| layer_info(Some(l)).0).collect();
+                    resolve_layers_against_schedule(&req.layers, &schedule)
+                        .map_err(VisualDebugError::Validation)?;
 
                 let output = visual_debug_gcode::render_gcode_visual_debug_from_path(
                     &gcode_path,

@@ -2081,11 +2081,11 @@ pub struct TravelMove {
     /// Stable identifier of the entity in `LayerCollectionIR.ordered_entities` after which this
     /// travel is emitted. Resolved at emit time via a per-layer `HashMap<u64, usize>` lookup.
     pub entity_id: u64,
-    /// X destination (module coordinate units, 100 nm).
+    /// X destination (millimeters, mm).
     pub x: Option<f32>,
-    /// Y destination (module coordinate units, 100 nm).
+    /// Y destination (millimeters, mm).
     pub y: Option<f32>,
-    /// Z destination (module coordinate units, 100 nm).
+    /// Z destination (millimeters, mm).
     pub z: Option<f32>,
     /// Feed-rate override in mm/s (`None` = keep current speed).
     pub f: Option<f32>,

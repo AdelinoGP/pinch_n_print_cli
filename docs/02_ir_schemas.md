@@ -1242,6 +1242,42 @@ pub struct SupportIR {
 
 ---
 
+## IR 9a — SupportGeometryIR
+
+**Stage:** Output of `PrePass::SupportGeometry` — coarse outline prepass results,
+committed before `SupportPlanIR` within the same stage.
+
+**Producer:** The host built-in commits `SupportGeometryIR` first within
+`PrePass::SupportGeometry`, ahead of any `support-planner` module's
+`SupportPlanIR` (see IR 9b below).
+
+**Consumers:** `Layer::Support` modules that need coarse per-`(layer, object,
+region)` outline polygons independent of organic branch planning.
+
+```rust
+pub struct SupportGeometryIR {
+    pub schema_version: SemVer,
+    /// 0.0 = use model layer height (config schema enforces min > 0).
+    pub support_layer_height_mm: f32,
+    /// Distance in mm from column tops to add intermediate model layers.
+    pub support_top_z_distance_mm: f32,
+    /// Per-(layer, object, region) coarse outline polygons.
+    pub entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+}
+
+pub struct SupportGeometryKey {
+    /// Model layer index that this support geometry entry applies to.
+    /// `u32::MAX` sentinel = intermediate model-resolution layer.
+    pub global_support_layer_index: u32,
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+}
+```
+
+---
+
 ## IR 9b — SupportPlanIR
 
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
@@ -1309,35 +1345,55 @@ the `support_planner_is_deterministic_across_runs` test.
 **Stage:** Output of `PrePass::SeamPlanning` (optional; only present when a
 `seam-planner` module is loaded — packet 23-rev1).
 
-**Producer:** A module holding the `seam-planner` claim on
-`PrePass::SeamPlanning`. The stage is ordered after `PrePass::LayerPlanning`
-and before `PrePass::PaintSegmentation`; its prerequisites are
-`MeshIR` (via `MeshObjectView` parameters) and `LayerPlanIR`.
+**Producer:** A module holding the `seam-planner` claim. Ordered after
+`PrePass::LayerPlanning`, before `PrePass::PaintSegmentation`.
 
-**Consumers:** `Layer::PerimetersPostProcess` modules that hold the
-`seam-placer` claim. The plan is advisory — `seam-placer` may use it as a
-strong prior or fall back to per-layer scoring over `SeamCandidate`s.
+**Consumers:** `Layer::PerimetersPostProcess` modules holding the
+`seam-placer` claim. Advisory — may fall back to per-layer scoring.
+
+**schema_version: 1.0.0** (`CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION`; no bumps).
 
 ```rust
 pub struct SeamPlanIR {
     pub schema_version: SemVer,
-    /// One entry per planned `(global_layer_index, object_id, region_id)` triple.
-    /// **Duplicate key contract:** two entries with identical
-    /// `(global_layer_index, object_id, region_id)` are a fatal IR validation
-    /// error; the host rejects the plan at commit time.
+    /// One entry per planned `(layer, object, region)` triple, keyed by
+    /// `RegionKey`. **Duplicate key contract:** two entries with identical
+    /// `RegionKey` are a fatal IR validation error; rejected at commit time.
     pub entries: Vec<SeamPlanEntry>,
 }
 
 pub struct SeamPlanEntry {
-    pub global_layer_index: u32,
-    pub object_id: ObjectId,
-    pub region_id: RegionId,
-    /// Pre-planned seam vertex on the outermost wall loop, in `Point2` units.
-    pub seam_xy: Point2,
-    /// Optional rationale tag for diagnostics; e.g. "vertex-cluster", "concave-fit".
-    pub reason: Option<String>,
+    /// Stable region key for lookup during layer dispatch.
+    pub region_key: RegionKey,
+    /// The seam position selected by the planner.
+    pub chosen_candidate: SeamPosition,
+    /// Full scored candidate list for evidence and regression checks.
+    pub scored_candidates: Vec<ScoredSeamCandidate>,
+}
+
+pub struct SeamPosition {
+    /// Seam point on the outermost wall loop, in **millimeters**
+    /// (`Point3WithWidth`, f32 mm — not the IR-internal 100 nm integer units;
+    /// see the packet-161 correction on coordinate scale in this doc).
+    pub point: Point3WithWidth,
+    /// Index of the wall this seam was placed on.
+    pub wall_index: u32,
+}
+
+/// One scored seam candidate from the prepass planner. `score` is the
+/// primary sort key; lower is better.
+pub struct ScoredSeamCandidate {
+    /// Candidate position with extrusion width, in millimeters.
+    pub position: Point3WithWidth,
+    pub score: f32,
+    /// Enum tag explaining why this candidate was scored this way.
+    pub reason: SeamReason,
 }
 ```
+
+`SeamPlanEntry.chosen_candidate` is consumed via
+`PerimeterRegionView.resolved_seam` so the apply-stage module (seam-placer)
+operates on a pre-resolved seam without rescoring.
 
 ---
 

@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_gcode::{GCodeEmitError, GCodeEmitter, GCodeSerializer};
-use slicer_ir::{LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
 
 /// Translate a `slicer_gcode::GCodeEmitError` into the matching
 /// `slicer_ir::PostpassError` variant.
@@ -118,6 +118,59 @@ pub fn execute_postpass_with_instrumentation(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
+    execute_postpass_with_capture(
+        plan,
+        layer_irs,
+        blackboard,
+        emitter,
+        serializer,
+        runner,
+        instrumentation,
+        wasm_handles,
+        None,
+    )
+}
+
+/// Renderer-owned, read-only snapshot of the whole-print PostPass IR
+/// (packet 161, Step 5): the finalized `Vec<LayerCollectionIR>` (after
+/// [`slicer_gcode::reconcile_finalization_travel`], immediately before
+/// G-code emission — tap `PostPass::LayerFinalization`) paired with the
+/// initially emitted `GCodeIR` (right after `emitter.emit_gcode()`, before
+/// any `GCodePostProcess` module mutates it — tap `PostPass::GCodeEmit`).
+///
+/// Populated only when a caller passes `Some(&mut PostPassCapture)` to
+/// [`execute_postpass_with_capture`]; both fields are cloned once,
+/// immediately, from the locals already computed for ordinary emission —
+/// capturing never alters what is emitted (ADR-0037 "never a live borrow
+/// retained past this call", mirrored here for the whole-print tier).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PostPassCapture {
+    /// The finalized, travel-reconciled layers fed into `emit_gcode`.
+    pub finalized_layers: Vec<LayerCollectionIR>,
+    /// The `GCodeIR` as initially emitted, before any `GCodePostProcess`
+    /// module runs.
+    pub gcode_ir: GCodeIR,
+}
+
+/// [`execute_postpass_with_instrumentation`] with an optional read-only
+/// capture sink (packet 161, Step 5). Ordinary callers (the production
+/// pipeline via [`execute_postpass_with_instrumentation`], and every
+/// existing test via [`execute_postpass`]) pass `None` and are byte-for-byte
+/// unaffected — the sink only clones two already-computed locals, it never
+/// alters emission. `pnp-cli`'s visual-debug PostPass taps are the only
+/// caller that passes `Some`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_postpass_with_capture(
+    plan: &ExecutionPlan,
+    layer_irs: &[LayerCollectionIR],
+    blackboard: &Blackboard,
+    emitter: &dyn GCodeEmitter,
+    serializer: &dyn GCodeSerializer,
+    runner: &mut dyn PostpassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    capture: Option<&mut PostPassCapture>,
+) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1a: Reconcile finalization-aware travel moves before emission.
     // This adjusts travel_moves to route through Skirt/Brim and WipeTower
     // geometry without modifying ordered_entities.
@@ -140,6 +193,17 @@ pub fn execute_postpass_with_instrumentation(
         })?;
     instrumentation.on_module_end(&emit_stage, None, &emit_module, 0, 0);
     instrumentation.on_stage_end(&emit_stage, None);
+
+    // Step 1c (packet 161, Step 5): read-only capture of the finalized
+    // layers (`PostPass::LayerFinalization`) and the just-emitted GCodeIR
+    // (`PostPass::GCodeEmit`), taken before any GCodePostProcess module gets
+    // a chance to mutate `gcode_ir.commands`. No-op for every ordinary
+    // caller (`capture` is `None`).
+    if let Some(cap) = capture {
+        cap.finalized_layers = reconciled_layers.clone();
+        cap.gcode_ir = gcode_ir.clone();
+    }
+
     let mut audits = Vec::new();
 
     // Step 2: Run all GCodePostProcess modules sequentially

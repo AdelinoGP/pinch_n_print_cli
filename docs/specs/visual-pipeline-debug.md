@@ -235,24 +235,29 @@ OrcaSlicer source must carry the attribution header required by
 The table names the exact documented source fields. A diagram source means a
 stage-specific PNG of trace-relevant fields, not a fabricated model geometry.
 
-**Documentation drift:** `docs/01_system_architecture.md` names
-`SupportGeometryIR`, but `docs/02_ir_schemas.md` currently omits its normative
-definition. The implementation source defines `SupportGeometryIR` as
-`support_layer_height_mm`, `support_top_z_distance_mm`, and
+**Documentation drift (resolved):** `docs/01_system_architecture.md` names
+`SupportGeometryIR`; `docs/02_ir_schemas.md` now carries its normative
+definition alongside the other prepass IRs: `support_layer_height_mm`,
+`support_top_z_distance_mm`, and
 `entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>`, where
 `SupportGeometryKey` has `global_support_layer_index`, `object_id`, and
-`region_id`. The first implementation packet must reconcile that omission in
-`docs/02_ir_schemas.md` before treating the SupportGeometry tap as closed; this
-spec records the existing source shape only to avoid inventing a field.
+`region_id`. This spec's tap inventory below matches that normative shape.
+
+**LayerPlanning is not a standalone tap.** `LayerPlanIR.global_layers[].
+{index,z,active_regions,has_nonplanar,is_sync_layer}` and
+`object_participation` carry planning state (selected layer Z, active
+regions, synchronization/catch-up), but that state has no independently
+renderable geometry of its own. It is surfaced only as a `diagnostic_overlay`
+annotation composed onto a geometry-bearing tap (e.g. `Layer::Slice` or
+`Layer::Perimeters`) — never as its own `taps[]` entry or table row.
 
 | Tap | Source fields | Render output |
 |---|---|---|
 | `PrePass::MeshAnalysis` | `SurfaceClassificationIR.per_object`; `ObjectSurfaceData.bridge_regions[].xy_footprint`; `overhang_regions[].xy_footprint`; `overhang_quartile_polygons` | Classified-footprint areas and overhang/bridge overlays. |
-| `PrePass::LayerPlanning` | `LayerPlanIR.global_layers[].{index,z,active_regions,has_nonplanar,is_sync_layer}` and `object_participation` | Planning diagram of selected layer Z, active regions, and synchronization/catch-up state. |
-| `PrePass::SeamPlanning` | `SeamPlanIR.entries[].{global_layer_index,object_id,region_id,seam_xy,reason}` | Seam-plan overlay/diagram. |
-| `PrePass::SupportGeometry` | `SupportGeometryIR.{support_layer_height_mm,support_top_z_distance_mm,entries}`; `SupportGeometryKey.{global_support_layer_index,object_id,region_id}`; `SupportPlanIR.entries[].{global_layer_index,object_id,region_id,branch_segments}` | Coarse support `entries` polygon areas, planned support branch lines, and support-layer settings overlay. |
+| `PrePass::SeamPlanning` | `SeamPlanIR.entries[].{region_key, chosen_candidate.point, chosen_candidate.wall_index, scored_candidates[].reason}`; `chosen_candidate.point` is a `Point3WithWidth` — `x`/`y`/`z`/`width` are f32 **millimeters**, not 100-nm scaled units | Seam-plan overlay/diagram. |
+| `PrePass::SupportGeometry` | `SupportGeometryIR.{support_layer_height_mm,support_top_z_distance_mm,entries}`; `SupportGeometryKey.{global_support_layer_index,object_id,region_id}`; `SupportPlanIR.entries[].{global_layer_index,object_id,region_id,branch_segments}` — `branch_segments` (`Vec<ExtrusionPath3D>`) carry `Point3WithWidth` points in f32 **millimeters**, not 100-nm scaled units | Coarse support `entries` polygon areas, planned support branch lines, and support-layer settings overlay. |
 | `PrePass::PaintSegmentation` | `SliceIR.{global_layer_index,z,regions}`; `SlicedRegion.{polygons,variant_chain,segment_annotations}` | Variant polygon areas and paint/segment overlays. |
-| `PrePass::RegionMapping` | `RegionMapIR.entries`; `RegionKey.{global_layer_index,object_id,region_id,variant_chain}`; `RegionPlan.{config,stage_modules,paint_overrides}` | Dispatch/configuration diagram; no synthetic geometry. |
+| `PrePass::RegionMapping` | A `SliceIR` join, not a synthetic diagram: `RegionMapIR.entries` (keyed by `RegionKey.{global_layer_index,object_id,region_id,variant_chain}`) joined to `SliceIR.regions` by that same `RegionKey`; each joined `RegionPlan.{config,stage_modules,paint_overrides}` (`config` is a `ConfigId` — interned index into `RegionMapIR.configs`, resolved via `RegionMapIR::config_for`) | Dispatch/configuration overlay on the joined `SliceIR.regions[].polygons`; no synthetic geometry. |
 | `Layer::Slice` | `SliceIR.regions[].{polygons,infill_areas}` | Slice polygon and available-infill-area render. |
 | `PrePass::OverhangAnnotation` | `SurfaceClassificationIR.overhang_quartile_polygons` | Quartile-band area render. |
 | `Layer::PaintRegionAnnotation` and `Layer::SlicePostProcess` | `SliceIR.regions[].{polygons,segment_annotations}` | Post-edit polygon render and annotation overlay. |
