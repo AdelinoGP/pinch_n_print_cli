@@ -49,20 +49,22 @@ is the authoritative catalog of their defaults and ranges.
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
-| `layer_height` | float | `0.2` | — | `arachne-perimeters` |
+| `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
 | `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
-| `min_feature_size` | percent | `25%` | base: `nozzle_diameter` | `arachne-perimeters` |
+| `min_feature_size` | percent | `"25%"` | >= 0.0 | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
 | `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |  // behavioral as of P152 (G3 part-2 second-pass single-wall-top width gate wired)
-| `nozzle_diameter` | float | `0.4` | — | `arachne-perimeters` |
-| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |  // behavioral as of P152 (G3 part-2 second-pass single-wall-top wired)
+| `min_width_top_surface` | float_or_percent | `"300%"` | >= 0.0 | `arachne-perimeters` |
+| `nozzle_diameter` | float | `0.4` | >= 0.01 | `arachne-perimeters` |
+| `only_one_wall_first_layer` | bool | `false` | — | `arachne-perimeters` |
+| `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
 | `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `arachne-perimeters` |
+| `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `arachne-perimeters` |
 | `preferred_bead_width_outer` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
@@ -70,11 +72,15 @@ is the authoritative catalog of their defaults and ranges.
 | `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
 | `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
 | `visvalingam_area_threshold` | float | `100` | >= 0.0 | `arachne-perimeters` |
+| `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
+| `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
+| `wall_maximum_deviation` | float | `0.025` | [0.0001, 1.0] | `arachne-perimeters` |
+| `wall_maximum_resolution` | float | `0.5` | [0.001, 10.0] | `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
-| `wall_transition_length` | percent | `100%` | base: `nozzle_diameter` | `arachne-perimeters` |
+| `wall_transition_length` | percent | `"100%"` | >= 0.0 | `arachne-perimeters` |
 | `alternate_extra_wall` | bool | `false` | — | `classic-perimeters` |
 | `bridge_flow` | float | `1.0` | >= 0.0 | `classic-perimeters` |
 | `detect_overhang_wall` | bool | `true` | — | `classic-perimeters` |
@@ -86,11 +92,11 @@ is the authoritative catalog of their defaults and ranges.
 | `gap_infill_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `inner_wall_speed` | float | `45.0` | [1.0, 300.0] | `classic-perimeters` |
-| `layer_height` | float | `0.2` | — | `classic-perimeters` |
+| `layer_height` | float | `0.2` | [0.01, 2.0] | `classic-perimeters` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `min_width_top_surface` | float | `1.2` | >= 0.0 | `classic-perimeters` |
 | `narrow_loop_length_threshold_mm` | float | `10.0` | [0.0, 1000.0] | `classic-perimeters` |
-| `nozzle_diameter` | float | `0.4` | — | `classic-perimeters` |
+| `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
 | `outer_wall_line_width` | float | `0.5` | [0.1, 2.0] | `classic-perimeters` |
@@ -243,7 +249,7 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
-| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) \| square \| round (legacy, bit-identical, slow)) | `resolved_config.rs::ResolvedConfig` |
+| `flat_bridge_closing_join` | string | `"miter"` | — (flat-bridge enclosure closing join: miter (OrcaSlicer parity, default) | square | round (legacy, bit-identical, slow)) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_resolution` | float | `0.0125` | >= 0 (D-P tolerance for walls / brim) | `resolved_config.rs::ResolvedConfig` |
 | `gcode_xy_decimals` | int | `3` | [1, 6] (X / Y / Z token formatting) | `resolved_config.rs::ResolvedConfig` |
 | `infill_resolution` | float | `0.04` | >= 0 (D-P tolerance for infill / bridge / top / bottom) | `resolved_config.rs::ResolvedConfig` |

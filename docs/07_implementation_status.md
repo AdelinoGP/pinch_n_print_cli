@@ -1,7 +1,5 @@
 # Implementation Status
 
-Last updated: see git log for this file.
-
 ## Status Markers
 
 - `[x]` complete
@@ -13,7 +11,6 @@ Last updated: see git log for this file.
 - MVP status: COMPLETE.
 - Historical implementation phases A through G are complete.
 - This document now tracks the remaining work: OrcaSlicer feature parity, architecture-conformance cleanup, and acceptance-gate evidence.
-- Phase H acceptance gate review unblocked 2026-05-08 by packet `27_phase-h-final-validation` (TASK-120 closed). Remaining Phase H items (TASK-120c live seam placement, TASK-130 macro segmentation bridge [x] closed 2026-05-08 by packet 43-rev1) are tracked separately and do not block acceptance-gate review entry.
 
 ## Milestone Summary
 
@@ -25,22 +22,6 @@ Last updated: see git log for this file.
 - [x] Phase F — Post-MVP & Advanced Features (TASK-081 to TASK-097)
 - [x] Phase G — Pipeline Wiring & WASM Integration (TASK-100 to TASK-113)
 - [~] Phase H — End-to-End Integration & Review
-
-## Current Acceptance Snapshot
-
-- The live pipeline now produces `.gcode` for the Benchy STL.
-- The output is still below the Phase H acceptance bar.
-- Known live-output gaps on the Benchy path: top/bottom surface infill, support structures, seam placement on real wall loops, travel retraction / unretraction behavior, and OrcaSlicer-compatible GCode comment metadata required for native preview visualization.
-- Architecture Acceptance Gate is blocked on the remediation backlog below.
-
-## Active Remediation Backlog
-
-- Coverage check (2026-04-17): every open `DEV-###` row in `docs/DEVIATION_LOG.md` is now owned by at least one task below.
-- Parent tasks marked `[~]` are umbrella items retained for continuity; they close only when all listed child tasks land.
-
-### Fixture quality
-
-- [ ] **D-98-FIXTURE-CYLINDER-METADATA-DRIFT** — `resources/cube_cilindrical_modifier.3mf`: after P98's manual fixture edit, the cylinder modifier's `matrix` metadata reports a ~(17.98, 16.49) translation offset while the modifier mesh geometry is unchanged (vertex centroid ~(133.99, 113.25) ⟹ ~8.99 offset). Metadata and geometry now disagree about the cylinder position. `modifier_volume_carries_typed_metadata` (asserts the metadata string) and `modifier_world_aabb_matches_composition` (asserts the mesh centroid) each pass against their own source, so the drift is masked by the test split. Owner: fixture maintainer. Resolution: re-export the fixture so metadata and geometry agree, or document the intended offset and reconcile the two assertions. Out of P98 scope (loader paint symmetry); flagged at P98 closure 2026-06-15.
 
 ### Workstream 1 — Manifest and contract conformance
 
@@ -269,15 +250,6 @@ For closed deviations and their closure detail, read the log directly.
 - **DEV-082** (Open — 2026-07-03: manifest never declared the required claims (dead-on-arrival bug, not a shipped divergence); fix scoped in packet 135_gyroid-raw-emit) — Infill-parity effort — intended as a deliberate divergence, but shipped incomplete.
 <!-- END GENERATED: open-deviations -->
 
-## Known parity gaps (post-roadmap work)
-
-Forward-looking parity obligations that survive a completed packet's `status: implemented` flip — recorded here so they remain discoverable across subsequent roadmap work. Each entry names the originating deviation, the responsible follow-up roadmap, and the production impact while the gap is open.
-
-- **Perimeter-module OrcaSlicer parity for multi-color (D-96-AC22-EXTERNAL-CONTOUR).** Painted-region outer walls were originally traced once per object via `SlicedRegion.external_contour` (a host-side `union_ex` of sibling painted cells). OrcaSlicer's MMU emits per-color outer-wall fragments with tool changes at color transitions. The reshape was owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md) — tasks T-P96-A through T-P96-F. **Superseded** — Model A per-color fragmentation shipped in P105/P108/P109 (ADR-0013); `external_contour` consumption was removed from both perimeter modules and the field itself later deleted.
-- **Painted seam strokes have no consumer (D-98-SEAM-NO-CONSUMER).** P98 decodes `paint_seam` sub-facet strokes, which now reach `SlicedRegion.variant_chain` as `("seam_enforcer"/"seam_blocker", …)`, but no live module reads them — `seam-placer` scores seams geometrically from `SeamCandidate`, not from paint. The consumer is owned by [`docs/specs/perimeter-modules-orca-parity-roadmap.md`](specs/perimeter-modules-orca-parity-roadmap.md) — task T-P98-SEAM (Phase 8). Production impact: `paint_seam` annotations in 3MFs are decoded and carried but currently have no effect on seam placement until the wiring lands. **Superseded** — closed by `D-108-SEAM-CONSUMED` (P108).
-- **Community paint ingestion (post-roadmap follow-up).** The 3MF parser currently handles the four OrcaSlicer paint channels (`paint_color`, `paint_supports`, `paint_seam`, `paint_fuzzy_skin`). A 3MF parser extension hook for community-contributed paint channels (e.g. user-defined semantic annotations from third-party tools) is deferred. Production impact: community paint channels in 3MFs are silently ignored until the extension hook lands.
-- **`PaintValue::Vector(Vec<f32>)` IR addition for multi-channel paints (post-roadmap follow-up).** The current `PaintValue` enum supports scalar/flag variants. A `PaintValue::Vector(Vec<f32>)` variant for multi-channel paints (CMYK / RGB) is deferred to a future IR-breaking change. Production impact: multi-channel paint data cannot be represented in the IR today; single-channel paints are unaffected.
-- **Promoting paint-segmentation's internal slicing to `host:raw_slice` (post-roadmap follow-up).** If profiling reveals that paint-segmentation's internal slice-plane intersection loop is a bottleneck, the internal slicing logic should be promoted to a `host:raw_slice` producer so it can be reused by other stages. Currently the logic is private to the paint-segmentation kernel. Production impact: no functional change; this is a performance/reusability refactor deferred until profiling data justifies it.
 
 ## Perimeter Modules — OrcaSlicer Parity Roadmap
 
@@ -332,43 +304,3 @@ Packets implementing the [`docs/specs/perimeter-modules-orca-parity-roadmap.md`]
 - [x] **P153 — Arachne line-junctions restructure + stitch faithfulness** (no TASK-###; `.ralph/specs/153-arachne-linejunctions-and-stitch-faithfulness/`). Restructured `EdgeJunctions` to a single `Vec<ExtrusionJunction>` per edge (OrcaSlicer `LineJunctions`), ordered peak-side to boundary-side with `perimeter_index == junction_idx`. Ported OrcaSlicer's `canReverse` parity gate and the `3 * max_stitch_distance` tiny-polygon non-closure rule into `stitch_extrusions`; AC-3 + AC-4b regression-anchored. `docs/DEVIATION_LOG.md`: `D-153-ARACHNE-LINEJUNCTIONS-AND-STITCH-FAITHFULNESS` registered (closed). `packet.spec.md` `status: implemented`.
 
 - [x] **M2 — Real Arachne N1–N13 parity chain (P141–P147) COMPLETE** (2026-07-08) — full canonical Arachne emission + transitions + post-process, supersedes PNP "ADAPTATION" divergence; documented in ADR 0035 + D-147-CHAIN-CLOSURE. AC-1 e2e closure gate KEPT `#[ignore]`d (wall/infill residual for separate session, user decision 2026-07-08); all other ACs green.
-
-- [x] `crates/slicer-runtime/tests/contract/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
-- [x] `crates/slicer-runtime/tests/contract/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
-
-## Foundational Baselines
-
-These commits are upstream prerequisites for spec packets and must land before the dependent packet begins. Recorded here to make the dependency chain explicit for future readers.
-
-- **Cherry-pick `5c272ef970fee2b861081799169a3ddb87e179c9`** — introduces engineered paint-fixture pair `resources/cube_4color.3mf` (37 KB) and `resources/cube_fuzzyPainted.3mf` (27 KB) plus 24 RED tests in `crates/slicer-runtime/tests/executor/cube_4color_paint_tdd.rs` and `cube_fuzzy_painted_tdd.rs`. These RED tests are the paint-segmentation parity validation gates that drive Packets P0a (P89, benchy retirement) through P4 (P95+); landing this commit is the first step of P89. The cube fixtures have per-face deterministic paint semantics documented in `docs/12_architecture_gate_metrics.md` § Fixture Catalog.
-- **CONTEXT.md AC-4.4 (Packet 75)** — resolved 2026-06-17; grep gate was already satisfied (a markdown-bold artifact made the original concern a misread).
-- **Packet 93 `_paint_regions` dead parameter** — `execute_region_mapping_inner` and descendants carry an unused `_paint_regions: Option<&PaintRegionIR>` parameter since the chain-derived overlay path subsumed it. Cleanup deferred; not blocking. See packet 93 closure-log for the contract context.
-
-## Architecture Acceptance Gate
-
-- Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-120c, TASK-136, TASK-140, TASK-155, TASK-156
-
-### Evidence Links
-
-- Determinism: pending Phase H parity closure
-- Recoverability: pending runtime access enforcement and progress-event coverage
-- Resource bounds: pending RegionMap overflow, `resolve_active_regions`, and runtime-budget evidence collection
-- Coupling control: pending manifest contract cleanup, claim transition enforcement, and custom-payload preservation
-- Compatibility: pending WIT-source consolidation, `wit_world` validation, host semver/schema validation, and acceptance-gate evaluation
-- Operability: pending Benchy acceptance run, OrcaSlicer-compatible GCode comment parity, finalization parity, and progress-event validation
-
-### Notes
-
-- Use `./docs/11_operational_governance_and_acceptance_gate.md` as the rubric.
-- Metric thresholds are defined in `./docs/12_architecture_gate_metrics.md`.
-
-## Blocked Tasks
-
-- None. The remaining work is prioritized, not externally blocked.
-
-## Governance Checklist Status
-
-- Module/claim rollout checklist: IN PROGRESS
-- Compatibility policy checks: NOT STARTED
-- Release checklist: NOT STARTED
