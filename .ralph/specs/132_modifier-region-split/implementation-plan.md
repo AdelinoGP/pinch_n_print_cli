@@ -33,7 +33,7 @@
     partition-lazy)? Inspect the partition call site's available context; FACT ≤5 lines"
 - Context cost: `S`
 - Authoritative docs:
-  - `docs/adr/0030-…` (full), `docs/specs/modifier-region-infill.md` §M1
+  - `docs/adr/0030-modifier-splits-fill-not-perimeters.md` (full), `docs/specs/modifier-region-infill.md` §M1
 - OrcaSlicer refs: none.
 - Verification:
   - memo present and answers all three `[FWD]`s — self-check, then a reviewer grep:
@@ -55,7 +55,7 @@
   degenerate outcome); harness mod line added.
 - Files allowed to read (with line-range hints when > 300 lines):
   - one neighboring executor test file (fixture idiom); `crates/slicer-model-io/src/loader.rs`
-    lines 547-622 (ModifierVolume shape)
+    lines 547-628 (ModifierVolume shape)
 - Files allowed to edit (≤ 3):
   - `crates/slicer-runtime/tests/executor/modifier_region_split_tdd.rs` (new)
   - `crates/slicer-runtime/tests/executor/main.rs` (mod line)

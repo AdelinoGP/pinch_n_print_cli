@@ -11,7 +11,7 @@
 ## Problem Statement
 
 Infill-modifier volumes — the standard way users raise infill density locally for stiffness —
-do nothing spatial in PnP: the loader ingests them (`loader.rs:547-622`), but
+do nothing spatial in PnP: the loader ingests them (`loader.rs:547-628`), but
 `stamp_modifier_config_deltas` applies their config to the whole object
 (`region_mapping.rs:266-268` — the code itself documents "no bbox/polygon overlap check";
 only `ModifierScope::AllFeatures` is in use), and `prepass_slice.rs:516` slices only the

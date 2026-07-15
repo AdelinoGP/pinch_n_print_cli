@@ -15,10 +15,12 @@ boundaries, and today the only polyline-vs-polygon clipping in the workspace is 
 per-vertex ray-casting `clip_polyline_to_expolygon`
 (`modules/core-modules/gyroid-infill/src/lib.rs:611-636`), which misclassifies any segment
 whose boundary crossing falls between sample points. The workspace has no generic open-path
-clip primitive, although the vendored `clipper2-rust 1.0.3` crate already exposes one
-(`Clipper64::add_open_subject` + `execute` with `solution_open`,
-`engine_public.rs:296,335` — verified 2026-07-01; pure Rust, wasm32-clean). Without this
-primitive, every downstream infill packet would have to invent its own clipping.
+clip primitive, although the `clipper2-rust 1.0.3` dependency already exposes one
+(`Clipper64::add_open_subject` + `execute` with `solution_open`). The API was recorded from
+the crate source `engine_public.rs:296,335` inside the cargo registry — this is a
+`clipper2-rust` crate file, NOT a repo path, and is OUT-OF-BOUNDS for reading (verified
+2026-07-01; pure Rust, wasm32-clean). Without this primitive, every downstream infill packet
+would have to invent its own clipping.
 
 ## In Scope
 

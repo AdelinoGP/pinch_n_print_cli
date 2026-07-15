@@ -48,7 +48,7 @@ stub output — from the day it lands.
 - **AC-3. Given** a 10 mm square wall-inset polygon and spacing s, **when**
   `ExPolygonWithOffset` is built with `infill_overlap = 0.45`, **then** its inner/outer
   boundaries match the hand-computed expectation for the OrcaSlicer semantics verified from
-  `FillRectilinear.cpp:472-571` (the verified offset sign + magnitude are recorded as a
+  `FillRectilinear.cpp:388-490` (the verified offset sign + magnitude are recorded as a
   commented constant in the test). | `cargo test -p infill-linker -- expolygon_with_offset_matches_orca_square_case 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** clipped fragments shorter than `0.8 × spacing`, **when** the linker
   filters, **then** they are absent from the output; fragments ≥ 0.8 × spacing survive. | `cargo test -p infill-linker -- short_segment_filter 2>&1 | tee target/test-output.log | grep "^test result"`
@@ -94,9 +94,10 @@ stub output — from the day it lands.
 
 ## Authoritative Docs
 
-- `docs/adr/0025-…` + §Amendment 2026-07-01 — binding (both linking branches; the
-  overlap-is-linker-concern rule); full read.
-- `docs/adr/0026-…` — binding (algorithms in-module); full read.
+- `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` + §Amendment 2026-07-01 — binding
+  (both linking branches; the overlap-is-linker-concern rule); full read.
+- `docs/adr/0026-infill-linking-algorithms-in-linker-module.md` — binding (algorithms
+  in-module); full read.
 - `docs/specs/infill-parity-rectilinear-gyroid-linker.md` §Phase 4 (rewritten step 6) —
   load lines for Phase 4 only.
 - `docs/08_coordinate_system.md` — delegate SUMMARY (constants ÷100).
@@ -108,9 +109,9 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp:1497-2201` — `connect_infill`: boundary graph construction, arc-length parametrization, greedy endpoint connection via perimeter walks (the core port).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp:2201-2300` — `chain_or_connect_infill`: nearest-neighbor ordering wrapper.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillRectilinear.cpp:472-571` — `ExPolygonWithOffset`: two-level offset structure; VERIFY the overlap offset sign/direction here before implementing (the spec's "wall-inset minus overlap" phrasing must be validated, not assumed).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp:1580-1818` — `connect_infill`: boundary graph construction, arc-length parametrization, greedy endpoint connection via perimeter walks (the core port).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillBase.cpp:1820-2246` — `chain_or_connect_infill`: nearest-neighbor ordering wrapper.
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillRectilinear.cpp:388-490` — `ExPolygonWithOffset`: two-level offset structure; VERIFY the overlap offset sign/direction here before implementing (the spec's "wall-inset minus overlap" phrasing must be validated, not assumed).
 - `OrcaSlicerDocumented/src/libslic3r/Fill/FillGyroid.cpp:356-359` — `remove_short_polylines` threshold semantics (0.8 × spacing).
 
 ## Doc Impact Statement (Required)

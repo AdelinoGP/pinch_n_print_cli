@@ -48,7 +48,7 @@
 
 - Task IDs:
   - `TASK-258`
-- Objective: FIRST delegate the FillRectilinear.cpp:472-571 read and record the verified
+- Objective: FIRST delegate the FillRectilinear.cpp:388-490 read and record the verified
   overlap direction in a design-memo comment + the AC-3 test constant; then port
   `ExPolygonWithOffset` (`offset.rs`, attribution header), wire re-clip
   (`clip_polylines` against the overlap boundary) and `remove_short_polylines`
@@ -68,7 +68,7 @@
   - "Run `cargo test -p infill-linker …`; FACT + counts"
 - Context cost: `M`
 - Authoritative docs: `docs/08_coordinate_system.md` (delegate; ÷100 on all constants).
-- OrcaSlicer refs: FillRectilinear.cpp:472-571, FillGyroid.cpp:356-359 — delegate; never
+- OrcaSlicer refs: FillRectilinear.cpp:388-490, FillGyroid.cpp:356-359 — delegate; never
   load.
 - Verification:
   - AC-2, AC-3, AC-4 pipe commands — FACT each
@@ -78,7 +78,7 @@
 
 - Task IDs:
   - `TASK-258`
-- Objective: port the arc-length boundary parametrization (FillBase.cpp:1530-1620) into
+- Objective: port the arc-length boundary parametrization (FillBase.cpp:1432-1544) into
   `graph.rs` (attribution header): boundary point projection, arc positions, walk-distance
   queries; unit tests on a square + square-with-hole boundary.
 - Precondition: Step 2 exit condition.
@@ -89,11 +89,11 @@
   - `modules/core-modules/infill-linker/tests/infill_linker_tdd.rs`
 - Files explicitly out-of-bounds for this step: `OrcaSlicerDocumented/**` directly.
 - Expected sub-agent dispatches:
-  - "SUMMARY then per-section SNIPPETS (≤30 lines) of FillBase.cpp:1530-1620" — port driver
+  - "SUMMARY then per-section SNIPPETS (≤30 lines) of FillBase.cpp:1432-1544" — port driver
   - "Run `cargo test -p infill-linker -- graph …`; FACT"
 - Context cost: `M`
 - Authoritative docs: none new.
-- OrcaSlicer refs: FillBase.cpp:1530-1620 — delegate.
+- OrcaSlicer refs: FillBase.cpp:1432-1544 — delegate.
 - Verification:
   - `cargo test -p infill-linker 2>&1 | tee target/test-output.log | grep "^test result"` — FACT
 - Exit condition: graph primitives tested green.
@@ -103,7 +103,7 @@
 - Task IDs:
   - `TASK-258`
 - Objective: port the greedy endpoint connection via boundary walks
-  (FillBase.cpp:1497-2201, minus the graph section already ported): candidate pairing, walk
+  (FillBase.cpp:1580-1818, minus the graph section already ported): candidate pairing, walk
   cost vs link threshold (constants ÷ 100), splice into polylines; AC-1 goes green here.
 - Precondition: Step 3 exit condition.
 - Postcondition: AC-1 green (raw segments → linked polylines on a square); AC-5 green
@@ -120,7 +120,7 @@
   - "Run `cargo test -p infill-linker …`; FACT + counts; SNIPPETS ≤20 on failure"
 - Context cost: `M`
 - Authoritative docs: none new.
-- OrcaSlicer refs: FillBase.cpp:1497-2201 — delegate, sectioned.
+- OrcaSlicer refs: FillBase.cpp:1580-1818 — delegate, sectioned.
 - Verification:
   - AC-1, AC-5 pipe commands — FACT each
 - Exit condition: core connection green + deterministic. If this step's port exceeds M
@@ -131,7 +131,7 @@
 
 - Task IDs:
   - `TASK-258`
-- Objective: port the nearest-neighbor ordering wrapper (FillBase.cpp:2201-2300) into
+- Objective: port the nearest-neighbor ordering wrapper (FillBase.cpp:1820-2246) into
   `connect.rs`; implement `orchestrate.rs`: group regions by `wall_source_region_id`,
   apply the compatibility predicate, branch (a) union-then-link with majority-length bucket
   assignment, branch (b) per-region linking with un-offset wall-less shared arcs; per-role
@@ -145,11 +145,11 @@
   - `modules/core-modules/infill-linker/tests/infill_linker_tdd.rs`
 - Files explicitly out-of-bounds for this step: host dispatch code.
 - Expected sub-agent dispatches:
-  - "SUMMARY + SNIPPETS of FillBase.cpp:2201-2300"
+  - "SUMMARY + SNIPPETS of FillBase.cpp:1820-2246"
   - "Run `cargo test -p infill-linker …`; FACT + counts"
 - Context cost: `M`
 - Authoritative docs: ADR-0025 §Amendment (the branches, verbatim source of truth).
-- OrcaSlicer refs: FillBase.cpp:2201-2300 — delegate.
+- OrcaSlicer refs: FillBase.cpp:1820-2246 — delegate.
 - Verification:
   - AC-6, AC-7, AC-N1, AC-N2 pipe commands — FACT each
 - Exit condition: both branches + predicate green.

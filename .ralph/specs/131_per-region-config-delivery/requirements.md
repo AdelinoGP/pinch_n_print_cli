@@ -11,14 +11,14 @@
 ## Problem Statement
 
 `RegionMapIR` holds a full per-`RegionKey` `ResolvedConfig` pool
-(`crates/slicer-ir/src/slice_ir.rs:1194-1204`), but no guest module can reach it: the dispatch
+(`crates/slicer-ir/src/slice_ir.rs:1268`), but no guest module can reach it: the dispatch
 builds ONE global `ConfigView` from whichever `RegionKey` a BTreeMap iterator yields first for
 the layer (`crates/slicer-wasm-host/src/dispatch.rs:1633-1637`). Two consequences: (a) the
 flagship modifier-infill use case (different densities per sub-region, ADR-0030) is
 impossible — density can never vary per region; (b) a latent bug — painted multi-region layers
 read an *arbitrary* region's config today. `extensions` (used by the tool-index precedence
 elsewhere in the roadmap) lives on the interned `ResolvedConfig`, resolved via
-`RegionMapIR::config_for(&RegionKey)` (`slice_ir.rs:1232`), not on `RegionMapIR` directly. Every downstream infill packet (132–136) assumes
+`RegionMapIR::config_for(&RegionKey)` (`slice_ir.rs:1306`), not on `RegionMapIR` directly. Every downstream infill packet (132–136) assumes
 per-region config exists; this packet is the delivery mechanism. It also opens the roadmap's
 golden carve window (D6): fixing (b) legitimately changes multi-region fixture output, so the
 survey and carve happen here, restored + re-blessed in packet 136.
@@ -107,8 +107,8 @@ survey and carve happen here, restored + re-blessed in packet 136.
   (RegionMapIR section only), the e2e/golden test files (delegate the survey — the
   implementer never reads test bodies, only adjudicates the returned inventory).
 - Likely temptation reads: `crates/slicer-ir/src/resolved_config.rs` in full — skip; only the
-  `RegionMapIR` pool types matter, and they live in `slice_ir.rs:1194-1204`
-  (resolve via `RegionMapIR::config_for(&RegionKey)` at `slice_ir.rs:1232`).
+  `RegionMapIR` pool types matter, and they live in `slice_ir.rs:1268`
+  (resolve via `RegionMapIR::config_for(&RegionKey)` at `slice_ir.rs:1306`).
 - Sub-agent return-format hints: the golden survey dispatch returns LOCATIONS (test path +
   the SHA/assertion string it pins, ≤25 entries); baseline capture returns FACT per fixture
   (SHA strings).

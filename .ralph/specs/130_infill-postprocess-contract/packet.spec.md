@@ -63,8 +63,9 @@ implement any linking (packet 133), does not change `LayerStageCommit::InfillPos
 
 - **AC-N1. Given** a slice with NO module registered at `Layer::InfillPostProcess`, **when**
   the layer executes, **then** the committed `InfillIR` is byte-identical to the
-  post-`Layer::Infill` IR (the stage loop runs zero iterations; nothing is wiped —
-  `layer_executor.rs:330`). | `cargo test -p slicer-runtime --test contract -- infill_postprocess_absent_module_preserves_infill 2>&1 | tee target/test-output.log | grep "^test result"`
+  post-`Layer::Infill` IR (the per-module loop runs zero iterations, so the
+  `InfillPostProcess` wipe/replace commit arm at `layer_executor.rs:1768` is never reached —
+  stage loop at `:288`). | `cargo test -p slicer-runtime --test contract -- infill_postprocess_absent_module_preserves_infill 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-N2. Given** the existing contract suite, **when** the six fields default to
   empty/None in fixtures that don't set them, **then** no pre-existing contract test changes
   result. | `cargo test -p slicer-runtime --test contract 2>&1 | tee target/test-output.log | grep "^test result"`

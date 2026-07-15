@@ -90,7 +90,7 @@
   0.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-wasm-host/src/dispatch.rs` — lines 1600-1730 only
-  - `crates/slicer-ir/src/slice_ir.rs` — lines 1194-1232 only
+  - `crates/slicer-ir/src/slice_ir.rs` — lines 1268-1320 only
 - Files allowed to edit (≤ 3):
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-wasm-host/src/host.rs` (only if the accessor resource impl lives there)
@@ -101,7 +101,7 @@
   - "Run `rg -n '\.find\(\|key\| key\.global_layer_index == layer\.index\)' crates/slicer-wasm-host/src/dispatch.rs | wc
     -l`; FACT (expect 0)"
 - Context cost: `M`
-- Authoritative docs: `docs/adr/0030-…` Decision point 3.
+- Authoritative docs: `docs/adr/0030-modifier-splits-fill-not-perimeters.md` Decision point 3.
 - OrcaSlicer refs: none.
 - Verification:
   - both dispatches above — FACT

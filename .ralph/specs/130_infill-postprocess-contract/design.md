@@ -22,11 +22,11 @@
   `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules for `PerimeterRegionView` /
   `perimeter-region-view` type identity; run `cargo build --tests` immediately after WIT
   edits.
-- The commit stays replace (`layer_executor.rs:1209-1214` untouched); the no-module
-  preservation guarantee comes from the zero-iteration stage loop (`layer_executor.rs:330`)
+- The commit stays replace (`layer_executor.rs:1768` untouched); the no-module
+  preservation guarantee comes from the zero-iteration stage loop (`layer_executor.rs:288`)
   and is pinned by AC-N1, not by new host code.
 - Per-region config stays invisible at this stage (single global `ConfigView`,
-  `dispatch.rs:1629-1645`) — packet 131's concern; do not entangle it here.
+  `dispatch.rs:1634-1650`) — packet 131's concern; do not entangle it here.
 
 ## Code Change Surface
 
@@ -56,8 +56,8 @@ Primary (semantic core — justifying >3: this is a contract packet; the surface
 contract):
 - `crates/slicer-schema/wit/deps/ir-types.wit` — six fields on `perimeter-region-view`.
 - `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — `prior-infill` param + 1.1.0.
-- `crates/slicer-sdk/src/views.rs` — struct + accessors (region ~490+).
-- `crates/slicer-sdk/src/traits.rs` — hook signature (region ~374-393).
+- `crates/slicer-sdk/src/views.rs` — struct + accessors (`PerimeterRegionView` at 521, impl at 531).
+- `crates/slicer-sdk/src/traits.rs` — hook signature (`run_infill_postprocess` at 385).
 - `crates/slicer-sdk/src/test_support/fixtures.rs` — builder setters.
 - `crates/slicer-macros/src/lib.rs` — glue arm.
 - `crates/slicer-wasm-host/src/dispatch.rs` — population arm (~435-454) only.
@@ -69,17 +69,17 @@ Sweep files (mechanical, compiler-driven): the ~30 constructors/matches — edit
 
 ## Read-Only Context
 
-- `crates/slicer-runtime/src/layer_executor.rs` — lines 320-340 and 1205-1220 only — confirm
+- `crates/slicer-runtime/src/layer_executor.rs` — lines 283-300 and 1700-1775 only — confirm
   loop-skip and replace-commit behavior for AC-N1 test design (the
-  `LayerStageCommit::InfillPostProcess` arm is at 1209-1214; 1147-1159 is the
+  `LayerStageCommit::InfillPostProcess` arm is at 1768; 1706 is the
   `PerimetersPostProcess` arm, a different variant).
-- `crates/slicer-runtime/src/region_partition.rs` — lines 112-150 only — the virtual-variant
-  predicate to hoist (the `perim_index` build + missing-entry skip; lines 1-58 are the
-  module doc comment).
+- `crates/slicer-runtime/src/region_partition.rs` — lines 112-145 only — the virtual-variant
+  predicate to hoist (the `perim_index` build at 117 + missing-entry skip at 124-137; lines
+  1-76 precede the target `sync_perimeter_infill_areas_into_slice` fn).
 - `crates/slicer-core/src/algos/region_mapping.rs` — lines 640-680 only — material-tool
-  extraction idiom.
-- `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1920 only — `ExtrusionPath3D` (1698),
-  `InfillRegion` (1888), `InfillIR` (1903) shapes.
+  extraction idiom (`chain_tool_index` at 645, `ToolIndex` extraction at 662).
+- `crates/slicer-ir/src/slice_ir.rs` — lines 1770-2000 only — `ExtrusionPath3D` (1778),
+  `InfillRegion` (1968), `InfillIR` (1983) shapes.
 - One existing test-guest directory (e.g. an sdk-layer guest) — structure only, as the echo
   guest template.
 

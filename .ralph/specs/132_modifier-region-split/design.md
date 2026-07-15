@@ -75,7 +75,9 @@
 - `crates/slicer-core/src/algos/paint_segmentation/mod.rs` — the `paint_variant_region_id`
   synthesis lines only (rg first) — region-id minting pattern.
 - `crates/slicer-ir/src/slice_ir.rs` — `SlicedRegion` + `RegionMapIR` regions only.
-- `crates/slicer-model-io/src/loader.rs` — lines 547-622 only — `ModifierVolume` shape.
+- `crates/slicer-model-io/src/loader.rs` — lines 547-628 only — `ModifierVolume` shape (the
+  full construction incl. `priority` + `applies_to: ModifierScope::AllFeatures` is at 618-626;
+  the `ModifierVolume` struct itself is defined in `slicer-ir`, re-exported via `loader.rs:18`).
 
 ## Out-of-Bounds Files
 

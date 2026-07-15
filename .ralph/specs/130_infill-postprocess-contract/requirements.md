@@ -58,8 +58,8 @@ downstream packet in the infill-parity roadmap (131–140) reads this contract.
 
 ## Authoritative Docs
 
-- `docs/adr/0028-…` (~200 lines) — load in full; §Amendment 2026-07-01 is binding.
-- `docs/adr/0025-…` §Amendment — only the predicate/field rationale (delegate a SUMMARY).
+- `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` (~200 lines) — load in full; §Amendment 2026-07-01 is binding.
+- `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` §Amendment — only the predicate/field rationale (delegate a SUMMARY).
 - `docs/03_wit_and_manifest.md` (large) — rg-targeted sections only (`world-layer`,
   `perimeter-region-view`, claim catalog untouched here).
 - `docs/02_ir_schemas.md` (large) — `InfillIR` section only, to confirm no struct change.
@@ -104,7 +104,7 @@ downstream packet in the infill-parity roadmap (131–140) reads this contract.
 - Large files in the read-only path that MUST be ranged or delegated:
   `crates/slicer-wasm-host/src/dispatch.rs` (>1500 lines — the postprocess arm ~435-454 and
   the region-view builder only), `crates/slicer-sdk/src/views.rs` (~600+ lines — the
-  `PerimeterRegionView` region ~490+ only), `docs/03_wit_and_manifest.md` (rg-targeted only).
+  `PerimeterRegionView` at 521 only), `docs/03_wit_and_manifest.md` (rg-targeted only).
 - Likely temptation reads: the full ~30-file blast-radius list — do NOT open them
   speculatively; drive the sweep from compiler errors (`cargo check --workspace --all-targets`
   output delegated, errors grouped by file).

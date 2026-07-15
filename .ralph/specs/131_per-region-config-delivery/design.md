@@ -7,7 +7,7 @@
   key.global_layer_index == layer.index)` (line 1640) picks an arbitrary entry; replaced by
   per-region resolution keyed on the full `RegionKey` of the region being iterated, sourced
   from the `RegionMapIR` interned pool via `RegionMapIR::config_for(&RegionKey)`
-  (`crates/slicer-ir/src/slice_ir.rs:1194-1204`, `:1232`). Two other sites match the looser
+  (`crates/slicer-ir/src/slice_ir.rs`: struct at 1268, `config_for` at 1306). Two other sites match the looser
   `global_layer_index == layer` substring (`:1378`, `:1680`) — both are unrelated lookups,
   out of scope; do not touch them.
 - Secondary: `crates/slicer-schema/wit/deps/ir-types.wit` region-view resources gain the
@@ -65,8 +65,8 @@
 
 ## Read-Only Context
 
-- `crates/slicer-ir/src/slice_ir.rs` — lines 1194-1232 only — `RegionMapIR` pool shape
-  (struct at 1194-1204; `config_for(&RegionKey) -> &ResolvedConfig` at 1232 is the resolution
+- `crates/slicer-ir/src/slice_ir.rs` — lines 1268-1320 only — `RegionMapIR` pool shape
+  (struct at 1268; `config_for(&RegionKey) -> &ResolvedConfig` at 1306 is the resolution
   idiom to reuse — `extensions` lives on `ResolvedConfig`, not on `RegionMapIR` itself).
 - `crates/slicer-wasm-host/src/dispatch.rs` — lines 1600-1730 only (the derivation block to
   edit is 1629-1650; line 1378 is outside this range and irrelevant; line 1680 falls inside
@@ -133,7 +133,7 @@
 - `FWD-RESOLVED` Accessor WIT shape: `config: func() -> config-view` on both
   `slice-region-view` and `perimeter-region-view`, reusing the existing
   `slicer:config/config-types.config-view` resource (`crates/slicer-schema/wit/deps/
-  config.wit:8`) rather than duplicating its six `get*`/`keys` methods per-key on two
+  config.wit:13`) rather than duplicating its six `get*`/`keys` methods per-key on two
   resources. `ir-types.wit`'s `ir-handles` interface gains
   `use slicer:config/config-types.{config-view};` alongside its existing `use
   slicer:types/geometry...` import. AC-3 pins this shape.

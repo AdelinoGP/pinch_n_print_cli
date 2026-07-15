@@ -40,7 +40,7 @@
     WIT checklist step, run immediately after Wave A and again after Wave B
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0028-…` — full read (binding); `CLAUDE.md` §WIT/Type Changes Checklist
+  - `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` — full read (binding); `CLAUDE.md` §WIT/Type Changes Checklist
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo check -p slicer-schema -p slicer-sdk -p slicer-macros --all-targets` — FACT
@@ -61,9 +61,9 @@
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-wasm-host/src/dispatch.rs` — lines 420-520 (postprocess arm + neighboring
     view-builder idiom) only
-  - `crates/slicer-runtime/src/region_partition.rs` — lines 112-150 (predicate to hoist)
+  - `crates/slicer-runtime/src/region_partition.rs` — lines 112-145 (predicate to hoist)
   - `crates/slicer-core/src/algos/region_mapping.rs` — lines 640-680 (material-tool idiom)
-  - `crates/slicer-ir/src/slice_ir.rs` — lines 1660-1920 (`InfillRegion`/`InfillIR`)
+  - `crates/slicer-ir/src/slice_ir.rs` — lines 1770-2000 (`InfillRegion` 1968 / `InfillIR` 1983)
 - Files allowed to edit (≤ 3):
   - `crates/slicer-wasm-host/src/dispatch.rs`
   - `crates/slicer-wasm-host/src/marshal/out.rs`
@@ -76,7 +76,7 @@
     LOCATIONS ≤30"
 - Context cost: `M`
 - Authoritative docs:
-  - `docs/adr/0028-…` §Amendment (derivation rules)
+  - `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` §Amendment (derivation rules)
 - OrcaSlicer refs: none.
 - Verification:
   - `cargo check -p slicer-wasm-host --all-targets` — FACT
@@ -139,7 +139,7 @@
   - "Run `cargo test -p slicer-sdk 2>&1 | tee target/test-output.log | grep '^test result'`;
     FACT"
 - Context cost: `M`
-- Authoritative docs: `docs/adr/0028-…` §Amendment (AC semantics).
+- Authoritative docs: `docs/adr/0028-infill-postprocess-contract-prior-ir-and-partitioned-polygons.md` §Amendment (AC semantics).
 - OrcaSlicer refs: none.
 - Verification:
   - the three dispatches above — each FACT

@@ -35,7 +35,7 @@
 
 - Selected approach: port shape mirrors Orca's layering — `ExPolygonWithOffset` provides the
   two boundaries (outer = wall-inset; inner = overlap boundary, sign VERIFIED from
-  FillRectilinear.cpp:472-571 in Step 2 before any offset code); `BoundaryInfillGraph`
+  FillRectilinear.cpp:388-490 in Step 2 before any offset code); `BoundaryInfillGraph`
   parametrizes the inner boundary by arc length; `connect_infill` greedily joins segment
   endpoints whose boundary-walk distance is under the Orca link threshold; wall-less shared
   arcs are marked non-insettable in branch (b) by building the boundary from the region
@@ -82,13 +82,13 @@
 ## Expected Sub-Agent Dispatches
 
 - "SUMMARY + SNIPPETS (≤30 lines) of `ExPolygonWithOffset` construction
-  (FillRectilinear.cpp:472-571): what do aoffset1/aoffset2 mean, WHICH DIRECTION does the
+  (FillRectilinear.cpp:388-490): what do aoffset1/aoffset2 mean, WHICH DIRECTION does the
   overlap offset go (expand vs inset), and how are contour/hole flags encoded?" — Step 2
   sign verification (MANDATORY before coding the offset).
-- "SUMMARY of `connect_infill` (FillBase.cpp:1497-2201) in 4 sections: boundary
+- "SUMMARY of `connect_infill` (FillBase.cpp:1580-1818) in 4 sections: boundary
   parametrization, candidate pairing, walk cost, splice; then SNIPPETS per section on
   demand" — Step 3/4 port driver.
-- "SUMMARY + SNIPPETS of `chain_or_connect_infill` (FillBase.cpp:2201-2300)" — Step 5.
+- "SUMMARY + SNIPPETS of `chain_or_connect_infill` (FillBase.cpp:1820-2246)" — Step 5.
 - "Run `cargo test -p infill-linker 2>&1 | tee target/test-output.log | grep '^test
   result'`; FACT + counts; SNIPPETS ≤20 on failure" — every GREEN gate.
 - "Run `cargo xtask build-guests --check`; FACT; rebuild if STALE" — after each guest edit
