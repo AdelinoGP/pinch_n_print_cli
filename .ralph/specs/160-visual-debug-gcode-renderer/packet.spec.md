@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 160-visual-debug-gcode-renderer
 task_ids:
   - TASK-270

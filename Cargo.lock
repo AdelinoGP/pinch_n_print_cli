@@ -1816,6 +1816,7 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "png",
  "predicates",
  "serde",
  "serde_json",

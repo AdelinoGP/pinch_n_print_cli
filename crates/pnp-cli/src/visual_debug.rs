@@ -9,6 +9,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+#[path = "visual_debug_gcode.rs"]
+pub mod visual_debug_gcode;
+
 const VERSION: &str = "1.0.0";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -90,6 +93,12 @@ pub enum ValidationError {
     MissingSource,
     ResolutionScale,
     GcodeLineWidth,
+    /// A gcode source's `layers` selector contains a variant that isn't
+    /// index-based (`LayerSelector::Name` or a z-only `Detail`). The
+    /// standalone final-G-code source has no named-layer table — only
+    /// `;LAYER_CHANGE`/`;Z:` markers indexed by parse order — so such a
+    /// selector is meaningless, not a valid alias for layer 0.
+    GcodeUnsupportedLayerSelector,
     MissingField(String),
 }
 
@@ -101,6 +110,11 @@ impl fmt::Display for ValidationError {
             Self::MissingSource => write!(f, "missing source model or path"),
             Self::ResolutionScale => write!(f, "resolution_scale must be 1, 2, 3"),
             Self::GcodeLineWidth => write!(f, "gcode_line_width_mm is required for filled_areas"),
+            Self::GcodeUnsupportedLayerSelector => write!(
+                f,
+                "gcode source layer selectors must be index-based (LayerSelector::Index or \
+                 Detail with an index); Name/z-only selectors are not supported"
+            ),
             Self::MissingField(field) => write!(f, "missing required field: {field}"),
         }
     }
@@ -151,6 +165,11 @@ pub enum VisualDebugError {
     /// request over a typed path with no usable width. Carries the
     /// renderer's own typed-error message verbatim.
     RenderFailed(String),
+    /// The standalone final-G-code source (packet 160) contains zero
+    /// supported, renderable `G0`/`G1` moves anywhere in the file. A caller
+    /// must fail the whole request rather than report a successful
+    /// empty/partial bundle — see `visual_debug_gcode::GcodeRenderError::NoRenderableMoves`.
+    NoRenderableGcodeMoves(String),
 }
 
 impl fmt::Display for VisualDebugError {
@@ -168,6 +187,7 @@ impl fmt::Display for VisualDebugError {
             ),
             Self::CaptureFailed(e) => write!(f, "typed tap capture failed: {e}"),
             Self::RenderFailed(e) => write!(f, "intermediate render failed: {e}"),
+            Self::NoRenderableGcodeMoves(e) => write!(f, "gcode render failed: {e}"),
         }
     }
 }
@@ -667,49 +687,149 @@ pub fn run_visual_debug(
             ..
         } => run_model_source(model, config, module_dirs, &req, &viewport)?,
         VisualDebugSource::Gcode { path, .. } => {
+            let gcode_path = path
+                .clone()
+                .expect("validate_request: gcode source requires `path`");
             let source = ManifestSource {
                 kind: "gcode".into(),
                 model: None,
-                path: path.clone(),
+                path: Some(gcode_path.clone()),
             };
-            let taps = if req.taps.is_empty() {
-                vec![String::new()]
+            let visualizations: Vec<visual_debug_gcode::GcodeVisualization> = req
+                .visualizations
+                .iter()
+                .filter_map(|v| match v.kind() {
+                    "filament_lines" => Some(visual_debug_gcode::GcodeVisualization::FilamentLines),
+                    "filled_areas" => Some(visual_debug_gcode::GcodeVisualization::FilledAreas),
+                    _ => None,
+                })
+                .collect();
+
+            if visualizations.is_empty() {
+                // Nothing to render: skip opening/parsing the gcode file
+                // entirely, mirroring `run_model_source`'s "no taps -> no
+                // capture" short-circuit. A request that only exercises the
+                // standalone bundle/exclusive-source contract (no
+                // visualizations) must never require the referenced gcode
+                // path to actually exist on disk.
+                (
+                    source,
+                    None,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )
             } else {
-                req.taps.iter().map(tap_name).collect()
-            };
-            let layer = req.layers.first();
-            let (layer_index, layer_z) = layer_info(layer);
-            let mut images = Vec::new();
-            for visualization in &req.visualizations {
-                let name = visualization.kind();
-                for tap in &taps {
-                    images.push(ImageEntry {
-                        source: "gcode".into(),
-                        tap: tap.clone(),
-                        layer_index,
-                        layer_z,
-                        visualization: name.to_owned(),
-                        png_path: format!("images/{}_{}_l{}.png", tap, name, layer_index),
-                        viewport: viewport.clone(),
-                        legend_version: VERSION.into(),
-                        ir_schema_version: None,
-                        gcode_parser_version: Some(VERSION.into()),
-                        warnings: Vec::new(),
-                        typed_capture: None,
-                        world_bounds_mm: None,
-                    });
+                let taps: Vec<String> = if req.taps.is_empty() {
+                    vec![String::new()]
+                } else {
+                    req.taps.iter().map(tap_name).collect()
+                };
+
+                // An empty `layers` list with non-empty `visualizations`
+                // must fail the whole command, not silently succeed with an
+                // empty bundle (mirrors `run_model_source`'s
+                // `NoApplicableLayer` guard for the Model source).
+                if req.layers.is_empty() {
+                    return Err(VisualDebugError::NoApplicableLayer);
                 }
+                // The standalone final-G-code source has no named-layer
+                // table (only `;LAYER_CHANGE`/`;Z:` markers indexed by parse
+                // order): a non-index-based selector (`Name`, or a z-only
+                // `Detail`) is meaningless here, not a valid alias for layer
+                // 0 — `layer_info`'s catch-all `_ => (0, None)` arm must
+                // never be reached silently for this source.
+                for layer in &req.layers {
+                    if !matches!(
+                        layer,
+                        LayerSelector::Index(_) | LayerSelector::Detail { index: Some(_), .. }
+                    ) {
+                        return Err(VisualDebugError::Validation(
+                            ValidationError::GcodeUnsupportedLayerSelector,
+                        ));
+                    }
+                }
+                let layer_indices: Vec<i64> =
+                    req.layers.iter().map(|l| layer_info(Some(l)).0).collect();
+
+                let output = visual_debug_gcode::render_gcode_visual_debug_from_path(
+                    &gcode_path,
+                    &layer_indices,
+                    &visualizations,
+                    viewport.width,
+                    viewport.height,
+                    req.gcode_line_width_mm,
+                )
+                .map_err(|e| match e {
+                    visual_debug_gcode::GcodeRenderError::Io(msg) => {
+                        VisualDebugError::CaptureFailed(format!(
+                            "failed to read gcode file {}: {msg}",
+                            gcode_path.display()
+                        ))
+                    }
+                    visual_debug_gcode::GcodeRenderError::NoRenderableMoves => {
+                        VisualDebugError::NoRenderableGcodeMoves(format!(
+                            "{} contains no supported G0/G1 X/Y/Z/E/F renderable moves",
+                            gcode_path.display()
+                        ))
+                    }
+                    visual_debug_gcode::GcodeRenderError::MissingLineWidth => {
+                        // Defensive only: packet-157 request validation
+                        // (`ValidationError::GcodeLineWidth`) already rejects
+                        // a `filled_areas` request with no
+                        // `gcode_line_width_mm` before this arm ever runs
+                        // (AC-N1), so this branch should be unreachable in
+                        // practice.
+                        VisualDebugError::CaptureFailed(
+                            "filled_areas requires an explicit gcode_line_width_mm".into(),
+                        )
+                    }
+                })?;
+
+                let mut images = Vec::new();
+                let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+                for image in &output.images {
+                    for tap in &taps {
+                        let file_name = format!(
+                            "{}_{}_l{}.png",
+                            sanitize_path_component(tap),
+                            image.visualization.name(),
+                            image.layer_index
+                        );
+                        let relative_path = format!("images/{file_name}");
+                        rendered_files.push((relative_path.clone(), image.png_bytes.clone()));
+                        images.push(ImageEntry {
+                            source: "gcode".into(),
+                            tap: tap.clone(),
+                            layer_index: image.layer_index,
+                            layer_z: image.layer_z,
+                            visualization: image.visualization.name().to_string(),
+                            png_path: relative_path,
+                            viewport: viewport.clone(),
+                            legend_version: VERSION.into(),
+                            ir_schema_version: None,
+                            gcode_parser_version: Some(output.parser_version.clone()),
+                            warnings: output.warnings.clone(),
+                            typed_capture: None,
+                            world_bounds_mm: None,
+                        });
+                    }
+                }
+
+                (
+                    source,
+                    None,
+                    Some(output.parser_version.clone()),
+                    images,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    rendered_files,
+                )
             }
-            (
-                source,
-                None,
-                Some(VERSION.to_string()),
-                images,
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-            )
         }
     };
 
