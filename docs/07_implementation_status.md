@@ -236,7 +236,7 @@ Last updated: 2026-06-02
 - [ ] TASK-263 — Lightning `DistanceField` + `TreeNode` port into `slicer-core::algos::lightning` (packet 138). Spec: lightning-infill-parity Phase L2.
 - [ ] TASK-264 — Lightning `Layer` + `Generator` port + prepass producer wiring (packet 139). Spec: lightning-infill-parity Phase L3.
 - [ ] TASK-265 — `lightning-infill` module rewrite: sample `LightningTreeIR` per layer, raw emit, close DEV-081, contained lightning re-bless (packet 140). Spec: lightning-infill-parity Phase L4.
-- [ ] TASK-267 — Visual Pipeline Debug request and bundle contract: add `pnp_cli visual-debug` request validation, bundle lifecycle, overwrite behavior, and manifest model without stage taps or rendering. Spec: visual-pipeline-debug candidate packet 1.
+- [x] TASK-267 — Visual Pipeline Debug request and bundle contract: add `pnp_cli visual-debug` request validation, bundle lifecycle, overwrite behavior, and manifest model without stage taps or rendering. Spec: visual-pipeline-debug candidate packet 1.
 - [ ] TASK-268 — Visual Pipeline Debug typed tap capture: add request-gated post-stage capture adapters and minimal dependency-closure execution. Spec: visual-pipeline-debug candidate packet 2.
 - [ ] TASK-269 — Visual Pipeline Debug intermediate renderer: render typed geometry, swept widths, overlays, shared viewport/palette, and PNG output. Spec: visual-pipeline-debug candidate packet 3.
 - [ ] TASK-270 — Visual Pipeline Debug final G-code renderer: parse the PnP G0/G1 subset and emit final PNGs with unclassified and unsupported-construct warnings. Spec: visual-pipeline-debug candidate packet 4.

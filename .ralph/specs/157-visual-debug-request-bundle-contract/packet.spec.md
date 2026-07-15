@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 157-visual-debug-request-bundle-contract
 task_ids:
   - TASK-267

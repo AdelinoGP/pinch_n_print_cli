@@ -25,6 +25,7 @@ static ALLOC: slicer_runtime::report::AccountingAllocator<std::alloc::System> =
     slicer_runtime::report::AccountingAllocator::new(std::alloc::System);
 
 mod helpers_cmd;
+mod visual_debug;
 
 use std::path::PathBuf;
 
@@ -80,6 +81,15 @@ enum Cmd {
         /// Emit per-stage/per-module timing events on stderr JSONL stream.
         #[arg(long = "instrument-stderr")]
         instrument_stderr: bool,
+    },
+    /// Generate a versioned visual-debug bundle.
+    VisualDebug {
+        #[arg(long)]
+        request: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
     },
     /// Module-author commands
     Module {
@@ -423,6 +433,18 @@ fn main() {
                 }
             }
         }
+
+        Cmd::VisualDebug {
+            request,
+            output,
+            overwrite,
+        } => match visual_debug::run_cli(&request, &output, overwrite) {
+            Ok(manifest_path) => println!("{}", manifest_path.display()),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        },
 
         // ── module ─────────────────────────────────────────────────────────
         Cmd::Module { action } => match action {
