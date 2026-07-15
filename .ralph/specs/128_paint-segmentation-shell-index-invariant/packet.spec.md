@@ -21,7 +21,7 @@ This packet fixes the shell-depth propagation block in `crates/slicer-core/src/a
 
 - Depends on: TASK-250 and TASK-252 (both `[x]` in docs/07) — this packet is their deferred follow-up, tracked as the new TASK-253.
 - Unblocks: correct multi-object mixed-height prints where shell-depth-driven roles (ironing, solid-fill role, `only_one_wall_top`) currently fire on the wrong object.
-- Activation blockers: none. No other packet is `status: active`. All grilling-opened questions resolved.
+- Activation blockers: none.. All grilling-opened questions resolved.
 
 ## Acceptance Criteria
 

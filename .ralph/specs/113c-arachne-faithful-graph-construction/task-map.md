@@ -44,9 +44,7 @@ makes that correction unambiguous to a future reader skimming the log.
   fixtures, and host-service bridge that this packet supersedes in part (graph construction,
   `connectJunctions`) and re-validates in part (centrality, bead_count, propagation, stitch,
   simplify, remove_small).
-- **Does not depend on any other active packet.** Confirmed during this packet's grilling
-  session: no packet currently holds `status: active` in `.ralph/specs/`, so this packet
-  activates immediately.
+
 - **Unblocks:** a real (not just claimed) M2-faithful closure for the Arachne perimeter-parity
   roadmap — packet 113b's own closure claimed this but, per this packet's diagnosis, did not
   actually achieve it for the graph-construction/connectJunctions layer.

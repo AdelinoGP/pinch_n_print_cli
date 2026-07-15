@@ -20,7 +20,7 @@ This packet owns the synthetic quad/rib topology pass (L effort — see Context 
 
 - Depends on: P113a (must ship first; provides Visvalingam code-ready, config wiring, and MMU test fix). Also depends on P112 (`d9466fd7`) for the existing Arachne pipeline source.
 - Unblocks: the M2 closure ceremony (P112's T-234) — after this packet ships and the per-packet narrow tests are green, the M2 closure can be flipped to fully-faithful.
-- Activation blockers: P113a must be `status: implemented` before this packet activates. This packet's own `status` is `draft` for that reason — it cannot activate while P113a is `active` (per `.ralph/specs/README.md:36`, exactly one packet is `status: active` at a time).
+- Activation blockers: P113a must be `status: implemented` before this packet activates. This packet's own `status` is `draft` for that reason — it cannot activate while P113a is `active` (per `.ralph/specs/README.md:36`).
 - **L-step exception:** the spec-packet-generator skill rule "No step may be L; if it would, split" is OVERRIDDEN for this packet at the user's explicit decision. The synthetic `makeRib` pass on boostvoronoi is a genuinely L-effort construction: it does not have a natural split point (the algorithm is monolithic — partial rib insertion produces incorrect topology that blocks all 4 dependent passes), and OrcaSlicer's `vd_t` Voronoi construction is richer than `boostvoronoi` so a from-first-principles port is non-trivial. The exception is documented in `design.md` §Context Cost Estimate and `implementation-plan.md` §Per-Step Budget Roll-Up. If subsequent work surfaces a natural split point, the packet SHOULD be split before activation.
 
 ## Acceptance Criteria

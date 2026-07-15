@@ -25,7 +25,7 @@ The thresholds are computed in `BeadingStrategyFactory::create_stack` from the a
 
 - Depends on: none (no other open packet).
 - Unblocks: `156-arachne-region-order` (packet B) — both share the G15/G20/G12 audit cluster but the region-order packet has no read dependency on this packet.
-- Activation blockers: none. No other packet is `status: active` (verified 2026-07-13: no `parity/arachne` packet is active).
+- Activation blockers: none. 
 
 ## Acceptance Criteria
 

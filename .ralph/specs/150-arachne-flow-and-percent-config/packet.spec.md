@@ -35,8 +35,7 @@ top-surface, or scheduler-dispatch behavior — those are packets 151/152.
 - Depends on: none (first of the three Arachne-parity-fix packets).
 - Unblocks: packet 151 (`overhang_reverse_threshold` declared `float_or_percent`)
   and packet 152 (`min_width_top_surface` resolved via `get_abs_value`).
-- Activation blockers: none. No other packet is `status: active` (verified
-  2026-07-09: the four `.ralph/specs` matches for "active" are body prose;
+- Activation blockers: none.
   all frontmatter is `status: implemented`).
 
 ## Acceptance Criteria

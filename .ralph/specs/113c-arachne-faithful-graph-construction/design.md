@@ -470,5 +470,3 @@ Both open questions below are resolved by the above; Step 3 may proceed.
   tests), only for hardening the layer below.
 - [FWD] Does `centrality.rs`'s `EdgeType::EXTRA_VD` exclusion logic need adjustment now that
   ribs are ubiquitous (not corner-only)? Resolve during Step 5.
-- [BLOCK] None — no other packet currently holds `status: active`; this packet activates
-  immediately.

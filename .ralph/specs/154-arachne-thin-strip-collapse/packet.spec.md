@@ -32,8 +32,6 @@ and the D-105 deviation-log entry itself (all already in place and faithful).
   beading fix relies on; packet 153 (`status: implemented`) — the arachne topology work that left
   the quad chain walk in `generate_toolpaths.rs` current; D-105D in `docs/DEVIATION_LOG.md` (the
   open entry this packet closes).
-- Activation: `status: active` per the packet authoring request — this is an explicit
-  investigation packet and no other packet is assumed to hold the active slot for this work.
 - No activation blocker. The investigation is self-contained.
 
 ## Acceptance Criteria

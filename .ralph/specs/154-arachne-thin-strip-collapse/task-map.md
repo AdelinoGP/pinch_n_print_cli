@@ -95,7 +95,6 @@ This packet's shape was set by the authoring request (documentation-only spec pa
 decisions recorded here for a future reader:
 
 1. Investigation-first: no solution prescribed; `design.md` is TBD pending Step 1.
-2. `status: active` so the active-packet search finds it (per the authoring request).
 3. The D-105 beading fix and D-105B/C/E are explicitly out of scope (confirmed faithful).
 4. The G4 test is in `slicer-runtime --test arachne_parity_gaps`, not a like-named binary.
 5. Faithfulness gate (AC-N1/AC-N2/AC-N3) is mandatory regardless of which candidate wins — a green

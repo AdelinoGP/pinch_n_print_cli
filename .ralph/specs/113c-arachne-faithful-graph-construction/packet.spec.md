@@ -53,8 +53,6 @@ non-planar (orthogonal sibling roadmaps).
 - Depends on: packet 113b (`status: implemented`) for the existing (now superseded) Arachne
   pipeline source, fixtures, and host-service bridge; the `/diagnose` session's root-cause
   finding (this packet's own provenance, not a separate numbered packet).
-- Activation: no other packet currently holds `status: active` in `.ralph/specs/` (verified
-  2026-07-05) — this packet activates immediately with `status: active`, no blocker.
 - **L-step exception:** Step 3 (faithful per-cell graph construction) is genuinely L-effort with
   no natural split point — spine-chain construction and rib interleaving are mutually
   dependent, so building spine-only first and "adding ribs later" reproduces exactly the failure

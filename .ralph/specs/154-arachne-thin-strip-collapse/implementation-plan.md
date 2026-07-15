@@ -197,7 +197,6 @@
   - `rg -q 'thin-strip' docs/18_arachne_parity_audit.md` (G4 note present)
 - Exit condition: AC-6 and AC-7 green; all 6 goldens re-blessed; D-105D closed **with its symbol
   list corrected**; the `discretize_edge` gap filed as its own Open row; G4 note recorded;
-  `packet.spec.md` ready to move from `status: active` to `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
@@ -223,7 +222,6 @@ skipped and the cost drops to S.
   precaution).
 - No `from_polygons_with_beading` subdivision re-introduced (AC-N1); the equal-R skip in
   `generate_junctions` survives (AC-N2); the mechanism cites an OrcaSlicer `file:line` (AC-N3).
-- `packet.spec.md` ready to move from `status: active` to `status: implemented`.
 
 ## Acceptance Ceremony
 

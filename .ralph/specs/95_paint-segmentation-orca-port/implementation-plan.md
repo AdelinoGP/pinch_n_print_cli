@@ -245,7 +245,7 @@
 
 - Task IDs: `TASK-245`
 - Objective: 3MF object-level `extruder=N` (1-indexed) must produce `T<N-1>` in gcode (0-indexed). Currently `crates/slicer-runtime/src/layer_executor.rs:675` reads `ConfigValue::Int(n)` directly as the 0-indexed tool index, so `extruder=1` ships as `T1` instead of `T0`. This pre-existed packet 95 but was masked by v1's paint pipeline; once v2's paint dispatch lands, this becomes the dominant wall-tool source for the BASE chain and must be correct.
-- Precondition: P95 reopened to `status: active`. Step 17 lands BEFORE Step 18 because Step 19's AC-22 gate fails on the bug.
+- Precondition: P95 reopened. Step 17 lands BEFORE Step 18 because Step 19's AC-22 gate fails on the bug.
 - Postcondition: Conversion happens at exactly ONE seam (either at the loader when stamping `extensions["extruder"]` into ResolvedConfig, OR at the executor read site). Unit test asserts: 3MF `<metadata key="extruder" value="1"/>` → gcode `T0`; `value="3"` → gcode `T2`.
 - Files allowed to edit (≤ 3): trace via dispatch; expected sites are `crates/slicer-model-io/src/loader.rs` (loader stamp site) OR `crates/slicer-runtime/src/layer_executor.rs:669-680` (executor read site).
 - Expected dispatches:

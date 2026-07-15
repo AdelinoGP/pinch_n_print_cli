@@ -369,8 +369,7 @@
   - `cargo clippy --workspace --all-targets -- -D warnings` — FACT pass/fail
   - `cargo xtask build-guests --check` — FACT clean / STALE list
   - `cargo xtask test --workspace --summary 2>&1 | tee target/test-output.log` — FACT pass/fail
-- Exit condition: AC-10 green; full workspace gate green; `packet.spec.md` ready to move from
-  `status: active` to `status: implemented`.
+- Exit condition: AC-10 green; full workspace gate green; `packet.spec.md` 
 
 ## Per-Step Budget Roll-Up
 
@@ -405,7 +404,6 @@ exception documented; see `design.md` §Context Cost Estimate for the full justi
 - `CONTEXT.md` glossary entries present.
 - M2-faithful roadmap docs updated.
 - `cargo xtask test --workspace --summary` green.
-- `packet.spec.md` ready to move from `status: active` to `status: implemented`.
 
 ## Acceptance Ceremony
 

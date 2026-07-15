@@ -28,7 +28,7 @@ This packet spans 7 sequential steps that build a synthetic quad/rib topology pa
 
 ## Cross-Packet Dependencies
 
-- **Depends on P113a** (`status: active`): P113a's 6 independent S/M items must ship first. P113a's `Visvalingam-Whyatt` port (Step 1) is a no-op on P112's 2-junction input but becomes active once P113b's `connectJunctions` produces multi-junction input. P113a must reach `status: implemented` before this packet can activate.
+- **Depends on P113a** : P113a's 6 independent S/M items must ship first. P113a's `Visvalingam-Whyatt` port (Step 1) is a no-op on P112's 2-junction input but becomes active once P113b's `connectJunctions` produces multi-junction input. P113a must reach `status: implemented` before this packet can activate.
 - **Depends on P112** (`d9466fd7`, `status: implemented`): the existing Arachne pipeline source, fixtures, and host-service bridge.
 - **Does NOT depend on ADR-0033.** The original packet draft listed "ADR-0033 (Algorithm Faithfulness as OrcaSlicer Parity Definition)" as a P113b dependency. That ADR does not exist in `docs/adr/` and the user has not asked for it. The acceptance criteria assert algorithm fidelity via OrcaSlicer code references — code references are sufficient on their own; a formal ADR is not required for this packet.
 - **Unblocks:** the M2-faithful closure ceremony. After P113a + P113b ship, the perimeter parity roadmap can flip its "M2 — Real Arachne" marker to "complete with algorithm faithfulness."
