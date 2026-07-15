@@ -14,7 +14,6 @@ The caller's scope argument is one of: specific file paths; `all-changes` / empt
 **Pin the diff before anything else.** With a fixed point: confirm it resolves (`git rev-parse <ref>`), then the review input is `git diff <ref>...HEAD` (three-dot — compares against the merge-base) plus the commit list from `git log <ref>..HEAD --oneline`. Without one: `git diff` on the working tree. A bad ref or an empty diff fails here — report it and stop; never spend dimensions or dispatches on an unpinned or empty diff.
 
 Then gather context:
-
 - `git status` — scope of modified, added, and deleted files.
 - `git log --oneline -10` — does the change build on or conflict with recent work.
 - The pinned diff — the primary review input.
@@ -26,87 +25,56 @@ If specific files are given, still run `git status` for broader context but focu
 ### 1. Architecture compliance (Critical)
 
 **IR schema contracts:**
-- IR field additions are backwards-compatible (additive fields only for minor bumps).
-- No removal or type changes to existing IR fields without major version bump.
-- New IR types added to `crates/slicer-ir/` with proper serialization.
+- IR field additions are backwards-compatible (additive fields only for minor bumps). No removal or type changes to existing IR fields without major version bump. New IR types added to `crates/slicer-ir/` with proper serialization.
 
 **WASM module contracts:**
-- Manifest `[ir-access].reads` / `[ir-access].writes` match actual usage.
-- Manifest `wit-world` references the correct world version.
-- Manifest `[stage]` uses canonical stage identifiers from `docs/01_system_architecture.md`.
-- Claim declarations use canonical claim names (perimeter-generator, infill-generator, …).
-- `min-host-version`, `min-ir-schema`, `max-ir-schema` correctly set.
+- Manifest `[ir-access].reads` / `[ir-access].writes` match actual usage. Manifest `wit-world` references the correct world version. Manifest `[stage]` uses canonical stage identifiers from `docs/01_system_architecture.md`. Claim declarations use canonical claim names (perimeter-generator, infill-generator, …). `min-host-version`, `min-ir-schema`, `max-ir-schema` correctly set.
 
 **Host service usage:**
-- Host services accessed via SDK wrappers, not raw wasmtime.
-- Memory allocated in per-layer arenas, not long-lived WASM memory.
+- Host services accessed via SDK wrappers, not raw wasmtime. Memory allocated in per-layer arenas, not long-lived WASM memory.
 
 ### 2. Pipeline integrity (Critical)
 
 **Stage ordering:**
-- Modules only read IR produced by earlier stages in `STAGE_ORDER`.
-- Data Dependency Matrix in `docs/01_system_architecture.md` respected.
-- Paint propagation contract followed: SlicePostProcess → Perimeters → PerimetersPostProcess.
+- Modules only read IR produced by earlier stages in `STAGE_ORDER`. Data Dependency Matrix in `docs/01_system_architecture.md` respected. Paint propagation contract followed: SlicePostProcess → Perimeters → PerimetersPostProcess.
 
 **PrePass / Per-Layer / PostPass tiering:**
-- PrePass stages run sequentially and produce Blackboard output.
-- Per-Layer stages use per-layer arenas and rayon parallelism.
-- PostPass stages operate on `Vec<LayerCollectionIR>` with no parallelism.
+- PrePass stages run sequentially and produce Blackboard output. Per-Layer stages use per-layer arenas and rayon parallelism. PostPass stages operate on `Vec<LayerCollectionIR>` with no parallelism.
 
 **Error handling:**
-- `fatal = true` errors abort the entire slice.
-- `fatal = false` errors continue with last valid IR state and emit a degraded warning.
-- Error codes follow established conventions (e.g., paint error codes 501–504).
+- `fatal = true` errors abort the entire slice. `fatal = false` errors continue with last valid IR state and emit a degraded warning. Error codes follow established conventions (e.g., paint error codes 501–504).
 
 ### 3. Claim system integrity (Critical)
 
-- No two modules hold the same claim globally without region override.
-- Claim holder transitions only allowed for infill-generator and support-generator.
-- Non-transitionable claims (perimeter-generator, seam-placer, …) remain stable per (object, claim).
-- Object-level overrides applied before region-level overrides; no ambiguous overlapping layer-range overrides.
+- No two modules hold the same claim globally without region override. Claim holder transitions only allowed for infill-generator and support-generator. Non-transitionable claims (perimeter-generator, seam-placer, …) remain stable per (object, claim). Object-level overrides applied before region-level overrides; no ambiguous overlapping layer-range overrides.
 
 ### 4. Memory & resource safety (Critical)
 
-- All geometry allocated in per-layer arenas.
-- Memory freed after layer completes — no cross-layer pointer aliasing.
-- Sequential modules use a single WASM instance (no pooling); parallel-safe modules use an instance pool sized to rayon threads.
+- All geometry allocated in per-layer arenas. Memory freed after layer completes — no cross-layer pointer aliasing. Sequential modules use a single WASM instance (no pooling); parallel-safe modules use an instance pool sized to rayon threads.
 
 ### 5. Type safety (High)
 
-- Types for IR contracts defined in `crates/slicer-ir/` (not inline); enums with exhaustive matches.
-- No `unsafe` without documented safety invariants.
-- No `.unwrap()` on fallible operations in hot paths — use `?` or explicit error handling.
-- IR types implement proper `serde::Serialize` / `Deserialize`; version fields match declared schema versions.
+- Types for IR contracts defined in `crates/slicer-ir/` (not inline); enums with exhaustive matches. No `unsafe` without documented safety invariants. No `.unwrap()` on fallible operations in hot paths — use `?` or explicit error handling. IR types implement proper `serde::Serialize` / `Deserialize`; version fields match declared schema versions.
 
 ### 6. Performance (High)
 
-- Per-layer processing uses rayon, not manual threading; no shared mutable state between layer workers.
-- Layer count / memory budgets enforced with explicit failure behavior; exceeded gracefully.
-- Large collections use pagination or streaming where applicable.
+- Per-layer processing uses rayon, not manual threading; no shared mutable state between layer workers. Layer count / memory budgets enforced with explicit failure behavior; exceeded gracefully. Large collections use pagination or streaming where applicable.
 
 ### 7. Compatibility policy (High)
 
-- Additive changes: minor version bumps. Breaking changes (rename/remove/type change): major version bumps.
-- Host rejects incompatible modules at startup with explicit diagnostics: expected vs actual host version, WIT world version, and IR range in the error messages.
+- Additive changes: minor version bumps. Breaking changes (rename/remove/type change): major version bumps. Host rejects incompatible modules at startup with explicit diagnostics: expected vs actual host version, WIT world version, and IR range in the error messages.
 
 ### 8. Config robustness (Medium)
 
-- Config keys use snake_case (never kebab-case) and are namespaced properly (`com.community.tpms-infill.density`, not `density`); core keys have no namespace prefix.
-- `config.overridable-per-region` / `config.overridable-per-layer` correctly declared.
-- Required config fields validated before use; unknown keys produce actionable error messages.
+- Config keys use snake_case (never kebab-case) and are namespaced properly (`com.community.tpms-infill.density`, not `density`); core keys have no namespace prefix. `config.overridable-per-region` / `config.overridable-per-layer` correctly declared. Required config fields validated before use; unknown keys produce actionable error messages.
 
 ### 9. Operational governance (Medium)
 
-- Intentional deviations from architecture docs recorded in `docs/DEVIATION_LOG.md`; critical deviations have explicit waivers.
-- Mitigation plans with owner and due date for conditional items.
-- No unresolved critical deviations before release.
+- Intentional deviations from architecture docs recorded in `docs/DEVIATION_LOG.md`; critical deviations have explicit waivers. Mitigation plans with owner and due date for conditional items. No unresolved critical deviations before release.
 
 ### 10. Security (Critical)
 
-- No hardcoded tokens, passwords, or API keys in source.
-- No `eval()`-style dynamic code execution.
-- File operations validate path boundaries (no path traversal).
-- WASM modules cannot access host resources outside declared IR access.
+- No hardcoded tokens, passwords, or API keys in source. No `eval()`-style dynamic code execution. File operations validate path boundaries (no path traversal). WASM modules cannot access host resources outside declared IR access.
 
 ### 11. Smell baseline (judgement calls — never blocking)
 

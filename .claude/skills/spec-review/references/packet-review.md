@@ -10,11 +10,11 @@ Review a spec packet under `.ralph/specs/<NN>_<slug>/` against its 5 packet docs
 ## Review modes
 
 - **Full** — entire packet contract, code surface, verification set, task-map impact. Default. Only mode that may authorize closure.
-- **Delta** — focused on `changed_steps` / `changed_files` and directly affected ACs, requirements, constraints, commands. For Swarm intermediate loops, or when a full review will not fit budget. Never substitutes for final closure review.
+- **Delta** — focused on `changed_steps` / `changed_files` and directly affected ACs, requirements, constraints, commands. For Swarm intermediate loops, or when a full review won't fit budget. Never substitutes for final closure review.
 - **Delegated** — when Swarm offloads review, use exactly **one** sequential review subagent after all code workers finish. Do **not** shard review by step or dimension.
 - **Preflight** (`--preflight`) — authoring-time gate for a **draft** packet. Runs the S0–S8 symbol-existence gate (`references/preflight-gate.md`) plus the AC-runnable-command and Doc-Impact checks, and **nothing else** — no AC tracing, no verification-command runs, no closure verdict. Output is a structured FACT pass/fail report; verdict is `PREFLIGHT PASS` / `PREFLIGHT BLOCKED`. **The authoring agent must clear this gate before the packet's files are committed or the packet is activated.** This is the mechanism that stops fictional-symbol defects from reaching a packet's files — prose review does not catch them.
 
-A full review that does not fit budget must split across sessions, **not** silently approve.
+A full review that doesn't fit budget must split across sessions, **not** silently approve.
 
 ## Workflow
 
@@ -30,7 +30,7 @@ PLAN
 - Stop condition: review report emitted with verdict, all dispatched evidence collected
 ```
 
-If the estimate is L, prefer **delta** scoped to `changed_steps` / `changed_files`, or split across sessions. Never run a full review when remaining budget cannot fit it.
+If estimate is L, prefer **delta** scoped to `changed_steps` / `changed_files`, or split. Never run full when remaining budget can't fit it.
 
 ### Step 1 — Preflight (always runs, including delta)
 
@@ -40,11 +40,10 @@ Packet-authoring defects are global; you cannot scope them away. For every AC in
 - Command uses correct paths, flags, module names; runnable as-is.
 - Names exact assertion content, not generic phrases ("all required fields", "correct diagnostics").
 - Command is delegation-friendly — small, parseable output on success (not >200-line logs).
-- **AC test exercises the production code path it describes** — apply SKILL.md trap #2 (placeholder tests): SNIPPETS-dispatch the test body and confirm its assertions reference the symbols / IR fields named in the Given/When/Then. Placeholder → **HIGH** finding (packet-authoring defect, same severity as a missing runnable command); AC is `PARTIAL/INCOMPLETE` regardless of test-pass status.
+- **AC test exercises the production code path it describes** — apply SKILL.md trap #2 (placeholder tests): SNIPPETS-dispatch the test body and confirm its assertions reference the symbols / IR fields named in the Given/When/Then. Placeholder → **HIGH** finding; AC is `PARTIAL/INCOMPLETE` regardless of test-pass status.
 - **AC test exercises the driver, not just the helper** — apply SKILL.md trap #1: when the AC's verification command runs a unit test on a helper / pure function, dispatch a second FACT: *"in the production code path named in the AC's Given/When/Then (driver / stage entry / Phase-N runner), does any line invoke `<helper>`? LOCATIONS."* Zero production call sites → **HIGH** finding; AC is `PARTIAL/INCOMPLETE` regardless of test-pass status.
 
 Packet-quality preflight:
-
 - ≥1 negative / rejection criterion if the slice changes validation, enforcement, or failure behavior.
 - `design.md` selects one approach when several are plausible.
 - `design.md` declares files-in-scope, read-only context, and out-of-bounds files.
@@ -52,7 +51,7 @@ Packet-quality preflight:
 - No step is rated context cost L (otherwise the packet should have been split).
 - Open questions that would change scope are resolved, or the packet is still `draft` with explicit blocker.
 
-If any AC lacks a runnable command → **HIGH** finding (not MED), mark `PARTIAL/INCOMPLETE` in the report, and do not proceed until logged. If packet-quality fails, log a **HIGH** per missing element and clearly separate packet-authoring defects from implementation defects.
+If any AC lacks a runnable command → **HIGH** finding (not MED), mark `PARTIAL/INCOMPLETE`, do not proceed until logged. If packet-quality fails, log a **HIGH** per missing element and clearly separate packet-authoring defects from implementation defects.
 
 #### Symbol-existence gate (S0–S8, Required)
 
@@ -102,84 +101,55 @@ If full mode: confirm the dispatch list fits remaining budget; otherwise downgra
 Every check is verified by **dispatching a sub-agent** for the underlying evidence. Compose precise dispatches; adjudicate the returned FACTs. Do not read code yourself to fill in a check.
 
 ### 1. Scope coverage (Critical)
-
-- Implementation actually fulfills the stated goal in `packet.spec.md` *(dispatch: "does `<crate>::<fn>` implement `<behavior>`? FACT")*.
-- No goal creep; no scope gaps.
-- "In scope" items addressed; "out of scope" items genuinely untouched *(dispatch: "are there commits/edits in `<out-of-scope path>`? FACT")*.
-- Boundary items have explicit justification.
+- Implementation fulfills the stated goal in `packet.spec.md` *(dispatch: "does `<crate>::<fn>` implement `<behavior>`? FACT")*.
+- No goal creep; no scope gaps. "In scope" items addressed; "out of scope" items genuinely untouched *(dispatch: "are there commits/edits in `<out-of-scope path>`? FACT")*. Boundary items have explicit justification.
 
 ### 2. Acceptance criteria fulfillment (Critical)
-
 For each AC in `packet.spec.md`:
-
-- Given/When/Then is met by implementation.
-- Verification command passes (or explicit reason it does not yet) *(dispatch the command; FACT pass/fail)*.
+- Given/When/Then met by implementation.
+- Verification command passes (or explicit reason it does not) *(dispatch; FACT pass/fail)*.
 - Test exists and asserts the criterion's promised content *(dispatch: "does test `<name>` exist and assert `<content>`? FACT")*.
 - **Helper wired into production driver** (SKILL.md trap #1): a green helper-unit test with no driver call site = AC unmet; do not accept "the helper is tested" as evidence the pipeline uses it.
 - No partial fulfillment — "mostly done" = incomplete.
-- Negative / rejection criteria are implemented and verified when the packet requires them.
+- Negative / rejection criteria implemented and verified when the packet requires them.
 
 ### 3. Requirements traceability (Critical)
-
 For each requirement in `requirements.md`:
-
 - Trace to specific code via dispatch *(dispatch: "find function implementing `<requirement>`; LOCATIONS")*.
-- No orphaned requirements (stated, not implemented).
-- No unrequested implementations (done, not required).
-- Acceptance summary bullets each have a verification.
-- Measurable outcomes are actually measured by the evidence.
+- No orphaned requirements (stated, not implemented); no unrequested implementations (done, not required).
+- Acceptance summary bullets each have a verification. Measurable outcomes actually measured by the evidence.
 
 ### 4. Design fidelity (High)
-
 - Architecture constraints in `design.md` respected *(one dispatched FACT per constraint)*.
-- Module stage assignments match documented stage IDs.
-- No ad-hoc workarounds violating constraints.
-- Locked assumptions / invariants preserved.
-- Changes hit expected files; no surprises *(dispatch a `git diff --stat` summary)*.
-- Test/fixture files updated.
+- Module stage assignments match documented stage IDs. No ad-hoc workarounds violating constraints. Locked assumptions / invariants preserved.
+- Changes hit expected files; no surprises *(dispatch a `git diff --stat` summary)*. Test/fixture files updated.
 - Implementation follows the **selected approach** from `design.md`, not an unreviewed alternative.
-- IR field paths match exact names in `crates/slicer-ir/src/` *(one dispatched FACT per field)*.
-- Type constraints, stage ordering, tiering respected.
+- IR field paths match exact names in `crates/slicer-ir/src/` *(one dispatched FACT per field)*. Type constraints, stage ordering, tiering respected.
 
 ### 5. Implementation completeness (Critical)
-
-- Each step in `implementation-plan.md` executed in logical order; each achieved its objective.
-- Verification commands documented and passing *(dispatch each)*.
-- Each step satisfied explicit precondition, postcondition, exit condition.
-- Read-only discovery steps produced the exact inventory / decision the packet promised.
-- Each `task-map.md` task ID corresponds to completed work; no unmapped completions or gaps.
-- Backlog source (e.g., `docs/07_implementation_status.md`) updated *(dispatched FACT)*.
-- Reopened or superseded packet work reconciled explicitly.
+- Each step in `implementation-plan.md` executed in logical order; each achieved its objective. Verification commands documented and passing *(dispatch each)*.
+- Each step satisfied explicit precondition, postcondition, exit condition. Read-only discovery steps produced the exact inventory / decision the packet promised.
+- Each `task-map.md` task ID corresponds to completed work; no unmapped completions or gaps. Backlog source (e.g., `docs/07_implementation_status.md`) updated *(dispatched FACT)*. Reopened or superseded packet work reconciled explicitly.
 
 ### 6. Verification quality (High)
-
-- All documented verification commands run successfully *(dispatch each as FACT pass/fail)*.
-- Commands produce expected outputs; no hard-coded assumptions.
-- Acceptance gate tests exist, pass, cover full ACs.
-- No skipped tests for completed work.
-- Tests integrated into CI.
+- All documented verification commands run successfully *(dispatch each as FACT pass/fail)*. Commands produce expected outputs; no hard-coded assumptions.
+- Acceptance gate tests exist, pass, cover full ACs. No skipped tests for completed work. Tests integrated into CI.
 
 ### 7. Deviation documentation (Medium)
-
-- All open questions in `design.md` answered or tracked.
-- Answers documented (code/doc comments or deviation log).
+- All open questions in `design.md` answered or tracked. Answers documented (code/doc comments or deviation log).
 - No `active`/`implemented` packet still depends on unanswered scope-changing questions.
-- Identified risks mitigated or documented; tradeoffs have rationale.
-- Deviations from spec are documented with explicit rationale; critical deviations have waivers when required.
+- Identified risks mitigated or documented; tradeoffs have rationale. Deviations from spec documented with explicit rationale; critical deviations have waivers when required.
 
 ### 8. Documentation quality (Medium)
-
-- Referenced docs exist and are accurate *(one dispatched FACT per doc)*.
-- No stale references to removed docs; cross-refs consistent.
-- OrcaSlicer parity obligations met *(dispatch parity check; never read OrcaSlicer source yourself)*.
-- Geometry / behavior comparisons accurate.
+- Referenced docs exist and are accurate *(one dispatched FACT per doc)*. No stale references to removed docs; cross-refs consistent.
+- OrcaSlicer parity obligations met *(dispatch parity check; never read OrcaSlicer source yourself)*. Geometry / behavior comparisons accurate.
 
 ## Rust specifics (for composing dispatches)
 
 - Trust the type system. `cargo check` (via sub-agent) before chasing a bug through code.
 - For trait/generic confusion: ask the sub-agent for the monomorphized error or the concrete impl. Do not read trait hierarchies yourself.
 - Never paste full macro expansions. Delegate to summarize.
-- Workspace nav: `cargo metadata --format-version=1 --no-deps` (via sub-agent, summarized) beats reading every `Cargo.toml`.
+- Workspace nav: `cargo metadata --format-version 1 --no-deps` (via sub-agent, summarized) beats reading every `Cargo.toml`.
 - Test failures: sub-agent returns failing test name, assertion, and ≤20 lines of relevant code — not the full test file.
 - For Rust reads you must do yourself: prefer `cargo doc` and module trees over source; read trait defs before impls; read `mod.rs` / `lib.rs` for shape before drilling. For `Cargo.toml`, only the sections relevant to the task.
 
@@ -197,7 +167,6 @@ Other dispatched (not direct) checks: `git status` summary on expected files (FA
 ## Delegated return contract (Swarm-invoked)
 
 When run as a Swarm review subagent, return compact and structured:
-
 - review mode and delta scope;
 - blocking findings by severity;
 - impacted steps, files, ACs;
