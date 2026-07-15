@@ -54,6 +54,7 @@ use crate::arachne::{
     separate_out_inner_contour, simplify_toolpaths, stitch_extrusions,
 };
 use crate::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
+use crate::perimeter_utils::WallSequence;
 use crate::skeletal_trapezoidation::propagation::propagate_beadings_downward_with_transition_dist;
 use crate::skeletal_trapezoidation::{
     apply_transitions, assign_bead_counts, filter_central, filter_noncentral_regions,
@@ -165,8 +166,8 @@ pub struct ArachneParams {
     /// near-colinear fast-path guard (`calculateExtrusionAreaDeviationError`).
     /// Maps to the `meshfix_maximum_extrusion_area_deviation` config key.
     pub maximum_extrusion_area_deviation: f64,
-    /// true = outer walls emitted first (matches OrcaSlicer's is_outer_wall_first)
-    pub outer_to_inner: bool,
+    /// Wall emission sequence, matching OrcaSlicer's configured perimeter order.
+    pub wall_sequence: WallSequence,
 }
 
 impl Default for ArachneParams {
@@ -216,7 +217,7 @@ impl Default for ArachneParams {
             allowed_error_distance_squared: 0.000025,
             // meshfix_maximum_extrusion_area_deviation = 0.005 mm².
             maximum_extrusion_area_deviation: 0.005,
-            outer_to_inner: false,
+            wall_sequence: WallSequence::InnerOuter,
         }
     }
 }
@@ -382,35 +383,40 @@ pub fn run_arachne_pipeline(
     // falling through to a fresh `strategy.compute()` call every time.
     populate_beading_propagation(&mut graph, strategy.as_ref());
 
-    let buckets = generate_toolpaths(&graph, strategy.as_ref());
-    let lines: Vec<ExtrusionLine> = buckets.into_iter().flatten().collect();
-
     // Matches this packet's brief verbatim: max_gap = preferred_bead_width_outer
     // - 1e-6 (mm, matching `stitch_extrusions`'s mm-unit `max_gap` parameter),
     // floored at 0.0 so a pathological near-zero `preferred_bead_width_outer`
     // never produces a negative gap threshold.
     let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
-    let mut stitched = stitch_extrusions(lines, max_gap);
-    reorder_by_region_order(&mut stitched, params.outer_to_inner);
-    // Canonical post-process order (WallToolPaths.cpp:679-699):
-    // stitch → removeSmallLines → separateOutInnerContour → simplify → removeEmpty
-    let without_small = remove_small_lines(
-        stitched,
-        params.min_length_factor,
-        params.min_width,
-        params.is_initial_layer,
-        params.is_topmost_layer || params.is_bottom_layer,
-    );
-    let (toolpaths, inner_contour) = separate_out_inner_contour(without_small);
-    let simplified = simplify_toolpaths(
-        toolpaths,
-        params.visvalingam_area_threshold,
-        params.smallest_line_segment_squared,
-        params.allowed_error_distance_squared,
-        params.maximum_extrusion_area_deviation,
-    );
-    let final_lines = remove_empty_toolpaths(simplified);
+    let mut final_lines = Vec::new();
+    let mut inner_contour = Vec::new();
+    for lines in generate_toolpaths(&graph, strategy.as_ref()) {
+        let stitched = stitch_extrusions(lines, max_gap);
+        // Canonical post-process order (WallToolPaths.cpp:679-699):
+        // stitch → removeSmallLines → separateOutInnerContour → simplify → removeEmpty
+        let without_small = remove_small_lines(
+            stitched,
+            params.min_length_factor,
+            params.min_width,
+            params.is_initial_layer,
+            params.is_topmost_layer || params.is_bottom_layer,
+        );
+        let (toolpaths, mut group_inner_contour) = separate_out_inner_contour(without_small);
+        let simplified = simplify_toolpaths(
+            toolpaths,
+            params.visvalingam_area_threshold,
+            params.smallest_line_segment_squared,
+            params.allowed_error_distance_squared,
+            params.maximum_extrusion_area_deviation,
+        );
+        final_lines.extend(remove_empty_toolpaths(simplified));
+        inner_contour.append(&mut group_inner_contour);
+    }
 
+    reorder_by_region_order(
+        &mut final_lines,
+        matches!(params.wall_sequence, WallSequence::OuterInner),
+    );
     Ok((final_lines, inner_contour))
 }
 

@@ -64,6 +64,7 @@
 use slicer_core::flow::{bridging_flow, flow_to_width, line_width_to_spacing};
 use slicer_core::perimeter_utils::{
     build_wall_flags, generate_sharp_corner_seam_candidates, point_in_any_polygon,
+    wall_sequence_reorder,
 };
 use slicer_core::polygon_ops::{difference_ex, offset2_ex, OffsetJoinType};
 use slicer_ir::{
@@ -74,6 +75,7 @@ use slicer_ir::{
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::host::ArachneParams;
+use slicer_sdk::host::WallSequence;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -319,7 +321,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             smallest_line_segment_squared,
             allowed_error_distance_squared,
             maximum_extrusion_area_deviation,
-            outer_to_inner: false,
+            wall_sequence: WallSequence::InnerOuter,
         }
     }
 }
@@ -361,6 +363,35 @@ fn classify_line(
     }
 }
 
+fn commit_wall_sequence(walls: &mut Vec<WallLoop>, sequence: WallSequence) {
+    if walls.len() <= 1 {
+        return;
+    }
+
+    // The finalized Arachne lines carry path order, but the native and WIT
+    // paths may expose the same region in opposite orientation. Normalize that
+    // orientation from wall identity, never from perimeter_index. This keeps
+    // each region's committed batch intact, so a later region can never be
+    // pulled ahead merely because its outer index is smaller.
+    let outer_at_front = walls
+        .first()
+        .is_some_and(|wall| wall.loop_type == LoopType::Outer);
+    let outer_at_back = walls
+        .last()
+        .is_some_and(|wall| wall.loop_type == LoopType::Outer);
+    match sequence {
+        WallSequence::InnerOuter if outer_at_back && !outer_at_front => walls.reverse(),
+        WallSequence::OuterInner if outer_at_front && !outer_at_back => walls.reverse(),
+        WallSequence::InnerOuterInner => {
+            if outer_at_back && !outer_at_front {
+                walls.reverse();
+            }
+            wall_sequence_reorder(walls, sequence, &[]);
+        }
+        _ => {}
+    }
+}
+
 #[slicer_module]
 impl LayerModule for ArachnePerimeters {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
@@ -399,8 +430,20 @@ impl LayerModule for ArachnePerimeters {
         params.is_initial_layer = layer_index == 0;
         params.is_bottom_layer = is_bottom_layer;
         let wall_sequence = config.get_string("wall_sequence").unwrap_or("InnerOuter");
-        params.outer_to_inner = wall_sequence == "OuterInner"
-            || (wall_sequence == "InnerOuterInner" && !params.is_initial_layer);
+        params.wall_sequence = match wall_sequence {
+            "OuterInner" => WallSequence::OuterInner,
+            "InnerOuterInner" => WallSequence::InnerOuterInner,
+            _ => WallSequence::InnerOuter,
+        };
+        // Orca enables sandwich ordering only after the first layer. The
+        // pipeline has already produced the finalized region order; this is
+        // the sole module-side commit-time sequence adjustment.
+        let sequence = if params.wall_sequence == WallSequence::InnerOuterInner && layer_index == 0
+        {
+            WallSequence::InnerOuter
+        } else {
+            params.wall_sequence
+        };
 
         // only_one_wall_top (G3 part 1): the config key round-trips correctly
         // and is now CONSUMED (D-104d deferred behavior begins here). When set
@@ -614,8 +657,7 @@ impl LayerModule for ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
             )?;
-            // AC-9: walls sorted by perimeter_index ascending.
-            walls.sort_by_key(|w| w.perimeter_index);
+            commit_wall_sequence(&mut walls, sequence);
             for wall in walls {
                 output.push_wall_loop(wall)?;
             }
@@ -857,6 +899,12 @@ impl ArachnePerimeters {
         thick_bridges: bool,
         output: &mut PerimeterOutputBuilder,
     ) -> Result<(), ModuleError> {
+        let sequence =
+            if params.wall_sequence == WallSequence::InnerOuterInner && params.is_initial_layer {
+                WallSequence::InnerOuter
+            } else {
+                params.wall_sequence
+            };
         // Step 1: top-area derivation. PnP uses `top_solid_fill` (see
         // D-152-TOP-AREA-SOURCE); Orca derives
         // `diff_ex(infill_contour, upper_slices_clipped)`.
@@ -908,7 +956,7 @@ impl ArachnePerimeters {
                     return Ok(());
                 }
             };
-        let mut top_walls = self.build_walls(
+        let top_walls = self.build_walls(
             &top_lines,
             region,
             z,
@@ -955,7 +1003,7 @@ impl ArachnePerimeters {
                 bridge_flow_ratio,
                 thick_bridges,
             )?;
-            fb_walls.sort_by_key(|w| w.perimeter_index);
+            commit_wall_sequence(&mut fb_walls, sequence);
             for w in fb_walls {
                 output.push_wall_loop(w)?;
             }
@@ -1007,11 +1055,10 @@ impl ArachnePerimeters {
         )?;
 
         // Step 7: merge — top single wall + renumbered second-pass inner walls.
-        top_walls.sort_by_key(|w| w.perimeter_index);
         for w in top_walls {
             output.push_wall_loop(w)?;
         }
-        second_walls.sort_by_key(|w| w.perimeter_index);
+        commit_wall_sequence(&mut second_walls, sequence);
         for w in second_walls {
             output.push_wall_loop(w)?;
         }

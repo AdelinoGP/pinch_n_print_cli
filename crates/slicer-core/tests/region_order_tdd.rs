@@ -44,7 +44,7 @@ fn region_order_get_matches_canonical_pair_guards() {
             (x + 12.0, 0.0),
         ]
     };
-    let mut outer_0 = vec![(0.0, 0.0)];
+    let mut outer_0 = vec![(0.0, 0.0), (0.1, 0.0)];
     outer_0.extend(isolated(100.0));
     let mut outer_1 = vec![(0.0, 1.0)];
     outer_1.extend(isolated(120.0));
@@ -90,6 +90,35 @@ fn region_order_deduplicates_constraints_from_multiple_junction_pairs() {
 }
 
 #[test]
+fn region_order_constraints_are_unique_and_acyclic() {
+    let input = vec![
+        line(&[(0.0, 0.0), (0.1, 0.0)], 0, false),
+        line(&[(0.2, 0.0), (0.3, 0.0)], 1, false),
+        line(&[(0.4, 0.0), (0.5, 0.0)], 2, false),
+    ];
+    let constraints = get_region_order(&input, true);
+
+    let mut unique = constraints.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(constraints, unique, "constraints must be emitted once");
+    assert!(constraints.iter().all(|&(before, after)| before != after));
+
+    let order = topological_walk(&input, &constraints);
+    assert_eq!(order.len(), input.len());
+    let mut sorted_order = order.clone();
+    sorted_order.sort_unstable();
+    assert_eq!(sorted_order, (0..input.len()).collect::<Vec<_>>());
+    for &(before, after) in &constraints {
+        assert!(
+            order.iter().position(|&index| index == before).unwrap()
+                < order.iter().position(|&index| index == after).unwrap(),
+            "constraint {before}->{after} must be acyclic"
+        );
+    }
+}
+
+#[test]
 fn region_order_empty_input_returns_empty() {
     assert_eq!(get_region_order(&[], false), Vec::<(usize, usize)>::new());
 }
@@ -124,22 +153,22 @@ fn region_order_zero_max_line_width_returns_no_constraints() {
 
 #[test]
 fn region_order_topological_walk_matches_canonical_open_line_cursor() {
+    let mut closed = line(&[(0.0, 0.0)], 4, false);
+    closed.is_closed = true;
     let input = vec![
-        line(&[(0.0, 0.0), (5.0, 0.0)], 0, false),
+        line(&[(0.0, 0.0), (10.0, 0.0)], 0, false),
         line(&[(10.0, 0.0)], 1, false),
         line(&[(20.0, 0.0)], 2, false),
-        line(&[(30.0, 0.0)], 3, false),
+        line(&[(20.0, 0.0)], 3, false),
+        closed,
+        line(&[(30.0, 0.0)], 5, false),
     ];
-    let result = topological_walk(&input, &[(0, 2), (0, 3), (1, 2), (1, 3)]);
-
-    let pos0 = result.iter().position(|&i| i == 0).unwrap();
-    let pos1 = result.iter().position(|&i| i == 1).unwrap();
-    let pos2 = result.iter().position(|&i| i == 2).unwrap();
-    let pos3 = result.iter().position(|&i| i == 3).unwrap();
-    assert!(pos0 < pos2);
-    assert!(pos1 < pos2);
-    assert!(pos0 < pos3);
-    assert!(pos1 < pos3);
+    assert_eq!(
+        topological_walk(&input, &[(3, 5)]),
+        vec![0, 1, 2, 3, 5, 4],
+        "the walk must use the first input cursor, open-line endpoint updates, \
+         stable input-order ties, open-before-closed iteration, and unlocks"
+    );
 }
 
 #[test]

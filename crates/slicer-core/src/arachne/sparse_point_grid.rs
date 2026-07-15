@@ -47,7 +47,8 @@ where
         self.cells.entry(cell).or_default().push(item);
     }
 
-    /// Returns copied items whose exact Euclidean distance is within `radius`.
+    /// Returns copied items from every cell touched by the query radius.
+    /// Callers apply the exact distance check when needed.
     pub fn get_nearby(&self, query: Point2, radius: f32) -> Vec<T> {
         if self.cell_size == 0.0 || radius < 0.0 {
             return Vec::new();
@@ -61,18 +62,11 @@ where
             ((f64::from(query.y) - f64::from(radius)) / f64::from(self.cell_size)).floor() as i64;
         let y_max =
             ((f64::from(query.y) + f64::from(radius)) / f64::from(self.cell_size)).floor() as i64;
-        let radius_squared = f64::from(radius) * f64::from(radius);
-
         let mut nearby = Vec::new();
         for x in x_min..=x_max {
             for y in y_min..=y_max {
                 if let Some(items) = self.cells.get(&(x, y)) {
-                    nearby.extend(items.iter().copied().filter(|item| {
-                        let point = (self.locator)(item);
-                        let dx = f64::from(point.x) - f64::from(query.x);
-                        let dy = f64::from(point.y) - f64::from(query.y);
-                        dx * dx + dy * dy <= radius_squared
-                    }));
+                    nearby.extend(items.iter().copied());
                 }
             }
         }

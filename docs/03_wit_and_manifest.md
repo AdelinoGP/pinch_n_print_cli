@@ -441,9 +441,18 @@ interface host-services {
 `generate-arachne-walls` takes an `arachne-params` record (defined in the
 `common.wit` `host-services` interface, mirroring
 `slicer_core::arachne::pipeline::ArachneParams` field-for-field, packet 112
-Step 9A). Every distance/width field is in millimeters. The two layer-position
-bool fields are **G10 plumbing; set by the module from region top/bottom
-metadata**:
+Step 9A). Every distance/width field is in millimeters. `wall-sequence` is the
+three-state WIT enum `inner-outer`, `outer-inner`, or `inner-outer-inner`.
+The perimeter module resolves the existing `wall_sequence` config and the
+SDK/WASM host transports that resolved enum unchanged; the host algorithm does
+not re-read module config. The perimeter module owns final `WallLoop` order,
+including finalized Arachne region ordering, and path optimization preserves
+that committed wall subsequence while optimizing permitted travel. This
+boundary documentation records the implementation contract; packet closure
+remains subject to the packet's final acceptance ceremony.
+
+The three layer-position bool fields are **G10 plumbing; set by the module
+from region top/bottom metadata**:
 
 - `is-initial-layer: bool` — true when the region is on the first printed
   layer (`layer-index() == 0`).

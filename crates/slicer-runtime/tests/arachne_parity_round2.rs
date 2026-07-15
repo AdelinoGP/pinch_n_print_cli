@@ -16,12 +16,22 @@
 
 #![allow(dead_code)]
 
+#[path = "common/mod.rs"]
+mod common;
 #[path = "fixtures/arachne_parity/mod.rs"]
 mod fixtures;
 
 use slicer_core::arachne::{run_arachne_pipeline, simplify_toolpaths, ArachneParams};
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
-use slicer_ir::{ExtrusionLine, Point2};
+use slicer_ir::{
+    ConfigValue, ExPolygon, ExtrusionLine, Point2, Polygon, SemVer, SliceIR, SlicedRegion,
+};
+use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+use slicer_runtime::manifest::LoadedModuleBuilder;
+use slicer_runtime::{Blackboard, CompiledModuleBuilder, LayerArena, WasmRuntimeDispatcher};
+use slicer_wasm_host::host::HOST_ARACHNE_WALL_SEQUENCE_CAPTURE;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 // ===========================================================================
 // G12 — wall region ordering: inner (odd) region must follow enclosing even
@@ -38,7 +48,7 @@ use slicer_ir::{ExtrusionLine, Point2};
 #[test]
 fn arachne_parity_wall_region_order_odd_after_enclosing() {
     let params = ArachneParams {
-        outer_to_inner: true,
+        wall_sequence: slicer_core::perimeter_utils::WallSequence::OuterInner,
         ..ArachneParams::default()
     };
 
@@ -56,6 +66,36 @@ fn arachne_parity_wall_region_order_odd_after_enclosing() {
               first_inner=N/A last_outer=N/A"
         ),
     };
+
+    let unordered_params = ArachneParams {
+        wall_sequence: slicer_core::perimeter_utils::WallSequence::InnerOuter,
+        ..params.clone()
+    };
+    let baseline = run_arachne_pipeline(
+        &fixtures::ex_polygons_concentric_islands_mm(),
+        &unordered_params,
+        false,
+    )
+    .expect("same finalized lines should be available without region ordering")
+    .0;
+
+    assert_eq!(
+        lines.len(),
+        baseline.len(),
+        "region ordering must retain every finalized line"
+    );
+    let mut matched = vec![false; baseline.len()];
+    for line in &lines {
+        let Some(index) = baseline
+            .iter()
+            .enumerate()
+            .find(|(index, candidate)| !matched[*index] && *candidate == line)
+            .map(|(index, _)| index)
+        else {
+            panic!("region ordering output contains a line absent from the baseline")
+        };
+        matched[index] = true;
+    }
 
     if lines.is_empty() {
         panic!(
@@ -91,6 +131,171 @@ fn arachne_parity_wall_region_order_odd_after_enclosing() {
           finalized pipeline order violates the enclosing-region precedence | observed \
           first_inner={first_inner} last_outer={last_outer}"
     );
+}
+
+/// AC-5: invoke the production Arachne guest and observe the resolved wall
+/// sequence at the host boundary for every mode on both the first and a later
+/// layer.  The config is deliberately changed per invocation; a boolean or a
+/// host-side default would make at least one of these exact sequences fail.
+#[test]
+fn arachne_wall_sequence_survives_wasm_boundary() {
+    for &(layer_index, mode) in &[
+        (0, "InnerOuter"),
+        (3, "InnerOuter"),
+        (0, "OuterInner"),
+        (3, "OuterInner"),
+        (0, "InnerOuterInner"),
+        (3, "InnerOuterInner"),
+    ] {
+        HOST_ARACHNE_WALL_SEQUENCE_CAPTURE
+            .lock()
+            .expect("Arachne wall-sequence capture mutex poisoned")
+            .clear();
+        run_real_arachne_guest(layer_index, mode);
+        let captured = HOST_ARACHNE_WALL_SEQUENCE_CAPTURE
+            .lock()
+            .expect("Arachne wall-sequence capture mutex poisoned")
+            .clone();
+        let expected_wit = match mode {
+            "InnerOuter" => slicer_wasm_host::host::layer::slicer::common::host_services::WallSequence::InnerOuter,
+            "OuterInner" => slicer_wasm_host::host::layer::slicer::common::host_services::WallSequence::OuterInner,
+            "InnerOuterInner" => slicer_wasm_host::host::layer::slicer::common::host_services::WallSequence::InnerOuterInner,
+            _ => unreachable!("test case has an unsupported wall sequence"),
+        };
+        assert_eq!(
+            captured,
+            vec![expected_wit],
+            "AC-5: decoded host input for {mode} at layer {layer_index}"
+        );
+    }
+}
+
+fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
+    let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("modules/core-modules/arachne-perimeters/arachne-perimeters.wasm");
+    assert!(
+        wasm_path.exists(),
+        "real arachne guest is missing: {}",
+        wasm_path.display()
+    );
+
+    let engine = crate::common::wasm_cache::shared_engine();
+    let component = crate::common::wasm_cache::compiled_component_at(&wasm_path);
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.arachne-perimeters",
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        wasm_path,
+    )
+    .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
+    .ir_writes(vec!["PerimeterIR".to_string()])
+    .claims(vec!["perimeter-generator".to_string()])
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 5,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
+    );
+    let mut config = HashMap::new();
+    config.insert(
+        "wall_sequence".to_string(),
+        ConfigValue::String(wall_sequence.to_string()),
+    );
+    let bundle = crate::common::TestModuleBundle {
+        module: CompiledModuleBuilder::new(loaded.id().to_string())
+            .config_view(Arc::new(slicer_ir::ConfigView::from_map(config)))
+            .build(),
+        pool,
+        component: Some(component),
+    };
+    let side = slicer_ir::mm_to_units(10.0);
+    let region = SlicedRegion {
+        object_id: "obj-a".to_string(),
+        region_id: 0,
+        polygons: vec![ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2 { x: 0, y: 0 },
+                    Point2 { x: side, y: 0 },
+                    Point2 { x: side, y: side },
+                    Point2 { x: 0, y: side },
+                ],
+            },
+            holes: Vec::new(),
+        }],
+        infill_areas: Vec::new(),
+        nonplanar_surface: None,
+        effective_layer_height: 0.2,
+        segment_annotations: HashMap::new(),
+        variant_chain: Vec::new(),
+        top_shell_index: None,
+        bottom_shell_index: None,
+        top_solid_fill: Vec::new(),
+        bottom_solid_fill: Vec::new(),
+        is_bridge: false,
+        bridge_areas: Vec::new(),
+        bridge_orientation_deg: 0.0,
+        sparse_infill_area: Vec::new(),
+    };
+    let mut arena = LayerArena::new();
+    arena
+        .set_slice(SliceIR {
+            global_layer_index: layer_index,
+            z: 0.2,
+            regions: vec![region],
+            ..Default::default()
+        })
+        .unwrap();
+    let blackboard = Blackboard::new(Arc::new(slicer_ir::MeshIR::default()), 1);
+    let layer = slicer_ir::GlobalLayer {
+        index: layer_index,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    crate::common::run_layer_and_commit_with_bundle(
+        &dispatcher,
+        "Layer::Perimeters",
+        &layer,
+        &bundle,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 }
 
 // ===========================================================================

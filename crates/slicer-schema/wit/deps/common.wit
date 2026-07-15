@@ -15,6 +15,7 @@ interface host-services {
     object-bounds:      func(object-id: object-id) -> bounding-box3;
     enum clip-operation   { union, intersection, difference, xor }
     enum offset-join-type { miter, round, square }
+    enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
@@ -49,6 +50,7 @@ interface host-services {
         allowed-error-distance-squared: f32,
         /// Area deviation threshold (mm²) for near-colinear fast-path guard.
         maximum-extrusion-area-deviation: f32,
+        wall-sequence: wall-sequence,
     }
     /// Runs the full Arachne beading-strategy pipeline
     /// (`slicer_core::arachne::pipeline::run_arachne_pipeline`) host-side, for

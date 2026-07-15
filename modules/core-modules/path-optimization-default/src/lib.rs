@@ -168,6 +168,10 @@ impl PathOptimizationDefault {
         }
     }
 
+    fn is_wall(role: &ExtrusionRole) -> bool {
+        matches!(role, ExtrusionRole::InnerWall | ExtrusionRole::OuterWall)
+    }
+
     fn group_then_nearest_neighbor(
         &self,
         entities: &[OrderedEntityView],
@@ -191,16 +195,39 @@ impl PathOptimizationDefault {
         for &tool_idx in &ordered_tool_keys {
             let cluster_entities = &tool_clusters[&tool_idx];
 
+            // Perimeter modules commit the wall sequence before this stage. The
+            // path-optimization view intentionally has no perimeter index, so
+            // wall entities must remain in their staged relative order. Travel
+            // optimization still applies to the non-wall role groups.
+            let mut walls = Vec::new();
             let mut role_groups: std::collections::BTreeMap<u32, Vec<&OrderedEntityView>> =
                 std::collections::BTreeMap::new();
             for entity in cluster_entities {
-                role_groups
-                    .entry(self.role_group(&entity.role))
-                    .or_default()
-                    .push(entity);
+                if Self::is_wall(&entity.role) {
+                    walls.push(*entity);
+                } else {
+                    role_groups
+                        .entry(self.role_group(&entity.role))
+                        .or_default()
+                        .push(entity);
+                }
             }
 
             for group_entities in role_groups.values() {
+                if self.role_group(&group_entities[0].role) >= 1 {
+                    break;
+                }
+                for (orig_idx, reversal) in nearest_neighbor_permutation(group_entities) {
+                    final_permutation.push((orig_idx, reversal));
+                }
+            }
+            for entity in walls {
+                final_permutation.push((entity.original_index, false));
+            }
+            for group_entities in role_groups.values() {
+                if self.role_group(&group_entities[0].role) < 1 {
+                    continue;
+                }
                 for (orig_idx, reversal) in nearest_neighbor_permutation(group_entities) {
                     final_permutation.push((orig_idx, reversal));
                 }
@@ -627,5 +654,48 @@ mod tests {
             perm1, perm2,
             "permutation must be byte-identical across runs"
         );
+    }
+
+    #[test]
+    fn committed_wall_sequence_is_not_reordered_by_role_priority() {
+        let module = PathOptimizationDefault::default();
+        for committed_roles in [
+            vec![
+                ExtrusionRole::InnerWall,
+                ExtrusionRole::InnerWall,
+                ExtrusionRole::OuterWall,
+            ],
+            vec![
+                ExtrusionRole::OuterWall,
+                ExtrusionRole::InnerWall,
+                ExtrusionRole::InnerWall,
+            ],
+            vec![
+                ExtrusionRole::InnerWall,
+                ExtrusionRole::OuterWall,
+                ExtrusionRole::InnerWall,
+            ],
+        ] {
+            let entities: Vec<_> = committed_roles
+                .into_iter()
+                .enumerate()
+                .map(|(index, role)| {
+                    make_entity(index as u32, role, 100.0 - index as f32 * 10.0, 0.0)
+                })
+                .collect();
+            let (perm, _changes) = module.group_then_nearest_neighbor(&entities);
+            let wall_indices: Vec<u32> = perm
+                .iter()
+                .map(|&(index, _)| index)
+                .filter(|index| {
+                    matches!(
+                        entities[*index as usize].role,
+                        ExtrusionRole::InnerWall | ExtrusionRole::OuterWall
+                    )
+                })
+                .collect();
+            let expected: Vec<u32> = (0..entities.len() as u32).collect();
+            assert_eq!(wall_indices, expected);
+        }
     }
 }

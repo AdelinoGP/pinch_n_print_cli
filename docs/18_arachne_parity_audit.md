@@ -210,10 +210,12 @@ Categories: **CONFIG** (key exposure), **ALGO** (behavior), **INTEG**
 - **Self-captured fixtures** — all Arachne parity baselines are self-captured,
   not OrcaSlicer-oracle outputs (D-109 / D-112-SELFCAPTURED-BASELINES, open,
   accepted).
-- **`wall_sequence` ownership** — `InnerOuterInner` reordering exists in
-  `perimeter_utils` / classic, but ownership is split with
-  `path-optimization-default` contra ADR-0011 (DEV-070, open). Behavior for
-  the Arachne path should be re-verified once DEV-070 is remediated.
+- **`wall_sequence` ownership** — the perimeter module resolves the existing
+  three-state configuration and commits the final Arachne `WallLoop` order.
+  The resolved value crosses the `arachne-params` WIT boundary unchanged;
+  `path-optimization-default` preserves the committed wall subsequence while
+  optimizing permitted travel. The Arachne path is covered by packet 156's
+  boundary, commit, and optimizer evidence.
 
 ## Gap summary table
 
@@ -300,7 +302,7 @@ re-verified against the OrcaSlicer source and DROPPED:
 
 | # | OrcaSlicer feature | Ref | PnP status | Red test |
 |---|---|---|---|---|
-| G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:809`; `PerimeterGenerator.cpp:2302` | closed (packet 156-arachne-region-order) | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
+| G12 | `WallToolPaths::getRegionOrder` (odd-after-enclosing) | `WallToolPaths.cpp:832-889`; `PerimeterGenerator.cpp:2287-2364` | implementation complete in packet 156; closure pending the final acceptance ceremony | `arachne_parity_round2::..._wall_region_order_odd_after_enclosing` |
 | G15 | `BeadingStrategy::getSplitMiddleThreshold` (split-middle rule) | `BeadingStrategy.hpp:97`; `BeadingStrategy.cpp:54-57`; `BeadingStrategy.cpp:72-73` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._beading_split_middle_threshold_exposed` |
 | G20 | `ExtrusionLine::simplify` `dist_greater` intersection-distance gate | `Arachne/utils/ExtrusionLine.cpp:163-175` | closed (packet 155-arachne-beading-simplify-parity) | `arachne_parity_round2::..._simplify_intersection_distance_gate_present` |
 
@@ -308,27 +310,33 @@ re-verified against the OrcaSlicer source and DROPPED:
 
 ### G12: Wall region order — odd-after-enclosing (Algorithm)
 
-**OrcaSlicer:** `WallToolPaths::getRegionOrder` (`WallToolPaths.cpp:809`),
-called from `PerimeterGenerator.cpp:2302`, orders the emitted toolpath
+**OrcaSlicer:** `WallToolPaths::getRegionOrder` (`WallToolPaths.cpp:832-889`),
+called from the finalized-extrusion walk in `PerimeterGenerator.cpp:2287-2364`, orders the emitted toolpath
 regions so an inner (odd) region is emitted *after* the enclosing even
 region.
 
-**PnP status:** closed (this packet). `region_order.rs` faithfully ports
-`getRegionOrder` and the topological walk, and `run_arachne_pipeline` applies
-the pass to flattened `Vec<ExtrusionLine>` values before stitching.
+**PnP status:** implementation complete through packet 156 Steps 1-7;
+closure remains pending the final acceptance ceremony. `region_order.rs` ports the canonical
+pair guards, candidate-cell lookup, and topological walk, and
+`run_arachne_pipeline` applies the pass to finalized, non-empty
+`Vec<ExtrusionLine>` values after stitching and post-processing. The resolved
+three-state `wall_sequence` is carried through `arachne-params`; the perimeter
+module commits the resulting `WallLoop` order and path optimization preserves
+that committed wall subsequence.
 
 **Expected:** for nested concentric islands, the outer-wall `ExtrusionLine`s
 precede the inner-wall `ExtrusionLine`s in the returned `Vec`
 (odd-after-enclosing).
 
 **Current:** nested regions are emitted in odd-after-enclosing order, with
-deterministic tie-breaking and a deterministic fallback when no unblocked
-candidate is available.
+deterministic input-order tie-breaking. The walk consumes the canonical
+acyclic constraint graph and does not force-emit a cycle fallback.
 
 **Test:** `arachne_parity_wall_region_order_odd_after_enclosing`
 
 **Former panic message:** `PARITY GAP: wall region order odd-after-enclosing`
-(`getRegionOrder` pass now closes this gap).
+(`getRegionOrder` pass implements this gap; the audit remains open until the
+packet acceptance ceremony passes).
 
 ### G15: `BeadingStrategy::getSplitMiddleThreshold` not on the trait (Data Model)
 
@@ -444,7 +452,10 @@ File: `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs`
 
 ## Porting reminders for the fixing agent (additive)
 
-- G12 lives entirely in the Rust pipeline; no WIT/manifest change.
+- G12 crosses the existing module-owned `wall_sequence` configuration through
+  the `arachne-params.wall-sequence` WIT field. The perimeter module remains
+  the sole config resolver and final `WallLoop` order owner; the host and SDK
+  transport the resolved enum, and path optimization preserves it.
 - G15's `wall_split_middle_threshold` is an internal Arachne parameter
   (no registered PnP config key yet); plumb it through `BeadingFactoryParams`
   the same way `default_transition_length` and `transition_filter_dist` are

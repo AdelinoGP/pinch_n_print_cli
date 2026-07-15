@@ -170,11 +170,13 @@
   `arachne_parity_round2` target that distinguishes all three resolved modes,
   including `InnerOuterInner` on layer 0 and a later layer.
 - Precondition: Step 4b propagation check is green and guests have been rebuilt.
-- Postcondition: AC-5 has a registered, non-placeholder assertion over the
-  host-observed sequence and its target command is runnable.
+- Postcondition: AC-5 captures `WallSequence` immediately after WIT decoding,
+  before any module wall construction or role ordering, and asserts all three
+  values on layer 0 and a later layer.
 - Files allowed to read: `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
   its fixture module; existing guest-host Arachne tests.
-- Files allowed to edit (<=3): `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
+- Files allowed to edit (<=3): `crates/slicer-wasm-host/src/host.rs` (test-only
+  capture seam); `crates/slicer-runtime/tests/arachne_parity_round2.rs`;
   `crates/slicer-runtime/tests/fixtures/arachne_parity/mod.rs` only if a layer
   fixture is necessary.
 - Expected sub-agent dispatches:
@@ -196,8 +198,9 @@
   layer-sensitive `InnerOuterInner` behavior, then commit `WallLoop`s without
   an unconditional ascending `perimeter_index` sort that reverses that result.
 - Precondition: Step 5 WIT propagation test is green.
-- Postcondition: module output honors all three modes and retains canonical
-  region-order precedence; config is interpreted only in the module.
+- Postcondition: module output honors all three modes and preserves the exact
+  distinguishable core path relation `outer-A < odd-inner-A < outer-B`; a
+  global `perimeter_index` sort cannot satisfy the test.
 - Files allowed to read: `modules/core-modules/arachne-perimeters/src/lib.rs`
   config resolution and wall build/commit ranges; `crates/slicer-ir/src/slice_ir.rs`
   `WallLoop` fields; existing module tests.
@@ -216,8 +219,8 @@
 - Narrow verification:
   - `cargo test -p arachne-perimeters --test wall_sequence_commit_tdd`
   - `cargo xtask build-guests --check`
-- Exit condition: one fixture per mode passes, with an explicit layer-0 and
-  later-layer sandwich assertion.
+- Exit condition: one fixture per mode passes, with explicit layer-0/later
+  sandwich assertions and cross-region path-marker precedence.
 
 ## Step 7: Preserve sequence through path optimization
 
@@ -225,9 +228,9 @@
   wall-sequence relation while retaining permitted nearest-neighbor travel
   choices.
 - Precondition: Step 6 module tests are green.
-- Postcondition: optimizer output preserves selected committed sequence for
-  Arachne walls in all modes; unrelated optimizer behavior has a regression
-  guard.
+- Postcondition: a live Arachne Perimeters -> optimizer fixture preserves
+  committed sandwich path identities `[1, 0, 2]`, not merely wall roles;
+  unrelated optimizer behavior has a regression guard.
 - Files allowed to read: `modules/core-modules/path-optimization-default/src/lib.rs`;
   its existing tests; the WIT view fields it consumes.
 - Files allowed to edit (<=3): `modules/core-modules/path-optimization-default/src/lib.rs`;
@@ -243,14 +246,15 @@
 - OrcaSlicer refs: `PerimeterGenerator.cpp` final wall-sequence ordering.
 - Narrow verification:
   - `cargo test -p slicer-runtime --test arachne_wall_sequence_e2e_tdd`
-- Exit condition: all three sequence-mode assertions pass and input order is
-  not used solely as an accidental tie-break.
+- Exit condition: all three sequence-mode assertions pass and the live
+  sandwich identity order is exactly preserved.
 
 ## Step 8: Audit, WIT, and deviation documentation
 
 - Objective: replace stale G12 closure claims with accurate references and
   record the real WIT/ownership change; only then mark the packet implemented.
-- Precondition: Steps 1-7 are green and guests are fresh.
+- Precondition: Steps 1-7 are green and guests are fresh, excluding only the
+  documented unrelated D-104f concentric-infill red.
 - Postcondition: audit, WIT documentation, and deviation log accurately
   reflect the completed work; packet status remains draft pending Step 9.
 - Files allowed to read: `docs/18_arachne_parity_audit.md` G12 ranges;
@@ -297,8 +301,9 @@
   - `rg -q 'final print order' docs/adr/0011-perimeter-module-owns-wall-sequencing.md`
   - `cargo check --workspace --all-targets`
   - `cargo clippy --workspace --all-targets -- -D warnings`
-- Exit condition: every AC command and Doc Impact grep passes; a full packet
-  review has no open blocker; only then change packet status to `implemented`.
+- Exit condition: every AC command and Doc Impact grep passes; the audit and
+  D-157 are not marked closed before this point; a full packet review has no
+  open blocker; only then change packet status to `implemented`.
 
 ## Per-Step Budget Roll-Up
 

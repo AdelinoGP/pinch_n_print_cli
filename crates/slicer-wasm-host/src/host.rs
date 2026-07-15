@@ -1629,6 +1629,13 @@ use layer::slicer::config::config_types as ct;
 use layer::slicer::ir_handles::ir_handles as ir;
 use layer::slicer::types::geometry as geo;
 
+/// Test-only observation point for the decoded WIT input to the Arachne host
+/// service. The capture happens before `ArachneParams` is constructed, so it
+/// cannot observe a value reconstructed from module output.
+#[doc(hidden)]
+pub static HOST_ARACHNE_WALL_SEQUENCE_CAPTURE: std::sync::Mutex<Vec<hs::WallSequence>> =
+    std::sync::Mutex::new(Vec::new());
+
 // `module-errors` only contains a record (no functions/resources),
 // so the generated Host trait is empty and requires a trivial impl.
 // Now sourced from canonical slicer:common/module-errors package.
@@ -1801,6 +1808,10 @@ impl hs::Host for HostExecutionContext {
         params: hs::ArachneParams,
     ) -> wasmtime::Result<Result<(Vec<ir::ExtrusionLine>, Vec<ir::ExtrusionLine>), String>> {
         let ir_polygons = wit_to_ir_expolygons(&polygons);
+        HOST_ARACHNE_WALL_SEQUENCE_CAPTURE
+            .lock()
+            .expect("Arachne wall-sequence capture mutex poisoned")
+            .push(params.wall_sequence);
         let core_params = slicer_core::arachne::pipeline::ArachneParams {
             optimal_width: params.optimal_width as f64,
             preferred_bead_width_outer: params.preferred_bead_width_outer as f64,
@@ -1824,7 +1835,17 @@ impl hs::Host for HostExecutionContext {
             smallest_line_segment_squared: params.smallest_line_segment_squared as f64,
             allowed_error_distance_squared: params.allowed_error_distance_squared as f64,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f64,
-            outer_to_inner: false,
+            wall_sequence: match params.wall_sequence {
+                hs::WallSequence::InnerOuter => {
+                    slicer_core::perimeter_utils::WallSequence::InnerOuter
+                }
+                hs::WallSequence::OuterInner => {
+                    slicer_core::perimeter_utils::WallSequence::OuterInner
+                }
+                hs::WallSequence::InnerOuterInner => {
+                    slicer_core::perimeter_utils::WallSequence::InnerOuterInner
+                }
+            },
         };
 
         let to_wit_lines = |lines: Vec<slicer_ir::ExtrusionLine>| -> Vec<ir::ExtrusionLine> {

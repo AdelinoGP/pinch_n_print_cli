@@ -69,7 +69,7 @@ pub fn annulus_mm(outer_mm: f32, hole_mm: f32) -> ExPolygon {
             points: vec![p_mm(-oh, -oh), p_mm(oh, -oh), p_mm(oh, oh), p_mm(-oh, oh)],
         },
         holes: vec![Polygon {
-            points: vec![p_mm(-hh, -hh), p_mm(-hh, hh), p_mm(hh, hh), p_mm(hh, -hh)],
+            points: vec![p_mm(-hh, -hh), p_mm(hh, -hh), p_mm(hh, hh), p_mm(-hh, hh)],
         }],
     }
 }
@@ -97,16 +97,14 @@ pub const UNITS_PER_MM_F64: f64 = UNITS_PER_MM;
 // TDD-red that fails to compile until the gap is closed.
 // ===========================================================================
 
-/// Two concentric square islands (outer 10 mm, inner 9 mm, same centre)
-/// representing separate `ExPolygon` regions. Used to probe OrcaSlicer's
+/// A single 10 mm square region with a concentric 9 mm square hole. Used to probe OrcaSlicer's
 /// "odd-after-enclosing" region ordering (`WallToolPaths::getRegionOrder`,
 /// `WallToolPaths::getRegionOrder`): the emitted wall regions must be ordered so that
 /// an inner (odd) region follows the enclosing even region. The PnP pipeline
 /// flattens the per-inset buckets in source order and performs no such
 /// reordering (G12).
 pub fn ex_polygons_concentric_islands_mm() -> Vec<ExPolygon> {
-    // see packet D-157
-    vec![square_mm(10.0), square_mm(9.0)]
+    vec![annulus_mm(10.0, 9.0)]
 }
 
 /// Builds the canonical Arachne beading-strategy stack via

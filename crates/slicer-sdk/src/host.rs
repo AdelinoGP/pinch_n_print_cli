@@ -28,6 +28,15 @@ use std::time::Instant;
 
 use slicer_ir::{BoundingBox3, ExPolygon, Point3, Polygon};
 
+/// Wall emission sequence, mirroring
+/// `slicer_core::perimeter_utils::WallSequence`. Re-exported here so
+/// module authors can refer to the SDK's host-side `ArachneParams.wall_sequence`
+/// field without taking a direct dependency on `slicer-core` (which is
+/// `host-algos`-gated and unavailable on `wasm32` guest builds — the
+/// `WallSequence` type itself is plain data, so the re-export is safe on
+/// both targets).
+pub use slicer_core::perimeter_utils::WallSequence;
+
 /// Log levels accepted by [`log`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
@@ -512,8 +521,8 @@ pub struct ArachneParams {
     pub allowed_error_distance_squared: f64,
     /// Area deviation threshold (mm²) for near-colinear fast-path guard.
     pub maximum_extrusion_area_deviation: f64,
-    /// Whether outer walls are emitted before inner walls.
-    pub outer_to_inner: bool,
+    /// Wall emission sequence, matching the core Arachne pipeline.
+    pub wall_sequence: WallSequence,
 }
 
 impl Default for ArachneParams {
@@ -544,7 +553,7 @@ impl Default for ArachneParams {
             smallest_line_segment_squared: 0.0025,
             allowed_error_distance_squared: 0.000025,
             maximum_extrusion_area_deviation: 0.005,
-            outer_to_inner: false,
+            wall_sequence: WallSequence::InnerOuter,
         }
     }
 }
@@ -587,7 +596,7 @@ pub fn generate_arachne_walls(
             smallest_line_segment_squared: params.smallest_line_segment_squared,
             allowed_error_distance_squared: params.allowed_error_distance_squared,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation,
-            outer_to_inner: params.outer_to_inner,
+            wall_sequence: params.wall_sequence,
         };
         slicer_core::arachne::pipeline::run_arachne_pipeline(
             polygons,
@@ -629,6 +638,7 @@ package slicer:types {
 package slicer:common {
     interface host-services {
         use slicer:types/geometry.{ex-polygon, extrusion-line};
+        enum wall-sequence { inner-outer, outer-inner, inner-outer-inner }
         record arachne-params {
             optimal-width: f32,
             preferred-bead-width-outer: f32,
@@ -652,6 +662,7 @@ package slicer:common {
             smallest-line-segment-squared: f32,
             allowed-error-distance-squared: f32,
             maximum-extrusion-area-deviation: f32,
+            wall-sequence: wall-sequence,
         }
         generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<tuple<list<extrusion-line>, list<extrusion-line>>, string>;
     }
@@ -731,6 +742,17 @@ world sdk-arachne {
             smallest_line_segment_squared: params.smallest_line_segment_squared as f32,
             allowed_error_distance_squared: params.allowed_error_distance_squared as f32,
             maximum_extrusion_area_deviation: params.maximum_extrusion_area_deviation as f32,
+            wall_sequence: match params.wall_sequence {
+                WallSequence::InnerOuter => {
+                    __sdk_host_arachne_import::slicer::common::host_services::WallSequence::InnerOuter
+                }
+                WallSequence::OuterInner => {
+                    __sdk_host_arachne_import::slicer::common::host_services::WallSequence::OuterInner
+                }
+                WallSequence::InnerOuterInner => {
+                    __sdk_host_arachne_import::slicer::common::host_services::WallSequence::InnerOuterInner
+                }
+            },
         };
 
         let result =

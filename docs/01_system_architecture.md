@@ -299,6 +299,12 @@ Layer::Perimeters
            the real pipeline through a WIT host-service bridge,
            `generate-arachne-walls` (mirrors the existing `medial-axis`
            bridge; see D-112-HOSTSVC-BRIDGE).
+           The perimeter module owns wall sequencing: it resolves the
+           three-state `wall_sequence`, applies it to the finalized Arachne
+           wall lines, and commits `PerimeterRegion.walls` in final print
+           order. Later seam and path-optimization stages may optimize
+           permitted travel, but must preserve that committed intra-region
+           wall subsequence.
            Seam candidate collection.
            Thin-wall detection.
            Propagates segment_annotations from SlicedRegion polygon
