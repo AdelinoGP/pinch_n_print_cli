@@ -1,87 +1,57 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-`docs/` is the canonical source for architecture, IR schemas, WIT contracts, scheduler behavior, and the coordinate system. **Read the relevant doc before answering architecture questions or modifying contracts** — do not rely on summaries here.
+`docs/` is the canonical source for architecture, IR schemas, WIT contracts, scheduler behavior, and the coordinate system. **Read the relevant doc before answering architecture questions or modifying contracts** — do not rely on summaries here. For the full doc index with one-line descriptions of each file, read @.claude/doc-index.md.
 
 ## Build & Test Commands
 
 ```bash
 cargo build --workspace
-cargo clippy --workspace --all-targets -- -D warnings  # required before committing (--all-targets also compiles test/bench targets)
+cargo clippy --workspace --all-targets -- -D warnings  # required before committing
 cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd   # narrow run; integration tests bucket into 5 binaries: unit|contract|executor|integration|e2e
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
-cargo xtask dist                                     # build guests + pnp_cli (release) and stage a runnable bundle into target/dist/ (add --debug for debug-profile binary)
+cargo xtask dist                                     # build guests + pnp_cli (release), stage into target/dist/ (add --debug for debug binary)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
 
-### Benchmarks (slow; not in CI)
-
-```bash
-# Native — fast, no WASM needed:
-cargo bench -p slicer-core    --bench polygon_ops
-cargo bench -p slicer-helpers --bench mesh_ops
-# Host:
-cargo bench -p slicer-runtime --bench pipeline       # instrumentation overhead
-cargo bench -p slicer-runtime --bench per_stage      # plan-freeze serial-edge helpers
-cargo bench -p slicer-runtime --bench wasm_modules   # v1 stub; needs cargo xtask build-guests
-```
-
-### HTML slicer report (debugging)
-
-```bash
-cargo run --bin pnp_cli --release -- slice \
-    --model resources/benchy.stl \
-    --module-dir modules/core-modules \
-    --output /tmp/out.gcode \
-    --report /tmp/slicer-report.html         # opt-in; zero overhead when absent
-```
-
-See `docs/16_slicer_report.md` for format, allocator contract, and known v1 limitations.
+Benchmark commands and the HTML slicer report (`--report`) are rarely needed — read @.claude/aux-commands.md when you need them.
 
 ## Post-Merge Naming (Packet 69)
-
-post-merge naming reference for all agents and tools:
 
 - `slicer-host` library → `slicer-runtime` (crate name)
 - `slicer-cli` crate → deleted (verbs absorbed into `pnp_cli`)
 - `slicer` / `slicer-host` binaries → `pnp_cli`
 
-## Test Discipline (agents must follow)
+## Test Discipline
 
-**Do not run `cargo test --workspace` by default.** The full suite is >1000 tests and takes ≥11 minutes — running it speculatively or "to be safe" wastes time and tokens.
-
-Default to the narrowest test that proves the change:
+**Do not run `cargo test --workspace` by default.** The full suite is >1000 tests, ≥11 minutes. Default to the narrowest test that proves the change:
 - A single test:        `cargo test -p <crate> --test <file> -- <test_name> --nocapture`
 - One test file:        `cargo test -p <crate> --test <file>`
 - One crate:            `cargo test -p <crate>`
-- Type-check only:      `cargo check --workspace --all-targets` (seconds, not minutes)
+- Type-check only:      `cargo check --workspace --all-targets`
 
-**Always use `--all-targets` for check/clippy gates.** Plain `cargo check/clippy --workspace` does **not** compile test or bench targets — a change that churns generated bindgen paths or a stage signature can leave test targets non-compiling while the gate stays green (this shipped silently once: packet 72 left three `slicer-runtime` test targets broken, caught only by accident in packet 73). The acceptance gate must build all targets.
+**Always use `--all-targets` for check/clippy gates.** Plain `cargo check/clippy --workspace` does **not** compile test/bench targets — a change can leave test targets non-compiling while the gate stays green. The acceptance gate must build all targets.
 
 `cargo test --workspace` is permitted **only** when:
 1. The user explicitly asks for it, OR
 2. A packet's acceptance ceremony / completion gate (`packet.spec.md` / `implementation-plan.md`) requires it for closure, AND every narrower verification command on that packet has already passed.
 
-When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail` return — never absorb the full output. See `.claude/skills/swarm/SKILL.md` and `.claude/skills/spec-review/SKILL.md` for the dispatch contract.
+When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail` return — never absorb the full output. See `.claude/skills/swarm/SKILL.md` and `.claude/skills/spec-review/SKILL.md`.
 
-### Gated test entry point: `cargo xtask test`
+### `cargo xtask test` — the gated entry point
 
-`cargo xtask test [ARGS...]` runs `cargo xtask build-guests --check` first (rebuilding if any guest is stale), then execs `cargo test ARGS...` with output tee'd to `target/test-output.log`. It is the **enforced entry point** for any test run that touches guest WASM artifacts — i.e. the two permitted `cargo test --workspace` cases above and any whole-suite / multi-crate run.
+`cargo xtask test [ARGS...]` runs `cargo xtask build-guests --check` first (rebuilding if any guest is stale), then execs `cargo test ARGS...` with output tee'd to `target/test-output.log`. It is the **enforced entry point** for any test run that touches guest WASM artifacts — i.e. the two `cargo test --workspace` cases above and any whole-suite / multi-crate run.
 
-`cargo xtask test --summary [ARGS...]` runs the same pipeline but prints a compact LLM-friendly digest (one `test result:` line per test binary, failing-test detail blocks, a final `PASS`/`FAIL` verdict, and the full-output path) instead of streaming every per-test `ok` line. **Prefer `--summary` for agent-driven runs** — it keeps context usage to ~10-50 lines instead of 1000+, with the full output still on disk for `Grep`/`Read` drill-down.
+`cargo xtask test --summary [ARGS...]` — same pipeline but prints a compact LLM-friendly digest (one `test result:` line per test binary, failing-test detail, final `PASS`/`FAIL`, full-output path). **Prefer `--summary` for agent-driven runs.**
 
-`cargo xtask test --summary-from <FILE>` (or `-` for `target/test-output.log`) re-summarizes an existing log without re-running tests; no freshness gate fires (no test run).
+`cargo xtask test --summary-from <FILE>` (or `-` for `target/test-output.log`) — re-summarizes an existing log without re-running tests.
 
-**Rule:** before running `cargo test --workspace` (or any broad test run after stashing working-tree changes to diagnose a regression), you MUST use `cargo xtask test --workspace` instead of bare `cargo test --workspace`. This guarantees the guest-WASM freshness gate fires before the suite; a stale guest is your bug until `--check` proves otherwise (see "Guest WASM Staleness" below).
+**Rule:** before running `cargo test --workspace` (or any broad test run after stashing working-tree changes to diagnose a regression), you MUST use `cargo xtask test --workspace`. This guarantees the guest-WASM freshness gate fires. A stale guest is your bug until `--check` proves otherwise (see "Guest WASM Staleness" below). Narrow runs stay on plain `cargo test`.
 
-Narrow runs — single test, one file, one crate — stay on plain `cargo test` directly; the gate is opt-in, not on every invocation.
-
-**Regression-diagnosis workflow (enforced):** when you stash working-tree changes to bisect / diagnose a regression (per `.claude/skills/diagnose/SKILL.md`), the test run after stashing MUST go through `cargo xtask test` so the freshness gate runs against the stashed (baseline) tree, not whatever guest artifacts happen to be on disk. Skipping the gate during a bisect silently attributes stale-guest failures to your stashed code and corrupts the diagnosis.
+**Regression-diagnosis workflow (enforced):** when you stash working-tree changes to bisect / diagnose a regression (per `.claude/skills/diagnose/SKILL.md`), the test run after stashing MUST go through `cargo xtask test` so the freshness gate runs against the stashed (baseline) tree, not whatever guest artifacts happen to be on disk. Skipping the gate during a bisect silently attributes stale-guest failures to your stashed code.
 
 ### Test output must always tee to `target/test-output.log`
 
-The Bash tool truncates long console output. Re-running a multi-minute test suite just to re-read its summary is the single most expensive agent mistake on this repo. **Every `cargo test` / `cargo nextest` invocation MUST redirect combined output to `target/test-output.log`:**
+The Bash tool truncates long console output. **Every `cargo test` / `cargo nextest` invocation MUST redirect combined output to `target/test-output.log`:**
 
 ```bash
 mkdir -p target && cargo test -p <crate> --test <file> 2>&1 | tee target/test-output.log
@@ -89,16 +59,12 @@ mkdir -p target && cargo test -p <crate> --test <file> 2>&1 | tee target/test-ou
 
 (PowerShell: `cargo test ... 2>&1 | Tee-Object -FilePath target/test-output.log`.)
 
-When inspecting results, you MUST read the file — never re-run the tests to see more output. Use the dedicated tools, not raw shell:
-
+When inspecting results, you MUST read the file — never re-run the tests to see more output:
 - Summary lines: `Grep` for `^test result` in `target/test-output.log`.
-- Failures: `Grep` for `FAILED|panicked at|---- .* stdout ----` with `-C 5` in `target/test-output.log`.
-- Specific test: `Grep` for the test name in `target/test-output.log`, then `Read` the surrounding lines.
-- Full drill-down: `Read target/test-output.log` with `offset`/`limit`.
+- Failures: `Grep` for `FAILED|panicked at|---- .* stdout ----` with `-C 5`.
+- Specific test: `Grep` for the test name, then `Read` the surrounding lines.
 
-**Prohibited:** re-invoking `cargo test` because the previous run's stdout was truncated, claimed to "only show doc-tests", or "needs the full picture". The full picture is already on disk — read it. The log is overwritten on each run, so capture findings before launching the next run.
-
-`target/test-output.log` is gitignored via the existing `/target` rule; no additional ignore entry is needed.
+**Prohibited:** re-invoking `cargo test` because the previous run's stdout was truncated, claimed to "only show doc-tests", or "needs the full picture". The full picture is already on disk — read it. Capture findings before launching the next run (the log is overwritten each run).
 
 ## Coordinate System Hazard
 
@@ -106,18 +72,16 @@ When inspecting results, you MUST read the file — never re-run the tests to se
 
 ## Config Key Naming Convention
 
-All config key strings in Rust code (both host-side and module-side) must use **snake_case** (underscores), never kebab-case (hyphens).
+All config key strings in Rust code (host-side and module-side) must use **snake_case** (underscores), never kebab-case (hyphens).
 
 - Correct: `config.get("apply_to_all")`, `ConfigKey::from("fuzzy_skin.apply_to_all")`
 - Wrong:   `config.get("apply-to-all")`, `ConfigKey::from("fuzzy_skin.apply-to-all")`
 
-Module manifest TOML section headers (`[config.schema.apply_to_all]`) already use snake_case. Runtime key strings must match.
+Module manifest TOML section headers already use snake_case. Runtime key strings must match.
 
 ## Guest WASM Staleness (MUST follow)
 
-Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-wasm-host/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not.
-
-The test-guests all build into a single shared target directory at `crates/slicer-wasm-host/test-guests/target/` (one `CARGO_TARGET_DIR`, not one `target/` per guest); per-guest `[workspace]` sentinels are retained.
+Guest `.wasm` artifacts under `modules/core-modules/*/` and `crates/slicer-wasm-host/test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not. Test-guests all build into one shared target dir at `crates/slicer-wasm-host/test-guests/target/` (one `CARGO_TARGET_DIR`, not one `target/` per guest); per-guest `[workspace]` sentinels are retained.
 
 **You MUST run the freshness check before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
 
@@ -125,14 +89,14 @@ The test-guests all build into a single shared target directory at `crates/slice
 cargo xtask build-guests --check
 ```
 
-If it reports `STALE:`, you MUST rebuild (drop the `--check` flag) and re-run the failing test before drawing any conclusion about the failure's cause.
+If it reports `STALE:`, rebuild (drop `--check`) and re-run the failing test before drawing any conclusion.
 
-**You MUST run `--check` (and rebuild if stale) after editing any of the following paths**, because the build scripts treat them as guest-WASM inputs:
+**You MUST run `--check` (and rebuild if stale) after editing any of these paths** (build scripts treat them as guest-WASM inputs):
 
-- `crates/slicer-schema/wit/**/*.wit` — invalidates every guest's bindgen output (canonical single source; the old top-level `wit/` was deleted in packet 72)
+- `crates/slicer-schema/wit/**/*.wit` — invalidates every guest's bindgen (canonical single source; old top-level `wit/` deleted in packet 72)
 - `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**` — universal guest deps baked into every guest `.wasm`
-- `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — the `#[slicer_module]` impl bodies
-- `modules/core-modules/*/wit-guest/**` — the per-module guest shim
+- `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — `#[slicer_module]` impl bodies
+- `modules/core-modules/*/wit-guest/**` — per-module guest shim
 - `crates/slicer-wasm-host/test-guests/*/src/**` and `crates/slicer-wasm-host/test-guests/*/Cargo.toml` — test guest sources
 
 **Prohibited claims unless `--check` was just run and returned clean:** "the wasm rebuild is a separate workstream", "this is unrelated to my changes", "the build scripts are out of scope for this packet", or any equivalent deflection. Treat a stale guest as your bug until `--check` proves otherwise.
@@ -147,29 +111,8 @@ When modifying WIT types or interface definitions:
 
 ## Spec Packet Workflow
 
-Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before a packet can be closed; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony, not during implementation iterations (see Test Discipline above).
+Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
 
 ## OrcaSlicer Attribution Rules
 
-Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures compliance with AGPLv3 and proper attribution to the original authors.
-
-## Doc Index
-
-Read these directly rather than relying on summaries — they are kept current and authoritative.
-
-- `docs/00_project_overview.md` — vision and scope.
-- `docs/01_system_architecture.md` — pipeline tiers, data ownership, claim system, memory model, module search path.
-- `docs/02_ir_schemas.md` — every IR struct (`MeshIR`, `LayerPlanIR`, `SliceIR`, `SupportPlanIR`, etc.) with versioning rules.
-- `docs/03_wit_and_manifest.md` — WIT worlds, host-boundary enforcement, module manifest TOML schema, config validation.
-- `docs/04_host_scheduler.md` — DAG validation, four-phase execution, error handling.
-- `docs/05_module_sdk.md` — SDK helpers, `#[slicer_module]` macro, builder lifecycles for module authors.
-- `docs/07_implementation_status.md` — current phase, task backlog, deviation log. **Source of truth for what's blocked / in progress.**
-- `docs/08_coordinate_system.md` — unit system, Z convention, OrcaSlicer porting hazards.
-- `docs/09_progress_events.md` — structured runtime event contract.
-- `CONTEXT.md` — project glossary (concept-level vocabulary).
-- `docs/10_scenario_traces.md` — normative end-to-end scenario traces.
-- `docs/11_operational_governance_and_acceptance_gate.md` — Architecture Acceptance Gate criteria and release governance.
-- `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
-- `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.
-- `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
-- `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.
+Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures AGPLv3 compliance and proper attribution.
