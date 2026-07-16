@@ -39,7 +39,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::{
-    run_visual_debug, LayerSelector, TapSelector, VisualDebugError, VisualDebugRequest,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, VisualDebugError, VisualDebugRequest,
     VisualDebugSource, VisualizationSpec,
 };
 use serde_json::{json, Value};
@@ -109,6 +109,7 @@ fn model_request_with_viz(
         visualizations,
         resolution_scale,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 
@@ -1211,6 +1212,7 @@ fn missing_layer_collection_geometry_fails_with_render_failed_via_cli() {
         visualizations: vec![VisualizationSpec::Name("filled_areas".to_string())],
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     };
 
     let err = run_visual_debug(req, &output, false).expect_err(

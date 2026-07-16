@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::{
-    run_visual_debug, LayerSelector, TapSelector, VisualDebugError, VisualDebugRequest,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, VisualDebugError, VisualDebugRequest,
     VisualDebugSource,
 };
 use serde_json::Value;
@@ -71,6 +71,7 @@ fn model_request(taps: Vec<&str>, layers: Vec<i64>, config: PathBuf) -> VisualDe
         visualizations: Vec::new(),
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 
@@ -92,6 +93,7 @@ fn unreachable_model_request(taps: Vec<&str>, layers: Vec<i64>) -> VisualDebugRe
         visualizations: Vec::new(),
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 

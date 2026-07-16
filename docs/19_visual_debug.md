@@ -32,10 +32,51 @@ as many pixels; `resolution_scale: 3` uses nine times as many. Select the
 smallest scale that makes the suspected feature visible to avoid unnecessary
 image context cost.
 
+## Framing
+
+Every render is **aspect-preserving**: one uniform scale is applied to both
+axes, and the geometry is centered, so the unused axis becomes an even
+letterbox band. A square in millimeters always renders square in pixels. Since
+the raster is square by default, a wide model (a Benchy footprint is roughly
+2:1) fills the width and leaves blank bands above and below — that is correct
+output, not a cropping bug.
+
+The viewport is **model-wide**, not selection-wide: it is the model's own XY
+extent, unioned with the captured geometry so brim, skirt, and support are
+never clipped, plus a fixed 2 mm margin on all four sides. It does **not**
+depend on which layers or taps a request selected, so two bundles over one
+model are directly comparable — requesting layer 3 and requesting layers 0-50
+frame identically. Both source modes use the same transform: a model rendered
+from a pipeline tap and the same model rendered from its final G-code line up.
+
+`frame` selects what the viewport is framed to. It is optional and defaults to
+`"model"`:
+
+| `frame`   | Viewport                                                     |
+|-----------|--------------------------------------------------------------|
+| `"model"` | The model's XY extent (default). Fills the raster with the part. |
+| `"plate"` | The whole bed. Shows placement; a small part renders small. |
+
+`frame: "plate"` frames the bed **exactly** — it is never widened to the
+geometry, or it would stop meaning "the plate" as soon as a part sat near an
+edge. Both sources support it, reading the bed from whichever definition that
+source has:
+
+- **model**: the resolved `bed_shape` config key.
+- **gcode**: the `printable_area` comment in the G-code's own config block
+  (e.g. OrcaSlicer emits `; printable_area = 0x0,220x0,220x200,0x200`).
+
+A `.gcode` with no `printable_area` has no bed to frame to, so
+`frame: "plate"` against it is rejected rather than silently falling back to
+model framing.
+
 ## Reading A Bundle
 
 Read `manifest.json` before inspecting PNGs. It records each PNG's layer, tap,
-view type, shared viewport, source schema/parser version, and warnings.
+view type, shared viewport, source schema/parser version, and warnings. The
+manifest's `frame` records what the bundle was framed to; each rendered entry's
+`world_bounds_mm` records the shared world-space (mm) viewport it was projected
+through — identical across every entry in the bundle, on both source modes.
 
 All images in a bundle share one model-wide XY viewport and a fixed semantic
 legend. This makes a missing wall or shifted infill region comparable between

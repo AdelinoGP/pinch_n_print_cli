@@ -43,9 +43,14 @@ use slicer_ir::{
 /// `pnp-cli` bundle-wide `Viewport` (`docs/19_visual_debug.md`).
 pub const BASE_DIMENSION_PX: u32 = 1024;
 
-/// Fixed fraction of the tight content bounding box added as margin on each
-/// side of the shared viewport (AC-4: "fixed margin", request-independent).
-const MARGIN_FRACTION: f32 = 0.05;
+/// Fixed margin (mm) added on each side of the shared viewport (AC-4:
+/// "fixed margin", request-independent).
+///
+/// An absolute distance, applied equally to both axes and shared with
+/// `pnp-cli`'s standalone-G-code renderer so the two paths frame identically.
+/// This replaced a 5%-of-extent fraction, which scaled each axis by its own
+/// extent and so distorted a non-square viewport before projection even began.
+pub const VIEWPORT_MARGIN_MM: f32 = 2.0;
 
 /// Half-width (px) of a diagnostic-overlay marker square.
 const OVERLAY_MARKER_HALF_PX: i64 = 5;
@@ -163,6 +168,98 @@ impl ViewportBoundsMm {
     fn height(self) -> f32 {
         (self.max_y - self.min_y).max(1e-6)
     }
+
+    /// The smallest bounds containing both `self` and `other`.
+    ///
+    /// Used to guarantee the model-wide viewport never clips geometry that
+    /// lies outside the mesh footprint — brim, skirt, and support all can.
+    #[must_use]
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            min_x: self.min_x.min(other.min_x),
+            min_y: self.min_y.min(other.min_y),
+            max_x: self.max_x.max(other.max_x),
+            max_y: self.max_y.max(other.max_y),
+        }
+    }
+
+    /// These bounds grown by [`VIEWPORT_MARGIN_MM`] on all four sides.
+    ///
+    /// The margin is a fixed millimeter distance applied equally to both
+    /// axes: a margin expressed as a fraction of each axis' own extent is
+    /// itself anisotropic, which is what this renderer used to do.
+    #[must_use]
+    pub fn with_margin(self) -> Self {
+        Self {
+            min_x: self.min_x - VIEWPORT_MARGIN_MM,
+            min_y: self.min_y - VIEWPORT_MARGIN_MM,
+            max_x: self.max_x + VIEWPORT_MARGIN_MM,
+            max_y: self.max_y + VIEWPORT_MARGIN_MM,
+        }
+    }
+}
+
+/// The single world(mm)→pixel transform for **every** visual-debug render
+/// path — both the typed-IR stage renderer in this module and `pnp-cli`'s
+/// standalone-G-code renderer (`visual_debug_gcode.rs`).
+///
+/// One shared owner is the point. Packets 159 and 160 each wrote their own
+/// transform: this one (ported from the G-code path, which had it right)
+/// scales **uniformly** by `min(width_ratio, height_ratio)` and centers the
+/// result, so a shape's aspect ratio survives projection and the unused axis
+/// becomes a letterbox band. The stage renderer previously normalized X and
+/// Y independently against an always-square canvas, which stretched any
+/// non-square model — a Benchy footprint (~2:1) rendered visibly squashed.
+///
+/// `bounds` must already include any margin ([`ViewportBoundsMm::with_margin`]);
+/// this type never adds one.
+///
+/// Y is flipped: larger mm-Y renders toward the top of the canvas (smaller
+/// row index), matching the print-bed convention.
+#[derive(Debug, Clone, Copy)]
+pub struct Projector {
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+    canvas_height: f64,
+}
+
+impl Projector {
+    /// Fit `bounds` inside a `canvas_width` x `canvas_height` raster,
+    /// aspect-preserved and centered.
+    #[must_use]
+    pub fn new(bounds: ViewportBoundsMm, canvas_width: u32, canvas_height: u32) -> Self {
+        let world_w = f64::from(bounds.width());
+        let world_h = f64::from(bounds.height());
+        let cw = f64::from(canvas_width);
+        let ch = f64::from(canvas_height);
+        // The single uniform scale: fit the larger relative axis, letterbox
+        // the other. This `min` is the whole aspect-ratio fix.
+        let scale = (cw / world_w).min(ch / world_h);
+        let pad_x = (cw - world_w * scale) / 2.0;
+        let pad_y = (ch - world_h * scale) / 2.0;
+        Self {
+            scale,
+            offset_x: pad_x - f64::from(bounds.min_x) * scale,
+            offset_y: pad_y - f64::from(bounds.min_y) * scale,
+            canvas_height: ch,
+        }
+    }
+
+    /// Project a world-space (mm) point to pixel coordinates.
+    #[must_use]
+    pub fn project(&self, x: f64, y: f64) -> (f64, f64) {
+        (
+            x * self.scale + self.offset_x,
+            self.canvas_height - (y * self.scale + self.offset_y),
+        )
+    }
+
+    /// Convert a world-space (mm) length to pixels. Uniform across both axes.
+    #[must_use]
+    pub fn scale_mm(&self, mm: f64) -> f64 {
+        mm * self.scale
+    }
 }
 
 /// A rendered PNG plus its raster metadata.
@@ -274,20 +371,13 @@ pub fn compute_viewport_bounds(captures: &[StageCapture]) -> ViewportBoundsMm {
         max_x = 1.0;
         max_y = 1.0;
     }
-    apply_margin(min_x, min_y, max_x, max_y)
-}
-
-fn apply_margin(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ViewportBoundsMm {
-    let dx = (max_x - min_x).max(1e-3);
-    let dy = (max_y - min_y).max(1e-3);
-    let margin_x = dx * MARGIN_FRACTION;
-    let margin_y = dy * MARGIN_FRACTION;
     ViewportBoundsMm {
-        min_x: min_x - margin_x,
-        min_y: min_y - margin_y,
-        max_x: max_x + margin_x,
-        max_y: max_y + margin_y,
+        min_x,
+        min_y,
+        max_x,
+        max_y,
     }
+    .with_margin()
 }
 
 /// Every XY point (millimeters) touched by this capture's geometry, across
@@ -1185,15 +1275,24 @@ struct Canvas {
     width: u32,
     height: u32,
     buf: Vec<u8>,
+    /// This canvas' world(mm)→pixel transform, fixed for its whole lifetime.
+    /// Owning it here is why no drawing helper takes a `ViewportBoundsMm`:
+    /// there is exactly one transform per canvas, built once.
+    projector: Projector,
 }
 
 impl Canvas {
-    fn new(width: u32, height: u32) -> Self {
+    fn new(width: u32, height: u32, bounds: ViewportBoundsMm) -> Self {
         let mut buf = vec![0u8; (width as usize) * (height as usize) * 3];
         for px in buf.chunks_exact_mut(3) {
             px.copy_from_slice(&palette::BACKGROUND);
         }
-        Self { width, height, buf }
+        Self {
+            width,
+            height,
+            buf,
+            projector: Projector::new(bounds, width, height),
+        }
     }
 
     fn set(&mut self, x: i64, y: i64, color: [u8; 3]) {
@@ -1204,33 +1303,22 @@ impl Canvas {
         self.buf[idx..idx + 3].copy_from_slice(&color);
     }
 
-    fn to_px(&self, bounds: ViewportBoundsMm, x: f32, y: f32) -> (f32, f32) {
-        let u = (x - bounds.min_x) / bounds.width();
-        let v = (y - bounds.min_y) / bounds.height();
-        let px = u * (self.width as f32 - 1.0);
-        // Flip Y: larger mm-Y renders toward the top of the canvas (smaller
-        // row index), matching the print-bed convention.
-        let py = (1.0 - v) * (self.height as f32 - 1.0);
-        (px, py)
+    /// Project a world-space (mm) point onto this canvas via the shared,
+    /// aspect-preserving [`Projector`] — the same transform `pnp-cli`'s
+    /// standalone-G-code renderer uses, so both paths frame identically.
+    fn to_px(&self, x: f32, y: f32) -> (f32, f32) {
+        let (px, py) = self.projector.project(f64::from(x), f64::from(y));
+        (px as f32, py as f32)
     }
 
-    fn fill_polygon(
-        &mut self,
-        bounds: ViewportBoundsMm,
-        contour: &[(f32, f32)],
-        holes: &[Vec<(f32, f32)>],
-        color: [u8; 3],
-    ) {
+    fn fill_polygon(&mut self, contour: &[(f32, f32)], holes: &[Vec<(f32, f32)>], color: [u8; 3]) {
         if contour.len() < 3 {
             return;
         }
-        let contour_px: Vec<(f32, f32)> = contour
-            .iter()
-            .map(|&(x, y)| self.to_px(bounds, x, y))
-            .collect();
+        let contour_px: Vec<(f32, f32)> = contour.iter().map(|&(x, y)| self.to_px(x, y)).collect();
         let holes_px: Vec<Vec<(f32, f32)>> = holes
             .iter()
-            .map(|h| h.iter().map(|&(x, y)| self.to_px(bounds, x, y)).collect())
+            .map(|h| h.iter().map(|&(x, y)| self.to_px(x, y)).collect())
             .collect();
         let mut min_x = f32::MAX;
         let mut max_x = f32::MIN;
@@ -1257,11 +1345,8 @@ impl Canvas {
         }
     }
 
-    fn stroke_line(&mut self, bounds: ViewportBoundsMm, points: &[(f32, f32)], color: [u8; 3]) {
-        let px_points: Vec<(f32, f32)> = points
-            .iter()
-            .map(|&(x, y)| self.to_px(bounds, x, y))
-            .collect();
+    fn stroke_line(&mut self, points: &[(f32, f32)], color: [u8; 3]) {
+        let px_points: Vec<(f32, f32)> = points.iter().map(|&(x, y)| self.to_px(x, y)).collect();
         for pair in px_points.windows(2) {
             self.line(pair[0], pair[1], color);
         }
@@ -1306,17 +1391,12 @@ impl Canvas {
         }
     }
 
-    fn rect_outline(
-        &mut self,
-        bounds: ViewportBoundsMm,
-        mm_rect: (f32, f32, f32, f32),
-        color: [u8; 3],
-    ) {
+    fn rect_outline(&mut self, mm_rect: (f32, f32, f32, f32), color: [u8; 3]) {
         let (min_x, min_y, max_x, max_y) = mm_rect;
-        let tl = self.to_px(bounds, min_x, max_y);
-        let tr = self.to_px(bounds, max_x, max_y);
-        let bl = self.to_px(bounds, min_x, min_y);
-        let br = self.to_px(bounds, max_x, min_y);
+        let tl = self.to_px(min_x, max_y);
+        let tr = self.to_px(max_x, max_y);
+        let bl = self.to_px(min_x, min_y);
+        let br = self.to_px(max_x, min_y);
         self.line(tl, tr, color);
         self.line(tr, br, color);
         self.line(br, bl, color);
@@ -1353,15 +1433,15 @@ fn ray_cast(px: f32, py: f32, ring: &[(f32, f32)]) -> bool {
     inside
 }
 
-fn draw_shapes(canvas: &mut Canvas, bounds: ViewportBoundsMm, shapes: &[Shape]) {
+fn draw_shapes(canvas: &mut Canvas, shapes: &[Shape]) {
     for shape in shapes {
         match shape {
             Shape::Fill {
                 contour,
                 holes,
                 color,
-            } => canvas.fill_polygon(bounds, contour, holes, *color),
-            Shape::Line { points, color } => canvas.stroke_line(bounds, points, *color),
+            } => canvas.fill_polygon(contour, holes, *color),
+            Shape::Line { points, color } => canvas.stroke_line(points, *color),
         }
     }
 }
@@ -1378,35 +1458,26 @@ fn draw_shapes(canvas: &mut Canvas, bounds: ViewportBoundsMm, shapes: &[Shape]) 
 /// visualization on a geometry tap — `LayerPlanning` has no standalone tap
 /// or `CapturedIr` variant of its own, so this is the only place its
 /// sync/non-planar/active-region flags ever reach a rendered image.
-fn draw_overlay(
-    canvas: &mut Canvas,
-    bounds: ViewportBoundsMm,
-    ir: &CapturedIr,
-    layer_plan: Option<&GlobalLayer>,
-) {
+fn draw_overlay(canvas: &mut Canvas, ir: &CapturedIr, layer_plan: Option<&GlobalLayer>) {
     // `layer_bounds`: this capture's own geometry extent (derived, not a
     // capture field), for every variant.
     let pts = geometry_points_mm(ir);
     if let Some((min_x, min_y, max_x, max_y)) = bbox_of(&pts) {
-        canvas.rect_outline(
-            bounds,
-            (min_x, min_y, max_x, max_y),
-            palette::OVERLAY_BOUNDS,
-        );
+        canvas.rect_outline((min_x, min_y, max_x, max_y), palette::OVERLAY_BOUNDS);
     }
 
     match ir {
         CapturedIr::Perimeter(p) => {
             for region in &p.regions {
                 if let Some(seam) = seam_marker_point(region) {
-                    canvas.marker(canvas.to_px(bounds, seam.0, seam.1), palette::OVERLAY_SEAM);
+                    canvas.marker(canvas.to_px(seam.0, seam.1), palette::OVERLAY_SEAM);
                 }
             }
         }
         CapturedIr::LayerCollection(l) => {
             for tm in &l.travel_moves {
                 if let (Some(x), Some(y)) = (tm.x, tm.y) {
-                    canvas.marker(canvas.to_px(bounds, x, y), palette::OVERLAY_TRAVEL);
+                    canvas.marker(canvas.to_px(x, y), palette::OVERLAY_TRAVEL);
                 }
             }
             for ann in &l.annotations {
@@ -1416,7 +1487,7 @@ fn draw_overlay(
                 );
                 if let Some(entity) = l.ordered_entities.get(ann.after_entity_index as usize) {
                     if let Some(p) = entity.path.points.last() {
-                        canvas.marker(canvas.to_px(bounds, p.x, p.y), palette::OVERLAY_ANNOTATION);
+                        canvas.marker(canvas.to_px(p.x, p.y), palette::OVERLAY_ANNOTATION);
                     }
                 }
             }
@@ -1427,7 +1498,7 @@ fn draw_overlay(
             // module doc), rather than a `shapes_for` area/line shape.
             for entry in &sp.entries {
                 let p = entry.chosen_candidate.point;
-                canvas.marker(canvas.to_px(bounds, p.x, p.y), palette::OVERLAY_SEAM);
+                canvas.marker(canvas.to_px(p.x, p.y), palette::OVERLAY_SEAM);
             }
         }
         _ => {}
@@ -1549,10 +1620,10 @@ pub fn render_stage_capture_with_layer_plan(
 
     let width = BASE_DIMENSION_PX * resolution_scale;
     let height = BASE_DIMENSION_PX * resolution_scale;
-    let mut canvas = Canvas::new(width, height);
-    draw_shapes(&mut canvas, viewport, &shapes);
+    let mut canvas = Canvas::new(width, height, viewport);
+    draw_shapes(&mut canvas, &shapes);
     if matches!(view, RenderView::DiagnosticOverlay(_)) {
-        draw_overlay(&mut canvas, viewport, &capture.ir, layer_plan_overlay);
+        draw_overlay(&mut canvas, &capture.ir, layer_plan_overlay);
     }
 
     let png_bytes = encode_png(width, height, &canvas.buf);

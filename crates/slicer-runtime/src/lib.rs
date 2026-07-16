@@ -181,8 +181,8 @@ pub use slice_postprocess_prepass::{
     commit_shell_classification_builtin, ShellClassificationError,
 };
 pub use visual_debug_render::{
-    compute_viewport_bounds, render_stage_capture, GeometryView, RenderError, RenderView,
-    RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX,
+    compute_viewport_bounds, render_stage_capture, GeometryView, Projector, RenderError,
+    RenderView, RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX, VIEWPORT_MARGIN_MM,
 };
 // kept: consumed by crates/slicer-runtime/tests/e2e/threemf_subtypes_synthetic_e2e_tdd.rs:602
 pub use slicer_core::algos::region_mapping::execute_region_mapping;

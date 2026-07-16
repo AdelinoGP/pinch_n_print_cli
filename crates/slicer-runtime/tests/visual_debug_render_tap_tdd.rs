@@ -32,7 +32,7 @@ use slicer_ir::{
     CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
 };
 use slicer_runtime::{
-    compute_viewport_bounds, render_stage_capture, CapturedIr, GeometryView, RenderView,
+    compute_viewport_bounds, render_stage_capture, CapturedIr, GeometryView, Projector, RenderView,
     StageCapture, ViewportBoundsMm, BASE_DIMENSION_PX,
 };
 
@@ -162,14 +162,16 @@ fn mixed_unit_shared_viewport() {
     let bounds = compute_viewport_bounds(&captures);
 
     // True combined extent (pre-margin): x in [-400, 500], y in [-700, 600].
-    // AC-4's fixed 5% margin is added on each side of each axis' own extent.
-    let margin_x = (500.0 - (-400.0)) * 0.05;
-    let margin_y = (600.0 - (-700.0)) * 0.05;
+    // AC-4's fixed margin is an absolute millimeter distance, identical on
+    // both axes. It was previously 5% of each axis' own extent — which made
+    // the margin itself anisotropic (45 mm in x vs 65 mm here in y), skewing
+    // a non-square viewport before projection even began.
+    let margin = slicer_runtime::VIEWPORT_MARGIN_MM;
     let expected = ViewportBoundsMm {
-        min_x: -400.0 - margin_x,
-        max_x: 500.0 + margin_x,
-        min_y: -700.0 - margin_y,
-        max_y: 600.0 + margin_y,
+        min_x: -400.0 - margin,
+        max_x: 500.0 + margin,
+        min_y: -700.0 - margin,
+        max_y: 600.0 + margin,
     };
 
     approx_eq(bounds.min_x, expected.min_x, 0.1);
@@ -228,16 +230,17 @@ fn decode_rgb(png_bytes: &[u8]) -> (u32, u32, Vec<u8>) {
     (info.width, info.height, buf[..info.buffer_size()].to_vec())
 }
 
-/// Mirrors the renderer's private `Canvas::to_px` mapping exactly (mm ->
-/// pixel, with the Y flip so larger mm-Y renders toward the top) so the test
-/// can sample the pixel a known mm point lands on without needing access to
-/// the renderer's internals.
+/// Sample the pixel a known mm point lands on, using the renderer's **real**
+/// `Projector` rather than a copy of its arithmetic.
+///
+/// This previously reimplemented `Canvas::to_px`'s mapping by hand. That copy
+/// was the reason the renderer's aspect-ratio bug (independent per-axis
+/// scaling onto a square canvas) was invisible to this suite for two packets:
+/// the test and the code were wrong in exactly the same way, so they agreed.
+/// Always project through `Projector` — never restate the transform here.
 fn mm_to_px(bounds: ViewportBoundsMm, width: u32, height: u32, x: f32, y: f32) -> (usize, usize) {
-    let u = (x - bounds.min_x) / (bounds.max_x - bounds.min_x);
-    let v = (y - bounds.min_y) / (bounds.max_y - bounds.min_y);
-    let px = (u * (width as f32 - 1.0)).round() as usize;
-    let py = ((1.0 - v) * (height as f32 - 1.0)).round() as usize;
-    (px, py)
+    let (px, py) = Projector::new(bounds, width, height).project(f64::from(x), f64::from(y));
+    (px.round().max(0.0) as usize, py.round().max(0.0) as usize)
 }
 
 fn pixel_at(rgb: &[u8], width: u32, x: usize, y: usize) -> [u8; 3] {

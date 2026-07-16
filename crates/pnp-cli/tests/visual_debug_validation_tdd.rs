@@ -23,7 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::{
-    run_visual_debug, LayerSelector, TapSelector, ValidationError, VisualDebugError,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, ValidationError, VisualDebugError,
     VisualDebugRequest, VisualDebugSource, VisualizationSpec,
 };
 use tempfile::TempDir;
@@ -91,6 +91,7 @@ fn gcode_request(
         visualizations,
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 
@@ -113,6 +114,7 @@ fn unreachable_model_request(layers: Vec<LayerSelector>) -> VisualDebugRequest {
         visualizations: Vec::new(),
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 
@@ -334,4 +336,209 @@ fn plain_index_selector_still_resolves() {
         manifest["images"].as_array().expect("images array").len(),
         1
     );
+}
+
+// ───────────────────── `frame` request field (framing contract) ─────────────
+
+/// `frame` is optional. Every request written before the field existed must
+/// still deserialize — `VisualDebugRequest` is `deny_unknown_fields`, so the
+/// field's `#[serde(default)]` is what makes that true, and this pins it.
+#[test]
+fn frame_defaults_to_model_when_absent_from_the_request_json() {
+    let json = r#"{
+        "schema_version": "1.0.0",
+        "source": { "kind": "gcode", "path": "final.gcode" },
+        "layers": [0],
+        "taps": ["final_gcode"],
+        "visualizations": ["filament_lines"],
+        "resolution_scale": 1
+    }"#;
+    let req: VisualDebugRequest =
+        serde_json::from_str(json).expect("a request without `frame` must still deserialize");
+    assert_eq!(req.frame, FrameMode::Model);
+}
+
+/// The two accepted spellings, and nothing else.
+#[test]
+fn frame_accepts_model_and_plate_and_rejects_anything_else() {
+    fn frame_of(literal: &str) -> Result<VisualDebugRequest, serde_json::Error> {
+        serde_json::from_str(&format!(
+            r#"{{
+                "schema_version": "1.0.0",
+                "source": {{ "kind": "gcode", "path": "final.gcode" }},
+                "layers": [0],
+                "taps": ["final_gcode"],
+                "visualizations": ["filament_lines"],
+                "frame": "{literal}"
+            }}"#
+        ))
+    }
+    assert_eq!(frame_of("model").expect("model").frame, FrameMode::Model);
+    assert_eq!(frame_of("plate").expect("plate").frame, FrameMode::Plate);
+    assert!(
+        frame_of("bed").is_err(),
+        "an unknown frame mode must be rejected, not silently defaulted"
+    );
+}
+
+/// A standalone `.gcode` resolves no printer profile, but real slicer output
+/// carries the slicer's own config block — and its `printable_area` comment is
+/// the bed polygon. So `frame: "plate"` works on this source too, framed to
+/// that bed.
+///
+/// `printable_area = 0x0,220x0,220x200,0x200` is OrcaSlicer's emitted form: a
+/// 220x200 bed as `,`-separated points whose X and Y are joined by a literal
+/// `x`.
+const GCODE_WITH_PRINTABLE_AREA: &str = "\
+;LAYER_CHANGE
+;Z:0.2
+G1 Z0.2 F600
+;TYPE:Outer wall
+G1 X100 Y100 F3000
+G1 X110 Y100 E1.0 F1200
+G1 X110 Y110 E2.0
+G1 X100 Y110 E3.0
+G1 X100 Y100 E4.0
+; printable_area = 0x0,220x0,220x200,0x200
+";
+
+#[test]
+fn plate_frame_on_a_gcode_source_frames_to_its_printable_area() {
+    let tmp = TempDir::new().expect("tempdir");
+    let gcode_path = write_gcode(tmp.path(), "final.gcode", GCODE_WITH_PRINTABLE_AREA);
+    let output = tmp.path().join("bundle");
+
+    let mut req = gcode_request(
+        gcode_path,
+        vec![LayerSelector::Index(0)],
+        vec![VisualizationSpec::Name("filament_lines".to_string())],
+    );
+    req.frame = FrameMode::Plate;
+
+    run_visual_debug(req, &output, false).expect("plate framing from printable_area should work");
+
+    let manifest = manifest_at(&output.join("manifest.json"));
+    assert_eq!(manifest["frame"], "plate");
+
+    // The bed (0..220 x 0..200) plus the fixed margin — NOT the 10x10 mm part
+    // sitting at (100, 100), which is what model framing would have produced.
+    let b = &manifest["images"][0]["world_bounds_mm"];
+    let m = f64::from(slicer_runtime::VIEWPORT_MARGIN_MM);
+    assert_eq!(b["min_x"].as_f64().expect("min_x"), -m);
+    assert_eq!(b["min_y"].as_f64().expect("min_y"), -m);
+    assert_eq!(b["max_x"].as_f64().expect("max_x"), 220.0 + m);
+    assert_eq!(b["max_y"].as_f64().expect("max_y"), 200.0 + m);
+}
+
+/// Plate framing must frame the bed *exactly* — never widened to the geometry,
+/// or "frame to the plate" would stop meaning the plate the moment a part sat
+/// near an edge. Two parts at different spots on one bed must frame identically.
+#[test]
+fn plate_frame_does_not_track_the_geometry() {
+    let near_origin = GCODE_WITH_PRINTABLE_AREA.replace("X100 Y100", "X10 Y10");
+
+    let mut bounds = Vec::new();
+    for (name, text) in [
+        ("centered", GCODE_WITH_PRINTABLE_AREA.to_string()),
+        ("near-origin", near_origin),
+    ] {
+        let tmp = TempDir::new().expect("tempdir");
+        let gcode_path = write_gcode(tmp.path(), "final.gcode", &text);
+        let output = tmp.path().join("bundle");
+        let mut req = gcode_request(
+            gcode_path,
+            vec![LayerSelector::Index(0)],
+            vec![VisualizationSpec::Name("filament_lines".to_string())],
+        );
+        req.frame = FrameMode::Plate;
+        run_visual_debug(req, &output, false).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let manifest = manifest_at(&output.join("manifest.json"));
+        bounds.push(manifest["images"][0]["world_bounds_mm"].clone());
+    }
+
+    assert_eq!(
+        bounds[0], bounds[1],
+        "the same bed must frame identically regardless of where the part sits on it"
+    );
+}
+
+/// A `.gcode` with no `printable_area` has no bed to frame to. Fail closed
+/// rather than silently falling back to model framing, which would return an
+/// image other than the one requested.
+#[test]
+fn plate_frame_without_a_printable_area_is_rejected_and_writes_no_bundle() {
+    let tmp = TempDir::new().expect("tempdir");
+    // SINGLE_LAYER_GCODE carries no config block.
+    let gcode_path = write_gcode(tmp.path(), "final.gcode", SINGLE_LAYER_GCODE);
+    let output = tmp.path().join("bundle");
+
+    let mut req = gcode_request(
+        gcode_path,
+        vec![LayerSelector::Index(0)],
+        vec![VisualizationSpec::Name("filament_lines".to_string())],
+    );
+    req.frame = FrameMode::Plate;
+
+    let err = run_visual_debug(req, &output, false)
+        .expect_err("frame: plate with no printable_area must be rejected");
+    assert!(
+        matches!(err, VisualDebugError::InvalidBedShape(_)),
+        "expected InvalidBedShape, got {err:?}"
+    );
+    assert!(
+        !output.exists(),
+        "a rejected request must not write a partial bundle"
+    );
+}
+
+/// The default path still works end-to-end and records what it framed to.
+#[test]
+fn manifest_records_the_resolved_frame_mode() {
+    let tmp = TempDir::new().expect("tempdir");
+    let gcode_path = write_gcode(tmp.path(), "final.gcode", SINGLE_LAYER_GCODE);
+    let output = tmp.path().join("bundle");
+
+    let req = gcode_request(
+        gcode_path,
+        vec![LayerSelector::Index(0)],
+        vec![VisualizationSpec::Name("filament_lines".to_string())],
+    );
+    run_visual_debug(req, &output, false).expect("default model framing should succeed");
+
+    let manifest = manifest_at(&output.join("manifest.json"));
+    assert_eq!(manifest["frame"], "model");
+}
+
+/// The G-code path used to hard-code `world_bounds_mm: None`, leaving the
+/// agent-facing "read the viewport from `manifest.json`" contract unmet on
+/// that source. Every rendered entry must now carry the bundle's one shared
+/// world-space viewport, identical across entries — same as the model path.
+#[test]
+fn gcode_entries_record_the_shared_world_bounds() {
+    let tmp = TempDir::new().expect("tempdir");
+    let gcode_path = write_gcode(tmp.path(), "two_layer.gcode", TWO_LAYER_GCODE);
+    let output = tmp.path().join("bundle");
+
+    let req = gcode_request(
+        gcode_path,
+        vec![LayerSelector::Index(0), LayerSelector::Index(1)],
+        vec![VisualizationSpec::Name("filament_lines".to_string())],
+    );
+    run_visual_debug(req, &output, false).expect("gcode render should succeed");
+
+    let manifest = manifest_at(&output.join("manifest.json"));
+    let images = manifest["images"].as_array().expect("images array");
+    assert!(images.len() >= 2, "expected one entry per selected layer");
+
+    let first = &images[0]["world_bounds_mm"];
+    assert!(
+        !first.is_null(),
+        "a rendered gcode entry must record world_bounds_mm, not null"
+    );
+    for (i, entry) in images.iter().enumerate() {
+        assert_eq!(
+            &entry["world_bounds_mm"], first,
+            "entry {i} must share the one bundle-wide viewport"
+        );
+    }
 }

@@ -22,7 +22,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::{
-    run_visual_debug, LayerSelector, TapSelector, VisualDebugRequest, VisualDebugSource,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, VisualDebugRequest, VisualDebugSource,
     VisualizationSpec,
 };
 use serde_json::Value;
@@ -81,6 +81,7 @@ fn model_request_with_postpass_tap(config: PathBuf) -> VisualDebugRequest {
         visualizations: vec![VisualizationSpec::Name("filament_lines".to_string())],
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 
@@ -114,6 +115,7 @@ fn gcode_request(gcode_path: PathBuf) -> VisualDebugRequest {
         visualizations: vec![VisualizationSpec::Name("filament_lines".to_string())],
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     }
 }
 

@@ -615,6 +615,14 @@ pub struct PrepassContext {
     /// Dispatcher ready to run per-layer (Tier 2) stages against the same
     /// `wasmtime::Engine` used for prepass.
     pub layer_runner: WasmRuntimeDispatcher,
+    /// The global fallback [`slicer_ir::ResolvedConfig`] this context resolved
+    /// (the same value `run_slice` passes to prepass).
+    ///
+    /// Exposed for printer-level keys a caller needs but no stage output
+    /// carries — `bed_shape` for visual-debug's `frame: "plate"` viewport
+    /// being the first. Per-object overlays are irrelevant to those keys: the
+    /// bed is a property of the printer, not of any object on it.
+    pub default_resolved_config: Arc<slicer_ir::ResolvedConfig>,
 }
 
 /// Load modules, resolve config, build the live execution plan, and run
@@ -753,5 +761,6 @@ pub fn prepare_prepass_context(
         blackboard,
         wasm_handles,
         layer_runner,
+        default_resolved_config: Arc::new(default_resolved_config),
     })
 }

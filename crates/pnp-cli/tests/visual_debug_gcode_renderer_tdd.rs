@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 
 use pnp_cli::visual_debug::visual_debug_gcode::parse_gcode;
 use pnp_cli::visual_debug::{
-    run_visual_debug, LayerSelector, TapSelector, ValidationError, VisualDebugError,
+    run_visual_debug, FrameMode, LayerSelector, TapSelector, ValidationError, VisualDebugError,
     VisualDebugRequest, VisualDebugSource, VisualizationSpec,
 };
 use serde_json::Value;
@@ -67,6 +67,7 @@ fn gcode_request(
         visualizations,
         resolution_scale,
         gcode_line_width_mm,
+        frame: FrameMode::Model,
     }
 }
 
@@ -634,6 +635,7 @@ fn ac_gap1_gcode_rejects_named_layer_selector() {
         visualizations: vec![VisualizationSpec::Name("filament_lines".to_string())],
         resolution_scale: 1,
         gcode_line_width_mm: None,
+        frame: FrameMode::Model,
     };
 
     let err = run_visual_debug(req, &output, false).expect_err(
@@ -738,4 +740,72 @@ G1 X10 Y10 E1.0
          source line; got {:?}",
         parsed.warnings
     );
+}
+
+// ──────────────── model-wide bounds must not include a phantom origin ───────
+
+/// Real slicer output starts printing wherever the part sits on the bed, after
+/// a homing/start macro this parser does not model. Its first `G0`/`G1` is a
+/// move to that spot — not from the bed origin.
+///
+/// This fixture mirrors that: every coordinate lives in a 20x10 mm box near
+/// (80, 90), far from (0, 0). Every in-repo fixture before this one opened with
+/// `G1 X0 Y0`, which is exactly why the bug below survived: at the origin, a
+/// fabricated origin is indistinguishable from a real one.
+const OFFSET_FROM_ORIGIN_GCODE: &str = "\
+;LAYER_CHANGE
+;Z:0.2
+G1 Z0.2 F600
+;TYPE:Outer wall
+G1 X80 Y90 F3000
+G1 X100 Y90 E1.0 F1200
+G1 X100 Y100 E2.0
+G1 X80 Y100 E3.0
+G1 X80 Y90 E4.0
+";
+
+/// The model-wide bounding box must cover the geometry the file actually
+/// contains — nothing else.
+///
+/// The parser used to assume the toolhead began at `(0, 0)` and treat the
+/// opening `G1 X80 Y90` as a real travel *from the bed origin*, pulling
+/// `(0, 0)` into the bounds. Every render was then framed from the bed origin
+/// to the model's far corner, so the part appeared shrunk into the corner of
+/// what looked like a full-plate view. On the real Benchy fixture this stretched
+/// the viewport from x[79.7..140.2] to x[0..140.2].
+#[test]
+fn bounds_exclude_the_unstated_start_position() {
+    let parsed = parse_gcode(OFFSET_FROM_ORIGIN_GCODE);
+    let (min_x, min_y, max_x, max_y) = parsed.bounds_mm.expect("fixture has motion");
+
+    assert_eq!(
+        (min_x, min_y, max_x, max_y),
+        (80.0, 90.0, 100.0, 100.0),
+        "bounds must be the stated geometry's own box; a min at (0, 0) means the \
+         unstated start position is being fabricated as the bed origin again"
+    );
+}
+
+/// The opening move's *destination* is real, stated geometry and must bound the
+/// viewport — only the un-drawable travel *to* it is dropped. The four extruded
+/// walls remain, and no phantom segment from the origin is invented.
+#[test]
+fn opening_move_destination_counts_but_invents_no_segment() {
+    let parsed = parse_gcode(OFFSET_FROM_ORIGIN_GCODE);
+    let layer = &parsed.layers[0];
+
+    for seg in &layer.segments {
+        for (name, p) in [("from", seg.from), ("to", seg.to)] {
+            assert!(
+                p.x >= 80.0 && p.y >= 90.0,
+                "segment {name} ({}, {}) lies outside the fixture's geometry — a travel \
+                 from a fabricated origin was drawn",
+                p.x,
+                p.y
+            );
+        }
+    }
+
+    let extrusions = layer.segments.iter().filter(|s| s.is_extrusion).count();
+    assert_eq!(extrusions, 4, "all four extruded walls must survive");
 }

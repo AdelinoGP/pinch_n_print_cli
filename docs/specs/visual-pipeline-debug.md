@@ -123,6 +123,12 @@ machine-readable index. Each image entry records source mode, requested tap,
 layer index and Z where applicable, visualization type, PNG path, viewport,
 legend version, IR schema version or G-code parser version, and warnings.
 
+Two viewport properties are distinct and both recorded: `viewport` is the pixel
+raster (width/height), while each rendered entry's `world_bounds_mm` is the
+world-space (mm) extent it was projected through — byte-identical across every
+rendered entry in a bundle, on **both** source modes. The manifest's `frame`
+records which framing mode produced them.
+
 ### Typed Post-Stage Capture (packet 158)
 
 Before the intermediate renderer exists, a model-backed request with a
@@ -175,6 +181,47 @@ remain scaled integers until projection; conversions use `units_to_mm()` and
 the canonical scale of 10,000 units/mm. Any newly constructed geometry uses
 `Point2::from_mm` or `mm_to_units`; rendering must never assume one unit is
 one nanometer. Layer Z remains millimeters.
+
+The margin is a fixed **absolute millimeter** distance (`VIEWPORT_MARGIN_MM`),
+applied equally to both axes. A margin expressed as a fraction of each axis'
+own extent is itself anisotropic and skews a non-square viewport before
+projection begins.
+
+"Model-wide" is a property of the model, not of the request: the extent is the
+loaded mesh's XY bounding box (`MeshIR::build_volume`, already computed by
+`load_model`), unioned with the selected captures' geometry so brim, skirt, and
+support — all of which extrude beyond the model's silhouette — are never
+clipped. It therefore does not vary with the layers or taps a request selected,
+which is what makes two bundles over one model comparable. Bounding the
+selected captures alone would reframe on every request.
+
+Projection is **aspect-preserving**: `Projector`
+(`slicer-runtime/src/visual_debug_render.rs`) scales by a single uniform
+`min(width_ratio, height_ratio)` and centers the result, letterboxing the
+unused axis. It is the sole owner of the world→pixel transform for **both**
+render paths below — the typed-IR renderer and the standalone-G-code renderer
+must never define their own. They each did originally, and drifted: the G-code
+path scaled uniformly while the intermediate path normalized each axis
+independently against the always-square raster, stretching every non-square
+model. Tests must project through `Projector` rather than restate its
+arithmetic; a test that copies the transform cannot detect the transform being
+wrong.
+
+`frame` (request, optional, default `"model"`) selects what the viewport frames
+to: `"model"` for the model-wide extent above, or `"plate"` for the bed's
+extent. `"plate"` frames the bed exactly — never widened to the geometry, or it
+would stop denoting the plate as soon as a part sat near an edge.
+
+Both sources support `"plate"`, each reading the only bed definition it has.
+The model source resolves the `bed_shape` config key. The standalone-G-code
+source resolves no printer profile, but the artifact carries the slicer's own
+config block, and its `printable_area` comment is the bed polygon (OrcaSlicer
+emits `; printable_area = 0x0,220x0,220x200,0x200` — `,`-separated points whose
+X and Y are joined by a literal `x`). Because that is only knowable after the
+file is parsed, a G-code request with no usable `printable_area` fails at
+render time rather than in request validation. Neither source ever falls back
+to model framing when the bed is unavailable: returning a different image than
+the one requested is worse than returning none.
 
 The palette and legend are fixed by the v1 bundle contract: outer/inner/thin
 walls share the perimeter family, infill roles share the infill family,

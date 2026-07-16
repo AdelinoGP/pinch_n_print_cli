@@ -36,16 +36,19 @@ use std::fs;
 use std::path::Path;
 
 use png::{BitDepth, ColorType, Encoder};
+use slicer_runtime::{Projector, ViewportBoundsMm};
 
 /// Parser/renderer version string recorded in every bundle produced from a
 /// standalone final-G-code source (`Manifest::gcode_parser_version` /
 /// `ImageEntry::gcode_parser_version` in `crate::visual_debug`).
 pub const GCODE_PARSER_VERSION: &str = "pnp-gcode-visual-debug/1";
 
-/// Fixed margin (mm) added around the parsed model-wide XY bounding box
-/// before it is scaled into the shared pixel canvas. Documented here per
-/// AC-4's "one model-wide XY viewport" requirement.
-const VIEWPORT_MARGIN_MM: f64 = 2.0;
+// The fixed viewport margin and the mm→pixel projection both live in
+// `slicer_runtime::visual_debug_render` now (`VIEWPORT_MARGIN_MM`,
+// `Projector`), shared with the typed-IR stage renderer. This module used to
+// own a second, independent copy of both; the two drifted (uniform scale here,
+// per-axis scale there), so a model rendered from G-code and the same model
+// rendered from a pipeline tap were framed differently.
 
 /// Role string used for extrusion moves seen before any `;TYPE:` marker.
 /// Never dropped, never guessed as a following role.
@@ -76,10 +79,28 @@ impl GcodeVisualization {
     }
 }
 
+/// What [`render_gcode_visual_debug`] frames its shared viewport to. The
+/// standalone-G-code mirror of `visual_debug`'s `FrameMode`, kept local so
+/// this module stays decoupled from the request/manifest types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GcodeFrame {
+    /// The parsed geometry's own model-wide extent, plus the fixed margin.
+    #[default]
+    Model,
+    /// The bed from the config block's `printable_area` comment, plus the
+    /// fixed margin.
+    Plate,
+}
+
 /// Failure modes for [`render_gcode_visual_debug`]. All are terminal: no
 /// partial PNG/manifest content should be committed by a caller that
 /// receives one of these.
 pub enum GcodeRenderError {
+    /// [`GcodeFrame::Plate`] was requested but the file carries no usable
+    /// `printable_area` config comment, so there is no bed to frame to.
+    /// Never silently falls back to model framing — that would return an
+    /// image other than the one requested.
+    NoPrintableArea,
     /// Reading the G-code file from disk failed.
     Io(String),
     /// The source contains zero supported, renderable `G0`/`G1` moves
@@ -95,6 +116,11 @@ pub enum GcodeRenderError {
 impl fmt::Debug for GcodeRenderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            GcodeRenderError::NoPrintableArea => write!(
+                f,
+                "GcodeRenderError::NoPrintableArea(frame: \"plate\" needs a `printable_area` \
+                 config comment; this gcode carries none)"
+            ),
             GcodeRenderError::Io(msg) => write!(f, "GcodeRenderError::Io({msg})"),
             GcodeRenderError::NoRenderableMoves => write!(
                 f,
@@ -147,6 +173,14 @@ pub struct GcodeVisualDebugOutput {
     /// Rendered images in stable order: ascending layer index (source
     /// order), then requested-visualization order within a layer.
     pub images: Vec<RenderedImage>,
+    /// The single model-wide (whole-file) mm viewport every image in this
+    /// output was projected through, margin included.
+    ///
+    /// Returned so `crate::visual_debug` can record it on each manifest entry:
+    /// the agent-facing contract is "read the viewport from `manifest.json`",
+    /// and G-code entries used to hard-code `world_bounds_mm: None`, leaving
+    /// that promise unmet on this path.
+    pub world_bounds_mm: ViewportBoundsMm,
 }
 
 /// Parse `gcode_text` and rasterize one PNG per (selected layer, requested
@@ -167,6 +201,7 @@ pub fn render_gcode_visual_debug(
     canvas_width: u32,
     canvas_height: u32,
     gcode_line_width_mm: Option<f64>,
+    frame: GcodeFrame,
 ) -> Result<GcodeVisualDebugOutput, GcodeRenderError> {
     if visualizations.contains(&GcodeVisualization::FilledAreas) && gcode_line_width_mm.is_none() {
         return Err(GcodeRenderError::MissingLineWidth);
@@ -177,8 +212,18 @@ pub fn render_gcode_visual_debug(
         return Err(GcodeRenderError::NoRenderableMoves);
     }
 
-    let bounds = parsed.bounds_mm.unwrap_or((0.0, 0.0, 1.0, 1.0));
-    let projector = Projector::new(bounds, VIEWPORT_MARGIN_MM, canvas_width, canvas_height);
+    let world_bounds = match frame {
+        GcodeFrame::Model => viewport_bounds(parsed.bounds_mm.unwrap_or((0.0, 0.0, 1.0, 1.0))),
+        // Frame the bed exactly — never widened to the geometry, or "frame to
+        // the plate" would stop meaning the plate as soon as anything sat near
+        // an edge.
+        GcodeFrame::Plate => viewport_bounds(
+            parsed
+                .printable_area_mm
+                .ok_or(GcodeRenderError::NoPrintableArea)?,
+        ),
+    };
+    let projector = Projector::new(world_bounds, canvas_width, canvas_height);
     let selected: BTreeSet<i64> = layer_indices.iter().copied().collect();
 
     let mut images = Vec::new();
@@ -214,6 +259,7 @@ pub fn render_gcode_visual_debug(
         parser_version: GCODE_PARSER_VERSION.to_string(),
         warnings: parsed.warnings,
         images,
+        world_bounds_mm: world_bounds,
     })
 }
 
@@ -226,6 +272,7 @@ pub fn render_gcode_visual_debug_from_path(
     canvas_width: u32,
     canvas_height: u32,
     gcode_line_width_mm: Option<f64>,
+    frame: GcodeFrame,
 ) -> Result<GcodeVisualDebugOutput, GcodeRenderError> {
     let text = fs::read_to_string(path)
         .map_err(|e| GcodeRenderError::Io(format!("{}: {e}", path.display())))?;
@@ -236,6 +283,7 @@ pub fn render_gcode_visual_debug_from_path(
         canvas_width,
         canvas_height,
         gcode_line_width_mm,
+        frame,
     )
 }
 
@@ -279,6 +327,13 @@ pub struct ParsedGcode {
     /// displacement was parsed anywhere in the file (AC-N2: a file with only
     /// unsupported constructs, e.g. G2/G3 arcs, has none).
     pub has_renderable_moves: bool,
+    /// The bed's XY bounding box in mm, from the slicer config block's
+    /// `printable_area` comment, or `None` if the file carries no usable one.
+    ///
+    /// This is the only bed definition a standalone `.gcode` has — the
+    /// standalone path resolves no printer profile — so it is what
+    /// `frame: "plate"` frames to on this source.
+    pub printable_area_mm: Option<(f64, f64, f64, f64)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -299,7 +354,20 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
     let mut current_layer_index: i64 = -1;
     let mut current_role: Option<String> = None;
     let mut mode = ExtrusionMode::Absolute;
-    let mut pos = PointMm { x: 0.0, y: 0.0 };
+    // The toolhead's XY position, per axis, `None` until the G-code actually
+    // states it.
+    //
+    // This must NOT default to the origin. A file's first move is typically
+    // `G1 X80 Y90` after a homing/start macro this parser does not model; if
+    // the toolhead were assumed to start at (0, 0), that first move would be
+    // treated as a real travel *from the bed origin*, dragging (0, 0) into the
+    // model-wide bounding box. Every render would then be framed from the bed
+    // origin to the model's far corner — the model shrunk into a corner of
+    // what looks like a full-plate view — even though no such move exists in
+    // the file. Fabricating a start position is exactly the "never approximate
+    // what we don't fully understand" rule this module states below.
+    let mut pos_x: Option<f64> = None;
+    let mut pos_y: Option<f64> = None;
     let mut last_e: f64 = 0.0;
     let mut has_renderable_moves = false;
 
@@ -307,6 +375,7 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
     let mut min_y = f64::INFINITY;
     let mut max_x = f64::NEG_INFINITY;
     let mut max_y = f64::NEG_INFINITY;
+    let mut printable_area_mm: Option<(f64, f64, f64, f64)> = None;
 
     for (idx, raw_line) in text.lines().enumerate() {
         let line_no = idx + 1;
@@ -332,7 +401,14 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
             continue;
         }
         if let Some(rest) = line.strip_prefix(';') {
-            let _ = rest; // generic comment, silently ignored
+            // The slicer's own config block, emitted as `; key = value`
+            // comments (OrcaSlicer writes it as a trailer, after all motion).
+            // `printable_area` is the bed polygon, and it is the only bed
+            // definition a standalone `.gcode` carries — there is no printer
+            // profile to consult on this path.
+            if let Some(area) = parse_printable_area_comment(rest) {
+                printable_area_mm = Some(area);
+            }
             continue;
         }
 
@@ -354,8 +430,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
             "M82" => mode = ExtrusionMode::Absolute,
             "M83" => mode = ExtrusionMode::Relative,
             "G0" | "G1" => {
-                let mut new_x = pos.x;
-                let mut new_y = pos.y;
+                let mut new_x = pos_x;
+                let mut new_y = pos_y;
                 let mut has_e = false;
                 let mut e_delta = 0.0_f64;
                 let mut unsupported = false;
@@ -370,8 +446,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                         continue;
                     };
                     match letter {
-                        "X" => new_x = value,
-                        "Y" => new_y = value,
+                        "X" => new_x = Some(value),
+                        "Y" => new_y = Some(value),
                         "Z" => {} // Z lift moves don't affect the XY viewport/segments.
                         "F" => {} // feed rate; irrelevant to geometry.
                         "E" => {
@@ -404,20 +480,50 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                     // update) is skipped for this partially-unsupported
                     // move — never approximate what we don't fully
                     // understand.
-                    pos = PointMm { x: new_x, y: new_y };
+                    pos_x = new_x;
+                    pos_y = new_y;
                     continue;
                 }
 
-                let from = pos;
-                let to = PointMm { x: new_x, y: new_y };
-                pos = to;
+                let from = match (pos_x, pos_y) {
+                    (Some(x), Some(y)) => Some(PointMm { x, y }),
+                    // The toolhead's position was never stated before this
+                    // move — there is no known point to draw *from*.
+                    _ => None,
+                };
+                let to = match (new_x, new_y) {
+                    (Some(x), Some(y)) => Some(PointMm { x, y }),
+                    // Still only one axis known (e.g. a lone `G1 X80` opener):
+                    // no complete XY point exists yet.
+                    _ => None,
+                };
+                pos_x = new_x;
+                pos_y = new_y;
                 let is_extrusion = has_e && e_delta > 0.0;
 
+                // A destination the file actually stated is real geometry and
+                // always bounds the viewport, even when we can't draw the
+                // travel that reached it.
+                if let Some(to) = to {
+                    min_x = min_x.min(to.x);
+                    min_y = min_y.min(to.y);
+                    max_x = max_x.max(to.x);
+                    max_y = max_y.max(to.y);
+                }
+
+                // A segment needs two known endpoints. When `from` is unknown
+                // this is the file's opening move: its destination counts
+                // (above), but inventing a line to it from a guessed origin
+                // would be fabricated geometry.
+                let (Some(from), Some(to)) = (from, to) else {
+                    continue;
+                };
+
                 if from.x != to.x || from.y != to.y {
-                    min_x = min_x.min(from.x).min(to.x);
-                    min_y = min_y.min(from.y).min(to.y);
-                    max_x = max_x.max(from.x).max(to.x);
-                    max_y = max_y.max(from.y).max(to.y);
+                    min_x = min_x.min(from.x);
+                    min_y = min_y.min(from.y);
+                    max_x = max_x.max(from.x);
+                    max_y = max_y.max(from.y);
                     has_renderable_moves = true;
 
                     let role = if is_extrusion {
@@ -469,6 +575,7 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
         warnings,
         bounds_mm,
         has_renderable_moves,
+        printable_area_mm,
     }
 }
 
@@ -492,51 +599,74 @@ fn ensure_layer(
 
 // ─────────────────────────────── projection ───────────────────────────────
 
-/// Projects mm-space coordinates into the shared pixel canvas: a fixed
-/// margin around the model-wide XY bounding box, uniformly scaled
-/// (aspect-preserving) and centered, with Y flipped so increasing G-code Y
-/// renders upward in the image.
-struct Projector {
-    scale: f64,
-    offset_x: f64,
-    offset_y: f64,
-    canvas_height: f64,
+/// Parse a `printable_area` config comment's value into an
+/// `(min_x, min_y, max_x, max_y)` mm bounding box, or `None` if this comment
+/// isn't `printable_area` or its value isn't a usable polygon.
+///
+/// The emitted form is `; printable_area = 0x0,220x0,220x200,0x200` — points
+/// separated by `,`, and each point's X and Y separated by a literal `x`.
+///
+/// `rest` is the comment body with its leading `;` already stripped. The key
+/// is matched exactly, which matters more than it looks: this file also
+/// contains `extruder_printable_area` (a different key, usually empty) and a
+/// `different_settings_to_system = ...;printable_area;...` line that mentions
+/// the name in a value. A substring match would pick up either.
+fn parse_printable_area_comment(rest: &str) -> Option<(f64, f64, f64, f64)> {
+    let (key, value) = rest.split_once('=')?;
+    if key.trim() != "printable_area" {
+        return None;
+    }
+
+    let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
+    let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
+    let mut points = 0usize;
+    for point in value.trim().split(',') {
+        let point = point.trim();
+        if point.is_empty() {
+            continue;
+        }
+        // `split_once` rather than `split`: a malformed `1x2x3` is rejected
+        // rather than silently read as its first two components.
+        let (x, y) = point.split_once('x')?;
+        let x: f64 = x.trim().parse().ok()?;
+        let y: f64 = y.trim().parse().ok()?;
+        if !x.is_finite() || !y.is_finite() {
+            return None;
+        }
+        min_x = min_x.min(x);
+        max_x = max_x.max(x);
+        min_y = min_y.min(y);
+        max_y = max_y.max(y);
+        points += 1;
+    }
+
+    // A bed needs at least a triangle, and must enclose real area.
+    if points < 3 || max_x <= min_x || max_y <= min_y {
+        return None;
+    }
+    Some((min_x, min_y, max_x, max_y))
 }
 
-impl Projector {
-    fn new(
-        bounds: (f64, f64, f64, f64),
-        margin_mm: f64,
-        canvas_width: u32,
-        canvas_height: u32,
-    ) -> Self {
-        let (min_x, min_y, max_x, max_y) = bounds;
-        let world_w = ((max_x - min_x).max(0.0) + margin_mm * 2.0).max(1.0);
-        let world_h = ((max_y - min_y).max(0.0) + margin_mm * 2.0).max(1.0);
-        let scale = (canvas_width as f64 / world_w).min(canvas_height as f64 / world_h);
-        let content_w_px = world_w * scale;
-        let content_h_px = world_h * scale;
-        let pad_x = (canvas_width as f64 - content_w_px) / 2.0;
-        let pad_y = (canvas_height as f64 - content_h_px) / 2.0;
-        let offset_x = pad_x - (min_x - margin_mm) * scale;
-        let offset_y = pad_y - (min_y - margin_mm) * scale;
-        Self {
-            scale,
-            offset_x,
-            offset_y,
-            canvas_height: canvas_height as f64,
-        }
+/// Convert this module's parsed `(min_x, min_y, max_x, max_y)` mm bounds into
+/// the shared [`ViewportBoundsMm`], margin included.
+///
+/// The `f64`→`f32` narrowing is immaterial here: over a ≤250 mm bed, `f32`
+/// resolves to ~3e-5 mm, four orders of magnitude finer than the ~0.024 mm a
+/// single pixel covers at the default 1024 px raster.
+fn viewport_bounds(parsed_bounds: (f64, f64, f64, f64)) -> ViewportBoundsMm {
+    let (min_x, min_y, max_x, max_y) = parsed_bounds;
+    ViewportBoundsMm {
+        min_x: min_x as f32,
+        min_y: min_y as f32,
+        max_x: max_x as f32,
+        max_y: max_y as f32,
     }
+    .with_margin()
+}
 
-    fn project(&self, p: PointMm) -> (f64, f64) {
-        let px = p.x * self.scale + self.offset_x;
-        let py = self.canvas_height - (p.y * self.scale + self.offset_y);
-        (px, py)
-    }
-
-    fn scale_mm(&self, mm: f64) -> f64 {
-        mm * self.scale
-    }
+/// Project a parsed G-code point through the shared [`Projector`].
+fn project(projector: &Projector, p: PointMm) -> (f64, f64) {
+    projector.project(p.x, p.y)
 }
 
 // ─────────────────────────────── rasterization ────────────────────────────
@@ -581,8 +711,8 @@ fn render_filament_lines(
         if !seg.is_extrusion {
             continue;
         }
-        let p0 = projector.project(seg.from);
-        let p1 = projector.project(seg.to);
+        let p0 = project(projector, seg.from);
+        let p1 = project(projector, seg.to);
         draw_line(&mut buf, width, height, p0, p1, role_color(&seg.role));
     }
     encode_png(width, height, &buf)
@@ -601,8 +731,8 @@ fn render_filled_areas(
         if !seg.is_extrusion {
             continue;
         }
-        let p0 = projector.project(seg.from);
-        let p1 = projector.project(seg.to);
+        let p0 = project(projector, seg.from);
+        let p1 = project(projector, seg.to);
         draw_thick_line(
             &mut buf,
             width,
@@ -752,6 +882,7 @@ G1 X0 Y0 E4.0
             256,
             256,
             None,
+            GcodeFrame::Model,
         )
         .expect("a fully-supported final-gcode request should succeed");
 
@@ -810,6 +941,7 @@ G1 X10 Y0 E1.0
             128,
             128,
             None,
+            GcodeFrame::Model,
         )
         .expect("role-less extrusion must still render, not fail the whole bundle");
         assert_eq!(out.images.len(), 1);
@@ -832,6 +964,7 @@ G1 X10 Y0 E1.0
             256,
             256,
             Some(0.2),
+            GcodeFrame::Model,
         )
         .expect("filled_areas with an explicit narrow width should succeed");
         let wide = render_gcode_visual_debug(
@@ -841,6 +974,7 @@ G1 X10 Y0 E1.0
             256,
             256,
             Some(1.2),
+            GcodeFrame::Model,
         )
         .expect("filled_areas with an explicit wide width should succeed");
 
@@ -911,6 +1045,7 @@ G1 X10 Y0 E3.0 F1200
             256,
             256,
             None,
+            GcodeFrame::Model,
         )
         .expect("multi-layer gcode render should succeed");
         assert_eq!(
@@ -957,6 +1092,7 @@ G1 X10 Y0 E3.0 F1200
             128,
             128,
             None,
+            GcodeFrame::Model,
         )
         .expect("supported moves elsewhere in the file must let the render complete");
 
@@ -982,6 +1118,7 @@ G1 X10 Y0 E3.0 F1200
             256,
             256,
             None,
+            GcodeFrame::Model,
         )
         .expect("first run should succeed");
         let b = render_gcode_visual_debug(
@@ -991,6 +1128,7 @@ G1 X10 Y0 E3.0 F1200
             256,
             256,
             None,
+            GcodeFrame::Model,
         )
         .expect("second run should succeed");
 
@@ -1017,6 +1155,7 @@ G1 X10 Y0 E3.0 F1200
             128,
             128,
             None,
+            GcodeFrame::Model,
         )
         .expect_err("filled_areas without an explicit gcode_line_width_mm must be rejected");
         let message = format!("{err:?}").to_lowercase();
@@ -1043,6 +1182,7 @@ G3 X0 Y0 I-5 J0
             128,
             128,
             None,
+            GcodeFrame::Model,
         )
         .expect_err("a file with no supported G0/G1 renderable moves must fail");
         let message = format!("{err:?}");
@@ -1093,6 +1233,7 @@ G1 X10 Y10 E1.0
             128,
             128,
             None,
+            GcodeFrame::Model,
         )
         .expect("from-path variant should succeed for a valid file");
         let _ = fs::remove_file(&tmp);
@@ -1109,8 +1250,107 @@ G1 X10 Y10 E1.0
             64,
             64,
             None,
+            GcodeFrame::Model,
         )
         .expect_err("a missing file must be reported as an error, not panic");
         assert!(matches!(err, GcodeRenderError::Io(_)));
+    }
+}
+
+#[cfg(test)]
+mod printable_area_tests {
+    use super::*;
+
+    /// OrcaSlicer's emitted form, verbatim from a real Benchy export.
+    #[test]
+    fn parses_the_emitted_printable_area_form() {
+        assert_eq!(
+            parse_printable_area_comment(" printable_area = 0x0,220x0,220x200,0x200"),
+            Some((0.0, 0.0, 220.0, 200.0))
+        );
+    }
+
+    /// The key must match exactly. This file also contains
+    /// `extruder_printable_area` (a different key, usually empty) and a
+    /// `different_settings_to_system = ...;printable_area;...` line that names
+    /// it inside a value — a substring match would latch onto either and
+    /// frame every plate render to garbage.
+    #[test]
+    fn ignores_keys_that_merely_contain_the_name() {
+        for line in [
+            " extruder_printable_area = ",
+            " extruder_printable_area = 0x0,100x0,100x100,0x100",
+            " different_settings_to_system = brim_type;printable_area;z_hop",
+            " printable_area_shape = 0x0,220x0,220x200,0x200",
+        ] {
+            assert_eq!(
+                parse_printable_area_comment(line),
+                None,
+                "must not match: {line}"
+            );
+        }
+    }
+
+    /// Values that cannot describe a bed yield `None`, so the caller fails
+    /// closed instead of framing to a degenerate or half-read box.
+    #[test]
+    fn rejects_unusable_values() {
+        for line in [
+            " printable_area = ",
+            " printable_area = 0x0",                       // a point
+            " printable_area = 0x0,220x0",                 // a line
+            " printable_area = 5x5,5x5,5x5",               // zero area
+            " printable_area = 0x0,220x0,220x200,0x200x9", // malformed point
+            " printable_area = 0x0,220xNaN,220x200",       // unparseable
+            " printable_area = 0x0,oops,220x200",          // no `x` separator
+        ] {
+            assert_eq!(
+                parse_printable_area_comment(line),
+                None,
+                "must reject: {line}"
+            );
+        }
+    }
+
+    /// A bed need not start at the origin, and coordinates may be negative or
+    /// fractional.
+    #[test]
+    fn handles_offset_negative_and_fractional_beds() {
+        assert_eq!(
+            parse_printable_area_comment(" printable_area = -5x-5,215.5x-5,215.5x195.5,-5x195.5"),
+            Some((-5.0, -5.0, 215.5, 195.5))
+        );
+    }
+
+    /// The config block is a trailer — it appears *after* every move — so the
+    /// parser must still pick it up on a whole-file pass.
+    #[test]
+    fn picks_up_the_config_trailer_after_all_motion() {
+        let gcode = "\
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Outer wall
+G1 X100 Y100 F3000
+G1 X110 Y100 E1.0
+G1 X110 Y110 E2.0
+; printable_area = 0x0,220x0,220x200,0x200
+";
+        assert_eq!(
+            parse_gcode(gcode).printable_area_mm,
+            Some((0.0, 0.0, 220.0, 200.0))
+        );
+    }
+
+    /// A file with no config block simply has no bed.
+    #[test]
+    fn absent_printable_area_is_none() {
+        let gcode = "\
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Outer wall
+G1 X100 Y100 F3000
+G1 X110 Y100 E1.0
+";
+        assert_eq!(parse_gcode(gcode).printable_area_mm, None);
     }
 }

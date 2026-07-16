@@ -26,6 +26,44 @@ pub struct VisualDebugRequest {
     pub resolution_scale: u32,
     #[serde(default)]
     pub gcode_line_width_mm: Option<f64>,
+    /// What the bundle's shared viewport is framed to. Defaults to
+    /// [`FrameMode::Model`].
+    ///
+    /// `#[serde(default)]` is required, not cosmetic: this struct is
+    /// `deny_unknown_fields`, and without a default every request written
+    /// before this field existed would fail to deserialize.
+    #[serde(default)]
+    pub frame: FrameMode,
+}
+
+/// What the bundle-wide viewport is framed to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FrameMode {
+    /// The model's own world-space XY extent (unioned with the captured
+    /// geometry, so brim/skirt/support are never clipped), plus a fixed
+    /// margin. The default, and the only mode a standalone-G-code source
+    /// supports.
+    #[default]
+    Model,
+    /// The printer's `bed_shape` polygon extent, plus the same fixed margin.
+    /// Frames every render to the whole plate, so a small part renders small
+    /// — useful for judging placement, not for inspecting a feature.
+    ///
+    /// Model-source only: a standalone `.gcode` loads no config, so there is
+    /// no bed to read.
+    Plate,
+}
+
+impl FrameMode {
+    /// Stable lowercase name, as accepted in a request and recorded in the
+    /// manifest.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Plate => "plate",
+        }
+    }
 }
 
 pub fn default_resolution_scale() -> u32 {
@@ -278,6 +316,11 @@ pub enum VisualDebugError {
     /// or an inapplicable layer (model/module load failure, unavailable tap
     /// source, or a fatal executor error) (packet 158).
     CaptureFailed(String),
+    /// `frame: "plate"` was requested but the resolved `bed_shape` does not
+    /// describe a usable bed polygon. Only reachable after config resolution,
+    /// so it cannot be a `ValidationError` (which runs before any config is
+    /// loaded). Carries the specific defect.
+    InvalidBedShape(String),
     /// The intermediate renderer (packet 159) rejected a requested
     /// visualization for a typed capture — an unsupported `resolution_scale`,
     /// a missing/empty documented geometry field, or a `filled_areas`
@@ -305,6 +348,7 @@ impl fmt::Display for VisualDebugError {
                 "no requested layer applies to this model; nothing to capture"
             ),
             Self::CaptureFailed(e) => write!(f, "typed tap capture failed: {e}"),
+            Self::InvalidBedShape(e) => write!(f, "frame: \"plate\" is unusable: {e}"),
             Self::RenderFailed(e) => write!(f, "intermediate render failed: {e}"),
             Self::NoRenderableGcodeMoves(e) => write!(f, "gcode render failed: {e}"),
         }
@@ -342,6 +386,11 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
             return Err(ValidationError::DiagnosticOverlayRequiresModelSource);
         }
     }
+    // NOTE: `frame: "plate"` is supported on BOTH sources. A standalone
+    // `.gcode` resolves no printer profile, but it carries the slicer's own
+    // config block, whose `printable_area` comment is the bed polygon. That
+    // request can only fail once the file is parsed (no such comment), so it
+    // is a render-time `NoPrintableArea`, not a validation-time rejection.
     match &req.source {
         VisualDebugSource::Model {
             model,
@@ -404,6 +453,10 @@ pub struct Manifest {
     pub source: ManifestSource,
     pub resolution_scale: u32,
     pub viewport: Viewport,
+    /// What the bundle's shared viewport was framed to (`"model"` /
+    /// `"plate"`). Recorded so a consumer can tell a plate-framed render from
+    /// a model-framed one without inferring it from the bounds.
+    pub frame: String,
     pub legend_version: String,
     pub ir_schema_version: Option<String>,
     pub gcode_parser_version: Option<String>,
@@ -627,6 +680,92 @@ fn load_visual_debug_config(
     slicer_runtime::parse_cli_config_source(&text).map_err(|e| {
         VisualDebugError::CaptureFailed(format!("failed to parse config {}: {e}", path.display()))
     })
+}
+
+/// The loaded model's world-space XY extent in millimeters, margin included,
+/// or `None` if the mesh carries no usable extent (no objects, or a degenerate
+/// box) — in which case the caller falls back to the captured geometry's own
+/// bounds.
+///
+/// Reads `MeshIR::build_volume`, which `slicer_model_io::load_model` already
+/// computes as the union AABB over every object's vertices. Those vertices are
+/// the exact ones the prepass slices (every `ObjectMesh.transform` is identity
+/// out of `assemble_object`), so this box and the downstream `SliceIR`
+/// polygons share one origin and one mm scale.
+///
+/// The Z extent is deliberately ignored: this is the model's silhouette across
+/// *all* layers, which is precisely why the viewport it produces is stable no
+/// matter which layers a request selects.
+fn mesh_xy_bounds(mesh: &slicer_ir::MeshIR) -> Option<slicer_runtime::ViewportBoundsMm> {
+    if mesh.objects.is_empty() {
+        return None;
+    }
+    let bv = mesh.build_volume;
+    let bounds = slicer_runtime::ViewportBoundsMm {
+        min_x: bv.min.x,
+        min_y: bv.min.y,
+        max_x: bv.max.x,
+        max_y: bv.max.y,
+    };
+    let degenerate = !(bounds.min_x.is_finite()
+        && bounds.min_y.is_finite()
+        && bounds.max_x.is_finite()
+        && bounds.max_y.is_finite())
+        || bounds.max_x <= bounds.min_x
+        || bounds.max_y <= bounds.min_y;
+    if degenerate {
+        return None;
+    }
+    Some(bounds.with_margin())
+}
+
+/// The printer bed's XY extent in millimeters, margin included, for
+/// `frame: "plate"`.
+///
+/// `bed_shape` is an interleaved `[x0, y0, x1, y1, ...]` polygon in mm
+/// (`slicer-ir/src/resolved_config.rs`), so this takes its bounding box —
+/// correct for the rectangular beds the default describes, and a sane
+/// enclosing frame for a delta's circular bed.
+///
+/// Fails closed rather than silently falling back to model framing: a request
+/// that asked for the plate and quietly got the model would be a misleading
+/// image, which is the one thing a debugging tool must never produce.
+fn plate_xy_bounds(
+    config: &slicer_ir::ResolvedConfig,
+) -> Result<slicer_runtime::ViewportBoundsMm, VisualDebugError> {
+    let pts = &config.bed_shape;
+    if pts.len() < 6 || !pts.len().is_multiple_of(2) {
+        return Err(VisualDebugError::InvalidBedShape(format!(
+            "bed_shape must be at least 3 points as interleaved [x0, y0, x1, y1, ...] mm; \
+             got {} value(s)",
+            pts.len()
+        )));
+    }
+    let (mut min_x, mut min_y) = (f64::MAX, f64::MAX);
+    let (mut max_x, mut max_y) = (f64::MIN, f64::MIN);
+    for xy in pts.chunks_exact(2) {
+        if !xy[0].is_finite() || !xy[1].is_finite() {
+            return Err(VisualDebugError::InvalidBedShape(
+                "bed_shape has a non-finite coordinate".into(),
+            ));
+        }
+        min_x = min_x.min(xy[0]);
+        max_x = max_x.max(xy[0]);
+        min_y = min_y.min(xy[1]);
+        max_y = max_y.max(xy[1]);
+    }
+    if max_x <= min_x || max_y <= min_y {
+        return Err(VisualDebugError::InvalidBedShape(format!(
+            "bed_shape encloses no area; got x [{min_x}..{max_x}], y [{min_y}..{max_y}]"
+        )));
+    }
+    Ok(slicer_runtime::ViewportBoundsMm {
+        min_x: min_x as f32,
+        min_y: min_y as f32,
+        max_x: max_x as f32,
+        max_y: max_y as f32,
+    }
+    .with_margin())
 }
 
 /// Shared error mapping for both capture closures (arena `execute_captured_stages`
@@ -883,6 +1022,23 @@ fn run_model_source(
     })?;
     let config_source = load_visual_debug_config(config.as_deref())?;
 
+    // The model-wide XY extent, captured before `mesh` is moved into the
+    // prepass context below.
+    //
+    // `load_model` already computed this as the union AABB over every object
+    // (`slicer-model-io/src/loader.rs`, `compute_bounding_box_union`), and
+    // `assemble_object` leaves every `ObjectMesh.transform` as identity — a
+    // 3MF's authored world transform is baked into its vertices at load. The
+    // prepass slices those same vertices through that same (identity)
+    // transform, so `build_volume` and the resulting `SliceIR` polygons share
+    // one mm origin: there is no centering, auto-arrange, or instance
+    // placement anywhere in this pipeline to offset them.
+    //
+    // This is what makes the viewport *model-wide* rather than
+    // selection-wide: it does not vary with which layers a request selected,
+    // so two bundles over one model can be compared stage-to-stage.
+    let model_bounds = mesh_xy_bounds(&mesh);
+
     let mut ctx =
         slicer_runtime::prepare_prepass_context(Arc::new(mesh), config_source, module_dirs, false)
             .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
@@ -1034,7 +1190,23 @@ fn run_model_source(
             world_bounds_mm: None,
         }));
     } else {
-        let viewport_bounds = slicer_runtime::compute_viewport_bounds(&output.captures);
+        let viewport_bounds = match req.frame {
+            // Plate framing is exactly the bed: it must NOT widen to the
+            // geometry, or "frame to the plate" would stop meaning the plate
+            // the moment anything sat near an edge.
+            FrameMode::Plate => plate_xy_bounds(&ctx.default_resolved_config)?,
+            // Model-wide extent, widened to cover anything the captures put
+            // outside the mesh footprint. The union is load-bearing, not
+            // defensive: brim, skirt, and support all extrude beyond the
+            // model's own XY silhouette, and a mesh-only viewport would
+            // silently clip them off the edge of the raster. It only ever
+            // grows, so framing stays mesh-dominated and stable across
+            // requests.
+            FrameMode::Model => {
+                let captured = slicer_runtime::compute_viewport_bounds(&output.captures);
+                model_bounds.map_or(captured, |m| m.union(captured))
+            }
+        };
         for capture in &output.captures {
             for viz in &req.visualizations {
                 let render_view = render_view_for_visualization(viz);
@@ -1283,8 +1455,18 @@ pub fn run_visual_debug(
                     viewport.width,
                     viewport.height,
                     req.gcode_line_width_mm,
+                    match req.frame {
+                        FrameMode::Model => visual_debug_gcode::GcodeFrame::Model,
+                        FrameMode::Plate => visual_debug_gcode::GcodeFrame::Plate,
+                    },
                 )
                 .map_err(|e| match e {
+                    visual_debug_gcode::GcodeRenderError::NoPrintableArea => {
+                        VisualDebugError::InvalidBedShape(format!(
+                            "{} carries no usable `printable_area` config comment to frame to",
+                            gcode_path.display()
+                        ))
+                    }
                     visual_debug_gcode::GcodeRenderError::Io(msg) => {
                         VisualDebugError::CaptureFailed(format!(
                             "failed to read gcode file {}: {msg}",
@@ -1335,7 +1517,10 @@ pub fn run_visual_debug(
                             gcode_parser_version: Some(output.parser_version.clone()),
                             warnings: output.warnings.clone(),
                             typed_capture: None,
-                            world_bounds_mm: None,
+                            // The whole-file mm viewport every image in this
+                            // bundle was projected through. Identical across
+                            // entries, like the model path's.
+                            world_bounds_mm: Some(output.world_bounds_mm),
                         });
                     }
                 }
@@ -1394,6 +1579,7 @@ pub fn run_visual_debug(
         source,
         resolution_scale: scale,
         viewport,
+        frame: req.frame.name().into(),
         legend_version: VERSION.into(),
         ir_schema_version: ir,
         gcode_parser_version: parser,
@@ -1433,4 +1619,79 @@ pub fn run_cli(
     let request =
         serde_json::from_slice(&bytes).map_err(|e| VisualDebugError::Write(e.to_string()))?;
     run_visual_debug(request, output_dir, overwrite)
+}
+
+#[cfg(test)]
+mod framing_tests {
+    use super::*;
+
+    fn config_with_bed(bed_shape: Vec<f64>) -> slicer_ir::ResolvedConfig {
+        slicer_ir::ResolvedConfig {
+            bed_shape,
+            ..Default::default()
+        }
+    }
+
+    /// The default 250x250 bed frames to its own extent plus the shared fixed
+    /// margin — the same margin the model path uses, so the two framing modes
+    /// are directly comparable.
+    #[test]
+    fn plate_bounds_are_the_bed_extent_plus_the_fixed_margin() {
+        let cfg = config_with_bed(vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0]);
+        let b = plate_xy_bounds(&cfg).expect("the default bed is usable");
+        let m = slicer_runtime::VIEWPORT_MARGIN_MM;
+        assert_eq!((b.min_x, b.min_y), (-m, -m));
+        assert_eq!((b.max_x, b.max_y), (250.0 + m, 250.0 + m));
+    }
+
+    /// A non-rectangular bed (e.g. a delta's circular plate, approximated as a
+    /// polygon) frames to its enclosing box.
+    #[test]
+    fn plate_bounds_take_the_bounding_box_of_a_non_rectangular_bed() {
+        // A diamond inscribed in [0, 200]^2.
+        let cfg = config_with_bed(vec![100.0, 0.0, 200.0, 100.0, 100.0, 200.0, 0.0, 100.0]);
+        let b = plate_xy_bounds(&cfg).expect("a diamond bed is usable");
+        let m = slicer_runtime::VIEWPORT_MARGIN_MM;
+        assert_eq!((b.min_x, b.max_x), (-m, 200.0 + m));
+        assert_eq!((b.min_y, b.max_y), (-m, 200.0 + m));
+    }
+
+    /// A bed_shape that cannot describe a plate fails closed. Falling back to
+    /// model framing would silently hand back an image that is not the one the
+    /// request asked for.
+    #[test]
+    fn unusable_bed_shapes_are_rejected_rather_than_silently_ignored() {
+        for (name, pts) in [
+            ("empty", vec![]),
+            (
+                "two points (a line, not a polygon)",
+                vec![0.0, 0.0, 10.0, 10.0],
+            ),
+            (
+                "odd length (a dangling coordinate)",
+                vec![0.0, 0.0, 10.0, 10.0, 5.0],
+            ),
+            ("zero area", vec![5.0, 5.0, 5.0, 5.0, 5.0, 5.0]),
+            ("non-finite", vec![0.0, 0.0, f64::NAN, 0.0, 10.0, 10.0]),
+        ] {
+            let err = plate_xy_bounds(&config_with_bed(pts))
+                .expect_err(&format!("{name} bed_shape must be rejected"));
+            assert!(
+                matches!(err, VisualDebugError::InvalidBedShape(_)),
+                "{name}: expected InvalidBedShape, got {err:?}"
+            );
+        }
+    }
+
+    /// A mesh whose loader-computed extent is unusable yields `None`, so the
+    /// caller falls back to the captured geometry's own bounds instead of
+    /// framing to a degenerate box.
+    #[test]
+    fn mesh_bounds_are_none_for_a_mesh_with_no_objects() {
+        let mesh = slicer_ir::MeshIR {
+            objects: vec![],
+            ..Default::default()
+        };
+        assert!(mesh_xy_bounds(&mesh).is_none());
+    }
 }
