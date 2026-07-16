@@ -241,33 +241,42 @@ pub fn generate_junctions(
         let Some(start_vertex) = graph.vertices.get(edge.start_vertex) else {
             continue;
         };
-        let Some(bead_count) = end_vertex.bead_count else {
-            continue;
-        };
-        if bead_count == 0 {
-            continue;
-        }
-
-        // Upward half-edge selection: the half-edge that walks from the
-        // LOWER-R vertex to the HIGHER-R vertex. The DOWNWARD half-edge
-        // (whose start_R is the higher R) is `continue`d — the OTHER half
-        // of the twin owns the emission. A flat edge (equal R) has neither
-        // half upward, so both skip and the edge is silently dropped.
+        // Canonical `generateJunctions` gate (`SkeletalTrapezoidation.cpp:1740-1744`).
+        // The DOWNWARD half-edge (start_R higher than the peak) is skipped so
+        // the twin owns emission. Canonical compares RAW bead counts (default
+        // -1 for "unassigned") BEFORE any `getOrCreateBeading` synthesis, and
+        // skips ONLY when both endpoints already carry an equal, NON-NEGATIVE
+        // bead count (no transition crosses the edge), or the edge is not
+        // upward. Crucially it does NOT skip a peak whose bead count is
+        // unassigned (`-1` / `None`): a non-central taper spine node (e.g. a
+        // benchy bow, whose converging-side bisector legitimately fails the
+        // centrality predicate and never receives a primary bead count) still
+        // must emit, pulling its widths from `getOrCreateBeading(edge->to)`.
+        // PnP formerly `continue`d whenever `end_vertex.bead_count` was
+        // `None`/`0`, dropping every wall in such tapered regions — the D5
+        // benchy-bow dropout. See `docs/DEVIATION_LOG.md`.
         let from_r = start_vertex.distance_to_boundary;
         let to_r = end_vertex.distance_to_boundary;
-        if from_r >= to_r {
+        let raw_from_bc: i64 = start_vertex.bead_count.map_or(-1, |n| i64::from(n));
+        let raw_to_bc: i64 = end_vertex.bead_count.map_or(-1, |n| i64::from(n));
+        if from_r >= to_r || (raw_from_bc == raw_to_bc && raw_from_bc >= 0) {
             continue;
         }
 
-        // Skip flat / same-bead-count edges
-        // (`SkeletalTrapezoidation.cpp:2024-2027`): if the from-end already
-        // carries the same bead count as the to-end (peak), there is no
-        // transition crossing this edge and hence no in-band bead to emit.
-        let from_bc = start_vertex.bead_count;
-        if let Some(from_bc_val) = from_bc {
-            if from_bc_val == bead_count {
-                continue;
-            }
+        // `getOrCreateBeading` synthesis (`SkeletalTrapezoidation.cpp:1808-1839`):
+        // a peak vertex with no assigned bead count derives one from its own
+        // thickness (`getOptimalBeadCount(distance_to_boundary * 2)`), so
+        // emission never depends on a prior positive bead-count assignment.
+        let bead_count: u32 = match end_vertex.bead_count {
+            Some(n) => n,
+            None => strategy.optimal_bead_count(2.0 * to_r) as u32,
+        };
+        if bead_count == 0 {
+            // A genuinely sub-optimal-width peak resolves to zero beads; its
+            // beading is empty so there is nothing to emit. (Canonical's
+            // `getOrCreateBeading` still runs, but `compute()` yields an empty
+            // beading — skipping early here is equivalent.)
+            continue;
         }
 
         // Resolve ONE beading at the peak (`to_idx`, the higher-R vertex) —
