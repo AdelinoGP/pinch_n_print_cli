@@ -455,7 +455,11 @@ fn outer_wall_closes_for_simple_polygon() {
     // wall ring closes after stitching — the walk-level 3-way detection
     // is verified separately by `arachne_parity_red_chain_junctions`.
     let lines: Vec<ExtrusionLine> = raw_buckets.into_iter().flatten().collect();
-    let max_gap = (0.4_f64 - 1e-6).max(0.0) * UNITS_PER_MM;
+    // mm, mirroring the production call site (`arachne/pipeline.rs`:
+    // `preferred_bead_width_outer - 1e-6`) and `stitch_extrusions`'s documented
+    // mm contract. Corrected 2026-07-16 (D-147-CHAIN-CLOSURE) — the trailing
+    // `* UNITS_PER_MM` did not match what production passes.
+    let max_gap = (0.4_f64 - 1e-6).max(0.0);
     let stitched = stitch_extrusions(lines, max_gap);
 
     let outer_lines: Vec<_> = stitched.iter().filter(|line| line.inset_idx == 0).collect();

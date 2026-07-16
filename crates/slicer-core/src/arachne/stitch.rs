@@ -40,7 +40,7 @@
 //! endpoint_rank)` — a total order over integers — never by iterating a
 //! `HashMap` keyed on floating point gap distance.
 
-use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth, UNITS_PER_MM};
+use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth};
 use std::collections::BTreeMap;
 
 /// Which end of a chain (first or last junction) an endpoint refers to.
@@ -251,21 +251,21 @@ fn finalize_chain(
             .windows(2)
             .map(|w| dist_sq_xy(w[0].p, w[1].p).sqrt())
             .sum();
-        // Tiny-poly rule (OrcaSlicer PolylineStitcher.hpp:136-141):
-        // if the total polyline length + closing-segment distance is
-        // < 3 * max_gap, OR the chain has <= 2 junctions, do not close
-        // (it might still extend into a longer polyline; 2-vertex polygons
-        // are also rejected).
+        // Tiny-poly rule (canonical `PolylineStitcher::stitch`,
+        // `PolylineStitcher.hpp`): if the total polyline length + closing-
+        // segment distance is < 3 * max_gap, OR the chain has <= 2 junctions,
+        // do not close (it might still extend into a longer polyline;
+        // 2-vertex polygons are also rejected).
         //
-        // Unit reconciliation: the junction coordinates are in *mm*
-        // (Point3WithWidth's convention), but the call sites pass `max_gap`
-        // in *slicer units* (e.g. `0.4 * UNITS_PER_MM`). To compare the
-        // polyline against `3 * max_gap` in the same space OrcaSlicer does
-        // (mm), normalise `max_gap` down to mm. The closing-segment gate
-        // below stays in the raw `max_gap` units to preserve the existing
-        // closure contract exactly.
-        let max_gap_mm = max_gap / UNITS_PER_MM;
-        if chain_length + closing_dist < 3.0 * max_gap_mm || junctions.len() <= 2 {
+        // `max_gap`, `chain_length` and `closing_dist` are all in MILLIMETERS —
+        // `Point3WithWidth`'s coordinate unit, this function's `max_gap`
+        // contract, and what production (`arachne/pipeline.rs`) passes. Do NOT
+        // reintroduce a `/ UNITS_PER_MM` here: a previous revision did, which
+        // silently shrank this threshold from 1.2mm to 0.00012mm so the rule
+        // never fired and small fragments closed prematurely — then escaped
+        // `remove_small_lines`, which exempts `is_closed` lines. See
+        // D-147-STITCH-TINY-POLY-UNITS.
+        if chain_length + closing_dist < 3.0 * max_gap || junctions.len() <= 2 {
             false
         } else {
             closing_dist <= max_gap

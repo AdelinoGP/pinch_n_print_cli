@@ -8,18 +8,23 @@
 //!
 //! # Unit convention
 //!
-//! `finalize_chain` receives junction coordinates in **mm** (the
-//! `Point3WithWidth` convention) while `max_gap` is supplied by the call sites
-//! in **slicer units** (e.g. `0.4 * UNITS_PER_MM`). The tiny-poly threshold is
-//! therefore evaluated in mm by normalising `max_gap` down to mm. The tests
-//! below mirror that: junction coordinates are written in mm, and `max_gap` is
-//! passed in slicer units exactly like `arachne_annulus_split` /
-//! `generate_toolpaths` do (`0.4 * UNITS_PER_MM` and `(0.4 - 1e-6) *
-//! UNITS_PER_MM` respectively), so the rule fires on genuinely tiny (sub-mm)
-//! polygons and leaves the large anchor walls closing.
+//! Everything here is in **millimeters**: junction coordinates
+//! (`Point3WithWidth`'s documented unit), `max_gap` (`stitch_extrusions`'s
+//! documented contract), and the derived `3 * max_gap` threshold. This is the
+//! convention the production call site (`arachne/pipeline.rs`, which passes
+//! `preferred_bead_width_outer - 1e-6`) uses.
+//!
+//! Corrected 2026-07-16 (D-147-STITCH-TINY-POLY-UNITS): this file used to pass
+//! `max_gap` in slicer units and rely on `finalize_chain` dividing it back down
+//! by `UNITS_PER_MM`. The scale-up and the divide-down cancelled exactly, so
+//! these tests stayed green while the same division defeated the rule in
+//! production (threshold 1.2mm -> 0.00012mm) — this suite could not observe the
+//! quantity it exists to test. The fixtures and their asserted outcomes are
+//! unchanged; only the `max_gap` input's unit is corrected, so `3 * max_gap` is
+//! still 1.2mm.
 
 use slicer_core::arachne::stitch::stitch_extrusions;
-use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth, UNITS_PER_MM};
+use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth};
 
 fn j(x: f32, y: f32) -> ExtrusionJunction {
     ExtrusionJunction {
@@ -44,8 +49,11 @@ fn line(pts: &[(f32, f32)], is_odd: bool) -> ExtrusionLine {
     }
 }
 
-/// `max_gap` in slicer units, matching the production call sites.
-const MAX_GAP: f64 = 0.4 * UNITS_PER_MM; // 4000 units == 0.4 mm
+/// `max_gap` in mm, matching the production call site
+/// (`arachne/pipeline.rs`: `preferred_bead_width_outer - 1e-6`).
+/// `3 * MAX_GAP` = 1.2mm is the tiny-poly threshold every fixture below is
+/// reasoned against.
+const MAX_GAP: f64 = 0.4;
 
 /// AC-7: a single even `ExtrusionLine` whose total polyline length plus
 /// closing-segment distance is `< 3 * max_gap` (in mm) must stay open.

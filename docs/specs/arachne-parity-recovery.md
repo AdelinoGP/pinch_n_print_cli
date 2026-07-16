@@ -40,6 +40,8 @@ right." The OrcaSlicer gcode stays a steering reference, never an automated nume
 
 1. North star: full parity — `cube_4color_arachne_outer_walls_close_end_to_end` to 0
    failures — but tests-green is necessary, not sufficient; visual parity vs OrcaSlicer benchy is the real bar.
+   **✅ Met 2026-07-16 (0/699, un-ignored) — see "Track C closure" below. The second clause stands:
+   the gate being green does not end the campaign.**
 2. Automated basis: structural invariants (unit-independent). Self-captured snapshots and absolute-numeric OrcaSlicer fixtures both rejected.
 3. OrcaSlicer oracle: `tmp/orcaSlicer_arachne_benchy.gcode`, uncommitted, LLM-visual comparison only.
 4. visual-debug is LLM-driven via multimodal image reading, free to walk any supported stage tap.
@@ -81,7 +83,7 @@ This is exactly why host-algos must join the default gate (Workstream 0).
 | `legacy_zero_matches_golden` | `crates/slicer-runtime/tests/e2e/slicing_precision_integration_tdd.rs:225` | FIX (byte-exact golden — inspect diff before rebless) |
 | `arachne_perimeters_simple_square_produces_walls` | `crates/slicer-runtime/tests/executor/arachne_perimeters_simple_square.rs:44` | FIX (real WASM-guest; likely broken by `57191889`) |
 | `cube_4color_ironing_per_painted_top_color` | `crates/slicer-runtime/tests/executor/cube_4color_ironing_per_painted_top_color_tdd.rs:170` | FIX (previously-green gate; paint/region-order churn) |
-| `cube_4color_*` gcode (exact fn TBD) | `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs` | FIX (confirm which fn) |
+| `cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes` | `crates/slicer-runtime/tests/executor/cube_4color_gcode_output_tdd.rs:945` | FIX — **fn confirmed 2026-07-16** (was "exact fn TBD"). Fails AC-4(a) at layer 78: 3 outer-wall header fragments vs 4 distinct tool indices (`headers={0,1,2} tools={0,1,2,3}`). **Classic**-perimeters path (arachne is dropped by claim-dedup in this test), so NOT Track C and unaffected by the arachne fixes |
 | `n3_apply_transitions_creates_lower_and_upper_end_splits` | `crates/slicer-core/tests/arachne_parity_red_transition_ends.rs:116` | **QUARANTINE** (deliberate RED anchor, N3) |
 | `arachne_parity_pipeline_concentric_infill_uses_arachne` | `crates/slicer-runtime/tests/arachne_parity.rs:915` | **QUARANTINE/IGNORE** — user decision 2026-07-15: concentric-infill is not on the roadmap and may never be implemented with Arachne; out of campaign scope |
 
@@ -286,8 +288,12 @@ Orca 60.5×31.0mm) — same geometry scale.
 > tracks Classic within ~0.1% across the entire Z=0.4–6.4 bow (e.g. Z=1.2: was arachne 2.37mm
 > vs classic 15.1mm → now 15.11mm vs 15.10mm, ratio ≈1.00 throughout). Refuted en route: thin-wall
 > widening and point-point discretization (D-154) — both zero effect; the bow is thick, its spine
-> edges are segment-segment not point-point. Follow-up: 2 tapered-wedge SELF-CAPTURED baselines now
+> edges are segment-segment not point-point. Follow-up: **3** tapered-wedge SELF-CAPTURED baselines now
 > drift "emit more" (correct direction) → re-baseline / convert to structural invariants (Track B).
+> `1d7eb1de` re-captured the 2 slicer-core ones; the third —
+> `crates/slicer-runtime/tests/fixtures/perimeter_parity/tapered_wedge`
+> (`perimeter_parity::arachne_perimeter_parity`) — was missed and is still RED. See the Track C
+> closure section for the proof that it is D5 drift and not a Track C regression.
 
 Experiment: sliced benchy with `wall_generator=classic` (`tmp/benchy_classic.gcode`,
 `tmp/vdbg_classic/`) as a second reference alongside OrcaSlicer.
@@ -354,8 +360,110 @@ stale (14/15 are now green regression locks; only the D-104f test is open).
 - **B — fixture & methodology redesign:** minimal synthetic fixtures reproducing each
   benchy error class; extend `arachne_invariants.rs`; demote self-captured baselines;
   rehome `arachne_parity_red_*.rs` into stage-grouped homes.
-- **C — closure-chain fix:** localize cube_4color closure (arachne `pipeline.rs`/
-  `generate_toolpaths.rs`/`stitch.rs`); drive to 0 failures; un-ignore only at green.
+- **C — closure-chain fix: ✅ DONE 2026-07-16 — the north star is met.**
+  `cube_4color_arachne_outer_walls_close_end_to_end` is at **0/699 (0.00%), mean gap
+  0.0000mm, across all 125 layers** and is **un-ignored**; so is its sibling
+  `cube_4color_arachne_per_color_footprint_within_bbox` (the D-113C "264 sub-loops,
+  seam-at-origin" residual). All 3 cube_4color arachne tests green by default, 0 ignored.
+  See the "Track C closure" section below for the full account — including the
+  faithfulness bug the ADR-0035 re-audit caught on the way in.
+
+## Track C closure — the north star is met (2026-07-16)
+
+`cube_4color_arachne_outer_walls_close_end_to_end`: **0/699 outer-wall sub-loops fail to
+close (0.00%), mean gap 0.0000mm, across all 125 layers.** Un-ignored, along with the
+sibling `cube_4color_arachne_per_color_footprint_within_bbox`. `D-147-CHAIN-CLOSURE`
+closed. Progression: 283/283 (100%) pre-113c → 455/898 (50.67%) at packet 147 → **0/699**.
+
+**The recorded 49.33% was stale, and re-measuring first was the whole ballgame.** It
+predated D5 (`5d0e1bcf`), D4 (`1dfac847`) and the `max_bead_count` correction
+(`f71b82b5`). The gate was *already passing* on current code before this session's Track C
+work began. **No production code was changed to make closure pass**; the residual packet
+147 attributed to "a real wall/infill bug, out of scope" was upstream in the beading
+pipeline all along, and D5+D4 dissolved it as a side effect. Packet 147's parting
+hypothesis — that `fc362cc4`'s canonical `dissolve_noncentral_gap`/merge-rule changes
+needed a downstream stitch/topology handler fix — is **refuted**: `stitch.rs`'s chain walk
+needed no closure fix. The handoff's planned diagnose/bisect around `fc362cc4` was moot.
+This is the campaign's fourth "the instrument lied, not the code."
+
+**Anti-vacuity checks (a passing gate is a claim; each was verified, not assumed):**
+- The gate's body is **byte-identical** to `182892ad`, the commit that recorded 455/898
+  (`git diff 182892ad..HEAD` on `cube_4color_arachne.rs` is empty) → no assertion was
+  retargeted or weakened; the delta is production-only.
+- The test guards its own non-emptiness (`total_checked > 0`) and scanned 699 sub-loops
+  over all 125 layers → not a vacuous green.
+- The sub-loop population fell **898 → 699**. Fewer loops passing a closure check is
+  exactly the shape a false pass takes, so it was **measured**: arachne-vs-classic on the
+  real cube_4color gcode gives total outer-wall length **31705.5mm vs 31822.8mm (ratio
+  0.9963)**, outer-wall content on all 125 layers in both, per-layer max|X| **137.321 vs
+  137.300mm on every layer**. No region dropped — the drop is D4's giant spurious centre
+  beads no longer fragmenting real loops into extra travel-delimited sub-loops.
+
+**ADR-0035's second condition paid for itself.** The ADR requires un-ignoring at 0 failures
+**and** a re-audit against OrcaSlicer C++ ("the percentage alone does not measure
+algorithmic faithfulness"). The percentage was already 0; the re-audit still found a real,
+live bug — `D-147-STITCH-TINY-POLY-UNITS`: a spurious `/ UNITS_PER_MM` in
+`stitch.rs::finalize_chain` defeated canonical's `3 * max_stitch_distance` tiny-polygon
+rule in production (threshold 1.2mm → 0.00012mm), prematurely closing small fragments
+which `remove_small_lines` then exempted from cleanup (it skips `is_closed` lines, matching
+canonical). Fixed. **Crucially, that bug would have *inflated* closure**, so the gate was
+re-measured after fixing it: **still 0/699, identical** — cube_4color's outer loops all
+exceed the 1.2mm threshold, so the rule never fires on them and the gate never rested on
+the defect. Re-audited **FAITHFUL**: `generate_toolpaths.rs`'s `connectJunctions` domain
+walk, and `pipeline.rs`'s post-process order (matches `WallToolPaths::generate`).
+
+**Workspace state at Track C close (`cargo xtask test --summary --workspace --no-fail-fast`):
+310 binaries, 2767 passed, 8 failed, 16 ignored, 2 quarantine-skipped.** All 8 failures are
+pre-existing; **none is caused by Track C's changes**. Seven are RED-baseline items above.
+The eighth was NOT on that list and is worth recording precisely, because the first instinct
+was wrong:
+
+- **`perimeter_parity::arachne_perimeter_parity`** (`tests/integration/perimeter_parity.rs`)
+  — `tapered_wedge` self-captured baseline: `regions[0].walls[0].path.points[1].x`
+  **actual 9.82146 vs expected 3.7797625**. **This is D5's own documented follow-up, not a new
+  break.** `5d0e1bcf` made tapered regions emit geometry they previously dropped, so every
+  tapered_wedge self-captured baseline drifts "emit more" (actual > expected — the correct
+  direction). `1d7eb1de` re-captured the two **slicer-core** fixtures
+  (`fixtures/arachne/bead_count_tapered_wedge.json`, `toolpaths_tapered_wedge.json`) but
+  **missed this third, slicer-runtime one** — same drift, different crate.
+  **Proven pre-existing, not inferred:** stashing *only* the `stitch.rs` production change
+  (the session's sole production edit; everything else is tests/docs) and rebuilding guests
+  reproduces the **identical** numbers, so the fix has zero effect on this fixture.
+  Left RED deliberately: per D-109 + ADR-0042 this is a self-captured baseline, and the
+  remedy is Track B's "convert to a structural invariant", **not** a blind rebless.
+  → **Track B, carried forward.**
+
+  > **Method note — an inference is not a measurement, even a well-reasoned one.** A reviewing
+  > agent, told the stitch fix changes which short fragments close, confidently classified this
+  > as "NEW — precisely what this baseline test caught", reasoning from mechanism alone. It was
+  > wrong: the stash discriminator took two minutes and refuted it outright. **When a failure
+  > appears alongside your change, measure the counterfactual before attributing it** — the
+  > plausibility of a causal story is not evidence for it. (Same family as D3 and the layer-96
+  > and D1 false positives; this campaign's recurring failure mode is *confident attribution
+  > without the control experiment*.)
+
+**Method lessons (both new, both earned):**
+1. **A false premise in a comment is a bug with a cover story.** `finalize_chain`'s
+   division was justified by "the call sites pass `max_gap` in slicer units" — true of the
+   *test* call sites, false of production. The unit conventions were split across callers
+   (production and `tests/stitch.rs` in mm; three other test files in slicer units) and
+   nobody reconciled them. When a comment justifies an adjustment by describing "the call
+   sites", **go read the production call site.**
+2. **A test whose harness is mis-scaled can assert the exact defect it was written to
+   catch.** `arachne_annulus_split` handed `stitch_extrusions` **4000mm of slack against a
+   2mm annulus** (while its comment claimed to "run the SAME stitch pass the production
+   pipeline uses"), which merged the outer contour with the hole — and its `inset 0 must be
+   exactly one closed loop` assertion then *demanded that merge*, i.e. the "missing/merged
+   outer walls" bug its own file header exists to catch. Corrected against canonical: every
+   boundary polygon (contour and hole alike) seeds bead index 0, so inset 0 holds **two**
+   separate closed loops; `PerimeterGenerator.cpp::traverse_extrusions` confirms it
+   downstream (`is_external = inset_idx == 0` alone selects `erExternalPerimeter`; the
+   contour-vs-hole flag plays no part). Re-pinned with a unit-independent structural nesting
+   invariant per ADR-0042. Related to, but distinct from, the `propagation_fills_gap_from_
+   central_neighbor` and `ac1`-pentagon instances: here the *fixture's scale*, not the
+   fixture's uniformity, is what made the defect invisible. **Generalisation: a test that
+   feeds a production function a parameter production would never pass is not testing
+   production.**
 
 ## Faithfulness follow-ups found by direct canonical read (2026-07-16)
 
@@ -405,3 +513,22 @@ reverse converter · T-062b GapFill role arm in `emit.rs::role_equals` · T-065
 `incompatible-with` · N6 dumbbell test re-strengthening · **D2** benchy bottom layers emit `Sparse
 infill` inside the bottom-shell region where OrcaSlicer emits solid — shell-count / solid-infill-threshold
 defect, parked 2026-07-15 (out of Arachne scope; user decision "skip only D2").
+
+**Added 2026-07-16 by the Track C ADR-0035 re-audit** (real divergences from canonical,
+found by direct source read; all confined to the zero-width inner-contour bookkeeping path,
+NOT outer-wall closure, so they did not block Track C):
+- **`separate_out_inner_contour` vs canonical `separateOutInnerContour`** (`WallToolPaths.cpp`):
+  PnP pushes **every** zero-first-junction-width line into `inner_contour`; canonical skips odd
+  lines (`odd lines don't contribute to the contour`) and keeps only even **closed** ones. PnP
+  also has **no equivalent of canonical's terminating global even-odd
+  `union_(inner_contour, pftEvenOdd)`** Clipper cleanup across all insets — it just concatenates
+  raw `ExtrusionLine`s. Affects infill-boundary accuracy.
+- **`remove_empty_toolpaths` granularity**: PnP filters individual `ExtrusionLine`s with empty
+  junctions; canonical `removeEmptyToolPaths` filters whole empty **inset groups**
+  (`VariableWidthLines`) from the top-level vector. An artifact of PnP's flattened
+  `Vec<ExtrusionLine>` shape vs canonical's `Vec<VariableWidthLines>`.
+- **Doc/code drift (cosmetic, no behaviour change)**: `generate_toolpaths.rs`'s module doc says
+  `chain_junctions_for_bead` merges shared-vertex junctions by "keeping the wider surviving
+  junction", but the code implements a presence-priority rule (`this_to` if present, else
+  `next_from`). The code is arguably closer to canonical's index-based dedup than its own
+  comment is; fix the comment, not the code.

@@ -1018,7 +1018,14 @@ fn cube_4color_arachne_fragments_walls_by_color() {
 /// left in place (`#![allow(dead_code)]` at this file's top) rather than
 /// deleted, in case a follow-on wants the per-color bbox cross-check for a
 /// different purpose.
-#[ignore = "packet 147: pre-existing D-113C-FAITHFUL-GRAPH-CONSTRUCTION Steps 9-10 residual — fixture re-baseline and full-workspace verification deferred; tracked in docs/DEVIATION_LOG.md D-113C. See D-147-CHAIN-CLOSURE."]
+// Un-ignored 2026-07-16 (Arachne Parity Recovery, Track C). The
+// D-113C Steps 9-10 residual this test was `#[ignore]`d for — 264
+// outer-wall sub-loops not closing, in the "seam-at-origin" pattern
+// D-113B-WIDE-REGION-COORD-INSTABILITY describes — is resolved: every
+// mid-body sub-loop now closes at gap 0.000mm. The fix was not in this
+// test's own scope but upstream, in the beading pipeline (D5
+// `5d0e1bcf` taper-peak dropout + D4 `1dfac847` beading-propagation
+// pass order); this test's body is unchanged.
 #[test]
 fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let outcome = slice_cube_4color_with_arachne();
@@ -1142,16 +1149,29 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
 /// On failure this test reports the exact failure count and percentage
 /// (plus mean gap) so a future regression is immediately diagnosable against
 /// the pre-packet 100%/283 baseline, not just a bare pass/fail.
-// Packet 147 follow-up: this test was written against the pre-packet-147
-// deviated Arachne pipeline. The canonical dissolve_noncentral_gap + merge
-// rule changes (commit fc362cc4) changed wall topology, producing 455
-// expected closure failures. Packet 147's 7 parity-audit fixes improved
-// the closure rate from 0% (283/283 fail pre-packet, mean gap 18.7mm) to
-// 49.33% (455/898 fail, mean gap 54.7mm) — real progress, but does not
-// meet AC-1's strict 0-failure bar. The wall/infill bug is real and out
-// of scope for 147; kept #[ignore]d pending a separate-session fix.
-// Tracked in D-147-CHAIN-CLOSURE as a residual gap.
-#[ignore = "packet 147: wall/infill bug is real — kept ignored pending separate-session fix; 7 D-147 findings closed but the e2e outer-wall closure rate (455/898 = 50.67% fail, mean gap 54.7mm) is not the closure that AC-1 asserts. Tracked in D-147-CHAIN-CLOSURE as a residual gap."]
+// Closure history (this test's body has never changed across any of these
+// measurements — `git diff 182892ad..HEAD` on this file is empty — so each
+// figure below reflects production code only, never a retargeted assertion):
+//
+//   pre-packet-113c  283/283 fail (100%), mean gap 18.7mm
+//   packet 147       455/898 fail (50.67%), mean gap 54.7mm
+//   2026-07-16       0/699 fail (0.00%), mean gap 0.0000mm  <- un-ignored here
+//
+// The residual packet 147 attributed to a "real wall/infill bug" out of its
+// scope was upstream in the beading pipeline, not in stitch/chain closure: D5
+// (`5d0e1bcf`, taper-peak dropout) and D4 (`1dfac847`, inverted beading-
+// propagation pass order) resolved it without either closure locus being
+// touched for closure's sake.
+//
+// The sub-loop count fell 898 -> 699 — fewer loops passing a closure check is
+// the shape a false pass takes, so it was measured, not assumed: total
+// outer-wall extruded length is 31705.5mm vs classic's 31822.8mm (ratio
+// 0.9963), with outer-wall content on all 125 layers and per-layer max|X|
+// within 0.021mm of classic on every layer. No geometry is lost; D4's giant
+// spurious centre beads had been fragmenting real loops.
+//
+// Un-ignored 2026-07-16 at the 0-failure bar ADR-0035 requires (and the
+// N1-N13 plan's "F blocks on green" policy). See D-147-CHAIN-CLOSURE.
 #[test]
 fn cube_4color_arachne_outer_walls_close_end_to_end() {
     let outcome = slice_cube_4color_with_arachne();

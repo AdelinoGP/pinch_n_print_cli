@@ -50,7 +50,7 @@ is the authoritative catalog of their defaults and ranges.
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
-| `max_bead_count` | int | `9` | >= 1.0 | `arachne-perimeters` |
+| `max_bead_count` | int | `0` | >= 0.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `min_central_distance` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `min_feature_size` | percent | `"25%"` | >= 0.0 | `arachne-perimeters` |

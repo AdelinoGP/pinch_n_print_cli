@@ -156,9 +156,34 @@ determines correctness.
   whether this ADR's scope needs extension. As of this writing, the functions
   listed in the Decision section cover the full post-graph-construction surface
   that OrcaSlicer's Arachne pipeline exposes.
-- The `cube_4color` e2e closure gate (`cube_4color_arachne_outer_walls_close_end_to_end`,
-  49.33% closure) is currently `#[ignore]`d — it is a closure oracle the pipeline
-  does not yet pass, not a green regression guard, and there is no `MAX_FAILURES`
-  threshold mechanism. A future packet that raises the closure percentage must
-  re-audit against OrcaSlicer's C++ source and un-ignore the gate only at 0
-  failures — the percentage alone does not measure algorithmic faithfulness.
+- The `cube_4color` e2e closure gate (`cube_4color_arachne_outer_walls_close_end_to_end`)
+  was `#[ignore]`d at 49.33% closure — a closure oracle the pipeline did not pass, not a
+  green regression guard (there is no `MAX_FAILURES` threshold mechanism). This clause
+  required that a future packet raising the percentage must re-audit against OrcaSlicer's
+  C++ source and un-ignore **only at 0 failures** — the percentage alone does not measure
+  algorithmic faithfulness.
+
+  **DISCHARGED 2026-07-16** (Arachne Parity Recovery, Track C; `D-147-CHAIN-CLOSURE` closed).
+  The gate is at **0/699 (0.00%), mean gap 0.0000mm across all 125 layers** and is
+  **un-ignored** — it is now a green regression guard. Both conditions were met, and the
+  record is worth keeping because **the second one is what had teeth**:
+  - *0 failures:* reached without any production change made for closure's sake — the
+    49.33% figure was stale, and D5 (`5d0e1bcf`) + D4 (`1dfac847`) had already dissolved
+    the residual upstream in the beading pipeline. Verified non-vacuous: the gate's body is
+    byte-identical to the commit that recorded 455/898, it guards its own non-emptiness, and
+    the 898→699 sub-loop drop was measured to be topology cleanup, not geometry loss
+    (arachne-vs-classic outer-wall length ratio 0.9963, no region dropped).
+  - *Re-audit:* the percentage was **already 0 when the audit ran**, so a
+    percentage-only reading would have shipped a live defect. The audit found one:
+    `D-147-STITCH-TINY-POLY-UNITS` — a spurious `/ UNITS_PER_MM` in
+    `stitch.rs::finalize_chain` defeated canonical's `3 * max_stitch_distance` tiny-polygon
+    rule in production. Because that defect *inflates* closure, the gate was re-measured
+    after the fix (still 0/699, identical — the rule never fires on cube_4color's
+    much-longer loops, so the gate never rested on it). `connectJunctions` and
+    `pipeline.rs`'s post-process order both re-audited faithful.
+
+  **This clause's reasoning is retained as precedent, not history:** a closure percentage —
+  including 100% — is not evidence of faithfulness, and can be *manufactured* by an
+  unfaithful rule. Any future gate un-ignored in this surface should pair the metric with a
+  source-level re-audit, and should re-measure the metric *after* any faithfulness fix the
+  audit produces.
