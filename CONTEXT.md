@@ -397,6 +397,46 @@ A `BeadingStrategy` parameter (OrcaSlicer `wall_split_middle_threshold`, PnP `ge
 ### intersection-distance gate
 The `dist_greater` predicate in `ExtrusionLine::simplify` (`Arachne/utils/ExtrusionLine.cpp:163-175`) that rejects removing a junction when the intersection of the extended `(prev_prev, prev)` and `(curr, next)` lines lies farther than `smallest_line_segment_squared` from either `prev` or `curr`, even when the segment-length and height-2 tests would otherwise allow removal — guarding against artifact "spikes" on near-colinear polylines. Ported into PnP's `simplify_distance_gated` tier-3 special case (packet 155, G20). See also **Split-middle threshold**; the G20 RED test's parameters were corrected under `docs/DEVIATION_LOG.md` D-156.
 
+### Self-captured baseline
+A regression fixture recorded from PnP's own prior output, not from an
+independent OrcaSlicer reference (no OrcaSlicer binary is available in this
+build environment — see `docs/DEVIATION_LOG.md` D-109/D-112). Green means
+"unchanged from the snapshot," never "correct"; a **structural invariant**
+that never existed cannot be proven by a self-captured baseline alone. See
+ADR-0042.
+
+### Structural invariant
+A unit-independent assertion of an Arachne correctness property — e.g.
+closure within tolerance, loop count/nesting, bead-count sequence,
+transitions-present, no self-intersection, coverage ratio, or "no bead wider
+than ~2× optimal width" — rather than an equality check against a captured
+snapshot or an absolute-coordinate fixture. Invariant to PnP's 1-unit=100nm
+divergence from OrcaSlicer (`docs/08_coordinate_system.md`), so it stays
+meaningful even where absolute-coordinate comparison would be
+flaky-by-construction. See ADR-0042.
+
+### LLM-visual oracle
+The uncommitted OrcaSlicer reference gcode (`tmp/orcaSlicer_arachne_benchy.gcode`),
+rendered alongside PnP's own output via `pnp_cli visual-debug` and compared by
+Claude's multimodal vision. It **steers** investigation — flagging where two
+renders differ — but never **adjudicates** whether a flagged difference is a
+real defect; the mechanism must always be confirmed structurally (gcode/IR),
+never concluded from the image alone. See ADR-0042.
+
+### Benchy error class
+A distinct defect family observed on the benchy reference print (e.g. D4's
+inner-wall over-extrusion, D5's dropped bow geometry), used to scope a
+**synthetic reproduction fixture** so the fixture reproduces a real,
+previously-observed failure mode rather than an arbitrary shape. See
+`docs/specs/arachne-parity-recovery.md`.
+
+### Synthetic reproduction fixture
+A minimal, hand-built input constructed to reproduce one **benchy error
+class** in a fast unit test, backing a **structural invariant** assertion.
+Manufactured deliberately rather than sampled from benchy directly, because
+simple/arbitrary fixtures do not reliably trigger the error class they are
+meant to guard against. See `docs/specs/arachne-parity-recovery.md`.
+
 ## Flagged ambiguities
 
 ### "region"
