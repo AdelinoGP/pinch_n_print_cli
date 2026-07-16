@@ -49,9 +49,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
-    apply_transitions, assign_bead_counts, filter_central, propagate_beadings_downward,
-    propagate_beadings_upward, CentralityParams, EdgeType, RibData, STHalfEdge, STVertex,
-    SkeletalTrapezoidationGraph, TransitionMiddle,
+    apply_transitions, assign_bead_counts, filter_central, populate_beading_propagation,
+    propagate_beadings_downward, propagate_beadings_upward, CentralityParams, EdgeType, RibData,
+    STHalfEdge, STVertex, SkeletalTrapezoidationGraph, TransitionMiddle,
 };
 use slicer_core::voronoi::{Vertex, NO_INDEX};
 use slicer_ir::{ExPolygon, Point2, Polygon};
@@ -407,6 +407,138 @@ fn varying_hand_built_graph() -> SkeletalTrapezoidationGraph {
 /// edge B (v1<->v2) starts with `bead_count = None` on both its
 /// half-edges. `propagate_beadings_upward` must fill both of B's directions
 /// from A (the only central neighbor reachable at v1) with `Some(4)`.
+/// Same shape as [`gapped_hand_built_graph`] but with a *thickness gradient*: a
+/// thin source vertex that owns a bead count feeds a MUCH thicker gap vertex.
+/// This is the benchy-hull-spine shape (`D4-INNER-WALL-OVEREXTRUSION`), and the
+/// case [`gapped_hand_built_graph`] structurally cannot catch because every one
+/// of its vertices shares `distance_to_boundary = 5.0` (with uniform thickness,
+/// copying a beading and recomputing it are indistinguishable).
+///
+/// Scaled to this file's synthetic [`factory_params`] (`optimal_width = 20`
+/// units), not to mm: v0/v1 sit at `distance_to_boundary = 30` (thickness 60 =
+/// exactly `3 * optimal_width`, so `bead_count = 3` is genuinely optimal there
+/// and `compute` yields three 20-wide beads). v2 sits at
+/// `distance_to_boundary = 500` (thickness 1000 — the "hull spine" analogue,
+/// ~16x too thick for 3 beads) with `bead_count = None` (a real gap / purely
+/// propagated node). Recomputing the source's `bead_count = 3` at v2's own
+/// thickness would yield `[20, 960, 20]` — the giant centre bead this pins.
+fn thickness_gradient_gap_graph() -> SkeletalTrapezoidationGraph {
+    fn vertex(x: f64, r: f64, bc: Option<u32>) -> STVertex {
+        STVertex {
+            position: Vertex { x, y: 0.0 },
+            distance_to_boundary: r,
+            bead_count: bc,
+            transition_ratio: 0.0,
+        }
+    }
+    fn edge(start_vertex: usize, twin: usize, r_min: f64, r_max: f64) -> STHalfEdge {
+        STHalfEdge {
+            start_vertex,
+            twin,
+            next: NO_INDEX,
+            prev: NO_INDEX,
+            r_min,
+            r_max,
+            central: true,
+            is_curved: false,
+            rib_twin: None,
+            quad_cell: None,
+            edge_type: EdgeType::NORMAL,
+            transition_mids: Vec::new(),
+            transition_ends: Vec::new(),
+        }
+    }
+
+    // Scaled to `factory_params()`'s synthetic `optimal_width = 20` units.
+    const THIN_R: f64 = 30.0; // thickness 60 == 3 * optimal_width
+    const THICK_R: f64 = 500.0; // thickness 1000 — the "spine" analogue
+
+    let vertices = vec![
+        vertex(0.0, THIN_R, Some(3)),
+        vertex(10.0, THIN_R, Some(3)),
+        vertex(20.0, THICK_R, None),
+    ];
+    let edges = vec![
+        edge(0, 1, 0.0, THIN_R),
+        edge(1, 0, 0.0, THIN_R),
+        edge(1, 3, THIN_R, THICK_R), // v1 -> v2: upward into the thick gap
+        edge(2, 2, THIN_R, THICK_R),
+    ];
+
+    SkeletalTrapezoidationGraph {
+        vertices,
+        edges,
+        centrality_filtered: true,
+        rib: RibData::default(),
+        ..Default::default()
+    }
+}
+
+/// Regression pin for `D4-INNER-WALL-OVEREXTRUSION`. Unit-independent
+/// STRUCTURAL invariant: a beading propagated upward must be the source's
+/// beading **verbatim** — never rescaled to the destination's (larger)
+/// thickness, which would inflate a middle bead into a physically impossible
+/// extrusion.
+///
+/// Canonical `propagateBeadingsUpward` (`SkeletalTrapezoidation.cpp:1561-1588`)
+/// copies the lower node's whole `Beading` and asserts
+/// `upper_beading.beading.total_thickness <= to->distance_to_boundary * 2` — a
+/// propagated beading is EXPECTED to be thinner than its destination; the
+/// surplus region is infill, not extrudate. The pre-fix code instead propagated
+/// the scalar `bead_count` and let `populate_beading_propagation` recompute
+/// `compute(2 * 9.87mm, 3)` = `[0.4, 18.9, 0.4]` at the destination — a ~19mm
+/// "wall" (43x a 0.45mm nozzle). On benchy that produced 3,313 inner-wall moves
+/// wider than 3mm (max 19.6mm); Classic produced zero.
+#[test]
+fn propagation_upward_copies_beading_without_rescaling_to_thicker_node() {
+    let mut graph = thickness_gradient_gap_graph();
+    let params = factory_params();
+    let strategy = BeadingStrategyFactory::create_stack(&params);
+
+    populate_beading_propagation(&mut graph, strategy.as_ref());
+    propagate_beadings_upward(&mut graph);
+
+    let thick = graph.beading_propagation[2]
+        .as_ref()
+        .expect("the thick gap vertex must receive a propagated beading from its thin neighbour");
+
+    // (a) Verbatim copy of the source's beading.
+    assert_eq!(
+        Some(thick),
+        graph.beading_propagation[1].as_ref(),
+        "the propagated beading must be the source's verbatim, not recomputed at the \
+         destination's thickness"
+    );
+
+    // (b) The invariant that actually fails on the D4 defect: no bead may be
+    // inflated to swallow the destination's surplus thickness. Canonical keeps
+    // every propagated bead at ~optimal width; the surplus becomes infill.
+    let widest = thick.bead_widths.iter().cloned().fold(0.0_f64, f64::max);
+    assert!(
+        widest <= 2.0 * params.optimal_width,
+        "propagated beading has a bead of width {widest} units (> 2x optimal_width {}) — the \
+         destination's surplus thickness was materialised as an extruded bead instead of infill \
+         (D4-INNER-WALL-OVEREXTRUSION)",
+        params.optimal_width
+    );
+
+    // (c) Canonical's own assert: a propagated beading is thinner than its
+    // destination (`SkeletalTrapezoidation.cpp:1587`).
+    assert!(
+        thick.total_thickness <= 2.0 * graph.vertices[2].distance_to_boundary,
+        "propagated beading total_thickness {} must not exceed the destination's own \
+         thickness {} (canonical SkeletalTrapezoidation.cpp:1587)",
+        thick.total_thickness,
+        2.0 * graph.vertices[2].distance_to_boundary
+    );
+
+    // (d) Canonical never writes `bead_count` on a purely propagated joint.
+    assert_eq!(
+        graph.vertices[2].bead_count, None,
+        "a purely propagated joint must keep bead_count = None (canonical -1)"
+    );
+}
+
 fn gapped_hand_built_graph() -> SkeletalTrapezoidationGraph {
     fn vertex(x: f64, y: f64, bc: Option<u32>) -> STVertex {
         STVertex {
@@ -606,26 +738,58 @@ fn propagation_three_fixtures() {
 #[test]
 fn propagation_fills_gap_from_central_neighbor() {
     let mut graph = gapped_hand_built_graph();
+    let strategy = BeadingStrategyFactory::create_stack(&factory_params());
 
     assert_eq!(
         graph.vertices[2].bead_count, None,
         "precondition: vertex 2 (v2) must start as a genuine gap"
     );
 
+    // Canonical pass order (`SkeletalTrapezoidation.cpp:1488-1508`): each node
+    // with its OWN bead count gets a beading first; only then is that beading
+    // propagated to nodes that have none.
+    populate_beading_propagation(&mut graph, strategy.as_ref());
+    assert!(
+        graph.beading_propagation[2].is_none(),
+        "precondition: the gap vertex must have no beading of its own before propagation"
+    );
+
     propagate_beadings_upward(&mut graph);
 
+    // Canonical `propagateBeadingsUpward` (`SkeletalTrapezoidation.cpp:1561-1588`)
+    // fills the gap by copying the neighbour's BEADING and deliberately leaves
+    // the joint's `bead_count` at its default (`-1`, `None` here) — it only calls
+    // `setBeading`, never assigns `to->bead_count`. This test previously asserted
+    // the opposite (`bead_count == Some(4)`), pinning a real defect: propagating
+    // the scalar and letting `populate_beading_propagation` recompute
+    // `compute(2 * to.distance_to_boundary, bead_count)` at the DESTINATION's
+    // thickness turns a thin node's bead count into a giant centre bead on a
+    // thicker node (benchy hull spine: `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]`,
+    // a ~19mm extruded "wall" — `D4-INNER-WALL-OVEREXTRUSION`). This fixture never
+    // caught it because every vertex here shares `distance_to_boundary = 5.0`, so
+    // copy-vs-recompute are indistinguishable; see
+    // `propagation_upward_copies_beading_without_rescaling_to_thicker_node` for the
+    // differing-thickness case that does catch it.
     assert_eq!(
-        graph.vertices[2].bead_count,
-        Some(4),
-        "vertex 2 (v2): gap must be filled from its only central neighbor at v1 (edge 0/1, \
-         bead_count=4)"
+        graph.vertices[2].bead_count, None,
+        "vertex 2 (v2): canonical propagation must NOT write `bead_count` on a purely \
+         propagated joint — it stays -1/None and only receives a beading"
+    );
+    let filled = graph.beading_propagation[2].as_ref().expect(
+        "vertex 2 (v2): gap must be filled from its only central neighbor at v1 \
+                 (edge 0/1, bead_count=4) by copying v1's beading into the side table",
+    );
+    assert_eq!(
+        Some(filled),
+        graph.beading_propagation[1].as_ref(),
+        "vertex 2 (v2): the propagated beading must be a verbatim copy of v1's"
     );
 
     // Filling a gap so both sides now agree (4 == 4) must not spuriously
     // populate transition_mids — `propagate_beadings_upward` only ever
-    // touches `bead_count`/`transition_ratio` on vertices, never
-    // `transition_mids` on edges (that's `generate_transition_mids`'s job,
-    // not called in this gap-filling-only test).
+    // writes the beading side table, never `transition_mids` on edges
+    // (that's `generate_transition_mids`'s job, not called in this
+    // gap-filling-only test).
     assert!(
         graph.edges[0].transition_mids.is_empty() && graph.edges[2].transition_mids.is_empty(),
         "gap-filled graph must have zero transition_mids entries (propagate_beadings_upward \

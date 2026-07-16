@@ -364,6 +364,26 @@ pub fn run_arachne_pipeline(
     generate_all_transition_ends(&mut graph, strategy.as_ref());
     apply_transitions(&mut graph);
     generate_extra_ribs(&mut graph, strategy.as_ref());
+
+    // Populate the `BeadingPropagation` side table BEFORE the propagation
+    // passes, matching canonical's order (`SkeletalTrapezoidation.cpp:1488-1514`:
+    // the per-node `setBeading(compute(dtb*2, bead_count))` loop runs, THEN
+    // `propagateBeadingsUpward`, THEN `propagateBeadingsDownward`).
+    //
+    // Order matters and was previously inverted (populate ran last). Canonical
+    // computes each node's beading from ITS OWN `bead_count` + thickness, then
+    // propagates the resulting BEADING OBJECTS to nodes that have none. Running
+    // populate last instead meant every node — including ones that only received
+    // a *propagated* bead count from a thin neighbour — had its beading
+    // (re)computed at its OWN, much larger, thickness. On a benchy hull's thick
+    // medial spine that turned a thin node's `bead_count = 3` into
+    // `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]` — a ~19mm-wide extruded "wall"
+    // (43x the nozzle): the D4 inner-wall over-extrusion. It also left both
+    // propagation passes' side-table reads dead (the table was still empty),
+    // despite `propagate_beadings_downward`'s own comments assuming this pass
+    // had already run. See `docs/DEVIATION_LOG.md` `D4-INNER-WALL-OVEREXTRUSION`.
+    populate_beading_propagation(&mut graph, strategy.as_ref());
+
     propagate_beadings_upward(&mut graph);
     // Packet 113c Step 8b: thread the pipeline's *actual* configured
     // beading-propagation transition distance (`wall_transition_length`,
@@ -376,12 +396,6 @@ pub fn run_arachne_pipeline(
         &mut graph,
         beading_params.default_transition_length,
     );
-
-    // Packet 141 (N7): populate the `BeadingPropagation` side table so
-    // `generate_junctions`'s `get_beding`/`get_nearest_beding` lookups
-    // resolve a real, propagated beading at each peak vertex instead of
-    // falling through to a fresh `strategy.compute()` call every time.
-    populate_beading_propagation(&mut graph, strategy.as_ref());
 
     // Matches this packet's brief verbatim: max_gap = preferred_bead_width_outer
     // - 1e-6 (mm, matching `stitch_extrusions`'s mm-unit `max_gap` parameter),

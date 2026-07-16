@@ -1308,12 +1308,48 @@ fn upward_propagation_order(graph: &SkeletalTrapezoidationGraph) -> Vec<usize> {
 }
 
 /// Propagates resolved beadings upward (from lower radius to higher radius)
-/// along central edges, copying the `from` node's bead count to an unset `to`
-/// node and accumulating distance to the nearest bottom source.
+/// along central edges, copying the `from` node's **beading** into an unset
+/// `to` node's side-table slot.
 ///
-/// Mirrors `propagateBeadingsUpward` (L1800-1826). Iterates `upward_quad_mids`
-/// in reverse order (see [`upward_propagation_order`]).
+/// Faithful port of `propagateBeadingsUpward`
+/// (`SkeletalTrapezoidation.cpp:1561-1588`), whose body is:
+///
+/// ```text
+/// if (upward_edge->to->data.bead_count >= 0)   continue; // Don't override local beading
+/// if (!upward_edge->from->data.hasBeading())   continue; // Only propagate if we have something
+/// if (upward_edge->to->data.hasBeading())      continue; // Only propagate where there is place
+/// BeadingPropagation upper_beading = lower_beading;      // COPY the beading
+/// upward_edge->to->data.setBeading(...);                 // attach it; bead_count stays -1
+/// ```
+///
+/// Two properties are load-bearing and were previously violated:
+///
+/// 1. **Copy the beading, don't propagate the scalar bead count.** Canonical
+///    carries the *lower* node's whole `Beading` (its thickness and its actual
+///    per-bead widths) upward verbatim. The previous implementation instead wrote
+///    `to.bead_count = from.bead_count` and let `populate_beading_propagation`
+///    later recompute `compute(2 * to.distance_to_boundary, bead_count)` — i.e.
+///    the THIN node's bead count against the THICK node's thickness. On a benchy
+///    hull's medial spine that yielded `compute(19.7mm, 3)` = `[0.4, 18.9, 0.4]`:
+///    `DistributedBeadingStrategy` parks the whole surplus in the middle bead, so
+///    a ~19mm-wide "wall" (43x the nozzle) got extruded — the D4 inner-wall
+///    over-extrusion. Canonical's own assert documents the intent:
+///    `upper_beading.beading.total_thickness <= to->distance_to_boundary * 2` —
+///    a propagated beading is EXPECTED to be thinner than its destination; the
+///    surplus is infill, not extrudate.
+/// 2. **Never write `bead_count`/`transition_ratio` on the destination joint.**
+///    Canonical leaves a purely-propagated node at `bead_count == -1` and only
+///    attaches the beading. `propagate_beadings_downward` already documents this
+///    same rule (writing `bead_count` flattens the gradient and trips
+///    `generate_junctions`'s same-bead-count skip gate).
+///
+/// Iterates `upward_quad_mids` in reverse order (see [`upward_propagation_order`]).
+/// Requires [`populate_beading_propagation`] to have run first (canonical order,
+/// `SkeletalTrapezoidation.cpp:1488-1508`) so there are beadings to propagate.
 pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
+    if graph.beading_propagation.len() != graph.vertices.len() {
+        graph.beading_propagation.resize(graph.vertices.len(), None);
+    }
     for edge_idx in upward_propagation_order(graph) {
         let edge = match graph.edges.get(edge_idx).cloned() {
             Some(e) => e,
@@ -1324,6 +1360,9 @@ pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
         if to_v == NO_INDEX || from_v == NO_INDEX {
             continue;
         }
+        // "Don't override local beading" (`:1567-1570`): a node with its own
+        // bead count already had its beading computed by
+        // `populate_beading_propagation`.
         if graph
             .vertices
             .get(to_v)
@@ -1332,14 +1371,26 @@ pub fn propagate_beadings_upward(graph: &mut SkeletalTrapezoidationGraph) {
         {
             continue;
         }
-        let Some(from_bead_count) = graph.vertices.get(from_v).and_then(|v| v.bead_count) else {
+        // "Only propagate to places where there is place" (`:1577-1580`).
+        if graph
+            .beading_propagation
+            .get(to_v)
+            .and_then(|slot| slot.as_ref())
+            .is_some()
+        {
+            continue;
+        }
+        // "Only propagate if we have something to propagate" (`:1571-1574`).
+        let Some(from_beading) = graph
+            .beading_propagation
+            .get(from_v)
+            .and_then(|slot| slot.as_ref())
+            .cloned()
+        else {
             continue;
         };
-        let source_transition_ratio = graph.vertices[from_v].transition_ratio;
-        if let Some(to_vertex) = graph.vertices.get_mut(to_v) {
-            to_vertex.bead_count = Some(from_bead_count);
-            // transition_ratio propagates from upstream source.
-            to_vertex.transition_ratio = source_transition_ratio;
+        if let Some(slot) = graph.beading_propagation.get_mut(to_v) {
+            *slot = Some(from_beading);
         }
     }
 }
@@ -1699,19 +1750,33 @@ pub fn propagate_beadings_downward_with_transition_dist(
         if peak_v == NO_INDEX || bottom_v == NO_INDEX {
             continue;
         }
-        let Some(_peak_bc) = graph.vertices.get(peak_v).and_then(|v| v.bead_count) else {
+        // Canonical gates this pass on `hasBeading()`, never on `bead_count`
+        // (`SkeletalTrapezoidation.cpp:1614-1624`: it takes
+        // `getOrCreateBeading(edge_to_peak->to)` unconditionally). Gating on
+        // `bead_count` here would skip every peak that only carries a
+        // *propagated* beading — which, since `propagate_beadings_upward` now
+        // correctly leaves such nodes at `bead_count == None` (canonical `-1`),
+        // is exactly the set canonical still propagates through.
+        if graph
+            .beading_propagation
+            .get(peak_v)
+            .and_then(|slot| slot.as_ref())
+            .is_none()
+        {
             continue;
-        };
+        }
         let edge_len = edge_length(graph, edge_idx);
         if !edge_len.is_finite() || edge_len <= 0.0 {
             continue;
         }
 
         let top_dist_from_source = dist_from_top_source.get(&peak_v).copied().unwrap_or(0.0);
+        // Canonical's branch predicate is `!edge_to_peak->from->data.hasBeading()`
+        // (`SkeletalTrapezoidation.cpp:1624`) — the side table, not `bead_count`.
         let bottom_has_beading = graph
-            .vertices
+            .beading_propagation
             .get(bottom_v)
-            .and_then(|v| v.bead_count)
+            .and_then(|slot| slot.as_ref())
             .is_some();
 
         if !bottom_has_beading {
@@ -1748,9 +1813,9 @@ pub fn propagate_beadings_downward_with_transition_dist(
             continue;
         }
 
-        let Some(_bottom_bc) = graph.vertices.get(bottom_v).and_then(|v| v.bead_count) else {
-            continue;
-        };
+        // (`bottom_has_beading` is true here — canonical's `else` branch at
+        // `SkeletalTrapezoidation.cpp:1636`, which reads the bottom's existing
+        // beading from the side table rather than requiring a `bead_count`.)
         let bottom_dist_to_source = dist_to_bottom_source.get(&bottom_v).copied().unwrap_or(0.0);
         let total_dist = top_dist_from_source + edge_len + bottom_dist_to_source;
         let denom = total_dist.min(transition_dist).max(f64::EPSILON);

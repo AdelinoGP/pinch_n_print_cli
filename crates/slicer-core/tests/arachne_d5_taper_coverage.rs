@@ -92,9 +92,12 @@ fn d5_benchy_bow_cross_section_is_covered_by_arachne_walls() {
     let poly = parse_raw_contour(text);
     let (in_minx, in_maxx) = input_x_extent(&poly);
 
-    let (lines, _inner) =
-        run_arachne_pipeline(std::slice::from_ref(&poly), &ArachneParams::default(), false)
-            .expect("pipeline must not error on a real benchy cross-section");
+    let (lines, _inner) = run_arachne_pipeline(
+        std::slice::from_ref(&poly),
+        &ArachneParams::default(),
+        false,
+    )
+    .expect("pipeline must not error on a real benchy cross-section");
 
     let out = output_x_extent(&lines);
     eprintln!(

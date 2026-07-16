@@ -141,7 +141,16 @@ impl BeadingStrategy for LimitedBeadingStrategy {
         beading.total_thickness = thickness;
 
         // Enforce symmetry about the region centre (OrcaSlicer
-        // `LimitedBeadingStrategy.cpp:70-76`).
+        // `LimitedBeadingStrategy.cpp:70-74`). NOTE: OrcaSlicer only ever
+        // constructs `LimitedBeadingStrategy` with an EVEN `max_bead_count`
+        // (its ctor warns "odd bead count is odd indeed!",
+        // `LimitedBeadingStrategy.cpp:36-40`), so this odd branch — which
+        // parks the surplus region thickness in a single wide centre bead — is
+        // dead in canonical use. The centre bead is a faithful port of
+        // `LimitedBeadingStrategy.cpp:73`; it only turns into a physically
+        // impossible ~12 mm extrusion if the factory hands us an ODD
+        // `max_bead_count` (the real D4 taper-region bug — fixed at the factory
+        // by rounding the cap up to even, matching OrcaSlicer's invariant).
         let n = beading.toolpath_locations.len();
         if n % 2 == 1 {
             beading.toolpath_locations[n / 2] = thickness / 2.0;
