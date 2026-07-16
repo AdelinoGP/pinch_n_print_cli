@@ -442,6 +442,34 @@ was wrong:
   > and D1 false positives; this campaign's recurring failure mode is *confident attribution
   > without the control experiment*.)
 
+**Second divergence, found by challenging the fix (2026-07-16) — `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`.**
+Asked "goal is OrcaSlicer parity, was your fix correct in that sense?", the re-audit of the
+re-audit found that `D-147-STITCH-TINY-POLY-UNITS` had corrected the **units** of the
+tiny-poly comparison but never checked the **operand**. Canonical stitches with
+`bead_width_x` — the INNER wall width (`stitchToolPaths(toolpaths, this->bead_width_x)`);
+PnP passed `preferred_bead_width_outer` (canonical's `bead_width_0`, OUTER). Proven via the
+binding `makeStrategy(bead_width_0, bead_width_x, ...)` against the signature
+`makeStrategy(preferred_bead_width_outer, preferred_bead_width_inner, ...)`, plus
+`makeStrategy`'s own `optimal_width = max_bead_count <= 2 ? outer : inner` local — which is
+exactly what PnP's `optimal_width` manifest entry already documented. Fixed via
+`stitch_max_gap` (`optimal_width - 1e-6`). **Same root cause as the units bug:** the call
+site said *"Matches this packet's brief verbatim"* — a local spec trusted over canonical.
+Latent at default config (both widths 0.4mm ⇒ identical), so the AC-1 gate is byte-identical
+(0/699) before and after and **no existing fixture could see it**; pinned by
+`stitch_gap_follows_inner_bead_width_not_outer`, which drives the widths apart and was
+**verified to fail against the old operand** rather than merely pass against the new one.
+Also resolved a live doc conflict: `arachne-perimeters/src/lib.rs` claimed `optimal_width`
+maps to `ext_perimeter_spacing` (OUTER), contradicting `ArachneParams`' "preferred_bead_width_inner";
+canonical settles it as INNER.
+
+> **Method lesson — "is it faithful?" is a different question from "does the gate pass?", and
+> both of this session's real bugs were found only by asking the first.** The closure gate was
+> 0/699 before either fix and 0/699 after both; neither defect was observable through it. The
+> units bug was caught by ADR-0035's mandated re-audit; the operand bug was caught only because
+> the fix itself was then challenged. **Generalisation: after fixing a faithfulness defect, audit
+> the fix with the same suspicion you brought to the original** — a corrected line is not a
+> verified line, and "I checked the units" is not "I checked the expression".
+
 **Method lessons (both new, both earned):**
 1. **A false premise in a comment is a bug with a cover story.** `finalize_chain`'s
    division was justified by "the call sites pass `max_gap` in slicer units" — true of the
@@ -527,6 +555,19 @@ NOT outer-wall closure, so they did not block Track C):
   junctions; canonical `removeEmptyToolPaths` filters whole empty **inset groups**
   (`VariableWidthLines`) from the top-level vector. An artifact of PnP's flattened
   `Vec<ExtrusionLine>` shape vs canonical's `Vec<VariableWidthLines>`.
+- **`arachne-perimeters` width WIRING parity — UNTESTED, real open question.** Surfaced by the
+  `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` investigation but deliberately not chased.
+  `arachne_params_from_config` reads two independent config keys — `optimal_width` and
+  `preferred_bead_width_outer`, **both defaulting to 4000 units (0.4mm)** — and spacing-converts
+  each. Canonical `PerimeterGenerator` instead derives `WallToolPaths`' two widths from the two
+  *wall* flows: `bead_width_0 = ext_perimeter_spacing` (outer) and `bead_width_x =
+  perimeter_spacing` (inner). PnP's keys are therefore not wired from
+  `outer_wall_line_width`/`inner_wall_line_width` at all, which means **PnP's outer and inner
+  bead widths are equal by default no matter what the user configures for wall line widths** —
+  if true, that is a live parity defect affecting every bead placement, not just the stitch gap,
+  and it is also *why* `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` was unobservable. Not verified
+  either way; needs a direct read of `PerimeterGenerator`'s `WallToolPaths` construction against
+  `arachne_params_from_config`. **Suspected high-value.**
 - **Doc/code drift (cosmetic, no behaviour change)**: `generate_toolpaths.rs`'s module doc says
   `chain_junctions_for_bead` merges shared-vertex junctions by "keeping the wider surviving
   junction", but the code implements a presence-priority rule (`this_to` if present, else

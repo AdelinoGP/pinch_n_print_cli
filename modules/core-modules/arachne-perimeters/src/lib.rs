@@ -142,13 +142,23 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let nozzle_diameter_mm = config.get_float("nozzle_diameter").unwrap_or(0.4);
 
     // AC-3: feed Flow SPACING (not raw width) to the beading pipeline.
-    // `optimal_width` stands in for OrcaSlicer's `ext_perimeter_spacing`
-    // (see the precise-outer-wall doc comment below) — bead_width_0 =
-    // ext_perimeter_spacing (PerimeterGenerator.cpp:2129), and WallToolPaths
-    // receives perimeter_spacing = perimeter_flow.scaled_spacing()
-    // (PerimeterGenerator.cpp:578,2172-2173; Flow.hpp:67). Convert the raw
-    // configured line width to spacing via line_width_to_spacing (mm in,
-    // mm out) BEFORE handing it to the beading strategy stack.
+    // OrcaSlicer constructs `WallToolPaths(outline, bead_width_0, bead_width_x,
+    // ...)` with bead_width_0 = ext_perimeter_spacing (the OUTER wall's
+    // spacing) and bead_width_x = perimeter_spacing = the INNER wall's
+    // `perimeter_flow.scaled_spacing()` (`PerimeterGenerator.cpp`). Convert the
+    // raw configured line width to spacing via line_width_to_spacing (mm in, mm
+    // out) BEFORE handing it to the beading strategy stack.
+    //
+    // Correction 2026-07-16: this comment used to say `optimal_width` "stands
+    // in for OrcaSlicer's ext_perimeter_spacing" — i.e. bead_width_0, the OUTER
+    // width. That is wrong, and it contradicted `ArachneParams`' own docs.
+    // Canonical `BeadingStrategyFactory::makeStrategy(preferred_bead_width_outer,
+    // preferred_bead_width_inner, ...)` — called as `makeStrategy(bead_width_0,
+    // bead_width_x, ...)` — sets its internal `optimal_width` local to
+    // `preferred_bead_width_inner` whenever `max_bead_count > 2`. So
+    // `optimal_width` maps to the INNER width (`bead_width_x`), exactly as this
+    // module's manifest entry for the key already recorded. The outer width is
+    // `preferred_bead_width_outer` (= bead_width_0), handled separately below.
     let optimal_width = {
         let raw_width_mm = config
             .get_float("optimal_width")

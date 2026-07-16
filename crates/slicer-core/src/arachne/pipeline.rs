@@ -75,13 +75,16 @@ use crate::skeletal_trapezoidation::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArachneParams {
     /// Nominal wall width (mm). Feeds `BeadingFactoryParams::optimal_width`
-    /// (upstream's `preferred_bead_width_inner`).
+    /// (upstream's `preferred_bead_width_inner`, i.e. `bead_width_x`), and —
+    /// via [`stitch_max_gap`] — this pipeline's `stitch_extrusions` gap
+    /// threshold, matching canonical `stitchToolPaths`' `bead_width_x - 1`.
     pub optimal_width: f64,
     /// Target width for the outermost/innermost bead (mm). Feeds
-    /// `BeadingFactoryParams::preferred_bead_width_outer` and this pipeline's
-    /// own `stitch_extrusions` gap threshold (`preferred_bead_width_outer -
-    /// 1e-6`, in mm — matching `stitch_extrusions`'s mm-unit `max_gap`
-    /// parameter).
+    /// `BeadingFactoryParams::preferred_bead_width_outer` (upstream's
+    /// `preferred_bead_width_outer`, i.e. `bead_width_0`).
+    ///
+    /// NOT the stitch gap threshold — canonical stitches with the INNER width;
+    /// see [`stitch_max_gap`] and `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`.
     pub preferred_bead_width_outer: f64,
     /// Maximum bead count `LimitedBeadingStrategy` will ever request from its
     /// parent.
@@ -310,6 +313,34 @@ fn to_centrality_params(params: &ArachneParams) -> CentralityParams {
     )
 }
 
+/// Gap threshold (mm) handed to [`stitch_extrusions`], per canonical
+/// `WallToolPaths::stitchToolPaths` (`WallToolPaths.cpp`):
+/// `stitch_distance = bead_width_x - 1`.
+///
+/// The operand is `bead_width_x` — the **inner** wall's bead width — not
+/// `bead_width_0` (the outer wall's). `WallToolPaths::generate` calls
+/// `stitchToolPaths(toolpaths, this->bead_width_x)`, and
+/// `BeadingStrategyFactory::makeStrategy` is invoked as
+/// `makeStrategy(bead_width_0, bead_width_x, ...)` against the signature
+/// `makeStrategy(preferred_bead_width_outer, preferred_bead_width_inner, ...)`,
+/// so `bead_width_x` == `preferred_bead_width_inner` == this crate's
+/// [`ArachneParams::optimal_width`] (whose manifest entry records the same
+/// mapping, and which canonical selects for `max_bead_count > 2` in
+/// `makeStrategy`'s `optimal_width` local).
+///
+/// Canonical's `- 1` is one scaled unit = 1 nm in OrcaSlicer's coordinate
+/// space; `1e-6` mm is the same 1 nm here (`docs/08_coordinate_system.md`).
+/// Floored at 0.0 so a pathological near-zero width can't yield a negative
+/// threshold.
+///
+/// Do NOT substitute [`ArachneParams::preferred_bead_width_outer`]: it is
+/// canonical's `bead_width_0`, and the two are equal only while the outer and
+/// inner line widths are configured identically (see
+/// `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH`).
+fn stitch_max_gap(params: &ArachneParams) -> f64 {
+    (params.optimal_width - 1e-6).max(0.0)
+}
+
 /// Runs the full Arachne beading-strategy pipeline end to end over `polygons`,
 /// producing the final, post-processed [`ExtrusionLine`] set.
 ///
@@ -397,11 +428,7 @@ pub fn run_arachne_pipeline(
         beading_params.default_transition_length,
     );
 
-    // Matches this packet's brief verbatim: max_gap = preferred_bead_width_outer
-    // - 1e-6 (mm, matching `stitch_extrusions`'s mm-unit `max_gap` parameter),
-    // floored at 0.0 so a pathological near-zero `preferred_bead_width_outer`
-    // never produces a negative gap threshold.
-    let max_gap = (params.preferred_bead_width_outer - 1e-6).max(0.0);
+    let max_gap = stitch_max_gap(&params);
     let mut final_lines = Vec::new();
     let mut inner_contour = Vec::new();
     for lines in generate_toolpaths(&graph, strategy.as_ref()) {
@@ -432,6 +459,56 @@ pub fn run_arachne_pipeline(
         matches!(params.wall_sequence, WallSequence::OuterInner),
     );
     Ok((final_lines, inner_contour))
+}
+
+#[cfg(test)]
+mod stitch_gap_tests {
+    use super::*;
+
+    /// Canonical `WallToolPaths::generate` stitches with `bead_width_x` — the
+    /// INNER wall width (`stitchToolPaths(toolpaths, this->bead_width_x)`),
+    /// which `makeStrategy(bead_width_0, bead_width_x, ...)` binds to the
+    /// parameter `preferred_bead_width_inner`, i.e. this crate's
+    /// `optimal_width`. It must NOT track `preferred_bead_width_outer`
+    /// (canonical's `bead_width_0`).
+    ///
+    /// The two are equal under this codebase's default config (both 0.4mm), so
+    /// this test deliberately drives them APART — a fixture that cannot vary
+    /// the quantity under test is not a test of it. With the widths equal, the
+    /// correct and incorrect operands are indistinguishable, which is exactly
+    /// why `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` survived unnoticed.
+    #[test]
+    fn stitch_gap_follows_inner_bead_width_not_outer() {
+        let params = ArachneParams {
+            optimal_width: 0.45,               // canonical bead_width_x (inner)
+            preferred_bead_width_outer: 0.42,  // canonical bead_width_0 (outer)
+            ..ArachneParams::default()
+        };
+
+        let gap = stitch_max_gap(&params);
+
+        assert!(
+            (gap - (0.45 - 1e-6)).abs() < 1e-9,
+            "stitch gap must be `optimal_width - 1e-6` (canonical `bead_width_x - 1`), got {gap}"
+        );
+        assert!(
+            (gap - (0.42 - 1e-6)).abs() > 1e-9,
+            "stitch gap must NOT be derived from `preferred_bead_width_outer` \
+             (canonical `bead_width_0`), got {gap}"
+        );
+    }
+
+    /// A near-zero configured width must not produce a negative threshold
+    /// (which would make `closing_dist <= max_gap` unsatisfiable and the
+    /// tiny-poly gate nonsensical).
+    #[test]
+    fn stitch_gap_is_floored_at_zero() {
+        let params = ArachneParams {
+            optimal_width: 0.0,
+            ..ArachneParams::default()
+        };
+        assert_eq!(stitch_max_gap(&params), 0.0);
+    }
 }
 
 #[cfg(test)]
