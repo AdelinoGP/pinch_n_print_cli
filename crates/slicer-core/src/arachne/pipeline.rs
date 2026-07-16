@@ -480,8 +480,8 @@ mod stitch_gap_tests {
     #[test]
     fn stitch_gap_follows_inner_bead_width_not_outer() {
         let params = ArachneParams {
-            optimal_width: 0.45,               // canonical bead_width_x (inner)
-            preferred_bead_width_outer: 0.42,  // canonical bead_width_0 (outer)
+            optimal_width: 0.45,              // canonical bead_width_x (inner)
+            preferred_bead_width_outer: 0.42, // canonical bead_width_0 (outer)
             ..ArachneParams::default()
         };
 

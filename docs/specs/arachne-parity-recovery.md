@@ -126,6 +126,22 @@ is a separate MMU population, per the user.)
 field names (`model_path`, `module_dir`, `views`); the real `VisualDebugRequest` uses
 `source.model` / `source.config` / `source.module_dirs` / `visualizations`. Doc-cleanup backlog.
 
+**Tooling gap found 2026-07-16 — the Open Deviation Map silently under-reports (found while
+filing `D-160`).** `docs/07_implementation_status.md`'s generated "Open Deviation Map" presents
+itself as "a generated snapshot of the open set", and `DEVIATION_LOG.md`'s header says the views
+are "generated from this table". Both overstate it: `xtask`'s parser filters with
+`if !line.starts_with("| DEV-")`, so it sees **only** `DEV-###` rows and silently drops every
+`D-###-SLUG` row. At least four open deviations are therefore invisible in the map — `D-105`
+(reopened), `D-109`, `D-110`, and the new **`D-160` (High)** — while the map reports a
+confident "6 open". Consequence: an agent or human trusting the map for "what's open" gets a
+number that is roughly half the truth, and misses the highest-severity open Arachne defect.
+`cargo xtask check-deviations` returns clean throughout, because it only ever compares the map
+against the subset it can see. **The deviation log itself is correct and remains authoritative
+(as its own header states); it is the generated view that lies.** Fix is a parser predicate
+(accept `| D-` as well as `| DEV-`) plus a regenerate; not done here — it would add ~4 entries
+to a generated doc section and is unrelated to Arachne parity. Same family as this campaign's
+other instrument failures: the check passes, so the gap reads as absence.
+
 ### Benchy PnP-vs-OrcaSlicer findings (structurally verified 2026-07-15)
 
 Method: matched-Z structural comparison of the two gcodes (vertex counts, bboxes, `;TYPE:`),
@@ -493,6 +509,68 @@ canonical settles it as INNER.
    feeds a production function a parameter production would never pass is not testing
    production.**
 
+## D6 (NEW, OPEN, HIGH) — Arachne ignores the user's wall line width (2026-07-16)
+
+`D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH`. Found by completing the width-wiring follow-up
+that the `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` fix parked as "suspected, unverified".
+**Now proven, by measurement and by code.** This is very likely the largest remaining
+Arachne parity defect, and it is *upstream of everything the campaign has fixed so far*:
+D5 and D4 corrected where beads are placed and how thick propagated beadings are — this
+one says the **target width they are all placed against is the wrong number**.
+
+**Measured (real `pnp_cli` slices of `regression_wedge.stl`; outer-wall width computed
+from E-volume / distance / layer height):**
+
+| config | `classic` median outer wall | `arachne` median outer wall |
+|---|---|---|
+| default | 0.4000mm (n=1160) | **0.3571mm** (n=1320) |
+| `outer_wall_line_width = inner_wall_line_width = 0.8` | **0.8000mm** | **0.3571mm** |
+
+Arachne's output is **invariant** to the keys. 0.3571 is exactly `line_width_to_spacing(0.4)`
+= `0.4 − 0.2·(1 − π/4)` — the manifest's hardcoded `optimal_width` default of 4000 units. Ask
+for 0.8mm walls, get 0.357mm: a **2.24×** error on the most basic wall parameter.
+
+**Code:** `arachne-perimeters/src/lib.rs` has **zero** references to
+`outer_wall_line_width`/`inner_wall_line_width`; the manifest declares **neither**.
+`arachne_params_from_config` reads two Arachne-INTERNAL knobs instead (`optimal_width`,
+`preferred_bead_width_outer`, both defaulting to 4000 units). `classic-perimeters` reads both
+wall-width keys directly — so **switching `wall_generator` to arachne silently drops the
+user's wall width settings on the floor.**
+
+**Canonical:** `PerimeterGenerator` builds `Arachne::WallToolPaths(last_p, bead_width_0,
+perimeter_spacing, ...)` with `bead_width_0 = ext_perimeter_spacing =
+ext_perimeter_flow.scaled_spacing()` (OUTER flow) and `bead_width_x = perimeter_spacing =
+perimeter_flow.scaled_spacing()` (INNER flow). Upstream **derives** Arachne's bead widths FROM
+the user's wall flows. **PnP inverted the relationship** — it exposes Arachne's internals as
+user config and never connects them. The `optimal_width` manifest entry documents the trap
+against itself: *"Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream sets it
+internally."*
+
+**This is why `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` was invisible.** Both keys pin to the
+same 4000-unit default, so PnP's outer and inner bead widths are *always equal* — which is
+exactly what made using the outer width where canonical uses the inner numerically
+undetectable. Fixing this wiring makes that operand distinction live, so the two must be
+reasoned about together (the operand fix is already landed, so this ordering is safe).
+
+**Fix shape (NOT applied — needs its own packet):** declare the two wall-width keys in the
+arachne manifest; derive `preferred_bead_width_outer = line_width_to_spacing(outer_wall_line_width)`
+(canonical `bead_width_0`) and `optimal_width = line_width_to_spacing(inner_wall_line_width)`
+(canonical `bead_width_x`); decide explicitly whether the internal keys survive as overrides
+(upstream has no such user keys) or are retired. **Blast radius unmeasured:** it changes
+emitted wall width for every non-0.4mm config, with real exposure on the self-captured
+`perimeter_parity` fixtures and possibly the AC-1 closure gate. **Also unresolved:** PnP has
+three conflicting default sources for these keys (`classic-perimeters.toml` outer 0.5 / inner
+0.4; `slicer-gcode/src/serialize.rs` outer 0.42 / inner 0.45; a measured default `classic`
+slice emits 0.4000) — the resolved default must be established *before* fixing, or the fix
+will be calibrated against a guess.
+
+> **Method note — the parked item was the biggest fish.** This was logged as a hedged
+> "suspected, unverified" aside at the end of a fix, and it turned out to be a higher-severity
+> defect than the one being fixed. Two prior campaign findings (D5, D4) surfaced the same way.
+> **Corollary: when an investigation parks something because it is out of scope, the park is a
+> lead, not a dismissal** — and "I did not verify this" should be read as work remaining, not as
+> a caveat discharged by writing it down.
+
 ## Faithfulness follow-ups found by direct canonical read (2026-07-16)
 
 OrcaSlicer source is now vendored at `OrcaSlicerDocumented/` (user-supplied) — every claim below is
@@ -555,19 +633,6 @@ NOT outer-wall closure, so they did not block Track C):
   junctions; canonical `removeEmptyToolPaths` filters whole empty **inset groups**
   (`VariableWidthLines`) from the top-level vector. An artifact of PnP's flattened
   `Vec<ExtrusionLine>` shape vs canonical's `Vec<VariableWidthLines>`.
-- **`arachne-perimeters` width WIRING parity — UNTESTED, real open question.** Surfaced by the
-  `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` investigation but deliberately not chased.
-  `arachne_params_from_config` reads two independent config keys — `optimal_width` and
-  `preferred_bead_width_outer`, **both defaulting to 4000 units (0.4mm)** — and spacing-converts
-  each. Canonical `PerimeterGenerator` instead derives `WallToolPaths`' two widths from the two
-  *wall* flows: `bead_width_0 = ext_perimeter_spacing` (outer) and `bead_width_x =
-  perimeter_spacing` (inner). PnP's keys are therefore not wired from
-  `outer_wall_line_width`/`inner_wall_line_width` at all, which means **PnP's outer and inner
-  bead widths are equal by default no matter what the user configures for wall line widths** —
-  if true, that is a live parity defect affecting every bead placement, not just the stitch gap,
-  and it is also *why* `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` was unobservable. Not verified
-  either way; needs a direct read of `PerimeterGenerator`'s `WallToolPaths` construction against
-  `arachne_params_from_config`. **Suspected high-value.**
 - **Doc/code drift (cosmetic, no behaviour change)**: `generate_toolpaths.rs`'s module doc says
   `chain_junctions_for_bead` merges shared-vertex junctions by "keeping the wider surviving
   junction", but the code implements a presence-priority rule (`this_to` if present, else

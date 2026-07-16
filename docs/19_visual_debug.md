@@ -27,6 +27,23 @@ and `resolution_scale`. Source modes are mutually exclusive:
 - Model mode runs only the pipeline dependency closure required by the taps.
 - G-code mode parses an existing final G-code artifact.
 
+`layers` is a list of selectors resolved against the schedule (model mode:
+`LayerPlanIR.global_layers`; G-code mode: parsed `;Z:` markers). Each element
+is one of:
+
+- an integer index — `0`, `12`;
+- an inclusive `{ "start": S, "end": E }` range — e.g.
+  `"layers": [0, { "start": 12, "end": 15 }]`; the range object rejects
+  unknown fields rather than silently parsing as an empty detail;
+- a z-only detail selector that resolves to the layer at a printed Z (exact
+  shape in `docs/specs/visual-pipeline-debug.md` and the validator).
+
+Layers are anonymous — there is no name selector. Selection **fails closed**:
+an unknown visualization kind, a `diagnostic_overlay` on a G-code source, a
+name selector, or a selector that resolves to no real layer is rejected before
+any render or bundle write. No requested visualization or layer is ever
+silently dropped from a successful bundle.
+
 The default resolution is 1024 x 1024. `resolution_scale: 2` uses four times
 as many pixels; `resolution_scale: 3` uses nine times as many. Select the
 smallest scale that makes the suspected feature visible to avoid unnecessary
@@ -83,48 +100,45 @@ legend. This makes a missing wall or shifted infill region comparable between
 stages. `filament_lines` shows centerlines; `filled_areas` shows polygons or
 extrusion-width sweeps; `diagnostic_overlay` adds stage-specific labels.
 
-### Model-Backed Typed Captures (No PNGs Yet)
+### Tap Classes And Execution Closure
 
-Before the intermediate renderer lands, a model-backed request with a
-non-empty `taps` list produces typed captures instead of PNGs — this packet
-does not require or produce PNGs. Each affected `manifest.json` entry in
-`images[]` has an empty `png_path` and a populated `typed_capture` field
-instead: a tagged `{"kind": ..., "value": ...}` object carrying that tap's
-committed IR verbatim (`kind` is `"Perimeter"`, `"Infill"`, `"Support"`, or
-`"LayerCollection"`; `value` is the corresponding IR). Only the tap/layer
-pairs the request selected get an entry — reading `typed_capture` is the same
-as reading a future PNG, just as structured JSON instead of an image.
+`visual-debug` supports the full "Stage Tap Inventory" of
+`docs/specs/visual-pipeline-debug.md`, not only the per-layer stages. The taps
+fall into three capture classes with distinct execution closures; the
+manifest's `executed_stage_ids` and `executed_layer_indices` record exactly
+what ran for the selected taps:
 
-Three top-level `manifest.json` fields describe the dependency-closure
-execution behind those entries (`docs/specs/visual-pipeline-debug.md`
-"Dependency Closure" and "Typed Post-Stage Capture"):
+- **Blackboard-read prepass taps** — `PrePass::MeshAnalysis`,
+  `PrePass::SeamPlanning`, `PrePass::SupportGeometry`,
+  `PrePass::PaintSegmentation`, `PrePass::RegionMapping`,
+  `PrePass::OverhangAnnotation`, `Layer::Slice`, and
+  `Layer::PaintRegionAnnotation`/`Layer::SlicePostProcess` read a committed,
+  whole-print Blackboard slot after the prepass. They run the prepass only,
+  with no per-layer arena execution.
+- **Per-layer arena taps** — `Layer::Perimeters` through
+  `Layer::PathOptimization` — run the truncated per-layer stage closure over
+  exactly the selected layers. These `Layer::*` stages have no cross-layer
+  correctness dependency, so a non-selected layer is never executed at all,
+  not merely un-rendered.
+- **PostPass whole-print taps** — `PostPass::LayerFinalization` and
+  `PostPass::GCodeEmit` — need the whole print (all layers → finalization →
+  post-pass) before their IR exists, so the manifest records whole-print
+  `executed_stage_ids`/`executed_layer_indices` even when only a subset of
+  layers is rendered. They are the only documented deviation from
+  minimal-closure execution.
 
-- `executed_stage_ids`: the fixed-order stage closure that actually ran,
-  through and including the furthest requested tap.
-- `executed_layer_indices`: the global layer indices the closure actually ran
-  that stage closure for. For every tap this packet supports
-  (`Layer::Perimeters` through `Layer::PathOptimization`), this is exactly
-  the request's selected layers — those `Layer::*` stages have no
-  cross-layer correctness dependency, so a non-selected layer is never
-  executed at all, not merely un-rendered.
-- `layer_expansions`: reserved for a layer the closure had to execute for a
-  genuine cross-layer correctness dependency even though it was not
-  requested. Empty for every request today (no tap in scope has such a
-  dependency); if a future tap ever does, its entries name the `layer_index`
-  and a specific, real `reason` — not execution expansion in general.
+`layer_expansions` is reserved for a layer the closure had to execute for a
+genuine cross-layer correctness dependency even though it was not requested;
+each entry names the `layer_index` and a specific, real `reason`. It is empty
+for every request today.
 
-Supported taps are the `Layer::*` per-layer stages in the "Stage Tap
-Inventory" table of `docs/specs/visual-pipeline-debug.md`. An unsupported tap
-name, or a request whose layers do not resolve to a real layer in the model,
-fails before the model or modules load — never a partial bundle, and (per
-"The command fails rather than producing a partial bundle" below) never a
-mutated pre-existing bundle either.
-
-Standalone G-code filled-area views require `gcode_line_width_mm` in the
+Standalone G-code `filled_areas` views require `gcode_line_width_mm` in the
 request. Unknown extrusion roles render as `unclassified`; unsupported commands
-are warnings rather than guessed geometry.
+become warnings rather than guessed geometry.
 
-The command fails rather than producing a partial bundle. It also rejects a
+The command fails closed rather than producing a partial bundle: a rejected
+tap or selector aborts before the model or modules load, no `manifest.json` or
+PNG is written, and a pre-existing bundle is never mutated. It also rejects a
 non-empty output directory unless `--overwrite` is supplied.
 
 ## Related Tools
