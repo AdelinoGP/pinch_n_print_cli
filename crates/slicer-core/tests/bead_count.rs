@@ -70,7 +70,17 @@ fn factory_params() -> BeadingFactoryParams {
         min_input_width: 5.0,
         min_output_width: 20.0,
         outer_wall_offset: 0.0,
-        max_bead_count: 9,
+        // OrcaSlicer always derives `max_bead_count = 2 * inset_count`
+        // (`WallToolPaths.cpp:525`), which is ALWAYS EVEN; `LimitedBeadingStrategy`'s
+        // ctor warns on an odd count (`LimitedBeadingStrategy.cpp:36-40`) because its
+        // odd-`max_bead_count` `compute` branch (`:73`, ported at
+        // `crates/slicer-core/src/beading/limited.rs`) parks the entire capped surplus
+        // into one physically-impossible wide centre bead instead of splitting it
+        // symmetrically. This fixture previously hardcoded odd `9`; `10` is the
+        // nearest even value (`inset_count = 5`) and keeps the wedge's ~0..99-unit `r`
+        // range exercising the same variety of uncapped bead counts the original `9`
+        // was chosen for, without ever taking the odd over-cap branch.
+        max_bead_count: 10,
         minimum_variable_line_ratio: 0.5,
         print_thin_walls: false,
         preferred_bead_width_outer: 20.0,
@@ -110,11 +120,17 @@ struct BeadCountFixture {
     bead_counts: Vec<Option<u32>>,
 }
 
-const PROVENANCE: &str = "Self-captured regression baseline: serialized from this crate's own \
-     assign_bead_counts implementation (packet 112 Step 2 / T-221). NOT derived from, and not a \
-     substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step (see \
-     bead_count.rs's module-level doc comment). Locks in current behavior for regression \
-     purposes only.";
+const PROVENANCE: &str = "Self-captured regression baseline (CHANGE-DETECTOR, NOT a correctness \
+     oracle -- ADR-0042): serialized from this crate's own assign_bead_counts implementation \
+     (packet 112 Step 2 / T-221). NOT derived from, and not a substitute for, OrcaSlicer ground \
+     truth -- no OrcaSlicer oracle exists for this step (see bead_count.rs's module-level doc \
+     comment). Re-captured 2026-07-16 after the D5 taper-peak-dropout fix (commit 5d0e1bcf), the \
+     D4 beading-propagation over-extrusion fix (commit 1dfac847), and correcting this fixture's \
+     factory_params() max_bead_count from an invalid odd 9 to an even 10 (OrcaSlicer always uses \
+     2 * inset_count, WallToolPaths.cpp:525). Green here means only \"unchanged from this \
+     recapture\", never \"correct\" -- the real correctness signal is this file's structural \
+     invariants (central-adjacent vertex <=> Some(_)/None, bounds, determinism, no bead wider \
+     than ~2x optimal_width, bead count non-decreasing toward the wedge's thick end).";
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -201,6 +217,34 @@ fn build_and_assign(poly: &ExPolygon) -> (Vec<bool>, Vec<Option<u32>>) {
     (central_vertex, bead_counts)
 }
 
+/// Same graph/strategy build as [`build_and_assign`], but also returns each
+/// vertex's `position.x` and `distance_to_boundary` (`r`) alongside its
+/// `bead_count` — needed by the structural invariants below (ADR-0042),
+/// which check *where* a bead count sits and *how wide the beading strategy
+/// would actually make it*, not just that a count was assigned.
+fn build_assign_and_measure(poly: &ExPolygon) -> Vec<(f64, f64, Option<u32>)> {
+    let mut graph = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
+        .expect("fixture polygon must build a valid SKT graph");
+
+    let mut centrality_params = centrality_params();
+    centrality_params.transition_filter_dist *= OUTER_FILTER_FRACTION;
+    filter_central(
+        &mut graph,
+        &centrality_params,
+        CENTRALITY_TRANSITIONING_ANGLE_RAD,
+    );
+
+    let strategy = BeadingStrategyFactory::create_stack(&factory_params());
+    assign_bead_counts(&mut graph, strategy.as_ref())
+        .expect("centrality was run, so assign_bead_counts must succeed");
+
+    graph
+        .vertices
+        .iter()
+        .map(|v| (v.position.x, v.distance_to_boundary, v.bead_count))
+        .collect()
+}
+
 #[test]
 fn bead_count_tapered_wedge() {
     let wedge = tapered_wedge_fixture();
@@ -266,6 +310,80 @@ fn bead_count_tapered_wedge() {
                 max_bead_count + 1
             );
         }
+    }
+
+    // --- ADR-0042 structural invariants: these, not the self-captured baseline
+    // below, are the real correctness signal. Both are unit-independent and
+    // would fail on the D4/D5 classes of defect this campaign found hiding
+    // behind a green self-captured board.
+    let measured = build_assign_and_measure(&wedge);
+    let strategy = BeadingStrategyFactory::create_stack(&factory_params());
+    let optimal_width = factory_params().optimal_width;
+
+    // Non-vacuity guard: both invariants below are `for` loops, so they pass
+    // trivially on an empty measurement set. Without this, a regression that
+    // stopped producing central vertices entirely (i.e. the D5 dropout itself)
+    // would turn both invariants green rather than red — the precise "green
+    // means unchanged, not correct" failure ADR-0042 exists to prevent.
+    assert!(
+        !measured.is_empty(),
+        "tapered wedge: expected at least one measured vertex, got none — the invariants \
+         below would pass vacuously"
+    );
+
+    // --- Invariant: no bead the strategy would actually cut is wider than
+    // ~2x optimal_width. Directly exercises `BeadingStrategy::compute` at
+    // each central vertex's own `(2 * distance_to_boundary, bead_count)` —
+    // the exact call shape that produced the D4 "surplus dumped into one
+    // giant centre bead" defect when `max_bead_count` was odd
+    // (`LimitedBeadingStrategy.cpp:73`; see this crate's
+    // `beading/limited.rs`). A regression that reintroduces an odd
+    // `max_bead_count`, or otherwise breaks bead redistribution, fails this
+    // assertion regardless of what the self-captured snapshot says.
+    for &(x, r, bead_count) in &measured {
+        if let Some(n) = bead_count {
+            let beading = strategy.compute(2.0 * r, n as usize);
+            for (bead_idx, &w) in beading.bead_widths.iter().enumerate() {
+                assert!(
+                    w <= 2.0 * optimal_width + 1e-6,
+                    "vertex at x={x}: bead {bead_idx} width {w} exceeds 2x optimal_width \
+                     ({}) -- a physically implausible bead, the D4 defect class",
+                    2.0 * optimal_width
+                );
+            }
+        }
+    }
+
+    // --- Invariant: among central (bead_count == Some) vertices, bead count
+    // must not decrease moving from the wedge's acute apex (x = 0, thin) to
+    // its blunt end (x = 10_000, thick) -- a tapering wedge that gets thicker
+    // must never be assigned FEWER walls. This is exactly the D5 failure
+    // shape (a thick region silently dropped to bead_count None/0) restated
+    // as a monotonicity property instead of an exact snapshot.
+    let mut central_by_x: Vec<(f64, u32)> = measured
+        .iter()
+        .filter_map(|&(x, _r, bead_count)| bead_count.map(|n| (x, n)))
+        .collect();
+    central_by_x.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("finite x coordinates"));
+    // Non-vacuity guard: `windows(2)` yields nothing for fewer than 2 elements,
+    // so the monotonicity check below would pass trivially on a wedge that had
+    // lost its central vertices — exactly the D5 dropout this invariant is
+    // meant to catch.
+    assert!(
+        central_by_x.len() >= 2,
+        "tapered wedge: expected at least 2 central (bead_count = Some) vertices to compare, \
+         got {} — the monotonicity invariant below would pass vacuously",
+        central_by_x.len()
+    );
+    for pair in central_by_x.windows(2) {
+        let (prev_x, prev_n) = pair[0];
+        let (next_x, next_n) = pair[1];
+        assert!(
+            next_n >= prev_n,
+            "bead count must not decrease toward the wedge's thick end: x={prev_x} had \
+             bead_count={prev_n}, but the next central vertex at x={next_x} (further from \
+             the apex) had a lower bead_count={next_n}"
+        );
     }
 
     write_or_compare_baseline(&BeadCountFixture {

@@ -86,7 +86,14 @@ fn factory_params() -> BeadingFactoryParams {
         min_input_width: 5.0,
         min_output_width: 20.0,
         outer_wall_offset: 0.0,
-        max_bead_count: 9,
+        // Kept in lockstep with `tests/bead_count.rs`'s `factory_params()`: OrcaSlicer
+        // always derives `max_bead_count = 2 * inset_count` (`WallToolPaths.cpp:525`,
+        // always EVEN); `LimitedBeadingStrategy`'s odd-count ctor warning
+        // (`LimitedBeadingStrategy.cpp:36-40`) and its odd-`max_bead_count` `compute`
+        // branch (`:73`) exist precisely because an odd cap parks the whole capped
+        // surplus into one physically-impossible wide centre bead. `10` is the nearest
+        // even value to this fixture's prior odd `9` (`inset_count = 5`).
+        max_bead_count: 10,
         minimum_variable_line_ratio: 0.5,
         print_thin_walls: false,
         preferred_bead_width_outer: 20.0,
@@ -163,14 +170,20 @@ struct ToolpathsFixture {
     junction_widths_mm: Vec<Vec<f64>>,
 }
 
-const PROVENANCE: &str = "Self-captured regression baseline: serialized from this crate's own \
-     generate_toolpaths implementation (packet 112 Step 4 / T-223; re-recorded in Step 9D when \
-     width/offset derivation switched from a geometric approximation to \
-     BeadingStrategy::compute()). NOT derived from, and not a substitute for, OrcaSlicer ground \
-     truth — no OrcaSlicer oracle exists for this step, and the per-edge width/offset/bead- \
-     placement/dedup rules are an intentional from-first-principles adaptation (see \
-     generate_toolpaths.rs's module-level doc comment). Locks in current behavior for \
-     regression purposes only.";
+const PROVENANCE: &str = "Self-captured regression baseline (CHANGE-DETECTOR, NOT a correctness \
+     oracle -- ADR-0042): serialized from this crate's own generate_toolpaths implementation \
+     (packet 112 Step 4 / T-223; previously re-recorded in Step 9D when width/offset derivation \
+     switched from a geometric approximation to BeadingStrategy::compute()). NOT derived from, \
+     and not a substitute for, OrcaSlicer ground truth -- no OrcaSlicer oracle exists for this \
+     step, and the per-edge width/offset/bead-placement/dedup rules are an intentional \
+     from-first-principles adaptation (see generate_toolpaths.rs's module-level doc comment). \
+     Re-captured again 2026-07-16 after the D5 taper-peak-dropout fix (commit 5d0e1bcf), the D4 \
+     beading-propagation over-extrusion fix (commit 1dfac847), and correcting this fixture's \
+     factory_params() max_bead_count from an invalid odd 9 to an even 10 (OrcaSlicer always uses \
+     2 * inset_count, WallToolPaths.cpp:525). Green here means only \"unchanged from this \
+     recapture\", never \"correct\" -- the real correctness signal is this file's structural \
+     invariants (monotone ascending inset buckets, inset_idx consistency, at-least-one-junction, \
+     determinism, no emitted junction wider than ~2x optimal_width).";
 
 fn fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -370,6 +383,28 @@ fn generate_toolpaths_tapered_wedge() {
     assert!(
         !all_widths.is_empty(),
         "tapered wedge: expected at least one junction, got none"
+    );
+
+    // --- ADR-0042 structural invariant: no emitted junction is wider than
+    // ~2x `optimal_width` -- the real correctness signal, not the
+    // self-captured baseline compare below. `optimal_width` is stored in
+    // slicer units (1 unit = 100 nm, `docs/08_coordinate_system.md`);
+    // `j.p.width` is already in mm (`ExtrusionJunction`/`Point3WithWidth`),
+    // so convert via `UNITS_PER_MM` before comparing. This is the exact
+    // unit-independent check that catches the D4 class of defect (a
+    // beading-propagation / odd-`max_bead_count` bug dumping an entire
+    // region's surplus thickness into one physically-impossible wide bead;
+    // see `crates/slicer-core/src/beading/limited.rs`).
+    let optimal_width_mm = factory_params().optimal_width / UNITS_PER_MM;
+    let max_width_mm = all_widths
+        .iter()
+        .cloned()
+        .fold(0.0_f32, |max_w, w| max_w.max(w));
+    assert!(
+        max_width_mm <= 2.0 * optimal_width_mm as f32 + 1e-6,
+        "tapered wedge: max emitted junction width {max_width_mm}mm exceeds 2x optimal_width \
+         ({}mm) -- a physically implausible bead, the D4 defect class",
+        2.0 * optimal_width_mm
     );
 
     write_or_compare_baseline(&build_fixture(&output_a));
