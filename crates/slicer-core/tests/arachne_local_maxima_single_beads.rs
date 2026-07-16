@@ -42,12 +42,54 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
 /// get a 6-segment hexagonal micro-loop.
 #[test]
 fn ac1_local_maximum_emits_hexagonal_micro_loop() {
-    // Regular pentagon centered at origin with circumradius 0.7mm
-    // (apothem ≈ 0.566mm). The center has R ≈ 0.566mm → width ≈ 1.132mm
-    // → optimal_bead_count = round(1.132 / 0.4) = 3 (odd). All edges from
-    // the center have dR/dD ≈ 1.0, which exceeds sin(5°) ≈ 0.087, so no
-    // edge is central — Gate 3 passes.
-    let cr: f64 = 0.7;
+    // Regular pentagon centered at origin with circumradius 0.85mm
+    // (apothem = cr * cos(36°) ≈ 0.68766mm). The center has R ≈ 0.68766mm
+    // → thickness (width) ≈ 1.37533mm. All edges from the center have
+    // dR/dD ≈ 1.0, which exceeds sin(5°) ≈ 0.087, so no edge is central —
+    // Gate 3 passes.
+    //
+    // Recalibration note: this fixture previously used cr = 0.7mm with a
+    // doc comment computing `optimal_bead_count = round(1.132mm / 0.4mm) =
+    // 3` (odd). That `round()` formula is stale — commit 3c57997c
+    // (packet 155) replaced `DistributedBeadingStrategy::optimal_bead_count`
+    // with a faithful port of the canonical integer-truncation +
+    // parity-selected-remainder-threshold formula
+    // (`DistributedBeadingStrategy.cpp:92-98`, this crate's
+    // `crates/slicer-core/src/beading/distributed.rs`). Under the real
+    // formula, cr = 0.7mm now yields an EVEN bead count (2), so Gate 1 of
+    // `generate_local_maxima_single_beads` (which requires
+    // `bead_widths.len() % 2 == 1`) rejects it and the fixture never
+    // exercised its own premise. cr = 0.85mm was chosen empirically (see
+    // below) to comfortably clear the odd-bead-count gate.
+    //
+    // Walking the ACTUAL canonical formula through the strategy stack this
+    // test's pipeline builds (`BeadingStrategyFactory::create_stack` with
+    // `ArachneParams::default()`: `optimal_width` = `preferred_bead_width_outer`
+    // = 0.4mm, `min_bead_width` = 0.4mm, `max_bead_count` = 9 so
+    // `effective_optimal_width` = `optimal_width` = 0.4mm):
+    //
+    // 1. `RedistributeBeadingStrategy::optimal_bead_count(thickness =
+    //    1.37533mm)` (`RedistributeBeadingStrategy.cpp:42-49`,
+    //    `crates/slicer-core/src/beading/redistribute.rs`): thickness exceeds
+    //    `2 * optimal_width_outer` (0.8mm), so it recurses into the parent:
+    //    `parent.optimal_bead_count(1.37533 - 0.8 = 0.57533mm) + 2`.
+    // 2. `DistributedBeadingStrategy::optimal_bead_count(0.57533mm)`
+    //    (`DistributedBeadingStrategy.cpp:92-98`,
+    //    `crates/slicer-core/src/beading/distributed.rs`): `naive_count =
+    //    trunc(0.57533 / 0.4) = 1`; `remainder = 0.57533 - 1*0.4 =
+    //    0.17533mm`; `naive_count` is odd, so the threshold is
+    //    `wall_split_middle_threshold` (clamped to 0.99 here) *
+    //    `optimal_width` = 0.396mm; `remainder (0.17533) < 0.396`, so no
+    //    bump — result stays `1`.
+    // 3. Back in `Redistribute`: `1 + 2 = 3` (odd) — Gate 1 passes.
+    //
+    // Empirically verified with a throwaway probe test (built the same
+    // `BeadingStrategyFactory::create_stack(&BeadingFactoryParams::default())`
+    // stack and called `optimal_bead_count` directly) before writing this
+    // comment: cr = 0.75mm..0.95mm all yield bead_count = 3, with cr = 0.7mm
+    // giving 2 and cr = 1.0mm giving 4 — cr = 0.85mm sits comfortably mid-range,
+    // not borderline against either threshold.
+    let cr: f64 = 0.85;
     let pentagon = expoly(vec![
         p_mm(0.0, cr),
         p_mm(
