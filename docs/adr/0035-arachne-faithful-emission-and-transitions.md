@@ -15,27 +15,46 @@ N1-N13 — the 13 numbered findings from the canonical parity audit at
 `target/arachne_parity_audit_20260706_020657.md`, committed as red tests at
 `b2ea52b7`. Each packet fixed its slice:
 
+> **Correction (2026-07-15, audit reconciliation):** the per-packet file paths
+> below were rewritten to the *actual* code loci. The original text named seven
+> files that never existed (`beading_propagation.rs`, `generate_junctions.rs`,
+> `connect_junctions.rs`, `transition_ends.rs`, `filter_noncentral_regions.rs`,
+> `local_maxima.rs`, `post_process.rs`); the work was consolidated into
+> `arachne/generate_toolpaths.rs`, `arachne/pipeline.rs`, and the
+> `skeletal_trapezoidation/*.rs` modules instead. The Decision below is unchanged.
+
 - **P141 (A1)** — `BeadingPropagation` + canonical `generateJunctions` (N1+N7).
-  `crates/slicer-core/src/arachne/beading_propagation.rs` and
-  `crates/slicer-core/src/arachne/generate_junctions.rs`.
+  `populate_beading_propagation` in
+  `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`;
+  `generate_junctions` in `crates/slicer-core/src/arachne/generate_toolpaths.rs`.
 - **P142 (A2)** — `perimeter_index` + canonical `connectJunctions` emission +
-  canonical `is_odd` (N2+N4). `crates/slicer-core/src/arachne/connect_junctions.rs`.
+  canonical `is_odd` (N2+N4). Junction emission / domain-chain walk in
+  `crates/slicer-core/src/arachne/generate_toolpaths.rs` (there is no standalone
+  `connect_junctions` file or function — the walk is inline in that module).
 - **P143 (B)** — canonical transition ends + `BeadingStrategy` trait extension
-  (N3+N8). `crates/slicer-core/src/arachne/transition_ends.rs`.
+  (N3+N8). `generate_all_transition_ends` / `apply_transitions` in
+  `crates/slicer-core/src/skeletal_trapezoidation/propagation.rs`.
 - **P144 (C)** — `filterNoncentralRegions` + centrality coupling resolution
-  (N5+N6). `crates/slicer-core/src/arachne/filter_noncentral_regions.rs`.
+  (N5+N6). `filter_noncentral_regions` / `dissolve_noncentral_gap` in
+  `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs`.
 - **P145 (D)** — local maxima micro-loops + construction epilogue (N9+N10).
-  `crates/slicer-core/src/arachne/local_maxima.rs`.
+  `generate_local_maxima_single_beads` in
+  `crates/slicer-core/src/arachne/generate_toolpaths.rs`.
 - **P146 (E)** — canonical post-process order + per-line `min_width` +
-  distance-gated `simplify` (N11+N12+N13).
-  `crates/slicer-core/src/arachne/post_process.rs`.
+  distance-gated `simplify` (N11+N12+N13). `remove_small_lines` in
+  `crates/slicer-core/src/arachne/remove_small.rs`, `simplify` in
+  `crates/slicer-core/src/arachne/simplify.rs`; post-process order in
+  `crates/slicer-core/src/arachne/pipeline.rs`.
 
 Packet 147 (F) closed the 7 deferred parity-audit findings (the cross-cutting
 closure: `is_closed` pre-stitch, `has_bead` sub-run split,
 `filter_noncentral_regions` 4 deviations, `connectJunctions` merge, `is_odd`
-predicate, transition interpolation, `collapseSmallEdges` Pattern B),
-re-enabled the `cube_4color` e2e closure gate (49.33% closure,
-`MAX_FAILURES=500` regression guard), and re-baselined the cross-crate
+predicate, transition interpolation, `collapseSmallEdges` Pattern B), improved
+the `cube_4color` e2e closure rate from 0% to 49.33% (455/898 outer-wall
+closures still fail, mean gap 54.7 mm) — which does not meet AC-1's 0-failure
+bar, so the gate `cube_4color_arachne_outer_walls_close_end_to_end` remains
+`#[ignore]`d (there is no `MAX_FAILURES` numeric regression guard; the sole
+mechanism is the `#[ignore]` attribute), and re-baselined the cross-crate
 `perimeter_parity` fixtures.
 
 The chain supersedes the PNP "ADAPTATION" divergence for the Arachne surface —
@@ -137,7 +156,9 @@ determines correctness.
   whether this ADR's scope needs extension. As of this writing, the functions
   listed in the Decision section cover the full post-graph-construction surface
   that OrcaSlicer's Arachne pipeline exposes.
-- The `cube_4color` e2e closure gate (49.33% closure, `MAX_FAILURES=500`
-  regression guard) is a regression guard, not a parity oracle. A future packet
-  that raises the closure percentage must re-audit against OrcaSlicer's C++
-  source — the percentage alone does not measure algorithmic faithfulness.
+- The `cube_4color` e2e closure gate (`cube_4color_arachne_outer_walls_close_end_to_end`,
+  49.33% closure) is currently `#[ignore]`d — it is a closure oracle the pipeline
+  does not yet pass, not a green regression guard, and there is no `MAX_FAILURES`
+  threshold mechanism. A future packet that raises the closure percentage must
+  re-audit against OrcaSlicer's C++ source and un-ignore the gate only at 0
+  failures — the percentage alone does not measure algorithmic faithfulness.
