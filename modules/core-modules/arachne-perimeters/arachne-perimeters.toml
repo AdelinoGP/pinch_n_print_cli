@@ -186,10 +186,10 @@ max-ir-schema     = "5.0.0"
 
   [config.schema.max_bead_count]
   type        = "int"
-  default     = 9
-  min         = 1
+  default     = 0
+  min         = 0
   display     = "Maximum bead count"
-  description = "Cap threshold consumed by LimitedBeadingStrategy. Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream computes it internally as 2 * inset_count (capped) in Arachne/WallToolPaths.cpp; no literal upstream constant exists to cite."
+  description = "Cap threshold consumed by LimitedBeadingStrategy. Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream computes it internally as 2 * inset_count in Arachne/WallToolPaths.cpp:525, which is ALWAYS EVEN (LimitedBeadingStrategy's ctor warns on odd counts, and its odd-center compute branch parks the whole surplus thickness in one wide centre bead — a physically impossible extrusion). Default 0 = auto-derive 2 * wall_count (even, tracks wall_count) rather than shadowing it with a fixed odd cap. A positive override is honoured verbatim (advanced/cap-testing only)."
   group       = "Arachne"
   advanced    = true
 

@@ -194,9 +194,18 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     };
     let max_bead_count_explicit = config.get_int("max_bead_count");
     let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
+    // OrcaSlicer has no user-facing max_bead_count; it is always `2 * inset_count`
+    // (`WallToolPaths.cpp:525`) and therefore ALWAYS EVEN. `LimitedBeadingStrategy`
+    // warns on an odd cap and its odd-center `compute` branch (`:71-74`) dumps the
+    // entire surplus region thickness into a single wide centre bead — up to ~12 mm
+    // on a benchy hull's thick medial spine (the D4 taper over-extrusion, surfaced
+    // once D5 made those non-central peaks emit). A zero/absent value means
+    // "auto-derive `2 * wall_count`" (even, and — unlike a fixed manifest default —
+    // actually tracks wall_count). A positive value is an explicit advanced override
+    // (e.g. the `max_bead_count_cap` parity fixture) and is honoured verbatim.
     let max_bead_count = match max_bead_count_explicit {
-        Some(v) => v as u32,
-        None => (2 * wall_count).max(1),
+        Some(v) if v > 0 => v as u32,
+        _ => (2 * wall_count).max(1),
     };
     let distribution_count = config
         .get_int("wall_distribution_count")
