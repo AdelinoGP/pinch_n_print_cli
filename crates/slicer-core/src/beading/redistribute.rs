@@ -145,7 +145,7 @@ impl BeadingStrategy for RedistributeBeadingStrategy {
     }
 
     fn optimal_bead_count(&self, thickness: f64) -> usize {
-        // Ported from OrcaSlicer RedistributeBeadingStrategy.cpp:42-49.
+        // Ported from OrcaSlicer RedistributeBeadingStrategy.cpp::getOptimalBeadCount.
         if thickness < self.minimum_variable_line_ratio * self.optimal_width_outer {
             0
         } else if thickness <= 2.0 * self.optimal_width_outer {

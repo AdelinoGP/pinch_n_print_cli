@@ -187,7 +187,7 @@ impl BeadingStrategy for DistributedBeadingStrategy {
     }
 
     fn optimal_bead_count(&self, thickness: f64) -> usize {
-        // Ported from OrcaSlicer DistributedBeadingStrategy.cpp:92-98.
+        // Ported from OrcaSlicer DistributedBeadingStrategy.cpp::getOptimalBeadCount.
         // Integer truncation (not rounding) of thickness / optimal_width, then
         // a remainder test against a parity-selected minimum line width.
         let naive_count = (thickness / self.optimal_width).trunc();

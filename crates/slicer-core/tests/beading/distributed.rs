@@ -153,7 +153,7 @@ fn beading_invariant_locations_len_eq_widths_len() {
 }
 
 /// AC-3: `optimal_bead_count` must use OrcaSlicer's `getOptimalBeadCount`
-/// truncation formula (DistributedBeadingStrategy.cpp:92-98), not the old
+/// truncation formula (DistributedBeadingStrategy.cpp::getOptimalBeadCount), not the old
 /// `.round()` heuristic. The falsifying case `optimal_width = 4000`, split =
 /// add = 0.99, thickness = 7500 must yield 1 bead (the old `.round()` impl
 /// returned `round(1.875) = 2`).

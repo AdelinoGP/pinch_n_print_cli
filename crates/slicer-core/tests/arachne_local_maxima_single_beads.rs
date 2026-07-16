@@ -54,7 +54,7 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     // (packet 155) replaced `DistributedBeadingStrategy::optimal_bead_count`
     // with a faithful port of the canonical integer-truncation +
     // parity-selected-remainder-threshold formula
-    // (`DistributedBeadingStrategy.cpp:92-98`, this crate's
+    // (`DistributedBeadingStrategy.cpp::getOptimalBeadCount`, this crate's
     // `crates/slicer-core/src/beading/distributed.rs`). Under the real
     // formula, cr = 0.7mm now yields an EVEN bead count (2), so Gate 1 of
     // `generate_local_maxima_single_beads` (which requires
@@ -69,12 +69,12 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     // `effective_optimal_width` = `optimal_width` = 0.4mm):
     //
     // 1. `RedistributeBeadingStrategy::optimal_bead_count(thickness =
-    //    1.37533mm)` (`RedistributeBeadingStrategy.cpp:42-49`,
+    //    1.37533mm)` (`RedistributeBeadingStrategy.cpp::getOptimalBeadCount`,
     //    `crates/slicer-core/src/beading/redistribute.rs`): thickness exceeds
     //    `2 * optimal_width_outer` (0.8mm), so it recurses into the parent:
     //    `parent.optimal_bead_count(1.37533 - 0.8 = 0.57533mm) + 2`.
     // 2. `DistributedBeadingStrategy::optimal_bead_count(0.57533mm)`
-    //    (`DistributedBeadingStrategy.cpp:92-98`,
+    //    (`DistributedBeadingStrategy.cpp::getOptimalBeadCount`,
     //    `crates/slicer-core/src/beading/distributed.rs`): `naive_count =
     //    trunc(0.57533 / 0.4) = 1`; `remainder = 0.57533 - 1*0.4 =
     //    0.17533mm`; `naive_count` is odd, so the threshold is

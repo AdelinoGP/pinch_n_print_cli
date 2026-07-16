@@ -120,3 +120,18 @@ Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slu
 ## OrcaSlicer Attribution Rules
 
 Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures AGPLv3 compliance and proper attribution.
+
+## OrcaSlicer Citation Style (MUST follow)
+
+**Cite canonical OrcaSlicer code by file + function name. NEVER by line number.**
+
+- Correct: ``canonical `generateJunctions` (`SkeletalTrapezoidation.cpp`)``, ```LimitedBeadingStrategy.cpp::compute`'s over-cap branch``
+- Wrong: ``` `SkeletalTrapezoidation.cpp:1740-1744` ```, ``` `DistributedBeadingStrategy.cpp:132-144` ```
+
+**Why:** OrcaSlicer is **not vendored in this repo and is not available to every developer.** A line number is pinned to whatever upstream revision its author happened to have open, so it silently drifts and becomes unverifiable — or actively wrong — for everyone else. A real example: `DistributedBeadingStrategy.cpp:132-144` was cited for `getOptimalBeadCount`; in another upstream revision that file is 100 lines long and the function sits at `:92-98`, so the citation pointed at nothing. There are ~129 line-pinned citations across ~22 C++ files in this tree; treat every one as unverified. Function names are stable across versions and greppable by anyone with any checkout.
+
+Applies to code comments, ADRs, `docs/DEVIATION_LOG.md` rows, and spec packets. Prefer naming the function and describing the behaviour precisely enough to find it; if a range is genuinely needed, quote the code rather than cite coordinates.
+
+Existing line-pinned citations are legacy. **Drop the line numbers on any citation you touch**; do NOT mass-rewrite the rest.
+
+If you have a local OrcaSlicer checkout, use it to verify behaviour before claiming canonical says anything — but never cite its line numbers, and never assume a reviewer has it.
