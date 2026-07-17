@@ -137,6 +137,55 @@ source:
 A bare func name (`run-perimeters`) yields `None`: no `@`, no semver, no matching.
 **We already have that engine; the bare-func world structure routes around it.**
 
+### Verified empirically, not just read
+
+The above is source-reading. Before any packet was built on it, a throwaway spike
+executed the mechanism against the pinned wasmtime 43.0.1 / wit-bindgen 0.57.1. All
+of it holds:
+
+```
+[guest @1.0.0 / host wants @1.0.0 (exact)]        OK
+[guest @1.0.0 / host wants @1.5.0 (the claim)]    OK   <- alt-key @1 resolves
+[guest @1.5.0 / host wants @1.0.0 (reverse)]      OK   <- both directions, as claimed
+[guest @1.0.0 / host wants @2.0.0 (major break)]  FAIL <- clean, at instantiate
+[guest @0.1.0 / host wants @0.2.0 (major == 0)]   FAIL <- minor-track
+```
+
+`alternate_lookup_key` is genuinely wired into component export resolution on the
+typed `bindgen!` path; the version survives into the export name
+(`world root { export spike:alpha/foo@1.0.0; }`), which is what makes any of this
+possible.
+
+**Stage isolation, the headline benefit, reproduces exactly.** A guest exporting only
+`spike:alpha` against a host binding both alpha and beta, after beta took a breaking
+change and a major bump: `sha256` byte-identical before and after, never rebuilt,
+instantiates fine. "Untouched, doesn't even rebuild" is literal.
+
+**And the rejected alternative fails, on a control.** The same two interfaces placed in
+one package `spike:mono@2.0.0` — packet 130 replayed under "stages as interfaces in a
+tier package" — rejected the partial guest with
+`no exported instance named `spike:mono/foo@2.0.0``. `foo` had not changed; its
+sibling's bump moved its alt-key from `@1` to `@2`. §"The unit is the package" was
+argued rather than measured when written; it is now measured.
+
+Two things the spike surfaced that this ADR overstated or omitted:
+
+- **The diagnostic is thinner than "naming the expected `package/iface@version`"
+  implies.** wasmtime says `no exported instance named `slicer:x/y@2.0.0`` — it names
+  what the *host wanted* and never what the *guest shipped*. "Expected @2.0.0, found
+  @1.0.0" is host-side work decoding the component's exports; budget for it rather
+  than assuming the engine supplies it.
+- **"Versions reset to 1.0.0" is load-bearing, not housekeeping.** The `@0.1.0` vs
+  `@0.2.0` row simply misses. A stage package shipped at `0.x` gets no compatibility
+  at all, so `major >= 1` deserves a mechanical assertion.
+
+**Still unproven:** the spike used no host imports. The real stage worlds import
+`slicer:common/host-services`, `slicer:config/config-types` and
+`slicer:ir-handles/ir-handles`, and depend on `with:`-mapped resource *identity*
+holding across many separate `bindgen!` calls (ADR-0002). Nothing in the mechanism
+above depends on that, but nothing above tests it either — which is precisely why the
+first packet pilots one real stage with its actual imports before the rest follow.
+
 The refactor follows a seam that already exists: `dispatch.rs` already does
 `match stage_id.as_str()` *after* instantiating the monolithic world.
 
