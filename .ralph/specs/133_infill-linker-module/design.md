@@ -118,6 +118,13 @@
 - Already-linked multi-point input (today's gyroid waves, lightning's 2-point trees) is
   handled by the same path: re-clip + chain. No module-identity detection exists or may be
   attempted (paths carry no module id — ADR-0025 Amendment point 2).
+- `clip_polylines` boundary behavior (packet 129 deviation, see
+  `.ralph/specs/129_clip-polylines/design.md` §Implementation Deviations): the primitive
+  pre-inflates the clip universe by 1 unit (100 nm, Miter) so on-boundary spans are kept
+  (AC-5). Consequence: hole edges shrink by 1 unit, so returned points may lie up to 1 unit
+  inside an original hole and up to 1 unit outside an original contour. Linker tests must
+  use ≥±2-unit boundary tolerance and must not assert strict containment in the un-inflated
+  clip polygon.
 
 ## Risks and Tradeoffs
 

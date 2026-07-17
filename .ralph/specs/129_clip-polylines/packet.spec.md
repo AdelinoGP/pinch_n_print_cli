@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 129_clip-polylines
 task_ids:
   - TASK-254

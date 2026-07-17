@@ -111,3 +111,7 @@
 ## Open Questions
 
 None.
+
+## Implementation Deviations (recorded at close)
+
+Clipper2's inclusion of open segments lying exactly on a closed clip boundary is side-dependent, so `clip_polylines` pre-inflates the clip universe by 1 unit (100 nm, Miter join, Polygon end type offset) before the single Clipper64 boolean run so that AC-5 (on-boundary segments are kept) holds on all edges. Consequence: hole edges shrink by 1 unit, so returned points may lie up to 1 unit inside an original hole — within the packet's ±2-unit tolerance. Packet 133's author should be aware of this behavior.

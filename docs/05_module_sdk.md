@@ -60,7 +60,9 @@ isolation.
   '(slicer-runtime|slicer-wasm-host|wasmtime)'` (must be empty).
 - **No `slicer-core` dep when the `host-algos` feature is the only way
   in.** `slicer-core` exposes pure geometry primitives unconditionally
-  (`polygon_ops`, `aabb_tree`, `triangle-mesh-slicer`), but the
+  (`polygon_ops` — including `clip_polylines`, a Clipper2 open-path
+  intersection of polylines against an ExPolygon set —, `aabb_tree`,
+  `triangle-mesh-slicer`), but the
   host-side algorithm kernels (`mesh_analysis`, `paint_segmentation`,
   `support_geometry`, `region_mapping`, `overhang_classifier`) live
   behind the `host-algos` feature, which is enabled by `slicer-runtime`

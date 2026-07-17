@@ -127,6 +127,99 @@ fn oriented_ring(path: &[Point64], want_ccw: bool) -> Vec<Point2> {
     points
 }
 
+/// Converts an open polyline (integer units) to a clipper2 open path.
+fn polyline_to_path(polyline: &[Point2]) -> Vec<Point64> {
+    polyline
+        .iter()
+        .map(|p| Point64 { x: p.x, y: p.y })
+        .collect()
+}
+
+/// Converts a clipper2 open-solution path back to a polyline.
+fn path_to_polyline(path: &[Point64]) -> Vec<Point2> {
+    path.iter().map(|p| Point2 { x: p.x, y: p.y }).collect()
+}
+
+/// Clips open polylines against an ExPolygon set via a single Clipper2
+/// open-path intersection (ClipType::Intersection, FillRule::NonZero). All
+/// contours and holes of every clip ExPolygon are fed as one closed clip
+/// universe; NonZero winding handles holes natively. Coordinates are integer
+/// units (1 unit = 100 nm); no unit conversion is performed.
+///
+/// Geometric guarantees:
+/// 1. A polyline fully inside the clip set is returned whole and unsplit.
+/// 2. A polyline crossing the boundary once is clipped to its inside
+///    portion, with the new endpoint on the boundary.
+/// 3. A polyline crossing the boundary multiple times yields one
+///    sub-polyline per inside span.
+/// 4. Spans passing through a hole are removed: the polyline is split
+///    around the hole and no returned point lies strictly inside a hole.
+/// 5. Segments collinear with a clip edge count as inside and are kept.
+///    (Clipper2's inclusion of on-boundary open segments is side-dependent,
+///    so the clip universe is pre-inflated by 1 unit — 100 nm — before the
+///    boolean run; every reported boundary coordinate is therefore within
+///    ±2 units of the exact clip boundary.)
+/// 6. Multiple input polylines are clipped independently in one call;
+///    fully-outside polylines are dropped. Output ordering across the
+///    result Vec is unspecified.
+/// 7. Input polylines with fewer than 2 points are silently skipped.
+pub fn clip_polylines(polylines: &[Vec<Point2>], clip: &[ExPolygon]) -> Vec<Vec<Point2>> {
+    use clipper2_rust::core::FillRule;
+    use clipper2_rust::{inflate_paths_64, ClipType, Clipper64, EndType, JoinType};
+
+    if polylines.is_empty() || clip.is_empty() {
+        return Vec::new();
+    }
+
+    let open_subjects: Vec<Vec<Point64>> = polylines
+        .iter()
+        .filter(|p| p.len() >= 2)
+        .map(|p| polyline_to_path(p))
+        .collect();
+    if open_subjects.is_empty() {
+        return Vec::new();
+    }
+    // Pre-inflate the clip universe by exactly 1 unit (100 nm). Clipper2's
+    // treatment of open segments lying exactly on a closed clip boundary is
+    // side-dependent (some edges keep the span, others drop it), so guarantee
+    // AC-5 by making every on-edge span strictly interior. The 1-unit shift
+    // stays within the documented ±2-unit boundary tolerance. Inflating the
+    // flat contour+hole path set also shrinks holes by 1 unit, so on-hole-edge
+    // spans count as inside too. NonZero winding downstream keeps hole
+    // semantics intact.
+    let raw_clip_paths: Vec<Vec<Point64>> = clip.iter().flat_map(expolygon_to_paths).collect();
+    let clip_paths = inflate_paths_64(
+        &raw_clip_paths,
+        1.0, // delta in integer units, matching `offset2_ex`'s delta_units convention
+        JoinType::Miter,
+        EndType::Polygon,
+        2.0,
+        0.0,
+    );
+
+    let mut clipper = Clipper64::default();
+    clipper.add_open_subject(&open_subjects);
+    clipper.add_clip(&clip_paths);
+
+    let mut closed_solution: Vec<Vec<Point64>> = Vec::new();
+    let mut open_solution: Vec<Vec<Point64>> = Vec::new();
+    let ok = clipper.execute(
+        ClipType::Intersection,
+        FillRule::NonZero,
+        &mut closed_solution,
+        Some(&mut open_solution),
+    );
+    if !ok {
+        return Vec::new();
+    }
+
+    open_solution
+        .iter()
+        .filter(|path| path.len() >= 2)
+        .map(|path| path_to_polyline(path))
+        .collect()
+}
+
 /// Executes a boolean clip operation on polygon sets.
 pub fn clip_polygons(
     subject: &[ExPolygon],
