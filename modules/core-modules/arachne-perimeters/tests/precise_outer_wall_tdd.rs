@@ -17,7 +17,7 @@
 //! key in this module.
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::{mm_to_units, ConfigView, WallLoop};
+use slicer_ir::{ConfigView, WallLoop};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -50,11 +50,8 @@ const TOLERANCE_MM: f32 = 1e-3;
 fn make_config(precise_outer_wall: Option<bool>, wall_sequence: Option<&str>) -> ConfigView {
     let mut builder = ConfigViewBuilder::new()
         .int("wall_count", 2)
-        .float("optimal_width", mm_to_units(SPACING_WIDTH_MM) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(OUTER_WIDTH_MM) as f64,
-        );
+        .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
+        .float("outer_wall_line_width", OUTER_WIDTH_MM as f64);
     if let Some(p) = precise_outer_wall {
         builder = builder.bool("precise_outer_wall", p);
     }

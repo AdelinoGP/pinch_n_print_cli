@@ -104,11 +104,8 @@ fn manifest_has_config_key(key: &str) -> bool {
 fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
         .int("wall_count", wall_count as i64)
-        .float("optimal_width", mm_to_units(line_width_mm) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(line_width_mm) as f64,
-        )
+        .float("inner_wall_line_width", line_width_mm as f64)
+        .float("outer_wall_line_width", line_width_mm as f64)
         .build()
 }
 
@@ -118,8 +115,8 @@ fn native_wall_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
 fn native_thin_wall_config(detect_thin_wall_on: bool) -> ConfigView {
     ConfigViewBuilder::new()
         .int("wall_count", 2)
-        .float("optimal_width", mm_to_units(0.4) as f64)
-        .float("preferred_bead_width_outer", mm_to_units(0.4) as f64)
+        .float("inner_wall_line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
         .bool("detect_thin_wall", detect_thin_wall_on)
         .build()
 }
@@ -371,8 +368,8 @@ fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
 fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
     let config = ConfigViewBuilder::new()
         .int("wall_count", 2)
-        .float("optimal_width", mm_to_units(0.4_f32) as f64)
-        .float("preferred_bead_width_outer", mm_to_units(0.4_f32) as f64)
+        .float("inner_wall_line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
         .float("bridge_flow", 0.7)
         .bool("thick_bridges", false)
         .build();
@@ -553,11 +550,8 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
     let make_config = |precise_outer_wall: bool| -> ConfigView {
         ConfigViewBuilder::new()
             .int("wall_count", 2)
-            .float("optimal_width", mm_to_units(SPACING_WIDTH_MM) as f64)
-            .float(
-                "preferred_bead_width_outer",
-                mm_to_units(OUTER_WIDTH_MM) as f64,
-            )
+            .float("inner_wall_line_width", SPACING_WIDTH_MM as f64)
+            .float("outer_wall_line_width", OUTER_WIDTH_MM as f64)
             .bool("precise_outer_wall", precise_outer_wall)
             .string("wall_sequence", "InnerOuter")
             .build()

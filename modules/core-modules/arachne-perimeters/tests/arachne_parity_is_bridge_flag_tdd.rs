@@ -18,11 +18,8 @@ use slicer_sdk::views::SliceRegionView;
 fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
     ConfigViewBuilder::new()
         .int("wall_count", wall_count as i64)
-        .float("optimal_width", mm_to_units(line_width_mm) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(line_width_mm) as f64,
-        )
+        .float("inner_wall_line_width", line_width_mm as f64)
+        .float("outer_wall_line_width", line_width_mm as f64)
         .build()
 }
 

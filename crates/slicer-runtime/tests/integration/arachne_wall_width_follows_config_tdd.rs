@@ -156,7 +156,6 @@ fn emitted_width_equals_configured_width_at_default() {
 /// Verified to FAIL before the wiring fix: emitted the same value as the 0.4
 /// case regardless of this setting — output *invariant* to the user's key.
 #[test]
-#[ignore = "RED until the Bug A wiring fix lands (D-160): emits 0.4mm regardless of the key"]
 fn emitted_width_tracks_a_non_default_configured_width() {
     let w = 0.8_f32;
     assert_all_widths(&emitted_widths_for(w), w, 0.005, "non-default width");
@@ -166,7 +165,6 @@ fn emitted_width_tracks_a_non_default_configured_width() {
 /// produce two different emitted widths. This is the assertion `D-160` was
 /// discovered by hand, and the one no fixture in the suite could make.
 #[test]
-#[ignore = "RED until the Bug A wiring fix lands (D-160): emits 0.4mm regardless of the key"]
 fn emitted_width_is_not_invariant_to_the_configured_key() {
     let narrow = emitted_widths_for(0.4);
     let wide = emitted_widths_for(0.8);

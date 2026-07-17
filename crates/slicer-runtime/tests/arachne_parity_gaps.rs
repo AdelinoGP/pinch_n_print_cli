@@ -50,7 +50,7 @@ mod fixtures;
 use std::collections::BTreeSet;
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::{mm_to_units, ConfigView, LoopType, Point3WithWidth, WallLoop};
+use slicer_ir::{ConfigView, LoopType, Point3WithWidth, WallLoop};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -100,8 +100,8 @@ fn run_walls(config: &ConfigView, regions: &[SliceRegionView], layer_index: u32)
 fn base_config(wall_count: i64) -> ConfigViewBuilder {
     ConfigViewBuilder::new()
         .int("wall_count", wall_count)
-        .float("optimal_width", mm_to_units(0.4) as f64)
-        .float("preferred_bead_width_outer", mm_to_units(0.4) as f64)
+        .float("inner_wall_line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
 }
 
 /// A plain square region built from the shared parity fixture.

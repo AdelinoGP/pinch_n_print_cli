@@ -136,8 +136,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     // keys (docs/08_coordinate_system.md): stored and read as plain mm floats,
     // never scaled units — no `units_to_mm` conversion, unlike the bead-width
     // keys below. Defaults mirror layer-planner-default.toml's layer_height
-    // default (0.2mm) and this module's own optimal_width raw default
-    // (mm_to_units(0.4) = 4000 units = 0.4mm nozzle).
+    // default (0.2mm) and the 0.4mm nozzle convention.
     let layer_height_mm = config.get_float("layer_height").unwrap_or(0.2);
     let nozzle_diameter_mm = config.get_float("nozzle_diameter").unwrap_or(0.4);
 
@@ -159,10 +158,20 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     // `optimal_width` maps to the INNER width (`bead_width_x`), exactly as this
     // module's manifest entry for the key already recorded. The outer width is
     // `preferred_bead_width_outer` (= bead_width_0), handled separately below.
+    //
+    // Sourcing (D-160 Bug A): canonical derives both bead-width targets from
+    // the USER's wall flows — `bead_width_x = perimeter_spacing =
+    // perimeter_flow.scaled_spacing()` (the inner wall width) and
+    // `bead_width_0 = ext_perimeter_spacing = ext_perimeter_flow.scaled_spacing()`
+    // (the outer wall width), per `PerimeterGenerator.cpp`. This module used to
+    // read two Arachne-internal knobs (`optimal_width`,
+    // `preferred_bead_width_outer`, in scaled units) that nothing set, so
+    // arachne output was INVARIANT to `outer_wall_line_width` /
+    // `inner_wall_line_width`. Those keys are retired; the wall-width keys are
+    // plain mm (no units_to_mm), same as classic-perimeters reads them.
     let optimal_width = {
         let raw_width_mm = config
-            .get_float("optimal_width")
-            .map(|v| units_to_mm(v as i64) as f64)
+            .get_float("inner_wall_line_width")
             .unwrap_or(defaults.optimal_width);
         let spacing = line_width_to_spacing(
             raw_width_mm as f32,
@@ -186,8 +195,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     // `wall_0_inset = -(ext_perimeter_width/2 - ext_perimeter_spacing/2)` and
     // needs the true (unconverted) `ext_perimeter_width`.
     let preferred_bead_width_outer_raw = config
-        .get_float("preferred_bead_width_outer")
-        .map(|v| units_to_mm(v as i64) as f64)
+        .get_float("outer_wall_line_width")
         .unwrap_or(defaults.preferred_bead_width_outer);
     let preferred_bead_width_outer_spacing = line_width_to_spacing(
         preferred_bead_width_outer_raw as f32,

@@ -16,7 +16,7 @@
 //! emits exactly `max_bead_count / 2` walls.
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::{mm_to_units, ConfigView, ExPolygon, WallLoop};
+use slicer_ir::{ConfigView, ExPolygon, WallLoop};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -33,11 +33,8 @@ const BASE_WALL_COUNT: usize = 2;
 
 fn make_config(only_one_wall_top: bool) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("optimal_width", mm_to_units(BEAD_WIDTH_MM) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(BEAD_WIDTH_MM) as f64,
-        )
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("max_bead_count", BASE_MAX_BEAD_COUNT)
         .bool("only_one_wall_top", only_one_wall_top)
         .build()
@@ -103,20 +100,14 @@ fn only_one_wall_top_second_pass() {
     const MAX_BEAD: i64 = 6; // -> 3 walls in the naive single pass ({0,1,2})
 
     let naive_config = ConfigViewBuilder::new()
-        .float("optimal_width", mm_to_units(BEAD_WIDTH_MM) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(BEAD_WIDTH_MM) as f64,
-        )
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", false)
         .build();
     let second_config = ConfigViewBuilder::new()
-        .float("optimal_width", mm_to_units(BEAD_WIDTH_MM) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(BEAD_WIDTH_MM) as f64,
-        )
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("max_bead_count", MAX_BEAD)
         .bool("only_one_wall_top", true)
         .build();

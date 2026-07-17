@@ -29,7 +29,7 @@
 //! `max_bead_count` units == one extra emitted wall here).
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::{mm_to_units, ConfigView};
+use slicer_ir::ConfigView;
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -47,11 +47,8 @@ const BUMPED_WALL_COUNT: usize = 3;
 
 fn make_config(alternate_extra_wall: bool) -> ConfigView {
     ConfigViewBuilder::new()
-        .float("optimal_width", mm_to_units(BEAD_WIDTH_MM) as f64)
-        .float(
-            "preferred_bead_width_outer",
-            mm_to_units(BEAD_WIDTH_MM) as f64,
-        )
+        .float("inner_wall_line_width", BEAD_WIDTH_MM as f64)
+        .float("outer_wall_line_width", BEAD_WIDTH_MM as f64)
         .int("max_bead_count", BASE_MAX_BEAD_COUNT)
         .bool("alternate_extra_wall", alternate_extra_wall)
         .bool("spiral_vase", false)

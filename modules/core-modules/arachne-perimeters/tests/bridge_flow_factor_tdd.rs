@@ -17,7 +17,7 @@
 
 use arachne_perimeters::ArachnePerimeters;
 use slicer_core::flow::{bridging_flow, flow_to_width};
-use slicer_ir::{mm_to_units, ConfigView, LoopType};
+use slicer_ir::{ConfigView, LoopType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -26,8 +26,8 @@ use slicer_sdk::views::SliceRegionView;
 fn make_config(bridge_flow: f32, thick_bridges: bool) -> ConfigView {
     ConfigViewBuilder::new()
         .int("wall_count", 2)
-        .float("optimal_width", mm_to_units(0.4_f32) as f64)
-        .float("preferred_bead_width_outer", mm_to_units(0.4_f32) as f64)
+        .float("inner_wall_line_width", 0.4)
+        .float("outer_wall_line_width", 0.4)
         .float("bridge_flow", bridge_flow as f64)
         .bool("thick_bridges", thick_bridges)
         .build()

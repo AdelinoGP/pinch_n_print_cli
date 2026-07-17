@@ -49,7 +49,7 @@ max-ir-schema     = "5.0.0"
   max         = 1.0
   unit        = "mm"
   display     = "Layer height"
-  description = "Current layer height in mm. Mirrors layer-planner-default's own layer_height key (same convention: plain mm float, not scaled units). Consumed by arachne_params_from_config to convert optimal_width to Flow spacing via line_width_to_spacing (AC-3)."
+  description = "Current layer height in mm. Mirrors layer-planner-default's own layer_height key (same convention: plain mm float, not scaled units). Consumed by arachne_params_from_config to convert the wall line widths to Flow spacing via line_width_to_spacing (AC-3)."
   group       = "Arachne"
   advanced    = true
 
@@ -180,7 +180,7 @@ max-ir-schema     = "5.0.0"
   min         = 0
   unit        = "units"
   display     = "Minimum width"
-  description = "Nominal width (mm) used by remove_small_lines' length threshold. Maps to ArachneParams::min_width. Default 4000 units = 0.4mm, matching this codebase's common line_width / optimal_width convention."
+  description = "Nominal width (mm) used by remove_small_lines' length threshold. Maps to ArachneParams::min_width. Default 4000 units = 0.4mm, matching this codebase's common 0.4mm line-width convention."
   group       = "Arachne"
   advanced    = true
 
@@ -208,15 +208,22 @@ max-ir-schema     = "5.0.0"
   description = "OrcaSlicer coEnum key wall_direction (PrintConfig.cpp:2188-2198, default CounterClockwise); values: counter_clockwise (default, holes wound opposite) | clockwise. Contour (ExteriorSurface) winding is forced CCW or CW; holes are always wound opposite the contour (PerimeterGenerator.cpp:527-545)."
   group       = "Walls"
 
-  [config.schema.optimal_width]
+  # D-160: the Arachne-internal keys `optimal_width` and
+  # `preferred_bead_width_outer` are RETIRED. Canonical never exposes them —
+  # PerimeterGenerator derives bead_width_x from perimeter_flow (the inner
+  # wall's flow) and bead_width_0 from ext_perimeter_flow (the outer wall's
+  # flow) — so PnP now derives them from the user-facing wall-width keys
+  # below, exactly like classic-perimeters. ArachneParams' struct FIELDS keep
+  # the canonical names; only the config keys are gone (ADR-0043).
+
+  [config.schema.inner_wall_line_width]
   type        = "float"
-  default     = 4000
-  min         = 0
-  unit        = "units"
-  display     = "Optimal bead width"
-  description = "Target bead width used when there is no surplus/deficit thickness to redistribute. Maps directly to DistributedBeadingStrategy's internal optimal_width field (name matches verbatim). Not a user-facing OrcaSlicer PrintConfig.cpp option — upstream sets it internally from preferred_bead_width_outer/preferred_bead_width_inner in BeadingStrategyFactory.cpp; default mirrors this codebase's common 0.4mm line_width. Refined role: now serves as upstream's preferred_bead_width_inner (used when max_bead_count > 2); see preferred_bead_width_outer for the max_bead_count <= 2 case."
-  group       = "Arachne"
-  advanced    = true
+  default     = 0.4
+  min         = 0.1
+  max         = 2.0
+  display     = "Inner Wall Line Width"
+  description = "Inner wall extrusion line width in mm (plain mm, not scaled units). Canonical bead_width_x: PerimeterGenerator passes perimeter_spacing = perimeter_flow.scaled_spacing() into WallToolPaths; arachne_params_from_config applies the same width->spacing conversion (line_width_to_spacing) before feeding the beading strategy stack, and emission converts back (VariableWidth.cpp::thick_polyline_to_multi_path)."
+  group       = "Walls"
 
   [config.schema.detect_thin_wall]
   type        = "bool"
@@ -226,15 +233,14 @@ max-ir-schema     = "5.0.0"
   group       = "Arachne"
   advanced    = true
 
-  [config.schema.preferred_bead_width_outer]
+  [config.schema.outer_wall_line_width]
   type        = "float"
-  default     = 4000
-  min         = 0
-  unit        = "units"
-  display     = "Preferred bead width (outer)"
-  description = "Target width for the outermost/innermost bead. Used unconditionally by RedistributeBeadingStrategy's optimal_width_outer parameter, and conditionally (when max_bead_count <= 2) as DistributedBeadingStrategy's/WideningBeadingStrategy's base optimal_width instead of the optimal_width key. Maps to upstream's preferred_bead_width_outer (BeadingStrategyFactory.cpp:50-97). Default 4000 units (0.4mm) matches this codebase's optimal_width convention rather than upstream's raw factory default of scaled(0.0005)=0.5mm=5000 units."
-  group       = "Arachne"
-  advanced    = true
+  default     = 0.4
+  min         = 0.1
+  max         = 2.0
+  display     = "Outer Wall Line Width"
+  description = "Outer wall extrusion line width in mm (plain mm, not scaled units). Canonical bead_width_0: PerimeterGenerator passes ext_perimeter_spacing = ext_perimeter_flow.scaled_spacing() into WallToolPaths; maps to ArachneParams::preferred_bead_width_outer (RedistributeBeadingStrategy's optimal_width_outer, and the base optimal_width when max_bead_count <= 2, per BeadingStrategyFactory::makeStrategy). Also feeds the precise_outer_wall inset formula, which needs the true ext_perimeter_width."
+  group       = "Walls"
 
   # ── Wall sequencing / seam parity (packet 148) ───────────────────────────
   # Registered here to match classic-perimeters.toml byte-for-byte (AC-7);
