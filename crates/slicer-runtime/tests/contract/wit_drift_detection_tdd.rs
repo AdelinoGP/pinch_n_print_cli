@@ -90,7 +90,7 @@ fn macro_layer_world_package_name_is_canonical() {
 fn macro_other_world_package_names_are_canonical() {
     let root = workspace_root();
     let canonical_worlds = [
-        ("world-prepass", "slicer:world-prepass@1.0.0"),
+        ("world-prepass", "slicer:world-prepass@2.0.0"),
         ("world-postpass", "slicer:world-postpass@1.0.0"),
         ("world-finalization", "slicer:world-finalization@1.0.0"),
     ];

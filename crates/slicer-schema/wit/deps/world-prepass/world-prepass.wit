@@ -1,4 +1,4 @@
-package slicer:world-prepass@1.0.0;
+package slicer:world-prepass@2.0.0;
 
 world prepass-module {
     import slicer:common/host-services;
@@ -94,6 +94,7 @@ world prepass-module {
 
     export run-seam-planning: func(
         objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
         output: seam-planning-output,
         config: config-view,
     ) -> result<_, module-error>;

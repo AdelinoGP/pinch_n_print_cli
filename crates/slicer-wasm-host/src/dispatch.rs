@@ -778,6 +778,10 @@ impl WasmRuntimeDispatcher {
                     .iter()
                     .map(host::object_mesh_to_wit_mesh_object_view)
                     .collect();
+                let layer_plan_view = layer_plan
+                    .as_deref()
+                    .map(|lp| host::project_layer_plan_view(lp))
+                    .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
                 let output = store
                     .data_mut()
                     .push_seam_planning_output()
@@ -786,6 +790,7 @@ impl WasmRuntimeDispatcher {
                     .call_run_seam_planning(
                         &mut store,
                         &mesh_object_views,
+                        &layer_plan_view,
                         own(output),
                         own(config_handle),
                     )

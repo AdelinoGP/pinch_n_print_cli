@@ -18,7 +18,6 @@
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
-#![allow(dead_code)]
 
 use slicer_ir::{ConfigValue, ConfigView, SeamReason};
 use slicer_sdk::builders::PerimeterOutputBuilder;
@@ -36,6 +35,10 @@ enum SeamMode {
     Rear,
     /// Select a pseudo-random candidate based on layer index.
     Random,
+    /// Align seams vertically across layers (nearest-style scoring seed).
+    Aligned,
+    /// Align seams vertically across layers, biased to the rear of the bed.
+    AlignedBack,
 }
 
 /// Seam placer module.
@@ -54,6 +57,8 @@ impl SeamPlacer {
             SeamMode::Nearest => "nearest",
             SeamMode::Rear => "rear",
             SeamMode::Random => "random",
+            SeamMode::Aligned => "aligned",
+            SeamMode::AlignedBack => "aligned_back",
         }
     }
 }
@@ -79,12 +84,17 @@ fn select_seam_candidate(
     candidates: &[slicer_ir::SeamCandidate],
 ) -> Option<&slicer_ir::SeamCandidate> {
     match mode {
-        SeamMode::Nearest => candidates.iter().min_by(|left, right| {
-            effective_score(left)
-                .total_cmp(&effective_score(right))
-                .then_with(|| left.position.y.total_cmp(&right.position.y))
-                .then_with(|| left.position.x.total_cmp(&right.position.x))
-        }),
+        // Aligned/AlignedBack never reach this function: `run_wall_postprocess`
+        // routes them through the host-injected `resolved_seam` snap path
+        // (`aligned_seam_target`). The arms below are a defensive fallback.
+        SeamMode::Nearest | SeamMode::Aligned | SeamMode::AlignedBack => {
+            candidates.iter().min_by(|left, right| {
+                effective_score(left)
+                    .total_cmp(&effective_score(right))
+                    .then_with(|| left.position.y.total_cmp(&right.position.y))
+                    .then_with(|| left.position.x.total_cmp(&right.position.x))
+            })
+        }
         SeamMode::Rear => candidates.iter().max_by(|left, right| {
             left.position
                 .y
@@ -97,6 +107,58 @@ fn select_seam_candidate(
             candidates.get(idx)
         }
     }
+}
+
+/// Squared 2D XY distance between two IR points (Z is deliberately ignored:
+/// the injected aligned seam carries the planner's layer Z, which may differ
+/// slightly from this region's wall-loop Z).
+fn dist2_xy(a: &slicer_ir::Point3WithWidth, b: &slicer_ir::Point3WithWidth) -> f32 {
+    let dx = a.x - b.x;
+    let dy = a.y - b.y;
+    dx * dx + dy * dy
+}
+
+/// Aligned/AlignedBack seam target (packet 168, TASK-274).
+///
+/// The seam planner has already chosen the aligned position per layer; the
+/// host injects it into `region.resolved_seam()` (ADR-0020 channel) before
+/// this module runs. This function snaps that injected point to the nearest
+/// `seam_candidates()` position by 2D XY distance so the seam lands on an
+/// actual wall vertex. The snap radius is deliberately unlimited (packet
+/// 168 [FWD] note): a far snap is still better than dropping the seam, and
+/// the planner's alignment guarantees keep the distance small in practice.
+///
+/// Fallback when the candidate list is empty: nearest wall-loop vertex.
+/// Returns `None` (→ pristine wall emission) when there is no injected
+/// resolved seam or no wall vertex exists.
+fn aligned_seam_target(
+    region: &PerimeterRegionView,
+    wall_loops: &[slicer_sdk::prelude::WallLoop],
+) -> Option<slicer_ir::Point3WithWidth> {
+    let injected = region.resolved_seam()?.point;
+    let snapped = region
+        .seam_candidates()
+        .iter()
+        .map(|candidate| candidate.position)
+        .min_by(|left, right| {
+            dist2_xy(left, &injected)
+                .total_cmp(&dist2_xy(right, &injected))
+                .then_with(|| left.y.total_cmp(&right.y))
+                .then_with(|| left.x.total_cmp(&right.x))
+        });
+    snapped.or_else(|| {
+        // Empty candidate list → snap directly to the nearest wall vertex.
+        wall_loops
+            .iter()
+            .flat_map(|loop_| loop_.path.points.iter())
+            .min_by(|left, right| {
+                dist2_xy(left, &injected)
+                    .total_cmp(&dist2_xy(right, &injected))
+                    .then_with(|| left.y.total_cmp(&right.y))
+                    .then_with(|| left.x.total_cmp(&right.x))
+            })
+            .copied()
+    })
 }
 
 fn find_seam_location(
@@ -188,6 +250,8 @@ impl LayerModule for SeamPlacer {
                 "nearest" => SeamMode::Nearest,
                 "rear" => SeamMode::Rear,
                 "random" => SeamMode::Random,
+                "aligned" => SeamMode::Aligned,
+                "aligned_back" => SeamMode::AlignedBack,
                 other => {
                     return Err(ModuleError::fatal(1, format!("unknown seam_mode: {other}")));
                 }
@@ -240,12 +304,23 @@ impl LayerModule for SeamPlacer {
             // Compute the optional seam target. `None` → emit walls pristine
             // (no rotation, no `set_resolved_seam` call).
             let seam_target: Option<(slicer_ir::Point3WithWidth, usize, usize)> = (|| {
-                let point = if let Some(candidate) =
-                    select_seam_candidate(self.mode, layer_index, region.seam_candidates())
-                {
-                    candidate.position
-                } else {
-                    region.resolved_seam().as_ref()?.point
+                let point = match self.mode {
+                    // Aligned modes consume the planner's host-injected
+                    // resolved seam and snap it onto real geometry; they do
+                    // NOT score candidates. See `aligned_seam_target`.
+                    SeamMode::Aligned | SeamMode::AlignedBack => {
+                        aligned_seam_target(region, wall_loops)?
+                    }
+                    // Nearest/rear/random keep the candidate-preference path.
+                    SeamMode::Nearest | SeamMode::Rear | SeamMode::Random => {
+                        if let Some(candidate) =
+                            select_seam_candidate(self.mode, layer_index, region.seam_candidates())
+                        {
+                            candidate.position
+                        } else {
+                            region.resolved_seam().as_ref()?.point
+                        }
+                    }
                 };
                 let (wall_idx, start_idx) = find_seam_location(wall_loops, &point)?;
                 Some((point, wall_idx, start_idx))

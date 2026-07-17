@@ -24,29 +24,196 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+mod align;
+mod comparator;
+mod contours;
+mod visibility;
+
 use slicer_sdk::prelude::*;
 use std::collections::HashMap;
 
+use crate::align::{align_seam_points, LayerCandidates};
+use crate::comparator::{pick_seam_point, Perimeter, SeamComparator, SeamSetup};
+use crate::contours::extract_layer_contours;
+use crate::visibility::{build_seam_candidates, LayerInfo};
+
+/// Default extrusion flow width used for seam scoring. Units: mm.
+const DEFAULT_FLOW_WIDTH_MM: f32 = 0.4;
+
+/// Seam planning mode parsed from the `seam_mode` config key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeamPlannerMode {
+    /// Score-based nearest selection (default).
+    Nearest,
+    /// Rear-of-bed bias.
+    Rear,
+    /// Pseudo-random per-layer selection.
+    Random,
+    /// Vertically aligned seams.
+    Aligned,
+    /// Vertically aligned seams biased to the rear.
+    AlignedBack,
+}
+
 /// Default seam planner that selects seam positions based on corner geometry.
 ///
-/// Reads `seam_mode` from config ("nearest" / "rear" / "random").
+/// Reads `seam_mode` from config
+/// ("nearest" / "rear" / "random" / "aligned" / "aligned_back").
 /// Emits `SeamPlanEntry` records for each `(layer, object, region)` triple.
 pub struct SeamPlannerDefault {
     /// Seam placement mode.
-    #[allow(dead_code)]
-    mode: String,
+    mode: SeamPlannerMode,
+}
+
+/// Aligned / AlignedBack planning: drive the full ported pipeline over the
+/// REAL layer z's from the committed layer plan.
+///
+/// Per object: extract z-plane contours per layer, build scored
+/// `SeamCandidate`s (visibility / overhang / embedding populated), chain and
+/// smooth seams across layers via `align_seam_points`, then emit exactly one
+/// `SeamPlanEntry` per `(global_layer_index, object_id, region_id)` — the
+/// region id being the per-layer perimeter (contour) index. Layers whose
+/// perimeters remain unfinalized (short strings) fall back to the
+/// `pick_seam_point` best choice for that layer.
+fn run_aligned_planning(
+    setup: SeamSetup,
+    objects: &[MeshObjectView],
+    layer_plan: &LayerPlanView,
+    output: &mut SeamPlanningOutput,
+) -> Result<(), ModuleError> {
+    let aligned_back = setup == SeamSetup::AlignedBack;
+    let comparator = SeamComparator::new(setup);
+
+    // Deterministic ascending layer order (documented ascending; sort anyway).
+    let mut plan_layers: Vec<&LayerPlanViewEntry> = layer_plan.layers.iter().collect();
+    plan_layers.sort_by_key(|l| l.global_layer_index);
+
+    for obj in objects {
+        if obj.triangles.is_empty() || plan_layers.is_empty() {
+            continue;
+        }
+
+        let layer_infos: Vec<LayerInfo> = plan_layers
+            .iter()
+            .map(|l| LayerInfo {
+                z: l.z,                           // mm
+                height: l.effective_layer_height, // mm
+            })
+            .collect();
+        let contours_per_layer: Vec<_> = layer_infos
+            .iter()
+            .map(|l| extract_layer_contours(&obj.vertices, &obj.triangles, l.z))
+            .collect();
+        let candidates_per_layer = build_seam_candidates(
+            &obj.vertices,
+            &obj.triangles,
+            &layer_infos,
+            &contours_per_layer,
+            aligned_back,
+            DEFAULT_FLOW_WIDTH_MM,
+        );
+
+        // Assemble per-layer perimeter bookkeeping: one perimeter per contour,
+        // candidate ranges in contour order (deterministic; no map iteration).
+        let mut layers: Vec<LayerCandidates> = Vec::with_capacity(layer_infos.len());
+        for (contours, candidates) in contours_per_layer.iter().zip(candidates_per_layer) {
+            let mut perimeters: Vec<Perimeter> = Vec::with_capacity(contours.len());
+            let mut start = 0usize;
+            for contour in contours {
+                let end = start + contour.points.len();
+                let seam_index = pick_seam_point(&candidates, start..end, &comparator);
+                perimeters.push(Perimeter {
+                    start_index: start,
+                    end_index: end,
+                    seam_index,
+                    finalized: false,
+                    final_seam_position: [0.0; 3],
+                });
+                start = end;
+            }
+            layers.push(LayerCandidates {
+                candidates,
+                perimeters,
+            });
+        }
+
+        align_seam_points(&mut layers, &comparator);
+
+        // Emit one entry per (layer, perimeter), scoring EVERY contour vertex.
+        for (layer, plan_entry) in layers.iter().zip(plan_layers.iter()) {
+            for (perimeter_idx, perimeter) in layer.perimeters.iter().enumerate() {
+                let range = perimeter.start_index..perimeter.end_index;
+                let scored_candidates: Vec<ScoredSeamCandidate> = layer.candidates[range]
+                    .iter()
+                    .map(|c| ScoredSeamCandidate {
+                        position: Point3WithWidth {
+                            x: c.position[0], // mm
+                            y: c.position[1], // mm
+                            z: c.position[2], // mm
+                            width: c.flow_width,
+                            flow_factor: 1.0,
+                            overhang_quartile: None,
+                        },
+                        score: comparator.base_penalty(c), // lower = better
+                        reason: SeamReason {
+                            tag: "aligned".to_string(),
+                        },
+                    })
+                    .collect();
+                if scored_candidates.is_empty() {
+                    continue;
+                }
+
+                // Finalized perimeters carry the chained + smoothed position;
+                // unfinalized (short-string) ones fall back to the per-layer
+                // pick_seam_point best choice.
+                let chosen_xyz = if perimeter.finalized {
+                    perimeter.final_seam_position
+                } else {
+                    layer.candidates[perimeter.seam_index].position
+                };
+
+                let entry = SeamPlanEntry {
+                    global_layer_index: plan_entry.global_layer_index,
+                    object_id: obj.object_id.clone(),
+                    region_id: perimeter_idx.to_string(),
+                    chosen_position: Point3WithWidth {
+                        x: chosen_xyz[0], // mm
+                        y: chosen_xyz[1], // mm
+                        z: chosen_xyz[2], // mm
+                        width: DEFAULT_FLOW_WIDTH_MM,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                    },
+                    chosen_wall_index: 0,
+                    scored_candidates,
+                };
+                output
+                    .push_seam_plan(entry)
+                    .map_err(|e| ModuleError::fatal(1, format!("push_seam_plan failed: {e}")))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[slicer_module]
 impl PrepassModule for SeamPlannerDefault {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let mode = config
-            .get("seam_mode")
-            .and_then(|v| match v {
-                ConfigValue::String(s) => Some(s.clone()),
-                _ => None,
-            })
-            .unwrap_or_else(|| "nearest".to_string());
+        let mode = match config.get("seam_mode") {
+            Some(ConfigValue::String(s)) => match s.as_str() {
+                "nearest" => SeamPlannerMode::Nearest,
+                "rear" => SeamPlannerMode::Rear,
+                "random" => SeamPlannerMode::Random,
+                "aligned" => SeamPlannerMode::Aligned,
+                "aligned_back" => SeamPlannerMode::AlignedBack,
+                other => {
+                    return Err(ModuleError::fatal(1, format!("unknown seam_mode: {other}")));
+                }
+            },
+            _ => SeamPlannerMode::Nearest,
+        };
 
         Ok(Self { mode })
     }
@@ -54,9 +221,20 @@ impl PrepassModule for SeamPlannerDefault {
     fn run_seam_planning(
         &self,
         objects: &[MeshObjectView],
+        layer_plan: &LayerPlanView,
         output: &mut SeamPlanningOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        match self.mode {
+            SeamPlannerMode::Aligned => {
+                return run_aligned_planning(SeamSetup::Aligned, objects, layer_plan, output);
+            }
+            SeamPlannerMode::AlignedBack => {
+                return run_aligned_planning(SeamSetup::AlignedBack, objects, layer_plan, output);
+            }
+            SeamPlannerMode::Nearest | SeamPlannerMode::Rear | SeamPlannerMode::Random => {}
+        }
+
         for obj in objects {
             // Build per-face normal map for corner detection.
             // For each triangle, compute its normal and centroid.

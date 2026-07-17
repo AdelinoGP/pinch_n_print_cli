@@ -48,7 +48,12 @@ fn unit_cube() -> MeshObjectView {
 #[test]
 fn no_objects_emits_nothing() {
     let mut output = SeamPlanningOutput::new();
-    let result = planner().run_seam_planning(&[], &mut output, &ConfigView::default());
+    let result = planner().run_seam_planning(
+        &[],
+        &LayerPlanView { layers: vec![] },
+        &mut output,
+        &ConfigView::default(),
+    );
     assert!(result.is_ok());
     assert!(output.entries().is_empty());
 }
@@ -63,7 +68,12 @@ fn object_with_no_triangles_is_skipped() {
     };
     let mut output = SeamPlanningOutput::new();
     planner()
-        .run_seam_planning(&[degenerate], &mut output, &ConfigView::default())
+        .run_seam_planning(
+            &[degenerate],
+            &LayerPlanView { layers: vec![] },
+            &mut output,
+            &ConfigView::default(),
+        )
         .expect("run_seam_planning must succeed");
     assert!(
         output.entries().is_empty(),
@@ -74,7 +84,12 @@ fn object_with_no_triangles_is_skipped() {
 #[test]
 fn cube_generates_corner_candidates() {
     let mut output = SeamPlanningOutput::new();
-    let result = planner().run_seam_planning(&[unit_cube()], &mut output, &ConfigView::default());
+    let result = planner().run_seam_planning(
+        &[unit_cube()],
+        &LayerPlanView { layers: vec![] },
+        &mut output,
+        &ConfigView::default(),
+    );
     assert!(result.is_ok(), "seam planning should succeed");
     let entries = output.entries();
     assert!(
@@ -97,7 +112,12 @@ fn seam_planning_is_deterministic_across_runs() {
     let run_once = || {
         let mut output = SeamPlanningOutput::new();
         planner()
-            .run_seam_planning(&[unit_cube()], &mut output, &ConfigView::default())
+            .run_seam_planning(
+                &[unit_cube()],
+                &LayerPlanView { layers: vec![] },
+                &mut output,
+                &ConfigView::default(),
+            )
             .unwrap();
         output
             .entries()

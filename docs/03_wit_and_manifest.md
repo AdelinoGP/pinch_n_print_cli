@@ -1,5 +1,17 @@
 # Pinch 'n Print — WIT Interfaces & Module Manifest Schema
 
+**What this covers:** the WIT contract between host and modules — how the `.wit`
+files are organized, how host and guest each consume them, what the host
+enforces at the boundary, and the TOML manifest schema a module ships.
+
+**Who it's for:** module authors writing a manifest or binding to a world, and
+anyone changing the WIT contract.
+
+**Prerequisites:** `00_project_overview.md` for crate layout;
+`02_ir_schemas.md` for the IR types the WIT surface marshals. WIT ("WebAssembly
+Interface Types") is the interface-definition language the Component Model uses
+to describe what a module imports and exports.
+
 > **Source of truth.** `crates/slicer-schema/wit/` is the **single canonical WIT contract**.
 > It is consumed directly by both the host (`wasmtime::component::bindgen!{ path: … }`) and the
 > guest proc-macro (`crates/slicer-macros` via `include_str!` + nested-package inline). The WIT
@@ -10,9 +22,9 @@
 > was deleted in packet 72; do not recreate it.
 >
 > Likewise, the TOML manifest schema in this document is the parsed surface
-> recognised by `crates/slicer-runtime/src/manifest.rs`. Sections or keys that
-> appear here but are not read by the parser are noted inline with a
-> `<!-- VERIFY: ... -->` tag.
+> recognised by `crates/slicer-scheduler/src/manifest.rs` (re-exported as
+> `slicer_runtime::manifest`). Sections or keys that appear here but are not
+> read by the parser are noted inline with a `<!-- VERIFY: ... -->` tag.
 
 ---
 
@@ -22,7 +34,7 @@ The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layo
 `root.wit` is the anchor package and `deps/` holds all shared dep packages plus the four
 world packages (each in its own subdirectory so `wasmtime` can load them via `push_path`):
 
-```
+```text
 crates/slicer-schema/wit/
   root.wit                                   # package slicer:root@1.0.0 (anchor)
   deps/
@@ -31,12 +43,13 @@ crates/slicer-schema/wit/
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
     world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
-    world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
+    world-prepass/world-prepass.wit       # package slicer:world-prepass@2.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
 ```
 
-**Host** consumption (`crates/slicer-runtime/src/wit_host.rs`):
+**Host** consumption (`crates/slicer-wasm-host/src/host.rs`, which holds all
+four `bindgen!` invocations so they share Rust type identity — see ADR-0002):
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
@@ -81,7 +94,7 @@ Modules that bypass SDK wrappers must still be constrained identically.
 |-------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------------------------|
 | Read structured IR view field | `[ir-access].reads` path                                        | Return fatal contract error (no implicit empty fallback for undeclared paths) |
 | Read paint semantic regions   | `[ir-access].reads` includes semantic-specific path             | Return fatal contract error                                                   |
-| Read custom paint regions     | `[ir-access].reads` includes `PaintRegionIR.custom:<module-id>` | Return fatal contract error                                                   |
+| Read custom paint regions     | `[ir-access].reads` includes the `SliceIR` paint path carrying that semantic | Return fatal contract error                                                   |
 | Write structured IR field     | `[ir-access].writes` path                                       | Reject commit with fatal contract error                                       |
 | Write via output builders     | `[ir-access].writes` path mapped to builder operation           | Reject operation and keep pre-stage IR                                        |
 
@@ -160,9 +173,9 @@ What actually enforces compatibility today:
 
 | Guard | Catches |
 |---|---|
-| wasmtime typed instantiation (`dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
+| wasmtime typed instantiation (`crates/slicer-wasm-host/src/dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
 | `cargo xtask build-guests --check` | Stale in-tree guest (mtime-based) |
-| `[compatibility]` min/max-ir-schema (`validation.rs`) | IR range, fatal at startup |
+| `[compatibility]` min/max-ir-schema (`crates/slicer-scheduler/src/validation.rs`) | IR range, fatal at startup |
 
 The world version now lives solely in the `package` line of
 `crates/slicer-schema/wit/deps/world-*/*.wit`, where it selects which package
@@ -170,7 +183,9 @@ The world version now lives solely in the `package` line of
 identity token. Giving it real, mechanical enforcement requires restructuring each
 stage into its own **versioned interface** (`slicer:world-layer/infill-postprocess@2.0.0`),
 so the version lands in the component's export names where wasmtime's semver
-matching can act on it — see `docs/adr/` for that decision.
+matching can act on it. That reasoning is recorded in
+`adr/0044-wit-world-version-is-not-an-identity-token.md`, and the decision to
+restructure is `adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`.
 
 ---
 
@@ -651,7 +666,7 @@ PathOptimization output contract restricts builder usage to this resource and th
 ## `world-prepass.wit`
 
 ```wit
-package slicer:world-prepass@1.0.0;
+package slicer:world-prepass@2.0.0;
 
 world prepass-module {
     import slicer:host-api/host-services;
@@ -742,6 +757,7 @@ world prepass-module {
 
     export run-seam-planning: func(
         objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
         output: seam-planning-output,
         config: config-view,
     ) -> result<_, module-error>;
@@ -893,7 +909,7 @@ Full annotated example for a TPMS infill module:
 
 ```toml
 # ── Identity ────────────────────────────────────────────────────────────────
-# The host parser (`crates/slicer-runtime/src/manifest.rs`) currently reads only
+# The host parser (`crates/slicer-scheduler/src/manifest.rs`) currently reads only
 # `id`, `version`, and `wit-world` from this section. `display-name`,
 # `description`, `author`, `license`, and `homepage` are accepted in TOML but
 # not stored on the LoadedModule — they are informational metadata for
@@ -914,7 +930,9 @@ wit-world    = "slicer:world-layer"          # parsed; unversioned; must name an
 id = "Layer::Infill"
 
 # ── IR access ────────────────────────────────────────────────────────────────
-# Host enforces at runtime. Undeclared reads return empty/none. Undeclared writes are trapped.
+# Host enforces per-call. An undeclared read or write is a fatal contract error
+# — there is no implicit empty/none fallback. See "Host-Boundary Access
+# Enforcement" in this document.
 [ir-access]
 reads  = [
     "SliceIR.regions.infill_areas",
@@ -938,7 +956,9 @@ requires = []                     # claim slots that MUST be held by another mod
 | `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
 | `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
 | `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |
+| `seam-planner`            | Held by the PrePass module emitting `SeamPlanIR` (`seam-planner-default`). |
 | `layer-planner`           | Held by the module proposing layer Z heights and active-region lists.     |
+| `path-optimizer`          | Held by the module ordering entities and emitting travels/retracts at `Layer::PathOptimization` (`path-optimization-default`). |
 | `mesh-analyzer`           | Held by the module annotating facets and proposing surface groups.        |
 | `slice-postprocessor`     | Held by a module that mutates `SliceIR` polygons after initial slicing.   |
 | `gcode-postprocessor`     | Held by a PostPass module that processes the `GCodeCommand` stream.       |
@@ -947,6 +967,7 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
+| `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 
@@ -1091,8 +1112,8 @@ section may use the `<prefix>:*` wildcard form. A declared key of the form
 enabling modules to declare a single schema entry for dynamically-named
 keys such as `object_height:<uuid>` or `paint_config:<semantic>:<key>`.
 Static keys (without the `:*` suffix) continue to require exact-match.
-The matcher lives at
-`crates/slicer-scheduler/src/execution_plan.rs::config_view_allowed_key`.
+The matcher is `source_key_matches_declared` in
+`crates/slicer-scheduler/src/execution_plan.rs`.
 
 ### `[[region_split]]` Validation Rules (Normative — Packet 92)
 
@@ -1135,16 +1156,21 @@ The following `[config.schema.<key>]` blocks document config keys introduced aft
 
 #### Packet 34 — retraction mode
 
-```toml
-[config.schema.retraction_mode]
-type    = "enum"
-values  = ["gcode", "firmware"]
-default = "gcode"
-display = "Retraction mode (G1 E moves vs G10/G11 firmware codes)"
-group   = "Extruder"
-```
+Retraction mode is chosen **per retract**, not by a config key. A module calls
+`push-retract` / `push-unretract` with a `retract-mode` argument, and the emitter
+honours it per command. `RetractMode::Gcode` (the default) emits standard
+`G1 E<n> F<speed>` retract/unretract moves; `RetractMode::Firmware` emits `G10`
+(retract) / `G11` (unretract). M207/M208 are intentionally never emitted
+regardless of mode. The enum is `RetractMode` in
+`crates/slicer-ir/src/slice_ir.rs`; emission is in
+`crates/slicer-gcode/src/serialize.rs`.
 
-`"gcode"` emits standard `G1 E<n> F<speed>` retract/unretract moves. `"firmware"` emits `G10` (retract) / `G11` (unretract). M207/M208 are intentionally never emitted regardless of mode.
+<!-- VERIFY: this section previously documented a `[config.schema.retraction_mode]`
+     manifest key (enum ["gcode","firmware"], default "gcode"). No such key exists:
+     `retraction_mode` appears in no manifest under modules/ and is read by no code
+     under crates/. The mode is carried per-command via the WIT `retract-mode`
+     argument instead. Removed as fabricated; restore only if a global config key
+     is actually introduced. -->
 
 > See also `docs/15_config_keys_reference.md` for the full catalogue of
 > recognised keys across all packets, organised by functional domain.
@@ -1227,72 +1253,25 @@ The classifier short-circuits when all four values are exactly `0.0` (byte-ident
 
 #### Packet 60 — precision
 
-Units and defaults mirror `docs/02_ir_schemas.md` "Polyline simplification and precision" subsection.
+Units and defaults mirror `02_ir_schemas.md` "Polyline simplification and precision" subsection.
 
-```toml
-[config.schema.gcode_resolution]
-type    = "float"
-default = 0.0125
-min     = 0.0
-unit    = "mm"
-display = "G-code resolution (wall/brim D-P tolerance)"
-group   = "Advanced"
-advanced = true
+**These are host-side keys, not module-manifest keys.** Their authoritative
+defaults live in the `declare_resolved_config!` invocation in
+`crates/slicer-ir/src/resolved_config.rs`, and `docs/config/host-keys.toml`
+mirrors host-registered keys in machine-readable form. Of the seven, only
+`perimeter_arc_tolerance` is additionally declared in a module manifest
+(`modules/core-modules/classic-perimeters/classic-perimeters.toml`, which reads
+it per-module). Current host defaults:
 
-[config.schema.infill_resolution]
-type    = "float"
-default = 0.0125
-min     = 0.0
-unit    = "mm"
-display = "G-code resolution (infill D-P tolerance)"
-group   = "Advanced"
-advanced = true
-
-[config.schema.support_resolution]
-type    = "float"
-default = 0.05
-min     = 0.0
-unit    = "mm"
-display = "G-code resolution (support D-P tolerance)"
-group   = "Advanced"
-advanced = true
-
-[config.schema.min_segment_length]
-type    = "float"
-default = 0.025
-min     = 0.0
-unit    = "mm"
-display = "Minimum segment length after simplification"
-group   = "Advanced"
-advanced = true
-
-[config.schema.gcode_xy_decimals]
-type    = "int"
-default = 3
-min     = 1
-max     = 6
-display = "G-code XY decimal places"
-group   = "Advanced"
-advanced = true
-
-[config.schema.perimeter_arc_tolerance]
-type    = "float"
-default = 0.0025
-min     = 0.0
-unit    = "mm"
-display = "Clipper2 arc tolerance for perimeter offsets"
-group   = "Advanced"
-advanced = true
-
-[config.schema.slice_closing_radius]
-type    = "float"
-default = 0.0
-min     = 0.0
-unit    = "mm"
-display = "Slice closing radius (0 = disabled)"
-group   = "Advanced"
-advanced = true
-```
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `gcode_resolution` | f32 | `0.0125 mm` | Douglas-Peucker tolerance for wall/brim |
+| `infill_resolution` | f32 | `0.04 mm` | Douglas-Peucker tolerance for infill |
+| `support_resolution` | f32 | `0.0375 mm` | Douglas-Peucker tolerance for support |
+| `min_segment_length` | f32 | `0.05 mm` | Drop adjacent segments shorter than this |
+| `gcode_xy_decimals` | u32 | `3` | Decimal places for X/Y/Z tokens |
+| `perimeter_arc_tolerance` | f32 | `0.0125 mm` | Clipper2 arc tolerance for perimeter offsets |
+| `slice_closing_radius` | f32 | `0.049 mm` | Per-layer inflate(+r) → inflate(−r) round-trip |
 
 #### Packet 55 — G-code preamble (header, thumbnail, config block)
 
@@ -1337,7 +1316,7 @@ group   = "Output"
 
 CLI flag:
 
-```
+```text
 --thumbnail <PATH>      # PNG; Base64-encoded into THUMBNAIL_BLOCK_*
                         # CLI flag wins over thumbnail_path config when both set.
 ```
@@ -1349,14 +1328,14 @@ The following nine keys map directly to OrcaSlicer keys of the same name.
 ```toml
 [config.schema.tree_support_branch_angle]
 type    = "float"
-default = 40.0
+default = 45.0
 unit    = "deg"
 display = "Tree support branch angle"
 group   = "Support"
 
 [config.schema.tree_support_branch_diameter]
 type    = "float"
-default = 2.0
+default = 5.0
 unit    = "mm"
 display = "Tree support branch diameter"
 group   = "Support"
@@ -1398,14 +1377,15 @@ group   = "Support"
 
 [config.schema.support_interface_bottom_layers]
 type    = "int"
-default = 2
-min     = 0
+default = -1          # -1 = all layers (OrcaSlicer convention)
+min     = -1
+max     = 10
 display = "Support interface bottom layers"
 group   = "Support"
 
 [config.schema.tree_support_interface_spacing_mm]
 type    = "float"
-default = 0.2
+default = 0.4
 unit    = "mm"
 display = "Tree support interface spacing"
 group   = "Support"
@@ -1419,15 +1399,15 @@ Built-in `PaintSemantic` variants serialise as: `material`, `fuzzy_skin`, `suppo
 
 Override precedence (lowest → highest):
 
-```
+```text
 global < object_config:<id>:<key> < paint_config:<semantic>:<key>
 ```
 
-The audit trail for applied paint overrides surfaces in `RegionMapIR.paint_overrides` (see `docs/02_ir_schemas.md` IR 5).
+The audit trail for applied paint overrides surfaces in `RegionMapIR.paint_overrides` (see `02_ir_schemas.md` § "IR 4 — RegionMapIR").
 
 ### Per-object config overrides (packet 35a)
 
-Per-object overrides use the namespace `object_config:<id>:<key>`. These flow through `RegionPlan.config: ResolvedConfig` and are stamped on every `RegionPlan` and `ActiveRegion` during the resolved-config builder stage added in packet 35a. The propagation path is: CLI JSON → per-object overlay → `ResolvedConfig` stamped per-region. See `docs/02_ir_schemas.md` IR 3 for the `ResolvedConfig` struct and IR 5 for `RegionMapIR.entries[*].config`.
+Per-object overrides use the namespace `object_config:<id>:<key>`. These flow through `RegionPlan.config: ResolvedConfig` and are stamped on every `RegionPlan` and `ActiveRegion` during the resolved-config builder stage added in packet 35a. The propagation path is: CLI JSON → per-object overlay → `ResolvedConfig` stamped per-region. See `02_ir_schemas.md` § "`ResolvedConfig`" for that type's contract, and its § "IR 4 — RegionMapIR" for `RegionMapIR.entries[*].config`.
 
 ### Machine start / end G-code emission (packet 59)
 
@@ -1606,24 +1586,34 @@ Attempting to reuse an invalidated builder is a fatal contract error.
 
 ## Valid Reads/Writes
 
-### Paint region reads (declare the semantics your module needs)
+### Paint reads
 
-reads = [
-    "PaintRegionIR.FuzzySkin",          # fuzzy skin module
-    "PaintRegionIR.SupportEnforcer",    # support generator
-    "PaintRegionIR.SupportBlocker",     # support generator
-    "PaintRegionIR.Material",           # material/tool assignment
-    "PaintRegionIR.Custom.com.example.my-semantic",  # custom semantic
-]
+Paint data reaches modules through `SliceIR`, not through a dedicated paint IR.
+Per-variant polygons are written into `SliceIR.regions` by
+`PrePass::PaintSegmentation`, and per-segment annotations are populated by the
+always-on `Layer::PaintRegionAnnotation` host built-in before any downstream
+per-layer stage runs. Declare the slice paths you need:
 
-### Boundary paint on slice regions
-
+```toml
 reads = ["SliceIR.regions.segment_annotations"]
+```
+
+<!-- VERIFY: `PaintRegionIR` was deleted in packet 95 (the type is absent from
+     crates/slicer-ir), so `PaintRegionIR.FuzzySkin` / `.SupportEnforcer` /
+     `.SupportBlocker` / `.Material` / `.Custom.<id>` are no longer live
+     ir-access read paths and have been removed from this section. Note that
+     modules/core-modules/classic-perimeters/classic-perimeters.toml and
+     modules/core-modules/arachne-perimeters/arachne-perimeters.toml still
+     declare reads = ["SliceIR", "PaintRegionIR"] — dangling declarations naming
+     a deleted type. Confirm the intended replacement declaration and update
+     those manifests; this section should then state it explicitly. -->
 
 ### Wall feature flags
 
+```toml
 reads  = ["PerimeterIR.regions.walls.feature_flags"]   # fuzzy skin post-processor
 writes = ["PerimeterIR.regions.walls.feature_flags"]   # if modifying flags
+```
 
 ### Narrow write paths (Normative — packets 24 / 25)
 
@@ -1734,7 +1724,7 @@ Used in `validate` (single field) and `cross-validate.rule` (multi-field). Delib
      grammar and is enforced today by `ConfigBoundsIndex`. -->
 
 
-```
+```text
 Literals:   0, 1.5, true, false, "string"
 References: value (single-field), field-name (cross-validate)
 Operators:  && || ! == != < <= > >= + - * /
@@ -1743,7 +1733,7 @@ Functions:  min(a,b)  max(a,b)  abs(x)  floor(x)  ceil(x)
 
 Examples:
 
-```
+```toml
 validate = "value >= 0.01 && value <= 10.0"
 rule     = "outer_wall_speed <= inner_wall_speed * 1.5"
 rule     = "min(layer_height, 0.35) == layer_height"
@@ -1773,7 +1763,7 @@ workspace) and `crate-type = ["cdylib"]`. The build pipeline produces
 `<guest>.component.wasm` next to the source directory; that file is the
 artifact host tests load via `include_bytes!` / `std::fs::read`.
 
-```
+```text
 test-guests/
 ├── layer-infill-guest/
 │   ├── Cargo.toml                      # standalone workspace, cdylib

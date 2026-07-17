@@ -13,7 +13,7 @@ impl Guest for Component {
     fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_seam_planning(_objects: Vec<MeshObjectView>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_seam_planning(_objects: Vec<MeshObjectView>, _layer_plan: LayerPlanView, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
     fn run_support_geometry(

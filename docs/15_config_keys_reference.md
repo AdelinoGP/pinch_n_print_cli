@@ -152,8 +152,8 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"nearest"` | — | `seam-placer` |
-| `seam_mode` | enum | `"nearest"` | — | `seam-planner-default` |
+| `seam_mode` | enum | `"nearest"` | `nearest` / `rear` / `random` / `aligned` / `aligned_back` | `seam-placer` |
+| `seam_mode` | enum | `"nearest"` | `nearest` / `rear` / `random` / `aligned` / `aligned_back` | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
@@ -203,6 +203,16 @@ is the authoritative catalog of their defaults and ranges.
 | `wipe_tower_x` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 | `wipe_tower_y` | float | `10.0` | [0.0, 300.0] | `wipe-tower` |
 <!-- END GENERATED: module-config-keys -->
+
+### `seam_mode` values
+
+Accepted on both `seam-placer` and `seam-planner-default` (default `"nearest"`):
+
+- `nearest` — per-layer nearest-candidate seam placement (default; unchanged behaviour).
+- `rear` — select the candidate with the highest Y coordinate (rear of the print bed).
+- `random` — pseudo-random candidate selection based on layer index.
+- `aligned` — cross-layer chained + spline-smoothed seam computed in the SeamPlanning prepass (`seam-planner-default`) and snapped to real wall candidates by `seam-placer` (see ADR-0046).
+- `aligned_back` — same as `aligned` with a rear (max-Y) bias in candidate scoring.
 
 ## Host-registered config keys (generated)
 

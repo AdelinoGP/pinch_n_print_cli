@@ -1477,9 +1477,16 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     .into_iter()
                     .map(__slicer_mesh_object_from_wit)
                     .collect();
+                let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
+                    layers: _layer_plan.layers.iter().map(|e| ::slicer_sdk::prepass_types::LayerPlanViewEntry {
+                        global_layer_index: e.global_layer_index,
+                        z: e.z,
+                        effective_layer_height: e.effective_layer_height,
+                    }).collect(),
+                };
                 let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    &module, &sdk_objects, &sdk_layer_plan, &mut sdk_output, &ir_config,
                 );
                 for __slicer_entry in sdk_output.entries() {
                     // Construct the wit-bindgen `Point3WithWidth` inline.
@@ -1656,6 +1663,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 }
                 fn run_seam_planning(
                     _objects: Vec<MeshObjectView>,
+                    _layer_plan: LayerPlanView,
                     _output: SeamPlanningOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {

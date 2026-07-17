@@ -584,10 +584,23 @@ pub trait PrepassModule: Sized {
     /// Run seam planning to compute optimal seam positions for each region.
     ///
     /// Uses facet annotations from `run_mesh_analysis` to score and select
-    /// seam positions for each region. Default implementation does nothing.
+    /// seam positions for each region. Receives the frozen layer plan so
+    /// aligned seam modes can reason across the full layer stack.
+    /// Default implementation does nothing.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
+    /// ```wit
+    /// export run-seam-planning: func(
+    ///     objects: list<mesh-object-view>,
+    ///     layer-plan: layer-plan-view,
+    ///     output: seam-planning-output,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
     fn run_seam_planning(
         &self,
         _objects: &[MeshObjectView],
+        _layer_plan: &LayerPlanView,
         _output: &mut SeamPlanningOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
