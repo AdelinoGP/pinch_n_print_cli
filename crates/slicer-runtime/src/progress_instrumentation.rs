@@ -1,12 +1,14 @@
-//! `PipelineInstrumentation` adapter that emits stage- and module-grained
-//! progress events to the same `RuntimeProgressSink` the rest of the slicer
-//! uses for phase/layer events.
+//! `PipelineInstrumentation` adapter that emits phase-, layer-, stage- and
+//! module-grained progress events to the same `RuntimeProgressSink` the rest
+//! of the slicer uses.
 //!
-//! Enabled by the `--instrument-stderr` CLI flag. When active, the adapter
-//! emits `stage_start`/`stage_complete`/`module_start`/`module_complete`
-//! events plus the existing `phase_*` / `layer_*` events — superseding the
-//! ones the pipeline's `LayerProgressSink` path would otherwise emit (see
-//! `docs/specs/agent-cli-debugging.md` §4.2 "supersedes" rule).
+//! Runs in one of two tiers ([`ProgressTier`]):
+//! - `Core` (the default for every `slice` run): emits the docs/09 core
+//!   contract events — `phase_*`, `layer_*`, `module_error`.
+//! - `Instrumented` (`--instrument-stderr`): additionally emits
+//!   `stage_start`/`stage_complete`/`module_start`/`module_complete`
+//!   timing events (see `docs/specs/agent-cli-debugging.md` §4.2
+//!   "supersedes" rule).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -67,19 +69,47 @@ fn phase_from_stage(stage: &StageId) -> ProgressPhase {
 pub struct ProgressPipelineInstrumentation {
     sink: Arc<dyn LayerProgressSink + Send + Sync>,
     slice_id: String,
+    tier: ProgressTier,
     phase_starts: Mutex<HashMap<Phase, Instant>>,
     stage_starts: Mutex<HashMap<(String, Option<u32>), Instant>>,
     module_starts: Mutex<HashMap<(String, String, Option<u32>), Instant>>,
     layer_starts: Mutex<HashMap<u32, Instant>>,
 }
 
+/// Emission tier for [`ProgressPipelineInstrumentation`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressTier {
+    /// Default stream: core-contract events only (phase/layer/module_error).
+    Core,
+    /// `--instrument-stderr`: core plus stage/module timing events.
+    Instrumented,
+}
+
+/// Unix epoch time in milliseconds (0 if the clock is before the epoch).
+pub(crate) fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 impl ProgressPipelineInstrumentation {
     /// Build an adapter that forwards events to `sink` with the given
-    /// `slice_id` stamped on every event.
+    /// `slice_id` stamped on every event, at the `Instrumented` tier.
     pub fn new(sink: Arc<dyn LayerProgressSink + Send + Sync>, slice_id: String) -> Self {
+        Self::with_tier(sink, slice_id, ProgressTier::Instrumented)
+    }
+
+    /// Build an adapter with an explicit emission tier.
+    pub fn with_tier(
+        sink: Arc<dyn LayerProgressSink + Send + Sync>,
+        slice_id: String,
+        tier: ProgressTier,
+    ) -> Self {
         Self {
             sink,
             slice_id,
+            tier,
             phase_starts: Mutex::new(HashMap::new()),
             stage_starts: Mutex::new(HashMap::new()),
             module_starts: Mutex::new(HashMap::new()),
@@ -88,10 +118,7 @@ impl ProgressPipelineInstrumentation {
     }
 
     fn now_unix_ms() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
+        now_unix_ms()
     }
 }
 
@@ -126,6 +153,9 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
     }
 
     fn on_stage_start(&self, stage: &StageId, layer: Option<u32>) {
+        if self.tier == ProgressTier::Core {
+            return;
+        }
         let key = (stage.to_string(), layer);
         self.stage_starts
             .lock()
@@ -141,6 +171,9 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
     }
 
     fn on_stage_end(&self, stage: &StageId, layer: Option<u32>) {
+        if self.tier == ProgressTier::Core {
+            return;
+        }
         let key = (stage.to_string(), layer);
         let elapsed_ms = self
             .stage_starts
@@ -160,6 +193,9 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
     }
 
     fn on_module_start(&self, stage: &StageId, layer: Option<u32>, module: &ModuleId) {
+        if self.tier == ProgressTier::Core {
+            return;
+        }
         let key = (module.to_string(), stage.to_string(), layer);
         self.module_starts
             .lock()
@@ -183,6 +219,9 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
         _wasm_initial_bytes: u64,
         wasm_peak_bytes: u64,
     ) {
+        if self.tier == ProgressTier::Core {
+            return;
+        }
         let key = (module.to_string(), stage.to_string(), layer);
         let elapsed_ms = self
             .module_starts
@@ -232,6 +271,31 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
             elapsed_ms,
             crate::progress_events::ProgressStatus::Ok,
             false,
+        ));
+    }
+
+    fn on_module_error(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        message: &str,
+        fatal: bool,
+    ) {
+        self.sink.record(ProgressEvent::module_error(
+            self.slice_id.clone(),
+            phase_from_stage(stage),
+            stage.to_string(),
+            layer,
+            module.to_string(),
+            Self::now_unix_ms(),
+            crate::progress_events::ProgressError {
+                code: crate::progress_events::MODULE_DISPATCH_FATAL_CODE,
+                message: message.to_string(),
+                fatal,
+                suggestion: None,
+                reason: None,
+            },
         ));
     }
 
@@ -351,6 +415,72 @@ mod tests {
         let last = events.last().unwrap();
         assert_eq!(last.event, ProgressEventType::ModuleComplete);
         assert_eq!(last.wasm_peak_kb, Some(0));
+    }
+
+    #[test]
+    fn core_tier_suppresses_stage_and_module_events() {
+        let sink = Arc::new(RecordingSink::default());
+        let pi = ProgressPipelineInstrumentation::with_tier(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+            ProgressTier::Core,
+        );
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        pi.on_stage_start(&stage, Some(0));
+        pi.on_module_start(&stage, Some(0), &module);
+        pi.on_module_end(&stage, Some(0), &module, 0, 1024);
+        pi.on_stage_end(&stage, Some(0));
+        assert!(
+            sink.events.lock().unwrap().is_empty(),
+            "Core tier must not emit stage/module lifecycle events"
+        );
+
+        pi.on_phase_start(Phase::PerLayer);
+        pi.on_layer_start(0, 0.2);
+        pi.on_layer_end(0);
+        pi.on_phase_end(Phase::PerLayer);
+        let events = sink.events.lock().unwrap();
+        let kinds: Vec<ProgressEventType> = events.iter().map(|e| e.event).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ProgressEventType::PhaseStart,
+                ProgressEventType::LayerStart,
+                ProgressEventType::LayerComplete,
+                ProgressEventType::PhaseComplete,
+            ]
+        );
+    }
+
+    #[test]
+    fn on_module_error_emits_fatal_module_error_event_in_both_tiers() {
+        for tier in [ProgressTier::Core, ProgressTier::Instrumented] {
+            let sink = Arc::new(RecordingSink::default());
+            let pi = ProgressPipelineInstrumentation::with_tier(
+                sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+                "slice-test".to_string(),
+                tier,
+            );
+            let stage = StageId::from("Layer::Infill");
+            let module = ModuleId::from("com.example.infill");
+            pi.on_module_error(&stage, Some(3), &module, "dispatch trap", true);
+
+            let events = sink.events.lock().unwrap();
+            assert_eq!(events.len(), 1, "tier {tier:?}");
+            let e = &events[0];
+            assert_eq!(e.event, ProgressEventType::ModuleError);
+            assert_eq!(e.phase, Some(ProgressPhase::PerLayer));
+            assert_eq!(e.stage.as_deref(), Some("Layer::Infill"));
+            assert_eq!(e.layer_index, Some(3));
+            assert_eq!(e.module_id.as_deref(), Some("com.example.infill"));
+            assert_eq!(e.status, crate::progress_events::ProgressStatus::FatalError);
+            let err = e.error.as_ref().expect("module_error carries error");
+            assert!(err.fatal);
+            assert_eq!(err.code, crate::progress_events::MODULE_DISPATCH_FATAL_CODE);
+            assert_eq!(err.message, "dispatch trap");
+        }
     }
 
     #[test]

@@ -319,7 +319,7 @@ fn make_module_error(slice: &str, code: u32, fatal: bool) -> ProgressEvent {
         slice.to_string(),
         ProgressPhase::PerLayer,
         "Layer::PerimetersPostProcess".to_string(),
-        42,
+        Some(42),
         "com.community.fuzzy-skin".to_string(),
         1_000,
         ProgressError {

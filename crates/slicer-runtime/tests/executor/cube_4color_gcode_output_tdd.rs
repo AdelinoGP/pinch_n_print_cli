@@ -190,6 +190,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        progress_events: false,
         config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)
@@ -211,6 +212,7 @@ fn slice_synthetic_mesh(label: &str, mesh: Arc<MeshIR>) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        progress_events: false,
         config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)

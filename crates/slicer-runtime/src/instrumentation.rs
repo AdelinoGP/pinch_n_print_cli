@@ -139,6 +139,19 @@ pub trait PipelineInstrumentation: Send + Sync {
         wasm_peak_bytes: u64,
     );
 
+    /// Called when a module dispatch or commit fails. `layer` is `None` for
+    /// prepass/postpass modules. `fatal` is `true` when the failure aborts
+    /// the slice. Default impl is a no-op so existing implementors stay valid.
+    fn on_module_error(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &ModuleId,
+        _message: &str,
+        _fatal: bool,
+    ) {
+    }
+
     /// Called before a layer's stage loop begins. `z_mm` is the layer's
     /// nominal Z height in millimetres (matches `GlobalLayer.z: f32`).
     fn on_layer_start(&self, layer: u32, z_mm: f32);
@@ -339,6 +352,17 @@ impl PipelineInstrumentation for CompositeInstrumentation<'_> {
             .on_module_end(stage, layer, module, wasm_initial_bytes, wasm_peak_bytes);
         self.b
             .on_module_end(stage, layer, module, wasm_initial_bytes, wasm_peak_bytes);
+    }
+    fn on_module_error(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        message: &str,
+        fatal: bool,
+    ) {
+        self.a.on_module_error(stage, layer, module, message, fatal);
+        self.b.on_module_error(stage, layer, module, message, fatal);
     }
     fn on_layer_start(&self, layer: u32, z_mm: f32) {
         self.a.on_layer_start(layer, z_mm);

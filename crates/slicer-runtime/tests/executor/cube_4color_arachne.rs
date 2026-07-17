@@ -160,6 +160,7 @@ fn slice_cube_4color_with_arachne_options(
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        progress_events: false,
         config_overrides,
     }
 }

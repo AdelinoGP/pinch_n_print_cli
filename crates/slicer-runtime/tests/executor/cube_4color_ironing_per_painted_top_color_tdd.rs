@@ -85,6 +85,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        progress_events: false,
         // Ironing defaults to OFF (OrcaSlicer parity, commit d11f9ff8), so this
         // per-painted-color ironing regression must enable it explicitly.
         config_overrides: std::collections::HashMap::from([(

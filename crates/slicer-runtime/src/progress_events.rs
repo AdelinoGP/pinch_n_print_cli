@@ -5,8 +5,8 @@
 //!
 //! ## Transport
 //!
-//! - Default transport: JSON Lines (`.jsonl`) on stdout.
-//! - Optional transport: explicit event file via `--log-events <path>`.
+//! - Default transport: JSON Lines (`.jsonl`) on stderr (G-code owns stdout).
+//!   Suppressed by `pnp_cli slice --no-progress-events`.
 //! - Every event is a single JSON object on one line.
 //!
 //! ## Event Schema (v1)
@@ -33,6 +33,18 @@ pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.1.0";
 /// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
 pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.1.0";
+
+/// Stable `ProgressError.code` for a `validation_error` raised by intra-stage
+/// DAG construction failure during the 14-pass startup validation.
+pub const VALIDATION_DAG_CONSTRUCTION_CODE: u32 = 400;
+
+/// Stable `ProgressError.code` for a `validation_error` raised by IR/host
+/// version-compatibility failure during the 14-pass startup validation.
+pub const VALIDATION_VERSION_COMPAT_CODE: u32 = 401;
+
+/// Stable `ProgressError.code` for a `module_error` raised by a fatal module
+/// dispatch or commit failure (prepass, per-layer, or postpass).
+pub const MODULE_DISPATCH_FATAL_CODE: u32 = 500;
 
 /// Stable machine-readable reason families for `ProgressError`.
 ///
@@ -281,12 +293,14 @@ impl ProgressEvent {
 
     /// Create a module_error event.
     ///
-    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, layer_index, module_id, status, error
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, module_id, status, error.
+    /// `layer_index` is populated for per-layer-phase errors and absent for
+    /// prepass/postpass module errors.
     pub fn module_error(
         slice_id: String,
         phase: ProgressPhase,
         stage: String,
-        layer_index: u32,
+        layer_index: Option<u32>,
         module_id: String,
         timestamp_ms: u64,
         error: ProgressError,
@@ -305,7 +319,7 @@ impl ProgressEvent {
             slice_id,
             phase: Some(phase),
             stage: Some(stage),
-            layer_index: Some(layer_index),
+            layer_index,
             module_id: Some(module_id),
             status,
             elapsed_ms: None,
@@ -533,6 +547,15 @@ impl<W: Write + Send> JsonLinesEmitter<W> {
         writeln!(writer, "{}", json)?;
         Ok(())
     }
+}
+
+/// Emitter that discards every event. Used when the caller opts out of the
+/// JSONL stream (`--no-progress-events`): the `SliceEventCollector` still
+/// aggregates counts, but nothing is written to stderr.
+pub struct NullEmitter;
+
+impl ProgressEventEmitter for NullEmitter {
+    fn emit(&self, _event: ProgressEvent) {}
 }
 
 impl<W: Write + Send + Sync> ProgressEventEmitter for JsonLinesEmitter<W> {

@@ -26,9 +26,10 @@ use crate::pipeline::{
     PipelineStageRunners,
 };
 use crate::progress_events::{
-    JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
+    JsonLinesEmitter, NullEmitter, ProgressError, ProgressEvent, ProgressEventEmitter,
+    ProgressPhase, ProgressStatus, RuntimeProgressSink, SliceEventCollector,
 };
-use crate::progress_instrumentation::ProgressPipelineInstrumentation;
+use crate::progress_instrumentation::{now_unix_ms, ProgressPipelineInstrumentation, ProgressTier};
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
@@ -66,6 +67,12 @@ pub struct SliceRunOptions {
     /// When true, emit per-stage / per-module timing events on the stderr
     /// JSONL stream during the slice (schema version `"1.1.0"`).
     pub instrument_stderr: bool,
+    /// When true (the default for `pnp_cli slice`), emit the docs/09 core
+    /// progress-event contract (phase/layer/validation/module_error/
+    /// slice_complete) as JSONL on stderr. When false
+    /// (`--no-progress-events`), nothing is written to stderr, though error
+    /// aggregation still runs internally.
+    pub progress_events: bool,
     /// Config values derived from the loaded model (e.g. the 3MF project's
     /// `filament_colour`) that seed `config_source` as defaults. An explicit
     /// `--config` key always wins over an override with the same name.
@@ -110,13 +117,6 @@ impl From<&str> for SliceRunError {
     }
 }
 
-/// Convenience macro: return `Err(SliceRunError)` with a formatted message.
-macro_rules! bail {
-    ($($arg:tt)*) => {
-        return Err(SliceRunError(format!($($arg)*)))
-    };
-}
-
 fn num_cpus_guess() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -155,35 +155,64 @@ fn build_report_dag_snapshot(producers: &[&dyn Producer]) -> crate::report::Repo
     }
 }
 
+/// The slice-wide progress-event channel: one emitter, one collector, one
+/// `slice_id`, constructed once per `run_slice` call (before validation) so
+/// validation events and pipeline events share the same stream.
+struct ProgressChannel {
+    slice_id: String,
+    sink: Arc<RuntimeProgressSink>,
+    collector: Arc<Mutex<SliceEventCollector>>,
+}
+
+/// Build the progress channel. `emit_to_stderr == false`
+/// (`--no-progress-events`) swaps the JSONL stderr emitter for a
+/// [`NullEmitter`]: the collector still aggregates error counts but nothing
+/// reaches stderr.
+fn build_progress_channel(emit_to_stderr: bool) -> ProgressChannel {
+    let emitter_arc: Arc<dyn ProgressEventEmitter> = if emit_to_stderr {
+        Arc::new(JsonLinesEmitter::new(std::io::stderr()))
+    } else {
+        Arc::new(NullEmitter)
+    };
+    let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
+    let sink = Arc::new(RuntimeProgressSink::new(
+        emitter_arc,
+        Arc::clone(&collector),
+    ));
+    ProgressChannel {
+        slice_id: format!("slice-{}", now_unix_ms()),
+        sink,
+        collector,
+    }
+}
+
 /// Select the pipeline execution path based on report and progress options.
 ///
 /// This is the 4-way instrumentation fork originally in `main.rs`, now a
-/// private helper inside `run.rs`. Creates the event sink internally.
+/// private helper inside `run.rs`. Uses the slice-wide `ProgressChannel`
+/// built by [`run_slice`] before validation.
 fn run_pipeline_fork(
     opts: &SliceRunOptions,
+    channel: &ProgressChannel,
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
-    let emitter_arc: Arc<dyn ProgressEventEmitter> =
-        Arc::new(JsonLinesEmitter::new(std::io::stderr()));
-    let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
-    let sink_arc: Arc<RuntimeProgressSink> = Arc::new(RuntimeProgressSink::new(
-        emitter_arc,
-        Arc::clone(&collector),
-    ));
+    let sink_arc = Arc::clone(&channel.sink);
 
-    let progress_pi = if opts.instrument_stderr {
-        let slice_id = format!(
-            "slice-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
+    let progress_pi = if opts.progress_events {
+        let tier = if opts.instrument_stderr {
+            ProgressTier::Instrumented
+        } else {
+            ProgressTier::Core
+        };
         let sink_dyn: Arc<dyn LayerProgressSink + Send + Sync> =
             Arc::clone(&sink_arc) as Arc<dyn LayerProgressSink + Send + Sync>;
-        Some(ProgressPipelineInstrumentation::new(sink_dyn, slice_id))
+        Some(ProgressPipelineInstrumentation::with_tier(
+            sink_dyn,
+            channel.slice_id.clone(),
+            tier,
+        ))
     } else {
         None
     };
@@ -255,6 +284,7 @@ fn run_pipeline_fork(
 /// internally based on `opts.report` and `opts.instrument_stderr`.
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     let t0 = Instant::now();
+    let channel = build_progress_channel(opts.progress_events);
 
     // Mesh is pre-loaded by the caller (see SliceRunOptions::mesh).
     let mesh_ir = Arc::clone(&opts.mesh);
@@ -382,9 +412,43 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     #[cfg(feature = "report")]
     let mut dag_snapshot: Option<crate::report::ReportDagSnapshot> = None;
 
-    // 14-pass startup DAG validation.
+    // 14-pass startup DAG validation, bracketed by phase_start/phase_complete
+    // (validation) on the progress stream (docs/09 §Required Events). Fatal
+    // failures emit a validation_error + phase_complete(fatal_error) before
+    // bailing; advisories/warnings stay human-readable on stderr (the
+    // validation_error wire event is fatal-only by construction).
     {
         use slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION;
+
+        let vstart = Instant::now();
+        channel.sink.record(ProgressEvent::phase_start(
+            channel.slice_id.clone(),
+            ProgressPhase::Validation,
+            now_unix_ms(),
+        ));
+        // Emit the fatal-failure triple (validation_error + fatal
+        // phase_complete) for a given stable code/message. The caller bails
+        // immediately afterwards.
+        let emit_validation_failure = |code: u32, message: &str| {
+            channel.sink.record(ProgressEvent::validation_error(
+                channel.slice_id.clone(),
+                now_unix_ms(),
+                ProgressError {
+                    code,
+                    message: message.to_string(),
+                    fatal: true,
+                    suggestion: None,
+                    reason: None,
+                },
+            ));
+            channel.sink.record(ProgressEvent::phase_complete(
+                channel.slice_id.clone(),
+                ProgressPhase::Validation,
+                now_unix_ms(),
+                vstart.elapsed().as_millis() as u64,
+                ProgressStatus::FatalError,
+            ));
+        };
 
         let mut dag_producers: Vec<&dyn Producer> = crate::runtime_builtins();
         dag_producers.extend(loaded.bindings.iter().map(|b| &b.module as &dyn Producer));
@@ -402,10 +466,15 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
                     nodes,
                 }),
                 Err(err) => {
-                    bail!(
+                    let msg = format!(
                         "intra-stage DAG construction failed for {}: {err:?}",
                         stage_entry.stage_id
                     );
+                    emit_validation_failure(
+                        crate::progress_events::VALIDATION_DAG_CONSTRUCTION_CODE,
+                        &msg,
+                    );
+                    return Err(SliceRunError(msg));
                 }
             }
         }
@@ -460,10 +529,9 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
                 .map(|d| format!("{:?}", d.detail))
                 .collect::<Vec<_>>()
                 .join("; ");
-            bail!(
-                "startup DAG version-compatibility validation failed: {}",
-                detail
-            );
+            let msg = format!("startup DAG version-compatibility validation failed: {detail}");
+            emit_validation_failure(crate::progress_events::VALIDATION_VERSION_COMPAT_CODE, &msg);
+            return Err(SliceRunError(msg));
         }
 
         for diag in &report.errors {
@@ -485,6 +553,14 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
                 warning.pass, warning.detail
             );
         }
+
+        channel.sink.record(ProgressEvent::phase_complete(
+            channel.slice_id.clone(),
+            ProgressPhase::Validation,
+            now_unix_ms(),
+            vstart.elapsed().as_millis() as u64,
+            ProgressStatus::Ok,
+        ));
     }
 
     let config_bounds = ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
@@ -569,6 +645,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     // Run the pipeline through the 4-way instrumentation fork.
     let pipeline_output = run_pipeline_fork(
         &opts,
+        &channel,
         pipeline_config,
         &config_source,
         #[cfg(feature = "report")]
@@ -583,6 +660,29 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         .lines()
         .filter(|l| l.starts_with(";LAYER_CHANGE") || l.starts_with("; layer"))
         .count() as u32;
+
+    // slice_complete: success-only, exactly once (docs/09 §Required Events).
+    // Status stays Ok even when degraded — "degraded success" is signalled by
+    // the degraded flag plus non_fatal_error_count. On fatal failure the
+    // stream ends at the error event with no slice_complete.
+    {
+        let (fatal, non_fatal, degraded) = {
+            let c = channel
+                .collector
+                .lock()
+                .expect("slice event collector mutex poisoned");
+            (c.fatal_count(), c.non_fatal_count(), c.is_degraded())
+        };
+        channel.sink.record(ProgressEvent::slice_complete(
+            channel.slice_id.clone(),
+            now_unix_ms(),
+            wallclock_ms,
+            ProgressStatus::Ok,
+            degraded,
+            fatal,
+            non_fatal,
+        ));
+    }
 
     Ok(SliceOutcome {
         gcode_text: pipeline_output.gcode_text,

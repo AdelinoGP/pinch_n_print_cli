@@ -152,7 +152,7 @@ pub fn paint_annotation_warning_to_progress_event(
         slice_id,
         ProgressPhase::PerLayer,
         String::from("Layer::SlicePostProcess"),
-        warning.global_layer_index,
+        Some(warning.global_layer_index),
         module_id,
         timestamp_ms,
         ProgressError {
@@ -266,7 +266,7 @@ pub fn paint_annotation_warnings_to_progress_events(
                 slice_id.clone(),
                 ProgressPhase::PerLayer,
                 String::from("Layer::SlicePostProcess"),
-                first.global_layer_index,
+                Some(first.global_layer_index),
                 module_id.clone(),
                 timestamp_ms_base + i as u64,
                 ProgressError {

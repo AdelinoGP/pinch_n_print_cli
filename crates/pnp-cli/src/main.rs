@@ -81,6 +81,9 @@ enum Cmd {
         /// Emit per-stage/per-module timing events on stderr JSONL stream.
         #[arg(long = "instrument-stderr")]
         instrument_stderr: bool,
+        /// Suppress the default JSONL progress-event stream on stderr.
+        #[arg(long = "no-progress-events")]
+        no_progress_events: bool,
     },
     /// Generate a versioned visual-debug bundle.
     VisualDebug {
@@ -360,6 +363,7 @@ fn main() {
             #[cfg(feature = "report")]
             report_verbose,
             instrument_stderr,
+            no_progress_events,
         } => {
             if !model.exists() {
                 eprintln!("error: model file not found: {}", model.display());
@@ -413,6 +417,7 @@ fn main() {
                 report: report_opt,
                 report_verbose: report_verbose_opt,
                 instrument_stderr,
+                progress_events: !no_progress_events,
                 config_overrides,
             };
             match slicer_runtime::run_slice(opts) {

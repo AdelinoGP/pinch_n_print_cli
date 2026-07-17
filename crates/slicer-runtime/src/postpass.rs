@@ -238,6 +238,13 @@ pub fn execute_postpass_with_capture(
                 let result = match res {
                     Ok(r) => r,
                     Err(e) => {
+                        instrumentation.on_module_error(
+                            &stage.stage_id,
+                            None,
+                            module.module_id(),
+                            &e.to_string(),
+                            true,
+                        );
                         instrumentation.on_stage_end(&stage.stage_id, None);
                         return Err(e);
                     }
@@ -335,6 +342,13 @@ pub fn execute_postpass_with_capture(
             let result = match res {
                 Ok(r) => r,
                 Err(e) => {
+                    instrumentation.on_module_error(
+                        &stage.stage_id,
+                        None,
+                        module.module_id(),
+                        &e.to_string(),
+                        true,
+                    );
                     instrumentation.on_stage_end(&stage.stage_id, None);
                     return Err(e);
                 }

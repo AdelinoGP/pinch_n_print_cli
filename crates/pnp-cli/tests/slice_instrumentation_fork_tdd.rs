@@ -13,6 +13,10 @@
 //! | present  | absent              | `slice_with_report_*`         |
 //! | absent   | present             | `slice_with_instrument_*`     |
 //! | present  | present             | `slice_with_report_and_instr_*` |
+//!
+//! Since the default-on core stream landed, the absent/absent leaf also
+//! emits JSONL (core-contract events); the default stream's content is
+//! covered by `slice_progress_events_default_tdd.rs`.
 
 use std::path::PathBuf;
 

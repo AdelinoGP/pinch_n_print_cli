@@ -236,6 +236,13 @@ pub fn execute_prepass_with_instrumentation(
             let output = match run_result {
                 Ok(o) => o,
                 Err(e) => {
+                    instrumentation.on_module_error(
+                        &stage.stage_id,
+                        None,
+                        module.module_id(),
+                        &e.to_string(),
+                        true,
+                    );
                     instrumentation.on_stage_end(&stage.stage_id, None);
                     return Err(PrepassExecutionError::from(e));
                 }
@@ -251,6 +258,13 @@ pub fn execute_prepass_with_instrumentation(
             if let Err(e) =
                 commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
+                instrumentation.on_module_error(
+                    &stage.stage_id,
+                    None,
+                    module.module_id(),
+                    &e.to_string(),
+                    true,
+                );
                 instrumentation.on_stage_end(&stage.stage_id, None);
                 return Err(e);
             }

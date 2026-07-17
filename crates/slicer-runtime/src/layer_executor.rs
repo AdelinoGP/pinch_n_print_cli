@@ -351,12 +351,20 @@ fn execute_single_layer_inner(
             let commit = match run_result {
                 Ok(commit) => commit,
                 Err(e) => {
+                    let message = e.to_string();
+                    instrumentation.on_module_error(
+                        &stage.stage_id,
+                        Some(layer.index),
+                        module.module_id(),
+                        &message,
+                        true,
+                    );
                     instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
                     return Err(LayerExecutionError::FatalLayer {
                         layer_index: layer.index,
                         stage_id: stage.stage_id.clone(),
                         module_id: module.module_id().to_owned(),
-                        message: e.to_string(),
+                        message,
                     });
                 }
             };
@@ -373,12 +381,20 @@ fn execute_single_layer_inner(
                     seam_plan: seam_plan_ir_for_commit,
                 };
                 if let Err(e) = apply(&mut arena, staged, &ctx) {
+                    let message = e.to_string();
+                    instrumentation.on_module_error(
+                        &stage.stage_id,
+                        Some(layer.index),
+                        module.module_id(),
+                        &message,
+                        true,
+                    );
                     instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
                     return Err(LayerExecutionError::FatalLayer {
                         layer_index: layer.index,
                         stage_id: stage.stage_id.clone(),
                         module_id: module.module_id().to_owned(),
-                        message: e.to_string(),
+                        message,
                     });
                 }
             }
