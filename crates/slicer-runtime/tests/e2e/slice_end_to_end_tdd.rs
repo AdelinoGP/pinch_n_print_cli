@@ -1661,14 +1661,66 @@ fn wedge_multi_layer_top_bottom_evidence() {
     // separately below. Lowering the count alone would be a weakening; the
     // slot-is-bridge assertions are what actually verify the fix.
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // 2026-07-17 correction: the old `>= 3` expectation here (plate z=0.2,
+    // "base shell z=2.2", y-extension "z=29.0") counted a DEFECT as a bottom.
+    // Under the pre-f64 layer-Z taint (fixed by the a076038c f64
+    // layer_height commit), the slice plane through the slope-start vertex
+    // plane at z=2.0 produced an EMPTY layer (0 moves); with layer 2.0
+    // empty, layer 2.2's whole footprint counted as "unsupported" and got a
+    // spurious whole-area `Bottom surface` block. With exact-f64 layer Zs,
+    // z=2.0 slices correctly and z=2.2 is fully supported — no bottom
+    // there. The y-extension slab (material z=29..31) is likewise now
+    // attributed to its first CONTAINING layer, print_z 29.2, instead of
+    // 29.0 (whose extent 28.8..29.0 holds no slab material at all).
+    //
+    // The wedge's genuine flat free-edge bottoms are therefore exactly TWO:
+    //   * z=0.2  — the build-plate base,
+    //   * z=29.2 — the underside of the cantilevered y-extension.
+    // The interior-slot ceiling stays a Bridge (asserted below), and the
+    // shallow sloped flanks (z=2..12, ~0.25mm ring/layer) never produce a
+    // discrete flat-bottom block.
+    // ------------------------------------------------------------------
     assert!(
-        bottom_surface_blocks >= 3,
-        "packet-109 evidence: expected at least 3 genuine `;TYPE:Bottom surface` \
-         blocks (plate base z=0.2, base shell z=2.2, y-extension z=29.0), found {}. \
-         A count below 3 means a genuine FREE-EDGE bottom was wrongly reclassified \
+        bottom_surface_blocks >= 2,
+        "packet-109 evidence: expected at least 2 genuine `;TYPE:Bottom surface` \
+         blocks (plate base z=0.2, y-extension underside z=29.2), found {}. \
+         A count below 2 means a genuine FREE-EDGE bottom was wrongly reclassified \
          as a bridge (over-eager flat-bridge detection). G-code preview:\n{}",
         bottom_surface_blocks,
         preview(gcode, 30)
+    );
+
+    // Regression guard for the defect the old `>= 3` count was pinned to:
+    // the layer at z=2.0 (slice plane exactly through the slope-start vertex
+    // plane) must NOT be empty. Under the f32-tainted layer-Z chain this
+    // layer sliced to nothing, which both dropped real geometry and forged a
+    // spurious whole-footprint `Bottom surface` at z=2.2.
+    let slope_start_markers = layer_type_markers(gcode, 2.0);
+    assert!(
+        slope_start_markers.iter().any(|t| t.contains("wall")),
+        "layer z=2.0 (slope-start vertex plane) must slice to real walls — an \
+         empty layer here is the pre-a076038c f32 layer-Z taint regressing. \
+         Markers found: {slope_start_markers:?}"
+    );
+    let supported_step = layer_type_markers(gcode, 2.2);
+    assert!(
+        !supported_step.iter().any(|t| t == "Bottom surface"),
+        "layer z=2.2 sits on a fully-populated z=2.0 layer and must NOT emit \
+         `;TYPE:Bottom surface` — its presence means the layer below sliced \
+         empty again (the defect the old >= 3 count asserted). Markers found: \
+         {supported_step:?}"
+    );
+
+    // The y-extension underside must land at its first containing layer,
+    // print_z 29.2 (material starts at z=29.0), and be a genuine free-edge
+    // bottom — not a bridge.
+    let extension_underside = layer_type_markers(gcode, 29.2);
+    assert!(
+        extension_underside.iter().any(|t| t == "Bottom surface"),
+        "y-extension underside must emit `;TYPE:Bottom surface` at print_z \
+         29.2 (first layer containing the z=29..31 slab). Markers found: \
+         {extension_underside:?}"
     );
 
     // Slot-ceiling reclassification (this is the assertion that exercises the
