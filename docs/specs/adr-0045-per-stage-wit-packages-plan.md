@@ -347,7 +347,7 @@ convention (`TASK-119a/b/c`, `TASK-120a-d`, `TASK-194a/b`).
 
 | # | packet slug | goal (one sentence) | task ids | depends on | status | packet dir |
 |---|-------------|---------------------|----------|------------|--------|------------|
-| 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/04`/`docs/05`, and make CLI-binary staleness fail loudly. | TASK-146a | - | pending | - |
+| 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/03`/`docs/04`/`docs/05`, and make CLI-binary staleness fail loudly at all three spawn sites. | TASK-146a | - | generated | `.ralph/specs/162_wit-lifecycle-export-removal/` |
 | 2 | 163_per-stage-wit-packages-pilot | Build the per-stage versioned-package machinery and prove it on the two cheapest tiers — postpass (2 stages) and finalization (1) — at `@1.0.0` with fatal-on-miss load. | TASK-146b | #1 | pending | - |
 | 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | pending | - |
 | 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | pending | - |
@@ -364,3 +364,24 @@ kind of follow-up that historically evaporates. It carries a `TASK-146d` and a r
 so that it cannot.
 
 Commit the plan file and the packet directories together.
+
+## Exports ledger
+
+What each generated packet hands to its dependents. Consume these; do not re-derive
+them.
+
+### From #1 `162_wit-lifecycle-export-removal` (generated, PREFLIGHT PASS)
+
+Net-new / changed:
+
+- `slicer_sdk::traits::{LayerModule, PrepassModule, PostpassModule, FinalizationModule}::from_config(config: &ConfigView) -> Result<Self, ModuleError>` — required, no default body. The renamed per-call constructor; every `run_*` macro arm calls it once per stage invocation. Not a lifecycle hook.
+- `slicer_schema::SlicerModuleSchema.exports: &'static [ExportBinding]` — now **≤1 entry**, always `ExportKind::Stage`; empty for a stageless impl. Packets #2/#3 restructure this into package+interface form.
+- `slicer_schema::ExportKind` — survives with a single `Stage` variant. The `Lifecycle` variant is gone.
+- `staleness_reason(Option<SystemTime>, SystemTime) -> Option<String>` — crate-local test helper in `crates/slicer-runtime/tests/common/`. Mirrors (does not import) `is_stale` from `xtask/src/build_guests.rs`, because `xtask` is **bin-only** and cannot be depended on.
+
+Removed — do not cite these as existing:
+
+- `slicer_schema::WORLD_LIFECYCLE_EXPORTS`, `slicer_schema::lifecycle_exports_for_world`, `ExportKind::Lifecycle`, `__SLICER_LIFECYCLE_EXPORT_COUNT`, and the vacuous test `every_world_has_lifecycle_exports`.
+- WIT `on-print-start` / `on-print-end`. `world-layer` drops from 10 exports to **8**; the other three worlds are unchanged (they never declared lifecycle exports).
+
+Deliberately untouched, still live for #3 to retire: `SUPPORTED_WIT_WORLDS` (doc comment only was corrected — its `[WORLD_LIFECYCLE_EXPORTS]` intra-doc link would otherwise dangle under `-D warnings`), `wit-world`, `validate_wit_world`.
