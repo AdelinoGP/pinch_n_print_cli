@@ -156,10 +156,28 @@ typed `bindgen!` path; the version survives into the export name
 (`world root { export spike:alpha/foo@1.0.0; }`), which is what makes any of this
 possible.
 
-**Stage isolation, the headline benefit, reproduces exactly.** A guest exporting only
-`spike:alpha` against a host binding both alpha and beta, after beta took a breaking
-change and a major bump: `sha256` byte-identical before and after, never rebuilt,
-instantiates fine. "Untouched, doesn't even rebuild" is literal.
+**Stage isolation, the headline benefit, reproduces exactly — at the engine.** A guest
+exporting only `spike:alpha` against a host binding both alpha and beta, after beta
+took a breaking change and a major bump: `sha256` byte-identical before and after,
+never rebuilt, instantiates fine.
+
+**But "doesn't even rebuild" is false in-tree, and not because of packaging.**
+`xtask/src/build_guests.rs::compute_shared_mtime` walks *all* of
+`crates/slicer-schema/wit`, takes the `.max()`, and applies that one mtime to **every**
+guest. So a one-stage `.wit` bump marks all 32 guests STALE however the packages are
+cut. Splitting the packages does not fix that; charging WIT mtime per stage does, and
+the pilot packet scopes it — otherwise the pilot cannot demonstrate the thing it
+pilots. Separate the two claims:
+
+| claim | in-tree | prebuilt / out-of-tree |
+|---|---|---|
+| an unrelated stage's change **breaks** the module | no (proven) | no (proven) |
+| it **rebuilds** the module | yes, until `compute_shared_mtime` is per-stage | no — nobody rebuilds it |
+
+The ecosystem case — the one that justifies this ADR — is the second column, where the
+benefit is complete and needs no xtask change: a third-party `.wasm` simply keeps
+loading. In-tree the rebuild is incidental and cheap. **Not breaking is the benefit;
+not rebuilding is a build-hygiene nicety.** The original table row conflated them.
 
 **And the rejected alternative fails, on a control.** The same two interfaces placed in
 one package `spike:mono@2.0.0` — packet 130 replayed under "stages as interfaces in a
@@ -186,13 +204,34 @@ holding across many separate `bindgen!` calls (ADR-0002). Nothing in the mechani
 above depends on that, but nothing above tests it either — which is precisely why the
 first packet pilots one real stage with its actual imports before the rest follow.
 
+### The naive shape inverts resource ownership
+
+That gap bit immediately, and it changes the WIT this ADR prescribes. A `resource`
+declared in an **exported** interface is **guest**-owned; our stages take
+**host**-owned resources (`host.rs` really does
+`impl HostGcodeOutputBuilder for HostExecutionContext`). So folding a world body
+straight into the exported interface — the obvious reading of the spike's skeleton,
+whose `foo` takes no parameters — inverts ownership and breaks every host builder
+impl.
+
+Each resource-bearing stage package therefore pairs an **imported** `<iface>-types`
+interface with an exported, `run`-only interface. Both live in the same package, so
+one stage still means one version. A stage with no resources (e.g.
+`postpass-text-postprocess`) needs no `-types` half. **An exported interface must
+declare no resources**, and that is worth asserting mechanically.
+
+This is why a spike is not a design. It proved the mechanism and hid a requirement,
+because the thing it omitted for simplicity — imports and resources — is where the
+real contract lives.
+
 The refactor follows a seam that already exists: `dispatch.rs` already does
 `match stage_id.as_str()` *after* instantiating the monolithic world.
 
 |  | today | per-stage versioned packages |
 |---|---|---|
 | `docs/05`'s additive-compat promise | structurally impossible | true, via wasmtime's `@1` alternate key |
-| infill change breaks perimeters modules | yes | no — untouched, doesn't even rebuild |
+| infill change **breaks** perimeters modules | yes | no — proven at the engine, both in-tree and prebuilt |
+| infill change **rebuilds** perimeters modules | yes | in-tree: yes, until `compute_shared_mtime` charges WIT mtime per stage (see §"Verified empirically"). Prebuilt/out-of-tree: no — nobody rebuilds it. Not breaking is the benefit; not rebuilding is hygiene |
 | version enforced | not at all (erased) | by wasmtime, free, at instantiate |
 | the 9 lying `Ok(())` stubs | required as padding | gone |
 | manifest `wit-world` + allowlist | unfalsifiable ceremony | deletable — binary carries the truth |
