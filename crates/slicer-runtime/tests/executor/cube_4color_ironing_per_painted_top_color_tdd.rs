@@ -114,7 +114,14 @@ fn tools_per_ironing_block(gcode: &str) -> Vec<BTreeSet<u32>> {
                 current_tools.clear();
             }
             current_type = "";
-            current_tool = None;
+            // Deliberately do NOT reset `current_tool`: the physical tool
+            // persists across layer changes, and the first fragment of a
+            // layer is traced by the tool carried over from the previous
+            // layer's tail. Resetting to None here silently dropped the
+            // carry-over color's ironing block (2026-07-17: T3's top-layer
+            // ironing ran as the carry-over fragment and was uncounted,
+            // failing the union assertion even though both colors were
+            // correctly ironed).
             continue;
         }
         if trimmed.starts_with(";TYPE:") {

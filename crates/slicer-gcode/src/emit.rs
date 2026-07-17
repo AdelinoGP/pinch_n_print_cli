@@ -640,6 +640,16 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         to: tc.to_tool,
                     });
                     current_tool = tc.to_tool;
+                    // A tool change starts a new per-color extrusion fragment:
+                    // force the next entity to re-emit its `;TYPE:` label even
+                    // when its role equals the pre-change entity's role.
+                    // Without this, a color whose purge is scheduled elsewhere
+                    // (no wipe-tower entity between the two outer walls) has
+                    // its outer wall silently coalesced under the PREVIOUS
+                    // color's `;TYPE:Outer wall` header — breaking ADR-0013's
+                    // one-contiguous-fragment-per-color accounting and any
+                    // viewer that segments features by TYPE header.
+                    prev_role = None;
                 }
 
                 // 5. Emit Comment/Raw annotations attached to this entity index,
