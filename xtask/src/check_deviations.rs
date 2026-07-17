@@ -23,7 +23,44 @@ struct Dev {
     summary: String,
 }
 
-/// Parse every `| DEV-… |` table row from the deviation log.
+/// True for a deviation table row under either of the log's two id schemes:
+/// the original numeric `DEV-###` and the later slug form `D-###-SOME-SLUG`.
+///
+/// The two prefixes are disjoint (`| DEV-` starts `| DE`, never `| D-`), so a
+/// row is counted exactly once. Matching only `| DEV-` silently dropped every
+/// slug-form row — D-105/109/110/160 were all open but absent from the
+/// generated map, while `--check` stayed green because it compared the map
+/// against the same subset it could see.
+fn is_deviation_row(line: &str) -> bool {
+    line.starts_with("| DEV-") || line.starts_with("| D-")
+}
+
+/// Split a markdown table row into cells on **unescaped** `|` only.
+///
+/// GitHub-flavored Markdown requires a literal pipe inside a table cell to be
+/// written `\|` — including inside a code span, where the backticks do *not*
+/// protect it. Rationale cells quote real code (`all(\|&w\| w > 0.0)`, C++'s
+/// `\|\|`), so a naive `split('|')` shreds those rows into phantom columns and
+/// the arity check below rejects them.
+fn split_row_cells(line: &str) -> Vec<String> {
+    let mut cells = vec![String::new()];
+    let mut escaped = false;
+    for ch in line.chars() {
+        match ch {
+            _ if escaped => {
+                // Keep the escaped char, drop the backslash: `\|` -> `|`.
+                cells.last_mut().expect("non-empty").push(ch);
+                escaped = false;
+            }
+            '\\' => escaped = true,
+            '|' => cells.push(String::new()),
+            _ => cells.last_mut().expect("non-empty").push(ch),
+        }
+    }
+    cells
+}
+
+/// Parse every deviation table row from the deviation log.
 ///
 /// Returns `Err` with a human-readable message if a row is malformed (wrong
 /// column count) — that is exactly the kind of drift this guard must catch (a
@@ -31,11 +68,11 @@ struct Dev {
 fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
     let mut out = Vec::new();
     for (lineno, line) in log.lines().enumerate() {
-        if !line.starts_with("| DEV-") {
+        if !is_deviation_row(line) {
             continue;
         }
         // `| a | b | c | d | e | f | g | h |` -> 10 segments (leading + trailing empty).
-        let parts: Vec<&str> = line.split('|').collect();
+        let parts: Vec<String> = split_row_cells(line);
         if parts.len() != 10 {
             return Err(format!(
                 "docs/DEVIATION_LOG.md:{}: malformed deviation row \
@@ -57,9 +94,19 @@ fn parse_devs(log: &str) -> Result<Vec<Dev>, String> {
     Ok(out)
 }
 
+/// Strip the markdown emphasis markers a cell may carry, so predicates can
+/// match on the prose rather than on its formatting.
+fn strip_emphasis(cell: &str) -> String {
+    cell.replace("**", "").replace('`', "")
+}
+
 /// A deviation is open unless its status begins with "closed".
+///
+/// Emphasis is stripped first: statuses are routinely written `**Closed …**`,
+/// and matching the raw cell made every bolded closure report as OPEN
+/// (`D-147-CHAIN-CLOSURE` was closed at 0/699 yet appeared in the open map).
 fn is_open(status: &str) -> bool {
-    !status
+    !strip_emphasis(status)
         .trim_start()
         .to_ascii_lowercase()
         .starts_with("closed")
@@ -69,7 +116,7 @@ fn is_open(status: &str) -> bool {
 /// markdown emphasis markers stripped, capped at 160 chars. Deterministic so
 /// `--check` is stable.
 fn summarize(rationale: &str) -> String {
-    let plain = rationale.replace("**", "").replace('`', "");
+    let plain = strip_emphasis(rationale);
     let end = plain.find(". ").map(|i| i + 1).unwrap_or(plain.len());
     let mut s = plain[..end].trim().to_string();
     if s.chars().count() > 160 {
@@ -202,6 +249,19 @@ mod tests {
     }
 
     #[test]
+    fn emphasised_closure_is_still_closed() {
+        // Regression: statuses are routinely bolded, and matching the raw cell
+        // made every `**Closed …**` row report as OPEN. D-147-CHAIN-CLOSURE was
+        // closed at 0/699 and still appeared in the generated open map.
+        assert!(!is_open("**Closed 2026-07-16 (Arachne Parity Recovery, Track C)**"));
+        assert!(!is_open("`Closed` — 2026-07-16"));
+        assert!(!is_open("  **closed** 2026 "));
+        // Emphasis must not manufacture a closure that isn't there.
+        assert!(is_open("**Open — 2026-07-16: proven by measurement**"));
+        assert!(is_open("**Reopened (classic half) 2026-07-15**"));
+    }
+
+    #[test]
     fn parse_extracts_id_status_summary() {
         let log = "\
 | ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
@@ -216,6 +276,64 @@ mod tests {
         assert_eq!(devs[0].summary, "Benchy gap.");
         assert!(is_open(&devs[0].status));
         assert!(!is_open(&devs[1].status));
+    }
+
+    #[test]
+    fn parse_covers_both_id_schemes() {
+        // Regression: the parser matched only `| DEV-`, so every `D-###-SLUG`
+        // row was dropped from the generated map while `--check` stayed green.
+        let log = "\
+| ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DEV-009 | 2026-04-15 | x | High | numeric-scheme row | owner | TBD | Open |
+| D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH | 2026-07-16 | y | High | slug-scheme row | owner | TBD | Open |
+| D-147-STITCH-GAP | 2026-07-16 | z | Med | closed slug row | owner | — | Closed — 2026-07-16 |
+";
+        let devs = parse_devs(log).unwrap();
+        assert_eq!(devs.len(), 3, "both id schemes must parse");
+        assert_eq!(devs[1].id, "D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH");
+        assert_eq!(devs[1].summary, "slug-scheme row");
+        assert_eq!(
+            devs.iter().filter(|d| is_open(&d.status)).count(),
+            2,
+            "open count must include the slug-scheme row"
+        );
+    }
+
+    #[test]
+    fn id_schemes_are_disjoint_so_rows_count_once() {
+        assert!(is_deviation_row("| DEV-009 | ..."));
+        assert!(is_deviation_row("| D-160-FOO | ..."));
+        // `| DEV-` must not also satisfy the `| D-` arm.
+        assert!(!"| DEV-009 | ...".starts_with("| D-"));
+        assert!(!is_deviation_row("| ID | Date |"));
+        assert!(!is_deviation_row("| --- | --- |"));
+    }
+
+    #[test]
+    fn escaped_pipes_do_not_split_cells() {
+        // Regression: rationale cells quote real code containing pipes — a Rust
+        // closure `\|&w\|` and C++'s `\|\|`. GFM requires them escaped even
+        // inside code spans; a naive split('|') turned them into phantom
+        // columns and the arity check rejected the whole row.
+        let log = "\
+| ID | Date | Affected | Risk | Rationale | Owner | Target | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| D-111-X | 2026-07-03 | f.rs | Low | requires `all(\\|&w\\| w > 0.0)` here | owner | TBD | Open |
+| D-154-Y | 2026-07-14 | g.rs | Low | branch `(!a && !b) \\|\\| c.is_secondary()` | owner | TBD | Open |
+";
+        let devs = parse_devs(log).expect("escaped pipes must not break arity");
+        assert_eq!(devs.len(), 2);
+        // The backslash is consumed; the pipe survives into the summary.
+        assert_eq!(devs[0].summary, "requires all(|&w| w > 0.0) here");
+        assert_eq!(devs[1].summary, "branch (!a && !b) || c.is_secondary()");
+    }
+
+    #[test]
+    fn split_row_cells_handles_escapes() {
+        assert_eq!(split_row_cells("| a | b |").len(), 4); // "", a, b, ""
+        assert_eq!(split_row_cells("| a \\| b |").len(), 3); // "", a | b, ""
+        assert_eq!(split_row_cells("| \\|\\| |")[1].trim(), "||");
     }
 
     #[test]
