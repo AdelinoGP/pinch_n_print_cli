@@ -326,6 +326,17 @@ fn serialize_config_block(
             filament_colour_csv,
         );
     }
+    // Synthesize printer_model when absent so OrcaSlicer's `s_IsBBLPrinter`
+    // heuristic does not default to Bambu behavior on drag-in.
+    // Fork-supplied values always win via the `emit_config_kv` dedup path.
+    if !raw_config.contains_key("printer_model") {
+        emit_config_kv(
+            &mut out,
+            &mut emitted,
+            "printer_model",
+            "Generic PNP Printer",
+        );
+    }
 
     // Sort keys for deterministic output.
     let mut keys: Vec<&String> = raw_config.keys().collect();
@@ -363,13 +374,10 @@ fn serialize_config_block(
         }
     }
 
-    // OrcaSlicer's loader REJECTS a config block with fewer than ~80 key=value
-    // pairs (Config.cpp load_from_gcode_file) — below that it aborts the whole
-    // load and none of the filament/colour config is applied. We typically emit
-    // far fewer real keys, so pad with standard OrcaSlicer keys at benign
-    // defaults. These are deliberately preview-cosmetic (speeds, accelerations,
-    // patterns, toggles) — none change the rendered geometry — and any key the
-    // host/user already emitted is skipped. Pad past the threshold with margin.
+    // Pad from the neutral table until the block reaches the OrcaSlicer minimum
+    // key gate (≥80 lines). Synthetic keys (filament_diameter, filament_colour,
+    // extruder_colour, printer_model) and raw_config passthrough go first, then
+    // the table.
     for (key, value) in ORCA_CONFIG_PADDING {
         if emitted.len() >= 96 {
             break;
@@ -394,11 +402,10 @@ fn emit_config_kv(
     }
 }
 
-/// Standard OrcaSlicer config keys with benign defaults, used only to pad the
-/// CONFIG_BLOCK above OrcaSlicer's minimum-keys gate so the viewer will parse the
-/// embedded config (and thus the filament count + colours). All entries are
-/// preview-cosmetic — none affect the rendered geometry. Real host/user keys take
-/// precedence (duplicates are skipped by `emit_config_kv`).
+/// Padding table contains only neutral cosmetic CONFIG_BLOCK keys. PNP never
+/// emits speed/accel/jerk/machine-limit values here; those are the fork's
+/// responsibility per the CONFIG_BLOCK viewer-key contract in
+/// `docs/02_ir_schemas.md`.
 const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("gcode_flavor", "marlin"),
     ("single_extruder_multi_material", "1"),
@@ -411,44 +418,15 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("raft_layers", "0"),
     ("brim_type", "auto_brim"),
     ("brim_width", "0"),
-    ("skirt_loops", "0"),
+    ("skirt_loops", "1"),
     ("skirt_distance", "2"),
-    ("sparse_infill_density", "20%"),
+    ("sparse_infill_density", "15%"),
     ("sparse_infill_pattern", "grid"),
     ("top_surface_pattern", "monotonic"),
     ("bottom_surface_pattern", "monotonic"),
     ("ironing_type", "no ironing"),
     ("fuzzy_skin", "none"),
     ("bottom_shell_layers", "3"),
-    ("travel_speed", "200"),
-    ("travel_speed_z", "0"),
-    ("initial_layer_speed", "30"),
-    ("initial_layer_infill_speed", "60"),
-    ("sparse_infill_speed", "80"),
-    ("internal_solid_infill_speed", "80"),
-    ("top_surface_speed", "50"),
-    ("gap_infill_speed", "30"),
-    ("bridge_speed", "25"),
-    ("small_perimeter_speed", "50"),
-    ("overhang_1_4_speed", "0"),
-    ("overhang_2_4_speed", "0"),
-    ("overhang_3_4_speed", "0"),
-    ("overhang_4_4_speed", "0"),
-    ("default_acceleration", "1000"),
-    ("outer_wall_acceleration", "500"),
-    ("inner_wall_acceleration", "0"),
-    ("initial_layer_acceleration", "500"),
-    ("top_surface_acceleration", "500"),
-    ("bridge_acceleration", "500"),
-    ("sparse_infill_acceleration", "1000"),
-    ("travel_acceleration", "1000"),
-    ("default_jerk", "0"),
-    ("outer_wall_jerk", "9"),
-    ("inner_wall_jerk", "9"),
-    ("infill_jerk", "9"),
-    ("top_surface_jerk", "9"),
-    ("initial_layer_jerk", "9"),
-    ("travel_jerk", "12"),
     ("reduce_crossing_wall", "0"),
     ("max_travel_detour_distance", "0"),
     ("resolution", "0.012"),
@@ -463,15 +441,45 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
     ("print_sequence", "by layer"),
     ("slow_down_for_layer_cooling", "1"),
     ("slow_down_layer_time", "8"),
-    ("slow_down_min_speed", "10"),
     ("fan_cooling_layer_time", "100"),
     ("reduce_fan_stop_start_freq", "1"),
-    ("ironing_speed", "15"),
-    ("internal_bridge_speed", "25"),
-    ("support_speed", "50"),
-    ("support_interface_speed", "50"),
     ("prime_tower_brim_width", "3"),
     ("wipe_tower_rotation_angle", "0"),
+    ("wall_loops", "2"),
+    ("top_shell_layers", "4"),
+    ("infill_direction", "45"),
+    ("wall_generator", "arachne"),
+    ("ironing_pattern", "rectilinear"),
+    ("support_type", "normal(auto)"),
+    ("support_style", "default"),
+    ("support_expansion", "0"),
+    ("support_top_z_distance", "0.2"),
+    ("support_bottom_z_distance", "0.2"),
+    ("tree_support_branch_angle", "40"),
+    ("tree_support_branch_diameter", "5"),
+    ("tree_support_branch_diameter_angle", "5"),
+    ("interface_shells", "0"),
+    ("seam_slope_type", "none"),
+    ("brim_object_gap", "0"),
+    ("skirt_height", "1"),
+    ("raft_first_layer_density", "90%"),
+    ("filter_out_gap_fill", "0"),
+    ("fuzzy_skin_mode", "displacement"),
+    ("fuzzy_skin_thickness", "0.2"),
+    ("fuzzy_skin_point_distance", "0.3"),
+    ("wipe_tower_no_sparse_layers", "0"),
+    ("wipe_tower_x", "15"),
+    ("wipe_tower_y", "220"),
+    ("wipe_tower_width", "60"),
+    ("ooze_prevention", "0"),
+    ("gap_fill_target", "nowhere"),
+    ("extra_perimeters", "0"),
+    ("extra_perimeters_on_overhangs", "0"),
+    ("wall_direction", "ccw"),
+    ("outer_wall_direction", "ccw"),
+    ("infill_first", "0"),
+    ("solid_infill_filament", "0"),
+    ("top_fill_pattern", "monotonic"),
 ];
 
 /// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`

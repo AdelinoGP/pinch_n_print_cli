@@ -31,6 +31,7 @@
 - `crates/slicer-gcode/src/serialize.rs` — role: owns `ORCA_CONFIG_PADDING` and `serialize_config_block`; expected change: table rework + printer_model synthesis + comment updates.
 - `crates/slicer-runtime/tests/integration/gcode_header_thumbnail_config_blocks_tdd.rs` — role: CONFIG_BLOCK integration coverage; expected change: three appended tests.
 - `docs/02_ir_schemas.md` — role: normative envelope contract; expected change: one appended subsection.
+- `docs/07_implementation_status.md` — role: implementation-status crosswalk; expected change: completed `TASK-273` row.
 - (`crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode` — conditional 4th: re-bless if its golden test compares CONFIG_BLOCK bytes; verify via the golden test run first.)
 
 ## Read-Only Context

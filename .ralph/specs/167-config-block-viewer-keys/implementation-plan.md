@@ -52,7 +52,7 @@
 - OrcaSlicer refs:
   - none beyond the delegated reference-doc lookups
 - Verification:
-  - `cd F:/slicerProject/pinch_n_print && awk '/^const ORCA_CONFIG_PADDING/,/^\];/' crates/slicer-gcode/src/serialize.rs | grep -E '"(machine_max_[a-z_]*|[a-z_]*speed[a-z_]*|[a-z_]*acceleration[a-z_]*|[a-z_]*jerk[a-z_]*)"' ; test $? -eq 1 && echo PASS || echo FAIL` — FACT PASS/FAIL
+  - `awk '/^const ORCA_CONFIG_PADDING/,/^\];/' crates/slicer-gcode/src/serialize.rs | grep -E '"(machine_max_[a-z_]*|[a-z_]*speed[a-z_]*|[a-z_]*acceleration[a-z_]*|[a-z_]*jerk[a-z_]*)"' ; test $? -eq 1 && echo PASS || echo FAIL` — FACT PASS/FAIL
   - `mkdir -p target && cargo test -p slicer-runtime --test integration -- config_block_meets_orca_minimum_key_gate 2>&1 | tee target/test-output.log | grep "^test result"` — FACT pass/fail
 - Exit condition: both commands PASS; a count under 80 means more neutral keys are required before exiting.
 
@@ -127,7 +127,7 @@
 - OrcaSlicer refs:
   - cite upstream consumers by function name in the new subsection; no reads
 - Verification:
-  - `cd F:/slicerProject/pinch_n_print && grep -q "CONFIG_BLOCK viewer-key contract" docs/02_ir_schemas.md && grep -q "machine_max_" docs/02_ir_schemas.md && echo PASS || echo FAIL` — FACT PASS/FAIL
+  - `grep -q "CONFIG_BLOCK viewer-key contract" docs/02_ir_schemas.md && grep -q "machine_max_" docs/02_ir_schemas.md && echo PASS || echo FAIL` — FACT PASS/FAIL
   - `cargo clippy --workspace --all-targets -- -D warnings` — FACT pass/fail
   - `cargo check --workspace --all-targets` — FACT pass/fail
 - Exit condition: doc grep PASS, `grep -c "TASK-273" docs/07_implementation_status.md` ≥ 1, clippy/check clean.

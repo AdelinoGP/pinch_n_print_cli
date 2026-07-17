@@ -19,6 +19,7 @@ OrcaSlicer's viewer trusts CONFIG_BLOCK values: `ConfigBase::load_from_gcode_fil
 - Synthesize `; printer_model = Generic PNP Printer` when `raw_config` lacks `printer_model`, via the existing `emit_config_kv` dedup path so a fork-supplied value always wins.
 - Add integration tests: minimum-key-gate count (AC-2), printer_model synthesis (AC-3), fork-key no-shadowing (AC-N1).
 - Document the fork-facing required-key contract (`printer_model`, `filament_density`, `filament_cost`, `printable_area`, `nozzle_diameter`, `machine_max_*` family) as a new "CONFIG_BLOCK viewer-key contract" subsection in `docs/02_ir_schemas.md` under "G-code envelope blocks".
+- Add the completed `TASK-273` crosswalk to `docs/07_implementation_status.md`.
 
 ## Out of Scope
 
@@ -47,12 +48,12 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cd F:/slicerProject/pinch_n_print && awk '/^const ORCA_CONFIG_PADDING/,/^\];/' crates/slicer-gcode/src/serialize.rs | grep -E '"(machine_max_[a-z_]*|[a-z_]*speed[a-z_]*|[a-z_]*acceleration[a-z_]*|[a-z_]*jerk[a-z_]*)"' ; test $? -eq 1 && echo PASS || echo FAIL` | AC-1: misleading classes absent from padding | FACT PASS/FAIL |
+| `awk '/^const ORCA_CONFIG_PADDING/,/^\];/' crates/slicer-gcode/src/serialize.rs | grep -E '"(machine_max_[a-z_]*|[a-z_]*speed[a-z_]*|[a-z_]*acceleration[a-z_]*|[a-z_]*jerk[a-z_]*)"' ; test $? -eq 1 && echo PASS || echo FAIL` | AC-1: misleading classes absent from padding | FACT PASS/FAIL |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- config_block_meets_orca_minimum_key_gate 2>&1 | tee target/test-output.log | grep "^test result"` | AC-2: ≥80-line minimum gate | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- config_block_synthesizes_non_bbl_printer_model 2>&1 | tee target/test-output.log | grep "^test result"` | AC-3: printer_model synthesis | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- config_block_fork_keys_never_shadowed 2>&1 | tee target/test-output.log | grep "^test result"` | AC-N1: fork keys win | FACT pass/fail |
 | `mkdir -p target && cargo test -p slicer-runtime --test integration -- gcode_header 2>&1 | tee target/test-output.log | grep "^test result"` | AC-N2: pre-existing block invariants | FACT pass/fail |
-| `cd F:/slicerProject/pinch_n_print && grep -q "CONFIG_BLOCK viewer-key contract" docs/02_ir_schemas.md && grep -q "machine_max_" docs/02_ir_schemas.md && echo PASS || echo FAIL` | AC-4: doc contract grep | FACT PASS/FAIL |
+| `grep -q "CONFIG_BLOCK viewer-key contract" docs/02_ir_schemas.md && grep -q "machine_max_" docs/02_ir_schemas.md && echo PASS || echo FAIL` | AC-4: doc contract grep | FACT PASS/FAIL |
 | `cargo check --workspace --all-targets` | compile gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | commit gate | FACT pass/fail |
 

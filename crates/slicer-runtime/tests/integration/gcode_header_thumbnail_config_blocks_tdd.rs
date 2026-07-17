@@ -496,6 +496,89 @@ fn config_block_covers_effective_config() {
     }
 }
 
+#[test]
+fn config_block_meets_orca_minimum_key_gate() {
+    let gcode = slice_no_thumb();
+    let config_region = region_between(&gcode, "; CONFIG_BLOCK_START", "; CONFIG_BLOCK_END");
+
+    let key_count = config_region
+        .lines()
+        .filter(|line| line.starts_with("; ") && line.contains(" = "))
+        .count();
+
+    assert!(
+        key_count >= 80,
+        "CONFIG_BLOCK must contain at least 80 key-value lines, found {key_count}"
+    );
+}
+
+#[test]
+fn config_block_synthesizes_non_bbl_printer_model() {
+    let gcode = slice_no_thumb();
+    let config_region = region_between(&gcode, "; CONFIG_BLOCK_START", "; CONFIG_BLOCK_END");
+    let printer_model_lines: Vec<&str> = config_region
+        .lines()
+        .filter(|line| line.contains("printer_model"))
+        .collect();
+
+    assert_eq!(
+        printer_model_lines,
+        vec!["; printer_model = Generic PNP Printer"]
+    );
+    assert!(
+        printer_model_lines
+            .iter()
+            .all(|line| !line.contains("Bambu")),
+        "CONFIG_BLOCK printer_model lines must not select Bambu behavior: {printer_model_lines:?}"
+    );
+}
+
+#[test]
+fn config_block_fork_keys_never_shadowed() {
+    let mesh_ir = Arc::new(load_model(&stl_fixture_path()).expect("fixture load"));
+    let mut raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    raw.insert(
+        "machine_max_acceleration_extruding".to_string(),
+        ConfigValue::String("20000".to_string()),
+    );
+    raw.insert(
+        "printer_model".to_string(),
+        ConfigValue::String("MyFork Printer".to_string()),
+    );
+
+    let config = PipelineConfig {
+        mesh_ir,
+        plan: empty_plan(),
+        runners: default_runners(),
+        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
+    };
+    let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
+        .expect("pipeline should succeed");
+    let config_region = region_between(
+        &output.gcode_text,
+        "; CONFIG_BLOCK_START",
+        "; CONFIG_BLOCK_END",
+    );
+
+    assert_eq!(
+        config_region
+            .lines()
+            .filter(|line| *line == "; machine_max_acceleration_extruding = 20000")
+            .count(),
+        1
+    );
+    assert_eq!(
+        config_region
+            .lines()
+            .filter(|line| *line == "; printer_model = MyFork Printer")
+            .count(),
+        1
+    );
+}
+
 /// AC-10: THUMBNAIL_BLOCK base64 roundtrip matches input file bytes.
 #[test]
 fn thumbnail_roundtrip_matches_input() {

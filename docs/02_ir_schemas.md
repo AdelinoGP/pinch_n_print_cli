@@ -1706,6 +1706,31 @@ pub struct PrintMetadata {
 
 ### G-code envelope blocks (Normative — packet 55)
 
+#### CONFIG_BLOCK viewer-key contract
+
+The `CONFIG_BLOCK` is consumed by OrcaSlicer's `ConfigBase::load_from_gcode_file`
+and `GCodeProcessor::apply_config` for both the configuration-panel display and
+the time/motion estimator. The fork therefore supplies the following keys:
+
+- `printer_model` — required so OrcaSlicer's `s_IsBBLPrinter` heuristic does not default to Bambu behavior.
+- `filament_density` — supplies the filament table shown in the configuration panel.
+- `filament_cost` — supplies the cost estimate.
+- `printable_area` — supplies the bed shape displayed by the viewer.
+- `nozzle_diameter` — supplies the extruder panel data.
+- `machine_max_*` — supplies the time estimator and machine-limit display; the family includes `machine_max_acceleration_extruding`, `machine_max_acceleration_retracting`, `machine_max_acceleration_travel`, `machine_max_jerk_x`, `machine_max_jerk_y`, `machine_max_jerk_z`, `machine_max_jerk_e`, and …
+
+PNP's `ORCA_CONFIG_PADDING` table must never emit keys whose names match
+`*speed*`, `*acceleration*`, `*jerk*`, or `machine_max_*`. These keys are always
+fork-supplied and are never synthesized as padding.
+
+When `raw_config` lacks `printer_model`, PNP emits
+`; printer_model = Generic PNP Printer`. This synthesis uses the same
+deduplication path, `emit_config_kv` plus `BTreeSet<String>`, so a fork-supplied
+value always wins.
+
+Packet 169-time-estimator-slice-stats depends on this contract when constructing
+fork-realistic machine-limit fixtures.
+
 `PostPass::GCodeEmit` wraps the per-layer command stream in four canonical
 envelope blocks. Block sentinels and ordering are part of the wire-format
 contract — frontends and post-processors parse these tokens.
