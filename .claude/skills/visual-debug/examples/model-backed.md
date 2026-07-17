@@ -9,18 +9,24 @@ to find where it changes.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.0.0",
   "source": {
-    "mode": "model",
-    "model_path": "resources/arena.stl",
-    "module_dir": "modules/core-modules"
+    "kind": "model",
+    "model": "resources/regression_wedge.stl",
+    "config": null,
+    "module_dirs": ["modules/core-modules"]
   },
   "layers": [40],
   "taps": ["Layer::Infill", "Layer::PathOptimization"],
-  "views": ["filled_areas", "diagnostic_overlay"],
+  "visualizations": ["filled_areas", "diagnostic_overlay"],
   "resolution_scale": 1
 }
 ```
+
+The request struct is `deny_unknown_fields`: `schema_version` must be exactly
+`"1.0.0"`, the source is tagged `kind` (not `mode`), and the field is
+`visualizations` (not `views`). A misspelled key fails deserialization
+outright rather than being ignored.
 
 Save this as `visual-debug.json`. Model mode runs only the dependency closure
 required to satisfy these two taps for layer 40 — it does not re-run the
@@ -60,13 +66,17 @@ will have an empty `png_path` and a populated `typed_capture` instead, e.g.:
 
 ```json
 {
-  "layer": 40,
+  "layer_index": 40,
   "tap": "Layer::Infill",
   "png_path": "",
   "typed_capture": {"kind": "Infill", "value": { "...": "committed IR" }},
   "warnings": []
 }
 ```
+
+Note `typed_capture` inlines the full IR, so a model-source `manifest.json`
+can run to megabytes — do not `cat` one. Strip the captures first, e.g.
+`jq 'del(.images[].typed_capture)' manifest.json`.
 
 Treat `typed_capture` as the same evidence a PNG would give — read the IR
 directly (polygon loops, extrusion widths, etc.) instead of opening an image.
@@ -76,9 +86,13 @@ directly (polygon loops, extrusion widths, etc.) instead of opening an image.
 Once `png_path` is populated for a stage, open it:
 
 ```
-target/visual-debug/layer_0040_infill_filled_areas.png
-target/visual-debug/layer_0040_path_optimization_filled_areas.png
+target/visual-debug/images/Layer__Infill_filled_areas_l40.png
+target/visual-debug/images/Layer__PathOptimization_filled_areas_l40.png
 ```
+
+PNGs live in the bundle's `images/` subdirectory, named
+`{tap}_{visualization}_l{layer}.png` with `::` sanitized to `__`. Always take
+the path from the entry's `png_path` rather than reconstructing it.
 
 Both share the same model-wide XY viewport, so a direct visual diff between
 the two PNGs shows exactly what `Layer::PathOptimization` changed relative to

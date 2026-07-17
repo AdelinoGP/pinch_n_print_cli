@@ -9,22 +9,28 @@ module dependency closure runs at all.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.0.0",
   "source": {
-    "mode": "gcode",
-    "gcode_path": "/tmp/suspect_print.gcode",
-    "gcode_line_width_mm": 0.4
+    "kind": "gcode",
+    "path": "/tmp/suspect_print.gcode",
+    "model": null
   },
+  "gcode_line_width_mm": 0.4,
   "layers": [118, 119, 120],
-  "taps": ["FinalGcode"],
-  "views": ["filament_lines", "filled_areas"],
+  "taps": ["final_gcode"],
+  "visualizations": ["filament_lines", "filled_areas"],
   "resolution_scale": 2
 }
 ```
 
 `gcode_line_width_mm` is required here because `filled_areas` in G-code mode
 has no module/config source for extrusion width — it must be supplied
-explicitly. `resolution_scale: 2` is chosen because travel-move detail near
+explicitly. Note it is a **top-level** field, not part of `source`: the
+request struct is `deny_unknown_fields`, so nesting it inside `source` fails
+deserialization rather than being ignored. The same applies to the other
+exact spellings above — `schema_version` must be `"1.0.0"`, the source tag is
+`kind` (not `mode`) with the path in `path` (not `gcode_path`), the field is
+`visualizations` (not `views`), and the G-code tap is `final_gcode`. `resolution_scale: 2` is chosen because travel-move detail near
 the top of a tall print is small relative to the full-model viewport; if the
 suspected feature isn't visible at scale 1, step up rather than starting
 high, since a higher scale is more image context cost.
@@ -63,10 +69,19 @@ Check, per `images[]` entry for layers 118-120:
 ## 4. Open the PNGs
 
 ```
-target/visual-debug-gcode/layer_0118_final_gcode_filament_lines.png
-target/visual-debug-gcode/layer_0119_final_gcode_filament_lines.png
-target/visual-debug-gcode/layer_0120_final_gcode_filled_areas.png
+target/visual-debug-gcode/images/final_gcode_filament_lines_l118.png
+target/visual-debug-gcode/images/final_gcode_filament_lines_l119.png
+target/visual-debug-gcode/images/final_gcode_filled_areas_l120.png
 ```
+
+PNGs live in the bundle's `images/` subdirectory, named
+`{tap}_{visualization}_l{layer}.png`. Take the path from the manifest entry's
+`png_path` rather than reconstructing it.
+
+Layer indices here are the renderer's own, and do not necessarily line up
+with the Nth `;LAYER_CHANGE` marker in the file — check the entry's `layer_z`
+against the `;Z:` of the block you think you're looking at before comparing an
+image to raw G-code.
 
 `filament_lines` shows centerlines, which is usually the fastest way to spot
 a stray or missing travel move; `filled_areas` shows the extrusion-width
