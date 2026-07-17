@@ -74,7 +74,7 @@ This is exactly why host-algos must join the default gate (Workstream 0).
 
 | Test | File | Verdict |
 |---|---|---|
-| `bridge_vertices_get_bridge_flow_ratio_when_thin` | `modules/core-modules/arachne-perimeters/tests/bridge_flow_factor_tdd.rs:53` | FIX |
+| `bridge_vertices_get_bridge_flow_ratio_when_thin` | `modules/core-modules/arachne-perimeters/tests/bridge_flow_factor_tdd.rs:53` | ~~FIX~~ **RESOLVED 2026-07-17 (D-166 closed)** — fixture defect: origin-centered 4mm bridge square never overlaps walls under the bead-count clamp (only did under the retired 9-inset/wide-centre-bead regime). Bridge area re-centered on the region corner; thick test's `flow_to_width` re-conversion of `pt.width` (a pre-Bug-B spacing-domain assumption) also removed; vacuous companion `is_bridge` test hardened with an inside-vertex guard. |
 | `bridge_vertices_get_round_section_factor_when_thick_bridges_on` | same:123 | FIX |
 | `ac1_local_maximum_emits_hexagonal_micro_loop` | `crates/slicer-core/tests/arachne_local_maxima_single_beads.rs:44` | FIX (also: stale RED-style header from before P145 closed N9 — clean up) |
 | `bead_count_tapered_wedge` | `crates/slicer-core/tests/bead_count.rs:205` | FIX (fixture predates P155 clamp; re-verify, don't blind-rebless) |

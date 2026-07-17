@@ -353,7 +353,8 @@ mod tests {
             0,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
         // The contact (top) layer and the two shell layers below must be covered.
         let covered: Vec<usize> = result
             .per_layer
@@ -387,7 +388,8 @@ mod tests {
             3,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(result.per_layer.len(), contours.len());
         assert!(result.per_layer.iter().all(|l| l.is_empty()));
     }
@@ -416,7 +418,8 @@ mod tests {
             0,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
 
         // At least one layer should have non-empty polygons (the slab covering z=1).
         let has_coverage = result.per_layer.iter().any(|l| !l.is_empty());
@@ -461,7 +464,8 @@ mod tests {
             2,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(result.semantic, PaintSemantic::SupportEnforcer);
         // PaintValue doesn't derive PartialEq; verify via debug string.
         assert!(
@@ -495,7 +499,8 @@ mod tests {
             0,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
         let result_shells_0 = propagate_top_bottom(
             &mesh,
             PaintSemantic::Material,
@@ -506,7 +511,8 @@ mod tests {
             0,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
 
         let nonempty_count_3 = result_shells_3
             .per_layer
@@ -554,7 +560,8 @@ mod tests {
             0,
             0.4,
             0.2,
-        ).unwrap();
+        )
+        .unwrap();
 
         // At least one layer non-empty; no padding beyond layer count.
         assert_eq!(result.per_layer.len(), contours.len());

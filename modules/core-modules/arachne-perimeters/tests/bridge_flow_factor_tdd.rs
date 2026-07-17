@@ -16,7 +16,7 @@
 //! thick_bridges)`).
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_core::flow::{bridging_flow, flow_to_width};
+use slicer_core::flow::bridging_flow;
 use slicer_ir::{ConfigView, LoopType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -33,16 +33,27 @@ fn make_config(bridge_flow: f32, thick_bridges: bool) -> ConfigView {
         .build()
 }
 
-/// 10mm square region with a 4mm x 4mm centered bridge area, overlapping at
-/// least one wall segment (mirrors `arachne_parity_is_bridge_flag_tdd.rs`'s
-/// own `make_region`).
+/// 10mm square region with a bridge area centered on the region's (-, -)
+/// CORNER, so it contains that corner's wall vertices while the other three
+/// corners stay non-bridge (both assertion branches exercised).
+///
+/// D-166 (2026-07-17): this fixture used to center the 4mm bridge square at
+/// the ORIGIN, ~3mm away from the nearest wall. It only ever contained wall
+/// vertices under the retired unclamped-inset regime, whose 9 insets (and
+/// ~7.14mm odd-center medial bead — the very defect this campaign removed)
+/// reached the region's middle. Under the correct `max_bead_count = 2 *
+/// wall_count` clamp, 2 walls sit within ~0.8mm of the boundary and a
+/// centered 4mm square can never overlap them, so both tests died on their
+/// own anti-vacuity guard. The bridge area now covers a wall corner, which
+/// is where wall vertices actually live for a simplified rectangular loop.
 fn make_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
+    let corner = -side_mm / 2.0;
     SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(1)
         .z(z)
         .add_polygon(square_polygon(0.0, 0.0, side_mm))
-        .bridge_areas(vec![square_polygon(0.0, 0.0, bridge_side_mm)])
+        .bridge_areas(vec![square_polygon(corner, corner, bridge_side_mm)])
         .build()
 }
 
@@ -113,12 +124,14 @@ fn bridge_vertices_get_bridge_flow_ratio_when_thin() {
 /// AC (D-104g CLOSED by packet 150, `thick_bridges = true`): bridge vertices'
 /// flow_factor is the OrcaSlicer round-cross-section factor
 /// `PI * dmr^2 / (4 * bead_width * layer_height)` (`dmr = nozzle_diameter *
-/// sqrt(bridge_flow_ratio)`), not a stubbed constant `1.0`. Per-vertex bead
-/// width varies along this fixture's medial axis (normal ~0.357mm beads and a
-/// wide medial-axis closing bead ~7.14mm), so bridge vertices legitimately
-/// get DIFFERENT factors — each vertex's expected factor is derived from its
-/// own `pt.width` via `flow_to_width` (inverse of `line_width_to_spacing`) to
-/// recover the raw mm bead width, mirroring the module's own call site.
+/// sqrt(bridge_flow_ratio)`), not a stubbed constant `1.0`. Each vertex's
+/// expected factor is derived from its own `pt.width`, which since the D-160
+/// Bug B emission fix is already a WIDTH-domain mm value (emission converts
+/// spacing back to width, `VariableWidth.cpp::thick_polyline_to_multi_path`
+/// parity) — no `flow_to_width` re-conversion. (This test used to re-convert
+/// `pt.width` via `flow_to_width`, correct only while emission leaked the
+/// spacing domain, and its doc cited ~7.14mm odd-center medial beads from the
+/// retired unclamped regime.)
 #[test]
 fn bridge_vertices_get_round_section_factor_when_thick_bridges_on() {
     const NOZZLE_DIAMETER_MM: f32 = 0.4;
@@ -143,12 +156,12 @@ fn bridge_vertices_get_round_section_factor_when_thick_bridges_on() {
             let pt = &wall.path.points[j];
             if flag.is_bridge {
                 found_bridge_vertex = true;
-                let bead_flow_width_mm = flow_to_width(pt.width, LAYER_HEIGHT_MM);
+                let bead_width_mm = pt.width;
                 let expected = bridging_flow(
                     0.7,
                     true,
                     NOZZLE_DIAMETER_MM,
-                    bead_flow_width_mm,
+                    bead_width_mm,
                     LAYER_HEIGHT_MM,
                 );
                 assert!(
@@ -162,7 +175,7 @@ fn bridge_vertices_get_round_section_factor_when_thick_bridges_on() {
                     pt.x,
                     pt.y,
                     expected,
-                    bead_flow_width_mm,
+                    bead_width_mm,
                     pt.flow_factor
                 );
             }

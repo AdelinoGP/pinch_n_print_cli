@@ -24,14 +24,19 @@ fn make_config(wall_count: u32, line_width_mm: f32) -> ConfigView {
 }
 
 /// 10mm square region (centered at origin, per `square_polygon`'s own
-/// center-based convention) with a 4mm x 4mm bridge area at the same center.
+/// center-based convention) with the bridge area centered on the region's
+/// (-, -) CORNER so it contains that corner's wall vertices (D-166: an
+/// origin-centered 4mm bridge square sits ~3mm from the nearest wall under
+/// the `max_bead_count = 2 * wall_count` clamp, so the flag comparison ran
+/// vacuously — every vertex outside, every flag false).
 fn make_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
+    let corner = -side_mm / 2.0;
     SliceRegionViewBuilder::new()
         .object_id("obj-1")
         .region_id(1)
         .z(z)
         .add_polygon(square_polygon(0.0, 0.0, side_mm))
-        .bridge_areas(vec![square_polygon(0.0, 0.0, bridge_side_mm)])
+        .bridge_areas(vec![square_polygon(corner, corner, bridge_side_mm)])
         .build()
 }
 
@@ -47,13 +52,14 @@ fn is_bridge_set_per_vertex_inside_bridge_area_outer_inner_only() {
         .run_perimeters(0, &regions, &paint, &mut output, &config)
         .unwrap();
 
-    let bridge_areas = vec![square_polygon(0.0, 0.0, 4.0)];
+    let bridge_areas = vec![square_polygon(-5.0, -5.0, 4.0)];
     assert!(
         !output.wall_loops().is_empty(),
         "expected at least one wall loop to be emitted"
     );
 
     let mut checked_any_outer_inner = false;
+    let mut found_inside_vertex = false;
     for wall in output.wall_loops() {
         for (j, flag) in wall.feature_flags.iter().enumerate() {
             let pt = &wall.path.points[j];
@@ -66,6 +72,7 @@ fn is_bridge_set_per_vertex_inside_bridge_area_outer_inner_only() {
             match wall.loop_type {
                 LoopType::Outer | LoopType::Inner => {
                     checked_any_outer_inner = true;
+                    found_inside_vertex |= inside;
                     assert_eq!(
                         flag.is_bridge,
                         inside,
@@ -96,5 +103,14 @@ fn is_bridge_set_per_vertex_inside_bridge_area_outer_inner_only() {
     assert!(
         checked_any_outer_inner,
         "expected at least one Outer or Inner wall loop to verify is_bridge against"
+    );
+    // Anti-vacuity (D-166): the flag-equals-containment comparison above is
+    // vacuously green when no vertex falls inside the bridge area — which is
+    // exactly how this test kept passing while its sibling
+    // bridge_flow_factor_tdd died on its own guard.
+    assert!(
+        found_inside_vertex,
+        "expected at least one wall vertex INSIDE the bridge area \
+         (fixture must produce bridge vertices, or the positive branch is never tested)"
     );
 }

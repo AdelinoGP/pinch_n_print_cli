@@ -83,10 +83,7 @@ impl std::error::Error for NegativeSpacingError {}
 /// Canonical's formula does not reference the nozzle; a former vestigial
 /// `nozzle_diameter` parameter was removed with D-162 so the signature cannot
 /// re-grow a nozzle clamp unnoticed.
-pub fn line_width_to_spacing(
-    width: f32,
-    layer_height: f32,
-) -> Result<f32, NegativeSpacingError> {
+pub fn line_width_to_spacing(width: f32, layer_height: f32) -> Result<f32, NegativeSpacingError> {
     let pi_minus_quarter = 1.0_f32 - core::f32::consts::PI / 4.0_f32;
     let spacing = width - layer_height * pi_minus_quarter;
     if spacing <= 0.0 {
