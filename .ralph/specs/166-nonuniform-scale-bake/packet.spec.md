@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 166-nonuniform-scale-bake
 task_ids:
   - TASK-272

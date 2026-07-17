@@ -43,17 +43,6 @@ pub enum ModelLoadError {
     ObjParse(String),
     /// 3MF parse error.
     ThreeMfParse(String),
-    /// NON_UNIFORM_SCALE_UNSUPPORTED â€” object transform has non-uniform scale
-    /// (scale_x â‰  scale_y or scale_y â‰  scale_z).  All three scale axes must be
-    /// equal; non-uniform scale is not supported by the slicer pipeline.
-    NonUniformScaleUnsupported {
-        /// Scale factor along X axis (magnitude of transform column 0 xyz).
-        scale_x: f64,
-        /// Scale factor along Y axis (magnitude of transform column 1 xyz).
-        scale_y: f64,
-        /// Scale factor along Z axis (magnitude of transform column 2 xyz).
-        scale_z: f64,
-    },
     /// WORLD_Z_BELOW_FLOOR â€” one or more object vertices map to a world-space Z
     /// below the print volume floor (0.0 mm).  Translate the object upward so
     /// its lowest point is at or above Z = 0.
@@ -89,10 +78,6 @@ impl fmt::Display for ModelLoadError {
             Self::StlParse(msg) => write!(f, "STL parse error: {msg}"),
             Self::ObjParse(msg) => write!(f, "OBJ parse error: {msg}"),
             Self::ThreeMfParse(msg) => write!(f, "3MF parse error: {msg}"),
-            Self::NonUniformScaleUnsupported { scale_x, scale_y, scale_z } => write!(
-                f,
-                "NON_UNIFORM_SCALE_UNSUPPORTED: scale ({scale_x:.6}, {scale_y:.6}, {scale_z:.6}) is non-uniform"
-            ),
             Self::WorldZBelowFloor { z_min } => write!(
                 f,
                 "WORLD_Z_BELOW_FLOOR: object world-space Z minimum {z_min} mm is below print floor 0.0 mm"
@@ -2636,39 +2621,6 @@ fn object_world_z_extent_from_mesh_and_transform(
 
 /// Validate that an [`ObjectMesh`] transform does not have non-uniform scale.
 ///
-/// Extracts the column-vector magnitudes (scale factors) from the upper-left 3Ã—3
-/// of the 4Ã—4 column-major transform matrix.  If any two scale axes differ by
-/// more than `1e-6`, returns [`ModelLoadError::NonUniformScaleUnsupported`].
-///
-/// A zero matrix is treated as identity (uniform scale 1.0) to stay consistent
-/// with the zero-matrix convention used in [`object_world_z_extent`].
-///
-/// # Errors
-///
-/// Returns `Err(NonUniformScaleUnsupported { â€¦ })` when the extracted scale
-/// factors are not all equal within tolerance.
-pub fn validate_non_uniform_scale(object: &ObjectMesh) -> Result<(), ModelLoadError> {
-    let m = &object.transform.matrix;
-    // Identity shortcut â€” all-zero matrix is treated as identity.
-    if m.iter().all(|v| *v == 0.0) {
-        return Ok(()); // identity â†’ uniform scale 1.0
-    }
-    // Column-major layout: column k starts at index k*4.
-    // Scale factor = Euclidean length of the 3-element (xyz) part of each column.
-    let scale_x = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
-    let scale_y = (m[4] * m[4] + m[5] * m[5] + m[6] * m[6]).sqrt();
-    let scale_z = (m[8] * m[8] + m[9] * m[9] + m[10] * m[10]).sqrt();
-    const TOLERANCE: f64 = 1e-6;
-    if (scale_x - scale_y).abs() > TOLERANCE || (scale_y - scale_z).abs() > TOLERANCE {
-        return Err(ModelLoadError::NonUniformScaleUnsupported {
-            scale_x,
-            scale_y,
-            scale_z,
-        });
-    }
-    Ok(())
-}
-
 /// Validate that the world-space Z minimum of an [`ObjectMesh`] is at or above
 /// the print volume floor (0.0 mm).
 ///

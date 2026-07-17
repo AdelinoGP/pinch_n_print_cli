@@ -21,7 +21,7 @@
 - Files explicitly out of bounds:
   - `crates/slicer-core/**`, `crates/slicer-runtime/**`, `crates/slicer-ir/**` (delegate only); `.claude/worktrees/**`
 - Expected sub-agent dispatches:
-  - Question: "Does any consumer of `ObjectMesh.transform` or mesh geometry extract a single scalar scale factor or assume uniform scale? Check `transform_point3` call sites at `crates/slicer-core/src/algos/prepass_slice.rs:100,153,554,771`, `mesh_analysis.rs:120`, `paint_segmentation/mod.rs:1012`, `paint_segmentation/painted_line_collection.rs:349`, plus a workspace grep for sqrt-over-transform-columns and single-scale identifiers"; scope: `crates/slicer-core/src`, `crates/slicer-runtime/src`, `crates/slicer-ir/src`; return: `LOCATIONS` (≤20) + closing `FACT`
+  - Question: "Does any consumer of `ObjectMesh.transform` or mesh geometry extract a single scalar scale factor or assume uniform scale? Check all `transform_point3` (defined in `crates/slicer-core/src/lib.rs`) call sites in `crates/slicer-core/src/algos/prepass_slice.rs`, `crates/slicer-core/src/algos/mesh_analysis.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, and `crates/slicer-core/src/algos/paint_segmentation/painted_line_collection.rs`, plus a workspace grep for sqrt-over-transform-columns and single-scale identifiers"; scope: `crates/slicer-core/src`, `crates/slicer-runtime/src`, `crates/slicer-ir/src`; return: `LOCATIONS` (≤20) + closing `FACT`
 - Context cost: `S`
 - Authoritative docs:
   - `docs/02_ir_schemas.md` — delegated LOCATIONS lookup of the `ObjectMesh`/`Transform3d` section only

@@ -2,8 +2,8 @@
 
 ## Controlling Code Paths
 
-- Primary code path: 3MF load → `parse_3mf_model_xml` builds objects → build-item transform picked up at `crates/slicer-model-io/src/loader.rs:1911` (`item.transform.unwrap_or_else(identity_3mf_transform)`) → component resolution applies `apply_transform_to_mesh` (loader.rs:517) and `apply_transform_to_paint_data` (loader.rs:520) with the composed transform → `ObjectMesh` constructed with `identity_transform()` (loader.rs:228).
-- Dead code being removed: `validate_non_uniform_scale` (loader.rs:2551-2567), `ModelLoadError::NonUniformScaleUnsupported` (loader.rs:49-56), its `Display` arm (loader.rs:81-84).
+- Primary code path: 3MF load → `parse_3mf_model_xml` builds objects → build-item transform picked up via `item.transform.unwrap_or_else(identity_3mf_transform)` in `crates/slicer-model-io/src/loader.rs` → component resolution applies `apply_transform_to_mesh` and `apply_transform_to_paint_data` with the composed transform → `ObjectMesh` constructed with `identity_transform()`.
+- Dead code being removed: `validate_non_uniform_scale` and its doc comment, `ModelLoadError::NonUniformScaleUnsupported` variant + doc comment, and its `Display` arm — all in `crates/slicer-model-io/src/loader.rs`.
 - Neighboring tests/fixtures: `crates/slicer-model-io/tests/model_loader_tdd.rs` builds in-memory 3MF zips via `zip::ZipWriter` writing `3D/3dmodel.model` XML (see its helper around lines 179-184) — the new `nonuniform_scale_bake_tdd.rs` copies this pattern with a `<item ... transform="...">` carrying per-axis scale. `tests/world_z_below_floor_tdd.rs` is the sibling-validator regression oracle. `tests/non_uniform_scale_tdd.rs` is deleted.
 - OrcaSlicer comparison: not applicable — no C++ port; Orca supports non-uniform scale natively, and this packet removes a PNP-only restriction.
 
@@ -12,13 +12,13 @@
 - The loader stores mm-space `f64`→`f32` vertex coordinates in `IndexedTriangleSet`; the new tests assert mm-space `Point3` floats and need no unit conversion.
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
-- `ObjectMesh.transform` remains identity after 3MF load (loader.rs:228 convention); downstream consumers apply the full 4×4 via `slicer_core::transform_point3` (`crates/slicer-core/src/lib.rs:67`), which is non-uniform-capable by construction. Do not change this contract.
+- `ObjectMesh.transform` remains identity after 3MF load (the `identity_transform()` convention at object assembly in `crates/slicer-model-io/src/loader.rs`); downstream consumers apply the full 4×4 via `slicer_core::transform_point3` (in `crates/slicer-core/src/lib.rs`), which is non-uniform-capable by construction. Do not change this contract.
 
 ## Code Change Surface
 
 - Selected approach: pure deletion of dead policy code plus positive proof tests. Grounding showed the validator has zero production call sites, so no call-site unwiring is needed — `cargo check --workspace --all-targets` is the safety net for any missed reference.
 - Exact changes:
-  - `crates/slicer-model-io/src/loader.rs`: remove the `NonUniformScaleUnsupported` variant + doc comment (around lines 46-56), its `Display` arm (around lines 81-84), and `validate_non_uniform_scale` + doc comment (around lines 2538-2567). Also remove any `#[cfg(test)]` unit tests inside loader.rs that reference the deleted symbols (grep before editing; the in-file test helper `make_object` at loader.rs:2825 may serve other tests — keep it if so).
+  - `crates/slicer-model-io/src/loader.rs`: remove the `NonUniformScaleUnsupported` variant + its doc comment, its `Display` arm, and `validate_non_uniform_scale` + its doc comment. Also remove any `#[cfg(test)]` unit tests inside `loader.rs` that reference the deleted symbols (grep before editing; the in-file test helper `make_object` may serve other tests — keep it if so).
   - Delete `crates/slicer-model-io/tests/non_uniform_scale_tdd.rs`.
   - `crates/slicer-model-io/Cargo.toml`: remove a `[[test]] name = "non_uniform_scale_tdd"` block only if present (verify first; test binaries may be auto-discovered).
   - New `crates/slicer-model-io/tests/nonuniform_scale_bake_tdd.rs`: three tests — `nonuniform_scale_bakes_vertices_per_axis` (scale (1,2,3) build-item transform; vertex (1,1,1) → (1,2,3) ± 1e-4; `ObjectMesh.transform` identity), `nonuniform_scale_bakes_paint_triangles` (same 3MF with a `paint_color` stroke; stroke triangle vertices scaled per-axis), `uniform_scale_baking_unchanged` (scale 2 uniform; vertex (1,1,1) → (2,2,2) ± 1e-4).
@@ -48,7 +48,7 @@
 
 ## Expected Sub-Agent Dispatches
 
-- Question: "Does any consumer of `ObjectMesh.transform` or mesh geometry extract a single scalar scale factor or otherwise assume uniform scale? Check `transform_point3` call sites in `crates/slicer-core/src/algos/prepass_slice.rs` (lines 100, 153, 554, 771), `mesh_analysis.rs:120`, `paint_segmentation/mod.rs:1012`, `paint_segmentation/painted_line_collection.rs:349`, plus a workspace grep for `sqrt` over transform columns and identifiers matching `scale(_factor)?[^_xyz]`"; scope: `crates/slicer-core/src`, `crates/slicer-runtime/src`, `crates/slicer-ir/src`; return: `LOCATIONS` (suspect sites) + closing `FACT` (clean / not clean); purpose: Step 1 audit.
+- Question: "Does any consumer of `ObjectMesh.transform` or mesh geometry extract a single scalar scale factor or otherwise assume uniform scale? Check all `transform_point3` (defined in `crates/slicer-core/src/lib.rs`) call sites in `crates/slicer-core/src/algos/prepass_slice.rs`, `crates/slicer-core/src/algos/mesh_analysis.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, and `crates/slicer-core/src/algos/paint_segmentation/painted_line_collection.rs`, plus a workspace grep for `sqrt` over transform columns and identifiers matching `scale(_factor)?[^_xyz]`"; scope: `crates/slicer-core/src`, `crates/slicer-runtime/src`, `crates/slicer-ir/src`; return: `LOCATIONS` (suspect sites) + closing `FACT` (clean / not clean); purpose: Step 1 audit.
 - Question: "Does `crates/slicer-model-io/Cargo.toml` declare a `[[test]]` block for `non_uniform_scale_tdd`?"; scope: `crates/slicer-model-io/Cargo.toml`; return: `FACT`; purpose: Step 2 cleanup.
 - All `cargo` invocations (check/clippy/test) dispatched with `FACT pass/fail` returns.
 

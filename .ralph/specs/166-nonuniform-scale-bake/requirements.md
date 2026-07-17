@@ -4,21 +4,21 @@
 
 - Grouped task IDs: `TASK-272`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `S`
 
 ## Problem Statement
 
-The OrcaSlicer-frontend fork (fork-gaps wave-1 plan, Packet C / item 6) needs non-uniformly-scaled objects to slice. The plan framed `validate_non_uniform_scale` (`crates/slicer-model-io/src/loader.rs:2551`) as a "deliberate policy rejection"; **grounding falsified this** — the function has zero production call sites (only its definition and `tests/non_uniform_scale_tdd.rs` reference it), so the rejection never fires on the live load path. The 3MF loader already fully bakes build-item and component transforms into vertices (`apply_transform_to_mesh`, loader.rs:457, invoked at loader.rs:517 during component resolution driven from the build-item transform at loader.rs:1911-1914) and into paint strokes (`apply_transform_to_paint_data`, loader.rs:463), then sets `ObjectMesh.transform` to identity (loader.rs:228). The remaining work is therefore: (1) delete the dead validator, its `NonUniformScaleUnsupported` error variant, its `Display` arm, and its TDD test file so the false "unsupported" signal cannot be resurrected; (2) prove per-axis baking with positive tests that do not exist today; (3) audit downstream consumers for hidden uniform-scale assumptions.
+The OrcaSlicer-frontend fork (fork-gaps wave-1 plan, Packet C / item 6) needs non-uniformly-scaled objects to slice. The plan framed `validate_non_uniform_scale` (defined in `crates/slicer-model-io/src/loader.rs`) as a "deliberate policy rejection"; **grounding falsified this** — the function has zero production call sites (only its definition and `tests/non_uniform_scale_tdd.rs` reference it), so the rejection never fires on the live load path. The 3MF loader already fully bakes build-item and component transforms into vertices via `apply_transform_to_mesh` (defined and invoked in `crates/slicer-model-io/src/loader.rs` during component resolution, driven from the build-item transform picked up near the top of the 3MF load path) and into paint strokes via `apply_transform_to_paint_data` (defined and invoked in the same file), then sets `ObjectMesh.transform` to identity at object assembly. The remaining work is therefore: (1) delete the dead validator, its `NonUniformScaleUnsupported` error variant, its `Display` arm, and its TDD test file so the false "unsupported" signal cannot be resurrected; (2) prove per-axis baking with positive tests that do not exist today; (3) audit downstream consumers for hidden uniform-scale assumptions.
 
 ## In Scope
 
-- Delete `validate_non_uniform_scale` (loader.rs:2551-2567 as grounded, including its doc comment starting near loader.rs:2538).
-- Delete the `ModelLoadError::NonUniformScaleUnsupported` variant (loader.rs:49-56) and its `Display` arm (loader.rs:81-84).
+- Delete `validate_non_uniform_scale` (defined in `crates/slicer-model-io/src/loader.rs`).
+- Delete the `ModelLoadError::NonUniformScaleUnsupported` variant and its `Display` arm in `crates/slicer-model-io/src/loader.rs`.
 - Delete `crates/slicer-model-io/tests/non_uniform_scale_tdd.rs` (it exists solely to exercise the deleted validator).
 - Remove the corresponding `[[test]]` entry from `crates/slicer-model-io/Cargo.toml` if one exists (verify; loader test binaries may be auto-discovered).
 - Add `crates/slicer-model-io/tests/nonuniform_scale_bake_tdd.rs` with the three tests named in AC-1/AC-2/AC-4 (non-uniform vertex baking, non-uniform paint-triangle baking, uniform-scale regression).
-- Downstream audit (read-only, delegated): confirm no consumer of `ObjectMesh.transform` or of mesh geometry extracts a single scalar scale factor or assumes uniform scale. Known consumers to check: `crates/slicer-core/src/algos/prepass_slice.rs` (`transform_point3` at lines 100, 153, 554, 771), `crates/slicer-core/src/algos/mesh_analysis.rs:120`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs:1012`, `crates/slicer-core/src/algos/paint_segmentation/painted_line_collection.rs:349`. Record the audit inventory in the packet's closure log.
+- Downstream audit (read-only, delegated): confirm no consumer of `ObjectMesh.transform` or of mesh geometry extracts a single scalar scale factor or assumes uniform scale. Known consumers to check: `transform_point3` (defined in `crates/slicer-core/src/lib.rs`) at all call sites in `crates/slicer-core/src/algos/prepass_slice.rs`, `crates/slicer-core/src/algos/mesh_analysis.rs`, `crates/slicer-core/src/algos/paint_segmentation/mod.rs`, and `crates/slicer-core/src/algos/paint_segmentation/painted_line_collection.rs`. Record the audit inventory in the packet's closure log.
 
 ## Out of Scope
 
