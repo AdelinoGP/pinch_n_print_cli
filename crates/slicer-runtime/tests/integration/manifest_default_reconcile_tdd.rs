@@ -175,15 +175,15 @@ use CodeFallback::*;
 /// Transcribed from `classic-perimeters/src/lib.rs` — `on_print_start` and
 /// the R2 per-invocation block at the top of `run_perimeters`.
 const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
-    ("wall_count", Int(3)),                    // on_print_start `_ => 3`
-    ("extra_perimeters", Int(0)),              // unwrap_or(0)
+    ("wall_count", Int(3)),       // on_print_start `_ => 3`
+    ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
-    ("line_width", Float(0.4)),                // legacy_line_width `_ => 0.4`
+    ("line_width", Float(0.4)), // legacy_line_width `_ => 0.4`
     // Derived: falls back to legacy_line_width (`line_width`), itself 0.4 —
     // the effective empty-config fallback is 0.4. THIS row is the one that
     // read a false 0.5 in the manifest until D-160's audit.
     ("outer_wall_line_width", Float(0.4)),
-    ("inner_wall_line_width", Float(0.4)),     // derived like outer; effective 0.4
+    ("inner_wall_line_width", Float(0.4)), // derived like outer; effective 0.4
     ("precise_outer_wall", Bool(false)),
     ("wall_sequence", Str("InnerOuter")),
     ("detect_thin_wall", Bool(true)),
@@ -192,15 +192,15 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("filter_out_gap_fill", Float(0.5)),
     ("gap_fill_medial_axis_on_painted", Bool(false)),
     ("slice_has_paint", Bool(false)),
-    ("outer_wall_speed", Float(30.0)),         // on_print_start `_ => 30.0`
-    ("inner_wall_speed", Float(45.0)),         // on_print_start `_ => 45.0`
+    ("outer_wall_speed", Float(30.0)), // on_print_start `_ => 30.0`
+    ("inner_wall_speed", Float(45.0)), // on_print_start `_ => 45.0`
     ("perimeter_arc_tolerance", Float(0.0125)),
     ("only_one_wall_top", Bool(false)),
     ("only_one_wall_first_layer", Bool(false)),
     ("smaller_perimeter_line_width", Float(0.25)),
     ("smaller_perimeter_threshold_mm", Float(0.8)),
     ("narrow_loop_length_threshold_mm", Float(10.0)),
-    ("detect_overhang_wall", Unread),          // declared; classic never reads it
+    ("detect_overhang_wall", Unread), // declared; classic never reads it
     ("overhang_reverse", Unread),
     ("overhang_reverse_internal_only", Unread),
     ("min_width_top_surface", Float(1.2)),
@@ -224,20 +224,20 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     // percent key resolved via get_abs_value against nozzle_diameter; code
     // fallback defaults.min_feature_size = 0.1mm = 25% of the 0.4mm nozzle.
     ("min_feature_size", Str("25%")),
-    ("min_bead_width", Float(4000.0)),         // units; defaults.min_bead_width 0.4mm
+    ("min_bead_width", Float(4000.0)), // units; defaults.min_bead_width 0.4mm
     ("wall_transition_filter_deviation", Float(1000.0)), // units; defaults.transition_filter_dist 0.1mm
     // percent; code fallback defaults.wall_transition_length = 0.4mm = 100% of nozzle.
     ("wall_transition_length", Str("100%")),
     // degrees in the manifest; the read maps .to_radians() and its fallback is
     // defaults.wall_transition_angle = 10deg-as-radians.
     ("wall_transition_angle", Float(10.0)),
-    ("wall_distribution_count", Int(1)),       // defaults.distribution_count
+    ("wall_distribution_count", Int(1)), // defaults.distribution_count
     ("min_length_factor", Float(0.5)),
     ("initial_layer_min_bead_width", Float(3400.0)), // units; defaults 0.34mm
-    ("outer_wall_offset", Float(0.0)),         // units; defaults 0.0
-    ("min_central_distance", Float(0.0)),      // units; defaults 0.0
-    ("visvalingam_area_threshold", Float(100.0)), // units; defaults 0.01mm
-    ("min_width", Float(4000.0)),              // units; defaults 0.4mm
+    ("outer_wall_offset", Float(0.0)),               // units; defaults 0.0
+    ("min_central_distance", Float(0.0)),            // units; defaults 0.0
+    ("visvalingam_area_threshold", Float(100.0)),    // units; defaults 0.01mm
+    ("min_width", Float(4000.0)),                    // units; defaults 0.4mm
     // 0 is the "auto: 2 * wall_count" sentinel; an absent key takes the same
     // branch, so 0 IS the code fallback.
     ("max_bead_count", Int(0)),
@@ -246,7 +246,7 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     // D-160 Bug A: bead_width_x, read in plain mm; fallback
     // defaults.optimal_width = 0.4mm.
     ("inner_wall_line_width", Float(0.4)),
-    ("detect_thin_wall", Bool(false)),         // defaults.print_thin_walls
+    ("detect_thin_wall", Bool(false)), // defaults.print_thin_walls
     // D-160 Bug A: bead_width_0, plain mm; fallback
     // defaults.preferred_bead_width_outer = 0.4mm.
     ("outer_wall_line_width", Float(0.4)),
@@ -257,7 +257,7 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("overhang_reverse", Bool(false)),
     ("overhang_reverse_internal_only", Bool(false)),
     ("overhang_reverse_threshold", Str("0.0")), // float_or_percent; unwrap_or(0.0)
-    ("extra_perimeters_on_overhangs", Unread), // declared; arachne never reads it
+    ("extra_perimeters_on_overhangs", Unread),  // declared; arachne never reads it
     // float_or_percent; code fallback is 0.0 = "filter disabled"
     // (get_abs_value(..).unwrap_or(0.0)). Upstream's default is 300%, but the
     // manifest states the CODE fallback because manifest defaults are never
@@ -306,7 +306,11 @@ fn assert_exhaustive_reconcile(module: &str, manifest: &str, table: &[(&str, Cod
         stale.is_empty(),
         "{module}: table rows whose manifest key no longer exists: {stale:?}"
     );
-    assert_eq!(table.len(), table_keys.len(), "{module}: duplicate table rows");
+    assert_eq!(
+        table.len(),
+        table_keys.len(),
+        "{module}: duplicate table rows"
+    );
 
     // Value equality per key.
     for (key, expected) in table {
