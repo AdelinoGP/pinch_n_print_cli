@@ -253,7 +253,9 @@ mod tests {
         // Regression: statuses are routinely bolded, and matching the raw cell
         // made every `**Closed …**` row report as OPEN. D-147-CHAIN-CLOSURE was
         // closed at 0/699 and still appeared in the generated open map.
-        assert!(!is_open("**Closed 2026-07-16 (Arachne Parity Recovery, Track C)**"));
+        assert!(!is_open(
+            "**Closed 2026-07-16 (Arachne Parity Recovery, Track C)**"
+        ));
         assert!(!is_open("`Closed` — 2026-07-16"));
         assert!(!is_open("  **closed** 2026 "));
         // Emphasis must not manufacture a closure that isn't there.
