@@ -265,6 +265,7 @@ For closed deviations and their closure detail, read the log directly.
 - **D-104f-CONCENTRIC-INFILL-NO-ARACHNE (packet 154 note)** (Open — unchanged; see original row above for full detail) — Re-surfaced (not caused, not fixed) by packet 154's test runs during the D-105D thin-strip investigation.
 - **D-157-REGION-ORDER-PORT** (Implementation complete through Steps 1-7; pending final packet acceptance ceremony. Do not close before all ACs pass and Step 9 review approves closure.) — Packet 156 implements the G12 region-order path using the current Orca references (WallToolPaths.cpp:832-889; finalized-extrusion walk PerimeterGenerator.cpp:2…
 - **DEV-085** (Open — 2026-07-17: 13 of 15 injection points unimplemented and previously untracked; docs/15's fictional macro list and wrong stage name corrected this pass) — Custom G-code injection points: 2 of OrcaSlicer's 15 are implemented, and the placeholder set is documented but absent.
+- **DEV-087** (Open — 2026-07-17: laundering is by design for placeholders; the proven defect is a vacuous contract test; the untraced question is whether a real module can reach `None` and be silently skipped) — MissingComponent is laundered into Ok(success), so a test can assert a full host↔guest round-trip while executing no WASM.
 <!-- END GENERATED: open-deviations -->
 
 
