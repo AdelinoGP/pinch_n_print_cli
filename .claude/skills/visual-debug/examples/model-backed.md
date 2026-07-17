@@ -1,9 +1,9 @@
 # Worked example — model-backed visual debug
 
-Scenario: a report says the arena/Blackboard test model's infill looks wrong
-starting around layer 40, and possibly earlier. We want to see the infill
-region right after `Layer::Infill` and again after `Layer::PathOptimization`
-to find where it changes.
+Scenario: a report says the regression wedge's infill looks wrong starting
+around layer 40, and possibly earlier. We want to see the infill region right
+after `Layer::Infill` and again after `Layer::PathOptimization` to find where
+it changes.
 
 ## 1. Author the request
 
@@ -13,7 +13,7 @@ to find where it changes.
   "source": {
     "kind": "model",
     "model": "resources/regression_wedge.stl",
-    "config": null,
+    "config": "resources/test_config/gate_evidence_50l.json",
     "module_dirs": ["modules/core-modules"]
   },
   "layers": [40],
@@ -27,6 +27,11 @@ The request struct is `deny_unknown_fields`: `schema_version` must be exactly
 `"1.0.0"`, the source is tagged `kind` (not `mode`), and the field is
 `visualizations` (not `views`). A misspelled key fails deserialization
 outright rather than being ignored.
+
+For a `model` source, both `config` and `module_dirs` are **required** and
+must be non-empty — `"config": null` is rejected with
+`missing required field: config`. A config is an ordinary settings-override
+JSON (`resources/test_config/` holds several).
 
 Save this as `visual-debug.json`. Model mode runs only the dependency closure
 required to satisfy these two taps for layer 40 — it does not re-run the
