@@ -61,6 +61,17 @@ pub enum ModelLoadError {
         /// The minimum world-space Z found on the object (negative).
         z_min: f32,
     },
+    /// DUPLICATE_INPUT_BASENAME — two distinct model inputs in one job share a
+    /// file name. Object ids are derived from the basename, so these inputs would
+    /// mint colliding ids. Rename or stage one of the files apart.
+    DuplicateInputBasename {
+        /// The shared file name (e.g. `cube.stl`).
+        basename: String,
+        /// Full path of the first input carrying this basename.
+        first: std::path::PathBuf,
+        /// Full path of the second, colliding input.
+        second: std::path::PathBuf,
+    },
     /// 3MF paint metadata is malformed or contains an unrecognized value.
     PaintMetadata {
         /// Human-readable reason for the failure.
@@ -85,6 +96,14 @@ impl fmt::Display for ModelLoadError {
             Self::WorldZBelowFloor { z_min } => write!(
                 f,
                 "WORLD_Z_BELOW_FLOOR: object world-space Z minimum {z_min} mm is below print floor 0.0 mm"
+            ),
+            Self::DuplicateInputBasename { basename, first, second } => write!(
+                f,
+                "DUPLICATE_INPUT_BASENAME: two inputs share the file name '{basename}' \
+                 ({} and {}). Object ids are derived from the file name, so these would \
+                 collide. Rename one input or stage them apart.",
+                first.display(),
+                second.display()
             ),
             Self::PaintMetadata { reason, byte_offset } => write!(
                 f,
@@ -122,16 +141,96 @@ pub fn detect_format(path: impl AsRef<Path>) -> Result<ModelFormat, ModelLoadErr
     }
 }
 
-/// Deterministic object ID: UUID v5 (SHA1) keyed on file path + per-file index.
-/// Same path and index always produce the same UUID across process runs.
+/// Deterministic object ID: UUID v5 (SHA1) keyed on the file's **basename** plus
+/// its per-file object index — e.g. `uuid5(NS_OID, "cube.stl#0")`.
+///
+/// # Why basename and not the full path
+///
+/// This id is not an internal detail: it is emitted into shipped G-code as the
+/// `; object_height:<id> = <mm>` config-dump comment. Keying on the absolute path
+/// made that byte machine-dependent — the same model sliced from
+/// `/home/a/cube.stl` and `/home/b/cube.stl` produced different G-code, and any
+/// committed golden/baseline only reproduced on the checkout that recorded it.
+/// The basename is stable across checkouts, across machines, and across a user
+/// moving the file, so ids (and therefore G-code) are reproducible.
+///
+/// # Collision
+///
+/// Two *different* files sharing a basename in one job would collide. That is
+/// rejected up front rather than silently merged — see
+/// [`check_basename_collisions`].
 fn path_object_id(path: &Path, index: usize) -> String {
     // NAMESPACE_OID (RFC 4122 Â§4.3) â€” stable, well-known UUID namespace.
     const NS: uuid::Uuid = uuid::Uuid::from_bytes([
         0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
         0xc8,
     ]);
-    let name = format!("{}#{}", path.to_string_lossy(), index);
+    // A path ending in `..`/`/` has no file name; fall back to the whole path so
+    // the id stays defined. Such a path cannot name a loadable model anyway —
+    // `detect_format` rejects it for want of an extension.
+    let base = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+    let name = format!("{base}#{index}");
     uuid::Uuid::new_v5(&NS, name.as_bytes()).to_string()
+}
+
+/// Reject a set of model inputs in which two *distinct* files share a basename.
+///
+/// Object ids are derived from the basename ([`path_object_id`]), so two inputs
+/// with the same basename would mint colliding ids and silently alias each other
+/// downstream (per-object config, height reporting, G-code object tags). Rather
+/// than collide silently, such a set is refused with both offending paths named.
+///
+/// Repeats of the *same* path are not a collision — they denote the same file and
+/// legitimately resolve to the same id.
+///
+/// # Not yet wired
+///
+/// **Nothing calls this today, and a collision cannot currently occur.** Every
+/// job ingests exactly one model path (`slice --model` and each `mesh` verb take
+/// a single `PathBuf`), and the several objects inside one 3MF share that path
+/// and are disambiguated by `index`. This is retained, tested, and ready for the
+/// first multi-input job — which MUST call it before deriving any id. Do not read
+/// its existence as proof that colliding basenames are rejected at load: they are
+/// not, because no load path invokes this.
+///
+/// # Errors
+///
+/// Returns [`ModelLoadError::DuplicateInputBasename`] naming both full paths.
+pub fn check_basename_collisions(paths: &[std::path::PathBuf]) -> Result<(), ModelLoadError> {
+    let mut seen: HashMap<std::ffi::OsString, &std::path::PathBuf> = HashMap::new();
+    for path in paths {
+        let Some(base) = path.file_name() else {
+            continue;
+        };
+        // Compare canonicalized paths where possible so `./a/cube.stl` and
+        // `a/cube.stl` are recognized as the same file, not a collision.
+        // Fall back to the literal path when canonicalization fails (file may
+        // not exist yet); a literal-equal path is still the same input.
+        let same_file = |a: &Path, b: &Path| -> bool {
+            if a == b {
+                return true;
+            }
+            match (a.canonicalize(), b.canonicalize()) {
+                (Ok(ca), Ok(cb)) => ca == cb,
+                _ => false,
+            }
+        };
+        if let Some(previous) = seen.get(base) {
+            if !same_file(previous, path) {
+                return Err(ModelLoadError::DuplicateInputBasename {
+                    basename: base.to_string_lossy().into_owned(),
+                    first: previous.to_path_buf(),
+                    second: path.clone(),
+                });
+            }
+        } else {
+            seen.insert(base.to_os_string(), path);
+        }
+    }
+    Ok(())
 }
 
 /// Load a model file and produce a [`MeshIR`].

@@ -74,7 +74,7 @@ pub struct MeshIR {
 }
 
 pub struct ObjectMesh {
-    pub id: ObjectId,                       // stable UUID string
+    pub id: ObjectId,                       // stable UUID string; see "ObjectId derivation" below
     pub mesh: IndexedTriangleSet,           // host-owned; serialized to WASM only for single-pass modules
                                                // (PaintSegmentation, SeamPlanning,
                                                // SupportGeometry); not serialized for multi-pass
@@ -103,6 +103,45 @@ pub struct PaintLayer {
 }
 
 ```
+
+### ObjectId derivation (reproducibility contract)
+
+`ObjectId` is minted **only** by `path_object_id` in
+`crates/slicer-model-io/src/loader.rs`, as:
+
+```text
+uuid5(NAMESPACE_OID, "<file basename>#<per-file object index>")
+```
+
+e.g. `uuid5(NS_OID, "cube.stl#0")`. STL and OBJ always yield index `0`; a 3MF
+yields one id per build item, indexed in document order.
+
+**The key is the basename, never the absolute path.** This is a hard requirement,
+not an implementation detail: the id is emitted into shipped G-code as the
+`; object_height:<id> = <mm>` config-dump comment, so keying on the absolute path
+made G-code **byte-different on every machine and every checkout location**, and
+committed goldens only reproduced on the checkout that recorded them. Basename
+keying makes ids — and therefore G-code — reproducible across machines, across
+checkouts, and across a user moving the model file.
+
+Consequences to respect when changing this:
+
+- **Renaming a model file changes its object ids.** That is intended and
+  documented; ids are a function of the name the user gave the file.
+- **Two *distinct* files sharing a basename in one job collide.** That is refused
+  at load, not silently merged — `slicer_model_io::check_basename_collisions`
+  returns `ModelLoadError::DuplicateInputBasename` naming both full paths. There
+  is no multi-input job today (`pnp_cli slice` takes exactly one `--model`), so
+  this guard currently has no production call site; wire it into whatever future
+  code collects several model inputs into one `MeshIR`.
+- **Nothing persists an `ObjectId` across runs.** No cache, database, or sidecar
+  is keyed on it, so the derivation can be changed without invalidating on-disk
+  artifacts. `write_3mf` / `write_obj` embed it only as a cosmetic display name
+  and never read it back — `load_model` always re-derives.
+
+Regression coverage: `object_id_is_identical_across_different_absolute_directories`
+and `object_id_is_the_documented_basename_uuid5` in
+`crates/slicer-model-io/tests/model_loader_tdd.rs`.
 
 ### Shared geometry types
 

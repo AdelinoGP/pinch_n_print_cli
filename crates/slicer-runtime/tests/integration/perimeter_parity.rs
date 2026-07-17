@@ -1788,14 +1788,6 @@ fn run_and_check_arachne_fixture(dir: &Path, mesh_filename: &str) -> Vec<Perimet
         match compare_perimeter_ir(a, e) {
             PerimeterCompareResult::Match => {}
             PerimeterCompareResult::Mismatch(m) => {
-                // `object_id` is derived from a per-run mesh-load UUID and is
-                // therefore not stable across test invocations for fixtures
-                // that copy an external mesh file into the fixture directory
-                // (cube_4color_arachne). Treat only `object_id` as a soft
-                // mismatch for such fixtures; anything else is a hard failure.
-                if m.field.ends_with(".object_id") {
-                    continue;
-                }
                 panic!("{}: baseline comparison failed: {m}", dir.display())
             }
         }

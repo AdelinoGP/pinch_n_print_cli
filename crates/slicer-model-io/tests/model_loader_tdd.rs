@@ -1167,3 +1167,173 @@ fn threemf_no_paint_channels_no_strokes() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Object-id reproducibility (regression, packet: basename-keyed object ids)
+// ---------------------------------------------------------------------------
+
+/// REGRESSION: object ids must be identical for the same model file loaded from
+/// two DIFFERENT absolute directories.
+///
+/// Root cause this guards: `path_object_id` used to hash the **absolute path**
+/// (`uuid5(NS_OID, "/abs/dir/cube.stl#0")`), so the id — and therefore the
+/// `; object_height:<id> = <mm>` line emitted into shipped G-code — differed on
+/// every machine and every checkout location. Committed goldens/baselines only
+/// reproduced on the checkout that recorded them. The fix keys the id on the
+/// **basename** (`uuid5(NS_OID, "cube.stl#0")`).
+///
+/// Against the old implementation this test FAILS: the two directories are
+/// distinct absolute paths, so the ids differ.
+#[test]
+fn object_id_is_identical_across_different_absolute_directories() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let dir_a = root.path().join("checkout_a/nested/deeper");
+    let dir_b = root.path().join("totally_different_b");
+    std::fs::create_dir_all(&dir_a).expect("create dir a");
+    std::fs::create_dir_all(&dir_b).expect("create dir b");
+
+    // Byte-identical model file, same basename, two different absolute dirs.
+    let mut stl_bytes = Vec::new();
+    write_binary_stl_cube(&mut stl_bytes);
+    let path_a = dir_a.join("cube.stl");
+    let path_b = dir_b.join("cube.stl");
+    std::fs::write(&path_a, &stl_bytes).expect("write a");
+    std::fs::write(&path_b, &stl_bytes).expect("write b");
+
+    assert_ne!(
+        path_a.parent(),
+        path_b.parent(),
+        "test precondition: the two files must live in different absolute directories"
+    );
+
+    let mesh_a = load_model(&path_a).expect("load from dir a");
+    let mesh_b = load_model(&path_b).expect("load from dir b");
+
+    let ids_a: Vec<&str> = mesh_a.objects.iter().map(|o| o.id.as_str()).collect();
+    let ids_b: Vec<&str> = mesh_b.objects.iter().map(|o| o.id.as_str()).collect();
+
+    assert!(!ids_a.is_empty(), "fixture must yield at least one object");
+    assert_eq!(
+        ids_a,
+        ids_b,
+        "object ids must not depend on the absolute directory the model is loaded from \
+         (they are emitted into shipped G-code as `; object_height:<id>`, so a \
+         path-dependent id makes G-code irreproducible across machines).\n  \
+         from {}: {ids_a:?}\n  from {}: {ids_b:?}",
+        path_a.display(),
+        path_b.display()
+    );
+}
+
+/// The id is pinned to the exact basename+index derivation, so an accidental
+/// change of the naming scheme (which would silently invalidate every committed
+/// golden and every previously emitted G-code file) fails loudly here.
+#[test]
+fn object_id_is_the_documented_basename_uuid5() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut stl_bytes = Vec::new();
+    write_binary_stl_cube(&mut stl_bytes);
+    let path = dir.path().join("cube.stl");
+    std::fs::write(&path, &stl_bytes).expect("write");
+
+    // uuid5(NAMESPACE_OID, "cube.stl#0") — computed from the documented rule.
+    const NS_OID: uuid::Uuid = uuid::Uuid::from_bytes([
+        0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
+        0xc8,
+    ]);
+    let expected = uuid::Uuid::new_v5(&NS_OID, b"cube.stl#0").to_string();
+
+    let mesh = load_model(&path).expect("load");
+    assert_eq!(
+        mesh.objects[0].id, expected,
+        "object id must be uuid5(NAMESPACE_OID, \"<basename>#<index>\")"
+    );
+}
+
+/// Renaming the file DOES change the id — basename is the key, so this is the
+/// intended, documented behaviour rather than an accident.
+#[test]
+fn object_id_differs_for_different_basenames() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut stl_bytes = Vec::new();
+    write_binary_stl_cube(&mut stl_bytes);
+    let cube = dir.path().join("cube.stl");
+    let widget = dir.path().join("widget.stl");
+    std::fs::write(&cube, &stl_bytes).expect("write cube");
+    std::fs::write(&widget, &stl_bytes).expect("write widget");
+
+    let id_cube = load_model(&cube).expect("load cube").objects[0].id.clone();
+    let id_widget = load_model(&widget).expect("load widget").objects[0]
+        .id
+        .clone();
+    assert_ne!(
+        id_cube, id_widget,
+        "distinct basenames must mint distinct object ids"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Basename-collision detection
+// ---------------------------------------------------------------------------
+
+/// Two DIFFERENT files sharing a basename in one job is a hard error naming both
+/// full paths — ids are basename-derived, so silently colliding them would alias
+/// two distinct objects onto one id.
+#[test]
+fn two_inputs_sharing_a_basename_are_a_hard_error() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let dir_a = root.path().join("a");
+    let dir_b = root.path().join("b");
+    std::fs::create_dir_all(&dir_a).expect("create a");
+    std::fs::create_dir_all(&dir_b).expect("create b");
+    let path_a = dir_a.join("cube.stl");
+    let path_b = dir_b.join("cube.stl");
+    std::fs::write(&path_a, b"different contents a").expect("write a");
+    std::fs::write(&path_b, b"different contents b").expect("write b");
+
+    let err = slicer_model_io::check_basename_collisions(&[path_a.clone(), path_b.clone()])
+        .expect_err("two distinct files sharing a basename must be rejected");
+
+    match &err {
+        ModelLoadError::DuplicateInputBasename {
+            basename,
+            first,
+            second,
+        } => {
+            assert_eq!(basename, "cube.stl");
+            assert_eq!(first, &path_a);
+            assert_eq!(second, &path_b);
+        }
+        other => panic!("expected DuplicateInputBasename, got {other:?}"),
+    }
+
+    // The message must name BOTH full paths so the user can act on it.
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&path_a.display().to_string()) && msg.contains(&path_b.display().to_string()),
+        "error message must name both full paths; got: {msg}"
+    );
+}
+
+/// Distinct basenames in one job are accepted.
+#[test]
+fn distinct_basenames_are_accepted() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let a = root.path().join("cube.stl");
+    let b = root.path().join("widget.stl");
+    std::fs::write(&a, b"a").expect("write a");
+    std::fs::write(&b, b"b").expect("write b");
+    slicer_model_io::check_basename_collisions(&[a, b])
+        .expect("distinct basenames must be accepted");
+}
+
+/// The SAME file listed twice is not a collision — it denotes one input and
+/// legitimately resolves to one id.
+#[test]
+fn same_path_repeated_is_not_a_collision() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let a = root.path().join("cube.stl");
+    std::fs::write(&a, b"a").expect("write a");
+    slicer_model_io::check_basename_collisions(&[a.clone(), a])
+        .expect("the same path repeated must not be reported as a collision");
+}
