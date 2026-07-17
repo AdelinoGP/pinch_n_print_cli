@@ -132,6 +132,17 @@ This applies to spec packets (`.ralph/specs/**`), ADRs, `docs/`, and code commen
 
 If you write a line number, re-verify it against disk at the moment you write it, and make sure the surrounding prose names the symbol so the citation survives the pin going stale. When verifying someone else's citation, check that the path resolves *before* checking the line — a green line-check on a non-existent file is not possible, so if your sweep passed, confirm it was actually reading the file you think it was.
 
+## Ledger Facts Must Be Re-derived, Not Quoted (MUST follow)
+
+Distinguish two kinds of fact, because they rot differently:
+
+- **Code facts** — a symbol's name, a function's shape, what a branch does. Verified once against the tree, they hold. Cite them freely.
+- **Ledger facts** — the highest `DEV-###`, the next free packet number, a file's line count, a commit SHA, "N open deviations", "the active packet is X". These are **mutable shared state**, and they change *while you work* — often because you, a parallel agent, or a rebase changed them.
+
+**Never freeze a ledger fact into an artifact that outlives the moment you read it.** Re-derive it at the point of use. Concretely: don't tell an agent "DEV-086 is free" — tell it to run `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1` and take the next one. Don't write "(362 lines)"; write "long; ranged reads only". Don't pin a SHA you might amend.
+
+**Why:** every stale-fact failure in the ADR-0045 queue was a ledger fact, never a code fact. A coordinator said "DEV-086 is free", filed DEV-087 itself, and the packet it briefed duplicated a committed row. An ADR cited as "~227 lines" was 314 by the time it was read. A packet's "362 lines" rotted three times in ten minutes. A cited SHA was orphaned by an `--amend` minutes later. In each case the fact was *true when written* and false when used — which is exactly the failure a careful reader cannot catch, because nothing looks wrong.
+
 ## OrcaSlicer Attribution Rules
 
 Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures AGPLv3 compliance and proper attribution.
