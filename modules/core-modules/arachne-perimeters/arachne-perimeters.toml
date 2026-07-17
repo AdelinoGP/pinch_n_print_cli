@@ -315,11 +315,11 @@ group   = "Walls"
 
 [config.schema.min_width_top_surface]
 type        = "float_or_percent"
-default     = "300%"
+default     = "0.0"
 min         = 0.0
 unit        = "%"
 display     = "Minimum top surface width"
-description = "OrcaSlicer coFloatOrPercent key min_width_top_surface, default 300% of inner wall line width (PrintConfig.cpp:1498-1511). Retyped to float_or_percent (packet 150, D-104h parity fix); base-value resolution against inner_wall_line_width is wired in a later packet-150 step. Not yet consumed by run_perimeters in this packet."
+description = "OrcaSlicer coFloatOrPercent key min_width_top_surface (upstream default 300% of inner wall line width). PnP's code fallback when the key is absent is 0.0 (filter disabled) — the manifest default states the code fallback per the reconcile guard, because manifest defaults are never injected into the runtime ConfigView. Resolved via get_abs_value against the perimeter width when present."
 group       = "Walls"
 
 [config.schema.alternate_extra_wall]
@@ -386,22 +386,22 @@ group       = "Walls"
 
   [config.schema.wall_maximum_resolution]
   type        = "float"
-  default     = 0.5
+  default     = 0.05
   min         = 0.001
   max         = 10.0
   unit        = "mm"
   display     = "Wall maximum resolution"
-  description = "OrcaSlicer coFloat key wall_maximum_resolution; minimum line segment length squared (mm²) used by Arachne's wall simplification. Replaces meshfix_maximum_resolution for the wall path (Orca WallToolPaths.cpp:487-503,702-719). Default 0.5 mm (Orca default)."
+  description = "Minimum line segment length (mm; squared internally) used by Arachne's wall simplification, replacing meshfix_maximum_resolution for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.05mm (ArachneParams::default's smallest_line_segment_squared = 0.0025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.5 here was a 10x lie against the code fallback (see D-160's reconcile follow-up)."
   group       = "Walls"
 
   [config.schema.wall_maximum_deviation]
   type        = "float"
-  default     = 0.025
+  default     = 0.005
   min         = 0.0001
   max         = 1.0
   unit        = "mm"
   display     = "Wall maximum deviation"
-  description = "OrcaSlicer coFloat key wall_maximum_deviation; allowed positional error (mm², squared) for Arachne's wall simplification. Replaces meshfix_maximum_deviation for the wall path (Orca WallToolPaths.cpp:487-503,702-719). Default 0.025 mm (Orca default)."
+  description = "Allowed positional error (mm; squared internally) for Arachne's wall simplification, replacing meshfix_maximum_deviation for the wall path (canonical `WallToolPaths::simplifyToolPaths`). Code fallback is 0.005mm (ArachneParams::default's allowed_error_distance_squared = 0.000025 mm²); the manifest default states the code fallback per the reconcile guard. The previous 0.025 here was a 5x lie against the code fallback (see D-160's reconcile follow-up)."
   group       = "Walls"
 
 [config.overridable-per-region]
