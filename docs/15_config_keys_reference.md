@@ -588,9 +588,10 @@ Keys registered on both `classic-perimeters` and `arachne-perimeters`, consumed 
 
 ## Wall count, winding, and simplification tolerances (packet 151)
 
-Six keys registered on `arachne-perimeters` closing G1/G2/G7/G8/G9 of the
-Arachne parity audit (`docs/18_arachne_parity_audit.md`). Defaults and
-source-of-truth live in `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
+Six keys registered on `arachne-perimeters` closing Arachne parity gaps
+G1/G2/G7/G8/G9 (packet `.ralph/specs/151-arachne-winding-wallcount-dispatch/`).
+Defaults and source-of-truth live in
+`modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
 
 | Key | Type | Default | Range / values | Description |
 |---|---|---|---|---|

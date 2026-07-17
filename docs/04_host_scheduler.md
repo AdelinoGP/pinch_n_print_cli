@@ -473,7 +473,8 @@ Selection rules, in order:
    variable-width beading pipeline is not designed to emit, so upstream always
    falls back to the classic perimeter generator in vase mode. The fallback
    lives in the scheduler/runtime selection path, not in either perimeter
-   module (see G8 in `docs/18_arachne_parity_audit.md`).
+   module (gap G8, closed by packet
+   `.ralph/specs/151-arachne-winding-wallcount-dispatch/`).
 
 Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):

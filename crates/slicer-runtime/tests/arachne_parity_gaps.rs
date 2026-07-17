@@ -25,7 +25,8 @@
 //! - **GAP_PIPELINE** — absent from the PnP pipeline as a whole.
 //!
 //! Canonical OrcaSlicer reference tree: `OrcaSlicerDocumented/src/libslic3r/`.
-//! Full gap inventory: `docs/18_arachne_parity_audit.md`.
+//! Full gap inventory: `docs/DEVIATION_LOG.md` (authoritative; the open Arachne
+//! rows are the `D-104*` / `D-105*` / `D-112*` families).
 //!
 //! Coordinate convention (`docs/08_coordinate_system.md`): 1 unit = 100 nm =
 //! 10⁻⁴ mm; OrcaSlicer scaled constants are divided by 100 when ported. All
