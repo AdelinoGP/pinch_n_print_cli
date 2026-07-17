@@ -20,10 +20,10 @@
 //! spacing = width - layer_height * (1.0 - PI / 4.0)
 //! ```
 //!
-//! (OrcaSlicer `libslic3r/Flow.cpp` — `Flow::new_from_width_height`.)
-//! For `width >= nozzle_diameter`, the spacing is clamped to the width itself
-//! (the bead sits on top of itself rather than overlapping). For the common
-//! case `width == nozzle_diameter == 0.4 mm` and `layer_height == 0.2 mm`,
+//! (OrcaSlicer `libslic3r/Flow.cpp` — `Flow::rounded_rectangle_extrusion_spacing`.)
+//! The formula is unconditional: there is no nozzle-diameter clamp and no
+//! width-versus-layer-height guard. For the common case
+//! `width == nozzle_diameter == 0.4 mm` and `layer_height == 0.2 mm`,
 //! the formula yields:
 //!
 //! ```text
@@ -46,18 +46,41 @@
 ///
 /// Edge cases:
 /// - `width <= 0`, `layer_height <= 0`, `nozzle_diameter <= 0` → returns `0.0`.
-/// - `width < layer_height` → returns `0.0` (the formula would yield a negative number).
-/// - `width >= nozzle_diameter` → returns `width` (bead is wider than nozzle; spacing == width).
+/// - `width <= layer_height * (1 - π/4)` → returns `0.0`. This is the ONLY
+///   degenerate case: it is exactly when the formula's result is non-positive,
+///   matching canonical `Flow::rounded_rectangle_extrusion_spacing`, which
+///   computes `out = width - height * (1 - π/4)` and throws
+///   `FlowErrorNegativeSpacing` iff `out <= 0`. PnP returns `0.0` where
+///   canonical throws (callers treat `0.0` as "no usable spacing"); that
+///   leniency is the only intended divergence here.
+///
+/// `nozzle_diameter` participates only in the `<= 0` sanity check — canonical's
+/// spacing formula does not reference the nozzle at all. It is retained in the
+/// signature for call-site symmetry with the rest of the flow math.
+///
+/// Two fabricated behaviours were removed here; neither exists in canonical:
+///
+/// - A `width < layer_height → 0.0` guard, justified in a doc comment as "the
+///   formula would yield a negative number". That justification was false. The
+///   formula only goes non-positive below `layer_height * (1 - π/4)` ≈
+///   `0.2146 * layer_height` — a threshold ~4.7x smaller. At `width = 0.4`,
+///   `layer_height = 1.0` the true spacing is `0.1854`, but the guard returned
+///   `0.0`, and `arachne_params_from_config`'s "spacing <= 0 → fall back to raw
+///   width" branch then fed the beading strategy a *width* where it expects a
+///   *spacing* — silently, on any config whose line width is under its layer
+///   height.
+/// - A documented `width >= nozzle_diameter → returns width` clamp that the
+///   body never implemented, that this module's own unit test contradicted, and
+///   that contradicts the formula stated at the top of this file. Canonical has
+///   no such clamp.
 pub fn line_width_to_spacing(width: f32, layer_height: f32, nozzle_diameter: f32) -> f32 {
     if width <= 0.0 || layer_height <= 0.0 || nozzle_diameter <= 0.0 {
         return 0.0;
     }
-    if width < layer_height {
-        return 0.0;
-    }
     let pi_minus_quarter = 1.0_f32 - core::f32::consts::PI / 4.0_f32;
     let spacing = width - layer_height * pi_minus_quarter;
-    if spacing < 0.0 {
+    // Canonical throws here; we return 0.0 and let callers decide.
+    if spacing <= 0.0 {
         0.0
     } else {
         spacing
@@ -146,8 +169,39 @@ mod tests {
     }
 
     #[test]
-    fn width_below_layer_returns_zero() {
-        assert_eq!(line_width_to_spacing(0.1, 0.2, 0.4), 0.0);
+    fn width_below_layer_height_still_has_positive_spacing() {
+        // Regression: a fabricated `width < layer_height -> 0.0` guard used to
+        // fire here, documented as "the formula would yield a negative number".
+        // It does not. Canonical `rounded_rectangle_extrusion_spacing` rejects
+        // only when `width - height * (1 - pi/4) <= 0`, which for height=0.2 is
+        // width <= 0.0429 — not width < 0.2. The old test asserted the guard.
+        //
+        // 0.1 - 0.2 * (1 - pi/4) = 0.1 - 0.0429 = 0.0571, comfortably positive.
+        let s = line_width_to_spacing(0.1, 0.2, 0.4);
+        assert!(
+            (s - 0.0571).abs() < 1e-3,
+            "width 0.1 < layer_height 0.2 must still yield the formula's 0.0571, got {s}"
+        );
+
+        // The case the guard actually broke in production: narrow_strip_widening
+        // runs layer_height 1.0mm, so every 0.4mm wall tripped it and the
+        // beading strategy was handed a raw WIDTH where it expects a SPACING.
+        let s = line_width_to_spacing(0.4, 1.0, 0.4);
+        assert!(
+            (s - 0.1854).abs() < 1e-3,
+            "0.4mm width at 1.0mm layer height must yield spacing 0.1854, got {s}"
+        );
+    }
+
+    #[test]
+    fn spacing_is_zero_only_at_canonicals_actual_threshold() {
+        // Canonical throws iff `width - height * (1 - pi/4) <= 0`. For
+        // height = 0.2 that boundary is width = 0.0429, and PnP returns 0.0
+        // there rather than throwing.
+        let boundary = 0.2 * (1.0 - core::f32::consts::PI / 4.0);
+        assert_eq!(line_width_to_spacing(boundary, 0.2, 0.4), 0.0);
+        assert_eq!(line_width_to_spacing(boundary * 0.5, 0.2, 0.4), 0.0);
+        assert!(line_width_to_spacing(boundary * 1.5, 0.2, 0.4) > 0.0);
     }
 
     #[test]

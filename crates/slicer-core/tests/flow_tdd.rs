@@ -28,10 +28,27 @@ fn wider_bead_spacing_is_larger_than_canonical() {
     assert!(s > s_canonical, "wider bead must produce wider spacing");
 }
 
-/// `width < layer_height` → returns 0.0 (the formula would go negative).
+/// `width < layer_height` is NOT degenerate — the formula stays positive well
+/// below it. Canonical `Flow::rounded_rectangle_extrusion_spacing` rejects only
+/// `width - height * (1 - PI/4) <= 0`; for height 0.2 that is width <= 0.0429,
+/// not width < 0.2.
+///
+/// This test previously asserted `line_width_to_spacing(0.1, 0.2, 0.4) == 0.0`,
+/// pinning a fabricated guard whose doc claimed "the formula would go negative".
+/// It does not: 0.1 - 0.0429 = 0.0571.
 #[test]
-fn width_below_layer_height_returns_zero() {
-    assert_eq!(line_width_to_spacing(0.1, 0.2, 0.4), 0.0);
+fn width_below_layer_height_still_has_positive_spacing() {
+    let s = line_width_to_spacing(0.1, 0.2, 0.4);
+    assert!((s - 0.0571).abs() < 1e-3, "expected 0.0571, got {s}");
+}
+
+/// Spacing collapses to 0.0 only at canonical's real threshold,
+/// `width <= layer_height * (1 - PI/4)` (where canonical throws instead).
+#[test]
+fn spacing_is_zero_only_at_the_canonical_threshold() {
+    let boundary = 0.2 * (1.0 - std::f32::consts::PI / 4.0);
+    assert_eq!(line_width_to_spacing(boundary, 0.2, 0.4), 0.0);
+    assert!(line_width_to_spacing(boundary * 1.5, 0.2, 0.4) > 0.0);
 }
 
 /// Zero or negative inputs → returns 0.0.

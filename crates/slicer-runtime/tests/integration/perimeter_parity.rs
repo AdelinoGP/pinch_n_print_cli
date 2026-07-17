@@ -1917,20 +1917,38 @@ fn narrow_strip_widening_mesh() -> Vec<Tri> {
     solid_box([0.0, -0.125, 0.0], [10.0, 0.125, 3.0])
 }
 
+/// Moved 1.0mm -> 0.2mm, joining the 9 siblings `5e1f19ab` had already moved.
+///
+/// That commit deliberately held this fixture at 1.0mm as "the only fixture
+/// covering the degenerate regime, where `line_width_to_spacing` returns 0 and
+/// the raw-width fallback reproduces the pre-spacing 0.4mm bead verbatim". That
+/// regime was an artifact of a non-canonical `width < layer_height -> 0.0`
+/// guard, now removed: canonical `Flow::rounded_rectangle_extrusion_spacing`
+/// only rejects `width - height * (1 - PI/4) <= 0`, so 0.4mm at 1.0mm yields a
+/// perfectly ordinary spacing of 0.1854mm. This config therefore no longer
+/// exercises the degenerate regime — it stopped being degenerate the moment the
+/// guard went — and at 1.0mm it is not physically printable through a 0.4mm
+/// nozzle either, so it covered nothing a real slice can reach.
+///
+/// At 0.2mm the fixture tests what its name says: a thin strip rescued by the
+/// Widening strategy, in the regime users actually print in.
 fn narrow_strip_widening_config() -> serde_json::Value {
     serde_json::json!({
-        "layer_height": 1.0,
-        "first_layer_height": 1.0,
+        "layer_height": 0.2,
+        "first_layer_height": 0.2,
         "detect_thin_wall": true,
         "wall_generator": "arachne"
     })
 }
 
 // Golden regenerated (packet 150 session): `loop_type` GapFill -> ThinWall.
-// NOTE the true cause is NOT packet 150's D-105 flow-spacing: this config is
-// degenerate (default optimal_width 0.4mm <= layer_height 1.0mm), so
-// `line_width_to_spacing` returns 0 and the raw-width fallback reproduces the
-// pre-spacing 0.4mm bead exactly — widths are unchanged (0.34/0.4mm). The flip
+// NOTE the true cause is NOT packet 150's D-105 flow-spacing. At the time this
+// note was written the config was degenerate (optimal_width 0.4mm <=
+// layer_height 1.0mm), so `line_width_to_spacing` returned 0 and the raw-width
+// fallback reproduced the pre-spacing 0.4mm bead exactly, leaving widths
+// unchanged (0.34/0.4mm). That degeneracy was an artifact of a non-canonical
+// guard (see `narrow_strip_widening_config`); the fixture now runs at 0.2mm and
+// widths follow the ordinary spacing path. The flip
 // is the correct arachne classification of the single widened center-line bead
 // (`WideningBeadingStrategy`, is_odd + inset_idx 0 + detect_thin_wall) as
 // ThinWall, introduced by packet 148's `classify_line` refinement; the old
