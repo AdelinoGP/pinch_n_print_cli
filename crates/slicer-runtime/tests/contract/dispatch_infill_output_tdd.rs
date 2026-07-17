@@ -49,7 +49,7 @@ fn make_prepass_bundle(stage_id: &str) -> TestModuleBundle {
             patch: 0,
         },
         stage_id,
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {
@@ -104,7 +104,7 @@ fn make_finalization_bundle(stage_id: &str) -> TestModuleBundle {
             patch: 0,
         },
         stage_id,
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {
@@ -159,7 +159,7 @@ fn make_postpass_bundle(stage_id: &str) -> TestModuleBundle {
             patch: 0,
         },
         stage_id,
-        "slicer:world-postpass@1.0.0",
+        slicer_schema::WORLD_POSTPASS,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {

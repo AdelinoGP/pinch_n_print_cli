@@ -35,7 +35,7 @@ fn perimeter_module(id: &str) -> LoadedModule {
         id,
         semver(0, 1, 0),
         PERIMETER_STAGE,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("/tmp/placeholder.wasm"),
     )
     .claims(vec![PERIMETER_GENERATOR_CLAIM.to_string()])

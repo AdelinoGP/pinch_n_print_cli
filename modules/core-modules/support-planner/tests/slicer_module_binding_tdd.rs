@@ -9,7 +9,7 @@ use support_planner::SupportPlanner;
 fn binding_surface_matches_manifest() {
     assert_eq!(
         SupportPlanner::__slicer_world_id(),
-        "slicer:world-prepass@1.0.0"
+        slicer_schema::WORLD_PREPASS
     );
     assert_eq!(SupportPlanner::__slicer_trait_name(), "PrepassModule");
     assert_eq!(

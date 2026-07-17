@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
     path: "../../../slicer-schema/wit",
-    world: "slicer:world-finalization/finalization-module@1.0.0",
+    world: "slicer:world-finalization/finalization-module",
     generate_all,
 });
 

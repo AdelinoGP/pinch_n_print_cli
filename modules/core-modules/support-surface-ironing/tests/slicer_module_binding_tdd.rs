@@ -9,7 +9,7 @@ use support_surface_ironing::SupportSurfaceIroning;
 fn binding_surface_matches_manifest() {
     assert_eq!(
         SupportSurfaceIroning::__slicer_world_id(),
-        "slicer:world-layer@1.0.0"
+        slicer_schema::WORLD_LAYER
     );
     assert_eq!(SupportSurfaceIroning::__slicer_trait_name(), "LayerModule");
     assert_eq!(

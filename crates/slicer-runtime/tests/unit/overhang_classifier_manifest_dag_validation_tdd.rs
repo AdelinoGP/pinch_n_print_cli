@@ -220,7 +220,7 @@ fn defect_class_is_structurally_invisible_to_unfulfilled_reads_pass() {
         PATH_OPT_ID.to_string(),
         semver(0, 1, 0),
         "Layer::PathOptimization".to_string(),
-        "slicer:world-layer@1.0.0".to_string(),
+        slicer_schema::WORLD_LAYER.to_string(),
         PathBuf::from("fixtures/path-opt.wasm"),
     )
     .ir_reads(vec![])
@@ -235,7 +235,7 @@ fn defect_class_is_structurally_invisible_to_unfulfilled_reads_pass() {
         CLASSIFIER_ID.to_string(),
         semver(0, 1, 0),
         "PostPass::LayerFinalization".to_string(),
-        "slicer:world-finalization@1.0.0".to_string(),
+        slicer_schema::WORLD_FINALIZATION.to_string(),
         PathBuf::from("fixtures/overhang-classifier.wasm"),
     )
     // The defect: dotted-only, base "LayerCollectionIR" read dropped.
@@ -251,7 +251,7 @@ fn defect_class_is_structurally_invisible_to_unfulfilled_reads_pass() {
         CLASSIFIER_ID.to_string(),
         semver(0, 1, 0),
         "PostPass::LayerFinalization".to_string(),
-        "slicer:world-finalization@1.0.0".to_string(),
+        slicer_schema::WORLD_FINALIZATION.to_string(),
         PathBuf::from("fixtures/overhang-classifier.wasm"),
     )
     .ir_reads(vec![BASE_FIELD.to_string(), DOTTED_FIELD.to_string()])

@@ -5,7 +5,7 @@ display-name = "Machine G-code Emit"
 description  = "Emits machine_start_gcode / machine_end_gcode by prepending and appending Raw commands to the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-postpass@1.0.0"
+wit-world    = "slicer:world-postpass"
 
 [stage]
 id = "PostPass::GCodePostProcess"

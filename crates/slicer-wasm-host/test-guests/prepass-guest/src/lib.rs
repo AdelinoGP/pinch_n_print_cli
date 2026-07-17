@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
     path: "../../../slicer-schema/wit",
-    world: "slicer:world-prepass/prepass-module@1.0.0",
+    world: "slicer:world-prepass/prepass-module",
     generate_all,
 });
 

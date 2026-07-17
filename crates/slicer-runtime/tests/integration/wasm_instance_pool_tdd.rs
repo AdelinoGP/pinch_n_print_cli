@@ -17,7 +17,7 @@ fn parallel_safe_modules_use_requested_host_parallelism_as_pool_size() {
         "com.example.parallel",
         "Layer::Perimeters",
         true,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -39,7 +39,7 @@ fn non_parallel_safe_modules_are_forced_to_a_single_serialized_slot() {
         "com.example.serial",
         "Layer::Infill",
         false,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -61,7 +61,7 @@ fn finalization_stage_is_always_serialized_even_when_manifest_claims_parallel_sa
         "com.example.finalizer",
         "PostPass::LayerFinalization",
         true,
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
     );
 
     let pool = build_wasm_instance_pool(
@@ -83,7 +83,7 @@ fn shared_memory_artifacts_are_rejected_when_parallel_safety_is_declared() {
         "com.example.shared-memory",
         "Layer::Support",
         true,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let error = build_wasm_instance_pool(
@@ -110,7 +110,7 @@ fn parallel_pools_hand_out_distinct_slots_until_exhausted_then_reuse_released_sl
         "com.example.parallel-leases",
         "Layer::SlicePostProcess",
         true,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -139,7 +139,7 @@ fn serialized_pools_only_ever_hand_out_slot_zero() {
         "com.example.serial-leases",
         "Layer::PerimetersPostProcess",
         false,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -166,7 +166,7 @@ fn serialized_pools_block_other_leasers_until_release() {
         "com.example.serial-contention",
         "Layer::PerimetersPostProcess",
         false,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
     );
 
     let pool = Arc::new(

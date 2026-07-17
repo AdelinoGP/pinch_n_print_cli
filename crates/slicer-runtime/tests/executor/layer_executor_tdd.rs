@@ -581,7 +581,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
         id,
         semver(1, 0, 0),
         stage,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(match stage {
@@ -1139,7 +1139,7 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
             patch: 0,
         },
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("fixtures/com.example.perimeters.wasm"),
     )
     .ir_reads(vec!["SliceIR.regions".into()])

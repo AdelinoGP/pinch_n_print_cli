@@ -371,7 +371,7 @@ fn seam_placer_narrow_manifest_write_validates() {
         "com.core.seam-placer",
         semver(0, 1, 0),
         "Layer::PerimetersPostProcess",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
     )
     .ir_reads(vec!["PerimeterIR".into()])
@@ -437,7 +437,7 @@ fn coarse_write_rejected_against_narrow_manifest() {
         "com.core.perimeter-gen",
         semver(0, 1, 0),
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
     )
     .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])
@@ -493,7 +493,7 @@ fn perimeter_narrow_write_audit() {
         "com.core.perimeter-gen",
         semver(0, 1, 0),
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
     )
     .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])

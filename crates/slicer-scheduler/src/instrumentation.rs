@@ -128,7 +128,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::Perimeters",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             PathBuf::from(format!("fixtures/{id}.wasm")),
         )
         .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())

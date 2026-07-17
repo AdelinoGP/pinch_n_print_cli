@@ -187,7 +187,7 @@ minimum/current pin for each component.
 ## Versioning Policy
 
 - **Host** follows semver. Major version bumps are rare and announced with migration guides.
-- **WIT interfaces** are versioned independently (`slicer:world-layer@1.0.0`). Minor bumps are additive.
+- **WIT interfaces** are versioned independently (`slicer:world-layer@1.1.0`). Minor bumps are additive.
 - **IR schemas** carry a `schema_version: SemVer` field. Modules declare minimum required version.
 - **Module manifests** declare `min-host-version`. The host rejects modules requiring a newer host.
 - **Config keys** contributed by modules are namespaced: `com.community.tpms-infill.density`. Core keys have no namespace prefix.

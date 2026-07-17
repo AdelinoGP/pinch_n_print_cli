@@ -452,7 +452,7 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
         id,
         semver_v(1, 0, 0),
         stage,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("/dev/null"),
     )
     .min_host_version(semver_v(0, 1, 0))

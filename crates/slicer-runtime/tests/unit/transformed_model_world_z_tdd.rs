@@ -281,7 +281,7 @@ fn loaded_layer_planning_module() -> slicer_runtime::LoadedModule {
         "com.example.layer-planning",
         semver(1, 0, 0),
         "PrePass::LayerPlanning",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         std::path::PathBuf::from("fixtures/com.example.layer-planning.wasm"),
     )
     .ir_reads(vec![

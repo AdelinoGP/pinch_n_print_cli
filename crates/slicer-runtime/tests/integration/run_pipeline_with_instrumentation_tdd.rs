@@ -103,7 +103,7 @@ fn make_dummy_module_with_masks(
         module_id,
         semver(1, 0, 0),
         stage_id,
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .min_host_version(semver(0, 1, 0))

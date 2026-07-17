@@ -407,7 +407,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             patch: 0,
         },
         "Layer::PathOptimization",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["PerimeterIR".to_string()])
@@ -897,7 +897,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             patch: 0,
         },
         "Layer::PerimetersPostProcess",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["PerimeterIR".to_string()])
@@ -1264,7 +1264,7 @@ fn classic_perimeters_seam_candidate_z_survives_wasm_boundary_above_first_layer(
             patch: 0,
         },
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])

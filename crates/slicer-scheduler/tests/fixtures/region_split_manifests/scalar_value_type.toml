@@ -5,7 +5,7 @@ display-name = "Region Split Scalar"
 description  = "Fixture: region_split with forbidden value_type = scalar"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer@1.0.0"
+wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

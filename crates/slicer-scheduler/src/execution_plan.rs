@@ -1025,7 +1025,7 @@ mod dedup_tests {
                 patch: 0,
             },
             stage,
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             PathBuf::from(format!("fixtures/{id}.wasm")),
         )
         .claims(holds.iter().map(|s| (*s).to_string()).collect())

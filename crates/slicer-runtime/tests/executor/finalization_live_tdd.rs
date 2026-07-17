@@ -103,7 +103,7 @@ fn make_loaded_module(id: &str) -> LoadedModule {
         id,
         semver(1, 0, 0),
         "PostPass::LayerFinalization",
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         PathBuf::from("/dev/null"),
     )
     .min_host_version(semver(0, 1, 0))

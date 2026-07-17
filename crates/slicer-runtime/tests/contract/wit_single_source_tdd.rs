@@ -68,10 +68,10 @@ fn canonical_wit_resolves() {
     // Also confirm select_world succeeds for each qualified name.
     // wit-parser 0.247: select_world(&[PackageId], world_str_or_none)
     let qualified = [
-        "slicer:world-layer/layer-module@1.0.0",
-        "slicer:world-prepass/prepass-module@1.0.0",
-        "slicer:world-postpass/postpass-module@1.0.0",
-        "slicer:world-finalization/finalization-module@1.0.0",
+        "slicer:world-layer/layer-module",
+        "slicer:world-prepass/prepass-module",
+        "slicer:world-postpass/postpass-module",
+        "slicer:world-finalization/finalization-module",
     ];
     for q in &qualified {
         resolve

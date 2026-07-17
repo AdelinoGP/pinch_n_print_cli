@@ -9,7 +9,7 @@ use gyroid_infill::GyroidInfill;
 fn binding_surface_matches_manifest() {
     assert_eq!(
         GyroidInfill::__slicer_world_id(),
-        "slicer:world-layer@1.0.0"
+        slicer_schema::WORLD_LAYER
     );
     assert_eq!(GyroidInfill::__slicer_trait_name(), "LayerModule");
     assert_eq!(GyroidInfill::__slicer_stage_name(), "Layer::Infill");

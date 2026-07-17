@@ -261,7 +261,7 @@ layer-parallel-safe    = {parallel_safe}
 /// Map a stage ID to the WIT world package string.
 #[cfg(test)]
 fn wit_world_for_stage(stage: &str) -> &'static str {
-    world_for_stage_id(stage).unwrap_or("slicer:world-layer@1.0.0")
+    world_for_stage_id(stage).unwrap_or(slicer_schema::WORLD_LAYER)
 }
 
 /// Convert kebab-case name to a display name (title case).
@@ -502,31 +502,31 @@ mod tests {
     fn wit_world_mapping() {
         assert_eq!(
             wit_world_for_stage("Layer::Infill"),
-            "slicer:world-layer@1.0.0"
+            slicer_schema::WORLD_LAYER
         );
         assert_eq!(
             wit_world_for_stage("Layer::Support"),
-            "slicer:world-layer@1.0.0"
+            slicer_schema::WORLD_LAYER
         );
         assert_eq!(
             wit_world_for_stage("Layer::PathOptimization"),
-            "slicer:world-layer@1.0.0"
+            slicer_schema::WORLD_LAYER
         );
         assert_eq!(
             wit_world_for_stage("PrePass::MeshAnalysis"),
-            "slicer:world-prepass@1.0.0"
+            slicer_schema::WORLD_PREPASS
         );
         assert_eq!(
             wit_world_for_stage("PrePass::PaintSegmentation"),
-            "slicer:world-prepass@1.0.0"
+            slicer_schema::WORLD_PREPASS
         );
         assert_eq!(
             wit_world_for_stage("PostPass::GCodePostProcess"),
-            "slicer:world-postpass@1.0.0"
+            slicer_schema::WORLD_POSTPASS
         );
         assert_eq!(
             wit_world_for_stage("PostPass::LayerFinalization"),
-            "slicer:world-finalization@1.0.0"
+            slicer_schema::WORLD_FINALIZATION
         );
     }
 
@@ -546,7 +546,7 @@ mod tests {
         let manifest = generate_manifest("my-infill", "Layer::Infill");
         assert!(manifest.contains(r#"id           = "com.example.my-infill""#));
         assert!(manifest.contains(r#"id = "Layer::Infill""#));
-        assert!(manifest.contains(r#"wit-world    = "slicer:world-layer@1.0.0""#));
+        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_LAYER)));
         // Verify it's valid TOML.
         let parsed: Result<toml::Value, _> = toml::from_str(&manifest);
         assert!(parsed.is_ok(), "generated manifest must be valid TOML");
@@ -555,20 +555,20 @@ mod tests {
     #[test]
     fn manifest_prepass_stage() {
         let manifest = generate_manifest("mesh-tool", "PrePass::MeshAnalysis");
-        assert!(manifest.contains(r#"wit-world    = "slicer:world-prepass@1.0.0""#));
+        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_PREPASS)));
         assert!(manifest.contains(r#"id = "PrePass::MeshAnalysis""#));
     }
 
     #[test]
     fn manifest_postpass_stage() {
         let manifest = generate_manifest("gcode-fix", "PostPass::GCodePostProcess");
-        assert!(manifest.contains(r#"wit-world    = "slicer:world-postpass@1.0.0""#));
+        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_POSTPASS)));
     }
 
     #[test]
     fn manifest_finalization_stage() {
         let manifest = generate_manifest("layer-fin", "PostPass::LayerFinalization");
-        assert!(manifest.contains(r#"wit-world    = "slicer:world-finalization@1.0.0""#));
+        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_FINALIZATION)));
         assert!(manifest.contains(r#"id = "PostPass::LayerFinalization""#));
     }
 

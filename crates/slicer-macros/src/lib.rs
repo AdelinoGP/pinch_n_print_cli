@@ -91,15 +91,13 @@ fn is_known_trait(name: &str) -> bool {
     )
 }
 
-/// Map SDK trait name → WIT world id.
+/// Map SDK trait name → WIT world name.
+///
+/// Delegates to `slicer-schema`, which owns the world names. This used to
+/// be a hand-copied duplicate of that table; the copies drifted apart on
+/// every edit and had to be re-synced by hand.
 fn world_for_trait(trait_name: &str) -> Option<&'static str> {
-    Some(match trait_name {
-        "LayerModule" => "slicer:world-layer@1.0.0",
-        "PrepassModule" => "slicer:world-prepass@1.0.0",
-        "FinalizationModule" => "slicer:world-finalization@1.0.0",
-        "PostpassModule" => "slicer:world-postpass@1.0.0",
-        _ => return None,
-    })
+    slicer_schema::world_for_trait(trait_name)
 }
 
 /// Detect which `run_*` stage methods are present in the impl block.
@@ -228,7 +226,7 @@ fn generate_slicer_module_impl(
             // ── Real binding surface ─────────────────────────────────────
 
             /// WIT world package id backing this module (e.g.
-            /// `"slicer:world-layer@1.0.0"`) or "" if the impl targets
+            /// [`slicer_schema::WORLD_LAYER`]) or "" if the impl targets
             /// an unknown trait and no stage was detected.
             #[doc(hidden)]
             pub fn __slicer_world_id() -> &'static str { #effective_world }
@@ -423,13 +421,13 @@ fn generate_slicer_module_impl(
 /// stage and declared SDK trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorldGlueKind {
-    /// `slicer:world-postpass@1.0.0` — gcode + text postprocess.
+    /// `slicer:world-postpass` — gcode + text postprocess.
     Postpass,
-    /// `slicer:world-finalization@1.0.0` — layer finalization.
+    /// `slicer:world-finalization` — layer finalization.
     Finalization,
-    /// `slicer:world-prepass@1.0.0` — mesh analysis + layer planning.
+    /// `slicer:world-prepass` — mesh analysis + layer planning.
     Prepass,
-    /// `slicer:world-layer@1.0.0` — all 8 per-layer stage exports.
+    /// `slicer:world-layer` — all 8 per-layer stage exports.
     Layer,
 }
 
@@ -534,7 +532,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     }
 
     // Assemble nested-package inline blob (Option A):
-    // - World file is the top-level statement (begins with "package slicer:world-X@1.0.0;")
+    // - World file is the top-level statement (begins with "package slicer:world-X@<version>;")
     // - Dep packages are nested `package slicer:X { ... }` blocks (UNVERSIONED)
     // - Cross-package `use slicer:...` in the world file resolve over the whole group
     // - ir-handles is nested unconditionally for every world: `COMMON_WIT`'s

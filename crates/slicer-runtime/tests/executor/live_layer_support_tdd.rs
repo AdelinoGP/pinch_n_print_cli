@@ -531,7 +531,7 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
             patch: 0,
         },
         "Layer::Support",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         tree_support_wasm_path(),
     )
     .ir_reads(vec![
@@ -635,7 +635,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
             patch: 0,
         },
         "Layer::Support",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         traditional_support_wasm_path(),
     )
     .ir_reads(vec![
@@ -739,7 +739,7 @@ fn support_deterministic_across_repeated_runs() {
             patch: 0,
         },
         "Layer::Support",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         tree_support_wasm_path(),
     )
     .ir_reads(vec![
@@ -934,7 +934,7 @@ mod planner_consuming_tier {
             id,
             semver(0, 1, 0),
             "Layer::Support",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             wasm_path,
         )
         .ir_reads(reads.into_iter().map(String::from).collect())

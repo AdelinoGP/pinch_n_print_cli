@@ -13,7 +13,7 @@ use slicer_ir::{
 };
 use slicer_schema::STAGES;
 
-const LAYER_WORLD: &str = "slicer:world-layer@1.0.0";
+const LAYER_WORLD: &str = slicer_schema::WORLD_LAYER;
 
 #[test]
 fn production_variants_match_world_layer_stages_exactly() {

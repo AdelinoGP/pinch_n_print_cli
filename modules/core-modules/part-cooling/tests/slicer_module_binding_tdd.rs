@@ -9,7 +9,7 @@ use part_cooling::PartCooling;
 fn binding_surface_matches_finalization_stage() {
     assert_eq!(
         PartCooling::__slicer_world_id(),
-        "slicer:world-finalization@1.0.0"
+        slicer_schema::WORLD_FINALIZATION
     );
     assert_eq!(PartCooling::__slicer_trait_name(), "FinalizationModule");
     assert_eq!(

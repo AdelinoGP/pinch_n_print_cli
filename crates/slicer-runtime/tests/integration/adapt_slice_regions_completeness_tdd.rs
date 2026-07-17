@@ -214,7 +214,7 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     let module = make_module_bundle(
         module_id,
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         emit_field_witness_config(),
         // The dispatcher filters `claims` by the FILL_CLAIM_IDS allow-list

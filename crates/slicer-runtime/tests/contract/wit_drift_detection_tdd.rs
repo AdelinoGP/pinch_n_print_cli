@@ -156,11 +156,15 @@ fn host_inline_wit_uses_canonical_world_package_names() {
     );
 
     // Each world is addressed by the canonical package-qualified `world:` key.
+    // The keys are deliberately unversioned. `bindgen!` resolves them against
+    // the canonical WIT dir, which declares exactly one version of each world
+    // package, so the version cannot disambiguate anything here — it only
+    // forces this file (and ~80 others) to be edited on every bump.
     let canonical_world_refs = [
-        r#"world: "slicer:world-layer/layer-module@1.0.0""#,
-        r#"world: "slicer:world-prepass/prepass-module@1.0.0""#,
-        r#"world: "slicer:world-postpass/postpass-module@1.0.0""#,
-        r#"world: "slicer:world-finalization/finalization-module@1.0.0""#,
+        r#"world: "slicer:world-layer/layer-module""#,
+        r#"world: "slicer:world-prepass/prepass-module""#,
+        r#"world: "slicer:world-postpass/postpass-module""#,
+        r#"world: "slicer:world-finalization/finalization-module""#,
     ];
     for canonical in canonical_world_refs {
         assert!(
@@ -527,6 +531,130 @@ fn perimeter_output_builder_has_seam_write_methods() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anti-regression: the world version lives in exactly one place
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Recursively collect files with one of `exts`, skipping build/VCS dirs.
+fn collect_files(dir: &std::path::Path, exts: &[&str], out: &mut Vec<PathBuf>) {
+    let skip = ["target", ".git", "node_modules"];
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if path.is_dir() {
+            if !skip.contains(&name.as_ref()) {
+                collect_files(&path, exts, out);
+            }
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if exts.contains(&ext) {
+                out.push(path);
+            }
+        }
+    }
+}
+
+/// A versioned world identifier (`slicer:world-x@1.2.3`) must not appear in any
+/// `.rs` or `.toml` file in the workspace. The version belongs solely to the
+/// `package` line of `crates/slicer-schema/wit/deps/world-*/*.wit`.
+///
+/// This is the regression guard for the packet-130 churn: bumping
+/// `slicer:world-layer` 1.0.0 → 1.1.0 forced edits to **77 files** whose only
+/// change was re-spelling that string — 40 tests, 23 manifests/fixtures, 9 src
+/// files, a bench and a doc. The packet's own ~30-file estimate for its real
+/// change was accurate; the other 77 were a tax levied by duplicating a version
+/// that has no mechanical effect.
+///
+/// It has no effect because it cannot: our worlds export bare freestanding
+/// funcs, and a bare extern name carries no semver suffix (component-model
+/// WIT.md — `<semversuffix>` is a production of `<interfacename>`). The version
+/// is erased from every guest binary at compile time, so nothing can ever check
+/// a declared version against the artifact it claims to describe.
+///
+/// If this test fails, do not update the expected string — remove the version
+/// from the offending file and refer to `slicer_schema::WORLD_*` instead.
+#[test]
+fn no_versioned_world_identifiers_outside_canonical_wit() {
+    let root = workspace_root();
+    let mut files = Vec::new();
+    collect_files(&root, &["rs", "toml"], &mut files);
+    assert!(
+        files.len() > 100,
+        "sanity: the walk should find the workspace's sources, found {}",
+        files.len()
+    );
+
+    let mut offenders: Vec<String> = Vec::new();
+    for path in &files {
+        // This file is the one sanctioned place that pins the version: the
+        // assertions above deliberately spell out each world's `package` line
+        // so that a bump stays a conscious act. Bumping a world should touch
+        // the .wit and this file, and nothing else.
+        if path.file_name().is_some_and(|n| n == "wit_drift_detection_tdd.rs") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
+        for (idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim_start();
+            // Prose may discuss versions; only code and manifest values matter,
+            // because only those force a lockstep edit on a bump.
+            let is_comment = trimmed.starts_with("//") || trimmed.starts_with('#');
+            if is_comment || !regex_lite_versioned_world(line) {
+                continue;
+            }
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            offenders.push(format!("{}:{}: {}", rel.display(), idx + 1, line.trim()));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "the world version must live only in crates/slicer-schema/wit/deps/world-*/*.wit; \
+         found {} versioned reference(s):\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+
+/// True if `line` contains a versioned world reference in either shape:
+///   - `slicer:world-layer@1.1.0` — bare package form.
+///   - `slicer:world-layer/layer-module@1.1.0` — package-qualified path form,
+///     as used in `bindgen!` / `generate!` `world:` keys.
+///
+/// The second shape matters: it is how the host and every test-guest name their
+/// world, and an earlier version of this predicate stopped at the `/` and missed
+/// it entirely — leaving 6 files still churning on a bump while this test
+/// reported green. A guard with a hole is worse than no guard.
+///
+/// Hand-rolled because slicer-runtime has no regex dev-dependency and this
+/// single predicate does not justify adding one.
+fn regex_lite_versioned_world(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(pos) = rest.find("slicer:world-") {
+        let after = &rest[pos + "slicer:world-".len()..];
+        // Consume the world name and any `/interface` path segments, then
+        // require `@` followed by a digit.
+        let path_end = after
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '/')
+            .unwrap_or(after.len());
+        if after[path_end..].starts_with('@')
+            && after[path_end + 1..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit())
+        {
+            return true;
+        }
+        rest = &after[path_end..];
+    }
+    false
+}
 
 /// Returns the content of `crates/slicer-macros/src/lib.rs`.
 /// Uses `std::fs::read_to_string` at test runtime.

@@ -96,7 +96,7 @@ fn pre_pass_support_generation_manifest_rejected() {
         .expect("create temp dir");
 
     let manifest_path =
-        write_manifest_with_stage(&dir, OBSOLETE_STAGE_ID, "slicer:world-prepass@1.0.0");
+        write_manifest_with_stage(&dir, OBSOLETE_STAGE_ID, slicer_schema::WORLD_PREPASS);
     let wasm_path = manifest_path.with_extension("wasm");
 
     let error = load_module_from_paths(&manifest_path, &wasm_path).expect_err(

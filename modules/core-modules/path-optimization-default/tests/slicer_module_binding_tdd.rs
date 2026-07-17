@@ -9,7 +9,7 @@ use path_optimization_default::PathOptimizationDefault;
 fn binding_surface_matches_manifest() {
     assert_eq!(
         PathOptimizationDefault::__slicer_world_id(),
-        "slicer:world-layer@1.0.0"
+        slicer_schema::WORLD_LAYER
     );
     assert_eq!(
         PathOptimizationDefault::__slicer_trait_name(),

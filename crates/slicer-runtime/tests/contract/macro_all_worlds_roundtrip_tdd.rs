@@ -139,7 +139,7 @@ fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
     let module = make_module(
         "com.test.sdk-finalization",
         "PostPass::LayerFinalization",
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         component,
         intentional_error_config(0xF1),
     );
@@ -176,7 +176,7 @@ fn finalization_world_macro_guest_succeeds_without_error_config() {
     let module = make_module(
         "com.test.sdk-finalization-ok",
         "PostPass::LayerFinalization",
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         component,
         ConfigView::new(),
     );
@@ -201,7 +201,7 @@ fn finalization_world_macro_guest_is_deterministic() {
     let module = make_module(
         "com.test.sdk-finalization-det",
         "PostPass::LayerFinalization",
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         component,
         ConfigView::new(),
     );
@@ -231,7 +231,7 @@ fn prepass_world_macro_guest_round_trips_typed_config_and_result() {
     let module = make_module(
         "com.test.sdk-prepass",
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         component,
         intentional_error_config(0xE7),
     );
@@ -259,7 +259,7 @@ fn prepass_world_macro_guest_succeeds_without_error_config() {
     let module = make_module(
         "com.test.sdk-prepass-ok",
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         component,
         ConfigView::new(),
     );
@@ -279,7 +279,7 @@ fn prepass_world_macro_guest_is_deterministic() {
     let module = make_module(
         "com.test.sdk-prepass-det",
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         component,
         ConfigView::new(),
     );
@@ -320,7 +320,7 @@ fn layer_world_macro_guest_round_trips_typed_config_and_result() {
     let module = make_module(
         "com.test.sdk-layer-infill",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         intentional_error_config(0xD5),
     );
@@ -373,7 +373,7 @@ fn layer_world_macro_guest_succeeds_without_error_config() {
     let module = make_module(
         "com.test.sdk-layer-infill-ok",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         ConfigView::new(),
     );
@@ -399,7 +399,7 @@ fn layer_world_macro_guest_is_deterministic() {
     let module = make_module(
         "com.test.sdk-layer-infill-det",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         ConfigView::new(),
     );
@@ -498,7 +498,7 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
     let module = make_module(
         "com.test.sdk-layer-infill-witness-in",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         intentional_error_config(0xD6),
     );
@@ -550,7 +550,7 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     let module = make_module(
         "com.test.sdk-layer-infill-witness-out",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         ConfigView::new(),
     );
@@ -648,7 +648,7 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
     let module = make_module(
         "com.test.sdk-layer-infill-det-content",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         component,
         ConfigView::new(),
     );

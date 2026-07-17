@@ -262,7 +262,7 @@ fn loaded_support_planner_module(id: &str, wasm_path: std::path::PathBuf) -> Loa
         id,
         semver(0, 1, 0),
         "PrePass::SupportGeometry",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         wasm_path,
     )
     .ir_reads(vec![

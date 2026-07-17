@@ -121,7 +121,7 @@ fn stage_mesh_analysis() {
     let lib = fs::read_to_string(tmp.path().join("mesh-tool/src/lib.rs")).unwrap();
     assert!(lib.contains("run_mesh_analysis"));
     let manifest = fs::read_to_string(tmp.path().join("mesh-tool/mesh-tool.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-prepass@1.0.0"));
+    assert!(manifest.contains(slicer_schema::WORLD_PREPASS));
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn stage_paint_segmentation_is_scaffoldable_per_architecture() {
     let lib = fs::read_to_string(tmp.path().join("paint-seg/src/lib.rs")).unwrap();
     assert!(lib.contains("run_paint_segmentation"));
     let manifest = fs::read_to_string(tmp.path().join("paint-seg/paint-seg.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-prepass@1.0.0"));
+    assert!(manifest.contains(slicer_schema::WORLD_PREPASS));
 }
 
 #[test]
@@ -165,7 +165,7 @@ fn stage_path_optimization_is_scaffoldable_per_architecture() {
 fn stage_layer_infill_scaffolds_layer_world_v1_0_0_for_backcompat() {
     let tmp = run_new("plain-infill", "Layer::Infill").unwrap();
     let manifest = fs::read_to_string(tmp.path().join("plain-infill/plain-infill.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-layer@1.0.0"));
+    assert!(manifest.contains(slicer_schema::WORLD_LAYER));
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn stage_gcode_postprocess() {
     let lib = fs::read_to_string(tmp.path().join("gcode-fix/src/lib.rs")).unwrap();
     assert!(lib.contains("run_gcode_postprocess"));
     let manifest = fs::read_to_string(tmp.path().join("gcode-fix/gcode-fix.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-postpass@1.0.0"));
+    assert!(manifest.contains(slicer_schema::WORLD_POSTPASS));
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn stage_layer_finalization_uses_finalization_world() {
     let tmp = run_new("layer-finalizer", "PostPass::LayerFinalization").unwrap();
     let manifest =
         fs::read_to_string(tmp.path().join("layer-finalizer/layer-finalizer.toml")).unwrap();
-    assert!(manifest.contains("slicer:world-finalization@1.0.0"));
+    assert!(manifest.contains(slicer_schema::WORLD_FINALIZATION));
     let lib = fs::read_to_string(tmp.path().join("layer-finalizer/src/lib.rs")).unwrap();
     assert!(lib.contains("run_finalization"));
 }

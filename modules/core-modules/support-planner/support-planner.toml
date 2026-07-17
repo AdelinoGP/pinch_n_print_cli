@@ -5,7 +5,7 @@ display-name = "Support Planner"
 description  = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-prepass@1.0.0"
+wit-world    = "slicer:world-prepass"
 
 [stage]
 id = "PrePass::SupportGeometry"

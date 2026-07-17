@@ -290,7 +290,7 @@ pub struct PaintRegionLayerData {
 pub mod layer {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-layer/layer-module@1.0.0",
+        world: "slicer:world-layer/layer-module",
         imports: {
             default: trappable,
         },
@@ -362,7 +362,7 @@ pub struct SupportGeometryOutputData;
 pub mod prepass {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-prepass/prepass-module@1.0.0",
+        world: "slicer:world-prepass/prepass-module",
         imports: {
             default: trappable,
         },
@@ -556,7 +556,7 @@ pub struct FinalizationOutputBuilderData {
 pub mod finalization {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-finalization/finalization-module@1.0.0",
+        world: "slicer:world-finalization/finalization-module",
         imports: {
             default: trappable,
         },
@@ -585,7 +585,7 @@ pub struct PostpassGcodeOutputBuilderData;
 pub mod postpass {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-postpass/postpass-module@1.0.0",
+        world: "slicer:world-postpass/postpass-module",
         imports: {
             default: trappable,
         },

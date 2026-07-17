@@ -194,7 +194,7 @@ fn run_real_arachne_guest(layer_index: u32, wall_sequence: &str) {
             patch: 0,
         },
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         wasm_path,
     )
     .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])

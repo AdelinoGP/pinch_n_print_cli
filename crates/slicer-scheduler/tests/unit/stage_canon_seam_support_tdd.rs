@@ -71,7 +71,7 @@ fn prepass_seam_planning_module_is_not_unknown_stage() {
     let m = module(
         "com.example.seam-planner",
         "PrePass::SeamPlanning",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         &["SeamPlanIR.entries"],
     );
     let request = DagValidationRequest {
@@ -103,7 +103,7 @@ fn prepass_support_geometry_module_is_not_unknown_stage() {
     let m = module(
         "com.example.support-planner",
         "PrePass::SupportGeometry",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         &["SupportGeometryIR.regions"],
     );
     let request = DagValidationRequest {
@@ -135,7 +135,7 @@ fn layer_paint_region_annotation_module_is_not_unknown_stage() {
     let m = module(
         "com.example.paint-region-annotator",
         "Layer::PaintRegionAnnotation",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         &["PaintRegionIR.per_layer"],
     );
     let request = DagValidationRequest {
@@ -167,7 +167,7 @@ fn genuinely_unknown_stage_is_still_rejected() {
     let m = module(
         "com.example.bogus",
         "PrePass::NotARealStage",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         &["SomeIR.field"],
     );
     let request = DagValidationRequest {

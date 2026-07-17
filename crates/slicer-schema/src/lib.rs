@@ -10,6 +10,37 @@
 
 #![warn(missing_docs)]
 
+// ── WIT world package names ────────────────────────────────────────────
+//
+// These are the sole source of the world identifiers used across the
+// workspace. Refer to them by constant; never re-spell the literal.
+//
+// The `@x.y.z` version is deliberately absent. It lives in exactly one
+// place — the `package` line of `crates/slicer-schema/wit/deps/world-*/`
+// — because that is the only place it has any effect: it selects which
+// package `bindgen!`/`generate!` resolve at build time.
+//
+// The version is NOT part of module identity, and cannot be. Our worlds
+// export bare freestanding funcs, and a bare extern name carries no
+// semver suffix (component-model WIT.md: `<semversuffix>` is a production
+// of `<interfacename>`, not of a plain name). The version is therefore
+// erased from every guest binary at compile time — `wasm-tools component
+// wit <guest>.wasm` finds no `world-layer` and no `@x.y.z` anywhere. A
+// versioned identifier here would be an unfalsifiable claim: nothing in
+// the system could ever check it against the artifact it describes.
+//
+// Compatibility is enforced structurally by wasmtime at typed
+// instantiation, plus `cargo xtask build-guests --check`.
+
+/// WIT world package name for layer-tier modules.
+pub const WORLD_LAYER: &str = "slicer:world-layer";
+/// WIT world package name for prepass-tier modules.
+pub const WORLD_PREPASS: &str = "slicer:world-prepass";
+/// WIT world package name for finalization-tier modules.
+pub const WORLD_FINALIZATION: &str = "slicer:world-finalization";
+/// WIT world package name for postpass-tier modules.
+pub const WORLD_POSTPASS: &str = "slicer:world-postpass";
+
 /// One supported (Rust trait, stage id, WIT export, WIT world) row,
 /// matching the documented stage set in docs/04 STAGE_ORDER and the
 /// export lists in `wit/world-*.wit`.
@@ -30,120 +61,120 @@ pub struct StageSpec {
 /// Every supported stage, in canonical STAGE_ORDER-compatible order
 /// (docs/04). One row per documented export in `wit/world-*.wit`.
 pub const STAGES: &[StageSpec] = &[
-    // ── Layer world (slicer:world-layer@1.0.0) ─────────────────────────
+    // ── Layer world (WORLD_LAYER) ──────────────────────────────────────
     StageSpec {
         method: "run_slice_postprocess",
         stage_id: "Layer::SlicePostProcess",
         wit_export: "run-slice-postprocess",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_perimeters",
         stage_id: "Layer::Perimeters",
         wit_export: "run-perimeters",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_wall_postprocess",
         stage_id: "Layer::PerimetersPostProcess",
         wit_export: "run-wall-postprocess",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_infill",
         stage_id: "Layer::Infill",
         wit_export: "run-infill",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_infill_postprocess",
         stage_id: "Layer::InfillPostProcess",
         wit_export: "run-infill-postprocess",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_support",
         stage_id: "Layer::Support",
         wit_export: "run-support",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_support_postprocess",
         stage_id: "Layer::SupportPostProcess",
         wit_export: "run-support-postprocess",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
     StageSpec {
         method: "run_path_optimization",
         stage_id: "Layer::PathOptimization",
         wit_export: "run-path-optimization",
-        world_id: "slicer:world-layer@1.0.0",
+        world_id: WORLD_LAYER,
         trait_name: "LayerModule",
     },
-    // ── Prepass world (slicer:world-prepass@1.0.0) ─────────────────────
+    // ── Prepass world (WORLD_PREPASS) ──────────────────────────────────
     StageSpec {
         method: "run_mesh_analysis",
         stage_id: "PrePass::MeshAnalysis",
         wit_export: "run-mesh-analysis",
-        world_id: "slicer:world-prepass@1.0.0",
+        world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
     },
     StageSpec {
         method: "run_layer_planning",
         stage_id: "PrePass::LayerPlanning",
         wit_export: "run-layer-planning",
-        world_id: "slicer:world-prepass@1.0.0",
+        world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
     },
     StageSpec {
         method: "run_paint_segmentation",
         stage_id: "PrePass::PaintSegmentation",
         wit_export: "run-paint-segmentation",
-        world_id: "slicer:world-prepass@1.0.0",
+        world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
     },
     StageSpec {
         method: "run_seam_planning",
         stage_id: "PrePass::SeamPlanning",
         wit_export: "run-seam-planning",
-        world_id: "slicer:world-prepass@1.0.0",
+        world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
     },
     StageSpec {
         method: "run_support_geometry",
         stage_id: "PrePass::SupportGeometry",
         wit_export: "run-support-geometry",
-        world_id: "slicer:world-prepass@1.0.0",
+        world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
     },
-    // ── Finalization world (slicer:world-finalization@1.0.0) ───────────
+    // ── Finalization world (WORLD_FINALIZATION) ────────────────────────
     StageSpec {
         method: "run_finalization",
         stage_id: "PostPass::LayerFinalization",
         wit_export: "run-finalization",
-        world_id: "slicer:world-finalization@1.0.0",
+        world_id: WORLD_FINALIZATION,
         trait_name: "FinalizationModule",
     },
-    // ── Postpass world (slicer:world-postpass@1.0.0) ───────────────────
+    // ── Postpass world (WORLD_POSTPASS) ────────────────────────────────
     StageSpec {
         method: "run_gcode_postprocess",
         stage_id: "PostPass::GCodePostProcess",
         wit_export: "run-gcode-postprocess",
-        world_id: "slicer:world-postpass@1.0.0",
+        world_id: WORLD_POSTPASS,
         trait_name: "PostpassModule",
     },
     StageSpec {
         method: "run_text_postprocess",
         stage_id: "PostPass::TextPostProcess",
         wit_export: "run-text-postprocess",
-        world_id: "slicer:world-postpass@1.0.0",
+        world_id: WORLD_POSTPASS,
         trait_name: "PostpassModule",
     },
 ];
@@ -179,7 +210,7 @@ pub struct SlicerModuleSchema {
     pub type_name: &'static str,
     /// SDK trait name this impl targets, or `""` if inherent.
     pub trait_name: &'static str,
-    /// Canonical WIT world package id (e.g. `"slicer:world-layer@1.0.0"`)
+    /// Canonical WIT world package name (e.g. [`WORLD_LAYER`])
     /// or `""` if the impl targets no known trait or stage.
     pub world_id: &'static str,
     /// Canonical scheduler stage id (e.g. `"Layer::Infill"`) or `""` if no
@@ -198,19 +229,19 @@ pub struct SlicerModuleSchema {
 /// (`on-print-start`, `on-print-end` per docs/03 §deps/config-types).
 pub const WORLD_LIFECYCLE_EXPORTS: &[(&str, &[&str])] = &[
     (
-        "slicer:world-layer@1.0.0",
+        WORLD_LAYER,
         &["on-print-start", "on-print-end"],
     ),
     (
-        "slicer:world-prepass@1.0.0",
+        WORLD_PREPASS,
         &["on-print-start", "on-print-end"],
     ),
     (
-        "slicer:world-finalization@1.0.0",
+        WORLD_FINALIZATION,
         &["on-print-start", "on-print-end"],
     ),
     (
-        "slicer:world-postpass@1.0.0",
+        WORLD_POSTPASS,
         &["on-print-start", "on-print-end"],
     ),
 ];
@@ -265,10 +296,10 @@ pub fn trait_for_stage_id(stage_id: &str) -> Option<&'static str> {
 #[must_use]
 pub fn world_for_trait(trait_name: &str) -> Option<&'static str> {
     match trait_name {
-        "LayerModule" => Some("slicer:world-layer@1.0.0"),
-        "PrepassModule" => Some("slicer:world-prepass@1.0.0"),
-        "FinalizationModule" => Some("slicer:world-finalization@1.0.0"),
-        "PostpassModule" => Some("slicer:world-postpass@1.0.0"),
+        "LayerModule" => Some(WORLD_LAYER),
+        "PrepassModule" => Some(WORLD_PREPASS),
+        "FinalizationModule" => Some(WORLD_FINALIZATION),
+        "PostpassModule" => Some(WORLD_POSTPASS),
         _ => None,
     }
 }
@@ -335,10 +366,10 @@ pub const VALID_STAGES: &[&str] = &[
 /// Mirrors the world column of [`WORLD_LIFECYCLE_EXPORTS`].
 /// See docs/03 §host-boundary enforcement.
 pub const SUPPORTED_WIT_WORLDS: &[&str] = &[
-    "slicer:world-layer@1.0.0",
-    "slicer:world-prepass@1.0.0",
-    "slicer:world-finalization@1.0.0",
-    "slicer:world-postpass@1.0.0",
+    WORLD_LAYER,
+    WORLD_PREPASS,
+    WORLD_FINALIZATION,
+    WORLD_POSTPASS,
 ];
 
 /// Valid config field type strings for `[config.schema.<key>].type`.

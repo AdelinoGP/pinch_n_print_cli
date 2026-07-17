@@ -30,7 +30,7 @@ fn loaded_module(id: &str, ir_reads: &[&str], ir_writes: &[&str]) -> LoadedModul
             patch: 0,
         },
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())

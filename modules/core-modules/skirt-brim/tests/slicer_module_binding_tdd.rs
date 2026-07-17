@@ -9,7 +9,7 @@ use skirt_brim::SkirtBrim;
 fn binding_surface_matches_manifest() {
     assert_eq!(
         SkirtBrim::__slicer_world_id(),
-        "slicer:world-finalization@1.0.0"
+        slicer_schema::WORLD_FINALIZATION
     );
     assert_eq!(SkirtBrim::__slicer_trait_name(), "FinalizationModule");
     assert_eq!(

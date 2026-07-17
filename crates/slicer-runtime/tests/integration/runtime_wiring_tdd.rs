@@ -42,7 +42,7 @@ fn make_dummy_compiled_module(stage_id: &str, module_id: &str) -> CompiledModule
         module_id,
         semver(1, 0, 0),
         stage_id,
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .min_host_version(semver(0, 1, 0))
@@ -231,7 +231,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         "infill-mod",
         "com.test.infill",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         true,
     );
     write_module_fixture(
@@ -240,7 +240,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         "support-mod",
         "com.test.support",
         "Layer::Support",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         true,
     );
     write_module_fixture(
@@ -249,7 +249,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         "mesh-mod",
         "com.test.mesh",
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         true,
     );
     write_module_fixture(
@@ -258,7 +258,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         "wipe-mod",
         "com.test.wipe",
         "PostPass::LayerFinalization",
-        "slicer:world-finalization@1.0.0",
+        slicer_schema::WORLD_FINALIZATION,
         false,
     );
 
@@ -353,7 +353,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         "infill-mod",
         "com.test.infill",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         true,
     );
 
@@ -462,7 +462,7 @@ fn config_schema_json_is_empty_array_for_modules_without_config() {
         "infill-mod",
         "com.test.infill",
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         true,
     );
 
@@ -489,7 +489,7 @@ display-name = "Configured Module"
 description = "has config"
 author = "test"
 license = "MIT"
-wit-world = "slicer:world-layer@1.0.0"
+wit-world = "{world}"
 
 [stage]
 id = "Layer::Infill"
@@ -538,8 +538,9 @@ keys = []
 [hints]
 estimated-ms-per-layer = 10
 layer-parallel-safe = true
-"#;
-    fs::write(subdir.join("my-mod.toml"), manifest).unwrap();
+"#
+    .replace("{world}", slicer_schema::WORLD_LAYER);
+    fs::write(subdir.join("my-mod.toml"), &manifest).unwrap();
     fs::write(subdir.join("my-mod.wasm"), b"\x00asm\x01\x00\x00\x00").unwrap();
 
     let report = load_modules_from_roots(&[tmp.path().to_path_buf()]).unwrap();

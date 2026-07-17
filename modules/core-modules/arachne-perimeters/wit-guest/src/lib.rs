@@ -1,6 +1,6 @@
 //! Component-model guest wrapper for `arachne-perimeters`.
 //!
-//! This crate exists only to produce a real `slicer:world-layer@1.0.0`
+//! This crate exists only to produce a real `slicer:world-layer`
 //! component binary. The whole purpose is to compile the real
 //! `arachne-perimeters` Rust implementation for the `wasm32-unknown-unknown`
 //! target as a `cdylib` so the `#[slicer_module]`-emitted

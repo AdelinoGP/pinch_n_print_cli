@@ -5,7 +5,7 @@ display-name = "Top Surface Ironing"
 description  = "Emits low-flow ironing strokes over polygon-precise top solid fill areas at the topmost exposed surface of each region."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer@1.0.0"
+wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

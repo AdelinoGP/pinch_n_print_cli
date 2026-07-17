@@ -602,7 +602,7 @@ fn loaded_module(stage: &str, module_id: &str, config: ConfigView) -> slicer_run
         module_id,
         sv(1, 0, 0),
         stage,
-        "slicer:world-postpass@1.0.0",
+        slicer_schema::WORLD_POSTPASS,
         std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .min_host_version(sv(0, 1, 0))
@@ -617,7 +617,7 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
         module_id,
         sv(1, 0, 0),
         stage,
-        "slicer:world-postpass@1.0.0",
+        slicer_schema::WORLD_POSTPASS,
         std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .min_host_version(sv(0, 1, 0))

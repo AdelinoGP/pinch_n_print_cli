@@ -17,7 +17,7 @@ fn valid_manifest_is_normalized_into_loaded_module_runtime_fields() {
         valid_manifest_toml(
             "com.community.tpms-infill",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -65,7 +65,7 @@ fn unknown_stage_is_a_fatal_structured_error_with_path_and_field_context() {
         valid_manifest_toml(
             "com.community.bad-stage",
             "Layer::TypoStage",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -91,7 +91,7 @@ fn manifest_is_not_loadable_without_same_stem_wasm_beside_it() {
         valid_manifest_toml(
             "com.community.missing-wasm",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         false,
@@ -122,7 +122,7 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
         &valid_manifest_toml(
             "com.community.duplicate",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -133,7 +133,7 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
         &valid_manifest_toml(
             "com.community.duplicate",
             "Layer::Support",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -176,7 +176,7 @@ fn bad_root_is_skipped_with_diagnostic_and_other_roots_still_load() {
         &valid_manifest_toml(
             "com.community.good",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -228,7 +228,7 @@ fn wit_world_mismatch_rejects_invalid_package_name() {
         valid_manifest_toml(
             "com.community.bad-pkg",
             "Layer::Infill",
-            "slicer:layer-world@1.0.0", // wrong â€” canonical is slicer:world-layer@1.0.0
+            "slicer:layer-world@1.0.0", // wrong — canonical is slicer:world-layer
             true,
         ),
         true,
@@ -245,35 +245,51 @@ fn wit_world_mismatch_rejects_invalid_package_name() {
         "error should name the invalid wit_world value: {error:?}"
     );
     assert!(
-        error.message.contains("slicer:world-layer@1.0.0"),
+        error.message.contains(slicer_schema::WORLD_LAYER),
         "error should list the canonical wit_world values: {error:?}"
     );
 }
 
+/// A `wit-world` carrying a version is rejected, and the diagnostic says why.
+///
+/// This replaces `wit_world_major_version_mismatch_rejects_future_major`, which
+/// claimed to prove major-version comparison. It never did: the check was
+/// `ALLOWLIST.contains(&wit_world)` — exact string equality — so the test passed
+/// for *any* unlisted string and would have passed with the version logic
+/// entirely absent, which it was.
+///
+/// The world version is not part of module identity and never could be: our
+/// worlds export bare funcs, so the version is erased from the guest binary at
+/// compile time. Declaring one is an unfalsifiable claim, so we reject it and
+/// name the fix.
 #[test]
-fn wit_world_major_version_mismatch_rejects_future_major() {
-    // A future major version of a canonical world must also be rejected.
-    let fixture = ModuleFixture::new("wit-world-future-major");
+fn versioned_wit_world_is_rejected_with_actionable_diagnostic() {
+    let fixture = ModuleFixture::new("wit-world-versioned");
+    let versioned = format!("{}@1.0.0", slicer_schema::WORLD_LAYER);
     let manifest_path = fixture.write_module(
-        "future-major-module",
+        "versioned-module",
         valid_manifest_toml(
-            "com.community.future-major",
+            "com.community.versioned",
             "Layer::Infill",
-            "slicer:world-layer@2.0.0", // future major â€” not in allowlist
+            &versioned,
             true,
         ),
         true,
     );
 
     let error = load_module_from_paths(&manifest_path, &manifest_path.with_extension("wasm"))
-        .expect_err("future major version should be rejected during ingestion");
+        .expect_err("a versioned wit_world should be rejected during ingestion");
 
     assert_eq!(error.path, manifest_path);
     assert_eq!(error.field.as_deref(), Some("module.wit-world"));
     assert_eq!(error.kind, LoadErrorKind::Validation);
     assert!(
-        error.message.contains("slicer:world-layer@2.0.0"),
-        "error should name the invalid wit_world value: {error:?}"
+        error.message.contains("must not carry a version"),
+        "diagnostic should explain the rule, not just say 'unknown': {error:?}"
+    );
+    assert!(
+        error.message.contains(slicer_schema::WORLD_LAYER),
+        "diagnostic should name the corrected value to use: {error:?}"
     );
 }
 
@@ -287,7 +303,7 @@ fn lexical_order_within_one_root_deterministically_breaks_duplicate_ids() {
         &valid_manifest_toml(
             "com.community.same-root-duplicate",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -298,7 +314,7 @@ fn lexical_order_within_one_root_deterministically_breaks_duplicate_ids() {
         &valid_manifest_toml(
             "com.community.same-root-duplicate",
             "Layer::Support",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -328,7 +344,7 @@ fn finalization_manifest_true_parallel_hint_warns_and_normalizes_to_serialized_r
         valid_manifest_toml(
             "com.community.finalizer",
             "PostPass::LayerFinalization",
-            "slicer:world-finalization@1.0.0",
+            slicer_schema::WORLD_FINALIZATION,
             true,
         ),
         true,
@@ -365,7 +381,7 @@ description = "invalid semver for version"
 author = "community"
 license = "MIT"
 homepage = "https://example.invalid/schema-error"
-wit-world = "slicer:world-layer@1.0.0"
+wit-world = "{world}"
 
 [stage]
 id = "Layer::Infill"
@@ -396,7 +412,7 @@ keys = []
 [hints]
 layer-parallel-safe = true
 "#
-        .to_string(),
+        .replace("{world}", slicer_schema::WORLD_LAYER),
         true,
     );
 
@@ -415,7 +431,7 @@ fn assert_loaded_module_basics(module: &LoadedModule, wasm_path: &Path) {
     assert_eq!(module.id(), "com.community.tpms-infill");
     assert_eq!(module.version(), semver(1, 2, 0));
     assert_eq!(module.stage(), "Layer::Infill");
-    assert_eq!(module.wit_world(), "slicer:world-layer@1.0.0");
+    assert_eq!(module.wit_world(), slicer_schema::WORLD_LAYER);
     assert_eq!(module.wasm_path(), wasm_path);
 }
 
@@ -537,7 +553,7 @@ fn discovery_finds_manifests_in_immediate_subdirectories() {
         &valid_manifest_toml(
             "com.core.my-infill",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -551,7 +567,7 @@ fn discovery_finds_manifests_in_immediate_subdirectories() {
         &valid_manifest_toml(
             "com.core.my-support",
             "Layer::Support",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -589,7 +605,7 @@ fn discovery_excludes_cargo_toml_in_subdirectories() {
         &valid_manifest_toml(
             "com.core.my-module",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -613,7 +629,7 @@ fn discovery_mixes_flat_and_subdirectory_manifests() {
         &valid_manifest_toml(
             "com.community.flat",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -627,7 +643,7 @@ fn discovery_mixes_flat_and_subdirectory_manifests() {
         &valid_manifest_toml(
             "com.core.subdir",
             "Layer::Perimeters",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -773,7 +789,7 @@ fn placeholder_wasm_is_detected_during_ingestion() {
         valid_manifest_toml(
             "com.test.placeholder",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -820,7 +836,7 @@ fn real_wasm_is_not_flagged_as_placeholder() {
         valid_manifest_toml(
             "com.test.real",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -979,7 +995,7 @@ fn discovery_order_is_lexicographic_by_manifest_path() {
         &valid_manifest_toml(
             "com.test.zzz",
             "Layer::Support",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -991,7 +1007,7 @@ fn discovery_order_is_lexicographic_by_manifest_path() {
         &valid_manifest_toml(
             "com.test.aaa",
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,
@@ -1003,7 +1019,7 @@ fn discovery_order_is_lexicographic_by_manifest_path() {
         &valid_manifest_toml(
             "com.test.mmm",
             "Layer::Perimeters",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             true,
         ),
         true,

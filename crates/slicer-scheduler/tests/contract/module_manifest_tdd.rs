@@ -7,6 +7,7 @@
 /// entry is `type = "percent"` with the given raw TOML `default` literal
 /// (caller supplies quoting, e.g. `"\"25%\""` or `"\"abc%\""`).
 fn percent_type_manifest_toml(id: &str, key: &str, default_literal: &str) -> String {
+    let world = slicer_schema::WORLD_LAYER;
     format!(
         r#"
 [module]
@@ -17,7 +18,7 @@ description = "fixture manifest"
 author = "community"
 license = "MIT"
 homepage = "https://example.invalid/{id}"
-wit-world = "slicer:world-layer@1.0.0"
+wit-world = "{world}"
 
 [stage]
 id = "Layer::Infill"

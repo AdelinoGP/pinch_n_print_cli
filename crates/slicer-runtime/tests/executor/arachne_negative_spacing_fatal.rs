@@ -51,7 +51,7 @@ fn arachne_negative_spacing_config_fails_the_slice_with_actionable_error() {
             patch: 0,
         },
         "Layer::Perimeters",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])

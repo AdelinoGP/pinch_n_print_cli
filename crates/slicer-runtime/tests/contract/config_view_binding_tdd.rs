@@ -41,7 +41,7 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
         id,
         sem(),
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         PathBuf::from("fixtures/mod.wasm"),
     )
     .min_host_version(SemVer {
@@ -431,7 +431,7 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
         "com.example.b",
         &["fuzzy"],
         "PrePass::LayerPlanning",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
     );
 
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();

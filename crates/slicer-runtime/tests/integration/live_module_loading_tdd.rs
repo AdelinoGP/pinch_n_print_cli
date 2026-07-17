@@ -113,7 +113,7 @@ fn infill_manifest(id: &str, requires: &[&str]) -> String {
     manifest(
         id,
         "Layer::Infill",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         &[("density", "float"), ("pattern", "enum")],
         requires,
         &["SliceIR.regions.infill_areas"],
@@ -125,7 +125,7 @@ fn prepass_manifest(id: &str) -> String {
     manifest(
         id,
         "PrePass::MeshAnalysis",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         &[("threshold", "float")],
         &[],
         &[],

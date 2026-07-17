@@ -212,7 +212,7 @@ fn make_bundle_with_config(
             patch: 0,
         },
         stage,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {

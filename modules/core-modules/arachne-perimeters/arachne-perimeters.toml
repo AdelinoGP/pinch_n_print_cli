@@ -5,7 +5,7 @@ display-name = "Arachne Perimeters"
 description  = "Arachne variable-width perimeter generator. Produces perimeter walls via the Arachne/WallToolPaths pipeline (skeletal-trapezoidation graph + beading-strategy stack); selected when wall_generator = \"arachne\" (default \"classic\", see D-112-WALL-GENERATOR-SELECT). Claim-holds Layer::Perimeters and is incompatible with com.core.classic-perimeters."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer@1.0.0"
+wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Perimeters"

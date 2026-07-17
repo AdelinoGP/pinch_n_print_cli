@@ -5,7 +5,7 @@ display-name = "Region Split Core Priority Mismatch"
 description  = "Fixture: core semantic with wrong priority"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer@1.0.0"
+wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

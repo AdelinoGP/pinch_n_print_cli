@@ -225,7 +225,7 @@ fn loaded_module(
         id,
         semver(1, 0, 0),
         stage,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(strings(ir_reads))

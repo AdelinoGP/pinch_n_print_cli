@@ -2,7 +2,7 @@
 
 wit_bindgen::generate!({
     path: "../../../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module@1.0.0",
+    world: "slicer:world-layer/layer-module",
     generate_all,
 });
 

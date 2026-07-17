@@ -1377,35 +1377,52 @@ fn type_error(manifest_path: &Path, field: &'static str, expected: &str) -> Load
     }
 }
 
-/// The canonical WIT world identifiers accepted by the host.
+/// Validates that `wit_world` from the manifest names a world the host knows.
 ///
-/// All four world identifiers must match the on-disk `wit/world-*.wit` package
-/// names exactly.  Version (`@1.0.0`) is part of the identifier.
-const WIT_WORLD_ALLOWLIST: &[&str] = &[
-    "slicer:world-layer@1.0.0",
-    "slicer:world-prepass@1.0.0",
-    "slicer:world-postpass@1.0.0",
-    "slicer:world-finalization@1.0.0",
-];
-
-/// Validates that `wit_world` from the manifest is in the host's allowlist.
-///
-/// This is a fatal startup check — modules that declare a non-allowlisted
+/// This is a fatal startup check — modules that declare an unknown
 /// `wit_world` cannot be loaded and the host aborts with a diagnostic.
+///
+/// The accepted names come from [`slicer_schema::SUPPORTED_WIT_WORLDS`], which
+/// is the sole source. This function used to compare against a hand-copied
+/// duplicate of that list which spelled out `@x.y.z` versions, so bumping a
+/// world's version fatally rejected every module until all 23 manifests were
+/// rewritten in lockstep.
+///
+/// The version is deliberately not compared, because it does not exist to
+/// compare against: our worlds export bare funcs, so the version is erased
+/// from the guest binary at compile time (see `slicer_schema`'s world-name
+/// constants). A declared version would be an unfalsifiable claim. Structural
+/// compatibility is enforced by wasmtime at typed instantiation.
 fn validate_wit_world(wit_world: &str, manifest_path: &Path) -> Result<(), LoadError> {
-    if WIT_WORLD_ALLOWLIST.contains(&wit_world) {
-        Ok(())
-    } else {
-        Err(LoadError {
-            path: manifest_path.to_path_buf(),
-            field: Some(String::from("module.wit-world")),
-            kind: LoadErrorKind::Validation,
-            message: format!(
-                "Unknown wit_world '{wit_world}' — expected one of: {}",
-                WIT_WORLD_ALLOWLIST.join(", ")
-            ),
-        })
+    if slicer_schema::SUPPORTED_WIT_WORLDS.contains(&wit_world) {
+        return Ok(());
     }
+
+    let err = |message: String| LoadError {
+        path: manifest_path.to_path_buf(),
+        field: Some(String::from("module.wit-world")),
+        kind: LoadErrorKind::Validation,
+        message,
+    };
+
+    // A versioned name is the most likely mistake: manifests used to spell
+    // `slicer:world-layer@1.0.0`. Point at the fix instead of reporting a
+    // bare "unknown world", which reads as "you named the wrong world".
+    if let Some((name, version)) = wit_world.split_once('@') {
+        if slicer_schema::SUPPORTED_WIT_WORLDS.contains(&name) {
+            return Err(err(format!(
+                "wit_world '{wit_world}' must not carry a version — use '{name}'. \
+                 The world version (@{version}) is not part of module identity: it is \
+                 erased from the guest binary at compile time and cannot be verified \
+                 against it. Compatibility is enforced structurally at instantiation."
+            )));
+        }
+    }
+
+    Err(err(format!(
+        "Unknown wit_world '{wit_world}' — expected one of: {}",
+        slicer_schema::SUPPORTED_WIT_WORLDS.join(", ")
+    )))
 }
 
 fn known_stage_ids() -> &'static [&'static str] {
@@ -1554,7 +1571,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::SlicePostProcess",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             PathBuf::from("fixtures/test.wasm"),
         )
         .build();
@@ -1562,7 +1579,7 @@ mod tests {
         assert_eq!(module.id, "com.test.module");
         assert_eq!(module.version.major, 1);
         assert_eq!(module.stage, "Layer::SlicePostProcess");
-        assert_eq!(module.wit_world, "slicer:world-layer@1.0.0");
+        assert_eq!(module.wit_world, slicer_schema::WORLD_LAYER);
         assert_eq!(module.wasm_path, PathBuf::from("fixtures/test.wasm"));
         assert!(module.ir_reads.is_empty());
         assert!(module.ir_writes.is_empty());
@@ -1583,7 +1600,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::Perimeters",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             PathBuf::from("fixtures/full.wasm"),
         )
         .ir_reads(vec!["SliceIR".to_string()])
@@ -1610,7 +1627,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::Infill",
-            "slicer:world-layer@1.0.0",
+            slicer_schema::WORLD_LAYER,
             PathBuf::from("fixtures/synth.wasm"),
         )
         .config_schema(schema)

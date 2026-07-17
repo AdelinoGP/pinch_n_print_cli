@@ -150,7 +150,7 @@ fn module_requiring_newer_host_than_running_produces_host_version_incompatible_e
         "com.example.future",
         semver(1, 0, 0),
         stage,
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         PathBuf::from("fixtures/com.example.future.wasm"),
     )
     .ir_writes(vec![String::from("SharedIR.placeholder")])
@@ -442,7 +442,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
         // ability to verify UndeclaredAccess error detection without real WASM guests.
         if runtime_reads.is_empty()
             && stage == "Layer::SlicePostProcess"
-            && wit_world == "slicer:world-layer@1.0.0"
+            && wit_world == slicer_schema::WORLD_LAYER
         {
             runtime_reads.push(String::from("MeshIR"));
             runtime_reads.push(String::from("SliceIR.regions.polygons"));
@@ -481,7 +481,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let earlier_live_audit = collect_dispatch_audit(
         &earlier.id,
         "Layer::SlicePostProcess",
-        "slicer:world-layer@1.0.0",
+        slicer_schema::WORLD_LAYER,
         &["MeshIR".to_string(), "SliceIR.regions.polygons".to_string()],
         &["SliceIR".to_string()],
     );
@@ -661,7 +661,7 @@ fn loaded_module(id: &str, stage: &str) -> LoadedModuleBuilder {
     LoadedModuleBuilder {
         id: String::from(id),
         stage: String::from(stage),
-        wit_world: String::from("slicer:world-layer@1.0.0"),
+        wit_world: String::from(slicer_schema::WORLD_LAYER),
         ir_reads: Vec::new(),
         ir_writes: vec![String::from("SharedIR.placeholder")],
         claims: Vec::new(),

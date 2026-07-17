@@ -146,7 +146,7 @@ fn loaded_seam_planner(wasm_path: std::path::PathBuf) -> LoadedModule {
         "com.core.seam-planner-default",
         semver(0, 1, 0),
         "PrePass::SeamPlanning",
-        "slicer:world-prepass@1.0.0",
+        slicer_schema::WORLD_PREPASS,
         wasm_path,
     )
     .ir_reads(vec![

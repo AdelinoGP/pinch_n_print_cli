@@ -9,7 +9,7 @@ use machine_gcode_emit::MachineGcodeEmit;
 fn binding_surface_matches_gcode_postprocess_stage() {
     assert_eq!(
         MachineGcodeEmit::__slicer_world_id(),
-        "slicer:world-postpass@1.0.0"
+        slicer_schema::WORLD_POSTPASS
     );
     assert_eq!(MachineGcodeEmit::__slicer_trait_name(), "PostpassModule");
     assert_eq!(
