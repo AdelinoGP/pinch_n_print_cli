@@ -397,19 +397,27 @@ See `docs/02_ir_schemas.md` "G-code envelope blocks" for the full envelope forma
 
 ## Machine start / end G-code (packet 59)
 
-Keys read by the designated `PostPass::LayerFinalization` machine-gcode module
+Keys read by the designated `PostPass::GCodePostProcess` machine-gcode module
 (default: `machine-gcode-emit`). Defaults and ranges are in the generated
 **Module-owned config keys** table above (module `machine-gcode-emit`).
 `machine_start_gcode` / `machine_end_gcode` are templates supporting `[key]`
 placeholder substitution.
 
-Supported macros inside templates (square-bracket placeholders only, no
-arithmetic / conditionals):
+Substitution is a deliberately narrow subset of OrcaSlicer's `PlaceholderParser`
+(packet 59): single-pass, square-bracket placeholders only, no arithmetic, no
+conditionals, no builtins. A placeholder resolves **if and only if a config key of
+that exact name is declared**; the lookup is built from `ConfigView::keys()`.
 
-`[first_layer_temperature]`, `[bed_temperature]`, `[filament_type]`,
-`[nozzle_diameter]`, `[tool_count]`, `[layer_count]`,
-`[print_time_estimate_s]`, `[x_max]`, `[y_max]`, `[z_max]`,
+Supported macros inside templates:
+
 `[bed_temperature_initial_layer_single]`, `[nozzle_temperature_initial_layer]`.
+
+> **Unknown placeholders pass through verbatim, into the emitted G-code.** A
+> template containing `[bed_temperature]` — which is *not* a declared config key —
+> ships the literal text `[bed_temperature]` to the printer. Only the two macros
+> listed above resolve today. The wider OrcaSlicer placeholder set
+> (`[first_layer_temperature]`, `[layer_count]`, `[max_layer_z]`, …) is not
+> implemented; see `DEVIATION_LOG.md` for the custom-G-code parity gap.
 
 ---
 

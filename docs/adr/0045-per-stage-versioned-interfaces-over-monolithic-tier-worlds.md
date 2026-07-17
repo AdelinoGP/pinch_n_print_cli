@@ -1,6 +1,6 @@
-# ADR-0045: Per-stage versioned interfaces over monolithic tier worlds
+# ADR-0045: Per-stage versioned packages over monolithic tier worlds
 
-Status: proposed
+Status: accepted
 
 ADR-0044 established that the world version enforces nothing and removed it from
 module identity. This ADR records the deeper finding underneath it, and the fix.
@@ -51,33 +51,96 @@ Blast radius scales with export count, which is why the pain landed on
 | world-postpass | 2 |
 | world-finalization | 1 |
 
-## Decision (proposed)
+## Decision
 
-Restructure each stage into its own **versioned interface**, e.g.
-`slicer:world-layer/infill-postprocess@2.0.0`. A module exports only the interface
-it implements; the host probes each and tolerates the miss.
+Restructure each stage into its own **versioned WIT package**, e.g.
+`slicer:layer-infill-postprocess@1.0.0`, holding one interface. A module exports
+only the package for the stage it implements.
 
-This is the Bytecode Alliance's sanctioned pattern for prebuilt plugin
-ecosystems, not an invention: since there are no optional exports, **granularity is
-the only route to optionality**.
+```wit
+package slicer:layer-perimeters@1.0.0;
+interface perimeters { run: func(...) -> result<_, module-error>; }
+world perimeters-module { import ...; export perimeters; }
+```
 
-Scope `world-layer` first; prepass/postpass/finalization may not be worth it.
+17 packages: 10 layer + 4 prepass + 2 postpass + 1 finalization. All four tiers,
+so exactly one mechanism exists. The three small tiers are quiet today for the same
+accidental reason `world-layer` was quiet for 150 packets — nobody has changed them
+yet.
+
+`[stage] id` is **singular in all 20 manifests**, so the host always knows which
+stage to instantiate. There is no probing: dispatch resolves `stage_id` → package →
+typed instantiate. A module that declares a stage whose interface it does not export
+**fails at load**, with a diagnostic naming the expected `package/iface@version`.
+That is what retires the lying `Ok(())` stubs and satisfies ADR-0015.
+
+The manifest keeps `[stage] id` — the DAG validator and `dag_cli` plan without
+instantiating any WASM (see ADR-0006's rejected alternative), so the stage must be
+declarable ahead of load. `wit-world`, `SUPPORTED_WIT_WORLDS` and
+`validate_wit_world` retire.
+
+Granularity is the only route to optionality, since the component model has no
+optional exports. This is the Bytecode Alliance's sanctioned pattern for prebuilt
+plugin ecosystems, not an invention.
+
+### The unit is the package, not the interface
+
+An earlier draft of this ADR proposed `slicer:world-layer/infill-postprocess@2.0.0`
+— stages as interfaces *inside* a tier package. **That does not work, and it fails
+on this ADR's own motivating example.**
+
+In WIT, `@version` is a property of the **package**; an interface cannot carry one.
+The grammar attaches `<semversuffix>` to `package-name`, and there is no
+interface-version production. Our own tree demonstrates it — `wit/deps/common.wit`:
+
+```wit
+package slicer:common;        // no version
+interface module-errors { }   // cannot carry one
+interface host-services { }   // cannot carry one
+```
+
+So every interface in `slicer:world-layer@2.0.0` shares that one version. Replay
+packet 130 under that shape: adding the required `prior-infill` param is breaking →
+the package majors `1.x → 2.0.0` → all ten interfaces move from wasmtime alt-key
+`@1` to `@2` → `arachne-perimeters`, exporting `perimeters@1.1.0`, misses again.
+The promised outcome ("untouched, doesn't even rebuild") is only reachable when
+`slicer:layer-infill-postprocess` can bump while `slicer:layer-perimeters` sits
+still. Hence: one package per stage.
+
+### Versions reset to 1.0.0
+
+Every stage package starts at `@1.0.0`, discarding `world-layer`'s current
+`@2.0.0`. This is mechanical, not cosmetic — see the alt-key table below. Major
+must be nonzero for major-track compatibility; at `0.x` every minor bump breaks,
+and at `0.0.x` there is no compatibility track at all.
+
+Names are tier-prefixed (`slicer:layer-perimeters`, `slicer:prepass-seam-planning`).
+The tier survives as **vocabulary**; it dies as a **contract**.
 
 ## Why this works
 
-Versioning an *interface* puts the version in the component's export names, where
-the engine can act on it. Wasmtime has semver-matched exports since PR #8830
-(2024-06-18); we are on 43.0.1. `wasmtime_environ::component::names::alternate_lookup_key()`
-registers `1.1.2` under an alternate key of `1` (major nonzero → truncate to
-major), so a guest exporting `@1.0.0` and a host wanting `@1.1.0` resolve via the
-shared `@1` key, in both directions. Crossing `1.x → 2.0` breaks cleanly.
+Versioning a *package* puts the version in the component's export names, where the
+engine can act on it. Wasmtime has semver-matched exports since PR #8830
+(2024-06-18); we are on 43.0.1. `wasmtime_environ::component::names`'
+`alternate_lookup_key` registers a nonzero major under a truncated key, so a guest
+exporting `@1.0.0` and a host wanting `@1.1.0` resolve via the shared `@1` key, in
+both directions. Crossing `1.x → 2.0` breaks cleanly. Verified against the pinned
+source:
 
+| name | alternate key |
+|---|---|
+| `x:y/z` | `None` — unversioned, exact match only |
+| `x:y/z@1.1.2` | `x:y/z@1` — major track |
+| `x:y/z@0.1.0` | `x:y/z@0.1` — minor track |
+| `x:y/z@0.0.1` | `None` — no compatible track |
+
+A bare func name (`run-perimeters`) yields `None`: no `@`, no semver, no matching.
 **We already have that engine; the bare-func world structure routes around it.**
 
 The refactor follows a seam that already exists: `dispatch.rs` already does
 `match stage_id.as_str()` *after* instantiating the monolithic world.
 
-|  | today | per-stage versioned interfaces |
+|  | today | per-stage versioned packages |
 |---|---|---|
 | `docs/05`'s additive-compat promise | structurally impossible | true, via wasmtime's `@1` alternate key |
 | infill change breaks perimeters modules | yes | no — untouched, doesn't even rebuild |
@@ -85,14 +148,79 @@ The refactor follows a seam that already exists: `dispatch.rs` already does
 | the 9 lying `Ok(())` stubs | required as padding | gone |
 | manifest `wit-world` + allowlist | unfalsifiable ceremony | deletable — binary carries the truth |
 
+## The lifecycle exports go with them
+
+`on-print-start` / `on-print-end` are deleted from WIT rather than carried into the
+new packages. They are the purest padding in the tree:
+
+- `call_on_print_start` / `call_on_print_end` have **zero callers in the host**.
+  `docs/04`'s "call on-print-start on all modules" describes a call that was never
+  written.
+- The macro's `on_print_end` glue is hardcoded `Ok(())` and **never dispatches** to
+  the trait. Every module's `on_print_end` body is unreachable.
+- The macro's `on_print_start` glue does `Ok(_m) => Ok(())` — constructs the module
+  and discards it — while all 15 `run_*` arms construct it again per call. No
+  `OnceCell` or `static` retains anything, so `docs/05`'s "initialize expensive
+  resources once per print" is exactly inverted: it runs once per *layer*, per
+  *stage*.
+- `WORLD_LIFECYCLE_EXPORTS` claims all four worlds ship them; only `world-layer.wit`
+  declares them. Its guard test `every_world_has_lifecycle_exports` reads that table
+  and asserts against the same table — vacuous, the identical pathology ADR-0044
+  found in `wit_world_major_version_mismatch_rejects_future_major`.
+
+The SDK trait method survives under an honest name: `on_print_start(config) ->
+Result<Self>` is a constructor, so it becomes `from_config`. `on_print_end` is
+deleted from all four traits.
+
+Nothing is lost, because the concepts already have homes. **OrcaSlicer has no such
+hook** — it expresses lifetime by where the object lives: `SeamPlacer::init` runs
+once per print on a `GCode` member, while `Fill` (`Layer::make_fills`) and
+`PerimeterGenerator` (`LayerRegion::make_perimeters`) are rebuilt per layer. Our
+tier system already encodes both — per-print is the prepass tier plus the
+Blackboard (ADR-0029); per-layer is the layer tier. And the *real* print start/end
+is a user-editable G-code template (`machine_start_gcode` / `machine_end_gcode`),
+read at `run_gcode_postprocess` by `machine-gcode-emit`: a different tier, a
+different lifetime, a different owner. Two things were named "print start"; only
+one was real.
+
 ## Consequences
 
 - A stage's contract change stops invalidating unrelated modules.
 - The version becomes real without any bespoke checking code.
-- `wit-world`, `SUPPORTED_WIT_WORLDS`, and `validate_wit_world` can retire.
-- Significant refactor of macro glue, host bindgen, and dispatch.
+- `wit-world`, `SUPPORTED_WIT_WORLDS`, `validate_wit_world`, and
+  `WORLD_LIFECYCLE_EXPORTS` retire.
+- Significant refactor of macro glue, host bindgen (4 `bindgen!` → 17), and dispatch.
+- **Forecloses**, honestly: a layer module holding cheap *private* state across
+  layers (a scratch buffer, a warn-once flag). It cannot do so today — the module is
+  rebuilt per call — so nothing that currently works is lost. But re-adding it later
+  requires a new contract, not this one. `on_print_start(config)` could never have
+  served it: it sees only config, so anything it cached would be stale the moment a
+  module declares a non-empty `[config.overridable-per-layer]`. Packet 102 already
+  ruled that caching "forbidden because it defeats the layer-override mechanism".
 - Timing: do it while the third-party ecosystem is still nascent. The out-of-tree
   search path (`module_search_path.rs`) and the `docs/00` promise ("Community
   modules ship as `.wasm` + `.toml`") are real, but no registry, no install path,
   and no out-of-tree module exist. Breaking changes are free now and will not be
   later.
+
+## Alternatives rejected
+
+- **Stages as interfaces inside one tier package per tier.** The original draft of
+  this ADR. Rejected: WIT versions packages, not interfaces, so a breaking change to
+  any stage majors the package and moves every sibling interface's alt-key. It fails
+  the packet-130 case this ADR exists to fix. See "The unit is the package".
+- **One tier package, never major-bumped (stay `@1.x` forever).** Mostly works —
+  siblings keep resolving via the `@1` alt-key, and a genuinely changed signature
+  fails its own typecheck. Rejected because the version would once again claim
+  compatibility it does not have, and breaking changes would surface as structural
+  type errors rather than clean version misses. That is the precise sin ADR-0044
+  spent its length killing; reintroducing it one ADR later is not defensible.
+- **Scope `world-layer` only, leave the other three tiers.** Rejected: it leaves two
+  contract mechanisms live permanently, and the macro, host bindgen and dispatch
+  would each carry both paths. The other three tiers are only 7 exports in total —
+  cheap once the machinery exists. "Temporary" branches have a track record here
+  (`run.rs`'s advisory-mode "pragmatic fix" is 14 months old and still load-bearing).
+- **Probe each stage and tolerate the miss.** The original draft's dispatch rule.
+  Rejected: it assumed modules implement several stages, and `[stage] id` is
+  singular in all 20 manifests. Tolerating a miss would recreate the silent-success
+  failure mode this ADR exists to delete.

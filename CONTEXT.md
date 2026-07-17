@@ -102,11 +102,14 @@ conflating them under the single word "world" is why a one-stage change bills th
 whole tier.
 
 ### Stage interface
-The proposed unit that collapses that gap: one versioned WIT interface per
-**stage**, exported and probed independently, so a module declares only the
-stage contract it actually implements. Distinct from **module tier** — a tier
-would group stage interfaces rather than fuse them. Not yet implemented; named
-here because the distinction is the point.
+The unit that collapses that gap: one independently versioned WIT **package** per
+**stage**, each holding a single interface, so a module declares only the stage
+contract it actually implements and a change to one stage cannot invalidate the
+others. The package — not the interface — is the unit, because a version attaches
+to a package and an interface cannot carry one; interfaces sharing a package share
+its version and so bump together. Distinct from **module tier** — a tier groups
+stage interfaces rather than fusing them. Decided in ADR-0045; not yet
+implemented, and named here because the distinction is the point.
 
 ### Per-region output origin
 The explicit identity tag a guest attaches to perimeter and infill output pushes

@@ -117,6 +117,21 @@ When modifying WIT types or interface definitions:
 
 Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Packets are authored with `/spec-packet-generator`, gated with `/spec-review <packet> --preflight`, and executed with `/swarm <packet>`. Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before closing; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony (see Test Discipline above).
 
+## In-Tree Citation Style (MUST follow)
+
+**Cite in-tree code by symbol name. A line number is a navigation hint, never the identifier.**
+
+- Correct: ``` `WORLD_LIFECYCLE_EXPORTS` (`crates/slicer-schema/src/lib.rs`) ```, ``` `is_stale`'s `newest_src > art` comparison ```, ``` the `#[export_name]` shim in `lifecycle_shim_tokens` ```
+- Wrong: ``` `crates/slicer-schema/src/lib.rs:230` ``` as the sole identifier of a thing.
+
+This applies to spec packets (`.ralph/specs/**`), ADRs, `docs/`, and code comments — the same rule the section below imposes on OrcaSlicer citations, and for the same reason.
+
+**Why:** measured, in this repo. A packet-162 preflight found **11+ of ~34 line ranges wrong while every symbol name resolved cleanly**. The pins had rotted *within a single session*, because they were captured from editor buffers of files that were dirty at the time. One (`delete lines 159-170`) named a closure that actually ends at `:171`; following it literally would have left a dangling `});` and a non-compiling file. An off-by-one pin looks exactly like a correct one, which is what makes this class dangerous rather than merely untidy.
+
+**A symbol name is not enough on its own — give the crate-qualified path.** Same packet, same session: a brief said `loader.rs::path_object_id` without a crate. A downstream agent resolved it to `crates/slicer-runtime/src/loader.rs`, which does not exist (the real file is `crates/slicer-model-io/src/loader.rs`), and the fiction survived an authoring pass, a self-preflight, an independent review, and a 32-pin verification sweep — because every one of them checked whether the *line* was right and none asked whether the *file* existed. Bare basenames like `loader.rs`, `lib.rs`, and `main.rs` are ambiguous across a dozen crates here; always write the path from the workspace root.
+
+If you write a line number, re-verify it against disk at the moment you write it, and make sure the surrounding prose names the symbol so the citation survives the pin going stale. When verifying someone else's citation, check that the path resolves *before* checking the line — a green line-check on a non-existent file is not possible, so if your sweep passed, confirm it was actually reading the file you think it was.
+
 ## OrcaSlicer Attribution Rules
 
 Any time an agent ports or translates C++ code from OrcaSlicer into this codebase, it MUST prepend the standard porting header defined in `docs/ORCASLICER_ATTRIBUTION.md` to the top of the new file. This ensures AGPLv3 compliance and proper attribution.
