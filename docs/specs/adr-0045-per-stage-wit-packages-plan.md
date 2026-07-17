@@ -312,6 +312,16 @@ on these two points by design.
    be imported by `slicer-runtime`; packet #1 mirrors the algorithm and pins the
    source function so the two stay legible as siblings.
 
+7. **"17 packages: 10 layer + 4 prepass" (the plan above AND accepted ADR-0045) is false.**
+   Falsified while grounding packet #3: `STAGES` has 16 rows (8 Layer, 5 PrePass, 2
+   PostPass, 1 Finalization); `world-layer.wit`'s "10" counted the two lifecycle
+   exports packet #1 deletes; and `PrePass::PaintSegmentation` is host-built-in
+   (packet 97, `crates/slicer-runtime/src/prepass.rs`) with no WIT export and no
+   core module — `docs/03`'s `export run-paint-segmentation` listing is fiction.
+   True end state: **15 packages** (163's 3 + 164's 12). Packet #3 owns correcting
+   the count where it appears in governed docs; this plan text stays verbatim-wrong
+   by design, corrected here.
+
 ## Status since approval
 
 - ADR-0045 **amended and accepted** (retitled "per-stage versioned **packages**";
@@ -349,7 +359,7 @@ convention (`TASK-119a/b/c`, `TASK-120a-d`, `TASK-194a/b`).
 |---|-------------|---------------------|----------|------------|--------|------------|
 | 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/03`/`docs/04`/`docs/05`, and make CLI-binary staleness fail loudly at all three spawn sites. | TASK-146a | - | generated | `.ralph/specs/162_wit-lifecycle-export-removal/` |
 | 2 | 163_per-stage-wit-packages-pilot | Build the per-stage versioned-package machinery and prove it on the two cheapest tiers — postpass (2 stages) and finalization (1) — at `@1.0.0` with fatal-on-miss load, incl. the `compute_shared_mtime` per-stage fix without which the isolation benefit cannot be demonstrated. | TASK-146b | #1 | generated | `.ralph/specs/163_per-stage-wit-packages-pilot/` |
-| 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | pending | - |
+| 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | generated | `.ralph/specs/164_per-stage-wit-packages-bulk/` |
 | 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | generated | `.ralph/specs/165_cli-binary-locator-extraction/` |
 
 Dependency note: #2 must land the machinery before #3 migrates the remaining 14
@@ -402,6 +412,17 @@ moment it applies.
 - Guards: `every_stage_package_major_is_at_least_one`, `stage_miss_is_fatal_at_instantiation`, `stage_wit_dir_is_charged_only_to_matching_guest`, `stage_wit_unknown_stage_is_conservative`.
 - **WIT shape:** each resource-bearing stage package pairs an **imported** `<iface>-types` interface with an exported **`run`-only** interface (same package ⇒ one version per stage). An exported interface must declare **no resources** — a resource in an exported interface is guest-owned, and our stages take host-owned ones. `postpass-text-postprocess` needs no `-types` half (its only resource, `config-view`, comes from the already-shared `slicer:config/config-types`).
 - Files `DEV-086` (the two-mechanism intermediate; owner #3). **References** `DEV-087` — does not re-file it.
+
+### From #3 `164_per-stage-wit-packages-bulk` (generated, PREFLIGHT PASS)
+
+Completes the migration; later packets consume the end state, not new machinery:
+
+- 12 new WIT packages at `@1.0.0` (`slicer:layer-{slice-postprocess,perimeters,perimeters-postprocess,infill,infill-postprocess,support,support-postprocess,path-optimization}`, `slicer:prepass-{mesh-analysis,layer-planning,seam-planning,support-geometry}`) plus one **unversioned** shared dep `slicer:prepass-types` (flat `deps/prepass-types.wit`: `mesh-object-view` + the paint-view family). End state: **15** per-stage packages, not the plan's/ADR's "17" (see Grounding correction 7). `PrePass::PaintSegmentation` gets none (host-built-in) — its `StageSpec` WIT columns stay empty and 163's wit_dir-totality guard is relaxed accordingly.
+- 12 `bindgen!` mods in `crates/slicer-wasm-host/src/host.rs`; the canonical `with:` definer moves `layer` → `layer_perimeters`. 12 new `StageGlueKind` variants in `slicer-macros`.
+- Removed: manifest `wit-world` key (all 20 core-module manifests + `manifest.rs` field/accessor), `validate_wit_world`, `SUPPORTED_WIT_WORLDS`, `deps/world-layer/`, `deps/world-prepass/`, and the two scheduler tests `wit_world_mismatch_rejects_invalid_package_name` / `versioned_wit_world_is_rejected_with_actionable_diagnostic` (replaced by `wit_world_key_is_ignored`).
+- Kept, diverging from 163's "for #3 to retire" note: `WORLD_*` consts and `StageSpec.world_id` survive as tier vocabulary (30+ consumer files; the naming rule reads tier from `world_id`) — recorded in 164's design.md §Open Questions.
+- Pulled in scope: `modules/core-modules/arachne-perimeters/tests/slicer_module_binding_tdd.rs` (the only layer/prepass module without one — and the ADR's headline isolation example).
+- Closes the DEV row 163 files for the two-mechanism intermediate (id re-derived at point of use).
 
 ### From #4 `165_cli-binary-locator-extraction` (generated, PREFLIGHT PASS)
 
