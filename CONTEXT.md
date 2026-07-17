@@ -365,6 +365,13 @@ domain under-extrudes by `layer_height·(1 − π/4)` (~10.7% at 0.4/0.2) —
 exactly D-160 Bug B. `classic-perimeters` never enters the spacing domain, so
 it has no back-conversion; that asymmetry is intentional.
 
+A non-positive flow spacing (width ≤ layer_height·(1 − π/4)) is a **config
+error, not a value**: canonical throws `FlowErrorNegativeSpacing` and the
+slice aborts; PnP returns an error that every caller must treat as
+slice-fatal (D-162). There is no "no usable spacing" sentinel and no
+fall-back-to-width — a surviving sentinel is how a width re-enters the
+spacing domain.
+
 ### Transition end
 The narrow end of a **quad** where the bead count decreases by one
 relative to the wide end — the point where a variable-width extrusion

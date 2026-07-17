@@ -27,6 +27,12 @@ max-ir-schema     = "5.0.0"
 
 [config.schema]
 
+  # ── Module error codes (ModuleError.code; module-specific per WIT docs) ──
+  #   1 = ERR_NEGATIVE_SPACING (D-162, fatal): a wall line width is too small
+  #       for the layer height — line_width_to_spacing produced a non-positive
+  #       spacing (canonical Flow::rounded_rectangle_extrusion_spacing throws
+  #       FlowErrorNegativeSpacing and the slice aborts).
+
   # ── BeadingStrategy stack (packet 111, T-218) ────────────────────────────
   # Pure config registration only; not yet consumed by run_perimeters (P112's
   # T-230 wires these into BeadingStrategyFactory::create_stack). Defaults are
@@ -59,7 +65,7 @@ max-ir-schema     = "5.0.0"
   min         = 0.01
   unit        = "mm"
   display     = "Nozzle diameter"
-  description = "Nozzle diameter in mm, plain float (matches classic-perimeters' own nozzle_diameter key convention). Consumed by arachne_params_from_config as the Flow-spacing nozzle_diameter clamp input and as the resolution base for percent-typed keys (min_feature_size, wall_transition_length)."
+  description = "Nozzle diameter in mm, plain float (matches classic-perimeters' own nozzle_diameter key convention). Consumed by arachne_params_from_config as the resolution base for percent-typed keys (min_feature_size, wall_transition_length). No longer feeds line_width_to_spacing: the vestigial nozzle parameter was removed with D-162 (canonical Flow::rounded_rectangle_extrusion_spacing never references the nozzle)."
   group       = "Arachne"
   advanced    = true
 

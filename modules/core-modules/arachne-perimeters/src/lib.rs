@@ -128,8 +128,15 @@ fn signed_area_of_points(pts: &[slicer_ir::Point3WithWidth]) -> f64 {
     area / 2.0
 }
 
+/// Module-local error code for a negative flow spacing (D-162): the config's
+/// wall line width is too small for its layer height. Fatal — canonical
+/// `Flow::rounded_rectangle_extrusion_spacing` throws and the slice aborts.
+/// Codes are module-specific per `ModuleError`'s docs; this module's codes are
+/// documented in the manifest's comment block (`arachne-perimeters.toml`).
+const ERR_NEGATIVE_SPACING: u32 = 1;
+
 #[rustfmt::skip]
-fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
+fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, ModuleError> {
     let defaults = ArachneParams::default();
 
     // `layer_height`/`nozzle_diameter` are Z-axis-convention / physical-spec
@@ -173,19 +180,12 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         let raw_width_mm = config
             .get_float("inner_wall_line_width")
             .unwrap_or(defaults.optimal_width);
-        let spacing = line_width_to_spacing(
-            raw_width_mm as f32,
-            layer_height_mm as f32,
-            nozzle_diameter_mm as f32,
-        ) as f64;
-        // line_width_to_spacing returns 0 for degenerate width<=layer_height
-        // configs (Orca asserts width>=height); fall back to raw width to
-        // avoid zero-spacing bead collapse.
-        if spacing <= 0.0 {
-            raw_width_mm
-        } else {
-            spacing
-        }
+        // D-162: no fallback. A non-positive spacing is a config error
+        // (canonical throws FlowErrorNegativeSpacing and aborts the slice);
+        // the former `spacing <= 0 -> raw width` branch smuggled a WIDTH into
+        // the SPACING-domain strategy stack.
+        line_width_to_spacing(raw_width_mm as f32, layer_height_mm as f32)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64
     };
     // AC-3 (cont'd): OrcaSlicer sets `bead_width_0 = ext_perimeter_spacing`
     // (PerimeterGenerator.cpp:2129) — the outer bead's target width fed to the
@@ -197,19 +197,10 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
     let preferred_bead_width_outer_raw = config
         .get_float("outer_wall_line_width")
         .unwrap_or(defaults.preferred_bead_width_outer);
-    let preferred_bead_width_outer_spacing = line_width_to_spacing(
-        preferred_bead_width_outer_raw as f32,
-        layer_height_mm as f32,
-        nozzle_diameter_mm as f32,
-    ) as f64;
-    // line_width_to_spacing returns 0 for degenerate width<=layer_height
-    // configs (Orca asserts width>=height); fall back to raw width to avoid
-    // zero-spacing bead collapse.
-    let preferred_bead_width_outer = if preferred_bead_width_outer_spacing <= 0.0 {
-        preferred_bead_width_outer_raw
-    } else {
-        preferred_bead_width_outer_spacing
-    };
+    // D-162: no fallback — see `optimal_width` above.
+    let preferred_bead_width_outer =
+        line_width_to_spacing(preferred_bead_width_outer_raw as f32, layer_height_mm as f32)
+            .map_err(|e| ModuleError::fatal(ERR_NEGATIVE_SPACING, e.to_string()))? as f64;
     let max_bead_count_explicit = config.get_int("max_bead_count");
     let wall_count = config.get_int("wall_count").map(|v| v.max(0) as u32).unwrap_or(3);
     // OrcaSlicer has no user-facing max_bead_count; it is always `2 * inset_count`
@@ -325,7 +316,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
         // packet does not touch it, so it keeps its pipeline default.
         let maximum_extrusion_area_deviation = defaults.maximum_extrusion_area_deviation;
 
-        ArachneParams {
+        Ok(ArachneParams {
             optimal_width,
             preferred_bead_width_outer,
             max_bead_count,
@@ -349,7 +340,7 @@ fn arachne_params_from_config(config: &ConfigView) -> ArachneParams {
             allowed_error_distance_squared,
             maximum_extrusion_area_deviation,
             wall_sequence: WallSequence::InnerOuter,
-        }
+        })
     }
 }
 
@@ -447,7 +438,7 @@ impl LayerModule for ArachnePerimeters {
         output: &mut PerimeterOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        let mut params = arachne_params_from_config(config);
+        let mut params = arachne_params_from_config(config)?;
         // is_bottom_layer keys the classic "first/last layer" threshold (layer 0
         // in object coordinates). PnP historically folded this into
         // is_initial_layer; both flags are kept distinct so downstream flag
@@ -1159,7 +1150,7 @@ mod tests {
             ConfigValue::Float(0.025),
         );
         let config = ConfigView::from_map(fields);
-        let params = arachne_params_from_config(&config);
+        let params = arachne_params_from_config(&config).expect("valid config");
         assert!(
             (params.smallest_line_segment_squared - 0.25).abs() < 1e-9,
             "expected smallest_line_segment_squared = 0.5² = 0.25 mm², got {}",

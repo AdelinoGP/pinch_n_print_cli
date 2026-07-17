@@ -2137,7 +2137,7 @@ fn arachne_perimeter_parity() {
         // the width fed to beading is spacing(W), and emission must recover W.
         const CONFIGURED_LINE_WIDTH_MM: f32 = 0.4;
         let expected_width_mm = flow_to_width(
-            line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2, 0.4),
+            line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2).unwrap(),
             0.2,
         );
         const FLOW_SPACING_TOLERANCE_MM: f32 = 0.01;
@@ -2159,7 +2159,7 @@ fn arachne_perimeter_parity() {
                  {}mm means the beading SPACING is being emitted as the extrusion \
                  width — the D-160 emission defect.",
                 (w - expected_width_mm).abs(),
-                line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2, 0.4)
+                line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2).unwrap()
             );
         }
     }

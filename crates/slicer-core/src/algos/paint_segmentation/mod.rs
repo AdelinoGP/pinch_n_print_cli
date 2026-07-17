@@ -61,6 +61,11 @@ pub enum PaintSegmentationError {
         /// The rejected value.
         value: i64,
     },
+    /// The configured extrusion width is too small for the layer height —
+    /// the flow formula produced a non-positive spacing (D-162). Slice-fatal,
+    /// mirroring canonical `MultiMaterialSegmentation.cpp`'s uncaught
+    /// `FlowErrorNegativeSpacing` throw from `layer_color_stat`.
+    NegativeSpacing(crate::flow::NegativeSpacingError),
 }
 
 impl std::fmt::Display for PaintSegmentationError {
@@ -72,6 +77,7 @@ impl std::fmt::Display for PaintSegmentationError {
             Self::InvalidPhase5Config { key, value } => {
                 write!(f, "invalid Phase 5 config: {key} = {value}")
             }
+            Self::NegativeSpacing(e) => write!(f, "{e}"),
         }
     }
 }
@@ -1199,7 +1205,7 @@ pub fn execute_paint_segmentation(
                     bottom_shell_layers,
                     shell_line_width,
                     shell_layer_height,
-                );
+                )?;
 
                 let chain_key: Vec<(String, slicer_ir::PaintValue)> =
                     vec![(sname.clone(), value.clone())];

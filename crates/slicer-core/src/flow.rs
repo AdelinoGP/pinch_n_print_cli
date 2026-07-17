@@ -39,51 +39,64 @@
 //! `ext_perimeter_spacing2 = (outer + inner) / 2` (T-052) and
 //! `perimeter_spacing = inner` (T-052) arithmetic live in `perimeter_utils`.
 
-/// Convert an extrusion line width (mm) to inter-wall spacing (mm) per OrcaSlicer's
-/// `Flow::new_from_width_height` formula.
-///
-/// `spacing = width - layer_height * (1.0 - PI / 4.0)`, clamped at `>= 0`.
-///
-/// Edge cases:
-/// - `width <= 0`, `layer_height <= 0`, `nozzle_diameter <= 0` → returns `0.0`.
-/// - `width <= layer_height * (1 - π/4)` → returns `0.0`. This is the ONLY
-///   degenerate case: it is exactly when the formula's result is non-positive,
-///   matching canonical `Flow::rounded_rectangle_extrusion_spacing`, which
-///   computes `out = width - height * (1 - π/4)` and throws
-///   `FlowErrorNegativeSpacing` iff `out <= 0`. PnP returns `0.0` where
-///   canonical throws (callers treat `0.0` as "no usable spacing"); that
-///   leniency is the only intended divergence here.
-///
-/// `nozzle_diameter` participates only in the `<= 0` sanity check — canonical's
-/// spacing formula does not reference the nozzle at all. It is retained in the
-/// signature for call-site symmetry with the rest of the flow math.
-///
-/// Two fabricated behaviours were removed here; neither exists in canonical:
-///
-/// - A `width < layer_height → 0.0` guard, justified in a doc comment as "the
-///   formula would yield a negative number". That justification was false. The
-///   formula only goes non-positive below `layer_height * (1 - π/4)` ≈
-///   `0.2146 * layer_height` — a threshold ~4.7x smaller. At `width = 0.4`,
-///   `layer_height = 1.0` the true spacing is `0.1854`, but the guard returned
-///   `0.0`, and `arachne_params_from_config`'s "spacing <= 0 → fall back to raw
-///   width" branch then fed the beading strategy a *width* where it expects a
-///   *spacing* — silently, on any config whose line width is under its layer
-///   height.
-/// - A documented `width >= nozzle_diameter → returns width` clamp that the
-///   body never implemented, that this module's own unit test contradicted, and
-///   that contradicts the formula stated at the top of this file. Canonical has
-///   no such clamp.
-pub fn line_width_to_spacing(width: f32, layer_height: f32, nozzle_diameter: f32) -> f32 {
-    if width <= 0.0 || layer_height <= 0.0 || nozzle_diameter <= 0.0 {
-        return 0.0;
+/// Error returned when the flow formula produces a non-positive spacing —
+/// the Rust analog of canonical `FlowErrorNegativeSpacing` (`Flow.hpp`, a
+/// `Slic3r::InvalidArgument`): canonical throws and the slice aborts with a
+/// config diagnosis, so callers here must treat this as slice-fatal (D-162).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NegativeSpacingError {
+    /// The line width (mm) that was too small.
+    pub width_mm: f32,
+    /// The layer height (mm) it was paired with.
+    pub layer_height_mm: f32,
+    /// The non-positive result: `width − layer_height·(1 − π/4)`.
+    pub spacing_mm: f32,
+}
+
+impl std::fmt::Display for NegativeSpacingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let threshold = self.layer_height_mm * (1.0 - core::f32::consts::PI / 4.0);
+        write!(
+            f,
+            "line width {:.2}mm is too small for layer height {:.2}mm: extrusion spacing \
+             would be {:.2}mm (width must exceed layer_height*(1 - pi/4) = {:.2}mm). \
+             Increase the wall line width or reduce layer height.",
+            self.width_mm, self.layer_height_mm, self.spacing_mm, threshold
+        )
     }
+}
+
+impl std::error::Error for NegativeSpacingError {}
+
+/// Convert an extrusion line width (mm) to inter-wall spacing (mm) per OrcaSlicer's
+/// `Flow::rounded_rectangle_extrusion_spacing`:
+///
+/// `spacing = width - layer_height * (1.0 - PI / 4.0)`
+///
+/// Errors **iff** the result is non-positive — the single canonical rejection
+/// rule (canonical throws `FlowErrorNegativeSpacing` there; Rust has no
+/// exceptions, so `Result` is the throw analog). There is no other guard: a
+/// non-positive `width` or `layer_height` yields a non-positive spacing and is
+/// covered by the same rule (canonical relies on upstream config validation,
+/// as does PnP — manifest `[min, max]` ranges enforced at config resolution).
+///
+/// Canonical's formula does not reference the nozzle; a former vestigial
+/// `nozzle_diameter` parameter was removed with D-162 so the signature cannot
+/// re-grow a nozzle clamp unnoticed.
+pub fn line_width_to_spacing(
+    width: f32,
+    layer_height: f32,
+) -> Result<f32, NegativeSpacingError> {
     let pi_minus_quarter = 1.0_f32 - core::f32::consts::PI / 4.0_f32;
     let spacing = width - layer_height * pi_minus_quarter;
-    // Canonical throws here; we return 0.0 and let callers decide.
     if spacing <= 0.0 {
-        0.0
+        Err(NegativeSpacingError {
+            width_mm: width,
+            layer_height_mm: layer_height,
+            spacing_mm: spacing,
+        })
     } else {
-        spacing
+        Ok(spacing)
     }
 }
 
@@ -156,14 +169,14 @@ mod tests {
     fn classic_0p4mm_bead_0p2mm_layer() {
         // The canonical OrcaSlicer sanity case: width=0.4, layer_height=0.2.
         // Result should be ~0.357 mm (width - layer_height * (1 - pi/4)).
-        let s = line_width_to_spacing(0.4, 0.2, 0.4);
+        let s = line_width_to_spacing(0.4, 0.2).unwrap();
         assert!((s - 0.3571).abs() < 0.001, "got {s}");
     }
 
     #[test]
     fn width_at_or_above_nozzle_produces_larger_spacing() {
         // The OrcaSlicer formula yields spacing close to width when width >= nozzle.
-        let s = line_width_to_spacing(0.5, 0.2, 0.4);
+        let s = line_width_to_spacing(0.5, 0.2).unwrap();
         // spacing = 0.5 - 0.2 * (1 - pi/4) ≈ 0.4571
         assert!(s > 0.4 && s <= 0.5, "got {s}");
     }
@@ -177,7 +190,7 @@ mod tests {
         // width <= 0.0429 — not width < 0.2. The old test asserted the guard.
         //
         // 0.1 - 0.2 * (1 - pi/4) = 0.1 - 0.0429 = 0.0571, comfortably positive.
-        let s = line_width_to_spacing(0.1, 0.2, 0.4);
+        let s = line_width_to_spacing(0.1, 0.2).unwrap();
         assert!(
             (s - 0.0571).abs() < 1e-3,
             "width 0.1 < layer_height 0.2 must still yield the formula's 0.0571, got {s}"
@@ -186,7 +199,7 @@ mod tests {
         // The case the guard actually broke in production: narrow_strip_widening
         // runs layer_height 1.0mm, so every 0.4mm wall tripped it and the
         // beading strategy was handed a raw WIDTH where it expects a SPACING.
-        let s = line_width_to_spacing(0.4, 1.0, 0.4);
+        let s = line_width_to_spacing(0.4, 1.0).unwrap();
         assert!(
             (s - 0.1854).abs() < 1e-3,
             "0.4mm width at 1.0mm layer height must yield spacing 0.1854, got {s}"
@@ -194,29 +207,49 @@ mod tests {
     }
 
     #[test]
-    fn spacing_is_zero_only_at_canonicals_actual_threshold() {
+    fn spacing_errors_at_canonicals_actual_threshold() {
         // Canonical throws iff `width - height * (1 - pi/4) <= 0`. For
-        // height = 0.2 that boundary is width = 0.0429, and PnP returns 0.0
-        // there rather than throwing.
+        // height = 0.2 that boundary is width = 0.0429. PnP now errors there
+        // (D-162), mirroring the throw — no 0.0 sentinel survives.
         let boundary = 0.2 * (1.0 - core::f32::consts::PI / 4.0);
-        assert_eq!(line_width_to_spacing(boundary, 0.2, 0.4), 0.0);
-        assert_eq!(line_width_to_spacing(boundary * 0.5, 0.2, 0.4), 0.0);
-        assert!(line_width_to_spacing(boundary * 1.5, 0.2, 0.4) > 0.0);
+        let err = line_width_to_spacing(boundary, 0.2).unwrap_err();
+        assert_eq!(err.width_mm, boundary);
+        assert_eq!(err.layer_height_mm, 0.2);
+        assert!(err.spacing_mm <= 0.0);
+        assert!(line_width_to_spacing(boundary * 0.5, 0.2).is_err());
+        assert!(line_width_to_spacing(boundary * 1.5, 0.2).unwrap() > 0.0);
     }
 
     #[test]
-    fn zero_or_negative_inputs_return_zero() {
-        assert_eq!(line_width_to_spacing(0.0, 0.2, 0.4), 0.0);
-        assert_eq!(line_width_to_spacing(0.4, 0.0, 0.4), 0.0);
-        assert_eq!(line_width_to_spacing(0.4, 0.2, 0.0), 0.0);
-        assert_eq!(line_width_to_spacing(-1.0, 0.2, 0.4), 0.0);
+    fn zero_or_negative_inputs_error() {
+        // No separate defensive guard (D-162): non-positive width/height
+        // yields a non-positive spacing, so the single canonical rule rejects
+        // them. Config validation upstream (manifest [min,max]) is the real
+        // gate, as in canonical.
+        assert!(line_width_to_spacing(0.0, 0.2).is_err());
+        assert!(line_width_to_spacing(-1.0, 0.2).is_err());
+        // Zero layer height with a positive width is NOT an error under the
+        // canonical rule: spacing = width, positive.
+        assert_eq!(line_width_to_spacing(0.4, 0.0).unwrap(), 0.4);
+    }
+
+    #[test]
+    fn error_message_names_inputs_and_fix() {
+        let err = line_width_to_spacing(0.4, 2.0).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("0.40mm"), "msg: {msg}");
+        assert!(msg.contains("2.00mm"), "msg: {msg}");
+        assert!(
+            msg.contains("Increase the wall line width or reduce layer height"),
+            "msg: {msg}"
+        );
     }
 
     #[test]
     fn roundtrip_spacing_to_width() {
         let w = 0.4;
         let lh = 0.2;
-        let s = line_width_to_spacing(w, lh, 0.4);
+        let s = line_width_to_spacing(w, lh).unwrap();
         let w2 = flow_to_width(s, lh);
         // For the canonical case, round-trip should match within epsilon.
         assert!((w - w2).abs() < 0.001, "w={w} w2={w2}");

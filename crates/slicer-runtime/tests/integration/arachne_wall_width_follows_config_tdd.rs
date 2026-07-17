@@ -124,7 +124,7 @@ fn assert_all_widths(widths: &[f32], expected: f32, tol: f32, what: &str) {
 #[test]
 fn spacing_round_trip_recovers_the_configured_width() {
     for w in [0.4_f32, 0.8] {
-        let spacing = line_width_to_spacing(w, LAYER_HEIGHT_MM, NOZZLE_MM);
+        let spacing = line_width_to_spacing(w, LAYER_HEIGHT_MM).unwrap();
         let recovered = flow_to_width(spacing, LAYER_HEIGHT_MM);
         assert!(
             (recovered - w).abs() < 1e-4,
