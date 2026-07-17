@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 168-seam-aligned-modes
 task_ids:
   - TASK-274
