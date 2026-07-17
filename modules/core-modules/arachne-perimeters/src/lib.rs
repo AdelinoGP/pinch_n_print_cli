@@ -770,6 +770,25 @@ impl ArachnePerimeters {
             }
             for pt in &mut path.points {
                 pt.z = z;
+                // Beading junction widths are Flow SPACING values, not extrusion
+                // widths: `arachne_params_from_config` feeds the strategy stack
+                // `line_width_to_spacing(...)` because canonical does
+                // (`bead_width_0 = ext_perimeter_spacing`). Canonical converts
+                // back at emission — `VariableWidth.cpp::thick_polyline_to_multi_path`
+                // does `flow.with_width(unscale(w) + height * (1 - PI/4))`, reached
+                // from `PerimeterGenerator.cpp::traverse_extrusions` via
+                // `extrusion_paths_append(dst, ExtrusionLine, role, flow)`. This
+                // is that conversion, at the matching seam (the ExtrusionLine ->
+                // path boundary), and it must run BEFORE `widths` is snapshotted
+                // below so the width_profile carries the true width too.
+                //
+                // Omitting it emitted spacing as width: 0.3571mm for a 0.4mm
+                // wall, ~10.7% narrow on every arachne wall at default config
+                // (D-160). Do NOT "simplify" this away — `classic-perimeters`
+                // needs no such step only because it never converts its widths
+                // to spacing in the first place (see its `bead_flow_width_mm`
+                // comment); arachne does, so it must convert back.
+                pt.width = flow_to_width(pt.width, layer_height_mm);
             }
             let num_points = path.points.len();
             let widths: Vec<f32> = path.points.iter().map(|p| p.width).collect();
@@ -821,16 +840,22 @@ impl ArachnePerimeters {
                     if point_in_any_polygon(&units_pt, bridge_areas) {
                         feature_flags[i].is_bridge = true;
                         // D4/packet 150 step 5: bridge vertices get the
-                        // bridging flow factor. Recover the raw mm flow width
-                        // via `flow_to_width` before handing it to
-                        // `bridging_flow`'s round-cross-section factor.
-                        let bead_flow_width_mm =
-                            flow_to_width(path.points[i].width, layer_height_mm);
+                        // bridging flow factor, whose round-cross-section
+                        // formula needs the true mm flow width.
+                        //
+                        // This used to call `flow_to_width(path.points[i].width,
+                        // ...)` to recover that width, because the vertex still
+                        // held a raw beading SPACING. It no longer does — the
+                        // spacing -> width conversion now happens once, at the
+                        // emission seam above, per canonical
+                        // `thick_polyline_to_multi_path`. Converting again here
+                        // would add `height * (1 - PI/4)` twice and over-state
+                        // bridge flow.
                         path.points[i].flow_factor = bridging_flow(
                             bridge_flow_ratio,
                             thick_bridges,
                             nozzle_diameter_mm,
-                            bead_flow_width_mm,
+                            path.points[i].width,
                             layer_height_mm,
                         );
                     }

@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use slicer_core::flow::{flow_to_width, line_width_to_spacing};
 use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_ir::ConfigValue;
 use slicer_ir::{
@@ -2118,9 +2119,27 @@ fn arachne_perimeter_parity() {
             "tapered_wedge: expected more than one WallLoop from the SKT graph, got {}",
             region.walls.len()
         );
-        // Flow spacing for optimal_width=0.4, layer_height=0.2, nozzle=0.4:
-        // 0.4 - 0.2 * (1 - PI/4) = 0.4 - 0.2 * 0.2146 = 0.3571mm
-        const FLOW_SPACING_MM: f32 = 0.3571;
+        // Every wall must be emitted at the region's configured wall LINE
+        // WIDTH — 0.4mm here (this fixture sets neither wall-width key, so
+        // both resolve to the modules' 0.4mm code fallback).
+        //
+        // This assertion used to demand 0.3571mm and call it "the Flow-spacing
+        // value". That was the defect, not the contract: 0.3571 is
+        // `line_width_to_spacing(0.4)`, the beading target, which canonical
+        // converts BACK to a width before emitting
+        // (`VariableWidth.cpp::thick_polyline_to_multi_path`:
+        // `flow.with_width(unscale(w) + height * (1 - PI/4))`). PnP skipped
+        // that conversion and emitted the spacing, ~10.7% narrow, and this
+        // fixture pinned it in place — a test asserting the bug it existed to
+        // catch. See D-160.
+        //
+        // Derived, not hardcoded, so the round trip is the thing under test:
+        // the width fed to beading is spacing(W), and emission must recover W.
+        const CONFIGURED_LINE_WIDTH_MM: f32 = 0.4;
+        let expected_width_mm = flow_to_width(
+            line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2, 0.4),
+            0.2,
+        );
         const FLOW_SPACING_TOLERANCE_MM: f32 = 0.01;
         let all_widths: Vec<f32> = region
             .walls
@@ -2133,11 +2152,14 @@ fn arachne_perimeter_parity() {
         );
         for &w in &all_widths {
             assert!(
-                (w - FLOW_SPACING_MM).abs() < FLOW_SPACING_TOLERANCE_MM,
-                "tapered_wedge: every captured width must equal the Flow-spacing value \
-                 ({FLOW_SPACING_MM}mm +/- {FLOW_SPACING_TOLERANCE_MM}mm) at layer_height 0.2mm, \
-                 got {w}mm (deviation {})",
-                (w - FLOW_SPACING_MM).abs()
+                (w - expected_width_mm).abs() < FLOW_SPACING_TOLERANCE_MM,
+                "tapered_wedge: every captured width must equal the configured wall \
+                 line width ({expected_width_mm}mm +/- {FLOW_SPACING_TOLERANCE_MM}mm) at \
+                 layer_height 0.2mm, got {w}mm (deviation {}). A value near \
+                 {}mm means the beading SPACING is being emitted as the extrusion \
+                 width — the D-160 emission defect.",
+                (w - expected_width_mm).abs(),
+                line_width_to_spacing(CONFIGURED_LINE_WIDTH_MM, 0.2, 0.4)
             );
         }
     }
