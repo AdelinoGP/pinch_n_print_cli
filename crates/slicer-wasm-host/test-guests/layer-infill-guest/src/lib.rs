@@ -166,6 +166,7 @@ impl Guest for Component {
     fn run_infill_postprocess(
         _layer_index: LayerIdx,
         regions: Vec<PerimeterRegionView>,
+        _prior_infill: Vec<PriorInfillRegion>,
         output: InfillOutputBuilder,
         _config: ConfigView,
     ) -> Result<(), ModuleError> {

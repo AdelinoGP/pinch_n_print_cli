@@ -226,7 +226,7 @@ fn generate_slicer_module_impl(
             // ── Real binding surface ─────────────────────────────────────
 
             /// WIT world package id backing this module (e.g.
-            /// [`slicer_schema::WORLD_LAYER`]) or "" if the impl targets
+            /// `slicer_schema::WORLD_LAYER`) or "" if the impl targets
             /// an unknown trait and no stage was detected.
             #[doc(hidden)]
             pub fn __slicer_world_id() -> &'static str { #effective_world }
@@ -1797,9 +1797,22 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 Err(e) => return Err(__slicer_error_out(e)),
             };
             #adapt_perim
+            // ADR-0028 Option 1b: adapt the read-only prior-infill snapshot
+            // (WIT `prior-infill-region` records mirroring `InfillIR`'s
+            // region buckets) into `slicer_ir::InfillRegion` values.
+            let sdk_prior_infill: ::std::vec::Vec<::slicer_ir::InfillRegion> = prior_infill
+                .iter()
+                .map(|r| ::slicer_ir::InfillRegion {
+                    object_id: r.object_id.clone(),
+                    region_id: r.region_id.parse().unwrap_or(0),
+                    sparse_infill: r.sparse_infill.iter().map(__slicer_wit_path_to_ir).collect(),
+                    solid_infill: r.solid_infill.iter().map(__slicer_wit_path_to_ir).collect(),
+                    ironing: r.ironing.iter().map(__slicer_wit_path_to_ir).collect(),
+                })
+                .collect();
             let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
             let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill_postprocess(
-                &module, layer_index, &sdk_regions, &mut sdk_output, &ir_config,
+                &module, layer_index, &sdk_regions, &sdk_prior_infill, &mut sdk_output, &ir_config,
             );
             __slicer_drain_infill(&sdk_output, &output);
             match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
@@ -2261,6 +2274,19 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         .iter()
                         .map(__slicer_adapt_seam_candidate)
                         .collect();
+                    // ADR-0028: partitioned fill polygons + tool/wall-source
+                    // identity mirrored from the WIT perimeter-region-view
+                    // accessors (world-layer 2.0.0).
+                    let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.sparse_infill_area().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let top_solid_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let bottom_solid_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let bridge_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.bridge_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let wall_source_region_id: ::std::option::Option<::slicer_ir::RegionId> =
+                        r.wall_source_region_id().map(|s| s.parse().unwrap_or(0));
                     let mut perimeter_view = ::slicer_sdk::views::PerimeterRegionView::default();
                     perimeter_view.set_object_id(r.object_id());
                     perimeter_view.set_region_id(region_id);
@@ -2268,6 +2294,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     perimeter_view.set_infill_areas(infill);
                     perimeter_view.set_seam_candidates(seam_candidates);
                     perimeter_view.set_resolved_seam(resolved_seam);
+                    perimeter_view.set_sparse_infill_area(sparse_infill_area);
+                    perimeter_view.set_top_solid_fill(top_solid_fill);
+                    perimeter_view.set_bottom_solid_fill(bottom_solid_fill);
+                    perimeter_view.set_bridge_areas(bridge_areas);
+                    perimeter_view.set_tool_index(r.tool_index());
+                    perimeter_view.set_wall_source_region_id(wall_source_region_id);
                     out.push(perimeter_view);
                 }
                 out
@@ -2771,6 +2803,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 fn run_infill_postprocess(
                     layer_index: i32,
                     regions: Vec<PerimeterRegionView>,
+                    prior_infill: Vec<PriorInfillRegion>,
                     output: InfillOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #infill_postprocess_arm }

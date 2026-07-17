@@ -5,7 +5,7 @@
 - Grouped task IDs:
   - `TASK-255`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -87,7 +87,7 @@ downstream packet in the infill-parity roadmap (131–140) reads this contract.
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask build-guests --check` (then rebuild if STALE) | guest freshness after WIT/SDK edits | FACT clean/STALE list |
 | `cargo test -p slicer-runtime --test contract 2>&1 \| tee target/test-output.log \| grep "^test result"` | contract suite incl. new tests | FACT + counts |
-| `cargo test -p slicer-sdk 2>&1 \| tee target/test-output.log \| grep "^test result"` | SDK builder/view tests | FACT + counts |
+| `cargo test -p slicer-sdk --features test 2>&1 \| tee target/test-output.log \| grep "^test result"` | SDK builder/view tests (`test_support` is feature-gated; plain `-p slicer-sdk` does not compile — pre-existing) | FACT + counts |
 | `rg -q 'wall-source-region-id' docs/03_wit_and_manifest.md && rg -q 'prior-infill\|prior_infill' docs/05_module_sdk.md && echo DOCS-OK` | Doc Impact greps | FACT |
 
 ## Step Completion Expectations

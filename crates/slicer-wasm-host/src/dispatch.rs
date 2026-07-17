@@ -265,6 +265,8 @@ impl WasmRuntimeDispatcher {
         perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+        region_map: Option<&slicer_ir::RegionMapIR>,
+        infill_ir: Option<&slicer_ir::InfillIR>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).ok_or_else(|| DispatchError {
@@ -362,6 +364,8 @@ impl WasmRuntimeDispatcher {
             perimeter_ir,
             layer_collection,
             surface_classification,
+            region_map,
+            infill_ir,
         )?;
 
         // Handle module-returned error (inner Result).
@@ -383,6 +387,7 @@ impl WasmRuntimeDispatcher {
     }
 
     /// Route to the correct typed export based on stage ID.
+    #[allow(clippy::too_many_arguments)]
     fn call_layer_export(
         &self,
         config: CallConfig<'_>,
@@ -391,6 +396,8 @@ impl WasmRuntimeDispatcher {
         perimeter_ir: Option<&slicer_ir::PerimeterIR>,
         layer_collection: Option<&slicer_ir::LayerCollectionIR>,
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
+        region_map: Option<&slicer_ir::RegionMapIR>,
+        infill_ir: Option<&slicer_ir::InfillIR>,
     ) -> Result<Result<(), host::ModuleError>, DispatchError> {
         let mk_call_err = |e: wasmtime::Error| DispatchError {
             module_id: config.module_id.to_string(),
@@ -433,9 +440,20 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::InfillPostProcess" => {
-                let region_handles =
-                    push_perimeter_regions(config.store, perimeter_ir, None, params.layer_index)
-                        .map_err(mk_ctx_err)?;
+                let region_handles = push_infill_postprocess_regions(
+                    config.store,
+                    slice_ir,
+                    perimeter_ir,
+                    region_map,
+                    params.layer_index,
+                )
+                .map_err(mk_ctx_err)?;
+                // ADR-0028 Option 1b: prior-infill is a read-only snapshot of
+                // the committed InfillIR's region buckets; the output builder
+                // stays write-only.
+                let prior_infill = infill_ir
+                    .map(crate::marshal::infill_ir_to_prior_regions)
+                    .unwrap_or_default();
                 let output = config
                     .store
                     .data_mut()
@@ -447,6 +465,7 @@ impl WasmRuntimeDispatcher {
                         config.store,
                         params.layer_index as i32,
                         &region_handles,
+                        &prior_infill,
                         own(output),
                         own(config.config_handle),
                     )
@@ -1395,6 +1414,162 @@ fn push_perimeter_regions(
     Ok(handles)
 }
 
+// ── Layer::InfillPostProcess region enrichment (ADR-0028 §Amendment) ──────
+
+/// Build a `(object_id, region_id) → PerimeterRegion` index for a layer's
+/// `PerimeterIR`. Shared with `slicer-runtime::region_partition`, which uses
+/// the same index to detect virtual paint-variant regions (a slice region with
+/// no `PerimeterIR` entry of its own shares its base region's wall geometry —
+/// packets 92–95, ADR-0028 §Amendment 2026-07-01).
+pub fn perimeter_region_index(
+    perimeter: &slicer_ir::PerimeterIR,
+) -> HashMap<(&slicer_ir::ObjectId, slicer_ir::RegionId), &slicer_ir::PerimeterRegion> {
+    perimeter
+        .regions
+        .iter()
+        .map(|r| ((&r.object_id, r.region_id), r))
+        .collect()
+}
+
+/// ADR-0028 §Amendment wall-source predicate.
+///
+/// Returns `Some(base_region_id)` iff `region` is a virtual paint-variant
+/// region (non-empty `variant_chain`) WITHOUT its own per-variant
+/// `PerimeterIR` entry — such a region shares the base region's walls. The
+/// base id inverts `paint_segmentation::paint_variant_region_id`
+/// (`base * STRIDE + hash`) by integer division. Returns `None` when the
+/// region has its own `PerimeterIR` entry (it owns its walls) or is a base
+/// region.
+pub fn wall_source_region_id(
+    has_own_perimeter_entry: bool,
+    region: &slicer_ir::SlicedRegion,
+) -> Option<slicer_ir::RegionId> {
+    if has_own_perimeter_entry || region.variant_chain.is_empty() {
+        return None;
+    }
+    Some(region.region_id / slicer_core::algos::paint_segmentation::PAINT_VARIANT_REGION_ID_STRIDE)
+}
+
+/// ADR-0028 §Amendment tool-index precedence — pinned HERE, in one function:
+///
+/// (a) the region's `variant_chain` carries a `("material", ToolIndex(n))`
+///     entry → `n` (extraction idiom mirrors slicer-core
+///     `region_mapping.rs` `chain_tool_index`); else
+/// (b) the interned `RegionMapIR` config for this region key carries an
+///     `extensions["extruder"]` non-negative integer → that value (exact
+///     variant key first, then the base key with an empty chain); else
+/// (c) `0` (default tool).
+pub fn resolve_region_tool_index(
+    variant_chain: &[(String, slicer_ir::PaintValue)],
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    layer_index: u32,
+    object_id: &slicer_ir::ObjectId,
+    region_id: slicer_ir::RegionId,
+) -> u32 {
+    // (a) painted material tool.
+    for (sem_name, value) in variant_chain {
+        if sem_name == "material" {
+            if let slicer_ir::PaintValue::ToolIndex(n) = value {
+                return *n;
+            }
+        }
+    }
+    // (b) modifier-volume config delta: RegionMapIR extensions["extruder"].
+    if let Some(rm) = region_map {
+        let mk_key = |chain: Vec<(String, slicer_ir::PaintValue)>| slicer_ir::RegionKey {
+            global_layer_index: layer_index,
+            object_id: object_id.clone(),
+            region_id,
+            variant_chain: chain,
+        };
+        for key in [mk_key(variant_chain.to_vec()), mk_key(Vec::new())] {
+            if rm.entries.contains_key(&key) {
+                if let Some(slicer_ir::ConfigValue::Int(n)) =
+                    rm.config_for(&key).extensions.get("extruder")
+                {
+                    if *n >= 0 {
+                        return *n as u32;
+                    }
+                }
+            }
+        }
+    }
+    // (c) default tool.
+    0
+}
+
+/// Push enriched `perimeter-region-view` resources for the
+/// `Layer::InfillPostProcess` stage (ADR-0028): one view per `SliceIR` region,
+/// carrying the four partitioned fill polygons copied verbatim from the slice
+/// region (same source `SliceRegionView` uses — NOT re-derived), the
+/// host-resolved tool index, and the wall-source region id. Walls/seams come
+/// from the region's own `PerimeterIR` entry when present; a virtual variant
+/// without its own entry borrows the base region's walls and reports
+/// `wall-source-region-id = some(base)`.
+fn push_infill_postprocess_regions(
+    store: &mut wasmtime::Store<HostExecutionContext>,
+    slice_ir: Option<&slicer_ir::SliceIR>,
+    perimeter_ir: Option<&slicer_ir::PerimeterIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    layer_index: u32,
+) -> Result<Vec<Resource<host::PerimeterRegionData>>, wasmtime::Error> {
+    let Some(perimeter) = perimeter_ir else {
+        return Ok(Vec::new());
+    };
+    // Defensive fallback: without a SliceIR there is nothing to enrich from —
+    // keep the legacy PerimeterIR-driven views (fields default empty/0/None).
+    let Some(slice) = slice_ir else {
+        return push_perimeter_regions(store, perimeter_ir, None, layer_index);
+    };
+
+    let perim_index = perimeter_region_index(perimeter);
+    let mut handles = Vec::with_capacity(slice.regions.len());
+    for region in &slice.regions {
+        let own_entry = perim_index
+            .get(&(&region.object_id, region.region_id))
+            .copied();
+        let wall_source = wall_source_region_id(own_entry.is_some(), region);
+        // Wall donor: own entry, else the base region's entry (shared walls).
+        let donor = own_entry.or_else(|| {
+            wall_source.and_then(|base| perim_index.get(&(&region.object_id, base)).copied())
+        });
+        let mut data = match donor {
+            Some(p) => host::perimeter_region_to_data(p),
+            None => host::PerimeterRegionData {
+                object_id: String::new(),
+                region_id: String::new(),
+                wall_loops: Vec::new(),
+                infill_areas: Vec::new(),
+                resolved_seam: None,
+                seam_candidates: Vec::new(),
+                sparse_infill_area: Vec::new(),
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                bridge_areas: Vec::new(),
+                tool_index: 0,
+                wall_source_region_id: None,
+            },
+        };
+        // The view's identity is the slice region's, not the wall donor's.
+        data.object_id = region.object_id.clone();
+        data.region_id = region.region_id.to_string();
+        data.sparse_infill_area = crate::marshal::ir_to_wit_expolygons(&region.sparse_infill_area);
+        data.top_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.top_solid_fill);
+        data.bottom_solid_fill = crate::marshal::ir_to_wit_expolygons(&region.bottom_solid_fill);
+        data.bridge_areas = crate::marshal::ir_to_wit_expolygons(&region.bridge_areas);
+        data.tool_index = resolve_region_tool_index(
+            &region.variant_chain,
+            region_map,
+            layer_index,
+            &region.object_id,
+            region.region_id,
+        );
+        data.wall_source_region_id = wall_source.map(|id| id.to_string());
+        handles.push(store.data_mut().push_perimeter_region(data)?);
+    }
+    Ok(handles)
+}
+
 // ── Layer-plan harvest ────────────────────────────────────────────────────
 
 /// Convert WIT `LayerProposal` records collected by a `PrePass::LayerPlanning`
@@ -1743,6 +1918,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.perimeter,
             input.layer_collection,
             input.surface_classification,
+            input.region_map.as_deref(),
+            input.infill,
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {

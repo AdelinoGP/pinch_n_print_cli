@@ -56,10 +56,8 @@
 //! See `cube_4color_ironing_per_painted_top_color_tdd` in
 //! `tests/executor/` for the regression.
 
-use std::collections::HashMap;
-
 use slicer_core::polygon_ops::{difference, intersection, union};
-use slicer_ir::{LayerStageError, ObjectId, PerimeterRegion, RegionId, StageId};
+use slicer_ir::{LayerStageError, StageId};
 
 use crate::LayerArena;
 
@@ -114,15 +112,14 @@ pub fn sync_perimeter_infill_areas_into_slice(
     // per slice region (review finding #7; O(N×M) → O(N+M)). With
     // variant_chain work (packets 92–95) growing both N and M, the linear
     // scan was real wall-clock cost on multi-color prints.
-    let perim_index: HashMap<(&ObjectId, &RegionId), &PerimeterRegion> = perimeter
-        .regions
-        .iter()
-        .map(|r| ((&r.object_id, &r.region_id), r))
-        .collect();
+    // Shared with the Layer::InfillPostProcess dispatch arm's wall-source
+    // predicate (ADR-0028 §Amendment): a slice region missing from this index
+    // is a virtual variant sharing its base region's walls.
+    let perim_index = slicer_wasm_host::dispatch::perimeter_region_index(&perimeter);
 
     for slice_region in &mut slice.regions {
         let Some(perim) = perim_index
-            .get(&(&slice_region.object_id, &slice_region.region_id))
+            .get(&(&slice_region.object_id, slice_region.region_id))
             .copied()
         else {
             // No perimeter entry for this slice region — typically a virtual

@@ -1,0 +1,15 @@
+[package]
+name = "infill-postprocess-echo-guest"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.57.1"
+slicer-sdk = { path = "../../../slicer-sdk" }
+slicer-ir  = { path = "../../../slicer-ir" }
+slicer-schema = { path = "../../../slicer-schema" }
+
+[workspace]

@@ -268,12 +268,7 @@ fn versioned_wit_world_is_rejected_with_actionable_diagnostic() {
     let versioned = format!("{}@1.0.0", slicer_schema::WORLD_LAYER);
     let manifest_path = fixture.write_module(
         "versioned-module",
-        valid_manifest_toml(
-            "com.community.versioned",
-            "Layer::Infill",
-            &versioned,
-            true,
-        ),
+        valid_manifest_toml("com.community.versioned", "Layer::Infill", &versioned, true),
         true,
     );
 

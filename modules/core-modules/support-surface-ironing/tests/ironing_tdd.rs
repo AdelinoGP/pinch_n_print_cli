@@ -119,7 +119,7 @@ fn disabled_no_paths() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     assert!(output.ironing_paths().is_empty());
 }
@@ -131,7 +131,7 @@ fn square_region_produces_paths() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     assert!(
         !output.ironing_paths().is_empty(),
@@ -146,7 +146,7 @@ fn paths_have_ironing_role() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     for path in output.ironing_paths() {
         assert_eq!(
@@ -163,7 +163,7 @@ fn empty_regions_no_output() {
     let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[], &mut output, &config)
+        .run_infill_postprocess(0, &[], &[], &mut output, &config)
         .unwrap();
     assert!(output.ironing_paths().is_empty());
 }
@@ -176,7 +176,7 @@ fn paths_at_correct_z() {
     let region = region_with_square_at_z(z);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     assert!(!output.ironing_paths().is_empty());
     for path in output.ironing_paths() {
@@ -196,7 +196,7 @@ fn flow_rate_applied() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     assert!(!output.ironing_paths().is_empty());
     for path in output.ironing_paths() {
@@ -221,7 +221,7 @@ fn spacing_affects_density() {
     let region_narrow = region_with_square_at_z(1.0);
     let mut output_narrow = InfillOutputBuilder::new();
     module_narrow
-        .run_infill_postprocess(0, &[region_narrow], &mut output_narrow, &config_narrow)
+        .run_infill_postprocess(0, &[region_narrow], &[], &mut output_narrow, &config_narrow)
         .unwrap();
 
     // Wide spacing => fewer paths
@@ -233,7 +233,7 @@ fn spacing_affects_density() {
     let region_wide = region_with_square_at_z(1.0);
     let mut output_wide = InfillOutputBuilder::new();
     module_wide
-        .run_infill_postprocess(0, &[region_wide], &mut output_wide, &config_wide)
+        .run_infill_postprocess(0, &[region_wide], &[], &mut output_wide, &config_wide)
         .unwrap();
 
     assert!(
@@ -254,7 +254,7 @@ fn width_matches_config() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
     assert!(!output.ironing_paths().is_empty());
     for path in output.ironing_paths() {
@@ -282,7 +282,7 @@ fn rectilinear_pattern() {
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill_postprocess(0, &[region], &mut output, &config)
+        .run_infill_postprocess(0, &[region], &[], &mut output, &config)
         .unwrap();
 
     let paths = output.ironing_paths();

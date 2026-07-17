@@ -25,7 +25,7 @@ use crate::prepass_types::{
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
-    ConfigView, ExPolygon, ExtrusionPath3D, LayerAnnotation, LayerAnnotationKind,
+    ConfigView, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation, LayerAnnotationKind,
     LayerCollectionIR, PaintSemantic, PrintEntity, RegionKey, SliceIR, SupportPlanIR,
 };
 
@@ -378,14 +378,21 @@ pub trait LayerModule: Sized {
     /// export run-infill-postprocess: func(
     ///     layer-index: layer-idx,
     ///     regions: list<perimeter-region-view>,
+    ///     prior-infill: list<prior-infill-region>,
     ///     output: infill-output-builder,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
     /// ```
+    ///
+    /// `prior_infill` is a read-only snapshot of the `InfillIR` region
+    /// buckets committed by `Layer::Infill` (ADR-0028 Option 1b). The
+    /// output builder stays write-only; the module emits the COMPLETE
+    /// replacement `InfillIR`, re-emitting buckets it did not transform.
     fn run_infill_postprocess(
         &self,
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
+        _prior_infill: &[InfillRegion],
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

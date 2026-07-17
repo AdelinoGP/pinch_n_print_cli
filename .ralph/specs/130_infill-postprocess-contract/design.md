@@ -55,7 +55,7 @@
 Primary (semantic core — justifying >3: this is a contract packet; the surfaces are the
 contract):
 - `crates/slicer-schema/wit/deps/ir-types.wit` — six fields on `perimeter-region-view`.
-- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — `prior-infill` param + 1.1.0.
+- `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` — `prior-infill` param + 2.0.0.
 - `crates/slicer-sdk/src/views.rs` — struct + accessors (`PerimeterRegionView` at 521, impl at 531).
 - `crates/slicer-sdk/src/traits.rs` — hook signature (`run_infill_postprocess` at 385).
 - `crates/slicer-sdk/src/test_support/fixtures.rs` — builder setters.
@@ -110,7 +110,7 @@ Sweep files (mechanical, compiler-driven): the ~30 constructors/matches — edit
 - IR contracts: `InfillIR` / `InfillRegion` / `ExtrusionPath3D` are READ, not changed — no IR
   schema bump expected; if implementation finds a struct change is unavoidable, that is a
   deviation to record, not silently absorb.
-- WIT boundary: `world-layer` 1.0.0 → 1.1.0; every guest rebuilds; `wit_drift_detection_tdd`
+- WIT boundary: `world-layer` 1.0.0 → 2.0.0; every guest rebuilds; `wit_drift_detection_tdd`
   must assert the new types.
 - The `prior-infill` view is read-only: the guest gets copies/views, never mutable access;
   the output path remains exclusively `InfillOutputBuilder`.

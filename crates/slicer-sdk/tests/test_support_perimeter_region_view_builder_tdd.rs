@@ -180,6 +180,43 @@ fn rect_path_forms_closed_rectangle_shape() {
     }
 }
 
+// ── Packet 130 (ADR-0028 §Amendment): six new enrichment fields ─────────────
+
+#[test]
+fn perimeter_region_view_builder_sets_all_six_new_fields() {
+    let sparse = vec![square_polygon(0.0, 0.0, 10.0)];
+    let top = vec![square_polygon(1.0, 1.0, 4.0), square_polygon(6.0, 6.0, 2.0)];
+    let bottom = vec![square_polygon(2.0, 2.0, 3.0)];
+    let bridge = vec![square_polygon(3.0, 3.0, 1.0)];
+
+    let view = PerimeterRegionViewBuilder::new()
+        .sparse_infill_area(sparse.clone())
+        .top_solid_fill(top.clone())
+        .bottom_solid_fill(bottom.clone())
+        .bridge_areas(bridge.clone())
+        .tool_index(3)
+        .wall_source_region_id(Some(11))
+        .build();
+
+    assert_eq!(view.sparse_infill_area(), sparse.as_slice());
+    assert_eq!(view.top_solid_fill(), top.as_slice());
+    assert_eq!(view.bottom_solid_fill(), bottom.as_slice());
+    assert_eq!(view.bridge_areas(), bridge.as_slice());
+    assert_eq!(view.tool_index(), 3);
+    assert_eq!(view.wall_source_region_id(), Some(&11));
+}
+
+#[test]
+fn perimeter_region_view_builder_new_fields_default_empty() {
+    let view = PerimeterRegionViewBuilder::new().build();
+    assert!(view.sparse_infill_area().is_empty());
+    assert!(view.top_solid_fill().is_empty());
+    assert!(view.bottom_solid_fill().is_empty());
+    assert!(view.bridge_areas().is_empty());
+    assert_eq!(view.tool_index(), 0);
+    assert_eq!(view.wall_source_region_id(), None);
+}
+
 #[test]
 fn full_builder_chain() {
     let view = PerimeterRegionViewBuilder::new()

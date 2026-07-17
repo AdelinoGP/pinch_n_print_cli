@@ -526,6 +526,22 @@ pub struct PerimeterRegionView {
     seam_candidates: Vec<SeamCandidate>,
     /// Resolved seam position, if set by seam-placer during PerimetersPostProcess.
     resolved_seam: Option<SeamPosition>,
+    /// Sparse-only infill polygon after host-side fill partition, mirrored
+    /// from the corresponding `SliceRegionView` (ADR-0028 Change 2).
+    sparse_infill_area: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from top shell projection (ADR-0028).
+    top_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from bottom shell projection (ADR-0028).
+    bottom_solid_fill: Vec<ExPolygon>,
+    /// Per-layer expanded bridge polygons (empty if not a bridge region) (ADR-0028).
+    bridge_areas: Vec<ExPolygon>,
+    /// Host-computed tool index: variant-chain material tool →
+    /// `RegionMapIR.extensions["extruder"]` → `DEFAULT_TOOL(0)`
+    /// (ADR-0028 §Amendment 2026-07-01).
+    tool_index: u32,
+    /// `None` = this region owns its walls; `Some(base)` = this region shares
+    /// the base region's walls (ADR-0028 §Amendment 2026-07-01).
+    wall_source_region_id: Option<RegionId>,
 }
 
 impl PerimeterRegionView {
@@ -565,6 +581,42 @@ impl PerimeterRegionView {
         self.resolved_seam = resolved_seam;
     }
 
+    /// Override the sparse infill area (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_sparse_infill_area(&mut self, sparse_infill_area: Vec<ExPolygon>) {
+        self.sparse_infill_area = sparse_infill_area;
+    }
+
+    /// Override the top solid fill (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_top_solid_fill(&mut self, top_solid_fill: Vec<ExPolygon>) {
+        self.top_solid_fill = top_solid_fill;
+    }
+
+    /// Override the bottom solid fill (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_bottom_solid_fill(&mut self, bottom_solid_fill: Vec<ExPolygon>) {
+        self.bottom_solid_fill = bottom_solid_fill;
+    }
+
+    /// Override the bridge areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
+        self.bridge_areas = bridge_areas;
+    }
+
+    /// Override the tool index (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_tool_index(&mut self, tool_index: u32) {
+        self.tool_index = tool_index;
+    }
+
+    /// Override the wall-source region id (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_wall_source_region_id(&mut self, wall_source_region_id: Option<RegionId>) {
+        self.wall_source_region_id = wall_source_region_id;
+    }
+
     /// Returns the object ID this region belongs to.
     pub fn object_id(&self) -> &ObjectId {
         &self.object_id
@@ -593,6 +645,39 @@ impl PerimeterRegionView {
     /// Returns the resolved seam position, if set by seam-placer.
     pub fn resolved_seam(&self) -> Option<&SeamPosition> {
         self.resolved_seam.as_ref()
+    }
+
+    /// Returns the sparse-only infill polygons after host-side fill
+    /// partition, mirrored from the corresponding `SliceRegionView`.
+    pub fn sparse_infill_area(&self) -> &[ExPolygon] {
+        &self.sparse_infill_area
+    }
+
+    /// Returns the polygon-precise top-shell solid-fill areas.
+    pub fn top_solid_fill(&self) -> &[ExPolygon] {
+        &self.top_solid_fill
+    }
+
+    /// Returns the polygon-precise bottom-shell solid-fill areas.
+    pub fn bottom_solid_fill(&self) -> &[ExPolygon] {
+        &self.bottom_solid_fill
+    }
+
+    /// Returns the per-layer expanded bridge polygons (empty if not a
+    /// bridge region).
+    pub fn bridge_areas(&self) -> &[ExPolygon] {
+        &self.bridge_areas
+    }
+
+    /// Returns the host-computed tool index for this region.
+    pub fn tool_index(&self) -> u32 {
+        self.tool_index
+    }
+
+    /// Returns the wall-source region id: `None` = this region owns its
+    /// walls; `Some(base)` = this region shares the base region's walls.
+    pub fn wall_source_region_id(&self) -> Option<&RegionId> {
+        self.wall_source_region_id.as_ref()
     }
 }
 

@@ -86,6 +86,28 @@ identity reconstruction, so the question "how does a value cross the
 host/module seam" has one answer rather than several scattered across dispatch
 and host-side code.
 
+### Module tier
+The coarse grouping of **stages** by pipeline phase — prepass, layer, postpass,
+finalization. Each tier has exactly one WIT *world*, and a module belongs to
+exactly one tier. This is what "world" means when someone says "which world does
+this module target": the tier, not the stage.
+
+### Stage contract
+The set of exports a module must satisfy to be loadable. Today this is the whole
+**module tier**'s world — a layer module must provide all ten layer exports, even
+though it implements one **stage**, so a change to any one stage's signature
+invalidates every module in the tier. The unit of *contract* is therefore the
+tier, while the unit of *work* is the stage; the two are not the same thing, and
+conflating them under the single word "world" is why a one-stage change bills the
+whole tier.
+
+### Stage interface
+The proposed unit that collapses that gap: one versioned WIT interface per
+**stage**, exported and probed independently, so a module declares only the
+stage contract it actually implements. Distinct from **module tier** — a tier
+would group stage interfaces rather than fuse them. Not yet implemented; named
+here because the distinction is the point.
+
 ### Per-region output origin
 The explicit identity tag a guest attaches to perimeter and infill output pushes
 so the **marshalling boundary** can route each push back to the source **region**.

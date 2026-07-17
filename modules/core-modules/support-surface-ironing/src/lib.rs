@@ -194,6 +194,7 @@ impl LayerModule for SupportSurfaceIroning {
         &self,
         _layer_index: u32,
         regions: &[PerimeterRegionView],
+        _prior_infill: &[slicer_ir::InfillRegion],
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

@@ -546,7 +546,10 @@ mod tests {
         let manifest = generate_manifest("my-infill", "Layer::Infill");
         assert!(manifest.contains(r#"id           = "com.example.my-infill""#));
         assert!(manifest.contains(r#"id = "Layer::Infill""#));
-        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_LAYER)));
+        assert!(manifest.contains(&format!(
+            r#"wit-world    = "{}""#,
+            slicer_schema::WORLD_LAYER
+        )));
         // Verify it's valid TOML.
         let parsed: Result<toml::Value, _> = toml::from_str(&manifest);
         assert!(parsed.is_ok(), "generated manifest must be valid TOML");
@@ -555,20 +558,29 @@ mod tests {
     #[test]
     fn manifest_prepass_stage() {
         let manifest = generate_manifest("mesh-tool", "PrePass::MeshAnalysis");
-        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_PREPASS)));
+        assert!(manifest.contains(&format!(
+            r#"wit-world    = "{}""#,
+            slicer_schema::WORLD_PREPASS
+        )));
         assert!(manifest.contains(r#"id = "PrePass::MeshAnalysis""#));
     }
 
     #[test]
     fn manifest_postpass_stage() {
         let manifest = generate_manifest("gcode-fix", "PostPass::GCodePostProcess");
-        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_POSTPASS)));
+        assert!(manifest.contains(&format!(
+            r#"wit-world    = "{}""#,
+            slicer_schema::WORLD_POSTPASS
+        )));
     }
 
     #[test]
     fn manifest_finalization_stage() {
         let manifest = generate_manifest("layer-fin", "PostPass::LayerFinalization");
-        assert!(manifest.contains(&format!(r#"wit-world    = "{}""#, slicer_schema::WORLD_FINALIZATION)));
+        assert!(manifest.contains(&format!(
+            r#"wit-world    = "{}""#,
+            slicer_schema::WORLD_FINALIZATION
+        )));
         assert!(manifest.contains(r#"id = "PostPass::LayerFinalization""#));
     }
 

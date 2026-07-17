@@ -228,22 +228,10 @@ pub struct SlicerModuleSchema {
 /// WIT worlds and the unconditional lifecycle exports every world ships
 /// (`on-print-start`, `on-print-end` per docs/03 §deps/config-types).
 pub const WORLD_LIFECYCLE_EXPORTS: &[(&str, &[&str])] = &[
-    (
-        WORLD_LAYER,
-        &["on-print-start", "on-print-end"],
-    ),
-    (
-        WORLD_PREPASS,
-        &["on-print-start", "on-print-end"],
-    ),
-    (
-        WORLD_FINALIZATION,
-        &["on-print-start", "on-print-end"],
-    ),
-    (
-        WORLD_POSTPASS,
-        &["on-print-start", "on-print-end"],
-    ),
+    (WORLD_LAYER, &["on-print-start", "on-print-end"]),
+    (WORLD_PREPASS, &["on-print-start", "on-print-end"]),
+    (WORLD_FINALIZATION, &["on-print-start", "on-print-end"]),
+    (WORLD_POSTPASS, &["on-print-start", "on-print-end"]),
 ];
 
 // region: region-split priorities

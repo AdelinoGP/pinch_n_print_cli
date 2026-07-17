@@ -19,6 +19,7 @@ mod dispatch_prepass_harvest_tdd;
 mod dispatch_protocol_tdd;
 mod dispatch_support_output_tdd;
 mod guest_fixture_freshness_tdd;
+mod infill_postprocess_contract_tdd;
 mod inner_wall_boundary_type_tdd;
 mod layer_stage_commit_stages_tdd;
 mod macro_all_worlds_roundtrip_tdd;

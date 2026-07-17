@@ -103,6 +103,34 @@ interface ir-handles {
         infill-areas: func() -> list<ex-polygon>;
         resolved-seam: func() -> option<seam-position>;
         seam-candidates: func() -> list<seam-candidate>;
+        // Partitioned fill polygons mirrored from the corresponding
+        // slice-region-view accessors (ADR-0028 Change 2 + §Amendment
+        // 2026-07-01). Host-populated at dispatch time so
+        // `Layer::InfillPostProcess` consumers can re-clip against the
+        // partitioned boundary.
+        sparse-infill-area: func() -> list<ex-polygon>;
+        top-solid-fill: func() -> list<ex-polygon>;
+        bottom-solid-fill: func() -> list<ex-polygon>;
+        bridge-areas: func() -> list<ex-polygon>;
+        // Host-computed tool index: variant-chain material tool →
+        // RegionMapIR extensions["extruder"] → DEFAULT_TOOL(0).
+        tool-index: func() -> u32;
+        // none = this region owns its walls; some(base) = this region
+        // shares the base region's walls (ADR-0028 §Amendment 2026-07-01).
+        wall-source-region-id: func() -> option<region-id>;
+    }
+
+    /// Read-only snapshot of one `InfillIR` region bucket, mirroring
+    /// `slicer_ir::InfillRegion` (ADR-0028 Option 1b). Passed to
+    /// `run-infill-postprocess` as the `prior-infill` parameter so the
+    /// post-process module can read what `Layer::Infill` emitted; the
+    /// `infill-output-builder` stays write-only.
+    record prior-infill-region {
+        object-id: object-id,
+        region-id: region-id,
+        sparse-infill: list<extrusion-path3d>,
+        solid-infill: list<extrusion-path3d>,
+        ironing: list<extrusion-path3d>,
     }
 
     resource infill-output-builder {

@@ -14,7 +14,7 @@ wit/
     config.wit                  # package slicer:config      — interface config-types
     ir-types.wit                # package slicer:ir-handles  — interface ir-handles
     common.wit                  # package slicer:common      — interface module-errors
-    world-layer/world-layer.wit           # package slicer:world-layer@1.0.0
+    world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
@@ -29,7 +29,7 @@ cross-package resolution with `wit_parser`. World packages carry `@1.0.0`.
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module@1.0.0",
+    world: "slicer:world-layer/layer-module",
     // with: { "slicer:config/config-types.config-view" => ..., ... }
 }
 ```

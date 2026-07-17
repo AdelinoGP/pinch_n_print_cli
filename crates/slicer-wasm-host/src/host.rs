@@ -219,6 +219,25 @@ pub struct PerimeterRegionData {
     /// `Layer::PerimetersPostProcess` consumers via the `seam-candidates`
     /// WIT accessor.
     pub seam_candidates: Vec<(Point3, f32)>,
+    /// Partitioned sparse-infill polygons copied from the matching `SliceIR`
+    /// region at dispatch time (ADR-0028 Change 2). Empty for stages that do
+    /// not populate the partitioned view (only `Layer::InfillPostProcess`
+    /// does today).
+    pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Partitioned top-solid fill polygons (see `sparse_infill_area`).
+    pub top_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Partitioned bottom-solid fill polygons (see `sparse_infill_area`).
+    pub bottom_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Partitioned bridge polygons (see `sparse_infill_area`).
+    pub bridge_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    /// Host-computed tool index (ADR-0028 §Amendment): variant-chain material
+    /// tool → `RegionMapIR` `extensions["extruder"]` → 0. Pinned in
+    /// `crate::dispatch::resolve_region_tool_index`.
+    pub tool_index: u32,
+    /// `None` = this region owns its walls; `Some(base)` = this region is a
+    /// virtual paint-variant sharing the base region's wall geometry
+    /// (ADR-0028 §Amendment 2026-07-01).
+    pub wall_source_region_id: Option<String>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -322,9 +341,9 @@ pub use layer::slicer::ir_handles::ir_handles::MaterialBoundarySegment as WitMat
 pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
 pub use layer::slicer::ir_handles::ir_handles::WallBoundaryType as WitWallBoundaryType;
 pub use layer::slicer::ir_handles::ir_handles::{
-    GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, RegionKey, SeamCandidate,
-    SeamPosition, SegmentAnnotationsEntry, SegmentAnnotationsPolygon, SemanticRegion,
-    WallFeatureFlag, WallLoopType, WallLoopView,
+    GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, PriorInfillRegion,
+    RegionKey, SeamCandidate, SeamPosition, SegmentAnnotationsEntry, SegmentAnnotationsPolygon,
+    SemanticRegion, WallFeatureFlag, WallLoopType, WallLoopView,
 };
 pub use layer::slicer::types::geometry::{
     BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
@@ -2021,6 +2040,12 @@ mod region_origin_tests {
                 infill_areas: Vec::new(),
                 resolved_seam: None,
                 seam_candidates: Vec::new(),
+                sparse_infill_area: Vec::new(),
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
+                bridge_areas: Vec::new(),
+                tool_index: 0,
+                wall_source_region_id: None,
             })
             .expect("push perimeter region");
 
@@ -2480,6 +2505,57 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                 },
             )
             .collect())
+    }
+    fn sparse_infill_area(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.sparse-infill-area"));
+        Ok(self.table.get(&self_)?.sparse_infill_area.clone())
+    }
+    fn top_solid_fill(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.top-solid-fill"));
+        Ok(self.table.get(&self_)?.top_solid_fill.clone())
+    }
+    fn bottom_solid_fill(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.bottom-solid-fill"));
+        Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
+    }
+    fn bridge_areas(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.bridge-areas"));
+        Ok(self.table.get(&self_)?.bridge_areas.clone())
+    }
+    fn tool_index(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<u32> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.tool-index"));
+        Ok(self.table.get(&self_)?.tool_index)
+    }
+    fn wall_source_region_id(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Option<String>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads
+            .push(String::from("PerimeterIR.wall-source-region-id"));
+        Ok(self.table.get(&self_)?.wall_source_region_id.clone())
     }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

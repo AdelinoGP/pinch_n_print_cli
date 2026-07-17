@@ -561,6 +561,12 @@ pub struct PerimeterRegionViewBuilder {
     infill_areas: Vec<ExPolygon>,
     seam_candidates: Vec<SeamCandidate>,
     next_inner_index: u32,
+    sparse_infill_area: Vec<ExPolygon>,
+    top_solid_fill: Vec<ExPolygon>,
+    bottom_solid_fill: Vec<ExPolygon>,
+    bridge_areas: Vec<ExPolygon>,
+    tool_index: u32,
+    wall_source_region_id: Option<u64>,
 }
 
 impl PerimeterRegionViewBuilder {
@@ -582,6 +588,12 @@ impl PerimeterRegionViewBuilder {
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
             next_inner_index: 1,
+            sparse_infill_area: Vec::new(),
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
+            bridge_areas: Vec::new(),
+            tool_index: 0,
+            wall_source_region_id: None,
         }
     }
 
@@ -729,6 +741,49 @@ impl PerimeterRegionViewBuilder {
         self
     }
 
+    /// Set the sparse-only infill polygons (ADR-0028; default empty).
+    #[must_use]
+    pub fn sparse_infill_area(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.sparse_infill_area = polygons;
+        self
+    }
+
+    /// Set the top-shell solid-fill polygons (ADR-0028; default empty).
+    #[must_use]
+    pub fn top_solid_fill(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.top_solid_fill = polygons;
+        self
+    }
+
+    /// Set the bottom-shell solid-fill polygons (ADR-0028; default empty).
+    #[must_use]
+    pub fn bottom_solid_fill(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.bottom_solid_fill = polygons;
+        self
+    }
+
+    /// Set the bridge-area polygons (ADR-0028; default empty).
+    #[must_use]
+    pub fn bridge_areas(mut self, polygons: Vec<ExPolygon>) -> Self {
+        self.bridge_areas = polygons;
+        self
+    }
+
+    /// Set the host-computed tool index (ADR-0028; default 0).
+    #[must_use]
+    pub fn tool_index(mut self, tool_index: u32) -> Self {
+        self.tool_index = tool_index;
+        self
+    }
+
+    /// Set the wall-source region id (ADR-0028; default `None` = the
+    /// region owns its walls).
+    #[must_use]
+    pub fn wall_source_region_id(mut self, wall_source_region_id: Option<u64>) -> Self {
+        self.wall_source_region_id = wall_source_region_id;
+        self
+    }
+
     /// Build a [`PerimeterRegionView`].
     #[must_use]
     pub fn build(self) -> PerimeterRegionView {
@@ -739,6 +794,12 @@ impl PerimeterRegionViewBuilder {
         view.set_infill_areas(self.infill_areas);
         view.set_seam_candidates(self.seam_candidates);
         view.set_resolved_seam(None);
+        view.set_sparse_infill_area(self.sparse_infill_area);
+        view.set_top_solid_fill(self.top_solid_fill);
+        view.set_bottom_solid_fill(self.bottom_solid_fill);
+        view.set_bridge_areas(self.bridge_areas);
+        view.set_tool_index(self.tool_index);
+        view.set_wall_source_region_id(self.wall_source_region_id);
         view
     }
 

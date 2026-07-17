@@ -325,6 +325,14 @@ fn execute_single_layer_inner(
                 perimeter: arena.perimeter(),
                 layer_collection: arena.layer_collection(),
                 surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                // Committed InfillIR is only marshalled into the
+                // `prior-infill` parameter of `run-infill-postprocess`
+                // (ADR-0028 Option 1b); every other stage gets `None`.
+                infill: if stage.stage_id == "Layer::InfillPostProcess" {
+                    arena.infill()
+                } else {
+                    None
+                },
             };
             // Seam plan consulted by the perimeter arms of `apply` (ADR-0020).
             let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
@@ -1013,6 +1021,13 @@ pub fn execute_captured_stages(
                     perimeter: arena.perimeter(),
                     layer_collection: arena.layer_collection(),
                     surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+                    // Same gating as `execute_per_layer`: the committed
+                    // InfillIR feeds only `run-infill-postprocess`.
+                    infill: if stage.stage_id == "Layer::InfillPostProcess" {
+                        arena.infill()
+                    } else {
+                        None
+                    },
                 };
                 let seam_plan_ir_for_commit = blackboard.seam_plan().map(|arc| arc.as_ref());
 

@@ -402,6 +402,7 @@ pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> Lay
         perimeter: arena.perimeter(),
         layer_collection: arena.layer_collection(),
         surface_classification: blackboard.surface_classification().map(|a| a.as_ref()),
+        infill: arena.infill(),
     }
 }
 

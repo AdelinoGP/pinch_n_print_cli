@@ -368,6 +368,15 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         region_id: region.region_id.to_string(),
         wall_loops: region.walls.iter().map(ir_to_wit_wall_loop).collect(),
         infill_areas: ir_to_wit_expolygons(&region.infill_areas),
+        // ADR-0028 fields default empty here; the Layer::InfillPostProcess
+        // dispatch arm enriches them from SliceIR/RegionMapIR after
+        // construction (crate::dispatch).
+        sparse_infill_area: Vec::new(),
+        top_solid_fill: Vec::new(),
+        bottom_solid_fill: Vec::new(),
+        bridge_areas: Vec::new(),
+        tool_index: 0,
+        wall_source_region_id: None,
         // Note: width and flow_factor are intentionally discarded here;
         // SeamPosition.point is used for diagnostics only.
         resolved_seam: region.resolved_seam.clone().map(|sp| {

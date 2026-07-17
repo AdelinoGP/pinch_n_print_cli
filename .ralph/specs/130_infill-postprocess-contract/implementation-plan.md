@@ -14,7 +14,7 @@
 - Task IDs:
   - `TASK-255`
 - Objective: land the six `perimeter-region-view` fields, the `run-infill-postprocess`
-  `prior-infill` param, the `world-layer` 1.1.0 bump, the SDK struct/accessors/trait
+  `prior-infill` param, the `world-layer` 2.0.0 bump, the SDK struct/accessors/trait
   signature/builder setters, and the macros glue arm.
 - Precondition: clean tree; packet 129 closed (serial order); `cargo check --workspace` green
   at baseline.
@@ -150,7 +150,7 @@
 - Task IDs:
   - `TASK-255`
 - Objective: land the `docs/03_wit_and_manifest.md` and `docs/05_module_sdk.md` sections
-  (six fields, `prior-infill` param, 1.1.0, full-re-emit contract sentence); run the packet
+  (six fields, `prior-infill` param, 2.0.0, full-re-emit contract sentence); run the packet
   gates.
 - Precondition: Step 4 exit condition.
 - Postcondition: Doc Impact greps hit; the three `packet.spec.md` §Verification gates green.

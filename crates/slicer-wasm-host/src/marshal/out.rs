@@ -17,6 +17,37 @@ use crate::marshal::leaf::{
 };
 use crate::marshal::origin::{MarshalError, OriginBucket, OriginId};
 
+// ── infill_ir_to_prior_regions ───────────────────────────────────────────
+
+/// Marshal the committed `InfillIR`'s region buckets into the WIT
+/// `prior-infill-region` records passed to `run-infill-postprocess` as the
+/// `prior-infill` parameter (ADR-0028 Option 1b). Read-only copies — the
+/// `infill-output-builder` stays write-only.
+pub fn infill_ir_to_prior_regions(
+    infill: &slicer_ir::InfillIR,
+) -> Vec<crate::host::PriorInfillRegion> {
+    use crate::marshal::leaf::ir_to_wit_extrusion_path;
+    infill
+        .regions
+        .iter()
+        .map(|r| crate::host::PriorInfillRegion {
+            object_id: r.object_id.clone(),
+            region_id: r.region_id.to_string(),
+            sparse_infill: r
+                .sparse_infill
+                .iter()
+                .map(ir_to_wit_extrusion_path)
+                .collect(),
+            solid_infill: r
+                .solid_infill
+                .iter()
+                .map(ir_to_wit_extrusion_path)
+                .collect(),
+            ironing: r.ironing.iter().map(ir_to_wit_extrusion_path).collect(),
+        })
+        .collect()
+}
+
 // ── convert_infill_output ────────────────────────────────────────────────
 
 /// Convert collected infill output into a slicer-ir `InfillIR`.

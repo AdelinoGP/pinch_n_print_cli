@@ -65,8 +65,8 @@ fn macro_layer_world_package_name_is_canonical() {
         fs::read_to_string(root.join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit"))
             .expect("read canonical world-layer.wit");
     assert!(
-        world_layer.contains(r#"package slicer:world-layer@1.0.0;"#),
-        "canonical world-layer.wit must use 'slicer:world-layer@1.0.0', not 'slicer:layer-world@1.0.0'"
+        world_layer.contains(r#"package slicer:world-layer@2.0.0;"#),
+        "canonical world-layer.wit must use 'slicer:world-layer@2.0.0', not 'slicer:layer-world@1.0.0'"
     );
     assert!(
         !world_layer.contains(r#"package slicer:layer-world@1.0.0"#),
@@ -156,10 +156,12 @@ fn host_inline_wit_uses_canonical_world_package_names() {
     );
 
     // Each world is addressed by the canonical package-qualified `world:` key.
+    //
     // The keys are deliberately unversioned. `bindgen!` resolves them against
     // the canonical WIT dir, which declares exactly one version of each world
     // package, so the version cannot disambiguate anything here — it only
-    // forces this file (and ~80 others) to be edited on every bump.
+    // forces this file (and ~80 others) to be edited on every bump. The
+    // `no_versioned_world_keys` test below pins that.
     let canonical_world_refs = [
         r#"world: "slicer:world-layer/layer-module""#,
         r#"world: "slicer:world-prepass/prepass-module""#,
@@ -529,6 +531,91 @@ fn perimeter_output_builder_has_seam_write_methods() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Layer::InfillPostProcess contract types (packet 130, ADR-0028 §Amendment)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verifies that the canonical ir-types.wit declares the `prior-infill-region`
+/// record with all five members (world-layer 2.0.0, packet 130).
+#[test]
+fn canonical_ir_types_has_prior_infill_region_record() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    assert!(
+        content.contains("record prior-infill-region"),
+        "canonical ir-types.wit must declare 'record prior-infill-region'"
+    );
+    for member in [
+        "object-id: object-id",
+        "region-id: region-id",
+        "sparse-infill: list<extrusion-path3d>",
+        "solid-infill: list<extrusion-path3d>",
+        "ironing: list<extrusion-path3d>",
+    ] {
+        assert!(
+            content.contains(member),
+            "prior-infill-region must carry member '{member}'"
+        );
+    }
+}
+
+/// Verifies that perimeter-region-view exposes the six ADR-0028 §Amendment
+/// enrichment members added for `Layer::InfillPostProcess` (packet 130).
+#[test]
+fn perimeter_region_view_has_infill_postprocess_enrichment_members() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    // The four partitioned fill polygon reads plus tool-index and
+    // wall-source-region-id must appear inside the perimeter-region-view
+    // resource block.
+    let view_block = content
+        .split("resource perimeter-region-view")
+        .nth(1)
+        .expect("ir-types.wit declares resource perimeter-region-view")
+        .split('}')
+        .next()
+        .expect("perimeter-region-view resource block is closed");
+    for member in [
+        "sparse-infill-area: func() -> list<ex-polygon>",
+        "top-solid-fill: func() -> list<ex-polygon>",
+        "bottom-solid-fill: func() -> list<ex-polygon>",
+        "bridge-areas: func() -> list<ex-polygon>",
+        "tool-index: func() -> u32",
+        "wall-source-region-id: func() -> option<region-id>",
+    ] {
+        assert!(
+            view_block.contains(member),
+            "perimeter-region-view must expose member '{member}'"
+        );
+    }
+}
+
+/// Verifies that the canonical world-layer.wit (2.0.0) threads the
+/// prior-infill parameter through run-infill-postprocess and imports the
+/// prior-infill-region record.
+#[test]
+fn canonical_world_layer_run_infill_postprocess_takes_prior_infill() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
+    assert!(
+        content.contains("package slicer:world-layer@2.0.0;"),
+        "world-layer must be at package version 2.0.0"
+    );
+    assert!(
+        content.contains("prior-infill-region,"),
+        "world-layer must import prior-infill-region from ir-handles"
+    );
+    assert!(
+        content.contains(
+            "export run-infill-postprocess: func(layer-index: layer-idx, \
+             regions: list<perimeter-region-view>, \
+             prior-infill: list<prior-infill-region>, \
+             output: infill-output-builder, config: config-view) -> result<_, module-error>;"
+        ),
+        "run-infill-postprocess must take the prior-infill parameter with the canonical signature"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -594,7 +681,10 @@ fn no_versioned_world_identifiers_outside_canonical_wit() {
         // assertions above deliberately spell out each world's `package` line
         // so that a bump stays a conscious act. Bumping a world should touch
         // the .wit and this file, and nothing else.
-        if path.file_name().is_some_and(|n| n == "wit_drift_detection_tdd.rs") {
+        if path
+            .file_name()
+            .is_some_and(|n| n == "wit_drift_detection_tdd.rs")
+        {
             continue;
         }
         let Ok(content) = fs::read_to_string(path) else {
@@ -623,7 +713,7 @@ fn no_versioned_world_identifiers_outside_canonical_wit() {
 }
 
 /// True if `line` contains a versioned world reference in either shape:
-///   - `slicer:world-layer@1.1.0` — bare package form.
+///   - `slicer:world-layer@2.0.0` — bare package form.
 ///   - `slicer:world-layer/layer-module@1.1.0` — package-qualified path form,
 ///     as used in `bindgen!` / `generate!` `world:` keys.
 ///

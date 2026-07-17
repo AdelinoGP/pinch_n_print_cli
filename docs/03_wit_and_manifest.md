@@ -30,7 +30,7 @@ crates/slicer-schema/wit/
     config.wit         # package slicer:config      — interface config-types
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
-    world-layer/world-layer.wit           # package slicer:world-layer@1.0.0
+    world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
@@ -40,7 +40,7 @@ crates/slicer-schema/wit/
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module@1.0.0",
+    world: "slicer:world-layer/layer-module",
     with: { "slicer:config/config-types.config-view" => crate::… }
 }
 ```
@@ -118,19 +118,59 @@ Host validation requirements:
 
 ## WIT ↔ IR Compatibility Matrix (Normative)
 
-WIT and IR versions are independently versioned, but module load is allowed only when both compatibility checks pass.
+WIT world identity and IR schema versions are independent. Module load is allowed
+only when both checks below pass.
 
-| Host WIT world             | Module `wit-world`         | Host IR schema | Module IR range   | Load result                      |
-|----------------------------|----------------------------|----------------|-------------------|----------------------------------|
-| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `1.4.0`        | `>=1.2.0, <2.0.0` | Allowed                          |
-| `slicer:world-layer@2.0.0` | `slicer:world-layer@1.x`   | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (WIT major mismatch)    |
-| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (IR major out of range) |
+| Host WIT world       | Module `wit-world`         | Host IR schema | Module IR range   | Load result                              |
+|----------------------|----------------------------|----------------|-------------------|------------------------------------------|
+| `slicer:world-layer` | `slicer:world-layer`       | `1.4.0`        | `>=1.2.0, <2.0.0` | Allowed                                  |
+| `slicer:world-layer` | `slicer:world-layer@1.0.0` | any            | any               | Rejected (`wit-world` must carry no version) |
+| `slicer:world-layer` | `slicer:layer-world`       | any            | any               | Rejected (unknown world)                 |
+| `slicer:world-layer` | `slicer:world-layer`       | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (IR major out of range)         |
 
 Startup checks:
 
-1. Validate `wit-world` package name and major version compatibility.
+1. Validate `wit-world` names a known world. The name is **unversioned**; a
+   declared version is rejected with a diagnostic naming the corrected value.
 2. Validate host IR schema is within module-declared IR range.
-3. Emit explicit diagnostics with expected/actual versions and blocking symbol names when incompatible.
+3. Emit explicit diagnostics with expected/actual versions and blocking symbol
+   names when incompatible.
+
+### Why `wit-world` carries no version
+
+Earlier revisions of this section specified matching on "package name and major
+version". **No such comparison ever existed**, and it could not have worked:
+
+- The check was `ALLOWLIST.contains(&wit_world)` — exact string equality. Bumping
+  a world therefore rejected *every* module until all 23 manifests were rewritten
+  in lockstep, which is the opposite of the additive compatibility this section
+  claimed.
+- More fundamentally, **the world version is erased from the guest binary at
+  compile time.** Our worlds export bare freestanding funcs, and a bare extern
+  name carries no semver suffix (component-model `WIT.md`: `<semversuffix>` is a
+  production of `<interfacename>`, not of a plain name). `wasm-tools component wit
+  <guest>.wasm` finds no `world-layer` and no `@x.y.z` anywhere in it.
+
+So a versioned `wit-world` was an **unfalsifiable claim**: there is no fact in the
+system to check it against, which is precisely what rule 1 above ("the host never
+trusts module declarations") forbids. It was removed rather than left as ceremony
+that cost ~79 files per bump and enforced nothing.
+
+What actually enforces compatibility today:
+
+| Guard | Catches |
+|---|---|
+| wasmtime typed instantiation (`dispatch.rs`) | Structural export/signature mismatch, at first dispatch |
+| `cargo xtask build-guests --check` | Stale in-tree guest (mtime-based) |
+| `[compatibility]` min/max-ir-schema (`validation.rs`) | IR range, fatal at startup |
+
+The world version now lives solely in the `package` line of
+`crates/slicer-schema/wit/deps/world-*/*.wit`, where it selects which package
+`bindgen!`/`generate!` resolve at build time. It is a changelog annotation, not an
+identity token. Giving it real, mechanical enforcement requires restructuring each
+stage into its own **versioned interface** (`slicer:world-layer/infill-postprocess@2.0.0`),
+so the version lands in the component's export names where wasmtime's semver
+matching can act on it — see `docs/adr/` for that decision.
 
 ---
 
@@ -298,8 +338,35 @@ interface ir-handles {
         object-id:       func() -> object-id;
         region-id:       func() -> region-id;
         wall-loops:      func() -> list<wall-loop-view>;
-        infill-areas:   func() -> list<ex-polygon>;
+        infill-areas:    func() -> list<ex-polygon>;
         resolved-seam:   func() -> option<seam-position>;
+        seam-candidates: func() -> list<seam-candidate>;
+        // Partitioned fill polygons mirrored from the corresponding
+        // slice-region-view accessors (packet 130). Host-populated at
+        // dispatch time so `Layer::InfillPostProcess` consumers can
+        // re-clip against the partitioned boundary.
+        sparse-infill-area: func() -> list<ex-polygon>;
+        top-solid-fill:     func() -> list<ex-polygon>;
+        bottom-solid-fill:  func() -> list<ex-polygon>;
+        bridge-areas:       func() -> list<ex-polygon>;
+        // Host-computed tool index. Precedence: variant-chain material
+        // tool → interned config extensions["extruder"] → 0.
+        tool-index:         func() -> u32;
+        // none = this region owns its walls; some(base) = virtual variant
+        // sharing the base region's walls (no per-variant PerimeterIR entry).
+        wall-source-region-id: func() -> option<region-id>;
+    }
+
+    // Read-only snapshot of one `InfillIR` region bucket, mirroring
+    // `slicer_ir::InfillRegion`. Passed to `run-infill-postprocess` as the
+    // `prior-infill` parameter so the post-process module can read what
+    // `Layer::Infill` committed; the infill-output-builder stays write-only.
+    record prior-infill-region {
+        object-id:     object-id,
+        region-id:     region-id,
+        sparse-infill: list<extrusion-path3d>,
+        solid-infill:  list<extrusion-path3d>,
+        ironing:       list<extrusion-path3d>,
     }
 
     // ── Mutable output builder resources ────────────────────────────────
@@ -469,7 +536,7 @@ from region top/bottom metadata**:
 ## `world-layer.wit`
 
 ```wit
-package slicer:world-layer@1.0.0;
+package slicer:world-layer@2.0.0;
 
 world layer-module {
     import slicer:host-api/host-services;
@@ -484,6 +551,7 @@ world layer-module {
         region-key,
         layer-idx,
         paint-region-layer-view,
+        prior-infill-region,
     };
 
     record module-error { code: u32, message: string, fatal: bool }
@@ -525,9 +593,16 @@ world layer-module {
         config: config-view,
     ) -> result<_, module-error>;
 
+    // 2.0.0 (packet 130): `regions` views expose the six InfillPostProcess
+    // accessors (sparse-infill-area, top-solid-fill, bottom-solid-fill,
+    // bridge-areas, tool-index, wall-source-region-id) and the export gains
+    // `prior-infill` — a READ-ONLY view of the InfillIR committed by
+    // Layer::Infill. The commit is REPLACE: the module must re-emit every
+    // path it wants kept (including untouched ones) via infill-output-builder.
     export run-infill-postprocess: func(
         layer-index: layer-idx,
         regions: list<perimeter-region-view>,
+        prior-infill: list<prior-infill-region>,
         output: infill-output-builder,
         config: config-view,
     ) -> result<_, module-error>;
@@ -831,7 +906,7 @@ description  = "Schwartz-D and Fischer-Koch-S triply periodic minimal surface in
 author       = "community"                   # informational
 license      = "MIT"                         # informational
 homepage     = "https://github.com/example/tpms-infill"  # informational
-wit-world    = "slicer:world-layer@1.0.0"   # parsed; must match an installed WIT world
+wit-world    = "slicer:world-layer"          # parsed; unversioned; must name an installed WIT world
 
 # ── Stage declaration ────────────────────────────────────────────────────────
 # Exactly one stage per module. Two stages = two .wasm files.
@@ -1409,7 +1484,7 @@ emit through `gcode-output-builder` and how the host commits that output into
 - The host assembles `LayerCollectionIR.ordered_entities` deterministically
   from the committed per-layer arena (`PerimeterIR`, `InfillIR`, `SupportIR`)
   immediately *before* `Layer::PathOptimization` runs.
-- In WIT v1.0.x guests **cannot** reorder, append to, or remove
+- In the current `world-layer` contract, guests **cannot** reorder, append to, or remove
   entries from `ordered_entities`. The pre-staged sequence is final for the
   lifetime of the layer. `topo_order` indices are stable and used as the
   `after_entity_index` keying domain for tool-changes and annotations.

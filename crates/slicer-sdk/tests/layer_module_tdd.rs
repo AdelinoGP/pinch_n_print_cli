@@ -221,11 +221,13 @@ impl LayerModule for InfillPostprocessTestModule {
         &self,
         layer_index: u32,
         regions: &[PerimeterRegionView],
+        prior_infill: &[slicer_ir::InfillRegion],
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let _ = layer_index;
         let _ = regions.len();
+        let _ = prior_infill.len();
         let _ = output;
         let _ = config.len();
         Ok(())
@@ -239,7 +241,7 @@ fn test_09_run_infill_postprocess_signature_matches_wit() {
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = InfillOutputBuilder::new();
 
-    let result = module.run_infill_postprocess(0, &regions, &mut output, &config);
+    let result = module.run_infill_postprocess(0, &regions, &[], &mut output, &config);
     assert!(result.is_ok());
 }
 
@@ -867,7 +869,13 @@ fn test_35_layer_module_defaults_do_not_panic() {
         )
         .is_ok());
     assert!(module
-        .run_infill_postprocess(0, &perim_regions, &mut InfillOutputBuilder::new(), &config)
+        .run_infill_postprocess(
+            0,
+            &perim_regions,
+            &[],
+            &mut InfillOutputBuilder::new(),
+            &config
+        )
         .is_ok());
     assert!(module
         .run_slice_postprocess(

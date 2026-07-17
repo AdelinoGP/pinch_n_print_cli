@@ -141,6 +141,7 @@ fn run_infill_stage(
         perimeter: None,
         layer_collection: None,
         surface_classification: None,
+        infill: None,
     };
     let stage_id = "Layer::Infill".to_string();
     LayerStageRunner::run_stage(dispatcher, &stage_id, &layer, module, input)

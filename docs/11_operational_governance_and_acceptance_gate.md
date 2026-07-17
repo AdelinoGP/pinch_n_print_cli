@@ -42,14 +42,23 @@ Use this checklist when introducing a new module, changing claim ownership, or c
 Compatibility decisions must use all four dimensions:
 
 1. Host semver (`min-host-version`)
-2. WIT world compatibility (package + major version)
+2. WIT world compatibility (package name; unversioned — see `docs/03` §"Why `wit-world` carries no version")
 3. IR schema range (`min-ir-schema <= host < max-ir-schema`)
 4. Manifest schema compatibility
 
 ### Policy rules
 
 - Additive fields/variants: minor bumps.
-- Rename/remove/type change: major bump.
+- Rename/remove/type change: major bump. Adding a parameter to an existing WIT
+  export is a type change, hence major — packet 130 shipped `prior-infill` on
+  `run-infill-postprocess` as `1.1.0` before this was caught, and it is now
+  `2.0.0`.
+- **WIT world versions are advisory.** They are erased from guest binaries at
+  compile time, so no check anywhere compares them; they document intent in the
+  `.wit` `package` line only. Do not treat a minor world bump as a compatibility
+  guarantee: every world change is currently breaking for every module bound to
+  that world (`docs/05` §SDK Versioning). IR schema versions (dimension 3) *are*
+  enforced, fatally, at startup.
 - Host must reject incompatible modules at startup with explicit diagnostics.
 - Compatibility shims are allowed only for one major host line and must be documented.
 - Host semver (dimension 1) is enforced: startup DAG validation pass 14 (`HostVersionCompatibility`, `crates/slicer-scheduler/src/validation.rs`) compares each loaded module's declared `min-host-version` against the running host version and fails fatally (`SchedulerError::HostVersionIncompatible`) if the host is older than required — see `docs/04_host_scheduler.md` §"Validation Passes (in order)" pass 14. Closes DEV-026 gap (1).

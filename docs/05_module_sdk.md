@@ -239,6 +239,37 @@ fn generate_schwartz_d(
 }
 ```
 
+### `run_infill_postprocess` (Layer::InfillPostProcess, packet 130)
+
+Modules whose manifest declares `Layer::InfillPostProcess` implement:
+
+```rust
+fn run_infill_postprocess(
+    &self,
+    layer_index: u32,
+    regions: &[PerimeterRegionView],
+    prior_infill: &[slicer_ir::InfillRegion],
+    output: &mut InfillOutputBuilder,
+    config: &ConfigView,
+) -> Result<(), ModuleError>;
+```
+
+`prior_infill` is a **read-only** snapshot of the `InfillIR` committed by
+`Layer::Infill` — one `InfillRegion` per region bucket, carrying the
+`sparse_infill`, `solid_infill`, and `ironing` path lists.
+
+**Full re-emit contract:** the commit is a *replace*, not a merge. The module
+must re-emit **every** path it wants kept — including paths it did not
+transform — via `InfillOutputBuilder` (`push_sparse_path` /
+`push_solid_path` / `push_ironing_path`). Any path present in `prior_infill`
+but not re-emitted is dropped from the layer's `InfillIR`.
+
+Each `PerimeterRegionView` additionally exposes the InfillPostProcess
+accessors `sparse_infill_area()`, `top_solid_fill()`, `bottom_solid_fill()`,
+`bridge_areas()`, `tool_index()`, and `wall_source_region_id()` (`None` =
+the region owns its walls; `Some(base)` = virtual variant sharing the base
+region's walls).
+
 ### PrePass Module Authoring Pattern
 
 PrePass modules implement the `PrepassModule` trait. The `#[slicer_module]`
@@ -1055,7 +1086,7 @@ my-infill/
 id           = "com.core.fuzzy-skin"
 version      = "1.0.0"
 display-name = "Fuzzy Skin"
-wit-world    = "slicer:world-layer@1.0.0"
+wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::PerimetersPostProcess"
@@ -1347,4 +1378,33 @@ The SDK crate version tracks the WIT world version it targets:
 - `slicer-sdk 1.x` → targets `slicer:world-layer@1.x`
 - `slicer-sdk 2.x` → targets `slicer:world-layer@2.x` (breaking change)
 
-The host specifies its supported WIT world version in the validation step. Modules built against an older SDK minor version always load on a newer host (additive compatibility). Modules built against a newer major version are rejected with a clear error.
+This mapping is documentation only — the world version is not encoded in the
+guest binary and nothing checks it at load.
+
+**Additive compatibility is not achievable in the current world layout, and this
+section previously promised it in error.** A guest built against an older world
+does **not** load on a newer host, for a structural reason:
+
+`LayerModule` gives default no-op bodies for all stage methods, so a module
+overrides only its own stage — but `#[slicer_module]` still emits WIT glue for
+*every* export in the world (the unimplemented ones collapse to `Ok(())`). It must:
+wasmtime's generated `Indices::new` resolves and typechecks **every** export
+declared in the world at instantiate time, eagerly, before any call. There is no
+such thing as an optional export — component-model `WIT.md` is explicit that
+`@since`/`@unstable` gates "are not represented in the component binary".
+
+The world is therefore an all-or-nothing contract: **any** change to **any** of its
+exports invalidates **every** guest binding to it, including guests whose stage was
+untouched. A perimeters module's `.wasm` is invalidated by an infill-postprocess
+signature change it will never call. "Additive minor bump" cannot mean anything
+here while that holds.
+
+The version also cannot gate the load: it is erased from the guest binary at
+compile time (see `docs/03` §"Why `wit-world` carries no version"). What actually
+rejects an incompatible guest is wasmtime's structural typecheck at first dispatch.
+
+The only route to genuine additive compatibility is **granularity**: one versioned
+interface per stage, exported separately and probed individually, so the version
+lands in the component's export names and wasmtime's semver matching (which
+resolves `@1.0.0` against `@1.1.0` via a truncated `@1` alternate key) can act on
+it. Until that lands, treat every world change as breaking for every module.

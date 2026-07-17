@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 130_infill-postprocess-contract
 task_ids:
   - TASK-255
@@ -14,7 +14,7 @@ context_cost_estimate: M
 Make `Layer::InfillPostProcess` usable as the infill-linker's home: `run_infill_postprocess`
 gains a read-only `prior-infill` input mirroring `InfillIR`'s region buckets (ADR-0028 Option
 1b), and `perimeter-region-view` gains six fields — the four partitioned fill polygons plus
-`tool-index` and `wall-source-region-id` — with `world-layer` bumped 1.0.0 → 1.1.0.
+`tool-index` and `wall-source-region-id` — with `world-layer` bumped 1.0.0 → 2.0.0.
 
 ## Scope Boundaries
 
@@ -53,9 +53,9 @@ implement any linking (packet 133), does not change `LayerStageCommit::InfillPos
   `PerimeterIR` entry, **then** `wall_source_region_id == None`. | `cargo test -p slicer-runtime --test contract -- infill_postprocess_wall_source 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-5. Given** `PerimeterRegionViewBuilder` in the SDK test-support fixtures, **when** a
   test sets all six new fields, **then** the built view returns them via the matching
-  accessors. | `cargo test -p slicer-sdk -- perimeter_region_view_builder 2>&1 | tee target/test-output.log | grep "^test result"`
+  accessors. | `cargo test -p slicer-sdk --features test -- perimeter_region_view_builder 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-6. Given** the canonical WIT sources, **when** greping the world version, **then**
-  `world-layer` declares `1.1.0` and `perimeter-region-view` declares all six new fields
+  `world-layer` declares `2.0.0` and `perimeter-region-view` declares all six new fields
   (`sparse-infill-area`, `top-solid-fill`, `bottom-solid-fill`, `bridge-areas`, `tool-index`,
   `wall-source-region-id`). | `rg -c 'sparse-infill-area|top-solid-fill|bottom-solid-fill|bridge-areas|tool-index|wall-source-region-id' crates/slicer-schema/wit/deps/ir-types.wit && rg -q '1\.1\.0' crates/slicer-schema/wit/deps/world-layer/world-layer.wit && echo WIT-OK`
 
@@ -89,7 +89,7 @@ implement any linking (packet 133), does not change `LayerStageCommit::InfillPos
 ## Doc Impact Statement (Required)
 
 - `docs/03_wit_and_manifest.md` §world-layer / §perimeter-region-view — six new fields +
-  `prior-infill` param + 1.1.0 version — `rg -q 'wall-source-region-id' docs/03_wit_and_manifest.md`
+  `prior-infill` param + 2.0.0 version — `rg -q 'wall-source-region-id' docs/03_wit_and_manifest.md`
 - `docs/05_module_sdk.md` §run_infill_postprocess — new signature with `prior-infill` input
   and the full-re-emit contract sentence — `rg -q 'prior-infill|prior_infill' docs/05_module_sdk.md`
 
