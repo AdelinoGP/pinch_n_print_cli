@@ -124,15 +124,21 @@ impl ProgressPipelineInstrumentation {
 
 impl PipelineInstrumentation for ProgressPipelineInstrumentation {
     fn on_phase_start(&self, phase: Phase) {
+        self.on_phase_start_with_layer_count(phase, None);
+    }
+
+    fn on_phase_start_with_layer_count(&self, phase: Phase, layer_count: Option<u32>) {
         self.phase_starts
             .lock()
             .expect("phase_starts poisoned")
             .insert(phase, Instant::now());
-        self.sink.record(ProgressEvent::phase_start(
+        let mut event = ProgressEvent::phase_start(
             self.slice_id.clone(),
             to_progress_phase(phase),
             Self::now_unix_ms(),
-        ));
+        );
+        event.layer_count = layer_count;
+        self.sink.record(event);
     }
 
     fn on_phase_end(&self, phase: Phase) {

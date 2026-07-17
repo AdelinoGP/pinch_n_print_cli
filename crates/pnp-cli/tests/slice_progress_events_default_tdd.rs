@@ -100,6 +100,20 @@ fn assert_core_contract(events: &[Value]) {
             .map(|(i, _)| i)
             .collect();
         assert_eq!(starts.len(), 1, "exactly one phase_start({phase})");
+        // Schema 1.2.0 (packet 169): the per_layer phase_start carries the
+        // planned layer_count; other phases omit the key.
+        let start_event = &events[starts[0]];
+        if phase == "per_layer" {
+            let lc = start_event["layer_count"]
+                .as_u64()
+                .expect("phase_start(per_layer) must carry layer_count");
+            assert!(lc > 0, "phase_start(per_layer) layer_count must be > 0");
+        } else {
+            assert!(
+                start_event["layer_count"].is_null(),
+                "phase_start({phase}) must not carry layer_count"
+            );
+        }
         assert_eq!(completes.len(), 1, "exactly one phase_complete({phase})");
         assert!(
             starts[0] < completes[0],
@@ -143,9 +157,52 @@ fn assert_core_contract(events: &[Value]) {
         "successful slice must report zero fatal errors"
     );
 
+    // slice_stats (schema 1.2.0, packet 169): exactly once, strictly before
+    // slice_complete, with the required aggregate fields.
+    let stats_idx: Vec<usize> = events
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e["event"].as_str() == Some("slice_stats"))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(stats_idx.len(), 1, "slice_stats must fire exactly once");
+    let sc_idx = events
+        .iter()
+        .position(|e| e["event"].as_str() == Some("slice_complete"))
+        .expect("slice_complete present");
+    assert!(
+        stats_idx[0] < sc_idx,
+        "slice_stats must precede slice_complete"
+    );
+    let stats = &events[stats_idx[0]];
+    assert!(
+        stats["gcode_prediction_seconds"].is_u64(),
+        "slice_stats.gcode_prediction_seconds required"
+    );
+    assert!(
+        stats["gcode_filament_length_mm"].is_number(),
+        "slice_stats.gcode_filament_length_mm required"
+    );
+    assert!(
+        stats["layer_count"].as_u64().is_some_and(|n| n > 0),
+        "slice_stats.layer_count required and > 0"
+    );
+    assert!(
+        stats["first_layer_height_mm"].is_number(),
+        "slice_stats.first_layer_height_mm required"
+    );
+    assert!(
+        stats["extruded_volume_mm3"].is_object(),
+        "slice_stats.extruded_volume_mm3 required"
+    );
+    assert!(
+        stats["toolchange_count"].is_u64(),
+        "slice_stats.toolchange_count required"
+    );
+
     // Uniform schema version and a single slice_id across the stream.
     for e in events {
-        assert_eq!(e["schema_version"].as_str(), Some("1.1.0"));
+        assert_eq!(e["schema_version"].as_str(), Some("1.2.0"));
         assert_eq!(
             e["slice_id"].as_str(),
             events[0]["slice_id"].as_str(),

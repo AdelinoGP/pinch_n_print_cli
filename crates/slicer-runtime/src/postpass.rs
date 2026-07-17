@@ -11,11 +11,37 @@
 //!
 //! Reference: docs/04_host_scheduler.md lines 778-810
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_gcode::{GCodeEmitError, GCodeEmitter, GCodeSerializer};
 use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+
+thread_local! {
+    /// The final `GCodeIR` of the most recent successful postpass on this
+    /// thread (after every `GCodePostProcess` module ran, i.e. exactly what
+    /// was serialized). Surfaced this way — rather than through
+    /// `PipelineOutput` — because `pipeline.rs` is frozen for packet 169
+    /// Step 3; `run.rs` drains it via [`take_final_gcode_ir`] immediately
+    /// after the pipeline returns (same thread: the pipeline, including
+    /// postpass, executes synchronously on the caller's thread) to derive the
+    /// `slice_stats` progress event via `slicer_gcode::estimate_print`
+    /// without re-implementing any estimator math.
+    static FINAL_GCODE_IR: RefCell<Option<GCodeIR>> = const { RefCell::new(None) };
+}
+
+fn stash_final_gcode_ir(ir: GCodeIR) {
+    FINAL_GCODE_IR.with(|cell| *cell.borrow_mut() = Some(ir));
+}
+
+/// Take (and clear) the final `GCodeIR` stashed by the most recent successful
+/// postpass on this thread. `None` when no postpass has completed since the
+/// last take. `gcode_ir.metadata.estimated_print_time_s` is already filled by
+/// the emitter (`DefaultGCodeEmitter::emit_gcode`, packet 169 Step 2).
+pub fn take_final_gcode_ir() -> Option<GCodeIR> {
+    FINAL_GCODE_IR.with(|cell| cell.borrow_mut().take())
+}
 
 /// Translate a `slicer_gcode::GCodeEmitError` into the matching
 /// `slicer_ir::PostpassError` variant.
@@ -300,6 +326,7 @@ pub fn execute_postpass_with_capture(
             })?;
         instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
         instrumentation.on_stage_end(&ser_stage, None);
+        stash_final_gcode_ir(gcode_ir);
         return Ok((text, audits));
     }
 
@@ -404,5 +431,6 @@ pub fn execute_postpass_with_capture(
         instrumentation.on_stage_end(&stage.stage_id, None);
     }
 
+    stash_final_gcode_ir(gcode_ir);
     Ok((text, audits))
 }

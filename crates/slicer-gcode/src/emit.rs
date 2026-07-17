@@ -733,16 +733,30 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             filament_used_mm.push(0.0);
         }
 
-        Ok(GCodeIR {
+        // Estimate print time (packet 169 Step 2). Limits come from the
+        // emitter's resolved config (per-field fallback to defaults when the
+        // machine-limit keys are absent); per-tool filament diameters come
+        // from the tool-config overlays (estimator defaults missing tools
+        // to 1.75 mm, the schema default).
+        let limits = crate::estimator::EstimatorLimits::from_config(&self.resolved_config);
+        let tool_diameters: std::collections::BTreeMap<u32, f32> = self
+            .tool_configs
+            .iter()
+            .map(|(&tool, cfg)| (tool, cfg.filament_diameter))
+            .collect();
+        let mut gcode_ir = GCodeIR {
             commands,
             metadata: PrintMetadata {
-                estimated_print_time_s: 0, // Not calculated in this implementation
+                estimated_print_time_s: 0, // filled from the estimator below
                 filament_used_mm,
                 layer_count: emitted_layer_count,
                 slicer_version: self.slicer_version.clone(),
             },
             ..Default::default()
-        })
+        };
+        let estimate = crate::estimator::estimate_print(&gcode_ir, &limits, &tool_diameters);
+        gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
+        Ok(gcode_ir)
     }
 
     fn travel_feedrate_mm_per_min(&self) -> Option<f32> {

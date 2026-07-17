@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 167-config-block-viewer-keys
 task_ids:
   - TASK-273

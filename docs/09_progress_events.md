@@ -26,8 +26,8 @@ Buffering requirement:
 
 ```json
 {
-  "schema_version": "1.1.0",
-  "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_complete",
+  "schema_version": "1.2.0",
+  "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_stats|slice_complete",
   "timestamp_ms": 1735843200123,
   "slice_id": "9f9075ad-2bd8-4e9a-a2f5-3b9055d2f239",
   "phase": "prepass|per_layer|postpass|validation",
@@ -60,7 +60,8 @@ Field semantics:
 
 | Event              | Required fields                                                                                                 |
 |--------------------|-----------------------------------------------------------------------------------------------------------------|
-| `phase_start`      | `schema_version,event,timestamp_ms,slice_id,phase,status`                                                       |
+| `phase_start`      | `schema_version,event,timestamp_ms,slice_id,phase,status` (`layer_count` is additive OPTIONAL, present only when `phase=per_layer`; value = total planned layer count) |
+| `slice_stats`      | `schema_version,event,timestamp_ms,slice_id,status,gcode_prediction_seconds,gcode_filament_length_mm,layer_count,first_layer_height_mm,extruded_volume_mm3,toolchange_count` (`gcode_weight_grams` OPTIONAL — omitted when `filament_density` absent) |
 | `phase_complete`   | `schema_version,event,timestamp_ms,slice_id,phase,status,elapsed_ms`                                            |
 | `layer_start`      | `schema_version,event,timestamp_ms,slice_id,phase,layer_index,status`                                           |
 | `layer_complete`   | `schema_version,event,timestamp_ms,slice_id,phase,layer_index,status,elapsed_ms,degraded`                       |
@@ -161,17 +162,40 @@ The `schema_version` field follows additive minor bumps:
 |---|---|---|
 | `1.0.0` | Baseline 7-event schema (`phase_start`, `phase_complete`, `layer_start`, `layer_complete`, `module_error`, `validation_error`, `slice_complete`). | Phase 0 (T-005) |
 | `1.1.0` | `error.reason: Option<String>` kebab-case classification tag added. The `--instrument-stderr` events (`stage_start`, `stage_complete`, `module_start`, `module_complete`, plus `wasm_peak_kb`) also ship at this version — the instrumented stream shares the baseline schema. (`slice_complete.output_path` was once claimed for this row but never shipped in the runtime — the G-code file is written by the CLI after the event fires.) | `pinch_n_print_studio` packet 49 (Phase 3b preview hand-off) |
-| `1.2.0` | New `slice_stats` event emitted before `slice_complete`, carrying `gcode_prediction_seconds`, `gcode_weight_grams`, `gcode_filament_length_mm`, `layer_count`, `first_layer_height_mm`. | Reserved for `pinch_n_print_studio` T-096 (SliceStats Event Wiring) — coordinated backend PR |
+| `1.2.0` | New `slice_stats` event, emitted exactly once per successful slice (including degraded-but-successful runs that produced G-code), strictly before `slice_complete` (whose production emission now exists, built from `SliceEventCollector` counts). Fields: `gcode_prediction_seconds` (u64), `gcode_weight_grams` (f64, OPTIONAL — key omitted entirely when `filament_density` is absent from config; never `0`/`null`), `gcode_filament_length_mm` (f64), `layer_count` (u32), `first_layer_height_mm` (f32), `extruded_volume_mm3` (map keyed by extruder index, mm³), `toolchange_count` (u32). Deliberately NO cost field: the `pinch_n_print_studio` fork computes cost from its own filament preset, so the runtime never emits one. Also additive: OPTIONAL `layer_count` field on `phase_start`, present only when `phase == per_layer` (value = total planned layer count), omitted for all other phases. | Packet 169 (time-estimator-slice-stats) |
 
 Each row is additive and backward-compatible: a 1.0.0 consumer ignores
 `error.reason` and unknown event types, a 1.1.0 consumer ignores
 `slice_stats`, etc. Validators must accept any same-major version line.
 
+### Time-Estimator Machine Limits (`slice_stats` inputs)
+
+`gcode_prediction_seconds` is computed by the G-code time estimator, which
+reads machine limits from config. All keys are optional (snake_case):
+`machine_max_acceleration_extruding`, `machine_max_acceleration_travel`,
+`machine_max_speed_x`, `machine_max_speed_y`, `machine_max_speed_z`,
+`machine_max_speed_e`, `machine_max_jerk_x`, `machine_max_jerk_y`,
+`machine_max_jerk_z`, `machine_max_jerk_e`, plus `filament_density`
+(gates `gcode_weight_grams`). When a `machine_max_*` key is absent the
+estimator falls back to:
+
+| Limit | Fallback |
+|---|---|
+| Acceleration (extruding and travel) | 1500 mm/s² |
+| Max speed X / Y | 200 mm/s |
+| Max speed Z | 12 mm/s |
+| Max speed E | 25 mm/s |
+| Jerk X / Y | 9 mm/s |
+| Jerk Z | 0.2 mm/s |
+| Jerk E | 2.5 mm/s |
+
 ## Instrumented Stream (`--instrument-stderr`)
 
 Passing `--instrument-stderr` to `pnp_cli slice` additionally emits
 per-stage and per-module brackets on the same stderr JSONL stream, at the
-same schema version (`"1.1.0"`) as the core stream. New event types
+same schema version (`"1.2.0"`) as the core stream — the instrumented
+stream carries the same additive payload as the base stream. `"1.3.0"`
+remains reserved for the future stage/module-event schema. New event types
 (additive, backward-compatible with consumers that ignore unknown
 `event` values):
 

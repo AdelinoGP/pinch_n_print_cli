@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 169-time-estimator-slice-stats
 task_ids:
   - TASK-275

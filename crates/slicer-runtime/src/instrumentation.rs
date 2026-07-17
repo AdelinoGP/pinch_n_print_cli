@@ -111,6 +111,14 @@ fn reason_tag(r: &EdgeReason) -> u8 {
 pub trait PipelineInstrumentation: Send + Sync {
     /// Called when entering a top-level phase.
     fn on_phase_start(&self, phase: Phase);
+    /// Called when entering a top-level phase whose total layer count is
+    /// known at phase start (currently only `Phase::PerLayer`). Default
+    /// delegates to [`Self::on_phase_start`] so existing implementors stay
+    /// valid; implementors that surface progress may override to thread the
+    /// count into their `phase_start` event.
+    fn on_phase_start_with_layer_count(&self, phase: Phase, _layer_count: Option<u32>) {
+        self.on_phase_start(phase);
+    }
     /// Called when leaving a top-level phase.
     fn on_phase_end(&self, phase: Phase);
 
@@ -324,6 +332,10 @@ impl PipelineInstrumentation for CompositeInstrumentation<'_> {
         self.a.on_phase_start(phase);
         self.b.on_phase_start(phase);
     }
+    fn on_phase_start_with_layer_count(&self, phase: Phase, layer_count: Option<u32>) {
+        self.a.on_phase_start_with_layer_count(phase, layer_count);
+        self.b.on_phase_start_with_layer_count(phase, layer_count);
+    }
     fn on_phase_end(&self, phase: Phase) {
         self.a.on_phase_end(phase);
         self.b.on_phase_end(phase);
@@ -399,11 +411,19 @@ mod composite_tests {
     #[derive(Default)]
     struct Counting {
         calls: Mutex<Vec<&'static str>>,
+        layer_counts: Mutex<Vec<Option<u32>>>,
     }
 
     impl PipelineInstrumentation for Counting {
         fn on_phase_start(&self, _phase: Phase) {
             self.calls.lock().unwrap().push("phase_start");
+        }
+        fn on_phase_start_with_layer_count(&self, _phase: Phase, layer_count: Option<u32>) {
+            self.layer_counts.lock().unwrap().push(layer_count);
+            self.calls
+                .lock()
+                .unwrap()
+                .push("phase_start_with_layer_count");
         }
         fn on_phase_end(&self, _phase: Phase) {
             self.calls.lock().unwrap().push("phase_end");
@@ -485,6 +505,30 @@ mod composite_tests {
             ]
         );
         assert_eq!(a_calls, b_calls, "both delegates must see every callback");
+    }
+
+    #[test]
+    fn composite_forwards_layer_count_to_both_delegates() {
+        let a = Counting::default();
+        let b = Counting::default();
+        let composite = CompositeInstrumentation::new(&a, &b);
+
+        composite.on_phase_start_with_layer_count(Phase::PerLayer, Some(42));
+
+        for (name, side) in [("a", &a), ("b", &b)] {
+            let calls = side.calls.lock().unwrap().clone();
+            assert_eq!(
+                calls,
+                vec!["phase_start_with_layer_count"],
+                "delegate {name} must receive the layer-count variant, not the plain one"
+            );
+            let counts = side.layer_counts.lock().unwrap().clone();
+            assert_eq!(
+                counts,
+                vec![Some(42)],
+                "delegate {name} lost the layer count"
+            );
+        }
     }
 }
 

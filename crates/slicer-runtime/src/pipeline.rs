@@ -353,7 +353,8 @@ fn run_pipeline_core(
         plan.global_layers = Arc::new(layer_plan.global_layers.clone());
     }
 
-    instrumentation.on_phase_start(Phase::PerLayer);
+    instrumentation
+        .on_phase_start_with_layer_count(Phase::PerLayer, Some(plan.global_layers.len() as u32));
     let per_layer_result = execute_per_layer_with_instrumentation(
         &plan,
         &blackboard,

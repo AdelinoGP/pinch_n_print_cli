@@ -46,13 +46,13 @@ fn error_fixture(fatal: bool) -> ProgressError {
 }
 
 // ============================================================================
-// Test 1: Event schema version is "1.1.0" (bumped from 1.0.0 â€” additive
+// Test 1: Event schema version is "1.2.0" (bumped from 1.0.0 â€” additive
 // `ProgressError.reason: Option<EventReason>` field).
 // ============================================================================
 
 #[test]
-fn event_schema_version_is_1_1_0() {
-    assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.1.0");
+fn event_schema_version_is_1_2_0() {
+    assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.2.0");
 }
 
 // ============================================================================
@@ -64,7 +64,7 @@ fn phase_start_event_has_required_fields() {
     let event = ProgressEvent::phase_start(slice_id(), ProgressPhase::Prepass, timestamp_ms());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::PhaseStart);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -87,7 +87,7 @@ fn phase_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status, elapsed_ms
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::PhaseComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -105,7 +105,7 @@ fn layer_start_event_has_required_fields() {
     let event = ProgressEvent::layer_start(slice_id(), ProgressPhase::PerLayer, 42, timestamp_ms());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, layer_index, status
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::LayerStart);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -131,7 +131,7 @@ fn layer_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, layer_index, status, elapsed_ms, degraded
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::LayerComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -160,7 +160,7 @@ fn module_error_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, layer_index, module_id, status, error
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::ModuleError);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -186,7 +186,7 @@ fn validation_error_event_has_required_fields() {
     let event = ProgressEvent::validation_error(slice_id(), timestamp_ms(), error.clone());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status, error
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::ValidationError);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -212,7 +212,7 @@ fn slice_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, status, degraded, elapsed_ms, fatal_error_count, non_fatal_error_count
-    assert_eq!(event.schema_version, "1.1.0");
+    assert_eq!(event.schema_version, "1.2.0");
     assert_eq!(event.event, ProgressEventType::SliceComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -309,7 +309,7 @@ fn json_lines_emitter_serializes_to_valid_json() {
 
     // Check that required fields are present
     let json = parsed.unwrap();
-    assert_eq!(json["schema_version"], "1.1.0");
+    assert_eq!(json["schema_version"], "1.2.0");
     assert_eq!(json["event"], "phase_start");
     assert!(json["timestamp_ms"].is_number());
     assert_eq!(json["slice_id"], slice_id());
@@ -513,5 +513,361 @@ fn event_ordering_phase_start_before_phase_complete() {
         "phase_start (idx={}) must come before phase_complete (idx={})",
         start_idx,
         complete_idx
+    );
+}
+
+// ============================================================================
+// Packet 169 Step 3: slice_stats event (schema 1.2.0).
+// ============================================================================
+
+/// Shared, cloneable in-memory writer so the JSONL stream produced by the
+/// production emission path (`slicer_runtime::run::emit_end_of_slice_events`)
+/// can be inspected after the emitter takes ownership of its writer.
+#[derive(Clone, Default)]
+struct SharedBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for SharedBuf {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("shared buf poisoned")
+            .extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn stats_inputs_fixture(weight: Option<f64>) -> slicer_runtime::run::SliceStatsInputs {
+    let mut volumes = std::collections::BTreeMap::new();
+    volumes.insert(0u32, 1234.5);
+    volumes.insert(1u32, 67.8);
+    slicer_runtime::run::SliceStatsInputs {
+        gcode_prediction_seconds: 4321,
+        gcode_weight_grams: weight,
+        gcode_filament_length_mm: 5432.1,
+        layer_count: 42,
+        first_layer_height_mm: 0.25,
+        extruded_volume_mm3: volumes,
+        toolchange_count: 3,
+    }
+}
+
+/// Drive the production end-of-slice emission path and return the parsed
+/// JSONL lines it wrote.
+fn run_end_of_slice_emission(
+    stats: Option<slicer_runtime::run::SliceStatsInputs>,
+) -> Vec<serde_json::Value> {
+    let buf = SharedBuf::default();
+    let emitter = std::sync::Arc::new(JsonLinesEmitter::new(buf.clone()));
+    let collector = std::sync::Arc::new(std::sync::Mutex::new(SliceEventCollector::new()));
+    let sink = slicer_runtime::progress_events::RuntimeProgressSink::new(emitter, collector);
+
+    slicer_runtime::run::emit_end_of_slice_events(&sink, &slice_id(), 999, stats);
+
+    let bytes = buf.0.lock().expect("shared buf poisoned").clone();
+    let text = String::from_utf8(bytes).expect("stream must be UTF-8");
+    text.lines()
+        .map(|l| serde_json::from_str(l).expect("each line must be valid JSON"))
+        .collect()
+}
+
+/// Recursively assert no key named `cost` or `gcode_cost` exists anywhere.
+fn assert_no_cost_keys(value: &serde_json::Value) {
+    if let Some(map) = value.as_object() {
+        for (k, v) in map {
+            assert!(
+                k != "cost" && k != "gcode_cost",
+                "forbidden key {k:?} present in event"
+            );
+            assert_no_cost_keys(v);
+        }
+    }
+}
+
+#[test]
+fn slice_stats_event_shape_and_ordering() {
+    let lines = run_end_of_slice_emission(Some(stats_inputs_fixture(Some(15.5))));
+
+    let stats_indices: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v["event"] == "slice_stats")
+        .map(|(i, _)| i)
+        .collect();
+    let complete_indices: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v["event"] == "slice_complete")
+        .map(|(i, _)| i)
+        .collect();
+
+    assert_eq!(stats_indices.len(), 1, "exactly one slice_stats line");
+    assert_eq!(complete_indices.len(), 1, "exactly one slice_complete line");
+    assert!(
+        stats_indices[0] < complete_indices[0],
+        "slice_stats must precede slice_complete"
+    );
+
+    let stats = &lines[stats_indices[0]];
+    assert_eq!(stats["schema_version"], "1.2.0");
+    assert_eq!(stats["gcode_prediction_seconds"], 4321);
+    assert_eq!(stats["gcode_weight_grams"], 15.5);
+    assert_eq!(stats["gcode_filament_length_mm"], 5432.1);
+    assert_eq!(stats["layer_count"], 42);
+    assert!(
+        (stats["first_layer_height_mm"].as_f64().unwrap() - 0.25).abs() < 1e-6,
+        "first_layer_height_mm must be present and 0.25"
+    );
+    let volumes = stats["extruded_volume_mm3"]
+        .as_object()
+        .expect("extruded_volume_mm3 must be a map keyed by extruder index");
+    assert_eq!(volumes["0"], 1234.5);
+    assert_eq!(volumes["1"], 67.8);
+    assert_eq!(stats["toolchange_count"], 3);
+
+    for line in &lines {
+        assert_no_cost_keys(line);
+    }
+}
+
+#[test]
+fn slice_stats_omits_weight_without_density() {
+    let lines = run_end_of_slice_emission(Some(stats_inputs_fixture(None)));
+    let stats = lines
+        .iter()
+        .find(|v| v["event"] == "slice_stats")
+        .expect("slice_stats line must exist");
+
+    let obj = stats.as_object().unwrap();
+    assert!(
+        !obj.contains_key("gcode_weight_grams"),
+        "gcode_weight_grams key must be absent (not null, not 0) without filament_density"
+    );
+    for key in [
+        "gcode_prediction_seconds",
+        "gcode_filament_length_mm",
+        "layer_count",
+        "first_layer_height_mm",
+        "extruded_volume_mm3",
+        "toolchange_count",
+    ] {
+        assert!(obj.contains_key(key), "field {key:?} must be present");
+    }
+}
+
+#[test]
+fn progress_event_1_1_0_roundtrip_unchanged() {
+    // Every pre-existing (1.1.0-era) event variant must serialize without any
+    // of the new slice_stats fields and round-trip unchanged (additive bump).
+    let events = vec![
+        ProgressEvent::phase_start(slice_id(), ProgressPhase::Prepass, timestamp_ms()),
+        ProgressEvent::phase_complete(
+            slice_id(),
+            ProgressPhase::Prepass,
+            timestamp_ms(),
+            500,
+            ProgressStatus::Ok,
+        ),
+        ProgressEvent::layer_start(slice_id(), ProgressPhase::PerLayer, 7, timestamp_ms()),
+        ProgressEvent::layer_complete(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            7,
+            timestamp_ms(),
+            12,
+            ProgressStatus::Ok,
+            false,
+        ),
+        ProgressEvent::module_error(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            Some(7),
+            "org.example.walls".to_string(),
+            timestamp_ms(),
+            error_fixture(false),
+        ),
+        ProgressEvent::validation_error(slice_id(), timestamp_ms(), error_fixture(true)),
+        ProgressEvent::slice_complete(
+            slice_id(),
+            timestamp_ms(),
+            9000,
+            ProgressStatus::Ok,
+            false,
+            0,
+            0,
+        ),
+        ProgressEvent::stage_start(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            Some(7),
+            timestamp_ms(),
+        ),
+        ProgressEvent::stage_complete(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            Some(7),
+            timestamp_ms(),
+            33,
+        ),
+        ProgressEvent::module_start(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            "org.example.walls".to_string(),
+            Some(7),
+            timestamp_ms(),
+        ),
+        ProgressEvent::module_complete(
+            slice_id(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            "org.example.walls".to_string(),
+            Some(7),
+            timestamp_ms(),
+            21,
+            64,
+        ),
+    ];
+
+    let new_keys = [
+        "gcode_prediction_seconds",
+        "gcode_weight_grams",
+        "gcode_filament_length_mm",
+        "layer_count",
+        "first_layer_height_mm",
+        "extruded_volume_mm3",
+        "toolchange_count",
+    ];
+
+    for event in events {
+        let json = serde_json::to_string(&event).expect("serialize");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        let obj = value.as_object().unwrap();
+        for key in new_keys {
+            assert!(
+                !obj.contains_key(key),
+                "1.1.0-era event {:?} must not serialize new key {key:?}",
+                event.event
+            );
+        }
+        let back: ProgressEvent = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, event, "round-trip must be lossless");
+    }
+
+    // A literal 1.1.0-era JSONL line (no new fields) must still deserialize.
+    let legacy = "{\"schema_version\":\"1.1.0\",\"event\":\"slice_complete\",\"timestamp_ms\":1,\"slice_id\":\"s\",\"status\":\"ok\",\"elapsed_ms\":2,\"degraded\":false,\"fatal_error_count\":0,\"non_fatal_error_count\":0}";
+    let parsed: ProgressEvent = serde_json::from_str(legacy).expect("legacy line must parse");
+    assert_eq!(parsed.event, ProgressEventType::SliceComplete);
+    assert_eq!(parsed.gcode_prediction_seconds, None);
+    assert_eq!(parsed.layer_count, None);
+}
+
+// ============================================================================
+// Packet 169 Step 4: per-layer phase_start carries layer_count
+// ============================================================================
+
+#[test]
+fn phase_start_per_layer_carries_layer_count() {
+    use slicer_runtime::{
+        LayerProgressSink, Phase, PipelineInstrumentation, ProgressPipelineInstrumentation,
+    };
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct RecordingSink {
+        events: Mutex<Vec<ProgressEvent>>,
+    }
+    impl LayerProgressSink for RecordingSink {
+        fn record(&self, event: ProgressEvent) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    let sink = Arc::new(RecordingSink::default());
+    let pi = ProgressPipelineInstrumentation::new(
+        sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+        slice_id(),
+    );
+
+    let global_layer_count: u32 = 42;
+    pi.on_phase_start(Phase::PrePass);
+    pi.on_phase_start_with_layer_count(Phase::PerLayer, Some(global_layer_count));
+    pi.on_phase_start(Phase::PostPass);
+
+    let events = sink.events.lock().unwrap();
+    assert_eq!(events.len(), 3);
+    for event in events.iter() {
+        assert_eq!(event.event, ProgressEventType::PhaseStart);
+        let json = serde_json::to_string(event).expect("serialize");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        let obj = value.as_object().unwrap();
+        match event.phase {
+            Some(ProgressPhase::PerLayer) => {
+                assert_eq!(
+                    obj.get("layer_count").and_then(|v| v.as_u64()),
+                    Some(u64::from(global_layer_count)),
+                    "per-layer phase_start must carry layer_count == global layer count"
+                );
+            }
+            other => {
+                assert!(
+                    !obj.contains_key("layer_count"),
+                    "phase_start for {other:?} must omit the layer_count key entirely"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn phase_start_per_layer_carries_layer_count_through_composite() {
+    use slicer_runtime::instrumentation::NoopInstrumentation;
+    use slicer_runtime::{
+        CompositeInstrumentation, LayerProgressSink, Phase, PipelineInstrumentation,
+        ProgressPipelineInstrumentation,
+    };
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct RecordingSink {
+        events: Mutex<Vec<ProgressEvent>>,
+    }
+    impl LayerProgressSink for RecordingSink {
+        fn record(&self, event: ProgressEvent) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    let sink = Arc::new(RecordingSink::default());
+    let pi = ProgressPipelineInstrumentation::new(
+        sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+        slice_id(),
+    );
+    let other = NoopInstrumentation;
+    let composite = CompositeInstrumentation::new(&other, &pi);
+
+    let global_layer_count: u32 = 42;
+    composite.on_phase_start_with_layer_count(Phase::PerLayer, Some(global_layer_count));
+
+    let events = sink.events.lock().unwrap();
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(event.event, ProgressEventType::PhaseStart);
+    assert_eq!(event.phase, Some(ProgressPhase::PerLayer));
+    let json = serde_json::to_string(event).expect("serialize");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+    assert_eq!(
+        value
+            .as_object()
+            .unwrap()
+            .get("layer_count")
+            .and_then(|v| v.as_u64()),
+        Some(u64::from(global_layer_count)),
+        "composite must forward layer_count to its delegates, not drop it via the default method"
     );
 }

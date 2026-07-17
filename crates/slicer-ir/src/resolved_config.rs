@@ -150,6 +150,31 @@ impl ResolvedConfig {
         if let Some(v) = self.smoothificator_adaptive {
             m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
         }
+        // Machine kinematic limits + filament density (Option fields: absent → key omitted,
+        // so unset configs leave CONFIG_BLOCK bytes unchanged).
+        for (key, v) in [
+            (
+                "machine_max_acceleration_extruding",
+                self.machine_max_acceleration_extruding,
+            ),
+            (
+                "machine_max_acceleration_travel",
+                self.machine_max_acceleration_travel,
+            ),
+            ("machine_max_speed_x", self.machine_max_speed_x),
+            ("machine_max_speed_y", self.machine_max_speed_y),
+            ("machine_max_speed_z", self.machine_max_speed_z),
+            ("machine_max_speed_e", self.machine_max_speed_e),
+            ("machine_max_jerk_x", self.machine_max_jerk_x),
+            ("machine_max_jerk_y", self.machine_max_jerk_y),
+            ("machine_max_jerk_z", self.machine_max_jerk_z),
+            ("machine_max_jerk_e", self.machine_max_jerk_e),
+            ("filament_density", self.filament_density),
+        ] {
+            if let Some(v) = v {
+                m.insert(key.into(), ConfigValue::Float(f64::from(v)));
+            }
+        }
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
         // prints, breaking byte-identicality vs baseline.
@@ -739,6 +764,32 @@ declare_resolved_config! {
     /// When true, Phase 5 width-limiting is skipped entirely (OrcaSlicer
     /// interlocking-beam parity). Default `false` matches single-material behaviour.
     cli "mmu_segmented_region_interlocking_beam" mmu_segmented_region_interlocking_beam: bool = false => extract_bool;
+
+    // Machine kinematic limits (time estimator; optional — absent keys stay None)
+    /// Maximum acceleration while extruding, in mm/s² (optional).
+    cli_opt "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float;
+    /// Maximum acceleration for travel moves, in mm/s² (optional).
+    cli_opt "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float;
+    /// Maximum X-axis speed in mm/s (optional).
+    cli_opt "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float;
+    /// Maximum Y-axis speed in mm/s (optional).
+    cli_opt "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float;
+    /// Maximum Z-axis speed in mm/s (optional).
+    cli_opt "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float;
+    /// Maximum extruder (E-axis) speed in mm/s (optional).
+    cli_opt "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float;
+    /// Maximum X-axis jerk in mm/s (optional).
+    cli_opt "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float;
+    /// Maximum Y-axis jerk in mm/s (optional).
+    cli_opt "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float;
+    /// Maximum Z-axis jerk in mm/s (optional).
+    cli_opt "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float;
+    /// Maximum extruder (E-axis) jerk in mm/s (optional).
+    cli_opt "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float;
+
+    // Filament (time/usage estimator)
+    /// Filament density in g/cm³ (optional).
+    cli_opt "filament_density" filament_density: Option<f32> = None => extract_float;
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future
@@ -808,6 +859,27 @@ impl PartialEq for ResolvedConfig {
                 == other.mmu_segmented_region_interlocking_depth.to_bits()
             && self.mmu_segmented_region_interlocking_beam
                 == other.mmu_segmented_region_interlocking_beam
+            && self.machine_max_acceleration_extruding.map(f32::to_bits)
+                == other.machine_max_acceleration_extruding.map(f32::to_bits)
+            && self.machine_max_acceleration_travel.map(f32::to_bits)
+                == other.machine_max_acceleration_travel.map(f32::to_bits)
+            && self.machine_max_speed_x.map(f32::to_bits)
+                == other.machine_max_speed_x.map(f32::to_bits)
+            && self.machine_max_speed_y.map(f32::to_bits)
+                == other.machine_max_speed_y.map(f32::to_bits)
+            && self.machine_max_speed_z.map(f32::to_bits)
+                == other.machine_max_speed_z.map(f32::to_bits)
+            && self.machine_max_speed_e.map(f32::to_bits)
+                == other.machine_max_speed_e.map(f32::to_bits)
+            && self.machine_max_jerk_x.map(f32::to_bits)
+                == other.machine_max_jerk_x.map(f32::to_bits)
+            && self.machine_max_jerk_y.map(f32::to_bits)
+                == other.machine_max_jerk_y.map(f32::to_bits)
+            && self.machine_max_jerk_z.map(f32::to_bits)
+                == other.machine_max_jerk_z.map(f32::to_bits)
+            && self.machine_max_jerk_e.map(f32::to_bits)
+                == other.machine_max_jerk_e.map(f32::to_bits)
+            && self.filament_density.map(f32::to_bits) == other.filament_density.map(f32::to_bits)
             && self.extensions == other.extensions
     }
 }
@@ -876,6 +948,89 @@ impl std::hash::Hash for ResolvedConfig {
             .to_bits()
             .hash(state);
         self.mmu_segmented_region_interlocking_beam.hash(state);
+        self.machine_max_acceleration_extruding
+            .map(f32::to_bits)
+            .hash(state);
+        self.machine_max_acceleration_travel
+            .map(f32::to_bits)
+            .hash(state);
+        self.machine_max_speed_x.map(f32::to_bits).hash(state);
+        self.machine_max_speed_y.map(f32::to_bits).hash(state);
+        self.machine_max_speed_z.map(f32::to_bits).hash(state);
+        self.machine_max_speed_e.map(f32::to_bits).hash(state);
+        self.machine_max_jerk_x.map(f32::to_bits).hash(state);
+        self.machine_max_jerk_y.map(f32::to_bits).hash(state);
+        self.machine_max_jerk_z.map(f32::to_bits).hash(state);
+        self.machine_max_jerk_e.map(f32::to_bits).hash(state);
+        self.filament_density.map(f32::to_bits).hash(state);
         self.extensions.hash(state);
+    }
+}
+
+#[cfg(test)]
+mod machine_limit_config_tests {
+    use super::*;
+
+    const KEYS: [&str; 11] = [
+        "machine_max_acceleration_extruding",
+        "machine_max_acceleration_travel",
+        "machine_max_speed_x",
+        "machine_max_speed_y",
+        "machine_max_speed_z",
+        "machine_max_speed_e",
+        "machine_max_jerk_x",
+        "machine_max_jerk_y",
+        "machine_max_jerk_z",
+        "machine_max_jerk_e",
+        "filament_density",
+    ];
+
+    fn field(cfg: &ResolvedConfig, key: &str) -> Option<f32> {
+        match key {
+            "machine_max_acceleration_extruding" => cfg.machine_max_acceleration_extruding,
+            "machine_max_acceleration_travel" => cfg.machine_max_acceleration_travel,
+            "machine_max_speed_x" => cfg.machine_max_speed_x,
+            "machine_max_speed_y" => cfg.machine_max_speed_y,
+            "machine_max_speed_z" => cfg.machine_max_speed_z,
+            "machine_max_speed_e" => cfg.machine_max_speed_e,
+            "machine_max_jerk_x" => cfg.machine_max_jerk_x,
+            "machine_max_jerk_y" => cfg.machine_max_jerk_y,
+            "machine_max_jerk_z" => cfg.machine_max_jerk_z,
+            "machine_max_jerk_e" => cfg.machine_max_jerk_e,
+            "filament_density" => cfg.filament_density,
+            other => panic!("unknown key {other}"),
+        }
+    }
+
+    #[test]
+    fn absent_machine_limit_keys_are_none_and_omitted_from_config_map() {
+        let cfg = ResolvedConfig::default();
+        let map = cfg.to_config_map();
+        for key in KEYS {
+            assert_eq!(field(&cfg, key), None, "{key} default must be None");
+            assert!(!map.contains_key(key), "{key} must be omitted when None");
+        }
+    }
+
+    #[test]
+    fn supplied_machine_limit_keys_round_trip() {
+        let mut cfg = ResolvedConfig::default();
+        for (i, key) in KEYS.iter().enumerate() {
+            let v = 10.0 + i as f64;
+            let applied = cfg
+                .apply_cli_key(key, &ConfigValue::Float(v))
+                .expect("type check");
+            assert!(applied, "{key} must be a recognized CLI-bound field");
+            assert_eq!(field(&cfg, key), Some(v as f32), "{key} value must apply");
+        }
+        let map = cfg.to_config_map();
+        for (i, key) in KEYS.iter().enumerate() {
+            let expected = f64::from(10.0_f32 + i as f32);
+            assert_eq!(
+                map.get(*key),
+                Some(&ConfigValue::Float(expected)),
+                "{key} must round-trip through to_config_map"
+            );
+        }
     }
 }

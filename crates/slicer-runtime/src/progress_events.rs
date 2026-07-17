@@ -15,6 +15,7 @@
 //! context-specific fields as defined in the Required Field Matrix.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
@@ -26,13 +27,18 @@ use crate::layer_executor::LayerProgressSink;
 /// instrumented schema below shares this struct and therefore the same field;
 /// both schemas now sit at 1.1.0. Per `docs/09_progress_events.md` §Compatibility,
 /// additive fields are minor version bumps.
-pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.1.0";
+///
+/// 1.2.0 (additive, packet 169): `slice_stats` event type plus the optional
+/// `gcode_prediction_seconds`, `gcode_weight_grams`, `gcode_filament_length_mm`,
+/// `layer_count`, `first_layer_height_mm`, `extruded_volume_mm3`, and
+/// `toolchange_count` fields.
+pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.2.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
 /// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
 /// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
-pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.1.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.2.0";
 
 /// Stable `ProgressError.code` for a `validation_error` raised by intra-stage
 /// DAG construction failure during the 14-pass startup validation.
@@ -79,6 +85,10 @@ pub enum ProgressEventType {
     ValidationError,
     /// Emitted when the entire slice operation completes.
     SliceComplete,
+    /// Emitted exactly once per successful slice (including degraded
+    /// success), strictly before `slice_complete`, carrying whole-print
+    /// statistics (packet 169, schema 1.2.0).
+    SliceStats,
     /// Emitted when a stage's module loop begins (instrumented stream only).
     StageStart,
     /// Emitted when a stage's module loop ends (instrumented stream only).
@@ -135,7 +145,7 @@ pub struct ProgressError {
 /// A structured progress event emitted during slicing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressEvent {
-    /// Schema version ("1.1.0" — additive `error.reason` field).
+    /// Schema version ("1.2.0" — additive slice_stats event and fields).
     pub schema_version: String,
     /// Type of event.
     pub event: ProgressEventType,
@@ -177,6 +187,30 @@ pub struct ProgressEvent {
     /// `module_complete` events emitted under `--instrument-stderr`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wasm_peak_kb: Option<u64>,
+    /// Estimated print time in whole seconds (for slice_stats).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gcode_prediction_seconds: Option<u64>,
+    /// Estimated filament weight in grams (for slice_stats). Present only
+    /// when `filament_density` is configured; the key is omitted otherwise
+    /// (never 0, never null).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gcode_weight_grams: Option<f64>,
+    /// Total filament length consumed across all tools, in mm (for slice_stats).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gcode_filament_length_mm: Option<f64>,
+    /// Number of emitted layers (for slice_stats; also used by phase_start in
+    /// a later packet-169 step).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_count: Option<u32>,
+    /// First layer height in mm (for slice_stats).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_layer_height_mm: Option<f32>,
+    /// Extruded volume per extruder index in mm³ (for slice_stats).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extruded_volume_mm3: Option<BTreeMap<u32, f64>>,
+    /// Number of tool changes in the print (for slice_stats).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub toolchange_count: Option<u32>,
 }
 
 impl ProgressEvent {
@@ -200,6 +234,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -229,6 +270,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -257,6 +305,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -288,6 +343,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -328,6 +390,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -351,6 +420,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -382,6 +458,57 @@ impl ProgressEvent {
             fatal_error_count: Some(fatal_error_count),
             non_fatal_error_count: Some(non_fatal_error_count),
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
+        }
+    }
+
+    /// Create a slice_stats event (packet 169, schema 1.2.0).
+    ///
+    /// Emitted exactly once per slice that produced a G-code artifact
+    /// (including degraded-but-successful runs), strictly before
+    /// `slice_complete`. `gcode_weight_grams` is `Some` only when
+    /// `filament_density` is configured — the key is omitted otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn slice_stats(
+        slice_id: String,
+        timestamp_ms: u64,
+        gcode_prediction_seconds: u64,
+        gcode_weight_grams: Option<f64>,
+        gcode_filament_length_mm: f64,
+        layer_count: u32,
+        first_layer_height_mm: f32,
+        extruded_volume_mm3: BTreeMap<u32, f64>,
+        toolchange_count: u32,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION.to_string(),
+            event: ProgressEventType::SliceStats,
+            timestamp_ms,
+            slice_id,
+            phase: None,
+            stage: None,
+            layer_index: None,
+            module_id: None,
+            status: ProgressStatus::Ok,
+            elapsed_ms: None,
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+            gcode_prediction_seconds: Some(gcode_prediction_seconds),
+            gcode_weight_grams,
+            gcode_filament_length_mm: Some(gcode_filament_length_mm),
+            layer_count: Some(layer_count),
+            first_layer_height_mm: Some(first_layer_height_mm),
+            extruded_volume_mm3: Some(extruded_volume_mm3),
+            toolchange_count: Some(toolchange_count),
         }
     }
 
@@ -412,6 +539,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -442,6 +576,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -472,6 +613,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 
@@ -505,6 +653,13 @@ impl ProgressEvent {
             fatal_error_count: None,
             non_fatal_error_count: None,
             wasm_peak_kb: Some(wasm_peak_kb),
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
         }
     }
 }
@@ -680,16 +835,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schema_version_is_1_1_0() {
-        // 1.1.0 (additive bump): `ProgressError.reason` introduced. Per
-        // docs/09_progress_events.md §Compatibility, additive fields are a
-        // minor version bump.
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.1.0");
+    fn schema_version_is_1_2_0() {
+        // 1.2.0 (additive bump): `slice_stats` event and its optional fields
+        // introduced (packet 169). Per docs/09_progress_events.md
+        // §Compatibility, additive fields are a minor version bump.
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.2.0");
     }
 
     #[test]
-    fn instrumented_schema_version_is_1_1_0() {
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED, "1.1.0");
+    fn instrumented_schema_version_is_1_2_0() {
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED, "1.2.0");
     }
 
     #[test]
@@ -705,7 +860,7 @@ mod tests {
             2_048,
         );
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("\"schema_version\":\"1.1.0\""));
+        assert!(json.contains("\"schema_version\":\"1.2.0\""));
         assert!(json.contains("\"event\":\"module_complete\""));
         assert!(json.contains("\"stage\":\"Layer::Perimeters\""));
         assert!(json.contains("\"module_id\":\"com.example.perimeters\""));

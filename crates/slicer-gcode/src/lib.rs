@@ -8,11 +8,13 @@
 
 pub mod emit;
 pub mod error;
+pub mod estimator;
 pub mod serialize;
 pub mod thumbnail;
 
 pub use emit::{reconcile_finalization_travel, DefaultGCodeEmitter, GCodeEmitter};
 pub use error::GCodeEmitError;
+pub use estimator::{estimate_print, EstimatorLimits, PrintEstimate};
 pub use serialize::{
     format_coord, format_xyz, resolved_config_to_map, tolerance_for_role, DefaultGCodeSerializer,
     GCodeSerializer, ThumbnailAwareSerializer,

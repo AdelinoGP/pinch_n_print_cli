@@ -33,7 +33,7 @@ use crate::progress_instrumentation::{now_unix_ms, ProgressPipelineInstrumentati
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
-use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
+use slicer_gcode::{estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits};
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
@@ -65,7 +65,7 @@ pub struct SliceRunOptions {
     /// Verbose report mode (per-layer-per-module rows).
     pub report_verbose: bool,
     /// When true, emit per-stage / per-module timing events on the stderr
-    /// JSONL stream during the slice (schema version `"1.1.0"`).
+    /// JSONL stream during the slice (schema version `"1.2.0"`).
     pub instrument_stderr: bool,
     /// When true (the default for `pnp_cli slice`), emit the docs/09 core
     /// progress-event contract (phase/layer/validation/module_error/
@@ -161,7 +161,6 @@ fn build_report_dag_snapshot(producers: &[&dyn Producer]) -> crate::report::Repo
 struct ProgressChannel {
     slice_id: String,
     sink: Arc<RuntimeProgressSink>,
-    collector: Arc<Mutex<SliceEventCollector>>,
 }
 
 /// Build the progress channel. `emit_to_stderr == false`
@@ -182,7 +181,6 @@ fn build_progress_channel(emit_to_stderr: bool) -> ProgressChannel {
     ProgressChannel {
         slice_id: format!("slice-{}", now_unix_ms()),
         sink,
-        collector,
     }
 }
 
@@ -276,6 +274,79 @@ fn run_pipeline_fork(
     };
 
     result.map_err(|e| SliceRunError(format!("{e}")))
+}
+
+/// Whole-print statistics for the `slice_stats` progress event (packet 169).
+///
+/// Derived in [`run_slice`] from `slicer_gcode::estimate_print` over the
+/// final postpass `GCodeIR` plus the resolved config
+/// (`filament_density`, `first_layer_height`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SliceStatsInputs {
+    /// Estimated print time in whole seconds.
+    pub gcode_prediction_seconds: u64,
+    /// Estimated filament weight in grams; `None` when `filament_density`
+    /// is not configured (the event key is then omitted entirely).
+    pub gcode_weight_grams: Option<f64>,
+    /// Total filament length across all tools, in mm.
+    pub gcode_filament_length_mm: f64,
+    /// Number of emitted layers (`GCodeIR.metadata.layer_count`).
+    pub layer_count: u32,
+    /// First layer height in mm (`ResolvedConfig.first_layer_height`).
+    pub first_layer_height_mm: f32,
+    /// Extruded volume per extruder index, in mm³.
+    pub extruded_volume_mm3: std::collections::BTreeMap<u32, f64>,
+    /// Number of tool changes in the print.
+    pub toolchange_count: u32,
+}
+
+/// Production end-of-slice emission path (packet 169 Step 3).
+///
+/// Records exactly one `slice_stats` event (when `stats` is `Some`, i.e. the
+/// slice produced a G-code artifact — including degraded-but-successful
+/// runs), strictly followed by exactly one `slice_complete` event built from
+/// the sink's [`SliceEventCollector`] aggregate counts. `slice_complete`
+/// status stays `Ok` even when degraded — "degraded success" is signalled by
+/// the degraded flag plus `non_fatal_error_count` (docs/09 §Required Events).
+///
+/// Public so integration tests can assert the emitted JSONL stream from the
+/// same code path `run_slice` uses in production.
+pub fn emit_end_of_slice_events(
+    sink: &RuntimeProgressSink,
+    slice_id: &str,
+    wallclock_ms: u64,
+    stats: Option<SliceStatsInputs>,
+) {
+    if let Some(s) = stats {
+        sink.record(ProgressEvent::slice_stats(
+            slice_id.to_string(),
+            now_unix_ms(),
+            s.gcode_prediction_seconds,
+            s.gcode_weight_grams,
+            s.gcode_filament_length_mm,
+            s.layer_count,
+            s.first_layer_height_mm,
+            s.extruded_volume_mm3,
+            s.toolchange_count,
+        ));
+    }
+
+    let (fatal, non_fatal, degraded) = {
+        let collector = sink.collector();
+        let c = collector
+            .lock()
+            .expect("slice event collector mutex poisoned");
+        (c.fatal_count(), c.non_fatal_count(), c.is_degraded())
+    };
+    sink.record(ProgressEvent::slice_complete(
+        slice_id.to_string(),
+        now_unix_ms(),
+        wallclock_ms,
+        ProgressStatus::Ok,
+        degraded,
+        fatal,
+        non_fatal,
+    ));
 }
 
 /// One-shot slice. Drives the pipeline end-to-end and returns the produced G-code.
@@ -621,6 +692,18 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
 
+    // Packet 169 Step 3: capture the estimator inputs the slice_stats event
+    // needs before `default_resolved_config` / `per_tool_configs_map` are
+    // moved into the pipeline config. Tool diameters mirror the emitter's own
+    // `tool_configs` map (the estimator defaults missing tools to 1.75 mm).
+    let estimator_limits = EstimatorLimits::from_config(&default_resolved_config);
+    let stats_tool_diameters: std::collections::BTreeMap<u32, f32> = per_tool_configs_map
+        .iter()
+        .map(|(&tool, cfg)| (tool, cfg.filament_diameter))
+        .collect();
+    let stats_filament_density = default_resolved_config.filament_density;
+    let stats_first_layer_height_mm = default_resolved_config.first_layer_height as f32;
+
     let pipeline_config = PipelineConfig {
         mesh_ir,
         plan,
@@ -661,28 +744,32 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         .filter(|l| l.starts_with(";LAYER_CHANGE") || l.starts_with("; layer"))
         .count() as u32;
 
-    // slice_complete: success-only, exactly once (docs/09 §Required Events).
-    // Status stays Ok even when degraded — "degraded success" is signalled by
-    // the degraded flag plus non_fatal_error_count. On fatal failure the
-    // stream ends at the error event with no slice_complete.
-    {
-        let (fatal, non_fatal, degraded) = {
-            let c = channel
-                .collector
-                .lock()
-                .expect("slice event collector mutex poisoned");
-            (c.fatal_count(), c.non_fatal_count(), c.is_degraded())
-        };
-        channel.sink.record(ProgressEvent::slice_complete(
-            channel.slice_id.clone(),
-            now_unix_ms(),
-            wallclock_ms,
-            ProgressStatus::Ok,
-            degraded,
-            fatal,
-            non_fatal,
-        ));
-    }
+    // slice_stats + slice_complete (packet 169 Step 3): slice_stats is
+    // emitted whenever the slice produced a G-code artifact (including
+    // degraded-but-successful runs), strictly before the success-only,
+    // exactly-once slice_complete (docs/09 §Required Events). On fatal
+    // failure the stream ends at the error event with neither. The whole-print
+    // numbers come from `estimate_print` over the final post-postprocess
+    // `GCodeIR` surfaced by `crate::postpass::take_final_gcode_ir` — no
+    // estimator math is re-implemented here.
+    let stats = crate::postpass::take_final_gcode_ir().map(|ir| {
+        let estimate = estimate_print(&ir, &estimator_limits, &stats_tool_diameters);
+        let total_volume_mm3: f64 = estimate.extruded_volume_mm3.values().sum();
+        SliceStatsInputs {
+            gcode_prediction_seconds: estimate.total_time_s.round() as u64,
+            // Weight only when filament_density (g/cm³) is configured; the
+            // event key is omitted otherwise (never 0, never null). The
+            // serializer's header default density is deliberately not used.
+            gcode_weight_grams: stats_filament_density
+                .map(|density| (total_volume_mm3 / 1000.0) * f64::from(density)),
+            gcode_filament_length_mm: estimate.filament_length_mm.values().sum(),
+            layer_count: ir.metadata.layer_count,
+            first_layer_height_mm: stats_first_layer_height_mm,
+            extruded_volume_mm3: estimate.extruded_volume_mm3,
+            toolchange_count: estimate.toolchange_count,
+        }
+    });
+    emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
     Ok(SliceOutcome {
         gcode_text: pipeline_output.gcode_text,
