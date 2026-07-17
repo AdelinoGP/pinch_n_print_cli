@@ -332,6 +332,39 @@ widths and their offsets from the medial axis. The strategy stack
 composes multiple strategies (e.g. widening, narrowing, middle-out)
 via delegation.
 
+### Wall line width (vs. bead width vs. flow spacing)
+
+Three width-like quantities that are NOT interchangeable — conflating them
+caused both `D-147-STITCH-TINY-POLY-UNITS`'s neighbourhood and the two D-160
+bugs, so keep the domains straight:
+
+- **Wall line width** — the user-facing extrusion width in mm
+  (`outer_wall_line_width` / `inner_wall_line_width`). What the printed bead
+  physically measures across. This is the number the user configures and the
+  number G-code flow math must reproduce.
+- **Flow spacing** — the centre-to-centre distance between adjacent
+  extrusions: `spacing = width − layer_height·(1 − π/4)` (canonical
+  `Flow::rounded_rectangle_extrusion_spacing`; PnP
+  `slicer_core::flow::line_width_to_spacing`). Always strictly narrower than
+  the width, because adjacent rounded-rectangle beads overlap at their
+  semicircular flanks.
+- **Bead width** — Arachne's per-junction target width inside the beading
+  engine. **Arachne bead widths ARE flow-spacing values**, not extrusion
+  widths: canonical feeds `WallToolPaths` `bead_width_0/x =
+  ext_perimeter/perimeter_flow.scaled_spacing()`, and everything the
+  `BeadingStrategy` stack computes and stores on junctions lives in that
+  spacing domain. At emission, canonical converts BACK to an extrusion width
+  (`VariableWidth.cpp::thick_polyline_to_multi_path`:
+  `flow.with_width(unscale(w) + height·(1 − π/4))`); PnP does the same in
+  `arachne-perimeters::build_walls` via `flow_to_width`.
+
+Rules of thumb: config keys and `PerimeterIR` vertex widths are WIDTHS;
+everything between `arachne_params_from_config`'s `line_width_to_spacing` and
+`build_walls`' `flow_to_width` is SPACING. A width smuggled into the spacing
+domain under-extrudes by `layer_height·(1 − π/4)` (~10.7% at 0.4/0.2) —
+exactly D-160 Bug B. `classic-perimeters` never enters the spacing domain, so
+it has no back-conversion; that asymmetry is intentional.
+
 ### Transition end
 The narrow end of a **quad** where the bead count decreases by one
 relative to the wide end — the point where a variable-width extrusion

@@ -49,6 +49,7 @@ is the authoritative catalog of their defaults and ranges.
 | `detect_thin_wall` | bool | `false` | — | `arachne-perimeters` |
 | `extra_perimeters_on_overhangs` | bool | `false` | — | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | >= 0.0 | `arachne-perimeters` |
+| `inner_wall_line_width` | float | `0.4` | [0.1, 2.0] | `arachne-perimeters` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `arachne-perimeters` |
 | `max_bead_count` | int | `0` | >= 0.0 | `arachne-perimeters` |
 | `min_bead_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
@@ -56,17 +57,16 @@ is the authoritative catalog of their defaults and ranges.
 | `min_feature_size` | percent | `"25%"` | >= 0.0 | `arachne-perimeters` |
 | `min_length_factor` | float | `0.5` | [0.0, 2.0] | `arachne-perimeters` |
 | `min_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
-| `min_width_top_surface` | float_or_percent | `"300%"` | >= 0.0 | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `"0.0"` | >= 0.0 | `arachne-perimeters` |
 | `nozzle_diameter` | float | `0.4` | >= 0.01 | `arachne-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `arachne-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `arachne-perimeters` |
-| `optimal_width` | float | `4000` | >= 0.0 | `arachne-perimeters` |
+| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | >= 0.0 | `arachne-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `arachne-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `arachne-perimeters` |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] | `arachne-perimeters` |
 | `precise_outer_wall` | bool | `false` | — | `arachne-perimeters` |
-| `preferred_bead_width_outer` | float | `4000` | >= 0.0 | `arachne-perimeters` |
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `arachne-perimeters` |
 | `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
@@ -75,8 +75,8 @@ is the authoritative catalog of their defaults and ranges.
 | `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
 | `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |
-| `wall_maximum_deviation` | float | `0.025` | [0.0001, 1.0] | `arachne-perimeters` |
-| `wall_maximum_resolution` | float | `0.5` | [0.001, 10.0] | `arachne-perimeters` |
+| `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] | `arachne-perimeters` |
+| `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] | `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | — | `arachne-perimeters` |
 | `wall_transition_angle` | float | `10.0` | [0.0, 180.0] | `arachne-perimeters` |
 | `wall_transition_filter_deviation` | float | `1000` | >= 0.0 | `arachne-perimeters` |
@@ -99,7 +99,7 @@ is the authoritative catalog of their defaults and ranges.
 | `nozzle_diameter` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `only_one_wall_first_layer` | bool | `false` | — | `classic-perimeters` |
 | `only_one_wall_top` | bool | `false` | — | `classic-perimeters` |
-| `outer_wall_line_width` | float | `0.5` | [0.1, 2.0] | `classic-perimeters` |
+| `outer_wall_line_width` | float | `0.4` | [0.1, 2.0] | `classic-perimeters` |
 | `outer_wall_speed` | float | `30.0` | [1.0, 300.0] | `classic-perimeters` |
 | `overhang_reverse` | bool | `false` | — | `classic-perimeters` |
 | `overhang_reverse_internal_only` | bool | `false` | — | `classic-perimeters` |
@@ -491,7 +491,7 @@ Keys consumed by `classic-perimeters` to gate single-wall reduction on specific 
 | `seam_candidate_angle_threshold_deg` | float | `30.0` | [0.0, 180.0] | `classic-perimeters`, `arachne-perimeters` |
 | `wall_sequence` | string | `"InnerOuter"` | `OuterInner`, `InnerOuter`, `InnerOuterInner` | `classic-perimeters`, `arachne-perimeters` |
 | `min_width_top_surface` | float | `1.2` | — | `classic-perimeters` |
-| `min_width_top_surface` | float_or_percent | `300%` | base: `inner_wall_line_width` | `arachne-perimeters` |
+| `min_width_top_surface` | float_or_percent | `0.0` (code fallback: filter disabled; upstream default `300%`) | base: `inner_wall_line_width` | `arachne-perimeters` |
 
 **`only_one_wall_top`** — when `true`, the perimeter generator reduces walls on top solid surfaces. On the topmost solid shell layer (`top_shell_index() == Some(0)`) it emits a single outer wall over the whole region (blanket reduction). On sub-top solid layers (`top_shell_index() == Some(N>0)`) it applies a `split_top_surfaces` carve: the portion covered by `top_solid_fill` (`region ∩ top_solid_fill`) emits a single wall while the remainder (`region ∖ top_solid_fill`) keeps the full configured `wall_count`. On non-top layers (`top_shell_index() == None`) the key is a no-op.
 
@@ -580,8 +580,8 @@ source-of-truth live in `modules/core-modules/arachne-perimeters/arachne-perimet
 | `wall_direction` | string | `"counter_clockwise"` | `counter_clockwise`, `clockwise` | Contour (outer-surface) winding direction; holes are always wound opposite the contour. |
 | `only_one_wall_first_layer` | bool | `false` | — | When `true`, forces a single wall (`max_bead_count = 2`) on layer 0 instead of `wall_count`. |
 | `overhang_reverse_threshold` | float_or_percent | `"0.0"` | [0.0, 10.0] mm | Overhang-steepness threshold for `overhang_reverse`; `0` treats every overhang as steep and reverses. |
-| `wall_maximum_resolution` | float | `0.5` | [0.001, 10.0] mm | Minimum wall line-segment length (mm) for Arachne wall simplification; replaces `meshfix_maximum_resolution` on the wall path. |
-| `wall_maximum_deviation` | float | `0.025` | [0.0001, 1.0] mm | Allowed positional error (mm) for Arachne wall simplification; replaces `meshfix_maximum_deviation` on the wall path. |
+| `wall_maximum_resolution` | float | `0.05` | [0.001, 10.0] mm | Minimum wall line-segment length (mm) for Arachne wall simplification; replaces `meshfix_maximum_resolution` on the wall path. |
+| `wall_maximum_deviation` | float | `0.005` | [0.0001, 1.0] mm | Allowed positional error (mm) for Arachne wall simplification; replaces `meshfix_maximum_deviation` on the wall path. |
 
 **`wall_count`** — OrcaSlicer's user-facing per-region perimeter count. `arachne-perimeters` translates it to `max_bead_count = 2 × wall_count` (Orca `Arachne/WallToolPaths.cpp:525`) when `max_bead_count` is not explicitly set; an explicit `max_bead_count` still wins (see `D-151-WALLCOUNT-MAXBEAD-UNWIRED` in `docs/DEVIATION_LOG.md`, closed). Closes G1's sibling `wall_count` gap and the AC-1 `wall_count` acceptance criterion.
 
@@ -591,13 +591,13 @@ source-of-truth live in `modules/core-modules/arachne-perimeters/arachne-perimet
 
 **`overhang_reverse_threshold`** — OrcaSlicer `overhang_reverse_threshold` (`coFloatOrPercent`, `PerimeterGenerator.cpp:68-77`). Advisory companion to `overhang_reverse` / `overhang_reverse_internal_only` (see "Overhangs (packet 149)" above): when `0`, overhang detection treats every overhang as steep and reverses wall direction on odd layers. Closes G7 (`D-104c-OVERHANG-REVERSE-NONE`, now closed).
 
-**`wall_maximum_resolution`** / **`wall_maximum_deviation`** — OrcaSlicer `wall_maximum_resolution` / `wall_maximum_deviation` (`coFloat`, `PrintConfig.cpp:7242-7263`, defaults `0.5` mm / `0.025` mm). These REPLACE `meshfix_maximum_resolution` / `meshfix_maximum_deviation` for the Arachne wall path (Orca `WallToolPaths.cpp:487-503,702-719`); they are wired directly (no `min()`/merge) into `ArachneParams.smallest_line_segment_squared` / `allowed_error_distance_squared` as mm² (squared). The third upstream tolerance `meshfix_maximum_extrusion_area_deviation` is a distinct parameter and intentionally NOT replaced here. Closes G9.
+**`wall_maximum_resolution`** / **`wall_maximum_deviation`** — OrcaSlicer `wall_maximum_resolution` / `wall_maximum_deviation` (`coFloat`, `PrintConfig.cpp:7242-7263`, upstream defaults `0.5` mm / `0.025` mm; PnP manifest defaults state the CODE fallbacks `0.05` mm / `0.005` mm per the reconcile guard — the code-vs-upstream default divergence is logged as `D-168-ARACHNE-SIMPLIFY-FALLBACKS-TIGHTER-THAN-CANONICAL`). These REPLACE `meshfix_maximum_resolution` / `meshfix_maximum_deviation` for the Arachne wall path (Orca `WallToolPaths.cpp:487-503,702-719`); they are wired directly (no `min()`/merge) into `ArachneParams.smallest_line_segment_squared` / `allowed_error_distance_squared` as mm² (squared). The third upstream tolerance `meshfix_maximum_extrusion_area_deviation` is a distinct parameter and intentionally NOT replaced here. Closes G9.
 
 ---
 
 ## Arachne beading strategy stack (packet 111)
 
-Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingStrategy` stack (`crates/slicer-core/src/beading/`, T-210..T-216). Consumed by `BeadingStrategyFactory::create_stack` (`crates/slicer-core/src/beading/factory.rs`) — wiring into `arachne-perimeters::run_perimeters` itself is still P112's T-230. All slicer-unit defaults below assume a 0.4 mm nozzle diameter (1 unit = 100 nm; see `docs/08_coordinate_system.md`) — OrcaSlicer's `PrintConfig.cpp` registers 6 of the 13 as `coPercent` (percentage of nozzle diameter) rather than fixed lengths, so the absolute defaults here are derived (`percent × 0.4 mm`), not literal upstream constants. Four of the 13 (`outer_wall_offset`, `max_bead_count`, `optimal_width`, `preferred_bead_width_outer`) have no upstream `PrintConfig.cpp` entry at all — they are internal Arachne C++ algorithm parameters in `libslic3r/Arachne/`, exposed here as first-class config keys since this codebase's module boundary requires them to be configurable. The remaining new key, `detect_thin_wall`, is a real `PrintConfig.cpp` `coBool` option (not a `coPercent`), gating whether `WideningBeadingStrategy` is wrapped into the stack at all.
+Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingStrategy` stack (`crates/slicer-core/src/beading/`, T-210..T-216). Consumed by `BeadingStrategyFactory::create_stack` (`crates/slicer-core/src/beading/factory.rs`) — wiring into `arachne-perimeters::run_perimeters` itself is still P112's T-230. All slicer-unit defaults below assume a 0.4 mm nozzle diameter (1 unit = 100 nm; see `docs/08_coordinate_system.md`) — OrcaSlicer's `PrintConfig.cpp` registers 6 of the 13 as `coPercent` (percentage of nozzle diameter) rather than fixed lengths, so the absolute defaults here are derived (`percent × 0.4 mm`), not literal upstream constants. Two of the original 13 (`outer_wall_offset`, `max_bead_count`) have no upstream `PrintConfig.cpp` entry at all — internal Arachne C++ algorithm parameters in `libslic3r/Arachne/` exposed as config keys because this codebase's module boundary requires them to be configurable. Two more internal parameters (`optimal_width`, `preferred_bead_width_outer`) were ALSO exposed that way until D-160: they shadowed the user's wall widths and made arachne output invariant to `outer_wall_line_width`/`inner_wall_line_width`. They are RETIRED (ADR-0043); the module now derives them from the wall-width keys exactly as canonical `PerimeterGenerator` derives `bead_width_0`/`bead_width_x` from the wall flows. The remaining new key, `detect_thin_wall`, is a real `PrintConfig.cpp` `coBool` option (not a `coPercent`), gating whether `WideningBeadingStrategy` is wrapped into the stack at all.
 
 | Key | Type | Default | Units | Module |
 |---|---|---|---|---|
@@ -611,9 +611,9 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 | `initial_layer_min_bead_width` | float | `3400` | slicer units (0.34 mm) | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | slicer units | `arachne-perimeters` |
 | `max_bead_count` | int | `9` | count | `arachne-perimeters` |
-| `optimal_width` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | boolean | `arachne-perimeters` |
-| `preferred_bead_width_outer` | float | `4000` | slicer units (0.4 mm) | `arachne-perimeters` |
+| `inner_wall_line_width` | float | `0.4` | mm (canonical `bead_width_x` source) | `arachne-perimeters` |
+| `outer_wall_line_width` | float | `0.4` | mm (canonical `bead_width_0` source) | `arachne-perimeters` |
 
 **`min_feature_size`** — OrcaSlicer `min_feature_size` (`PrintConfig.cpp` ~line 6836-6845, `coPercent` of nozzle diameter, upstream default `25%`). **Packet 150:** retyped `percent`, base `nozzle_diameter` (resolved module-side via `ConfigView::get_abs_value`), closing G6/D-104h. Below this thickness, a region is too narrow for the wrapped strategy's normal bead distribution. **Maps to `WideningBeadingStrategy`'s internal `min_input_width` field** (`crates/slicer-core/src/beading/widening.rs`) — confirmed via the OrcaSlicer tooltip ("Minimum thickness of thin features; thinner is not printed, thicker is widened to min wall width"), which matches `min_input_width`'s role as the sub-threshold-detection cutoff exactly.
 
@@ -635,11 +635,9 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 **`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold; `9` (the packet's original suggestion) is kept as a reasonable exposed default since no literal upstream constant exists to cite.
 
-**`optimal_width`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream sets it internally from `preferred_bead_width_outer`/`preferred_bead_width_inner` (effectively the target extrusion width) in `BeadingStrategyFactory.cpp`. Maps directly to `DistributedBeadingStrategy`'s internal `optimal_width` field (name matches verbatim); default `4000` (0.4 mm, matching the packet's original suggestion) mirrors this codebase's common `line_width` default. **Refined role (scope-gap closure):** now that the outer/inner split is implemented (see `preferred_bead_width_outer` below), this key specifically serves as upstream's `preferred_bead_width_inner` — the base width `DistributedBeadingStrategy`/`WideningBeadingStrategy` use when `max_bead_count > 2` (the common multi-wall case). See `preferred_bead_width_outer` for the `max_bead_count <= 2` case and for `RedistributeBeadingStrategy`'s unconditional use.
+**`inner_wall_line_width` / `outer_wall_line_width`** (on `arachne-perimeters`) — plain mm floats mirroring the classic-perimeters keys. The module derives its two beading targets from them: `optimal_width` (struct field; canonical `bead_width_x` = `perimeter_flow.scaled_spacing()`, i.e. the INNER wall) from `inner_wall_line_width`, and `preferred_bead_width_outer` (struct field; canonical `bead_width_0` = `ext_perimeter_flow.scaled_spacing()`, i.e. the OUTER wall) from `outer_wall_line_width`, converting width → Flow spacing via `line_width_to_spacing` before feeding the strategy stack and converting back at emission (`VariableWidth.cpp::thick_polyline_to_multi_path`). The former config keys `optimal_width`/`preferred_bead_width_outer` — Arachne-internal knobs exposed as user config — are RETIRED per ADR-0043 (D-160: they shadowed the wall widths, so arachne ignored the user's setting). The `ArachneParams` STRUCT fields keep the canonical names; only the config keys are gone. Upstream models both wall-width keys as `coFloatOrPercent` default `0` (auto from nozzle); PnP's plain float [0.1, 2.0] cannot express auto (logged as a deviation).
 
 **`detect_thin_wall`** — OrcaSlicer `detect_thin_wall` (`PrintConfig.cpp:6299-6305`, `coBool`, upstream default `false`, label "Detect thin wall", tooltip "Detect thin wall which can't contain two line width. And use single line to print."). Gates whether `WideningBeadingStrategy` is wrapped into the `BeadingStrategyFactory::create_stack` composition at all — maps to the internal Arachne `print_thin_walls` parameter passed into `BeadingStrategyFactory::makeStrategy`. `false` (the default, matching upstream exactly) means `WideningBeadingStrategy` is **absent from the stack entirely**, not merely a no-op — the same absent-vs-no-op convention already used for `OuterWallInsetBeadingStrategy`/`outer_wall_offset`.
-
-**`preferred_bead_width_outer`** — maps to upstream's `preferred_bead_width_outer` (`BeadingStrategyFactory.cpp:50-97`). Default `4000` (slicer units, 0.4 mm) is chosen to match this codebase's `optimal_width` convention rather than upstream's raw hardcoded factory default of `scaled(0.0005)` = 0.5 mm = 5000 units, for consistency with how `optimal_width`'s own default was chosen. Target width for the outermost/innermost bead: used **unconditionally** as `RedistributeBeadingStrategy`'s `optimal_width_outer` parameter, and **conditionally** — only when `max_bead_count <= 2` — as `DistributedBeadingStrategy`'s/`WideningBeadingStrategy`'s base width instead of the `optimal_width` key (see the refined `optimal_width` entry above).
 
 ---
 

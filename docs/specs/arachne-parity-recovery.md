@@ -509,7 +509,45 @@ canonical settles it as INNER.
    feeds a production function a parameter production would never pass is not testing
    production.**
 
-## D6 (NEW, OPEN, HIGH) — Arachne ignores the user's wall line width (2026-07-16)
+## D6 (RESOLVED 2026-07-16 — was two defects, not one) — Arachne ignores the user's wall line width
+
+> **Resolution.** The parked item was not just the biggest fish — it was TWO
+> fish, and the original analysis below conflated them:
+>
+> - **Bug B (emission, unlogged until the fix session):** arachne emitted the
+>   beading SPACING as the extrusion width. Canonical converts back at emission
+>   (`VariableWidth.cpp::thick_polyline_to_multi_path`:
+>   `flow.with_width(unscale(w) + height·(1 − π/4))`); PnP never did, so EVERY
+>   arachne wall was ~10.7% narrow at default config. The 0.3571 measured below
+>   and read as "the hardcoded default width" was actually
+>   `line_width_to_spacing(0.4)` escaping the spacing domain — the
+>   default-config row of the table was itself a defect, not a baseline.
+> - **Bug A (wiring, the logged half):** `arachne_params_from_config` read the
+>   internal knobs and never the wall-width keys, so output was invariant to
+>   the user's setting.
+>
+> Fixed as two commits (B then A) so each moved number had one cause. The fix
+> shape written below would have DOUBLE-converted (the module already
+> spacing-converts what it reads); the real fix re-sourced the raw widths. The
+> blast-radius claim was inverted: A is a no-op at default (no fixture sets the
+> keys — proven, fixtures byte-identical through the A commit), and it was B
+> that moved every arachne fixture (+0.0429 = layer_height·(1 − π/4) on every
+> nonzero width, geometry frozen). The "three conflicting default sources"
+> prerequisite was already discharged: manifest defaults are never injected
+> into the runtime ConfigView, so the resolved default was always the code
+> fallback 0.4/0.4; the other two surfaces were lies (classic manifest 0.5 —
+> now fixed and guarded by the exhaustive reconcile test; `serialize.rs`
+> 0.42/0.45 — logged).
+>
+> Post-fix measurement (same method as below): classic 0.4000 / arachne
+> **0.4000** at default; classic 0.8000 / arachne **0.8000** at
+> outer=inner=0.8. North-star gate re-measured:
+> `cube_4color_arachne_outer_walls_close_end_to_end` = **0/699 (0.00%)**, mean
+> gap 0.0000mm — unchanged. The internal keys are retired (ADR-0043); the
+> wall-width/bead-width/flow-spacing distinction is now a CONTEXT.md glossary
+> entry. Original analysis preserved below.
+
+### Original entry (2026-07-16, superseded by the resolution above)
 
 `D-160-ARACHNE-IGNORES-WALL-LINE-WIDTH`. Found by completing the width-wiring follow-up
 that the `D-147-STITCH-GAP-USES-OUTER-BEAD-WIDTH` fix parked as "suspected, unverified".
