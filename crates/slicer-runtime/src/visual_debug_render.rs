@@ -33,9 +33,12 @@ use std::fmt;
 use png::{BitDepth, ColorType, Encoder};
 
 use crate::layer_executor::{CapturedIr, StageCapture};
+use crate::visual_debug_style::{
+    self as style, ColorBy, GlyphKind, OverlayEvent, OverlayKind, ToolColors,
+};
 use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GlobalLayer, LayerAnnotationKind,
-    PerimeterRegion, Point2, Point3WithWidth, Polygon,
+    LayerCollectionIR, PerimeterRegion, Point2, Point3WithWidth, Polygon,
 };
 
 /// Base raster dimension (px) at `resolution_scale: 1`. Actual canvas is
@@ -134,6 +137,21 @@ pub enum RenderView {
     /// The same geometry view, composited with the stable diagnostic
     /// overlay (AC-3).
     DiagnosticOverlay(GeometryView),
+    /// One overlay event class rendered in isolation (schema 1.1.0): the base
+    /// geometry view painted uniformly in `overlay_palette::FAINT_BASE` gray,
+    /// with ONLY this overlay kind's glyphs on top. One image per enabled
+    /// overlay keeps each event class legible instead of composited clutter.
+    OverlayIsolated(GeometryView, OverlayKind),
+}
+
+/// How geometry is colored (schema 1.1.0 `color_by` / `tool_color_source`).
+/// `RenderStyle::default()` is the v1 role-palette behavior.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RenderStyle {
+    /// Role palette (default) or per-tool coloring.
+    pub color_by: ColorBy,
+    /// Resolved per-tool colors; only consulted when `color_by` is `Tool`.
+    pub tool_colors: ToolColors,
 }
 
 /// A shared, bundle-wide world-space (mm) viewport. Computed once per
@@ -302,6 +320,27 @@ pub enum RenderError {
         /// The layer this capture belongs to.
         layer_index: u32,
     },
+    /// `color_by: "tool"` was requested for a tap whose captured IR carries
+    /// no tool assignment (`PrintEntity.tool_index` / `GCodeCommand::ToolChange`
+    /// exist only on `LayerCollection`-family and `GCodeEmit` captures).
+    /// Never guessed — rejected.
+    ToolColorUnavailable {
+        /// The tap (stage id) this capture was taken at.
+        tap: String,
+        /// The layer this capture belongs to.
+        layer_index: u32,
+    },
+    /// An isolated overlay was requested for a tap whose captured IR has no
+    /// source field for that event class at all (distinct from a present but
+    /// empty field, which renders a valid zero-event image).
+    OverlayUnsupportedForTap {
+        /// The tap (stage id) this capture was taken at.
+        tap: String,
+        /// The layer this capture belongs to.
+        layer_index: u32,
+        /// The unsupported overlay's stable name.
+        overlay: &'static str,
+    },
 }
 
 impl fmt::Display for RenderError {
@@ -321,6 +360,20 @@ impl fmt::Display for RenderError {
             Self::MissingWidth { tap, layer_index } => write!(
                 f,
                 "tap '{tap}' layer {layer_index}: no usable Point3WithWidth.width for filled_areas; refusing to infer a bead width"
+            ),
+            Self::ToolColorUnavailable { tap, layer_index } => write!(
+                f,
+                "tap '{tap}' layer {layer_index}: color_by \"tool\" is unavailable — this tap's \
+                 captured IR carries no tool assignment; refusing to guess one"
+            ),
+            Self::OverlayUnsupportedForTap {
+                tap,
+                layer_index,
+                overlay,
+            } => write!(
+                f,
+                "tap '{tap}' layer {layer_index}: overlay '{overlay}' has no source field on this \
+                 tap's captured IR"
             ),
         }
     }
@@ -1269,6 +1322,409 @@ fn shapes_for(
     }
 }
 
+// ───────────────────── Styled (1.1.0) shape selection ─────────────────────
+
+/// A `Shape::Line` stroke with an explicit color (the tool-colored analogue
+/// of [`filament_lines_from_path`]).
+fn line_shape_with_color(path: &ExtrusionPath3D, color: [u8; 3]) -> Option<Shape> {
+    if path.points.len() < 2 {
+        return None;
+    }
+    Some(Shape::Line {
+        points: path.points.iter().map(|p| (p.x, p.y)).collect(),
+        color,
+    })
+}
+
+/// `LayerCollectionIR.ordered_entities` colored per `PrintEntity.tool_index`
+/// — the `color_by: "tool"` analogue of [`layer_collection_shapes`].
+fn layer_collection_shapes_tool(
+    l: &LayerCollectionIR,
+    view: GeometryView,
+    tap: &str,
+    layer_index: u32,
+    tool_colors: &ToolColors,
+) -> Result<Vec<Shape>, RenderError> {
+    let mut shapes = Vec::new();
+    for entity in &l.ordered_entities {
+        let color = tool_colors.color(entity.tool_index);
+        match view {
+            GeometryView::FilledAreas => {
+                if let Some(shape) = swept_fill_shape(&entity.path, color, tap, layer_index)? {
+                    shapes.extend(expand_swept_shape(shape));
+                }
+            }
+            GeometryView::FilamentLines => {
+                if let Some(shape) = line_shape_with_color(&entity.path, color) {
+                    shapes.push(shape);
+                }
+            }
+        }
+    }
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: tap.to_string(),
+            layer_index,
+            field: "ordered_entities",
+        });
+    }
+    Ok(shapes)
+}
+
+/// Whole-print `GCodeIR` moves colored by the active tool, tracked through
+/// `GCodeCommand::ToolChange` (tool 0 until the first change, matching the
+/// emitter's initial state). `filled_areas` stays unsatisfiable exactly like
+/// [`gcode_shapes`] — a `Move` has no width.
+fn gcode_shapes_tool(
+    g: &slicer_ir::GCodeIR,
+    view: GeometryView,
+    tap: &str,
+    layer_index: u32,
+    tool_colors: &ToolColors,
+) -> Result<Vec<Shape>, RenderError> {
+    if matches!(view, GeometryView::FilledAreas) {
+        return Err(RenderError::MissingWidth {
+            tap: tap.to_string(),
+            layer_index,
+        });
+    }
+    let mut shapes = Vec::new();
+    let mut current: Vec<(f32, f32)> = Vec::new();
+    let mut tool: u32 = 0;
+    let flush = |shapes: &mut Vec<Shape>, current: &mut Vec<(f32, f32)>, tool: u32| {
+        if current.len() >= 2 {
+            shapes.push(Shape::Line {
+                points: std::mem::take(current),
+                color: tool_colors.color(tool),
+            });
+        } else {
+            current.clear();
+        }
+    };
+    for cmd in &g.commands {
+        match cmd {
+            GCodeCommand::Move {
+                x: Some(x),
+                y: Some(y),
+                ..
+            } => current.push((*x, *y)),
+            GCodeCommand::ToolChange { to, .. } => {
+                flush(&mut shapes, &mut current, tool);
+                tool = *to;
+            }
+            _ => flush(&mut shapes, &mut current, tool),
+        }
+    }
+    flush(&mut shapes, &mut current, tool);
+    if shapes.is_empty() {
+        return Err(RenderError::MissingGeometryField {
+            tap: tap.to_string(),
+            layer_index,
+            field: "commands: no run of >= 2 consecutive Move{x, y}",
+        });
+    }
+    Ok(shapes)
+}
+
+/// [`shapes_for`] with a [`RenderStyle`]: role coloring delegates to the v1
+/// builders unchanged; `color_by: "tool"` recolors the tool-carrying captures
+/// (`LayerCollection`, `LayerFinalization`, `GCodeEmit`) and fails closed
+/// ([`RenderError::ToolColorUnavailable`]) for every capture whose IR carries
+/// no tool assignment — never guessed.
+fn shapes_for_styled(
+    ir: &CapturedIr,
+    view: GeometryView,
+    tap: &str,
+    layer_index: u32,
+    render_style: &RenderStyle,
+) -> Result<Vec<Shape>, RenderError> {
+    match render_style.color_by {
+        ColorBy::Role => shapes_for(ir, view, tap, layer_index),
+        ColorBy::Tool => match ir {
+            CapturedIr::LayerCollection(l) => {
+                layer_collection_shapes_tool(l, view, tap, layer_index, &render_style.tool_colors)
+            }
+            CapturedIr::LayerFinalization(layers) => {
+                let Some(layer) = layers.iter().find(|l| l.global_layer_index == layer_index)
+                else {
+                    return Err(RenderError::MissingGeometryField {
+                        tap: tap.to_string(),
+                        layer_index,
+                        field:
+                            "LayerFinalization: no LayerCollectionIR for the requested layer_index",
+                    });
+                };
+                layer_collection_shapes_tool(
+                    layer,
+                    view,
+                    tap,
+                    layer_index,
+                    &render_style.tool_colors,
+                )
+            }
+            CapturedIr::GCodeEmit(g) => {
+                gcode_shapes_tool(g, view, tap, layer_index, &render_style.tool_colors)
+            }
+            _ => Err(RenderError::ToolColorUnavailable {
+                tap: tap.to_string(),
+                layer_index,
+            }),
+        },
+    }
+}
+
+/// Repaint every shape a single uniform color — the faint gray base under an
+/// isolated overlay.
+fn recolor_shapes(shapes: &mut [Shape], color: [u8; 3]) {
+    for shape in shapes {
+        match shape {
+            Shape::Fill { color: c, .. } | Shape::Line { color: c, .. } => *c = color,
+        }
+    }
+}
+
+// ───────────────────── Overlay event collection (1.1.0) ────────────────────
+
+/// Last XY point of the entity at `ordered_entities[index]` — the anchor
+/// every `after_entity_index`-keyed event (retract, z-hop, tool change) is
+/// positioned at.
+fn entity_last_point(l: &LayerCollectionIR, index: u32) -> Option<(f32, f32)> {
+    l.ordered_entities
+        .get(index as usize)
+        .and_then(|e| e.path.points.last())
+        .map(|p| (p.x, p.y))
+}
+
+/// Last XY point of the entity with `entity_id` — the anchor a
+/// `TravelMove` departs from.
+fn entity_last_point_by_id(l: &LayerCollectionIR, entity_id: u64) -> Option<(f32, f32)> {
+    l.ordered_entities
+        .iter()
+        .find(|e| e.entity_id == entity_id)
+        .and_then(|e| e.path.points.last())
+        .map(|p| (p.x, p.y))
+}
+
+/// Every event of `kind` in one `LayerCollectionIR`, in source order. An
+/// event whose anchor entity is missing/degenerate is skipped (there is no
+/// position to report or draw), never approximated.
+fn layer_collection_events(l: &LayerCollectionIR, kind: OverlayKind) -> Vec<OverlayEvent> {
+    let mut events = Vec::new();
+    match kind {
+        OverlayKind::Travel => {
+            for tm in &l.travel_moves {
+                let (Some(x), Some(y)) = (tm.x, tm.y) else {
+                    continue;
+                };
+                let mut points: Vec<[f32; 2]> = Vec::with_capacity(2);
+                if let Some((fx, fy)) = entity_last_point_by_id(l, tm.entity_id) {
+                    points.push([fx, fy]);
+                }
+                points.push([x, y]);
+                let length_mm = style::polyline_length_mm(&points);
+                events.push(OverlayEvent::Travel { points, length_mm });
+            }
+        }
+        OverlayKind::Seams => {
+            // A LayerCollection carries no seam field of its own; seams come
+            // from Perimeter/SeamPlan captures. Handled by the caller's
+            // support matrix — this arm is unreachable there.
+        }
+        OverlayKind::Retractions => {
+            for r in &l.retracts {
+                let Some((x, y)) = entity_last_point(l, r.after_entity_index) else {
+                    continue;
+                };
+                events.push(if r.is_unretract {
+                    OverlayEvent::Unretraction {
+                        x,
+                        y,
+                        length_mm: r.length,
+                    }
+                } else {
+                    OverlayEvent::Retraction {
+                        x,
+                        y,
+                        length_mm: r.length,
+                    }
+                });
+            }
+        }
+        OverlayKind::ZHops => {
+            for hop in &l.z_hops {
+                let Some((x, y)) = entity_last_point(l, hop.after_entity_index) else {
+                    continue;
+                };
+                events.push(OverlayEvent::ZHop {
+                    x,
+                    y,
+                    height_mm: hop.hop_height,
+                });
+            }
+        }
+        OverlayKind::ToolChanges => {
+            for tc in &l.tool_changes {
+                let Some((x, y)) = entity_last_point(l, tc.after_entity_index) else {
+                    continue;
+                };
+                events.push(OverlayEvent::ToolChange {
+                    x,
+                    y,
+                    from_tool: Some(tc.from_tool),
+                    to_tool: tc.to_tool,
+                });
+            }
+        }
+    }
+    events
+}
+
+/// Events extractable from a whole-print `GCodeIR` command stream: travels
+/// (runs of non-extruding `Move`s), retract/unretract commands, and tool
+/// changes — each positioned at the last known XY toolhead position.
+/// Z-hops and seams have no `GCodeCommand` representation and are handled by
+/// the caller's support matrix.
+fn gcode_events(g: &slicer_ir::GCodeIR, kind: OverlayKind) -> Vec<OverlayEvent> {
+    let mut events = Vec::new();
+    let mut pos: Option<(f32, f32)> = None;
+    let mut travel_run: Vec<[f32; 2]> = Vec::new();
+    let flush_travel = |run: &mut Vec<[f32; 2]>, events: &mut Vec<OverlayEvent>| {
+        if run.len() >= 2 {
+            let points = std::mem::take(run);
+            let length_mm = style::polyline_length_mm(&points);
+            events.push(OverlayEvent::Travel { points, length_mm });
+        } else {
+            run.clear();
+        }
+    };
+    for cmd in &g.commands {
+        match cmd {
+            GCodeCommand::Move { x, y, e, .. } => {
+                let next = match (x, y) {
+                    (Some(x), Some(y)) => Some((*x, *y)),
+                    _ => pos,
+                };
+                let extruding = e.is_some_and(|e| e > 0.0);
+                if kind == OverlayKind::Travel {
+                    if extruding {
+                        flush_travel(&mut travel_run, &mut events);
+                    } else if let Some((nx, ny)) = next {
+                        if travel_run.is_empty() {
+                            if let Some((px, py)) = pos {
+                                travel_run.push([px, py]);
+                            }
+                        }
+                        travel_run.push([nx, ny]);
+                    }
+                }
+                pos = next;
+            }
+            GCodeCommand::Retract { length, .. } if kind == OverlayKind::Retractions => {
+                if let Some((x, y)) = pos {
+                    events.push(OverlayEvent::Retraction {
+                        x,
+                        y,
+                        length_mm: *length,
+                    });
+                }
+            }
+            GCodeCommand::Unretract { length, .. } if kind == OverlayKind::Retractions => {
+                if let Some((x, y)) = pos {
+                    events.push(OverlayEvent::Unretraction {
+                        x,
+                        y,
+                        length_mm: *length,
+                    });
+                }
+            }
+            GCodeCommand::ToolChange { from, to, .. } if kind == OverlayKind::ToolChanges => {
+                if let Some((x, y)) = pos {
+                    events.push(OverlayEvent::ToolChange {
+                        x,
+                        y,
+                        from_tool: Some(*from),
+                        to_tool: *to,
+                    });
+                }
+            }
+            _ => {
+                if kind == OverlayKind::Travel {
+                    flush_travel(&mut travel_run, &mut events);
+                }
+            }
+        }
+    }
+    flush_travel(&mut travel_run, &mut events);
+    events
+}
+
+/// Collect every overlay event of `kind` for one capture — the single source
+/// both the isolated-overlay PNG glyphs and the manifest's `overlay_events`
+/// JSON are produced from, so image and data can never disagree.
+///
+/// Support matrix (fails closed with
+/// [`RenderError::OverlayUnsupportedForTap`] outside it — a tap whose IR has
+/// no source *field* for the event class; an empty field is a valid
+/// zero-event result):
+///
+/// - `LayerCollection` / `LayerFinalization`: travel, seams via
+///   `Perimeter`/`SeamPlan` only — retractions, z-hops, tool changes.
+/// - `Perimeter`: seams (`resolved_seam`).
+/// - `SeamPlan`: seams (`entries[].chosen_candidate`).
+/// - `GCodeEmit`: travel, retractions, tool changes.
+pub fn collect_overlay_events(
+    ir: &CapturedIr,
+    kind: OverlayKind,
+    tap: &str,
+    layer_index: u32,
+) -> Result<Vec<OverlayEvent>, RenderError> {
+    let unsupported = || RenderError::OverlayUnsupportedForTap {
+        tap: tap.to_string(),
+        layer_index,
+        overlay: kind.name(),
+    };
+    match ir {
+        CapturedIr::LayerCollection(l) => match kind {
+            OverlayKind::Seams => Err(unsupported()),
+            _ => Ok(layer_collection_events(l, kind)),
+        },
+        CapturedIr::LayerFinalization(layers) => {
+            let Some(layer) = layers.iter().find(|l| l.global_layer_index == layer_index) else {
+                return Err(RenderError::MissingGeometryField {
+                    tap: tap.to_string(),
+                    layer_index,
+                    field: "LayerFinalization: no LayerCollectionIR for the requested layer_index",
+                });
+            };
+            match kind {
+                OverlayKind::Seams => Err(unsupported()),
+                _ => Ok(layer_collection_events(layer, kind)),
+            }
+        }
+        CapturedIr::Perimeter(p) if kind == OverlayKind::Seams => Ok(p
+            .regions
+            .iter()
+            .filter_map(seam_marker_point)
+            .map(|(x, y)| OverlayEvent::Seam { x, y })
+            .collect()),
+        CapturedIr::SeamPlan(sp) if kind == OverlayKind::Seams => Ok(sp
+            .entries
+            .iter()
+            .map(|entry| {
+                let p = entry.chosen_candidate.point;
+                OverlayEvent::Seam { x: p.x, y: p.y }
+            })
+            .collect()),
+        CapturedIr::GCodeEmit(g) => match kind {
+            OverlayKind::Travel | OverlayKind::Retractions | OverlayKind::ToolChanges => {
+                Ok(gcode_events(g, kind))
+            }
+            _ => Err(unsupported()),
+        },
+        _ => Err(unsupported()),
+    }
+}
+
 // ─────────────────────────────── Rasterization ────────────────────────────
 
 struct Canvas {
@@ -1388,6 +1844,27 @@ impl Canvas {
             for dx in -OVERLAY_MARKER_HALF_PX..=OVERLAY_MARKER_HALF_PX {
                 self.set(cx + dx, cy + dy, color);
             }
+        }
+    }
+
+    /// Rasterize one shared-style glyph centered at a world-space (mm) point.
+    fn glyph(&mut self, kind: GlyphKind, mm: (f32, f32), half: i64, color: [u8; 3]) {
+        let (px, py) = self.to_px(mm.0, mm.1);
+        let (cx, cy) = (px.round() as i64, py.round() as i64);
+        style::draw_glyph(kind, cx, cy, half, &mut |x, y| self.set(x, y, color));
+    }
+
+    /// Stroke a world-space polyline with the shared dotted pattern.
+    fn dotted_polyline(&mut self, points: &[[f32; 2]], color: [u8; 3]) {
+        let px_points: Vec<(f64, f64)> = points
+            .iter()
+            .map(|&[x, y]| {
+                let (px, py) = self.to_px(x, y);
+                (f64::from(px), f64::from(py))
+            })
+            .collect();
+        for pair in px_points.windows(2) {
+            style::draw_dotted_line_px(pair[0], pair[1], &mut |x, y| self.set(x, y, color));
         }
     }
 
@@ -1525,6 +2002,46 @@ fn draw_overlay(canvas: &mut Canvas, ir: &CapturedIr, layer_plan: Option<&Global
     }
 }
 
+/// Draw one overlay event class's glyphs (legend v1.1.0, shared style
+/// module) over an already-painted faint base. `glyph_half` is
+/// [`style::GLYPH_HALF_PX`] scaled by the raster's `resolution_scale` so
+/// glyphs stay proportionate at 2x/3x.
+fn draw_overlay_events(canvas: &mut Canvas, events: &[OverlayEvent], glyph_half: i64) {
+    for event in events {
+        match event {
+            OverlayEvent::Travel { points, .. } => {
+                canvas.dotted_polyline(points, style::overlay_palette::TRAVEL);
+                if let Some(&[x, y]) = points.first() {
+                    if points.len() >= 2 {
+                        canvas.glyph(
+                            GlyphKind::CircleOutline,
+                            (x, y),
+                            glyph_half,
+                            style::overlay_palette::TRAVEL,
+                        );
+                    }
+                }
+                if let Some(&[x, y]) = points.last() {
+                    canvas.glyph(
+                        GlyphKind::Dot,
+                        (x, y),
+                        glyph_half,
+                        style::overlay_palette::TRAVEL,
+                    );
+                }
+            }
+            OverlayEvent::Seam { x, y }
+            | OverlayEvent::Retraction { x, y, .. }
+            | OverlayEvent::Unretraction { x, y, .. }
+            | OverlayEvent::ZHop { x, y, .. }
+            | OverlayEvent::ToolChange { x, y, .. } => {
+                let (kind, color) = style::event_glyph(event);
+                canvas.glyph(kind, (*x, *y), glyph_half, color);
+            }
+        }
+    }
+}
+
 fn seam_marker_point(region: &PerimeterRegion) -> Option<(f32, f32)> {
     region
         .resolved_seam
@@ -1602,6 +2119,31 @@ pub fn render_stage_capture_with_layer_plan(
     viewport: ViewportBoundsMm,
     layer_plan_overlay: Option<&GlobalLayer>,
 ) -> Result<RenderedImage, RenderError> {
+    render_stage_capture_styled(
+        capture,
+        view,
+        resolution_scale,
+        viewport,
+        layer_plan_overlay,
+        &RenderStyle::default(),
+    )
+    .map(|(image, _events)| image)
+}
+
+/// Full 1.1.0 entry point: [`render_stage_capture_with_layer_plan`]'s
+/// contract plus a [`RenderStyle`] (`color_by` / tool colors) and, for a
+/// [`RenderView::OverlayIsolated`] request, the overlay's structured
+/// [`OverlayEvent`]s — the exact events the returned PNG's glyphs were drawn
+/// from, for the manifest's `overlay_events` mirror. Non-overlay views
+/// return an empty event list. Pure over all six inputs (AC-5).
+pub fn render_stage_capture_styled(
+    capture: &StageCapture,
+    view: RenderView,
+    resolution_scale: u32,
+    viewport: ViewportBoundsMm,
+    layer_plan_overlay: Option<&GlobalLayer>,
+    render_style: &RenderStyle,
+) -> Result<(RenderedImage, Vec<OverlayEvent>), RenderError> {
     if !(1..=3).contains(&resolution_scale) {
         return Err(RenderError::UnsupportedResolutionScale {
             scale: resolution_scale,
@@ -1610,26 +2152,61 @@ pub fn render_stage_capture_with_layer_plan(
     let geometry_view = match view {
         RenderView::Geometry(g) => g,
         RenderView::DiagnosticOverlay(g) => g,
+        RenderView::OverlayIsolated(g, _) => g,
     };
-    let shapes = shapes_for(
-        &capture.ir,
-        geometry_view,
-        &capture.stage_id,
-        capture.layer_index,
-    )?;
 
     let width = BASE_DIMENSION_PX * resolution_scale;
     let height = BASE_DIMENSION_PX * resolution_scale;
     let mut canvas = Canvas::new(width, height, viewport);
-    draw_shapes(&mut canvas, &shapes);
-    if matches!(view, RenderView::DiagnosticOverlay(_)) {
-        draw_overlay(&mut canvas, &capture.ir, layer_plan_overlay);
+    let mut events = Vec::new();
+
+    match view {
+        RenderView::Geometry(_) | RenderView::DiagnosticOverlay(_) => {
+            let shapes = shapes_for_styled(
+                &capture.ir,
+                geometry_view,
+                &capture.stage_id,
+                capture.layer_index,
+                render_style,
+            )?;
+            draw_shapes(&mut canvas, &shapes);
+            if matches!(view, RenderView::DiagnosticOverlay(_)) {
+                draw_overlay(&mut canvas, &capture.ir, layer_plan_overlay);
+            }
+        }
+        RenderView::OverlayIsolated(_, overlay_kind) => {
+            // Collect events FIRST: an unsupported (tap, overlay) pairing
+            // must fail closed before any pixels are produced.
+            events = collect_overlay_events(
+                &capture.ir,
+                overlay_kind,
+                &capture.stage_id,
+                capture.layer_index,
+            )?;
+            // Faint gray base geometry: the v1 role-colored shape set,
+            // repainted uniformly so the overlay glyphs dominate. A capture
+            // with no base shape at all (e.g. SeamPlan) renders glyphs over
+            // plain background, matching `shapes_for`'s existing contract.
+            let mut shapes = shapes_for(
+                &capture.ir,
+                geometry_view,
+                &capture.stage_id,
+                capture.layer_index,
+            )?;
+            recolor_shapes(&mut shapes, style::overlay_palette::FAINT_BASE);
+            draw_shapes(&mut canvas, &shapes);
+            let glyph_half = style::GLYPH_HALF_PX * i64::from(resolution_scale);
+            draw_overlay_events(&mut canvas, &events, glyph_half);
+        }
     }
 
     let png_bytes = encode_png(width, height, &canvas.buf);
-    Ok(RenderedImage {
-        png_bytes,
-        width,
-        height,
-    })
+    Ok((
+        RenderedImage {
+            png_bytes,
+            width,
+            height,
+        },
+        events,
+    ))
 }

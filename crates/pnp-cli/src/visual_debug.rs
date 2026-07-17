@@ -13,6 +13,114 @@ use std::sync::Arc;
 pub mod visual_debug_gcode;
 
 const VERSION: &str = "1.0.0";
+/// Schema 1.1.0: adds `color_by`/`tool_color_source` on geometry
+/// visualizations, and `overlays` (isolated per-event-class images +
+/// manifest `overlay_events`) on `diagnostic_overlay`. A 1.0.0 request stays
+/// valid and behaves exactly as before; the new options are rejected under
+/// 1.0.0 (fail-closed, never silently ignored).
+const VERSION_1_1: &str = "1.1.0";
+
+fn schema_supported(v: &str) -> bool {
+    v == VERSION || v == VERSION_1_1
+}
+
+/// The legend version recorded for a bundle: a 1.0.0 request renders only
+/// the v1 legend; a 1.1.0 request's images may use the v1.1 glyph legend
+/// (a strict superset — see `slicer_runtime::visual_debug_style`).
+fn legend_version_for(schema_version: &str) -> &str {
+    if schema_version == VERSION_1_1 {
+        slicer_runtime::LEGEND_VERSION
+    } else {
+        VERSION
+    }
+}
+
+/// Typed view of a `VisualizationSpec::Detail`'s `options` object
+/// (schema 1.1.0). `deny_unknown_fields` so a misspelled option fails
+/// closed instead of silently rendering the default.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VisualizationOptions {
+    /// `diagnostic_overlay` base geometry view
+    /// (`"filled_areas"` | `"filament_lines"`); pre-1.1 field.
+    #[serde(default)]
+    pub base: Option<String>,
+    /// `"role"` (default) | `"tool"` — geometry visualizations only.
+    #[serde(default)]
+    pub color_by: Option<String>,
+    /// `"palette"` (default) | `"filament"` — only with `color_by: "tool"`.
+    #[serde(default)]
+    pub tool_color_source: Option<String>,
+    /// Overlay event classes to render as isolated images —
+    /// `diagnostic_overlay` only. Each name must be one of
+    /// `slicer_runtime::OverlayKind`'s (`travel`, `seams`, `retractions`,
+    /// `z_hops`, `tool_changes`).
+    #[serde(default)]
+    pub overlays: Option<Vec<String>>,
+}
+
+impl VisualizationOptions {
+    fn color_by(&self) -> slicer_runtime::ColorBy {
+        match self.color_by.as_deref() {
+            Some("tool") => slicer_runtime::ColorBy::Tool,
+            _ => slicer_runtime::ColorBy::Role,
+        }
+    }
+
+    fn overlay_kinds(&self) -> Vec<slicer_runtime::OverlayKind> {
+        self.overlays
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|n| slicer_runtime::OverlayKind::parse(n))
+            .collect()
+    }
+}
+
+/// Parse one visualization's options into the typed 1.1.0 view. A bare
+/// `Name` spec (or a `Detail` with `null` options) is all-defaults.
+fn visualization_options(viz: &VisualizationSpec) -> Result<VisualizationOptions, ValidationError> {
+    match viz {
+        VisualizationSpec::Name(_) => Ok(VisualizationOptions::default()),
+        VisualizationSpec::Detail { kind, options } => {
+            if options.is_null() {
+                return Ok(VisualizationOptions::default());
+            }
+            serde_json::from_value(options.clone()).map_err(|e| {
+                ValidationError::InvalidVisualizationOptions {
+                    kind: kind.clone(),
+                    message: e.to_string(),
+                }
+            })
+        }
+    }
+}
+
+/// The options a render path acts on, honoring the declared schema version:
+/// a 1.0.0 request keeps the legacy loose read (only `options.base` is
+/// consulted; stray keys stay tolerated, exactly as before this schema
+/// existed), while a 1.1.0 request gets the strict typed parse
+/// `validate_request` already accepted.
+fn effective_visualization_options(
+    schema_version: &str,
+    viz: &VisualizationSpec,
+) -> VisualizationOptions {
+    if schema_version == VERSION_1_1 {
+        return visualization_options(viz)
+            .expect("validate_request already accepted these options");
+    }
+    let base = match viz {
+        VisualizationSpec::Detail { options, .. } => options
+            .get("base")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        VisualizationSpec::Name(_) => None,
+    };
+    VisualizationOptions {
+        base,
+        ..VisualizationOptions::default()
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -242,6 +350,34 @@ pub enum ValidationError {
     LayerSelectorResolvesToNoLayer {
         selector: String,
     },
+    /// Schema 1.1.0: a visualization's `options` object failed to parse as
+    /// the typed option set (unknown key, wrong type).
+    InvalidVisualizationOptions {
+        kind: String,
+        message: String,
+    },
+    /// A 1.1.0-only option appeared in a `schema_version: "1.0.0"` request.
+    /// Fail-closed: silently ignoring it would render an image other than
+    /// the one asked for.
+    OptionRequiresSchema11 {
+        option: &'static str,
+    },
+    /// `options.color_by`/`tool_color_source` carried an unrecognized value,
+    /// or was set on a visualization kind it doesn't apply to.
+    InvalidColorBy {
+        message: String,
+    },
+    /// `options.overlays` named an unknown overlay, was empty, or was set on
+    /// a non-`diagnostic_overlay` visualization.
+    InvalidOverlays {
+        message: String,
+    },
+    /// A gcode-source `diagnostic_overlay` request selected an overlay the
+    /// standalone parser cannot source (`seams` — final G-code carries no
+    /// seam marker).
+    OverlayUnsupportedOnGcode {
+        name: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -273,6 +409,19 @@ impl fmt::Display for ValidationError {
             Self::LayerSelectorResolvesToNoLayer { selector } => {
                 write!(f, "layer selector {selector} matched no scheduled layer")
             }
+            Self::InvalidVisualizationOptions { kind, message } => {
+                write!(f, "invalid options for visualization '{kind}': {message}")
+            }
+            Self::OptionRequiresSchema11 { option } => write!(
+                f,
+                "option '{option}' requires schema_version \"1.1.0\" (this request declares \"1.0.0\")"
+            ),
+            Self::InvalidColorBy { message } => write!(f, "invalid color_by request: {message}"),
+            Self::InvalidOverlays { message } => write!(f, "invalid overlays request: {message}"),
+            Self::OverlayUnsupportedOnGcode { name } => write!(
+                f,
+                "overlay '{name}' is not supported on a standalone gcode source"
+            ),
         }
     }
 }
@@ -360,9 +509,10 @@ impl Error for VisualDebugError {}
 pub struct ValidatedRequest(pub VisualDebugRequest);
 
 pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, ValidationError> {
-    if req.schema_version != VERSION {
+    if !schema_supported(&req.schema_version) {
         return Err(ValidationError::SchemaVersion);
     }
+    let is_v1_1 = req.schema_version == VERSION_1_1;
     if !(1..=3).contains(&req.resolution_scale) {
         return Err(ValidationError::ResolutionScale);
     }
@@ -382,8 +532,94 @@ pub fn validate_request(req: VisualDebugRequest) -> Result<ValidatedRequest, Val
                 kind: kind.to_string(),
             });
         }
+        // Schema 1.1.0 option validation. Under 1.0.0, options keep their
+        // legacy loose treatment (stray keys tolerated, only `base` read) —
+        // EXCEPT that the 1.1-only option names are hard-rejected so an old
+        // schema declaration can never silently drop a requested behavior.
+        if !is_v1_1 {
+            if let VisualizationSpec::Detail { options, .. } = viz {
+                for option in ["color_by", "tool_color_source", "overlays"] {
+                    if options.get(option).is_some() {
+                        return Err(ValidationError::OptionRequiresSchema11 { option });
+                    }
+                }
+            }
+            if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. })
+            {
+                return Err(ValidationError::DiagnosticOverlayRequiresModelSource);
+            }
+            continue;
+        }
+        let opts = visualization_options(viz)?;
+        match opts.color_by.as_deref() {
+            None | Some("role") | Some("tool") => {}
+            Some(other) => {
+                return Err(ValidationError::InvalidColorBy {
+                    message: format!("color_by must be \"role\" or \"tool\", got \"{other}\""),
+                });
+            }
+        }
+        if opts.color_by.is_some() && kind == "diagnostic_overlay" {
+            return Err(ValidationError::InvalidColorBy {
+                message: "color_by applies to filled_areas/filament_lines, not diagnostic_overlay"
+                    .into(),
+            });
+        }
+        match opts.tool_color_source.as_deref() {
+            None | Some("palette") | Some("filament") => {}
+            Some(other) => {
+                return Err(ValidationError::InvalidColorBy {
+                    message: format!(
+                        "tool_color_source must be \"palette\" or \"filament\", got \"{other}\""
+                    ),
+                });
+            }
+        }
+        if opts.tool_color_source.is_some() && opts.color_by.as_deref() != Some("tool") {
+            return Err(ValidationError::InvalidColorBy {
+                message: "tool_color_source is only meaningful with color_by: \"tool\"".into(),
+            });
+        }
+        if let Some(overlays) = &opts.overlays {
+            if kind != "diagnostic_overlay" {
+                return Err(ValidationError::InvalidOverlays {
+                    message: format!("overlays applies to diagnostic_overlay, not '{kind}'"),
+                });
+            }
+            if overlays.is_empty() {
+                return Err(ValidationError::InvalidOverlays {
+                    message: "overlays must name at least one overlay".into(),
+                });
+            }
+            for name in overlays {
+                if slicer_runtime::OverlayKind::parse(name).is_none() {
+                    return Err(ValidationError::InvalidOverlays {
+                        message: format!(
+                            "unknown overlay '{name}' (expected travel, seams, retractions, \
+                             z_hops, or tool_changes)"
+                        ),
+                    });
+                }
+            }
+        }
         if kind == "diagnostic_overlay" && matches!(req.source, VisualDebugSource::Gcode { .. }) {
-            return Err(ValidationError::DiagnosticOverlayRequiresModelSource);
+            // The legacy composited diagnostic overlay needs a
+            // PrepassContext/blackboard, which a standalone gcode source has
+            // none of. The 1.1.0 isolated-overlay form IS supported on
+            // gcode for the event classes the parser can source — every
+            // class except seams (final G-code carries no seam marker).
+            match &opts.overlays {
+                None => return Err(ValidationError::DiagnosticOverlayRequiresModelSource),
+                Some(overlays) => {
+                    for name in overlays {
+                        if name == "seams" {
+                            return Err(ValidationError::OverlayUnsupportedOnGcode {
+                                name: name.clone(),
+                            });
+                        }
+                    }
+                }
+            }
         }
     }
     // NOTE: `frame: "plate"` is supported on BOTH sources. A standalone
@@ -478,6 +714,10 @@ pub struct Manifest {
     /// — a non-selected layer is never executed, so it never appears here.
     #[serde(default)]
     pub executed_layer_indices: Vec<i64>,
+    /// Schema 1.1.0: the per-tool color table, emitted whenever any
+    /// visualization in this bundle used `color_by: "tool"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_palette: Option<Vec<ToolPaletteEntry>>,
 }
 
 /// One entry in [`Manifest::layer_expansions`].
@@ -534,6 +774,36 @@ pub struct ImageEntry {
     /// byte, because they all share one `viewport_bounds` binding.
     #[serde(default)]
     pub world_bounds_mm: Option<slicer_runtime::ViewportBoundsMm>,
+    /// Schema 1.1.0: the overlay event class this isolated-overlay image
+    /// renders (`travel`, `seams`, ...). `None` for geometry/legacy entries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay: Option<String>,
+    /// Schema 1.1.0: the structured events this overlay image's glyphs were
+    /// drawn from — the LLM-primary channel; the PNG is confirmation. Same
+    /// order the glyphs were drawn in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay_events: Option<Vec<slicer_runtime::OverlayEvent>>,
+    /// Schema 1.1.0: `"tool"` when this entry was tool-colored. Absent for
+    /// the default role coloring.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color_by: Option<String>,
+    /// Schema 1.1.0: the resolved tool color source (`"palette"` /
+    /// `"filament"`) when `color_by` is `"tool"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_color_source: Option<String>,
+}
+
+/// One row of [`Manifest::tool_palette`]: the exact RGB a tool renders as
+/// under `color_by: "tool"`, so a consumer never has to reverse-map pixels.
+#[derive(Debug, Serialize)]
+pub struct ToolPaletteEntry {
+    pub tool_index: u32,
+    /// The fixed palette RGB for this index.
+    pub palette_rgb: [u8; 3],
+    /// The config `filament_colour` RGB, when one was resolvable (model
+    /// source with `tool_color_source: "filament"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filament_rgb: Option<[u8; 3]>,
 }
 
 /// Map one requested `VisualizationSpec` to the intermediate renderer's
@@ -546,27 +816,69 @@ pub struct ImageEntry {
 /// `diagnostic_overlay` composes with a base geometry view named via
 /// `options.base` (`"filled_areas"` | `"filament_lines"`), defaulting to
 /// `"filled_areas"` when `options` omits it or isn't a `Detail` spec.
-fn render_view_for_visualization(viz: &VisualizationSpec) -> slicer_runtime::RenderView {
+fn render_view_for_visualization(
+    viz: &VisualizationSpec,
+    opts: &VisualizationOptions,
+) -> slicer_runtime::RenderView {
     use slicer_runtime::{GeometryView, RenderView};
     match viz.kind() {
         "filled_areas" => RenderView::Geometry(GeometryView::FilledAreas),
         "filament_lines" => RenderView::Geometry(GeometryView::FilamentLines),
-        "diagnostic_overlay" => {
-            let base = match viz {
-                VisualizationSpec::Detail { options, .. } => {
-                    options.get("base").and_then(|v| v.as_str())
-                }
-                VisualizationSpec::Name(_) => None,
-            };
-            match base {
-                Some("filament_lines") => RenderView::DiagnosticOverlay(GeometryView::FilamentLines),
-                _ => RenderView::DiagnosticOverlay(GeometryView::FilledAreas),
-            }
-        }
+        "diagnostic_overlay" => match opts.base.as_deref() {
+            Some("filament_lines") => RenderView::DiagnosticOverlay(GeometryView::FilamentLines),
+            _ => RenderView::DiagnosticOverlay(GeometryView::FilledAreas),
+        },
         other => unreachable!(
             "validate_request rejects unknown visualization kind {other:?} before this dispatch runs"
         ),
     }
+}
+
+/// Resolve per-tool colors for `tool_color_source: "filament"` from the raw
+/// config source's `filament_colour` value (a `#RRGGBB` list, semicolon-
+/// separated string or ConfigValue list — the same shape
+/// `slicer-gcode/src/serialize.rs` reads). Unparseable entries stay `None`
+/// and fall back to the fixed palette, never guessed.
+fn filament_tool_colors(
+    config_source: &HashMap<String, slicer_ir::ConfigValue>,
+) -> slicer_runtime::ToolColors {
+    let mut filament: Vec<Option<[u8; 3]>> = Vec::new();
+    match config_source.get("filament_colour") {
+        Some(slicer_ir::ConfigValue::String(s)) => {
+            for part in s.split(';') {
+                filament.push(slicer_runtime::parse_hex_color(part));
+            }
+        }
+        Some(slicer_ir::ConfigValue::List(values)) => {
+            for v in values {
+                filament.push(match v {
+                    slicer_ir::ConfigValue::String(s) => slicer_runtime::parse_hex_color(s),
+                    _ => None,
+                });
+            }
+        }
+        _ => {}
+    }
+    slicer_runtime::ToolColors { filament }
+}
+
+/// The manifest's per-tool color table (schema 1.1.0), covering every fixed
+/// palette slot plus any config filament colors beyond it.
+fn tool_palette_entries(tool_colors: &slicer_runtime::ToolColors) -> Vec<ToolPaletteEntry> {
+    let count = slicer_runtime::visual_debug_style::TOOL_PALETTE
+        .len()
+        .max(tool_colors.filament.len());
+    (0..count as u32)
+        .map(|tool_index| ToolPaletteEntry {
+            tool_index,
+            palette_rgb: slicer_runtime::visual_debug_style::tool_palette_color(tool_index),
+            filament_rgb: tool_colors
+                .filament
+                .get(tool_index as usize)
+                .copied()
+                .flatten(),
+        })
+        .collect()
 }
 
 /// Filename disambiguator for a resolved `RenderView`: `Some(base)` only for
@@ -578,8 +890,10 @@ fn render_view_for_visualization(viz: &VisualizationSpec) -> slicer_runtime::Ren
 fn diagnostic_overlay_base_suffix(view: slicer_runtime::RenderView) -> Option<&'static str> {
     use slicer_runtime::{GeometryView, RenderView};
     match view {
-        RenderView::DiagnosticOverlay(GeometryView::FilledAreas) => Some("filled_areas"),
-        RenderView::DiagnosticOverlay(GeometryView::FilamentLines) => Some("filament_lines"),
+        RenderView::DiagnosticOverlay(GeometryView::FilledAreas)
+        | RenderView::OverlayIsolated(GeometryView::FilledAreas, _) => Some("filled_areas"),
+        RenderView::DiagnosticOverlay(GeometryView::FilamentLines)
+        | RenderView::OverlayIsolated(GeometryView::FilamentLines, _) => Some("filament_lines"),
         RenderView::Geometry(_) => None,
     }
 }
@@ -968,6 +1282,7 @@ fn run_model_source(
         Vec<LayerExpansionEntry>,
         Vec<i64>,
         Vec<(String, Vec<u8>)>,
+        Option<Vec<ToolPaletteEntry>>,
     ),
     VisualDebugError,
 > {
@@ -999,6 +1314,7 @@ fn run_model_source(
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            None,
         ));
     }
 
@@ -1021,6 +1337,11 @@ fn run_model_source(
         ))
     })?;
     let config_source = load_visual_debug_config(config.as_deref())?;
+    // Retained raw copy: `tool_color_source: "filament"` reads the authored
+    // `filament_colour` palette from the raw source map (the same key
+    // `slicer-gcode`'s serializer reads), which `prepare_prepass_context`
+    // consumes below.
+    let config_source_raw = config_source.clone();
 
     // The model-wide XY extent, captured before `mesh` is moved into the
     // prepass context below.
@@ -1173,6 +1494,7 @@ fn run_model_source(
     // capture's geometry.
     let mut images: Vec<ImageEntry> = Vec::new();
     let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut tool_palette: Option<Vec<ToolPaletteEntry>> = None;
     if req.visualizations.is_empty() {
         images.extend(output.captures.iter().map(|capture| ImageEntry {
             source: "model".into(),
@@ -1188,6 +1510,10 @@ fn run_model_source(
             warnings: Vec::new(),
             typed_capture: serde_json::to_value(&capture.ir).ok(),
             world_bounds_mm: None,
+            overlay: None,
+            overlay_events: None,
+            color_by: None,
+            tool_color_source: None,
         }));
     } else {
         let viewport_bounds = match req.frame {
@@ -1207,9 +1533,76 @@ fn run_model_source(
                 model_bounds.map_or(captured, |m| m.union(captured))
             }
         };
+        let legend = legend_version_for(&req.schema_version).to_string();
         for capture in &output.captures {
             for viz in &req.visualizations {
-                let render_view = render_view_for_visualization(viz);
+                let opts = effective_visualization_options(&req.schema_version, viz);
+                let render_view = render_view_for_visualization(viz, &opts);
+                // Schema 1.1.0 style: color_by / tool_color_source.
+                let color_by = opts.color_by();
+                let use_filament = opts.tool_color_source.as_deref() == Some("filament");
+                let tool_colors = if use_filament {
+                    filament_tool_colors(&config_source_raw)
+                } else {
+                    slicer_runtime::ToolColors::default()
+                };
+                if color_by == slicer_runtime::ColorBy::Tool && tool_palette.is_none() {
+                    tool_palette = Some(tool_palette_entries(&tool_colors));
+                }
+                let render_style = slicer_runtime::RenderStyle {
+                    color_by,
+                    tool_colors,
+                };
+                // Schema 1.1.0 isolated overlays: one image per enabled
+                // overlay kind, faint base + that kind's glyphs, with the
+                // events mirrored onto the manifest entry.
+                let overlay_kinds = opts.overlay_kinds();
+                if !overlay_kinds.is_empty() {
+                    let base_view = match render_view {
+                        slicer_runtime::RenderView::DiagnosticOverlay(g) => g,
+                        _ => unreachable!("overlays validate only on diagnostic_overlay"),
+                    };
+                    for kind in overlay_kinds {
+                        let view = slicer_runtime::RenderView::OverlayIsolated(base_view, kind);
+                        let (rendered, events) = slicer_runtime::render_stage_capture_styled(
+                            capture,
+                            view,
+                            req.resolution_scale,
+                            viewport_bounds,
+                            None,
+                            &slicer_runtime::RenderStyle::default(),
+                        )
+                        .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                        let file_name = format!(
+                            "{}_overlay_{}_l{}.png",
+                            sanitize_path_component(&capture.stage_id),
+                            kind.name(),
+                            capture.layer_index
+                        );
+                        let relative_path = format!("images/{file_name}");
+                        rendered_files.push((relative_path.clone(), rendered.png_bytes));
+                        images.push(ImageEntry {
+                            source: "model".into(),
+                            tap: capture.stage_id.clone(),
+                            layer_index: capture.layer_index as i64,
+                            layer_z: Some(capture.layer_z as f64),
+                            visualization: viz.kind().to_string(),
+                            png_path: relative_path,
+                            viewport: viewport.clone(),
+                            legend_version: legend.clone(),
+                            ir_schema_version: Some(capture.ir.schema_version_string()),
+                            gcode_parser_version: None,
+                            warnings: Vec::new(),
+                            typed_capture: serde_json::to_value(&capture.ir).ok(),
+                            world_bounds_mm: Some(viewport_bounds),
+                            overlay: Some(kind.name().to_string()),
+                            overlay_events: Some(events),
+                            color_by: None,
+                            tool_color_source: None,
+                        });
+                    }
+                    continue;
+                }
                 // `LayerPlanIR` diagnostic overlay (packet 161, Step 7):
                 // `LayerPlanning` has no standalone tap/`CapturedIr`
                 // variant, so its sync/non-planar/active-region flags only
@@ -1231,15 +1624,15 @@ fn run_model_source(
                 } else {
                     None
                 };
-                let rendered =
-                    slicer_runtime::visual_debug_render::render_stage_capture_with_layer_plan(
-                        capture,
-                        render_view,
-                        req.resolution_scale,
-                        viewport_bounds,
-                        layer_plan_layer,
-                    )
-                    .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
+                let (rendered, _events) = slicer_runtime::render_stage_capture_styled(
+                    capture,
+                    render_view,
+                    req.resolution_scale,
+                    viewport_bounds,
+                    layer_plan_layer,
+                    &render_style,
+                )
+                .map_err(|e| VisualDebugError::RenderFailed(e.to_string()))?;
                 // `viz.kind()` alone collides for two `diagnostic_overlay`
                 // visualizations with different `options.base` (both kind
                 // "diagnostic_overlay") — append the resolved base geometry
@@ -1272,12 +1665,18 @@ fn run_model_source(
                     visualization: viz.kind().to_string(),
                     png_path: relative_path,
                     viewport: viewport.clone(),
-                    legend_version: VERSION.into(),
+                    legend_version: legend.clone(),
                     ir_schema_version: Some(capture.ir.schema_version_string()),
                     gcode_parser_version: None,
                     warnings: Vec::new(),
                     typed_capture: serde_json::to_value(&capture.ir).ok(),
                     world_bounds_mm: Some(viewport_bounds),
+                    overlay: None,
+                    overlay_events: None,
+                    color_by: (color_by == slicer_runtime::ColorBy::Tool)
+                        .then(|| "tool".to_string()),
+                    tool_color_source: (color_by == slicer_runtime::ColorBy::Tool)
+                        .then(|| if use_filament { "filament" } else { "palette" }.to_string()),
                 });
             }
         }
@@ -1305,6 +1704,7 @@ fn run_model_source(
         layer_expansions,
         executed_layer_indices,
         rendered_files,
+        tool_palette,
     ))
 }
 
@@ -1348,6 +1748,7 @@ pub fn run_visual_debug(
         layer_expansions,
         executed_layer_indices,
         rendered_files,
+        tool_palette,
     ) = match &req.source {
         VisualDebugSource::Model {
             model,
@@ -1365,21 +1766,47 @@ pub fn run_visual_debug(
                 path: Some(gcode_path.clone()),
             };
             // `validate_request`'s Phase 1 (ADR-0041) already rejected any
-            // unrecognized visualization kind and any `diagnostic_overlay`
-            // request against this G-code source, so only `filament_lines`/
-            // `filled_areas` can reach this dispatch — the former silent
-            // `filter_map`/`_ => None` drop is unreachable.
-            let visualizations: Vec<visual_debug_gcode::GcodeVisualization> = req
-                .visualizations
-                .iter()
-                .map(|v| match v.kind() {
-                    "filament_lines" => visual_debug_gcode::GcodeVisualization::FilamentLines,
-                    "filled_areas" => visual_debug_gcode::GcodeVisualization::FilledAreas,
+            // unrecognized visualization kind; `diagnostic_overlay` reaches
+            // this dispatch only in its 1.1.0 isolated-overlay form
+            // (validated: `overlays` present, no `seams`). Geometry
+            // visualizations are grouped by their requested `color_by` —
+            // the standalone renderer takes one color mode per call, so a
+            // request mixing role- and tool-colored views renders in two
+            // passes over the same parse.
+            let mut role_visualizations: Vec<visual_debug_gcode::GcodeVisualization> = Vec::new();
+            let mut tool_visualizations: Vec<visual_debug_gcode::GcodeVisualization> = Vec::new();
+            for v in &req.visualizations {
+                let opts = effective_visualization_options(&req.schema_version, v);
+                match v.kind() {
+                    "filament_lines" => match opts.color_by() {
+                        slicer_runtime::ColorBy::Tool => tool_visualizations
+                            .push(visual_debug_gcode::GcodeVisualization::FilamentLines),
+                        slicer_runtime::ColorBy::Role => role_visualizations
+                            .push(visual_debug_gcode::GcodeVisualization::FilamentLines),
+                    },
+                    "filled_areas" => match opts.color_by() {
+                        slicer_runtime::ColorBy::Tool => tool_visualizations
+                            .push(visual_debug_gcode::GcodeVisualization::FilledAreas),
+                        slicer_runtime::ColorBy::Role => role_visualizations
+                            .push(visual_debug_gcode::GcodeVisualization::FilledAreas),
+                    },
+                    "diagnostic_overlay" => {
+                        for kind in opts.overlay_kinds() {
+                            role_visualizations
+                                .push(visual_debug_gcode::GcodeVisualization::Overlay(kind));
+                        }
+                    }
                     other => unreachable!(
                         "validate_request rejects unknown/mismatched visualization kind \
                          {other:?} before this dispatch runs"
                     ),
-                })
+                }
+            }
+            let any_tool_colored = !tool_visualizations.is_empty();
+            let visualizations: Vec<visual_debug_gcode::GcodeVisualization> = role_visualizations
+                .iter()
+                .chain(tool_visualizations.iter())
+                .copied()
                 .collect();
 
             if visualizations.is_empty() {
@@ -1398,6 +1825,7 @@ pub fn run_visual_debug(
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),
+                    None,
                 )
             } else {
                 let taps: Vec<String> = if req.taps.is_empty() {
@@ -1448,19 +1876,7 @@ pub fn run_visual_debug(
                     resolve_layers_against_schedule(&req.layers, &schedule)
                         .map_err(VisualDebugError::Validation)?;
 
-                let output = visual_debug_gcode::render_gcode_visual_debug_from_path(
-                    &gcode_path,
-                    &layer_indices,
-                    &visualizations,
-                    viewport.width,
-                    viewport.height,
-                    req.gcode_line_width_mm,
-                    match req.frame {
-                        FrameMode::Model => visual_debug_gcode::GcodeFrame::Model,
-                        FrameMode::Plate => visual_debug_gcode::GcodeFrame::Plate,
-                    },
-                )
-                .map_err(|e| match e {
+                let map_gcode_error = |e: visual_debug_gcode::GcodeRenderError| match e {
                     visual_debug_gcode::GcodeRenderError::NoPrintableArea => {
                         VisualDebugError::InvalidBedShape(format!(
                             "{} carries no usable `printable_area` config comment to frame to",
@@ -1490,50 +1906,121 @@ pub fn run_visual_debug(
                             "filled_areas requires an explicit gcode_line_width_mm".into(),
                         )
                     }
-                })?;
+                };
+                let gcode_frame = match req.frame {
+                    FrameMode::Model => visual_debug_gcode::GcodeFrame::Model,
+                    FrameMode::Plate => visual_debug_gcode::GcodeFrame::Plate,
+                };
+                // One render pass per color mode (the standalone renderer
+                // takes one `color_by` per call); both passes share the
+                // already-read text, and their outputs are merged in
+                // role-then-tool order.
+                let mut outputs: Vec<(visual_debug_gcode::GcodeVisualDebugOutput, bool)> =
+                    Vec::new();
+                for (group, is_tool) in
+                    [(&role_visualizations, false), (&tool_visualizations, true)]
+                {
+                    if group.is_empty() {
+                        continue;
+                    }
+                    let output = visual_debug_gcode::render_gcode_visual_debug_styled(
+                        &gcode_text,
+                        &layer_indices,
+                        group,
+                        viewport.width,
+                        viewport.height,
+                        req.gcode_line_width_mm,
+                        gcode_frame,
+                        if is_tool {
+                            slicer_runtime::ColorBy::Tool
+                        } else {
+                            slicer_runtime::ColorBy::Role
+                        },
+                    )
+                    .map_err(map_gcode_error)?;
+                    outputs.push((output, is_tool));
+                }
+                let parser_version = outputs
+                    .first()
+                    .map(|(o, _)| o.parser_version.clone())
+                    .unwrap_or_else(|| visual_debug_gcode::GCODE_PARSER_VERSION.to_string());
+                let world_bounds = outputs.first().map(|(o, _)| o.world_bounds_mm);
+                // A standalone gcode source has no config to read filament
+                // colors from — the table is always the fixed palette here.
+                let gcode_tool_palette = any_tool_colored
+                    .then(|| tool_palette_entries(&slicer_runtime::ToolColors::default()));
 
+                let legend = legend_version_for(&req.schema_version).to_string();
                 let mut images = Vec::new();
                 let mut rendered_files: Vec<(String, Vec<u8>)> = Vec::new();
-                for image in &output.images {
-                    for tap in &taps {
-                        let file_name = format!(
-                            "{}_{}_l{}.png",
-                            sanitize_path_component(tap),
-                            image.visualization.name(),
-                            image.layer_index
-                        );
-                        let relative_path = format!("images/{file_name}");
-                        rendered_files.push((relative_path.clone(), image.png_bytes.clone()));
-                        images.push(ImageEntry {
-                            source: "gcode".into(),
-                            tap: tap.clone(),
-                            layer_index: image.layer_index,
-                            layer_z: image.layer_z,
-                            visualization: image.visualization.name().to_string(),
-                            png_path: relative_path,
-                            viewport: viewport.clone(),
-                            legend_version: VERSION.into(),
-                            ir_schema_version: None,
-                            gcode_parser_version: Some(output.parser_version.clone()),
-                            warnings: output.warnings.clone(),
-                            typed_capture: None,
-                            // The whole-file mm viewport every image in this
-                            // bundle was projected through. Identical across
-                            // entries, like the model path's.
-                            world_bounds_mm: Some(output.world_bounds_mm),
-                        });
+                for (output, is_tool) in &outputs {
+                    for image in &output.images {
+                        let overlay_kind = match image.visualization {
+                            visual_debug_gcode::GcodeVisualization::Overlay(k) => Some(k),
+                            _ => None,
+                        };
+                        for tap in &taps {
+                            let file_name = match overlay_kind {
+                                Some(kind) => format!(
+                                    "{}_overlay_{}_l{}.png",
+                                    sanitize_path_component(tap),
+                                    kind.name(),
+                                    image.layer_index
+                                ),
+                                None if *is_tool => format!(
+                                    "{}_{}_tool_l{}.png",
+                                    sanitize_path_component(tap),
+                                    image.visualization.name(),
+                                    image.layer_index
+                                ),
+                                None => format!(
+                                    "{}_{}_l{}.png",
+                                    sanitize_path_component(tap),
+                                    image.visualization.name(),
+                                    image.layer_index
+                                ),
+                            };
+                            let relative_path = format!("images/{file_name}");
+                            rendered_files.push((relative_path.clone(), image.png_bytes.clone()));
+                            images.push(ImageEntry {
+                                source: "gcode".into(),
+                                tap: tap.clone(),
+                                layer_index: image.layer_index,
+                                layer_z: image.layer_z,
+                                visualization: image.visualization.name().to_string(),
+                                png_path: relative_path,
+                                viewport: viewport.clone(),
+                                legend_version: legend.clone(),
+                                ir_schema_version: None,
+                                gcode_parser_version: Some(output.parser_version.clone()),
+                                warnings: output.warnings.clone(),
+                                typed_capture: None,
+                                // The whole-file mm viewport every image in
+                                // this bundle was projected through.
+                                // Identical across entries, like the model
+                                // path's.
+                                world_bounds_mm: world_bounds,
+                                overlay: overlay_kind.map(|k| k.name().to_string()),
+                                overlay_events: overlay_kind.map(|_| image.overlay_events.clone()),
+                                color_by: (*is_tool && overlay_kind.is_none())
+                                    .then(|| "tool".to_string()),
+                                tool_color_source: (*is_tool && overlay_kind.is_none())
+                                    .then(|| "palette".to_string()),
+                            });
+                        }
                     }
                 }
 
                 (
                     source,
                     None,
-                    Some(output.parser_version.clone()),
+                    Some(parser_version),
                     images,
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),
                     rendered_files,
+                    gcode_tool_palette,
                 )
             }
         }
@@ -1575,12 +2062,14 @@ pub fn run_visual_debug(
     }
 
     let manifest = Manifest {
-        schema_version: VERSION.into(),
+        // The manifest mirrors the request's declared schema: a 1.0.0
+        // request keeps producing a byte-compatible 1.0.0 bundle.
+        schema_version: req.schema_version.clone(),
         source,
         resolution_scale: scale,
         viewport,
         frame: req.frame.name().into(),
-        legend_version: VERSION.into(),
+        legend_version: legend_version_for(&req.schema_version).into(),
         ir_schema_version: ir,
         gcode_parser_version: parser,
         images,
@@ -1588,6 +2077,7 @@ pub fn run_visual_debug(
         executed_stage_ids,
         layer_expansions,
         executed_layer_indices,
+        tool_palette,
     };
     let manifest_path = output_dir.join("manifest.json");
     let temp_path = output_dir.join("manifest.json.tmp");

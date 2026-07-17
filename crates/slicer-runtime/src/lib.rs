@@ -24,6 +24,7 @@ pub mod run;
 pub mod slice_postprocess;
 pub mod slice_postprocess_prepass;
 pub mod visual_debug_render;
+pub mod visual_debug_style;
 
 // Modules moved to slicer-scheduler — re-exported here for backward compatibility.
 // kept: transitional shim for downstream consumers (slicer-runtime tests, benches,
@@ -181,8 +182,12 @@ pub use slice_postprocess_prepass::{
     commit_shell_classification_builtin, ShellClassificationError,
 };
 pub use visual_debug_render::{
-    compute_viewport_bounds, render_stage_capture, GeometryView, Projector, RenderError,
-    RenderView, RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX, VIEWPORT_MARGIN_MM,
+    collect_overlay_events, compute_viewport_bounds, render_stage_capture,
+    render_stage_capture_styled, GeometryView, Projector, RenderError, RenderStyle, RenderView,
+    RenderedImage, ViewportBoundsMm, BASE_DIMENSION_PX, VIEWPORT_MARGIN_MM,
+};
+pub use visual_debug_style::{
+    parse_hex_color, ColorBy, OverlayEvent, OverlayKind, ToolColors, LEGEND_VERSION,
 };
 // kept: consumed by crates/slicer-runtime/tests/e2e/threemf_subtypes_synthetic_e2e_tdd.rs:602
 pub use slicer_core::algos::region_mapping::execute_region_mapping;

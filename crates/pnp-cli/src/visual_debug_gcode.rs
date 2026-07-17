@@ -36,6 +36,9 @@ use std::fs;
 use std::path::Path;
 
 use png::{BitDepth, ColorType, Encoder};
+use slicer_runtime::visual_debug_style::{
+    self as style, overlay_palette, ColorBy, GlyphKind, OverlayEvent, OverlayKind, ToolColors,
+};
 use slicer_runtime::{Projector, ViewportBoundsMm};
 
 /// Parser/renderer version string recorded in every bundle produced from a
@@ -68,6 +71,10 @@ pub enum GcodeVisualization {
     /// `gcode_line_width_mm` stroke width. Bead width is NEVER derived from
     /// `E` values.
     FilledAreas,
+    /// One overlay event class rendered in isolation (schema 1.1.0):
+    /// extrusion centerlines painted faint gray, this kind's glyphs on top.
+    /// Seams are never supported here — final G-code carries no seam marker.
+    Overlay(OverlayKind),
 }
 
 impl GcodeVisualization {
@@ -75,6 +82,7 @@ impl GcodeVisualization {
         match self {
             GcodeVisualization::FilamentLines => "filament_lines",
             GcodeVisualization::FilledAreas => "filled_areas",
+            GcodeVisualization::Overlay(_) => "diagnostic_overlay",
         }
     }
 }
@@ -101,7 +109,11 @@ pub enum GcodeRenderError {
     /// Never silently falls back to model framing — that would return an
     /// image other than the one requested.
     NoPrintableArea,
-    /// Reading the G-code file from disk failed.
+    /// Reading the G-code file from disk failed. Only produced by
+    /// [`render_gcode_visual_debug_from_path`], the test-exercised
+    /// convenience wrapper (`visual_debug.rs` reads the file itself to share
+    /// one read between schedule resolution and rendering).
+    #[allow(dead_code)]
     Io(String),
     /// The source contains zero supported, renderable `G0`/`G1` moves
     /// anywhere in the file (only unsupported constructs, or no motion at
@@ -152,6 +164,10 @@ pub struct RenderedImage {
     /// layer never saw a `;Z:` comment.
     pub layer_z: Option<f64>,
     pub visualization: GcodeVisualization,
+    /// For an `Overlay` visualization: the structured events this image's
+    /// glyphs were drawn from, verbatim, for the manifest's
+    /// `overlay_events` mirror. Empty for geometry visualizations.
+    pub overlay_events: Vec<OverlayEvent>,
     pub png_bytes: Vec<u8>,
     /// Not yet read by any caller until packet 160 Step 3 wires this module
     /// into `visual_debug.rs`'s dispatch; retained for the eventual
@@ -194,6 +210,7 @@ pub struct GcodeVisualDebugOutput {
 /// concern) — this module only computes the model-wide XY bounding box (in
 /// mm) used to project geometry into that shared canvas consistently across
 /// every emitted image.
+#[allow(dead_code)] // convenience wrapper; exercised by this module's tests
 pub fn render_gcode_visual_debug(
     gcode_text: &str,
     layer_indices: &[i64],
@@ -202,6 +219,35 @@ pub fn render_gcode_visual_debug(
     canvas_height: u32,
     gcode_line_width_mm: Option<f64>,
     frame: GcodeFrame,
+) -> Result<GcodeVisualDebugOutput, GcodeRenderError> {
+    render_gcode_visual_debug_styled(
+        gcode_text,
+        layer_indices,
+        visualizations,
+        canvas_width,
+        canvas_height,
+        gcode_line_width_mm,
+        frame,
+        ColorBy::Role,
+    )
+}
+
+/// [`render_gcode_visual_debug`] plus the schema-1.1.0 `color_by` selection.
+/// `ColorBy::Tool` colors extrusion by the tracked active tool (`T<n>`,
+/// tool 0 until the first change) via the fixed shared tool palette — a
+/// standalone `.gcode` resolves no config, so `tool_color_source:
+/// "filament"` has nothing to read on this path and callers resolve it to
+/// the palette.
+#[allow(clippy::too_many_arguments)]
+pub fn render_gcode_visual_debug_styled(
+    gcode_text: &str,
+    layer_indices: &[i64],
+    visualizations: &[GcodeVisualization],
+    canvas_width: u32,
+    canvas_height: u32,
+    gcode_line_width_mm: Option<f64>,
+    frame: GcodeFrame,
+    color_by: ColorBy,
 ) -> Result<GcodeVisualDebugOutput, GcodeRenderError> {
     if visualizations.contains(&GcodeVisualization::FilledAreas) && gcode_line_width_mm.is_none() {
         return Err(GcodeRenderError::MissingLineWidth);
@@ -232,9 +278,10 @@ pub fn render_gcode_visual_debug(
             continue;
         }
         for viz in visualizations {
+            let mut overlay_events = Vec::new();
             let png_bytes = match viz {
                 GcodeVisualization::FilamentLines => {
-                    render_filament_lines(layer, &projector, canvas_width, canvas_height)
+                    render_filament_lines(layer, &projector, canvas_width, canvas_height, color_by)
                 }
                 GcodeVisualization::FilledAreas => render_filled_areas(
                     layer,
@@ -242,12 +289,24 @@ pub fn render_gcode_visual_debug(
                     canvas_width,
                     canvas_height,
                     gcode_line_width_mm.expect("checked above"),
+                    color_by,
                 ),
+                GcodeVisualization::Overlay(kind) => {
+                    overlay_events = layer_overlay_events(layer, *kind);
+                    render_overlay(
+                        layer,
+                        &projector,
+                        canvas_width,
+                        canvas_height,
+                        &overlay_events,
+                    )
+                }
             };
             images.push(RenderedImage {
                 layer_index: layer.layer_index,
                 layer_z: layer.layer_z,
                 visualization: *viz,
+                overlay_events,
                 png_bytes,
                 width: canvas_width,
                 height: canvas_height,
@@ -265,6 +324,7 @@ pub fn render_gcode_visual_debug(
 
 /// Convenience wrapper reading `path` from disk before calling
 /// [`render_gcode_visual_debug`].
+#[allow(dead_code)] // convenience wrapper; exercised by this module's tests
 pub fn render_gcode_visual_debug_from_path(
     path: &Path,
     layer_indices: &[i64],
@@ -304,6 +364,9 @@ pub struct Segment {
     /// `"unclassified"` when no `;TYPE:` marker was active yet. Empty for
     /// travel segments (role is meaningless for non-extrusion motion).
     pub role: String,
+    /// The active tool when this segment was emitted (`T<n>` tracking;
+    /// tool 0 until the first tool change).
+    pub tool: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -311,6 +374,13 @@ pub struct ParsedLayer {
     pub layer_index: i64,
     pub layer_z: Option<f64>,
     pub segments: Vec<Segment>,
+    /// Point events parsed for this layer in source order: retractions/
+    /// unretractions (E-only moves and firmware `G10`/`G11`), z-hops (Z-only
+    /// lifts above the layer's base Z), and tool changes. Travel polylines
+    /// are NOT stored here — they are derived from `segments` by
+    /// [`layer_overlay_events`] so the polyline and the rendered travel
+    /// share one source.
+    pub events: Vec<OverlayEvent>,
 }
 
 /// Structured parse of a full G-code source. Always "succeeds" structurally
@@ -370,6 +440,11 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
     let mut pos_y: Option<f64> = None;
     let mut last_e: f64 = 0.0;
     let mut has_renderable_moves = false;
+    // Overlay-event state (schema 1.1.0): the active tool (`T<n>`, 0 until
+    // the first change) and the layer's base Z, against which a Z-only lift
+    // is classified as a z-hop.
+    let mut current_tool: u32 = 0;
+    let mut layer_base_z: Option<f64> = None;
 
     let mut min_x = f64::INFINITY;
     let mut min_y = f64::INFINITY;
@@ -387,12 +462,14 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
         if line.starts_with(";LAYER_CHANGE") {
             current_layer_index += 1;
             ensure_layer(&mut layers, &mut layer_map, current_layer_index);
+            layer_base_z = None;
             continue;
         }
         if let Some(rest) = line.strip_prefix(";Z:") {
             if let Ok(z) = rest.trim().parse::<f64>() {
                 let li = ensure_layer(&mut layers, &mut layer_map, current_layer_index);
                 layers[li].layer_z = Some(z);
+                layer_base_z = Some(z);
             }
             continue;
         }
@@ -432,6 +509,8 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
             "G0" | "G1" => {
                 let mut new_x = pos_x;
                 let mut new_y = pos_y;
+                let mut has_xy = false;
+                let mut new_z: Option<f64> = None;
                 let mut has_e = false;
                 let mut e_delta = 0.0_f64;
                 let mut unsupported = false;
@@ -446,9 +525,17 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                         continue;
                     };
                     match letter {
-                        "X" => new_x = Some(value),
-                        "Y" => new_y = Some(value),
-                        "Z" => {} // Z lift moves don't affect the XY viewport/segments.
+                        "X" => {
+                            new_x = Some(value);
+                            has_xy = true;
+                        }
+                        "Y" => {
+                            new_y = Some(value);
+                            has_xy = true;
+                        }
+                        // A Z value doesn't affect XY segments/viewport, but
+                        // is tracked to classify Z-only lifts as z-hops.
+                        "Z" => new_z = Some(value),
                         "F" => {} // feed rate; irrelevant to geometry.
                         "E" => {
                             has_e = true;
@@ -501,6 +588,50 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                 pos_y = new_y;
                 let is_extrusion = has_e && e_delta > 0.0;
 
+                // Overlay events (schema 1.1.0). Positions require a known
+                // toolhead XY — an event before the first stated position is
+                // skipped, never fabricated at an assumed origin.
+                if !has_xy {
+                    if let (Some(x), Some(y)) = (pos_x, pos_y) {
+                        let (x, y) = (x as f32, y as f32);
+                        let li = ensure_layer(&mut layers, &mut layer_map, current_layer_index);
+                        if has_e && e_delta < 0.0 {
+                            layers[li].events.push(OverlayEvent::Retraction {
+                                x,
+                                y,
+                                length_mm: (-e_delta) as f32,
+                            });
+                        } else if has_e && e_delta > 0.0 {
+                            layers[li].events.push(OverlayEvent::Unretraction {
+                                x,
+                                y,
+                                length_mm: e_delta as f32,
+                            });
+                        } else if let (Some(z), false) = (new_z, has_e) {
+                            // A Z-only move: a lift above the layer's base Z
+                            // is a z-hop; the first Z statement of a layer
+                            // (no base yet) establishes the base instead.
+                            match layer_base_z {
+                                Some(base) if z > base + 1e-9 => {
+                                    layers[li].events.push(OverlayEvent::ZHop {
+                                        x,
+                                        y,
+                                        height_mm: (z - base) as f32,
+                                    });
+                                }
+                                Some(_) => {}
+                                None => layer_base_z = Some(z),
+                            }
+                        }
+                    } else if let (Some(z), false, false) = (new_z, has_e, has_xy) {
+                        // Even with no XY yet, a Z statement can establish
+                        // the layer base so a later lift classifies.
+                        if layer_base_z.is_none() {
+                            layer_base_z = Some(z);
+                        }
+                    }
+                }
+
                 // A destination the file actually stated is real geometry and
                 // always bounds the viewport, even when we can't draw the
                 // travel that reached it.
@@ -544,10 +675,54 @@ pub fn parse_gcode(text: &str) -> ParsedGcode {
                         to,
                         is_extrusion,
                         role,
+                        tool: current_tool,
+                    });
+                }
+            }
+            // Firmware retract/unretract: bare opcodes with no length on the
+            // line (the length lives in printer memory) — recorded with
+            // length 0.0, never guessed.
+            "G10" => {
+                if let (Some(x), Some(y)) = (pos_x, pos_y) {
+                    let li = ensure_layer(&mut layers, &mut layer_map, current_layer_index);
+                    layers[li].events.push(OverlayEvent::Retraction {
+                        x: x as f32,
+                        y: y as f32,
+                        length_mm: 0.0,
+                    });
+                }
+            }
+            "G11" => {
+                if let (Some(x), Some(y)) = (pos_x, pos_y) {
+                    let li = ensure_layer(&mut layers, &mut layer_map, current_layer_index);
+                    layers[li].events.push(OverlayEvent::Unretraction {
+                        x: x as f32,
+                        y: y as f32,
+                        length_mm: 0.0,
                     });
                 }
             }
             _ => {
+                // `T<n>` tool select: track the active tool and record the
+                // change event when the toolhead position is known.
+                if let Some(rest) = cmd.strip_prefix('T') {
+                    if let Ok(tool) = rest.parse::<u32>() {
+                        if tool != current_tool {
+                            if let (Some(x), Some(y)) = (pos_x, pos_y) {
+                                let li =
+                                    ensure_layer(&mut layers, &mut layer_map, current_layer_index);
+                                layers[li].events.push(OverlayEvent::ToolChange {
+                                    x: x as f32,
+                                    y: y as f32,
+                                    from_tool: Some(current_tool),
+                                    to_tool: tool,
+                                });
+                            }
+                            current_tool = tool;
+                        }
+                        continue;
+                    }
+                }
                 warnings.push(format!(
                     "line {line_no}: unsupported G-code construct outside the documented \
                      G0/G1 X/Y/Z/E/F subset: {code_part}"
@@ -591,6 +766,7 @@ fn ensure_layer(
         layer_index,
         layer_z: None,
         segments: Vec::new(),
+        events: Vec::new(),
     });
     let li = layers.len() - 1;
     layer_map.insert(layer_index, li);
@@ -671,33 +847,19 @@ fn project(projector: &Projector, p: PointMm) -> (f64, f64) {
 
 // ─────────────────────────────── rasterization ────────────────────────────
 
-/// Fixed, deterministic role color palette (Solarized accents). The special
-/// role `"unclassified"` always maps to a neutral gray outside this palette.
-const ROLE_PALETTE: [[u8; 3]; 6] = [
-    [220, 50, 47],
-    [38, 139, 210],
-    [133, 153, 0],
-    [203, 75, 22],
-    [108, 113, 196],
-    [42, 161, 152],
-];
-const UNCLASSIFIED_COLOR: [u8; 3] = [128, 128, 128];
+// The role palette (Solarized accents + gray for `"unclassified"`) lives in
+// the shared style module (`slicer_runtime::visual_debug_style`) alongside
+// the typed-IR renderer's palette, glyphs, and tool palette — this module
+// used to own an independent copy.
 
-fn role_color(role: &str) -> [u8; 3] {
-    if role == UNCLASSIFIED_ROLE {
-        return UNCLASSIFIED_COLOR;
+/// A segment's color under the requested `color_by`.
+fn segment_color(seg: &Segment, color_by: ColorBy) -> [u8; 3] {
+    match color_by {
+        ColorBy::Role => style::gcode_role_color(&seg.role, UNCLASSIFIED_ROLE),
+        // Standalone-gcode has no config, so tool colors are always the
+        // fixed shared palette (see `render_gcode_visual_debug_styled` doc).
+        ColorBy::Tool => ToolColors::default().color(seg.tool),
     }
-    let hash = fnv1a(role.as_bytes());
-    ROLE_PALETTE[(hash as usize) % ROLE_PALETTE.len()]
-}
-
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for &b in bytes {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 fn render_filament_lines(
@@ -705,6 +867,7 @@ fn render_filament_lines(
     projector: &Projector,
     width: u32,
     height: u32,
+    color_by: ColorBy,
 ) -> Vec<u8> {
     let mut buf = vec![255u8; width as usize * height as usize * 3];
     for seg in &layer.segments {
@@ -713,7 +876,14 @@ fn render_filament_lines(
         }
         let p0 = project(projector, seg.from);
         let p1 = project(projector, seg.to);
-        draw_line(&mut buf, width, height, p0, p1, role_color(&seg.role));
+        draw_line(
+            &mut buf,
+            width,
+            height,
+            p0,
+            p1,
+            segment_color(seg, color_by),
+        );
     }
     encode_png(width, height, &buf)
 }
@@ -724,6 +894,7 @@ fn render_filled_areas(
     width: u32,
     height: u32,
     line_width_mm: f64,
+    color_by: ColorBy,
 ) -> Vec<u8> {
     let mut buf = vec![255u8; width as usize * height as usize * 3];
     let width_px = projector.scale_mm(line_width_mm).max(1.0);
@@ -740,8 +911,127 @@ fn render_filled_areas(
             p0,
             p1,
             width_px,
-            role_color(&seg.role),
+            segment_color(seg, color_by),
         );
+    }
+    encode_png(width, height, &buf)
+}
+
+/// Every overlay event of `kind` for one parsed layer. Point events come
+/// from [`ParsedLayer::events`]; travel polylines are derived here from the
+/// layer's non-extrusion segments (consecutive travel segments merge into
+/// one polyline), so the drawn travel and the manifest's mirror share one
+/// source.
+pub fn layer_overlay_events(layer: &ParsedLayer, kind: OverlayKind) -> Vec<OverlayEvent> {
+    if kind == OverlayKind::Travel {
+        let mut events = Vec::new();
+        let mut run: Vec<[f32; 2]> = Vec::new();
+        let flush = |run: &mut Vec<[f32; 2]>, events: &mut Vec<OverlayEvent>| {
+            if run.len() >= 2 {
+                let points = std::mem::take(run);
+                let length_mm = style::polyline_length_mm(&points);
+                events.push(OverlayEvent::Travel { points, length_mm });
+            } else {
+                run.clear();
+            }
+        };
+        for seg in &layer.segments {
+            if seg.is_extrusion {
+                flush(&mut run, &mut events);
+                continue;
+            }
+            let from = [seg.from.x as f32, seg.from.y as f32];
+            let to = [seg.to.x as f32, seg.to.y as f32];
+            match run.last() {
+                Some(&last) if last == from => run.push(to),
+                _ => {
+                    flush(&mut run, &mut events);
+                    run.push(from);
+                    run.push(to);
+                }
+            }
+        }
+        flush(&mut run, &mut events);
+        return events;
+    }
+    layer
+        .events
+        .iter()
+        .filter(|e| e.kind() == kind)
+        .cloned()
+        .collect()
+}
+
+/// Rasterize one isolated overlay image: every extrusion centerline in
+/// faint gray, then `events`' glyphs (shared legend v1.1.0).
+fn render_overlay(
+    layer: &ParsedLayer,
+    projector: &Projector,
+    width: u32,
+    height: u32,
+    events: &[OverlayEvent],
+) -> Vec<u8> {
+    let mut buf = vec![255u8; width as usize * height as usize * 3];
+    for seg in &layer.segments {
+        if !seg.is_extrusion {
+            continue;
+        }
+        let p0 = project(projector, seg.from);
+        let p1 = project(projector, seg.to);
+        draw_line(&mut buf, width, height, p0, p1, overlay_palette::FAINT_BASE);
+    }
+    let glyph_half = style::GLYPH_HALF_PX * i64::from((width / 1024).max(1));
+    for event in events {
+        match event {
+            OverlayEvent::Travel { points, .. } => {
+                let px: Vec<(f64, f64)> = points
+                    .iter()
+                    .map(|&[x, y]| projector.project(f64::from(x), f64::from(y)))
+                    .collect();
+                for pair in px.windows(2) {
+                    style::draw_dotted_line_px(pair[0], pair[1], &mut |x, y| {
+                        set_pixel(&mut buf, width, height, x, y, overlay_palette::TRAVEL);
+                    });
+                }
+                if let (Some(&first), true) = (px.first(), px.len() >= 2) {
+                    style::draw_glyph(
+                        GlyphKind::CircleOutline,
+                        first.0.round() as i64,
+                        first.1.round() as i64,
+                        glyph_half,
+                        &mut |x, y| {
+                            set_pixel(&mut buf, width, height, x, y, overlay_palette::TRAVEL)
+                        },
+                    );
+                }
+                if let Some(&last) = px.last() {
+                    style::draw_glyph(
+                        GlyphKind::Dot,
+                        last.0.round() as i64,
+                        last.1.round() as i64,
+                        glyph_half,
+                        &mut |x, y| {
+                            set_pixel(&mut buf, width, height, x, y, overlay_palette::TRAVEL)
+                        },
+                    );
+                }
+            }
+            OverlayEvent::Seam { x, y }
+            | OverlayEvent::Retraction { x, y, .. }
+            | OverlayEvent::Unretraction { x, y, .. }
+            | OverlayEvent::ZHop { x, y, .. }
+            | OverlayEvent::ToolChange { x, y, .. } => {
+                let (kind, color) = style::event_glyph(event);
+                let (px, py) = projector.project(f64::from(*x), f64::from(*y));
+                style::draw_glyph(
+                    kind,
+                    px.round() as i64,
+                    py.round() as i64,
+                    glyph_half,
+                    &mut |gx, gy| set_pixel(&mut buf, width, height, gx, gy, color),
+                );
+            }
+        }
     }
     encode_png(width, height, &buf)
 }

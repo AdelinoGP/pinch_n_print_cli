@@ -532,6 +532,34 @@ One write-once field of the **Blackboard** holding a whole-print IR product
 its accessor. The committed slot accessor is the read boundary a Blackboard-read
 **tap** captures from — an owned clone of the slot payload, never a live borrow.
 
+### Overlay (visual-debug)
+A toggleable class of machine events (`travel`, `seams`, `retractions`,
+`z_hops`, `tool_changes`) rendered by `pnp_cli visual-debug` as its own
+isolated image — faint gray base geometry plus only that class's glyphs —
+never composited with other overlays.
+_Avoid_: marker layer, annotation layer
+
+### Glyph (visual-debug)
+The fixed shape encoding one overlay event kind in a rendered image (seam =
+circle, retraction = down-triangle, unretraction = up-triangle, z-hop =
+diamond, tool change = square, travel = dotted polyline with endpoint marks).
+Shape is the primary distinguisher — a glyph must be identifiable without
+relying on color.
+
+### Overlay event
+The structured JSON mirror of one rendered glyph, recorded on the image's
+manifest entry (`overlay_events`): position in mm plus the event's numeric
+payload (retraction length, z-hop height, tool indices, travel polyline and
+total length). The manifest mirror and the drawn glyphs come from one
+collection pass, so image and data cannot disagree. The events are the
+LLM-primary channel; the PNG is confirmation.
+
+### Tool map
+A geometry visualization colored by resolved tool index (`color_by: "tool"`)
+instead of extrusion role. Colors come from a fixed high-contrast per-index
+palette by default, or from the config's authored filament colors
+(`tool_color_source: "filament"`) — never inferred.
+
 ### Region-key join
 Matching `RegionMapIR.entries` (keyed by `RegionKey { global_layer_index,
 object_id, region_id, variant_chain }`) to the `SliceIR` region carrying the same

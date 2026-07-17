@@ -39,10 +39,77 @@ is one of:
   shape in `docs/specs/visual-pipeline-debug.md` and the validator).
 
 Layers are anonymous — there is no name selector. Selection **fails closed**:
-an unknown visualization kind, a `diagnostic_overlay` on a G-code source, a
-name selector, or a selector that resolves to no real layer is rejected before
-any render or bundle write. No requested visualization or layer is ever
-silently dropped from a successful bundle.
+an unknown visualization kind, a legacy composited `diagnostic_overlay` on a
+G-code source, a name selector, or a selector that resolves to no real layer
+is rejected before any render or bundle write. No requested visualization or
+layer is ever silently dropped from a successful bundle.
+
+## Schema 1.1.0 — Tool Colors And Isolated Overlays
+
+`schema_version: "1.1.0"` adds per-visualization options. A `"1.0.0"` request
+keeps its exact prior behavior; the new options under `"1.0.0"` are rejected
+(`OptionRequiresSchema11`), never silently ignored.
+
+**Tool coloring** — on `filled_areas` / `filament_lines`:
+
+```json
+{"type": "filament_lines",
+ "options": {"color_by": "tool", "tool_color_source": "palette"}}
+```
+
+- `color_by`: `"role"` (default, the fixed semantic legend) or `"tool"` —
+  geometry is colored by the entity's resolved tool index
+  (`PrintEntity.tool_index` on typed captures; tracked `T<n>` on a G-code
+  source). Rejected (`ToolColorUnavailable`) on taps whose IR carries no tool
+  assignment — only `Layer::PathOptimization`-family (LayerCollection),
+  `PostPass::LayerFinalization`, and `PostPass::GCodeEmit` captures qualify.
+- `tool_color_source`: `"palette"` (default — a fixed high-contrast 8-color
+  per-index palette, deliberately NOT real filament colors) or `"filament"`
+  (the config `filament_colour` hex list; unresolvable entries fall back to
+  the palette; a standalone G-code source always resolves to the palette).
+  The manifest's `tool_palette` table records the exact RGB per tool.
+
+**Isolated overlays** — on `diagnostic_overlay`:
+
+```json
+{"type": "diagnostic_overlay",
+ "options": {"overlays": ["travel", "seams", "retractions", "z_hops", "tool_changes"]}}
+```
+
+Each named overlay renders as its **own image**: the base geometry painted
+uniformly faint gray, with only that event class's glyphs on top — never a
+composited clutter of all overlays. Every rendered event is also mirrored
+verbatim into that image's manifest entry as `overlay_events` (positions,
+lengths, heights, tool indices, travel polylines + total length in mm), so an
+agent can reason numerically from the manifest and use the PNG only as
+confirmation.
+
+Glyphs are distinguished by **shape**, not color alone (legend `1.1.0`):
+
+| Event        | Glyph                                                    |
+|--------------|----------------------------------------------------------|
+| seam         | filled circle (red)                                      |
+| retraction   | down-triangle (magenta)                                  |
+| unretraction | up-triangle (green)                                      |
+| z-hop        | diamond (purple)                                         |
+| tool change  | filled square (near-black)                               |
+| travel       | dotted polyline (blue), open-circle origin, filled-dot destination |
+
+Overlay availability is tap-dependent and fails closed
+(`OverlayUnsupportedForTap`) when the tap's IR has no source field for the
+event class (a present-but-empty field renders a valid zero-event image):
+LayerCollection/LayerFinalization taps support travel/retractions/z_hops/
+tool_changes; `Layer::Perimeters` and `PrePass::SeamPlanning` support seams;
+`PostPass::GCodeEmit` supports travel/retractions/tool_changes. The G-code
+source supports every overlay except `seams` (final G-code carries no seam
+marker); its retract/unretract detection covers inline-E moves and firmware
+`G10`/`G11`, z-hops are Z-only lifts above the layer's base Z, and tool
+changes come from `T<n>` lines.
+
+Wipe visualization is deliberately absent: no per-move wipe geometry exists
+in the captured IR yet. Modifier-volume visualization is likewise deferred
+(`ModifierVolume` is not captured by any tap; modifier influence is visible
+indirectly via RegionMapping's config tint).
 
 The default resolution is 1024 x 1024. `resolution_scale: 2` uses four times
 as many pixels; `resolution_scale: 3` uses nine times as many. Select the
