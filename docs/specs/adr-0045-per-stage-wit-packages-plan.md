@@ -350,7 +350,7 @@ convention (`TASK-119a/b/c`, `TASK-120a-d`, `TASK-194a/b`).
 | 1 | 162_wit-lifecycle-export-removal | Delete the never-called `on-print-start`/`on-print-end` WIT exports, rename the SDK constructor to `from_config`, remove `WORLD_LIFECYCLE_EXPORTS` and its self-referential guard test, correct the lifecycle fiction in `docs/03`/`docs/04`/`docs/05`, and make CLI-binary staleness fail loudly at all three spawn sites. | TASK-146a | - | generated | `.ralph/specs/162_wit-lifecycle-export-removal/` |
 | 2 | 163_per-stage-wit-packages-pilot | Build the per-stage versioned-package machinery and prove it on the two cheapest tiers — postpass (2 stages) and finalization (1) — at `@1.0.0` with fatal-on-miss load, incl. the `compute_shared_mtime` per-stage fix without which the isolation benefit cannot be demonstrated. | TASK-146b | #1 | generated | `.ralph/specs/163_per-stage-wit-packages-pilot/` |
 | 3 | 164_per-stage-wit-packages-bulk | Migrate prepass (4) and layer (10) onto per-stage packages, retire `wit-world`/`SUPPORTED_WIT_WORLDS`/`validate_wit_world`, and correct `docs/03` and `CONTEXT.md` to the delivered contract. | TASK-146c | #2 | pending | - |
-| 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | pending | - |
+| 4 | 165_cli-binary-locator-extraction | Collapse the three copies of the `pnp_cli` binary locator + freshness assert into one shared home, with an ADR deciding that home (ADR-0004 covers only guest-side test support; `slicer-test` was deleted in p78). | TASK-146d | #1 | generated | `.ralph/specs/165_cli-binary-locator-extraction/` |
 
 Dependency note: #2 must land the machinery before #3 migrates the remaining 14
 stages. Between #2 and #3 two contract mechanisms are live in-tree — an accepted
@@ -402,3 +402,14 @@ moment it applies.
 - Guards: `every_stage_package_major_is_at_least_one`, `stage_miss_is_fatal_at_instantiation`, `stage_wit_dir_is_charged_only_to_matching_guest`, `stage_wit_unknown_stage_is_conservative`.
 - **WIT shape:** each resource-bearing stage package pairs an **imported** `<iface>-types` interface with an exported **`run`-only** interface (same package ⇒ one version per stage). An exported interface must declare **no resources** — a resource in an exported interface is guest-owned, and our stages take host-owned ones. `postpass-text-postprocess` needs no `-types` half (its only resource, `config-view`, comes from the already-shared `slicer:config/config-types`).
 - Files `DEV-086` (the two-mechanism intermediate; owner #3). **References** `DEV-087` — does not re-file it.
+
+### From #4 `165_cli-binary-locator-extraction` (generated, PREFLIGHT PASS)
+
+Net-new:
+
+- Crate `crates/slicer-test-support` (lib `slicer_test_support`), std-only, zero `[dependencies]`: `pub fn workspace_root() -> PathBuf`, `pub fn pnp_cli_bin() -> PathBuf`, `pub fn staleness_reason(Option<SystemTime>, SystemTime) -> Option<String>`, `pub fn newest_source_mtime(&Path) -> SystemTime` — moved behavior-identical from the post-162 sites. `slicer-runtime/tests/common/slicer_cache.rs` keeps `pub use slicer_test_support::…` so downstream test files need no edits.
+- A new ADR `docs/adr/<NNNN>-host-side-test-support-crate.md` (number re-derived at write time) deciding that home; rejects the `pnp-cli` `test-support` feature, `slicer-sdk` (ADR-0004 is guest-side only), an `xtask` lib target, and reviving `slicer-test` (deleted by packet 78).
+
+Removed: the two mirror copies in `slicer-runtime/benches/gate_evidence.rs` (its "cannot import tests/common" justification comment was false — bench targets receive dev-dependencies) and `slicer-scheduler/tests/integration/dag_cli_integration.rs` (local `fn bin(`).
+
+Note: the scheduler test binary is `scheduler_integration` (`[[test]]` in `crates/slicer-scheduler/Cargo.toml`), not `dag_cli_integration`; filter tests with `-- dag_`.
