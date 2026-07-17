@@ -1,7 +1,8 @@
 //! Integration test (AC-9, packet 112 Step 9B): drives the real
 //! `arachne-perimeters.wasm` guest through the production `Layer::Perimeters`
-//! dispatch path and asserts it produces real variable-width walls via the
-//! host-service bridge (`slicer_sdk::host::generate_arachne_walls` ->
+//! dispatch path and asserts it produces real beading-pipeline walls with
+//! config-correct widths via the host-service bridge
+//! (`slicer_sdk::host::generate_arachne_walls` ->
 //! `slicer_core::arachne::pipeline::run_arachne_pipeline` on the host side).
 //!
 //! # Honesty note (no OrcaSlicer oracle)
@@ -36,10 +37,12 @@ use crate::common::TestModuleBundle;
 /// AC-9: a real 10mm square region, run through the real
 /// `arachne-perimeters.wasm` guest via `Layer::Perimeters`, must produce at
 /// least one `WallLoop`, ordered by ascending `perimeter_index`, each with a
-/// populated `ExtrusionPath3D` (>= 2 points), and must exhibit real per-vertex
-/// width variation (not every wall carries an identical constant width) —
-/// proving `run_perimeters` actually calls the Arachne beading-strategy
-/// pipeline rather than the pre-P112 skeleton stub.
+/// populated `ExtrusionPath3D` (>= 2 points), and — for this uniform square —
+/// exactly 3 walls whose widths all equal the configured 0.4mm, proving
+/// `run_perimeters` actually calls the Arachne beading-strategy pipeline
+/// rather than the pre-P112 skeleton stub AND that its width emission is in
+/// the width domain (not leaked spacing, not the retired wide-centre-bead
+/// regime).
 #[test]
 fn arachne_perimeters_simple_square_produces_walls() {
     let layer_index = 0u32;
@@ -228,32 +231,38 @@ fn arachne_perimeters_simple_square_produces_walls() {
         );
     }
 
-    // (d) Variable widths observable: not every wall's width_profile.widths
-    // is identical to every other's — the real Arachne pipeline emits both
-    // the outer wall (a 3-junction line closing back on itself per spoke) and
-    // multiple deeper insets (2-junction lines) with distinct width vectors
-    // for a 10mm square (confirmed empirically: 26 lines across 9 insets,
-    // width vectors including both `[0.0, 1.11, 0.0]` and `[1.11, 0.0]`
-    // shapes — never a single constant-width vector repeated for every wall).
-    assert!(
-        region.walls.len() > 1,
-        "expected more than one WallLoop to compare widths across, got {}",
+    // (d) Correct widths for a UNIFORM region: a 10mm square with all-default
+    // config (0.4mm walls, 0.2mm layer height, wall_count 3) must emit
+    // exactly 3 walls whose every per-vertex width equals the configured
+    // 0.4mm — the emission round-trip `flow_to_width(line_width_to_spacing(
+    // 0.4, 0.2), 0.2) = 0.4` (D-160 Bug B closure).
+    //
+    // History (2026-07-17 rewrite): this assertion used to demand
+    // NON-identical width vectors across walls, "confirmed empirically: 26
+    // lines across 9 insets" — an observation from the retired pre-P155
+    // 9-inset regime, where the odd-center over-cap branch dumped surplus
+    // thickness into wide centre beads (widths like 1.11mm). That was the
+    // defect this campaign fixed; the assertion was pinning it in place
+    // (the 7th such test — see docs/specs/arachne-parity-recovery.md).
+    // A uniform region under a correct beading strategy emits uniform,
+    // config-matching widths; variability here would be the BUG.
+    assert_eq!(
+        region.walls.len(),
+        3,
+        "a 10mm square at default wall_count 3 must emit exactly 3 walls, got {}",
         region.walls.len()
     );
-    let first_widths = &region.walls[0].width_profile.widths;
-    let all_identical = region
-        .walls
-        .iter()
-        .all(|w| &w.width_profile.widths == first_widths);
-    assert!(
-        !all_identical,
-        "expected variable widths across walls (not all width_profile.widths identical), \
-         got identical widths across all {} walls: {:?}",
-        region.walls.len(),
-        region
-            .walls
-            .iter()
-            .map(|w| &w.width_profile.widths)
-            .collect::<Vec<_>>()
-    );
+    const CONFIGURED_WIDTH_MM: f32 = 0.4;
+    const TOLERANCE_MM: f32 = 0.01;
+    for (i, wall) in region.walls.iter().enumerate() {
+        for &w in &wall.width_profile.widths {
+            assert!(
+                (w - CONFIGURED_WIDTH_MM).abs() < TOLERANCE_MM,
+                "wall[{i}] width {w}mm must equal the configured {CONFIGURED_WIDTH_MM}mm \
+                 (+/- {TOLERANCE_MM}mm). A value near 0.357mm means the beading SPACING \
+                 leaked out as the extrusion width (D-160 Bug B); a value well above \
+                 0.4mm means the retired wide-centre-bead regime is back."
+            );
+        }
+    }
 }
