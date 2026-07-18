@@ -320,7 +320,7 @@ annotation composed onto a geometry-bearing tap (e.g. `Layer::Slice` or
 ## Agent Documentation
 
 `docs/19_visual_debug.md` documents request authoring, bundle inspection,
-warnings, and resolution-cost guidance. The future visual-debug skill is an
+warnings, and resolution-cost guidance. The visual-debug skill (`.claude/skills/visual-debug/SKILL.md`, shipped in packet 161) is an
 independent diagnostic option paired with `debug-pipeline`: use visual-debug
 when a geometry defect must be localized; use debug-pipeline for timing, DAG,
 and manifest diagnosis. Neither skill requires the other.

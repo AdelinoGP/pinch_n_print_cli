@@ -436,7 +436,7 @@ which is a correctness degradation. Modules should return fatal errors for unrec
 Failure classes:
 
 - Fatal:
-  - `PaintRegionIR` is unavailable for a layer that declares paint-dependent semantics.
+  - The paint-segmentation output (per-variant `SliceIR.regions[*]` / `SlicedRegion.variant_chain`) is unavailable for a layer that declares paint-dependent semantics. (Pre-Packet-95 this was phrased as "`PaintRegionIR` unavailable"; that type was deleted in Packet 95.)
   - Annotation cardinality cannot be made parallel to contour points.
   - Overlap resolution encounters equal-precedence conflicting paint values.
 - Non-fatal (degraded allowed):

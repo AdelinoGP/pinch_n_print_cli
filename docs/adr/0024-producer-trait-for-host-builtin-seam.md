@@ -25,7 +25,7 @@ This makes the synthetic rows visible to `dag_cli` without requiring the host bu
 
 ## Consequences
 
-- **`pnp_cli dag claims` and `pnp_cli dag depends` are now complete.** A guest reading `PaintRegionIR` sees that the canonical writer is `paint-segmentation` (when a module is loaded) or `PAINT_SEGMENTATION_PRODUCER` (when host built-in handles the stage).
+- **`pnp_cli dag claims` and `pnp_cli dag depends` are now complete.** A guest reading `PaintRegionIR` sees that the canonical writer is `paint-segmentation` (when a module is loaded) or `PAINT_SEGMENTATION_PRODUCER` (when host built-in handles the stage). (`PaintRegionIR` itself was deleted in Packet 95 — per-variant polygons now live on `SliceIR.regions[*]` via `SlicedRegion.variant_chain`; the dag-claims/depends mechanism this example illustrates is unchanged.)
 - **The validator's claim-visibility check is uniform.** No more conditional walks for "is this a real module or a synthetic row?".
 - **Future host-service abstractions can follow the same pattern.** A future "pluggable repair / decimation module" that replaces a host built-in can simply implement `Producer` instead of forcing the host to pretend it's a `LoadedModule`.
 - **Trait surface is small on purpose.** Anything beyond stage/claims/IR-access stays out of `Producer`. New cross-cutting needs must be added consciously and not because "I needed this field over there".

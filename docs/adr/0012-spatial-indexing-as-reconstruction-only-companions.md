@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted (Packet 63 / TASK-200a-rtree).
+Superseded (Packet 95). The `PaintRegionIR` / `SemanticRegion` /
+`PaintRegionRTreeIndex` / `point_in_paint_region` machinery this ADR describes
+was deleted wholesale in Packet 95 (per-variant polygons are now inlined into
+`SliceIR.regions[*]` via `SlicedRegion.variant_chain`; there is no rtree
+companion). Retained as a historical record of the reconstruction-only
+spatial-index pattern. (Originally: Accepted, Packet 63 / TASK-200a-rtree.)
 
 ## Context
 

@@ -609,6 +609,9 @@ second line for structural correctness.
 
 ### Result propagation expectation
 
+Full `run_perimeters` signature (`crates/slicer-sdk/src/traits.rs::LayerModule`):
+`run_perimeters(&self, layer_index: u32, regions: &[SliceRegionView], paint: &PaintRegionLayerView, output: &mut PerimeterOutputBuilder, config: &ConfigView) -> Result<(), ModuleError>`.
+
 The `run_perimeters` and `run_wall_postprocess` trait methods return
 `Result<(), ModuleError>`. Every builder write that returns `Result` must
 be propagated. The TDD contract test

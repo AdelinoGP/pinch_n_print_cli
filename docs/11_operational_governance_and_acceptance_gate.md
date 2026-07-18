@@ -177,6 +177,7 @@ No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critic
 
 - Architecture Acceptance Gate result recorded in implementation status.
 - No unresolved critical deviations.
+- **Packets that modify seam-candidate generation, perimeter emission, or wall-loop content MUST include the executor test bucket (`cargo test -p slicer-runtime --test executor`) in their closure §Verification commands**, in addition to the named integration/unit tests targeting the packet's own ACs. A narrow-scope closure gate can miss regressions in fixture-driven executor tests (e.g. `cube_4color`) that exercise the same emission path — this rule was added retroactively after packet 108's closure gate missed 13 broken `cube_4color` executor tests.
 - Scenario traces from `10_scenario_traces.md` validated against current implementation.
 - Compatibility matrix checks executed on representative module set.
 - Performance and memory targets re-verified on reference fixture set.

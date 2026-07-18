@@ -222,7 +222,7 @@ cargo check --workspace --all-targets
 # narrow, proves the contract:
 cargo test -p slicer-runtime --test contract wit_drift_detection_tdd 2>&1 | tee target/test-output.log
 cargo test -p slicer-schema 2>&1 | tee target/test-output.log
-cargo test -p slicer-runtime --test contract dispatch_tdd 2>&1 | tee target/test-output.log
+cargo test -p slicer-runtime --test contract dispatch_protocol_tdd 2>&1 | tee target/test-output.log
 
 cargo clippy --workspace --all-targets -- -D warnings
 ```

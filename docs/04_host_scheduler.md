@@ -304,41 +304,6 @@ from `module_invocation_allowed_on_layer` in `crates/slicer-runtime/src/layer_ex
 dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
-### Host-Filtered Dispatch (Normative — Packet 92)
-
-In addition to the per-layer region-split filter above, the host applies a
-**paint-transparent dispatch gate** before invoking any module. This is the
-**host-filtered dispatch** contract:
-
-- A **paint-transparent** caller (one that does not declare any paint-mutating
-  or geometry-mutating stage claims) is allowed to invoke only stages that are
-  read-only with respect to paint and geometry IR. The predicate
-  `module_invocation_allowed_on_layer(...)` implements this gate.
-- A module that declares `[[region_split]]` semantics is considered
-  **paint-mutating**; paint-transparent callers cannot invoke it.
-- A module that claims any geometry-mutating stage (`MeshAnalysis`,
-  `LayerPlanning`, `Slice`, `ShellClassification`, `SupportGeometry`, etc.)
-  is similarly blocked for paint-transparent callers.
-- **Non-paint-transparent** callers (modules that declare at least one
-  paint-mutating or geometry-mutating claim) are **unrestricted** — the host
-  does not filter their invocations beyond the per-layer region-split check
-  above.
-
-This two-tier filter ensures that paint-transparent modules cannot silently
-corrupt shared paint/geometry state: the host gate is a hard precondition,
-not a module advisory.
-
-### Universal Empty-Polygon Dispatch Guard
-
-For **all** PrePass stages and all GCode-emitting stages, the host applies a
-universal guard before dispatching a module: if the module's input polygons
-are empty (zero contours, zero area), dispatch is skipped entirely. This
-applies regardless of the caller's paint-transparency status and regardless of
-the stage's position in the pipeline. The rationale: dispatching a module
-with empty inputs is always a no-op (there is no geometry to process, slice,
-or annotate), so skipping it avoids wasted WASM-call overhead and keeps the
-instrumentation log free of phantom empty-stage entries.
-
 ---
 
 ## Phase 3 — DAG Validation
@@ -1339,22 +1304,24 @@ function (not a `From` impl — orphan rule prevents that). This
 preserves ADR-0001's in-stage-commit pattern without introducing a
 `slicer-gcode` → `slicer-runtime` circular dependency.
 
-#### Overhang Classifier Prepass (Normative — Packet 57)
+#### Overhang Classification (Normative — Packets 88 / 106 / 107, ADR-0008 / ADR-0031)
 
-`DefaultGCodeEmitter::emit_gcode` runs an **embedded prepass** that
-invokes `slicer_core::algos::overhang_classifier::classify_layers`
-once per print (after cloning the layer set, before per-layer
-emission). The classifier walks the layer set and stamps
-`Point3WithWidth.overhang_quartile` (`1..=4`) on every wall-family
-extrusion point against the previous layer's support polygons. The
-emission path then uses `resolve_feedrate(role, speed_factor)` to
-dispatch the matching `overhang_*_4_speed` config key per wall point.
+> **Superseded:** the Packet-57 embedded `emit_gcode` prepass and
+> `slicer_core::algos::overhang_classifier::classify_layers` were **deleted**
+> (Packet 88 relocated the algorithm out of `slicer-core`; there is no
+> `overhang_classifier.rs` today). Overhang classification now runs in two
+> pieces:
 
-Why inside `emit_gcode`: this single call site covers both pipeline
-arms (`pnp_cli slice` and the WASM dispatch path) without separate
-plumbing in `crates/slicer-runtime/src/pipeline.rs`. The classifier short-circuits when all four
-`overhang_*_4_speed` keys are zero (legacy-equivalent mode produces
-byte-identical output to pre-Packet-57).
+- **PrePass::OverhangAnnotation** (Packet 106/107, ADR-0031) stamps
+  `Point3WithWidth.overhang_quartile` per wall-family vertex. Since the
+  2026-07-10 inversion (see `D-106-OVERHANG-AFTER-SLICE-INVERSION`) the stage
+  runs after `PrePass::Slice` and derives bands by diffing consecutive
+  `SliceIR` footprints rather than computing mesh cross-sections.
+- **overhang-classifier-default** (Packet 88, ADR-0008), a `FinalizationModule`
+  at `PostPass::LayerFinalization`, consumes the per-vertex `overhang_quartile`
+  and applies the matching `overhang_*_4_speed` config key as `SetSpeedFactor`
+  mutations. Users opt out by curating their module dir without it; with all
+  four keys zero the module short-circuits (byte-identical to pre-Packet-57).
 
 ```
 ;LAYER_CHANGE

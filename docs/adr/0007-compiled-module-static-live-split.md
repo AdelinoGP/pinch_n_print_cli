@@ -124,9 +124,13 @@ already been costed.
   WAT-compiled component + empty `ConfigView`; overrides: `.no_wasm()`,
   `.with_config(ConfigView)`, `.with_wat(&str)`. Tests obtain a single value
   and assert against `fx.arena.*` after `fx.run_*(...)`.
-- The four runner traits (ADR-0005) are wrapped by **four per-runner methods**:
-  `run_layer(&GlobalLayer)`, `run_prepass()`,
-  `run_finalization(&[LayerCollectionIR])`, `run_postpass(&GCodeIR)`. **No
+- The four runner traits (ADR-0005) are wrapped by **four per-runner methods**
+  (actual shipped signatures):
+  `run_layer(&mut self, layer: &GlobalLayer) -> Result<(), slicer_ir::LayerStageError>`,
+  `run_prepass(&self) -> Result<slicer_core::PrepassStageOutput, slicer_ir::PrepassRunnerError>`,
+  `run_finalization(&self, layers: &mut Vec<LayerCollectionIR>) -> Result<slicer_ir::FinalizationOutput, slicer_ir::FinalizationError>`,
+  `run_postpass(&self, gcode: &mut GCodeIR) -> Result<slicer_ir::PostpassOutput, slicer_ir::PostpassError>`
+  (mutability follows the underlying `*StageRunner` trait / commit-path requirements). **No
   generic `run::<R: StageRunner>`** and **no type-state
   `DispatchFixture<LayerStage>`**: both were costed and rejected because the
   generic parameter would spread to every helper signature in the
