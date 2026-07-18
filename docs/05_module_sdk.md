@@ -720,6 +720,7 @@ candidate/placement — operate independently.
 - For `layer-parallel-safe` modules, multiple instances may exist simultaneously.
 - Module state must not assume global singleton semantics across instances.
 - `on_print_end()` is best-effort cleanup; correctness must not depend on it running after fatal abort.
+- **Per-layer config re-read (Normative — Packet 102).** Per-layer stage methods (e.g. `run_perimeters`) MUST re-read config via `_config.get*` on every call rather than caching values captured in `on_print_start`. Caching defeats the host's `LayerOverrides` mechanism, which can change a config value's effective resolution on a per-layer basis.
 
 ### Stable Entity IDs (packet 39)
 
