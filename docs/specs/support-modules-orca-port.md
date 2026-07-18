@@ -21,7 +21,7 @@ extracted helpers) it required. `TASK-163b` remains open in
 `docs/07_implementation_status.md` against this gap.
 
 This spec plans the next iteration of support work. It is sequenced after
-packet 95 (`.ralph/specs/95_paint-segmentation-orca-port/`) lands, because
+packet 95 lands, because
 P95 deletes `PaintRegionIR` — the IR all three support modules currently
 read from. The plan splits into three remediation buckets keyed by
 relationship to P95, and two execution blocks (B-now, C-plan) keyed by what
@@ -45,7 +45,7 @@ there.
   - `CONTEXT.md` — claim, blackboard, active region, paint semantic vocabulary.
 - **Paint pipeline dependency**:
   - `docs/specs/paint-pipeline-orca-parity-roadmap.md` — D8 (delete `PaintRegionIR`), D14 (modifier-volume support → `segment_annotations`).
-  - `.ralph/specs/95_paint-segmentation-orca-port/packet.spec.md` — P95 scope and deletion sweep.
+  - the packet-95 spec — P95 scope and deletion sweep.
 - **Predecessor packets (closed; in `.ralph/specs/_OLD/`)**:
   - `28_tree-support-multi-layer-propagation`, `30_support-planner-prepass-wit-plumbing`, `31a_support-geometry-prepass-and-layer-height`, `31b_support-planner-algorithmic-parity`.
 
@@ -124,7 +124,7 @@ warrants its own design space. These constitute **Block C** (below).
 | Polygon offset (Clipper-backed) | `polygon_ops::offset(polys, delta_mm, join, arc_tol)` | `crates/slicer-core/src/polygon_ops.rs:185` |
 | Polygon union/intersection/difference | `polygon_ops::{union, intersection, difference}` | `crates/slicer-core/src/polygon_ops.rs:93-108` |
 | Polygon simplicity validation | `validate_polygon_simplicity` | `crates/slicer-core/src/polygon_ops.rs:131` |
-| ExPolygon-aware helpers post-P95 | `union_ex`, `intersection_ex`, `difference_ex`, `opening`, `closing_ex` | Added by P95 sub-step 0 (`.ralph/specs/95_paint-segmentation-orca-port/packet.spec.md` AC-1) |
+| ExPolygon-aware helpers post-P95 | `union_ex`, `intersection_ex`, `difference_ex`, `opening`, `closing_ex` | Added by P95 sub-step 0 (the packet-95 spec AC-1) |
 | Per-role-per-claim dispatch | `SliceRegionView::should_emit(role)` + `held_claims` | `crates/slicer-sdk/src/views.rs:330-359` |
 | Per-region fill area carriers | `SliceRegionView::{infill_areas, top_solid_fill, bottom_solid_fill, bridge_areas}` | `crates/slicer-sdk/src/views.rs:228-302` |
 | Coordinate conversion | `Point2::from_mm`, `mm_to_units`, `units_to_mm` | `crates/slicer-ir/src/slice_ir.rs` |

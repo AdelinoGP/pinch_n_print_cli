@@ -4,7 +4,7 @@
 **Branch:** `parity/arachne`
 **Red suite pinned at:** `b2ea52b7` (`test(arachne): add red tests for second-pass parity audit N1-N4`)
 **Authoritative audit:** `target/arachne_parity_audit_20260706_020657.md` (findings N1–N13)
-**Prior packet:** `.ralph/specs/113c-arachne-faithful-graph-construction/` (status `implemented`) — its `requirements.md` `orca-delegation` snippet is carried verbatim into every new packet.
+**Prior packet:** packet 113c (`113c-arachne-faithful-graph-construction`, status `implemented`) — its `requirements.md` `orca-delegation` snippet is carried verbatim into every new packet.
 
 ## State of the world
 
