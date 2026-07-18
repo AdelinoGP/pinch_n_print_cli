@@ -188,7 +188,7 @@ All test fixtures committed to the repository must be regeneratable from a deter
 Rules:
 
 - **Pin a canonical SHA-256 at commit time.** Every fixture file carries an explicit hash in its packet closure-log (and in the file's authoring-procedure comment block where applicable). Reviewers can rerun the procedure and compare.
-- **Prefer parametric scripts.** A small Python emitter that writes binary STL/3MF deterministically (IEEE 754 bit patterns, explicit byte order, no timestamp metadata) is the canonical pattern. Packet 90's `regression_wedge.stl` authoring procedure (`.ralph/specs/90_regression-wedge-stl-swap/closure-log.md` §Authoring Procedure) is the worked example.
+- **Prefer parametric scripts.** A small Python emitter that writes binary STL/3MF deterministically (IEEE 754 bit patterns, explicit byte order, no timestamp metadata) is the canonical pattern. Packet 90's `regression_wedge.stl` authoring procedure (its closure-log §Authoring Procedure) is the worked example.
 - **If determinism is unavoidably broken** (e.g. third-party tool with non-deterministic output), document the source explicitly: tool name, version, OS, timestamp seed. Pin the resulting SHA and treat the tool version as part of the contract.
 - **Regeneration instructions stay in the closure-log.** They are NOT inlined into source comments (would bloat the artefact); they ARE referenced from the related test file with a one-line pointer.
 - **Verification gate.** Before any fixture is replaced, regenerate it from the documented procedure and confirm SHA equivalence. If the fixture must change shape (new feature, new geometry), pin a NEW SHA in the closure-log along with a rationale; do not silently update the old one.

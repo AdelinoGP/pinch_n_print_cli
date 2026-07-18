@@ -671,7 +671,7 @@ priority   = 100               # Core priorities (locked):
                                 #   fuzzy_skin = 200
                                 # Community semantics must have priority >= 1000
                                 # (COMMUNITY_PRIORITY_FLOOR).
-value-type = "tool-index"      # flag | tool-index | custom-string
+value_type = "tool_index"      # flag | tool_index | custom_string
                                 # `scalar` is REJECTED at manifest load —
                                 # Scalar paints route through
                                 # SlicedRegion.segment_annotations instead.

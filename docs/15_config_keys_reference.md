@@ -598,7 +598,7 @@ Keys registered on both `classic-perimeters` and `arachne-perimeters`, consumed 
 ## Wall count, winding, and simplification tolerances (packet 151)
 
 Six keys registered on `arachne-perimeters` closing Arachne parity gaps
-G1/G2/G7/G8/G9 (packet `.ralph/specs/151-arachne-winding-wallcount-dispatch/`).
+G1/G2/G7/G8/G9 (packet 151).
 Defaults and source-of-truth live in
 `modules/core-modules/arachne-perimeters/arachne-perimeters.toml`.
 

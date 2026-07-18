@@ -46,11 +46,20 @@ Determinism bounds:
 - Any module converting Z to scaled integer units for internal math must convert back to mm before writing IR.
 - `catchup_z_bottom` and `effective_layer_height` must remain finite, non-negative, and deterministic under the rounding policy in § "Conversion & Determinism (Normative)" above.
 
-## Transform Application — Query-Time, Not Load-Time (Normative — packet 10)
+## Transform Application (Normative — packet 10; load-time baking per packets 75 / 166)
 
-Object mesh transforms (`ObjectMesh.transform`) are **not** baked into mesh
-vertices at load time. Raw vertices stay in object-local space; transforms
-apply at host-service query time (raycasts, normals, bounding queries).
+The build-item/object transform **is** baked into mesh vertices at load time.
+Every loader path (STL, OBJ, 3MF) constructs `ObjectMesh` via
+`assemble_object` (`crates/slicer-model-io/src/loader.rs`), which leaves
+`ObjectMesh.transform` set to **identity** (see docs/02 § "`ObjectMesh` Assembly
+Contract"); the vertices it receives are already in baked space, so object-local
+and world coordinates coincide for loaded models.
+
+The host-service transform machinery below still exists and **does** apply a
+non-identity `ObjectMesh.transform` when one is present (exercised directly by
+`object_bounds_transform_tdd` / `raycast_z_down_transformed_object_tdd`, which
+inject non-identity transforms). For models produced by the loaders it is a
+no-op because the stored transform is identity.
 
 Conventions:
 
@@ -64,10 +73,11 @@ Conventions:
   (degenerate / inside-out / non-finite), `object_world_z_extent(object_id)`
   returns `None` and the object contributes zero layers. This is not an
   error — it surfaces as a slicing warning in the per-object diagnostics.
-- **Scale constraints:** non-uniform scale is rejected with fatal error
-  `NON_UNIFORM_SCALE_UNSUPPORTED { object_id, scale_x, scale_y, scale_z }`.
-  Mirroring (negative scale) is allowed if all three signs match (uniform
-  inversion).
+- **Scale constraints:** non-uniform scale is **supported** — it is baked
+  per-axis into the mesh vertices at load time. Packet 166 deleted the former
+  `validate_non_uniform_scale` guard and its `NON_UNIFORM_SCALE_UNSUPPORTED`
+  error; there is no scale-uniformity gate. Mirroring (negative scale) is
+  likewise baked into the vertices.
 - **Floor enforcement:** if the transformed object's `z_min < 0.0` after the
   build-plate floor adjustment, the host emits fatal `WORLD_Z_BELOW_FLOOR
   { object_id, z_min }` — slicing below the build plate is never permitted.
@@ -308,11 +318,13 @@ The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i
 
 Every multiplied epsilon usage must be replaced with a named constant in the consuming crate (typically `slicer-core` or `slicer-helpers`) that documents the physical meaning. If the right named constant does not exist, add it with a full comment before using it. A PR containing `SCALED_EPSILON * N` for any N > 1 should be rejected in code review.
 
-<!-- VERIFY: there is no single `crates/slicer-core/src/geometry.rs` file
-     today; geometry utilities live across `aabb_lines_2d.rs`, `aabb_tree.rs`,
-     `paint_region.rs`, `polygon_ops.rs`, and `triangle_mesh_slicer.rs`.
-     Place new named epsilons next to the code that consumes them and
-     re-export from `slicer_core::lib` if widely shared. -->
+<!-- Geometry utilities live across `crates/slicer-core/src/`:
+     `geometry.rs` (ray-cast/closest-point API, added packet 103),
+     `aabb_tree.rs`, `polygon_ops.rs`, `polygon_tree.rs`, `medial_axis.rs`,
+     and `triangle_mesh_slicer.rs`. (`aabb_lines_2d.rs` was relocated into the
+     overhang-classifier-default guest in packet 88; `paint_region.rs` was
+     deleted in packet 95.) Place new named epsilons next to the code that
+     consumes them and re-export from `slicer_core::lib` if widely shared. -->
 
 Suggested named epsilons and their physical meanings (define when first needed):
 

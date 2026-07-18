@@ -8,7 +8,7 @@ not be recorded retroactively once the packet closes.
 
 ## Context
 
-Packet 113b (`.ralph/specs/113b-arachne-topology-faithfulness`) set out to build a "synthetic
+Packet 113b set out to build a "synthetic
 quad/rib topology pass" faithful to OrcaSlicer's `makeRib`, gating four dependent Arachne passes
 (centrality, bead count, transitions, `connectJunctions`). What actually shipped
 (`crates/slicer-core/src/skeletal_trapezoidation/rib.rs::build_quad_rib_topology`) only inserts

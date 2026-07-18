@@ -130,7 +130,7 @@ Per-manifest validation (Packet 92):
    is `1000`; core semantics (`material = 100`, `fuzzy_skin = 200`)
    are listed in `CORE_REGION_SPLIT_PRIORITIES`.
 4. **Core semantic with `priority` ≠ registry value** → rejected
-   (`LoadErrorKind::CoreSemanticPriorityMismatch`).
+   (`LoadErrorKind::CorePriorityMismatch`).
 
 Cross-manifest **tied-priority warning** (non-fatal): if two distinct
 semantics from different manifests declare the same priority, a
@@ -501,8 +501,7 @@ Selection rules, in order:
    variable-width beading pipeline is not designed to emit, so upstream always
    falls back to the classic perimeter generator in vase mode. The fallback
    lives in the scheduler/runtime selection path, not in either perimeter
-   module (gap G8, closed by packet
-   `.ralph/specs/151-arachne-winding-wallcount-dispatch/`).
+   module (gap G8, closed by packet 151).
 
 Unlike the fill claims, `perimeter-generator` is a stable single-owner claim
 (see the Allowed Claim Transition Matrix in `docs/01_system_architecture.md`):
@@ -708,7 +707,7 @@ kernel uses it to:
    ActiveRegion)` — see `docs/02_ir_schemas.md` IR 5 § Config Interner.
 3. Detect Scalar paint values defensively: any `PaintValue::Scalar`
    encountered in a region-split path becomes
-   `RegionMappingError::DeterministicConflict` (Packet 93 guard, the
+   `RegionMappingError::ScalarInRegionSplitFacetValue` (Packet 93 guard, the
    manifest validator from Packet 92 normally catches it first).
 
 `enumerate_canonical_chains` produces chains deterministically in

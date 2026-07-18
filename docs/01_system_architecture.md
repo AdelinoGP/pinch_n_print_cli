@@ -923,11 +923,14 @@ roots on stderr in priority order before module discovery begins.
 ## Crate Responsibilities — `slicer-core`
 
 `slicer-core` owns per-layer polygon-op primitives used across the pipeline.
-Packet 103 added the following to `crates/slicer-core/src/geometry/`:
-`offset2_ex` (two-step inset/outset for robust contour shrinkage), `medial_axis`
-(skeleton extraction for thin-wall detection), `polygon_tree` (nested contour
-hierarchy builder), and `keep_largest_contour_only` (post-clip island filter).
-These are the canonical host-side implementations; guests must not duplicate them.
+Packet 103 added the following (each in its own module under `crates/slicer-core/src/`):
+`offset2_ex` (two-step inset/outset for robust contour shrinkage) and
+`keep_largest_contour_only` (post-clip island filter) in `polygon_ops.rs`,
+`medial_axis` (skeleton extraction for thin-wall detection) in `medial_axis.rs`,
+`polygon_tree`/`build_polygon_tree` (nested contour hierarchy builder) in `polygon_tree.rs`,
+and the OrcaSlicer-faithful ray-cast API (`Vec2`, `Ray`, `RayHit`, `ray_to_polygons`,
+`closest_point_on_segment`, `closest_point_on_polygons`) in `geometry.rs` (a single file,
+not a directory). These are the canonical host-side implementations; guests must not duplicate them.
 
 Packet 105 added two further modules to `crates/slicer-core/src/`:
 `flow` (`line_width_to_spacing` — converts a nominal line width to the OrcaSlicer-parity

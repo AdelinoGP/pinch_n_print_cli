@@ -1087,7 +1087,7 @@ pub struct Point2WithWidth { pub x: f32, pub y: f32, pub width: f32 }
 pub struct ThickPolyline { pub points: Vec<Point2WithWidth> }
 ```
 
-`variable_width(thick: ThickPolyline, role: ExtrusionRole) -> ExtrusionPath3D`
+`variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPath3D`
 maps each `Point2WithWidth` to a `Point3WithWidth` with `z = 0.0`,
 `flow_factor = 1.0`, `overhang_quartile = None`, `speed_factor = 1.0`, and the
 supplied `role` passed through unchanged.
