@@ -1,5 +1,14 @@
 # Pinch 'n Print — Architecture Gate Metrics
 
+**What this covers:** the objective, measurable thresholds (determinism, memory,
+timing, fixture budgets) that the Architecture Acceptance Gate checks.
+
+**Who it's for:** maintainers running the gate, and contributors checking a
+change against a numeric budget.
+
+**Prerequisites:** the governance policy that consumes these thresholds is
+`11_operational_governance_and_acceptance_gate.md`.
+
 This document defines objective thresholds for the Architecture Acceptance Gate.
 
 ## Determinism

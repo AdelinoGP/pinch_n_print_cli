@@ -1,8 +1,20 @@
 # Pinch 'n Print — System Architecture
 
+**What this covers:** the three pipeline tiers (PrePass, per-layer, PostPass),
+what each stage reads and writes, who owns which data, the claim system, the
+memory model, and the module search path.
+
+**Who it's for:** contributors changing pipeline behaviour, module authors
+deciding which stage to target, and reviewers checking a change against the
+architecture.
+
+**Prerequisites:** read `00_project_overview.md` first for the crate layout and
+the vocabulary. IR struct fields are in `02_ir_schemas.md`; scheduler mechanics
+(DAG validation, execution phases) are in `04_host_scheduler.md`.
+
 ## High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    FRONTEND (separate process)                  │
 │              Communicates via CLI args / Unix socket            │
@@ -60,55 +72,75 @@
 Normative terminology is maintained in `../CONTEXT.md`; end-to-end edge-case
 traces are maintained in:
 
-- `./docs/10_scenario_traces.md`
+- `10_scenario_traces.md`
 
 ### Tier 1 — PrePass (Sequential, Whole-Model)
 
 Runs once before any layer is sliced. Results are written to the Blackboard and
 become immutable during per-layer processing. Sub-facet paint strokes are
-normalized into whole-triangle assignments at model-load time by the host
-loader's `split_triangle_strokes`; the prepass `PrePass::MeshSegmentation` stage
-is retired (the loader's output is the authoritative normalized form).
+normalized into whole-triangle assignments at model-load time by
+`split_triangle_strokes` in the host loader (`crates/slicer-model-io/src/loader.rs`);
+the prepass `PrePass::MeshSegmentation` stage is retired (the loader's output is
+the authoritative normalized form).
 
 #### PrePass Stage Order
 
-The seven prepass stages execute in this order:
+Nine `PrePass::*` stages execute, in this order. The retired
+`PrePass::MeshSegmentation` is not among them: `split_triangle_strokes` in
+`crates/slicer-model-io/src/loader.rs` already normalizes sub-facet paint
+strokes at load time. `SeamPlanning` and `SupportGeometry`'s guest half run only when a
+corresponding module is loaded; the rest always run.
 
-```
-1. PrePass::MeshSegmentation     (retired — loader already normalizes strokes)
-2. PrePass::MeshAnalysis
-3. PrePass::LayerPlanning
+```text
+1. PrePass::MeshAnalysis
+2. PrePass::LayerPlanning
+3. PrePass::SeamPlanning         (guest; runs when a seam-planner module is loaded)
 4. PrePass::RegionMapping        (host-built-in; cross-product variant expansion)
 5. PrePass::Slice                (host-built-in; produces SliceIR)
-6. PrePass::OverhangAnnotation   (introduced P106; runs AFTER Slice — derives overhang from the committed SliceIR)
-7. PrePass::PaintSegmentation    (post-slice; reads SliceIR, writes via replace_slice_ir)
-8. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
+6. PrePass::OverhangAnnotation   (host-built-in; runs AFTER Slice — derives overhang from the committed SliceIR)
+7. PrePass::ShellClassification  (host-built-in; annotates the committed SliceIR)
+8. PrePass::PaintSegmentation    (host-built-in; reads the annotated SliceIR, writes via replace_slice_ir)
+9. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
 ```
 
-Stages 1–3 are the classic mesh-analysis and layer-planning pipeline.
-`PrePass::RegionMapping` (stage 4) performs cross-product expansion: each
-`(layer, object, active_region)` is split into one `RegionPlan` per canonical
-**variant chain** (see §"Variant-Chain Region Splitting" below). `PrePass::Slice`
-(stage 5) then produces `SliceIR`. `PrePass::OverhangAnnotation` (stage 6;
-introduced P106) runs **after Slice** and populates per-layer quartile band
-polygons into `SurfaceClassificationIR` by diffing consecutive-layer `SliceIR`
-footprints (OrcaSlicer's `detect_overhangs_for_lift` shape) — never re-slicing
-the mesh — so Tier 2 consumers can read pre-classified overhang data without
-cross-layer access. `PrePass::PaintSegmentation` (stage 7) runs after
-`host:slice` and `host:shell_classification` and writes per-variant polygons
-back into `SliceIR` via `replace_slice_ir`. `PaintRegionIR` is deleted.
-`PrePass::SupportGeometry` (stage 8) runs last so it can consume the
-fully-split `SliceIR`.
+The executed sequence above is the `run_builtin_stage` call chain in
+`slicer_runtime::prepass`. The declared stage list — `STAGE_ORDER` in
+`slicer_scheduler::execution_plan`, which the scheduler's validation passes use
+for ordering comparisons — contains the same stage ids but **not** in this
+sequence.
 
-**Note:** `host:slice` and `host:shell_classification` are Layer-stage host
-calls (not `PrePass::*` enum variants) that run between `PrePass::MeshAnalysis`
-(stage 2) and `PrePass::PaintSegmentation` (stage 6) in the broader pipeline.
-The packet's AC-1 "Given" referenced them as part of a nine-stage prepass-style
-sequence; this doc enumerates the seven `PrePass::*`-tagged stages per the
-post-roadmap type system, with `host:slice` and `host:shell_classification`
-treated as Layer-stages that bracket stage 6.
+<!-- VERIFY: STAGE_ORDER (slicer_scheduler::execution_plan) lists SeamPlanning and
+     PaintSegmentation before RegionMapping/Slice, and SupportGeometry last, which
+     does not match the prepass.rs execution chain documented above. Confirmed with
+     the maintainer (2026-07-17) as unintended divergence, i.e. a code defect rather
+     than a documented invariant — so this doc describes execution order only and
+     does not treat the declared order as normative. Remove this marker once
+     STAGE_ORDER is reordered to match. -->
 
-```
+Stages 1–2 are the classic mesh-analysis and layer-planning pipeline.
+`PrePass::SeamPlanning` (stage 3) is a guest stage claimed by
+`seam-planner-default`. `PrePass::RegionMapping` (stage 4) performs
+cross-product expansion: each `(layer, object, active_region)` is split into one
+`RegionPlan` per canonical **variant chain** (see §"Variant-Chain Region
+Splitting" below). `PrePass::Slice` (stage 5) then produces `SliceIR`.
+`PrePass::OverhangAnnotation` (stage 6) runs **after Slice** and populates
+per-layer quartile band polygons into `SurfaceClassificationIR` by diffing
+consecutive-layer `SliceIR` footprints (OrcaSlicer's `detect_overhangs_for_lift`
+shape) — never re-slicing the mesh — so Tier 2 consumers can read pre-classified
+overhang data without cross-layer access. `PrePass::ShellClassification`
+(stage 7) refines the freshly committed `SliceIR` with shell indices and
+polygon-precise top/bottom solid fill. `PrePass::PaintSegmentation` (stage 8)
+runs after ShellClassification — it needs the annotated `SliceIR` — and writes
+per-variant polygons back via `replace_slice_ir`. `PaintRegionIR` is deleted.
+`PrePass::SupportGeometry` (stage 9) runs last so it can consume the
+fully-split, colour-resolved `SliceIR`.
+
+**Note:** `host:slice` and `host:shell_classification` are the host built-ins
+backing `PrePass::Slice` and `PrePass::ShellClassification` respectively. Both
+are PrePass stages; neither is a Layer-stage call. The producer definitions are
+in `slicer_runtime::builtins::prepass_slice_producer`.
+
+```text
 PrePass::MeshSegmentation  [retired — loader does this work]
   Note: The host loader's `split_triangle_strokes` normalizes sub-facet paint
   strokes into whole-triangle `facet_values` at load time. No separate prepass
@@ -135,8 +167,8 @@ PrePass::OverhangAnnotation  [introduced P106; host built-in host:overhang_annot
   Input:  SliceIR (committed by PrePass::Slice) + LayerPlanIR + SurfaceClassificationIR
   Output: SurfaceClassificationIR.overhang_quartile_polygons (per-layer HashMap<u32, Vec<QuartileBand>>)
   Purpose: For each object, take its per-layer footprints from the committed SliceIR and diff
-           consecutive layers (current \ previous) — OrcaSlicer's detect_overhangs_for_lift
-           (PrintObject.cpp:880-908), which diffs consecutive lslices; the object meshes are
+           consecutive layers (current \ previous) — canonical detect_overhangs_for_lift
+           (PrintObject.cpp), which diffs consecutive lslices; the object meshes are
            sliced exactly once (in PrePass::Slice), never re-sliced here. Partition each
            overhang footprint into 4 quartile bands (thresholds: line_width × {0.5, 1.0,
            1.5, 2.0}). Band 1 is closest to support; band 4 is the most overhanging edge.
@@ -155,8 +187,9 @@ PrePass::RegionMapping  [host-built-in, not a module stage]
            RegionPlan's config is the base config plus per-semantic overlays
            contributed by each semantic in the chain. Configs are interned via
            ConfigId. Pre-computed so per-layer hot path has zero config
-           resolution work. See §"Variant-Chain Region Splitting" below and
-           `docs/02_ir_schemas.md` (IR 5) for the RegionKey/RegionPlan shapes.
+           resolution work. See §"Variant-Chain Region Splitting" in this
+           document, and `02_ir_schemas.md` §"IR 4 — RegionMapIR" for the
+           RegionKey/RegionPlan shapes.
 
 PrePass::PaintSegmentation
   Input:  MeshIR (with whole-triangle paint assignments normalized at load)
@@ -167,10 +200,10 @@ PrePass::PaintSegmentation
   Purpose: For every layer Z and every region-split semantic, compute the 2D
            polygon regions that carry that semantic's paint value using
            OrcaSlicer-parity Voronoi-based segmentation. Writes per-variant
-           polygons into SliceIR.regions via replace_split_ir. Each
+           polygons into SliceIR.regions via replace_slice_ir. Each
            SlicedRegion carries its variant_chain. PaintRegionIR is deleted.
-           See `docs/specs/orca-paint-segmentation-parity.md` for the full
-           7-phase algorithm.
+           See `specs/_OLD/orca-paint-segmentation-parity.md` for the full
+           7-phase algorithm (superseded spec, retained for the algorithm write-up).
 
 PrePass::SupportGeometry  [host built-in always runs; guest optional]
   Input  (host built-in): LayerPlanIR + MeshIR
@@ -247,7 +280,7 @@ Catch-up behavior is computed in `PrePass::LayerPlanning` and is never recompute
 
 Each layer runs independently. Layers share no mutable state. The Blackboard is read-only during this tier.
 
-```
+```text
 Layer::Slice
   Input:  MeshIR (immutable), LayerPlanIR (immutable)
   Output: SliceIR
@@ -319,7 +352,8 @@ Layer::Perimeters
            `sync_perimeter_infill_areas_into_slice`. Precedence
            `bridge > bottom > top > sparse` (OrcaSlicer parity). See
            `crates/slicer-runtime/src/region_partition.rs` and
-           `docs/specs/infill-fill-partition-plan.md`.
+           `specs/_OLD/infill-fill-partition-plan.md` (superseded spec,
+           retained for the partition write-up).
 
 Layer::PerimetersPostProcess
   Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)
@@ -463,7 +497,7 @@ All PostPass stages run after all per-layer processing is complete.
 The full `Vec<LayerCollectionIR>` is visible to every stage in this tier.
 None of these stages may be parallelized.
 
-```
+```text
 PostPass::LayerFinalization
   Input:  Vec<LayerCollectionIR> (all layers, mutable — may append entities or insert synthetic layers)
           Blackboard (immutable)
@@ -637,7 +671,7 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 
 ## Memory Model
 
-```
+```text
 Host process memory layout:
 
 ┌─────────────────────────────────────┐
@@ -679,15 +713,18 @@ Per WASM instance:
 
 The host emits a line-delimited JSON event stream during slicing. **For the
 authoritative event schema, ordering guarantees, and transport details, see
-`./docs/09_progress_events.md`.** Event types are `phase_start`,
+`09_progress_events.md`.** The always-on event types are `phase_start`,
 `phase_complete`, `layer_start`, `layer_complete`, `module_error`,
-`validation_error`, and `slice_complete`. The runtime emitter is implemented in
+`validation_error`, and `slice_complete`. Four more — `stage_start`,
+`stage_complete`, `module_start`, and `module_complete` — appear only on the
+instrumented stream (`slice --instrument-stderr`; see `17_agent_debugging.md`).
+The runtime emitter is implemented in
 `crates/slicer-runtime/src/progress_events.rs`.
 
 The frontend can also query the loaded modules' config schemas (one entry per
 module, per field — `{key, type, values, default, display, group}`). The CLI
 subcommand and JSON shape are implemented in `crates/pnp-cli/src/main.rs`
-(`ConfigSchema` subcommand) and documented in `./docs/03_wit_and_manifest.md`
+(`ConfigSchema` subcommand) and documented in `03_wit_and_manifest.md`
 under "Manifest config schema query".
 
 ---
@@ -705,7 +742,7 @@ under "Manifest config schema query".
 
 Claims are named exclusive resource slots. They prevent two modules from both trying to generate perimeters (or infill, or supports) for the same region simultaneously.
 
-```
+```text
 Built-in claim names:
   perimeter-generator     — generates wall loops for a region
   infill-generator        — generates infill paths for a region
@@ -785,10 +822,11 @@ Validation rule:
 two platform defaults, in the priority order listed below. Within each root
 the discovery contract is unchanged: `*.toml` manifests at the root level or
 one subdirectory deep, each requiring a same-stem `*.wasm` companion.
-Assembly lives in `crates/slicer-runtime/src/module_search_path.rs`
+Assembly lives in `crates/slicer-scheduler/src/module_search_path.rs`
 (`assemble_search_roots`); per-root scanning and intra-root `module.id`
-deduplication live in `crates/slicer-runtime/src/manifest.rs`
-(`load_modules_from_roots`).
+deduplication live in `crates/slicer-scheduler/src/manifest.rs`
+(`load_modules_from_roots`). Both are re-exported from `slicer_runtime::`, so
+callers may reach them under either crate path.
 
 ### Priority tiers (highest first)
 

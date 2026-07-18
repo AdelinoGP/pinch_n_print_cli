@@ -1,5 +1,15 @@
 # Pinch 'n Print — Project Overview
 
+**What this covers:** the project's goals, the four architectural decisions that
+shape everything else, the crate layout, pinned dependency versions, and the
+index of which doc answers which question.
+
+**Who it's for:** anyone arriving at the project — contributors, module authors,
+and reviewers — plus agents needing a first-hop index into `docs/`.
+
+**Prerequisites:** none. This is the entry point. Read
+`01_system_architecture.md` next for the pipeline in depth.
+
 ## Vision
 
 Pinch 'n Print is a high-performance, modular FDM/SLA 3D printer slicing engine where every slicing feature is a first-class, independently compiled, community-extensible module. The core engine acts as a host/runner for these modules. It has zero UI concern.
@@ -69,32 +79,36 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 ## Terminology (Canonical)
 
-- The project glossary is defined in `../CONTEXT.md`; normative edge-case traces are in `./docs/10_scenario_traces.md`.
+- The project glossary is defined in `../CONTEXT.md`; normative edge-case traces are in `10_scenario_traces.md`.
 
 ## Normative Document Map (LLM/Reviewer Fast Index)
 
 Use this table as the first-hop index when answering architecture or implementation questions.
 
+Paths below are relative to this file (`docs/`).
+
 | Question type                                             | Canonical doc                                             |
 |-----------------------------------------------------------|-----------------------------------------------------------|
-| Stage order, ownership, claims, paint propagation         | `./docs/01_system_architecture.md`                        |
-| IR fields, IDs, config merge, determinism rules           | `./docs/02_ir_schemas.md`                                 |
-| WIT worlds, manifest contracts, module compatibility      | `./docs/03_wit_and_manifest.md`                           |
-| Scheduler validation, DAG execution, RegionMapIR behavior | `./docs/04_host_scheduler.md`                             |
-| SDK usage, host service wrappers, test workflow           | `./docs/05_module_sdk.md`                                 |
+| Stage order, ownership, claims, paint propagation         | `01_system_architecture.md`                               |
+| IR fields, IDs, config merge, determinism rules           | `02_ir_schemas.md`                                        |
+| WIT worlds, manifest contracts, module compatibility      | `03_wit_and_manifest.md`                                  |
+| Scheduler validation, DAG execution, RegionMapIR behavior | `04_host_scheduler.md`                                    |
+| SDK usage, host service wrappers, test workflow           | `05_module_sdk.md`                                        |
 | Packet authoring, preflight gating, and agent orchestration | `../.claude/skills/` (`spec-packet-generator`, `spec-review`, `swarm`) |
-| Current sequencing, progress, and gate status             | `./docs/07_implementation_status.md`                      |
-| Coordinate scaling and porting rules                      | `./docs/08_coordinate_system.md`                          |
-| Runtime event schema and ordering guarantees              | `./docs/09_progress_events.md`                            |
+| Current sequencing, progress, and gate status             | `07_implementation_status.md`                             |
+| Coordinate scaling and porting rules                      | `08_coordinate_system.md`                                 |
+| Runtime event schema and ordering guarantees              | `09_progress_events.md`                                   |
 | Canonical terms (glossary)                                | `../CONTEXT.md`                                            |
-| Scenario traces                                           | `./docs/10_scenario_traces.md`                            |
-| Governance and acceptance gate policy                     | `./docs/11_operational_governance_and_acceptance_gate.md` |
-| Numeric acceptance thresholds                             | `./docs/12_architecture_gate_metrics.md`                  |
-| slicer-helpers crate (repair, decimate, STEP import)      | `./docs/13_slicer_helpers_crate.md`                       |
-| Catalogue of all recognised config keys                   | `./docs/15_config_keys_reference.md`                      |
-| Slicer HTML debugging report (opt-in)                     | `./docs/16_slicer_report.md`                              |
-| Active architecture deviations                            | `./docs/DEVIATION_LOG.md`                                 |
-| Audit provenance and retired XML crosswalk                | `./docs/14_deviation_audit_history.md`                    |
+| Scenario traces                                           | `10_scenario_traces.md`                                   |
+| Governance and acceptance gate policy                     | `11_operational_governance_and_acceptance_gate.md`        |
+| Numeric acceptance thresholds                             | `12_architecture_gate_metrics.md`                         |
+| slicer-helpers crate (repair, decimate, STEP import)      | `13_slicer_helpers_crate.md`                              |
+| Catalogue of all recognised config keys                   | `15_config_keys_reference.md`                             |
+| Slicer HTML debugging report (opt-in)                     | `16_slicer_report.md`                                     |
+| Slice timing, DAG, and manifest diagnosis                 | `17_agent_debugging.md`                                   |
+| Visual-debug bundles (stage/layer PNG evidence)           | `19_visual_debug.md`                                      |
+| Active architecture deviations                            | `DEVIATION_LOG.md`                                        |
+| Audit provenance and retired XML crosswalk                | `14_deviation_audit_history.md`                           |
 
 Operational agent orchestration and validation gates live in the repo skills under
 `.claude/skills/` (`spec-packet-generator` authors packets, `spec-review` gates them,
@@ -113,13 +127,15 @@ Precedence rule for conflicts:
 ## Repository Structure
 
 ```
-modular-slicer/
+pinch_n_print_cli/
 ├── crates/
-│   ├── slicer-runtime/       # Library: WASM runtime, scheduler, run_slice() API (no binary)
-│   │                         #   Full path: crates/slicer-runtime
-│   ├── pnp-cli/              # Single binary `pnp_cli`: slice, module, mesh, dag verbs
-│   │                         #   Full path: crates/pnp-cli
+│   ├── slicer-runtime/       # Library: pipeline execution, blackboard, run_slice() API (no binary)
+│   ├── slicer-scheduler/     # Static planning: manifests, config resolution, DAG build + validate
+│   ├── slicer-wasm-host/     # wasmtime/WIT marshalling and dispatch
+│   ├── pnp-cli/              # Single binary `pnp_cli`: slice, visual-debug, module, mesh, dag verbs
 │   ├── slicer-core/          # Core algorithms (slicing, Clipper ops, geometry)
+│   ├── slicer-gcode/         # LayerCollectionIR → GCodeIR → G-code text
+│   ├── slicer-model-io/      # STL / OBJ / 3MF ingestion; geometry-only writers
 │   ├── slicer-ir/            # IR type definitions (shared between host and SDK)
 │   ├── slicer-sdk/           # Module authoring SDK (imported by module crates; test harness under `test` feature)
 │   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
@@ -128,7 +144,7 @@ modular-slicer/
 │   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
 ├── modules/
 │   └── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
-├── xtask/                    # Dev tooling: build-guests, gen-config-docs, check-deviations
+├── xtask/                    # Dev tooling: build-guests, dist, test, gen-config-docs, check-deviations
 ├── resources/                # STL / 3MF / OBJ test fixtures
 └── docs/                     # This documentation set
 ```
@@ -145,15 +161,19 @@ identity elsewhere. Renames change this table once, not every citing doc.
 
 | Crate / binary | Path | Role |
 |----------------|------|------|
-| `slicer-runtime` (lib) | `crates/slicer-runtime/` | WASM runtime, scheduler, dispatch, `run_slice()` API. Rust module path `slicer_runtime::`. |
-| `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `module`, `mesh`, `dag` verbs. Entry point `crates/pnp-cli/src/main.rs`. |
+| `slicer-runtime` (lib) | `crates/slicer-runtime/` | Pipeline execution (prepass / per-layer / postpass), blackboard and layer arenas, host built-ins, `run_slice()` API. Re-exports the `slicer-scheduler` planning APIs. Rust module path `slicer_runtime::`. |
+| `slicer-scheduler` | `crates/slicer-scheduler/` | Static planning, wasmtime-free: manifest ingestion, config resolution, DAG construction + validation, execution-plan compilation, DAG-CLI introspection. |
+| `slicer-wasm-host` | `crates/slicer-wasm-host/` | WIT / wasmtime marshalling and dispatch. Holds all four `bindgen!` invocations (layer / prepass / finalization / postpass) so they share Rust type identity — see ADR-0002. |
+| `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `visual-debug`, `module`, `mesh`, `dag` verbs. Entry point `crates/pnp-cli/src/main.rs`. |
 | `slicer-core` | `crates/slicer-core/` | Core algorithms (slicing, Clipper ops, geometry). |
+| `slicer-gcode` | `crates/slicer-gcode/` | Pure-IR G-code emission: `LayerCollectionIR` → `GCodeIR` → G-code text. No wasmtime, scheduler, or blackboard dependency. |
+| `slicer-model-io` | `crates/slicer-model-io/` | Host-side model ingestion (STL, OBJ, 3MF → `MeshIR`) and geometry-only 3MF/OBJ writers. |
 | `slicer-ir` | `crates/slicer-ir/` | IR type definitions shared between host and SDK. |
 | `slicer-sdk` | `crates/slicer-sdk/` | Module authoring SDK; module test harness under the `test` feature. |
 | `slicer-macros` | `crates/slicer-macros/` | Proc-macros (`#[slicer_module]`, `#[module_test]`). |
 | `slicer-schema` | `crates/slicer-schema/` | Config/manifest schema types **and** the canonical WIT under `crates/slicer-schema/wit/`. |
 | `slicer-helpers` | `crates/slicer-helpers/` | Pre-pipeline mesh ops (repair, decimate, STEP import). |
-| `xtask` | `xtask/` | Dev tooling (`build-guests`, `gen-config-docs`, `check-deviations`). |
+| `xtask` | `xtask/` | Dev tooling (`build-guests`, `dist`, `test`, `gen-config-docs`, `check-deviations`, `compact-specs`). |
 
 > **Packet 69 rename (history):** the former `slicer-host` library crate was
 > renamed to `slicer-runtime`, and the former `slicer-cli` crate was deleted with
@@ -198,7 +218,7 @@ minimum/current pin for each component.
 
 Operational governance (rollout checklist, compatibility policy, release-blocking architecture gate):
 
-- `./docs/11_operational_governance_and_acceptance_gate.md`
+- `11_operational_governance_and_acceptance_gate.md`
 
 ---
 
@@ -215,5 +235,5 @@ Operational governance (rollout checklist, compatibility policy, release-blockin
 
 Operational budgeting note:
 
-- The above targets assume host-call batching and bounded RegionMap/LayerCollection memory strategies as defined in `./docs/04_host_scheduler.md`.
-- Performance gate fixture definitions and measurement protocol are defined in `./docs/12_architecture_gate_metrics.md`.
+- The above targets assume host-call batching and bounded RegionMap/LayerCollection memory strategies as defined in `04_host_scheduler.md`.
+- Performance gate fixture definitions and measurement protocol are defined in `12_architecture_gate_metrics.md`.

@@ -8,12 +8,12 @@ The mechanisms are zero-dependency CLI extensions to `pnp_cli`:
 
 | Capability                            | Command                             | Notes                                                  |
 |---------------------------------------|-------------------------------------|--------------------------------------------------------|
-| Live per-stage / per-module timing    | `pnp_cli slice --instrument-stderr` | Bumps event schema to `"1.1.0"`; composable with `--report`. |
+| Live per-stage / per-module timing    | `pnp_cli slice --instrument-stderr` | Emits the instrumented event stream (schema `"1.2.0"`); composable with `--report`. |
 | Stage / module / claim introspection  | `pnp_cli dag <subcommand>`          | Manifest TOML only — no WASM compilation.              |
 | Manifest validation                   | `pnp_cli module diagnose`           | Structured JSON, exit codes 0 / 1 / 2.                 |
 
-Spec: `docs/specs/agent-cli-debugging.md`.
-Event contract: `docs/09_progress_events.md`.
+Spec: `docs/specs/_OLD/agent-cli-debugging.md` (superseded spec, retained for the design write-up).
+Event contract: `09_progress_events.md`.
 Geometry-stage visualization: `docs/19_visual_debug.md`. Use it independently
 when the question is where a visible toolpath defect first appears; this guide
 remains the surface for timing, DAG, and manifest diagnosis.
@@ -74,7 +74,7 @@ pnp_cli dag stage "Layer::Infill" --module-dir modules/core-modules
 
 Stage ids are the canonical scheduler ids (with `PrePass::`, `Layer::`,
 `PostPass::` prefixes — same as `STAGE_ORDER` in
-`crates/slicer-runtime/src/execution_plan.rs`).
+`crates/slicer-scheduler/src/execution_plan.rs`).
 
 ### `dag depends <module-id>`
 

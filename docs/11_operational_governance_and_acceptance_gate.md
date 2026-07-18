@@ -1,5 +1,13 @@
 # Pinch 'n Print — Operational Governance & Architecture Acceptance Gate
 
+**What this covers:** the release-governance rules and the Architecture
+Acceptance Gate — the criteria a change must meet before it ships.
+
+**Who it's for:** maintainers making release and acceptance decisions.
+
+**Prerequisites:** the objective numeric thresholds this gate enforces are in
+`12_architecture_gate_metrics.md`.
+
 This document is normative for release governance and architecture acceptance decisions.
 
 ---
@@ -102,7 +110,7 @@ All numeric thresholds are defined in:
 
 Evidence artifacts must be stored under:
 
-- `./docs/evidence/<release-id>/`
+- `docs/evidence/<release-id>/`
 
 <!-- VERIFY: `docs/evidence/` does not exist at the time of writing — it
      will be created when evidence is first staged for a gate decision. -->
@@ -133,7 +141,7 @@ When gate state is `CONDITIONAL`, all items below are mandatory:
 2. Assign a single decision owner (`Architecture Owner` or delegated `Release Owner`).
 3. Set an escalation SLA: unresolved conditional items must be re-evaluated within 7 calendar days.
 4. Record explicit ship/no-ship scope constraints (for example feature flags or disabled modules).
-5. Add links to mitigation evidence in `./docs/evidence/<release-id>/conditional/`.
+5. Add links to mitigation evidence in `docs/evidence/<release-id>/conditional/`.
 
 `CONDITIONAL` automatically downgrades to `FAIL` if:
 
@@ -159,7 +167,7 @@ Critical deviations block release unless explicitly waived by architecture owner
 
 Deviation records are maintained in:
 
-- `./docs/DEVIATION_LOG.md`
+- `DEVIATION_LOG.md`
 
 No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critical entries.
 
@@ -169,7 +177,7 @@ No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critic
 
 - Architecture Acceptance Gate result recorded in implementation status.
 - No unresolved critical deviations.
-- Scenario traces from `./docs/10_scenario_traces.md` validated against current implementation.
+- Scenario traces from `10_scenario_traces.md` validated against current implementation.
 - Compatibility matrix checks executed on representative module set.
 - Performance and memory targets re-verified on reference fixture set.
 

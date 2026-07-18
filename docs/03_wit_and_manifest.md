@@ -43,7 +43,7 @@ crates/slicer-schema/wit/
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
     world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
-    world-prepass/world-prepass.wit       # package slicer:world-prepass@2.0.0
+    world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
 ```
@@ -191,279 +191,73 @@ restructure is `adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-wor
 
 ## `deps/types.wit`
 
-```wit
-package slicer:types@1.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/types.wit` (package
+`slicer:types`, interface `geometry`). Read that file for the exact record and
+variant definitions; the notes below are the contract points that the file
+alone does not spell out.
 
-interface geometry {
-    // Scaled integer coordinates. 1 unit = 100 nanometer (1e-4 mm).
-    record point2 { x: s64, y: s64 }
-    record point3 { x: f32, y: f32, z: f32 }
-    record point3-with-width {
-        x: f32, y: f32, z: f32,
-        width: f32,                  // local extrusion width in mm
-        flow-factor: f32,            // multiplier on base extrusion volume
-        // Overhang quartile classification (1..=4) for wall-family roles
-        // only (OuterWall/InnerWall/ThinWall). Populated by the overhang
-        // classifier prepass inside `DefaultGCodeEmitter::emit_gcode`;
-        // `none` for non-wall roles and for paths not yet classified.
-        // Added in packet 57; the legacy 5-field shape is also accepted by
-        // the bindgen `with:` remap so older host builds still load.
-        overhang-quartile: option<u8>,
-    }
-    record bounding-box2 { min: point2, max: point2 }
-    record bounding-box3 { min: point3, max: point3 }
-    record polygon       { points: list<point2> }
-    record ex-polygon    { contour: polygon, holes: list<polygon> }
+The `geometry` interface defines the shared geometric primitives: `point2`
+(scaled `s64` integer coordinates — 1 unit = 100 nm), `point3` /
+`point3-with-width` (millimeter `f32`), `bounding-box2` / `bounding-box3`,
+`polygon`, `ex-polygon`, `extrusion-path3d`, the `extrusion-role` variant, and
+`semver`.
 
-    record extrusion-path-3d {
-        points: list<point3-with-width>,
-        role: extrusion-role,
-        speed-factor: f32,
-    }
+`point3-with-width` carries an `overhang-quartile: option<u8>` field (1..=4 for
+wall-family roles only; `none` otherwise), added in packet 57. The bindgen
+`with:` remap also accepts the legacy 5-field shape so older host builds still
+load.
 
-    variant extrusion-role {
-        outer-wall, inner-wall, thin-wall,
-        top-solid-infill, bottom-solid-infill, sparse-infill,
-        support-material, support-interface,
-        ironing, bridge-infill, wipe-tower,
-        custom(string),
-    }
-
-    record semver { major: u32, minor: u32, patch: u32 }
-}
-```
-
-Built-in IR roles with no dedicated WIT case remain lossless at the boundary by
-using reserved `custom(string)` tags:
+The WIT `extrusion-role` variant is **narrower than the Rust `ExtrusionRole`
+enum** (`02_ir_schemas.md`). Roles with no dedicated WIT case round-trip
+losslessly through reserved `custom(string)` tags:
 
 - `PrimeTower` maps to `custom("slicer.builtin/prime-tower@1")`
 - `Skirt` maps to `custom("slicer.builtin/skirt@1")`
 - `Brim` maps to `custom("slicer.builtin/brim@1")`
-- Third-party modules must not mint either reserved tag.
+- Third-party modules must not mint any reserved `slicer.builtin/…` tag.
+
+The tag constants and marshalling live in `crates/slicer-macros/src/lib.rs` and
+`crates/slicer-wasm-host/src/host.rs`.
 
 ---
 
 ## `deps/config.wit`
 
-```wit
-package slicer:config@1.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/config.wit` (package
+`slicer:config`, interface `config-types`).
 
-interface config-types {
-    variant config-value {
-        bool-val(bool),
-        int-val(s64),
-        float-val(f64),
-        string-val(string),
-        float-list(list<f64>),
-        string-list(list<string>),
-    }
+Two items:
 
-    // Read-only, pre-filtered to declared reads only.
-    resource config-view {
-        get:        func(key: string) -> option<config-value>;
-        get-bool:   func(key: string) -> option<bool>;
-        get-float:  func(key: string) -> option<f64>;
-        get-int:    func(key: string) -> option<s64>;
-        get-string: func(key: string) -> option<string>;
-        keys:       func() -> list<string>;
-    }
-}
-```
+- `config-value` — the variant every config value marshals as (bool, int,
+  float, string, list, and percent forms). Read the file for the current case
+  set.
+- `config-view` — a **read-only** resource, pre-filtered to the module's
+  declared reads only. Its `get` / `get-bool` / `get-float` / `get-int` /
+  `get-string` accessors each return `option<…>`, and `keys()` lists the
+  visible keys. A module can never see a key it did not declare (see
+  "Host-Boundary Access Enforcement" above).
 
 ---
 
 ## `deps/ir-types.wit`
 
-```wit
-package slicer:ir-types@1.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (package
+`slicer:ir-handles`, interface `ir-handles`). This is the largest interface in
+the contract — the read-view resources (`slice-region-view`,
+`perimeter-region-view`, `paint-region-layer-view`), the output-builder
+resources (`infill-output-builder`, `perimeter-output-builder`,
+`slice-postprocess-builder`, `gcode-output-builder`, `support-output-builder`,
+`layer-collection-builder`), the paint types (`paint-semantic`, `paint-value`,
+`segment-annotations-*`), the wall types (`wall-loop-view`, `wall-feature-flag`,
+`wall-boundary-type`, `material-boundary-segment`), and the Arachne types
+(`extrusion-junction`, `extrusion-line`). It changes often; read the on-disk
+file for the current method and field sets rather than relying on a snapshot
+here.
 
-interface ir-handles {
-    use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, semver};
+Two contract points that the file alone does not state are the ID
+canonicalization rule and the wall-loop flag invariant below.
 
-    type object-id = string;
-    type region-id = string;
-    /// **Signed** (packet 43-rev1): raft prefix layers use negative indices
-    /// (`-1, -2, …, -raft_layers`). Negative `layer-index` arguments at host
-    /// entry points outside raft contexts are rejected at the validator.
-    type layer-idx = s32;
-
-    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-
-    record wall-feature-flag {
-        tool-index: option<u32>,
-        fuzzy-skin: bool,
-        is-bridge: bool,
-        is-thin-wall: bool,
-        skip-ironing: bool,
-    }
-
-    record wall-loop-view {
-        perimeter-index: u32,
-        loop-type: wall-loop-type,
-        path: extrusion-path-3d,
-        /// Parallel to path.points. Segment i -> i+1 uses feature-flags[i].
-        feature-flags: list<wall-feature-flag>,
-    }
-    enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
-
-    enum paint-semantic {
-        material,
-        fuzzy-skin,
-        support-enforcer,
-        support-blocker,
-        custom,             // module queries by custom-id string separately
-    }
-
-    variant paint-value {
-        flag(bool),
-        scalar(f32),
-        tool-index(u32),
-    }
-
-    record boundary-paint-polygon {
-        values: list<option<paint-value>>,
-    }
-
-    record boundary-paint-entry {
-        semantic: paint-semantic,
-        polygons: list<boundary-paint-polygon>,
-    }
-
-    // ── Read-only IR view resources ──────────────────────────────────────
-    // Host constructs these. Modules cannot construct them.
-
-    resource slice-region-view {
-        object-id:              func() -> object-id;
-        region-id:              func() -> region-id;
-        polygons:               func() -> list<ex-polygon>;
-        infill-areas:           func() -> list<ex-polygon>;
-        effective-layer-height: func() -> f32;
-        z:                      func() -> f32;
-        has-nonplanar:          func() -> bool;
-        boundary-paint:         func() -> list<boundary-paint-entry>;
-        // Ordered (paint-semantic-name, value) pairs identifying this region's
-        // paint variant. Carries the painted FuzzySkin signal
-        // (`("fuzzy_skin", flag(true))`) so the perimeter guest can enable
-        // per-vertex fuzzy jitter WITHOUT routing FuzzySkin through
-        // segment-annotations (D14 reserves that channel for modifier volumes).
-        variant-chain:          func() -> list<tuple<string, paint-value>>;
-    }
-
-    resource perimeter-region-view {
-        object-id:       func() -> object-id;
-        region-id:       func() -> region-id;
-        wall-loops:      func() -> list<wall-loop-view>;
-        infill-areas:    func() -> list<ex-polygon>;
-        resolved-seam:   func() -> option<seam-position>;
-        seam-candidates: func() -> list<seam-candidate>;
-        // Partitioned fill polygons mirrored from the corresponding
-        // slice-region-view accessors (packet 130). Host-populated at
-        // dispatch time so `Layer::InfillPostProcess` consumers can
-        // re-clip against the partitioned boundary.
-        sparse-infill-area: func() -> list<ex-polygon>;
-        top-solid-fill:     func() -> list<ex-polygon>;
-        bottom-solid-fill:  func() -> list<ex-polygon>;
-        bridge-areas:       func() -> list<ex-polygon>;
-        // Host-computed tool index. Precedence: variant-chain material
-        // tool → interned config extensions["extruder"] → 0.
-        tool-index:         func() -> u32;
-        // none = this region owns its walls; some(base) = virtual variant
-        // sharing the base region's walls (no per-variant PerimeterIR entry).
-        wall-source-region-id: func() -> option<region-id>;
-    }
-
-    // Read-only snapshot of one `InfillIR` region bucket, mirroring
-    // `slicer_ir::InfillRegion`. Passed to `run-infill-postprocess` as the
-    // `prior-infill` parameter so the post-process module can read what
-    // `Layer::Infill` committed; the infill-output-builder stays write-only.
-    record prior-infill-region {
-        object-id:     object-id,
-        region-id:     region-id,
-        sparse-infill: list<extrusion-path3d>,
-        solid-infill:  list<extrusion-path3d>,
-        ironing:       list<extrusion-path3d>,
-    }
-
-    // ── Mutable output builder resources ────────────────────────────────
-    // Host validates all writes against declared ir-access.writes at call time.
-
-    resource infill-output-builder {
-        push-sparse-path:  func(path: extrusion-path-3d) -> result<_, string>;
-        push-solid-path:   func(path: extrusion-path-3d) -> result<_, string>;
-        push-ironing-path: func(path: extrusion-path-3d) -> result<_, string>;
-    }
-
-    resource perimeter-output-builder {
-        push-wall-loop:          func(loop-: wall-loop-view) -> result<_, string>;
-        /// **Cardinality constraint (packet 22):**
-        /// `rotated_wall_loop.feature_flags.len() == rotated_wall_loop.path.points.len()`.
-        /// The host rejects mismatched commits with `CARDINALITY_MISMATCH`. This
-        /// invariant is required because rotation moves the seam to position 0
-        /// and feature flags must rotate with the path.
-        push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
-        set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
-        push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
-        push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
-    }
-
-    resource slice-postprocess-builder {
-        set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
-        set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
-    }
-
-    resource gcode-output-builder {
-        push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-        // `mode: retract-mode` selects parameterised G1 E (Gcode mode) vs
-        // parameterless G10/G11 (Firmware mode); see packet 34.
-        push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-        push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-        push-fan-speed:   func(value: u8) -> result<_, string>;
-        push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-        // `after-entity-index` anchors the tool change to a specific entity
-        // position in the layer's ordered_entities (see `LayerCollectionIR.tool_changes`).
-        push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
-        push-comment:     func(text: string) -> result<_, string>;
-        push-raw:         func(text: string) -> result<_, string>;
-        push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-    }
-
-    use slicer:types/geometry.{extrusion-role};
-    record gcode-move-cmd {
-        x: option<f32>, y: option<f32>, z: option<f32>,
-        e: option<f32>, f: option<f32>,
-        role: extrusion-role,
-    }
-
-    resource support-output-builder {
-        push-support-path:   func(path: extrusion-path-3d) -> result<_, string>;
-        push-interface-path: func(path: extrusion-path-3d, is-top-interface: bool) -> result<_, string>;
-        push-raft-path:      func(path: extrusion-path-3d) -> result<_, string>;
-    }
-
-    // ── Paint region views (read-only) ──────────────────────────────────────
-    // Modules query these by semantic. The host returns only regions for
-    // semantics the module declared in its ir-access.reads.
-
-    record semantic-region {
-        object-id: object-id,
-        polygons:  list<ex-polygon>,
-        value:     paint-value,
-    }
-
-    resource paint-region-layer-view {
-        /// Returns all regions for the given semantic at this layer.
-        /// Empty list if no paint of this semantic exists at this layer.
-        get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
-
-        /// For Custom semantics — query by the registering module ID string.
-        get-custom-regions: func(module-id: string) -> list<semantic-region>;
-
-        layer-index: func() -> layer-idx;
-    } 
-}
-```
-
-ID canonicalization note:
+### ID canonicalization
 
 - `region-id` string must carry canonical decimal `u64` representation from host IR.
 - Any non-canonical `region-id` observed at a module boundary is a fatal contract error.
@@ -480,43 +274,23 @@ ID canonicalization note:
 
 ## `host-api.wit`
 
-```wit
-package slicer:host-api@1.0.0;
+There is **no `host-api.wit` file.** The host-service functions a module
+imports live in `crates/slicer-schema/wit/deps/common.wit`, package
+`slicer:common`, split across two interfaces:
 
-interface host-services {
-    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
-    use slicer:ir-types/ir-handles.{object-id, thick-polyline, extrusion-line, arachne-params};
+- `host-services` — logging (`log`), mesh queries that keep mesh data host-side
+  (`raycast-z-down`, `surface-normal-at`, `object-bounds`), host-side Clipper2
+  geometry ops (`clip-polygons`, `offset-polygons`, `simplify-polygon`), the
+  host-only-algorithm bridges (`medial-axis`, `generate-arachne-walls`), and
+  `now-us`. Modules import it as `slicer:common/host-services`.
+- `module-errors` — the shared `module-error` record. Every world imports it as
+  `slicer:common/module-errors.{module-error}` rather than redefining it.
 
-    enum log-level { trace, debug, info, warn, error }
-    log: func(level: log-level, message: string);
-
-    // Mesh queries — no mesh data crosses the WASM boundary.
-    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-    object-bounds:      func(object-id: object-id) -> bounding-box3;
-
-    // Geometry utilities — delegate to host-side Clipper2.
-    // Modules should not bundle their own Clipper instance.
-    enum clip-operation   { union, intersection, difference, xor }
-    enum offset-join-type { miter, round, square }
-
-    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-
-    // Host-only-algorithm bridges — a guest module cannot link `host-algos`
-    // code (rayon + boostvoronoi are `cfg(not(target_arch = "wasm32"))`
-    // only), so these functions run the real algorithm host-side and marshal
-    // just the result across the WASM boundary. `generate-arachne-walls`
-    // (packet 112) mirrors this same bridge pattern established by
-    // `medial-axis`.
-    medial-axis: func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
-    generate-arachne-walls: func(polygons: list<ex-polygon>, params: arachne-params) -> result<list<extrusion-line>, string>;
-
-    // Monotonic timestamp in microseconds for profiling.
-    now-us: func() -> u64;
-}
-```
+The host-only-algorithm bridges exist because a guest cannot link `host-algos`
+code (rayon + boostvoronoi are `cfg(not(target_arch = "wasm32"))` only): the
+function runs host-side and only the result crosses the WASM boundary.
+`generate-arachne-walls` returns a `(toolpaths, inner-contour)` pair, not a
+single list. Read `common.wit` for the exact signatures.
 
 ### `arachne-params` record
 
@@ -550,87 +324,25 @@ from region top/bottom metadata**:
 
 ## `world-layer.wit`
 
-```wit
-package slicer:world-layer@2.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
+(package `slicer:world-layer@2.0.0`). The `layer-module` world imports
+`slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
+the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
+shared `module-error` from `slicer:common/module-errors`.
 
-world layer-module {
-    import slicer:host-api/host-services;
-    import slicer:config/config-types.{config-view};
-    import slicer:ir-types/ir-handles.{
-        slice-region-view,
-        perimeter-region-view,
-        infill-output-builder,
-        perimeter-output-builder,
-        slice-postprocess-builder,
-        gcode-output-builder,
-        region-key,
-        layer-idx,
-        paint-region-layer-view,
-        prior-infill-region,
-    };
+It has two optional lifecycle exports (`on-print-start`, `on-print-end`) and
+eight stage exports — a module implements exactly the one matching its declared
+manifest stage, and the host rejects a module whose export set mismatches its
+stage:
 
-    record module-error { code: u32, message: string, fatal: bool }
+- `run-slice-postprocess`, `run-perimeters`, `run-wall-postprocess`,
+  `run-infill`, `run-infill-postprocess`, `run-support`,
+  `run-support-postprocess`, `run-path-optimization`.
 
-    // Lifecycle — optional
-    export on-print-start: func(config: config-view) -> result<_, module-error>;
-    export on-print-end:   func() -> result<_, module-error>;
-
-    // Stage exports — implement exactly one matching your declared stage.
-    // The host rejects a module that exports a function mismatching its manifest stage.
-
-    export run-slice-postprocess: func(
-        layer-index:  layer-idx,
-        regions:      list<slice-region-view>,
-        paint:        paint-region-layer-view,
-        output:       slice-postprocess-builder,
-        config:       config-view,
-    ) -> result<_, module-error>;
-
-    export run-perimeters: func(
-        layer-index:  layer-idx,
-        regions:      list<slice-region-view>,
-        paint:        paint-region-layer-view,
-        output:       perimeter-output-builder,
-        config:       config-view,
-    ) -> result<_, module-error>;
-
-    export run-wall-postprocess: func(
-        layer-index: layer-idx,
-        regions: list<perimeter-region-view>,
-        output: perimeter-output-builder,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    export run-infill: func(
-        layer-index: layer-idx,
-        regions: list<slice-region-view>,
-        output: infill-output-builder,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // 2.0.0 (packet 130): `regions` views expose the six InfillPostProcess
-    // accessors (sparse-infill-area, top-solid-fill, bottom-solid-fill,
-    // bridge-areas, tool-index, wall-source-region-id) and the export gains
-    // `prior-infill` — a READ-ONLY view of the InfillIR committed by
-    // Layer::Infill. The commit is REPLACE: the module must re-emit every
-    // path it wants kept (including untouched ones) via infill-output-builder.
-    export run-infill-postprocess: func(
-        layer-index: layer-idx,
-        regions: list<perimeter-region-view>,
-        prior-infill: list<prior-infill-region>,
-        output: infill-output-builder,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    export run-support: func(
-        layer-index:  layer-idx,
-        regions:      list<slice-region-view>,
-        paint:        paint-region-layer-view,   // enforcer/blocker regions
-        output:       support-output-builder,
-        config:       config-view,
-    ) -> result<_, module-error>;
-}
-```
+Read the on-disk file for each export's exact parameter list and return type.
+Notable 2.0.0 (packet 130) change: `run-infill-postprocess` gains a read-only
+`prior-infill` view of the committed `InfillIR`, and its commit is REPLACE — the
+module must re-emit every path it wants kept.
 
 ### `layer-collection-builder` resource (packet 32)
 
@@ -665,174 +377,45 @@ PathOptimization output contract restricts builder usage to this resource and th
 
 ## `world-prepass.wit`
 
-```wit
-package slicer:world-prepass@2.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`
+(package `slicer:world-prepass@1.0.0`). The `prepass-module` world imports
+`slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
+the shared `module-error` from `slicer:common/module-errors`.
 
-world prepass-module {
-    import slicer:host-api/host-services;
-    import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view, paint-segmentation-object-view};
+It has exactly **four** stage exports:
 
-    record module-error { code: u32, message: string, fatal: bool }
+- `run-mesh-analysis` — facet classification and surface-group proposals.
+- `run-layer-planning` — per-layer Z and active-region proposals.
+- `run-seam-planning` — scored seam candidates per `(layer, object, region)`.
+- `run-support-geometry` — multi-layer organic tree-support branch geometry,
+  consumed by `Layer::Support` modules that declare `SupportPlanIR` as a read.
 
-    // MeshAnalysis stage
-    enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
-    record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
-    record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
-
-    resource mesh-analysis-output {
-        push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
-        push-surface-group:    func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
-    }
-
-    export run-mesh-analysis: func(
-        objects: list<object-id>,
-        output: mesh-analysis-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // LayerPlanning stage
-    record region-layer-proposal {
-        object-id: object-id, region-id: region-id,
-        effective-layer-height: f32,
-        is-catchup: bool, catchup-z-bottom: f32,
-    }
-    record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
-
-    resource layer-plan-output {
-        push-layer: func(proposal: layer-proposal) -> result<_, string>;
-    }
-
-    export run-layer-planning: func(
-        objects: list<object-id>,
-        output: layer-plan-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // PaintSegmentation stage
-    use slicer:ir-types/ir-handles.{layer-idx};
-    use slicer:types/geometry.{ex-polygon};
-
-    record paint-region-entry {
-        object-id: object-id,
-        layer-index: layer-idx,
-        semantic: string,
-        polygons: list<ex-polygon>,
-        // `paint-value-input` is a typed variant — see `crates/slicer-schema/wit/deps/ir-types.wit`
-        // for its definition: `flag(bool) | scalar(f32) | tool-index(u32) | custom(string)`.
-        value: paint-value-input,
-    }
-
-    resource paint-segmentation-output {
-        push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
-    }
-
-    export run-paint-segmentation: func(
-        objects: list<paint-segmentation-object-view>,
-        output: paint-segmentation-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // SeamPlanning stage
-    use slicer:types/geometry.{point3-with-width};
-
-    record seam-reason { tag: string }
-    record scored-seam-candidate {
-        position: point3-with-width,
-        score: f32,
-        reason: seam-reason,
-    }
-    record seam-plan-entry {
-        global-layer-index: layer-idx,
-        object-id: object-id,
-        region-id: region-id,
-        chosen-position: point3-with-width,
-        chosen-wall-index: u32,
-        scored-candidates: list<scored-seam-candidate>,
-    }
-
-    resource seam-planning-output {
-        push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
-    }
-
-    export run-seam-planning: func(
-        objects: list<mesh-object-view>,
-        layer-plan: layer-plan-view,
-        output: seam-planning-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // SupportGeometry stage
-    // Multi-layer organic tree-support planning. Walks layers top-to-bottom,
-    // groups overhang/enforcer contacts via per-layer Prim MST, and emits
-    // per-(layer, object, region) branch geometry consumed directly by
-    // Layer::Support modules that declare SupportPlanIR as a read.
-
-    record support-plan-entry {
-        global-layer-index: layer-idx,
-        object-id: object-id,
-        region-id: region-id,
-        // branch geometry fields (positions, radii, etc.) defined in WIT source
-    }
-
-    resource support-geometry-output {
-        push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
-    }
-
-    export run-support-geometry: func(
-        objects: list<mesh-object-view>,
-        layer-plan: layer-plan-view,
-        region-segmentation: region-segmentation-view,
-        output: support-geometry-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-}
-```
+There is **no `run-paint-segmentation` export.** Paint segmentation runs as the
+`host:paint_segmentation` built-in (see `PrePass::PaintSegmentation` in
+`01_system_architecture.md`), not as a module-implementable WIT stage. Read the
+on-disk file for each export's parameters, the view records they consume, and
+the output-builder resources they write through.
 
 ---
 
 ## `world-postpass.wit`
 
-```wit
-package slicer:world-postpass@1.0.0;
+**Source of truth:** `crates/slicer-schema/wit/deps/world-postpass/world-postpass.wit`
+(package `slicer:world-postpass@1.0.0`). The `postpass-module` world defines the
+`gcode-command` variant (move / retract / unretract / fan-speed / temperature /
+tool-change / comment / raw) and its command records locally, imports
+`config-view` and `gcode-output-builder`, and uses the shared `module-error`
+from `slicer:common/module-errors`.
 
-world postpass-module {
-    import slicer:host-api/host-services;
-    import slicer:config/config-types.{config-view};
-    import slicer:ir-types/ir-handles.{gcode-output-builder, gcode-move-cmd, retract-mode};
+Two exports:
 
-    record module-error { code: u32, message: string, fatal: bool }
+- `run-gcode-postprocess(commands, output, config)` — processes the
+  `gcode-command` stream.
+- `run-text-postprocess(gcode-text, config) -> string` — last-resort text
+  mutation, single-threaded; use only when `GCodeIR` is insufficient.
 
-    // `mode: retract-mode` selects parameterised G1 E vs G10/G11; see packet 34.
-    record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
-    record gcode-fan-speed-cmd { value: u8 }
-    record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-    record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
-
-    variant gcode-command {
-        move(gcode-move-cmd),
-        retract(gcode-retract-cmd),
-        unretract(gcode-retract-cmd),
-        fan-speed(gcode-fan-speed-cmd),
-        temperature(gcode-temperature-cmd),
-        tool-change(gcode-tool-change-cmd),
-        comment(string),
-        raw(string),
-    }
-
-    export run-gcode-postprocess: func(
-        commands: list<gcode-command>,
-        output: gcode-output-builder,
-        config: config-view,
-    ) -> result<_, module-error>;
-
-    // Last-resort text mutation. Single-threaded. Use only when GCodeIR is insufficient.
-    export run-text-postprocess: func(
-        gcode-text: string,
-        config: config-view,
-    ) -> result<string, module-error>;
-}
-```
+The retract command carries a `retract-mode` (G1 E vs G10/G11); read the
+on-disk file for the exact record fields.
 
 ---
 
@@ -844,9 +427,11 @@ on-disk file.
 
 The `finalization-module` world exposes a single export
 `run-finalization(layers, output, config) -> result<_, module-error>`. It
-imports `slicer:host-api/host-services`, `slicer:config/config-types.{config-view}`,
-and uses `slicer:ir-types/ir-handles.{layer-idx, extrusion-path-3d, region-key}`
-plus `slicer:types/geometry.{extrusion-role}`.
+imports `slicer:common/host-services` and `slicer:config/config-types`, uses
+`slicer:config/config-types.{config-view}`,
+`slicer:types/geometry.{extrusion-path3d, extrusion-role}`, and
+`slicer:common/module-errors.{module-error}`. It declares `layer-idx`,
+`object-id`, `region-id`, and `region-key` as local types (`layer-idx = u32`).
 
 Resources, records, and enums (current at time of writing — confirm against
 `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`):
@@ -856,7 +441,7 @@ Resources, records, and enums (current at time of writing — confirm against
   `ordered-entities() -> list<print-entity-view>`,
   `tool-changes() -> list<tool-change-view>`,
   `z-hops() -> list<z-hop-view>`.
-- `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path-3d`,
+- `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path3d`,
   `role: extrusion-role`, `tool-index: u32`, `region-key: region-key`,
   `topo-order: u32`. The `entity-id` is the stable per-layer ID from packet 39
   (see `docs/02_ir_schemas.md` IR 10). `tool-index` is the first-class tool
@@ -868,7 +453,7 @@ Resources, records, and enums (current at time of writing — confirm against
 - `finalization-output-builder` (resource) — the mutation API:
   - `push-entity-to-layer(layer-index, path, tool-index, region-key) -> result<_, string>`
   - `push-entity-with-priority(layer-index, path, tool-index, region-key, priority) -> result<_, string>`
-    — note `extrusion-path-3d` already carries the role; there is no separate `role` parameter.
+    — note `extrusion-path3d` already carries the role; there is no separate `role` parameter.
     The `tool-index: u32` parameter is the explicit tool selector for the pushed
     entity (region_id↔tool split): finalization guests pass it directly because
     `push-entity-*` carries only a region-key (a pure identity, no tool channel),
@@ -884,7 +469,7 @@ Resources, records, and enums (current at time of writing — confirm against
 - `sort-key` (enum, not variant) — sort discriminators consumed by
   `sort-layer-by`. Names follow the form `by-<…>`; read the on-disk file for
   the current set.
-- `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path-3d>`.
+- `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path3d>`.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
 resolves to a real entity within `layer`; unknown IDs are rejected with

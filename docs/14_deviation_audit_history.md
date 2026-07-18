@@ -1,5 +1,13 @@
 # Deviation Audit History
 
+**What this covers:** the provenance and chronology of registered architecture
+deviations — the audit trail behind the entries in `DEVIATION_LOG.md`.
+
+**Who it's for:** reviewers tracing why a deviation was registered or retired.
+
+**Prerequisites:** `DEVIATION_LOG.md` holds the active deviation rows this
+history annotates.
+
 Last updated: 2026-05-15 (DEV-053 chronology entry added — Packet 56b spec-review)
 
 ## Purpose

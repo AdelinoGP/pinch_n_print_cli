@@ -1,5 +1,15 @@
 # Pinch 'n Print Coordinate System
 
+**What this covers:** the unit system (1 unit = 100 nm), the Z-axis convention,
+transform handling, and the constant-conversion rules for porting OrcaSlicer
+code.
+
+**Who it's for:** anyone writing geometry code or porting an algorithm from
+OrcaSlicer — getting the scale wrong produces silently wrong toolpaths.
+
+**Prerequisites:** none, but `02_ir_schemas.md` shows where these coordinates
+live in the IR types.
+
 > **This file is the single source of truth for coordinate conventions.**
 > All other documentation defers to this file. When in doubt, read this first.
 
@@ -7,7 +17,7 @@
 
 ## The Rule
 
-```
+```text
 1 scaled integer unit = 100 nanometers = 10⁻⁴ mm
 Scaling factor: multiply millimeters by 10_000 to get units
 ```
@@ -69,10 +79,9 @@ wire format. Internally, every speed field in IR (`ExtrusionPath3D.speed`,
 `ConfigView`'s `*_speed` keys, `TravelMove.speed`) is stored in **mm/s**.
 
 The conversion to mm/min happens inside `DefaultGCodeEmitter::resolve_feedrate`
-(see `crates/slicer-runtime/src/gcode_emit.rs`) — that function returns a
-mm/min value ready for `F{:.0}` serialization. Modules must always work in
-mm/s; emitting mm/min internally is a contract violation that double-scales
-at the boundary.
+(`crates/slicer-gcode/src/emit.rs`) — that function returns a mm/min value ready
+for `F{:.0}` serialization. Modules must always work in mm/s; emitting mm/min
+internally is a contract violation that double-scales at the boundary.
 
 ### Speed-factor clamp (Normative — Packet 52)
 
@@ -96,10 +105,12 @@ produces coordinates 10,000× too large — a silent contract violation that
 would propagate through every downstream stage that consumes
 `PaintLayer.strokes` (paint segmentation, region mapping).
 
-The `mm_to_units()` helper lives in `slicer-helpers`. Tests covering the
-3MF subdivision parser pin the conversion explicitly; any future format
-that surfaces strokes in millimetres must apply the same conversion at
-the loader boundary, never at consumption time.
+The `mm_to_units()` helper lives in `slicer-ir`
+(`crates/slicer-ir/src/slice_ir.rs`) and is re-exported through the SDK's
+`slicer_sdk::coords`. Tests covering the 3MF subdivision parser pin the
+conversion explicitly; any future format that surfaces strokes in millimetres
+must apply the same conversion at the loader boundary, never at consumption
+time.
 
 ---
 
@@ -123,7 +134,7 @@ The smallest representable move is 100 nm. No FDM printer can position a nozzle 
 
 OrcaSlicer (and PrusaSlicer) use:
 
-```
+```text
 1 unit = 1 nanometer = 10⁻⁶ mm
 Scaling factor: 1_000_000
 ```
@@ -137,7 +148,10 @@ Scaling factor: 1_000_000
 
 3. 100 nm is a clean decimal step between OrcaSlicer's 1 nm and micrometer (1,000 nm). The conversion factor between the two systems is exactly 100, which makes porting arithmetic trivial.
 
-4. `i32` is still safe: max value 2,147,483,647 covers a build plate of 214,748 mm — about 214 meters. No one is gonna build a printer that large.
+4. Range is not a concern. `Point2` stores `i64`, but even a hypothetical `i32`
+   (max 2,147,483,647) would cover a build plate of 214,748 mm — about 214
+   meters. No one is going to build a printer that large, so the 100 nm scaling
+   leaves enormous headroom.
 
 ---
 
@@ -145,7 +159,7 @@ Scaling factor: 1_000_000
 
 When you port an algorithm from `OrcaSlicer_Documented/` and it contains scaled-integer coordinates or constants, apply this conversion:
 
-```
+```text
 Pinch 'n Print_units = OrcaSlicer_units / 100
 OrcaSlicer_units = Pinch 'n Print_units * 100
 ```
@@ -190,7 +204,7 @@ you are off by a factor of 100. The correct epsilon is `1`.
 
 Every OrcaSlicer constant divides by 100 when ported to Pinch 'n Print because
 1 Pinch 'n Print unit = 100 nm (10⁻⁴ mm), whereas OrcaSlicer uses 1 nm = 1 unit.
-The table below is sourced from `docs/specs/orca-paint-segmentation-parity.md` §5.
+The table below is sourced from `docs/specs/_OLD/orca-paint-segmentation-parity.md` §5 (superseded spec, retained for the constants table).
 
 | Constant | OrcaSlicer value (1 nm units) | Pinch 'n Print value (100 nm units) | Note |
 |----------|------------------------------|-------------------------------------|------|
@@ -257,39 +271,16 @@ pub fn units_to_mm(units: i64) -> f32 {
 
 ## Newtype Wrapper
 
-`Point2` uses a newtype to make accidental raw integer arithmetic a compile error rather than a silent wrong answer:
+`Point2` (`crates/slicer-ir/src/slice_ir.rs`) holds two `i64` scaled-integer
+fields (`x`, `y`), each `1 unit = 100 nm`. Its canonical constructors keep raw
+scaling arithmetic out of call sites:
 
-```rust
-/// A 2D point in scaled integer coordinates.
-/// 1 unit = 100 nm = 10⁻⁴ mm.
-/// Use `mm_to_units()` and `units_to_mm()` for conversion.
-/// Never construct with raw integer literals except in tests
-/// that explicitly call `Point2::from_raw(x, y)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Point2 {
-    pub x: i64,
-    pub y: i64,
-}
+- `Point2::from_mm(x: f32, y: f32) -> Point2` — construct from millimeters.
+- `Point2::to_mm(&self) -> (f32, f32)` — read back as millimeters.
 
-impl Point2 {
-    /// Construct from millimeter coordinates.
-    pub fn from_mm(x: f32, y: f32) -> Self {
-        Self { x: mm_to_units(x), y: mm_to_units(y) }
-    }
-
-    /// Construct from raw scaled-integer units.
-    /// Use only in tests or when consuming external integer coordinates.
-    pub fn from_raw(x: i64, y: i64) -> Self {
-        Self { x, y }
-    }
-
-    pub fn to_mm(&self) -> (f32, f32) {
-        (units_to_mm(self.x), units_to_mm(self.y))
-    }
-}
-```
-
-Code review note: a PR that constructs `Point2 { x: 200_000, y: 200_000 }` without a comment explaining the raw value should be rejected and replaced with `Point2::from_mm(20.0, 20.0)`.
+Code review note: a PR that constructs `Point2 { x: 200_000, y: 200_000 }` from
+a raw literal without a comment explaining the value should be rejected and
+replaced with `Point2::from_mm(20.0, 20.0)`.
 
 ---
 

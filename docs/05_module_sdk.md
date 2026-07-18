@@ -1,5 +1,16 @@
 # Pinch 'n Print — Module Development SDK
 
+**What this covers:** how to author a slicing module — the `#[slicer_module]`
+macro, the four stage traits, the output builders, host-service wrappers, and
+the test harness.
+
+**Who it's for:** module authors. If you are changing the host or the contract
+itself, read `03_wit_and_manifest.md` and `04_host_scheduler.md` instead.
+
+**Prerequisites:** `00_project_overview.md` for crate layout, `02_ir_schemas.md`
+for the IR types your module reads and writes, and `03_wit_and_manifest.md` for
+the manifest you ship alongside the `.wasm`.
+
 ## Overview
 
 The SDK is a set of Rust crates that make writing, testing, and validating modules fast. A module author needs no knowledge of the host internals — only the SDK crates and the WIT interface.
@@ -141,11 +152,10 @@ When migrating module tests between crates, the question is whether a test that 
 1. **System-under-test is the module's public trait impl** (e.g. `MyInfillModule::run_infill` is what the assertions hit) → relocate the test into the module crate. The runtime is fixture; the module is the SUT.
 2. **System-under-test is a runtime symbol** (e.g. `Blackboard`, `commit_*_builtin`, `GCodeEmitter`) that happens to consume the module as an input → leave the test in the runtime crate and annotate it. The module is fixture; the runtime is the SUT.
 
-Tests that fall into category (2) must carry an explicit `// NOT RELOCATABLE: <reason>` comment on the test function or module so future bulk-migration passes do not silently move them. Three canonical examples in `crates/slicer-runtime/tests/`:
+Tests that fall into category (2) must carry an explicit `// NOT RELOCATABLE: <reason>` comment on the test function or module so future bulk-migration passes do not silently move them. Two canonical examples under `crates/slicer-runtime/tests/`:
 
-- `gcode_part_cooling_emission_tdd.rs` — exercises `DefaultGCodeEmitter::emit_gcode`'s cooling/fan path; the cooling module is fixture input.
-- `gcode_toolchange_purge_emission_tdd.rs` — exercises the emitter's tool-change + purge interaction; the wipe-tower module is fixture input.
-- `slicing_promotion_tdd.rs` — exercises the host's slice-promotion glue; consumed modules are fixture input.
+- `integration/gcode_part_cooling_emission_tdd.rs` — exercises `DefaultGCodeEmitter::emit_gcode`'s cooling/fan path; the cooling module is fixture input.
+- `e2e/slicing_promotion_e2e_dispatch_regression_tdd.rs` — exercises the host's slice-promotion dispatch glue; consumed modules are fixture input.
 
 A future `GCodeEmitter` crate extraction (already prefigured by Packet 86's `slicer-gcode`) will re-evaluate these annotations: tests whose SUT migrates with the emitter will follow it; tests that remain runtime-coupled stay.
 
@@ -322,8 +332,8 @@ impl PrepassModule for MySupportPlanner {
                     Point3WithWidth { x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
                 ]],
             };
-            output.push_support_plan(entry).map_err(|e| {
-                ModuleError::fatal(1, format!("push_support_plan failed: {e}"))
+            output.push_support_plan_entry(entry).map_err(|e| {
+                ModuleError::fatal(1, format!("push_support_plan_entry failed: {e}"))
             })?;
         }
         Ok(())
@@ -333,8 +343,10 @@ impl PrepassModule for MySupportPlanner {
 
 The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
-"SurfaceClassificationIR", "LayerPlanIR", "PaintRegionIR"]`, `writes =
-["SupportPlanIR"]`, and `[module] wit-world = "slicer:world-prepass@1.0.0"`.
+"SurfaceClassificationIR", "LayerPlanIR"]`, `writes = ["SupportPlanIR"]`, and
+`[module] wit-world = "slicer:world-prepass"` (unversioned — a versioned
+`wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
+carries no version").
 
 #### PrePass Config-View Plumbing (Normative — Packet 73)
 
@@ -355,17 +367,16 @@ final holdout) — two behavioural consequences for module authors:
 
 ### Single-Stage-Per-Impl Constraint
 
-`#[slicer_module]` is single-stage per impl block. The macro at
-`crates/slicer-macros/src/lib.rs:43-52` raises a `compile_error!` when
-`detect_stage_methods()` (lib.rs:106-119) finds more than one stage method on
-the impl. There is no `#[slicer_module(stage = "...")]` attribute argument —
-the only stage selector is the method name lookup against the `STAGES` table
-in `crates/slicer-schema/src/lib.rs`. Additionally, the macro hardcodes the
-WIT export module name per world (e.g.
-`__slicer_prepass_world_export` at lib.rs:2024;
-`__slicer_postpass_world_export` at lib.rs:689;
-`__slicer_finalization_world_export` at lib.rs:989;
-`__slicer_layer_world_export` at lib.rs:2306). Two `#[slicer_module]` impl
+`#[slicer_module]` is single-stage per impl block. The macro in
+`crates/slicer-macros/src/lib.rs` raises a `compile_error!` when
+`detect_stage_methods` finds more than one stage method on the impl. There is no
+`#[slicer_module(stage = "...")]` attribute argument — the only stage selector is
+the method name lookup against the `STAGES` table in
+`crates/slicer-schema/src/lib.rs`. Additionally, the macro hardcodes the WIT
+export module name per world (`__slicer_prepass_world_export`,
+`__slicer_postpass_world_export`, `__slicer_finalization_world_export`,
+`__slicer_layer_world_export`, all in `crates/slicer-macros/src/lib.rs`). Two
+`#[slicer_module]` impl
 blocks in the same crate that target the same world will fail to link with
 duplicate-symbol errors.
 
@@ -383,42 +394,22 @@ bare `Polygon { ... }` and `Point2 { ... }` names; for those names to resolve,
 the inline WIT needs `use geometry.{ex-polygon, polygon, point2};` (declarative
 intent) AND the `segmentation_helpers` quote block needs explicit
 `use self::slicer::world_prepass::geometry::{Polygon, Point2};` statements
-(matching the finalization-world pattern at lib.rs:998). Both are required;
+(matching the finalization-world pattern in the same macro file). Both are required;
 the WIT-level fix alone is insufficient under wit-bindgen 0.24.
 
 ### SDK Type Re-Exports
 
-The SDK re-exports all WIT-generated types under clean names:
+The SDK re-exports the traits, view types, output builders, geometry types,
+error type, coordinate helpers, and the `host` service module under clean names,
+so a module author writes `use slicer_sdk::prelude::*;` and needs nothing else.
 
-```rust
-// slicer_sdk::prelude::* exports all of these:
-pub use slicer_wit::layer_module::{
-    LayerModule,
-    SliceRegionView,
-    PerimeterRegionView,
-    InfillOutputBuilder,
-    PerimeterOutputBuilder,
-    SlicePostprocessBuilder,
-    ConfigView,
-    ExPolygon, Polygon, Point2, Point3, Point3WithWidth,
-    ExtrusionPath3D, ExtrusionRole, WallLoopView, WallLoopType,
-};
-
-// PrePass module authoring:
-pub use slicer_sdk::prepass_builders::{
-    LayerPlanOutput, MeshAnalysisOutput,
-    PaintSegmentationOutput, SeamPlanningOutput, SupportGeometryOutput,
-};
-pub use slicer_sdk::prepass_types::{
-    MeshObjectView, PaintLayerView, PaintSegmentationObjectView, SeamPlanEntry,
-    SupportPlanEntry,
-};
-pub use slicer_sdk::traits::{LayerModule, PrepassModule, PaintRegionLayerView};
-
-pub use slicer_sdk::error::ModuleError;
-pub use slicer_sdk::geometry::*;   // convenience geometry helpers
-pub use slicer_sdk::host;          // host service wrappers (log, raycast, clip_polygons, etc.)
-```
+**Source of truth:** `crates/slicer-sdk/src/prelude.rs` — that file is the
+authoritative re-export list. It pulls the traits (`LayerModule`,
+`PrepassModule`, `PostpassModule`, `FinalizationModule`) and builders from
+`crate::traits` / `crate::builders`, the views from `crate::views`, the paint
+and IR types from `slicer_ir`, and the host wrappers and their enums
+(`ClipOperation`, `OffsetJoinType`, `LogLevel`) from `crate::host`. Read it for
+the exact set rather than relying on a snapshot here.
 
 ### Consuming a PrePass IR from a Layer Stage
 
@@ -470,17 +461,20 @@ and write their reorder decision into a `LayerCollectionBuilder` resource.
 ```rust
 fn run_path_optimization(
     &self,
-    layer: LayerCollectionView,
-    output: &mut LayerCollectionBuilder,
+    layer_index: u32,
+    regions: &[PerimeterRegionView],
+    output: &mut GcodeOutputBuilder,
+    collection: &mut LayerCollectionBuilder,
+    config: &ConfigView,
 ) -> Result<(), ModuleError> {
-    // Read current entity order.
-    let mut entities: Vec<_> = layer.ordered_entities().collect();
+    // Read current entity order from the collection builder.
+    let entities = collection.get_ordered_entities();
 
     // Apply nearest-neighbour reorder (or any module-specific algorithm).
-    let order = nearest_neighbour_order(&entities, layer.z());
+    let order = nearest_neighbour_order(&entities);
 
     // Each tuple: (entity_index_in_input_order, reverse_direction).
-    output.set_entity_order(order.iter().map(|&i| (i as u32, false)).collect());
+    collection.set_entity_order(order.iter().map(|&i| (i as u32, false)).collect());
     Ok(())
 }
 ```
@@ -496,36 +490,28 @@ Direct calls to host services are ergonomic:
 ```rust
 use slicer_sdk::host;
 
-// Logging
-host::log_info("Processing layer {}", layer_index);
-host::log_warn("Density near limit: {}", density);
+// Logging — each log fn takes a single &str; format the message yourself.
+host::log_info(&format!("Processing layer {layer_index}"));
+host::log_warn(&format!("Density near limit: {density}"));
 
 // Mesh queries
 let surface_z: Option<f32> = host::raycast_z_down(object_id, x, y, start_z);
 let normal: Option<Point3> = host::surface_normal_at(object_id, x, y, z);
 
 // Geometry (delegates to host-side Clipper2)
-let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOp::Intersection);
-let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, JoinType::Miter);
+let clipped: Vec<ExPolygon> = host::clip_polygons(&subject, &clip, ClipOperation::Intersection);
+let offset:  Vec<ExPolygon> = host::offset_polygons(&polys, -0.2, OffsetJoinType::Miter);
 let simple:  Polygon        = host::simplify_polygon(&poly, 0.05);
 
 // Timing
 let t0 = host::now_us();
 // ... work ...
-host::log_debug("Took {} µs", host::now_us() - t0);
+host::log_debug(&format!("Took {} µs", host::now_us() - t0));
 
-// Paint region queries
-use slicer_sdk::paint::{PaintSemantic, PaintValue};
-
-// Query paint regions for a semantic at the current layer.
-// Returns the list of semantic regions (polygons + paint value).
-let regions = paint_view.get_regions(PaintSemantic::FuzzySkin);
-let fuzzy: Option<&PaintValue> = regions.first().map(|r| &r.value);
-
-// For segment-level annotation, read SliceRegionView's boundary-paint
-// resource directly — maps to SlicedRegion.segment_annotations on the
-// blackboard side (module must declare the WIT reads).
-let annotation = region.boundary_paint();
+// Paint annotations: paint reaches modules through SliceIR, keyed by semantic.
+// `SliceRegionView::segment_annotations()` returns the per-semantic annotation
+// map for this region (the module must declare the corresponding SliceIR read).
+let annotations = region.segment_annotations();  // &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>
 ```
 
 #### Host Call Performance Contract (Normative)
@@ -545,7 +531,7 @@ Recommended budgeting:
 
 ### Geometry Helpers
 
-Geometry utilities for module authors live in the `slicer-core` crate (add `slicer-core = { path = "..." }` to `[dependencies]` — already declared by `classic-perimeters`, `rectilinear-infill`, `traditional-support`, and `tree-support`; the fake `arachne-perimeters` module that also declared it was deleted in P108).
+Geometry utilities for module authors live in the `slicer-core` crate (add `slicer-core = { path = "..." }` to `[dependencies]` — already declared by `classic-perimeters`, `rectilinear-infill`, `traditional-support`, `tree-support`, and the live `arachne-perimeters` generator).
 
 ```rust
 use slicer_core::{segment_path, distribute_points, path_length, seg_len_3d, flow_correction};
@@ -898,7 +884,7 @@ Two new read-only accessors are available on `SliceRegionView` from packet 104 o
 
 ### SliceRegionView accessors (packet 107)
 
-- `overhang_quartile_polygons(&self) -> &[QuartileBand]` — returns the per-layer overhang quartile bands for this region, host-pre-filtered so the module only sees bands relevant to its region; returns an empty slice when no overhang data exists for the layer. Populated by the same host populator as `overhang_areas()`, from `SurfaceClassificationIR.overhang_quartile_polygons` keyed by `global_layer_index` (`crates/slicer-wasm-host/src/marshal/in_.rs`). Backed by the WIT `quartile-band` record and the `overhang-quartile-polygons` function on `slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`). Mapped into the guest `SliceRegionView` by the `#[slicer_module]` macro adapter (`crates/slicer-macros/src/lib.rs:2161-2169`) alongside `overhang_areas`, `bridge_areas`, `is_bridge`, `bridge_orientation_deg`, and `surface_group` — all four are available to WASM guests today.
+- `overhang_quartile_polygons(&self) -> &[QuartileBand]` — returns the per-layer overhang quartile bands for this region, host-pre-filtered so the module only sees bands relevant to its region; returns an empty slice when no overhang data exists for the layer. Populated by the same host populator as `overhang_areas()`, from `SurfaceClassificationIR.overhang_quartile_polygons` keyed by `global_layer_index` (`crates/slicer-wasm-host/src/marshal/in_.rs`). Backed by the WIT `quartile-band` record and the `overhang-quartile-polygons` function on `slice-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`). Mapped into the guest `SliceRegionView` by the `#[slicer_module]` macro adapter (`crates/slicer-macros/src/lib.rs`) alongside `overhang_areas`, `bridge_areas`, `is_bridge`, `bridge_orientation_deg`, and `surface_group` — all available to WASM guests today.
 
 ---
 
@@ -987,7 +973,7 @@ wasm-tools component new \
 
 `pnp_cli` deliberately has no `build` verb — `cargo` is the canonical build tool. Wrapping it would duplicate flag surface and add failure modes without adding value.
 
-> **Workspace contributors** rebuilding the in-tree guest set (`modules/core-modules/**/wit-guest` and `crates/slicer-runtime/test-guests/*`) should use `cargo xtask build-guests`. Freshness can be verified with `cargo xtask build-guests --check`. This is generative — adding a new guest crate matching the validated discovery predicate (cdylib + `[workspace]` sentinel + correct dep shape) is picked up automatically; no hardcoded module list to maintain.
+> **Workspace contributors** rebuilding the in-tree guest set (`modules/core-modules/**/wit-guest` and `crates/slicer-wasm-host/test-guests/*`) should use `cargo xtask build-guests`. Freshness can be verified with `cargo xtask build-guests --check`. This is generative — adding a new guest crate matching the validated discovery predicate (cdylib + `[workspace]` sentinel + correct dep shape) is picked up automatically; no hardcoded module list to maintain.
 
 ### Other verbs
 

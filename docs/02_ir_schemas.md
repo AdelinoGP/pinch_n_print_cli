@@ -1,5 +1,17 @@
 # Pinch 'n Print — Intermediate Representation (IR) Schemas
 
+**What this covers:** every IR struct that crosses the host/module boundary —
+its fields, its `schema_version`, and the normative contracts governing how it
+is produced and consumed.
+
+**Who it's for:** module authors reading or writing IR, and anyone changing an
+IR type (the versioning contract at the end of this file binds you).
+
+**Prerequisites:** `00_project_overview.md` for crate layout;
+`01_system_architecture.md` for which stage produces which IR. The coordinate
+rules in `08_coordinate_system.md` are assumed throughout — every integer
+coordinate below obeys them.
+
 All IRs are defined in `crates/slicer-ir/src/`. They are the shared contract between the host and all modules. IR types are re-exported by the SDK crate for module authors.
 
 The struct definitions in this document are the **normative spec**; the Rust types under `crates/slicer-ir/src/` implement them. If the code and this document disagree, treat the discrepancy as a bug to be filed against whichever side drifted. Canonical source files:
@@ -15,7 +27,7 @@ Every IR struct carries `schema_version: SemVer`. The host enforces compatibilit
 
 All `Point2` integer coordinates use **1 scaled integer unit = 100 nm (10⁻⁴ mm)**. The scaling factor is **10_000** (multiply mm by 10_000 to get units). `f32` fields are in millimeters unless annotated otherwise.
 Never construct `Point2` with raw integer literals. Use `Point2::from_mm(x, y)` or `mm_to_units()`.
-**This is NOT the same as OrcaSlicer**, which uses 1 unit = 1 nm factor 1_000_000). When porting any OrcaSlicer coordinate constant, divide it by 100. See `./docs/08_coordinate_system.md` for the full reference including a conversion table and porting checklist.
+**This is NOT the same as OrcaSlicer**, which uses 1 unit = 1 nm (scaling factor 1_000_000). When porting any OrcaSlicer coordinate constant, divide it by 100. See `08_coordinate_system.md` for the full reference including a conversion table and porting checklist.
 
 ## Coordinate Precision & Determinism (Normative)
 
@@ -83,6 +95,13 @@ pub struct ObjectMesh {
     pub config: ObjectConfig,               // raw user config + sidecar overlay (see contract below)
     pub modifier_volumes: Vec<ModifierVolume>,
     pub paint_data: Option<FacetPaintData>, /// All user-painted data for this object. None if the user has not applied any paint to this object.
+    /// Cached world-space Z extent `(z_min, z_max)` in millimeters, computed at
+    /// construction time from the transformed mesh vertices. `None` when the
+    /// mesh is empty or the extent is degenerate (`z_max <= z_min`).
+    /// Not serialized (`#[serde(skip_deserializing, default)]`) — recomputed on
+    /// every load so it always reflects the current `transform`. This makes
+    /// world-space Z a first-class IR contract surface.
+    pub world_z_extent: Option<(f32, f32)>,
 }
 
 /// All paint layers on one object. Each layer carries one semantic
@@ -162,7 +181,8 @@ impl BoundingBox2 {
 
 ### 3MF paint-metadata extraction
 
-The host 3MF loader (`model_loader.rs::parse_3mf_model_xml`) recognizes four
+The host 3MF loader (`parse_3mf_model_xml` in
+`crates/slicer-model-io/src/loader.rs`) recognizes four
 paint attributes on `<triangle>` elements in 3MF model XML. Each attribute
 maps to one or more `PaintSemantic` layers via the TriangleSelector hex-encoded
 state values described below.
@@ -258,19 +278,14 @@ pub enum PaintValue {
     /// the 3MF `paint_color` state N (1..=16) is decoded to
     /// `ToolIndex(N-1)` by the loader so the IR is uniformly 0-indexed.
     /// The previous `HashablePaintValue` wrapper used at paint
-    /// segmentation was removed in Packet 91 (this enum is directly
-    /// hashable; see below). The `Custom` variant is intentionally
-    /// reserved for per-module user-defined paint values.
+    /// segmentation was removed in Packet 91 — this enum is directly
+    /// hashable, per the "`PaintValue` Eq+Hash invariant" section of this
+    /// document. The `Custom` variant is intentionally reserved for
+    /// per-module user-defined paint values.
     ToolIndex(u32),
     /// Community-defined paint value (string-keyed). Added for parity
     /// with `PaintSemantic::Custom`.
     Custom(String),
-    /// Vector paint value — deferred follow-up variant. Tagged for future
-    /// multi-channel paint (e.g. per-axis infill density). Currently
-    /// unsupported; modules MUST NOT produce `PaintValue::Vector` and host
-    /// MUST reject it at IR validation time.
-    #[doc(hidden)]
-    Vector(Vec<f32>),
 }
 
 pub struct PaintStroke {
@@ -359,11 +374,11 @@ re-assembly. `assemble_object` computes `world_z_extent` from the mesh
 and applies the object's transform; for single-component models that
 reuse a parent extent during convert's split re-assembly the recompute
 is identical under identity transform (locked by AC-4.3 regression in
-packet 75). Z-extent logic is centralised here —
-`compute_z_extent_for_component` from the convert path is intentionally
-unused. The `assemble_object` symbol was promoted from `pub(crate)` to
-`pub` in Packet 81 to support the CLI's `helpers_cmd.rs` move into
-`pnp-cli`.
+packet 75). Z-extent logic is centralised here; the convert path's separate
+`compute_z_extent_for_component` was deleted in Packet 75 rather than left as a
+second implementation. The `assemble_object` symbol (`crates/slicer-model-io/src/loader.rs`)
+was promoted from `pub(crate)` to `pub` in Packet 81 to support the CLI's
+`helpers_cmd.rs` move into `pnp-cli`.
 
 ### `ObjectConfig.data` Population (Normative — Packet 67)
 
@@ -373,7 +388,7 @@ extracts an allowlist of keys (`extruder`, `enable_support`,
 `support_type`) from each `<object>`'s `<metadata>` block and seeds
 them into the host's `config_source` via the
 `object_config:<id>:<key>` pattern documented in §"Config Key
-Namespaces" (IR 5). This is what makes user-specified per-object
+Namespaces" of this document. This is what makes user-specified per-object
 metadata from 3MF files reach `RegionMapping` and downstream consumers.
 
 ### Host-Local Sidecar Types (Normative — Packet 56)
@@ -448,8 +463,9 @@ routing metadata and is excluded from stamping into
 `RegionPlan.config.extensions`; only non-`subtype` keys flow through.
 Additionally, modifier volumes whose subtype value is
 `"support_enforcer"` or `"support_blocker"` are entirely SKIPPED
-during config stamping for OrcaSlicer parity
-(`PrintApply.cpp:590-594`). Their semantics are exercised via
+during config stamping for OrcaSlicer parity — canonical
+`PrintApply.cpp` skips these volume subtypes when applying per-volume
+config overrides. Their semantics are exercised via
 `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`
 instead, never via `PaintValue::ToolIndex` — see also the
 "Support semantics use Flag, never ToolIndex" constraint in IR 4.
@@ -467,7 +483,7 @@ instead, never via `PaintValue::ToolIndex` — see also the
 ### Canonical region-id parser (host-only — Packet 75)
 
 The decimal-`u64` parser `parse_canonical_region_id` lives in
-`slicer-runtime/src/wit_host.rs` and is the SOLE host validator for
+`crates/slicer-wasm-host/src/host.rs` and is the SOLE host validator for
 the canonical region-id string format (decimal `u64` with no leading
 zeros, no other whitespace or punctuation). It is not part of the
 public SDK and must NOT be called by modules. Packet 75 deduplicated
@@ -603,74 +619,48 @@ pub struct ObjectLayerRef {
     pub effective_layer_height: f32,
 }
 
-/// The fully resolved, typed config for one region at one layer.
-/// Generated by merging: global config → object config → modifier config → layer-range override.
-/// Merge is ordered and deterministic. Last writer wins per key.
-/// Layer-range overrides only affect explicitly provided keys.
-/// Option<T> fields are contributed by optional modules; None if the module is disabled.
-pub struct ResolvedConfig {
-    // Geometry
-    pub layer_height: f32,
-    pub line_width: f32,
-    pub first_layer_height: f32,
-    pub first_layer_line_width: f32,
-
-    // Walls
-    pub wall_count: u32,
-    pub outer_wall_speed: f32,
-    pub inner_wall_speed: f32,
-    pub wall_generator: WallGenerator,
-    pub arachne_min_feature_size: Option<f32>,
-
-    // Infill
-    pub infill_type: InfillType,
-    pub infill_density: f32,
-    pub infill_angle: f32,
-    pub infill_speed: f32,
-    pub solid_infill_speed: f32,
-    /// Multi-layer top-surface window. Default 3. Set per region by
-    /// `PrePass::RegionMapping` from `top_shell_layers` config; can be
-    /// overridden per object or per paint semantic. **Default deviates
-    /// from OrcaSlicer's 4** (packet 35).
-    pub top_shell_layers: u32,
-    /// Multi-layer bottom-surface window. Default 3 (packet 35).
-    pub bottom_shell_layers: u32,
-
-    // Fill-role claim holders (packet 37). Each names the module that holds the
-    // corresponding fill-role claim for this region; default "rectilinear-infill".
-    // These select claim holders — see docs/03 §"Known claim IDs" for the
-    // claim↔key mapping and docs/04 §"Claim Resolution" for how they resolve.
-    pub top_fill_holder: String,
-    pub bottom_fill_holder: String,
-    pub bridge_fill_holder: String,
-    pub sparse_fill_holder: String,
-
-    // Support
-    pub support_enabled: bool,
-    pub support_type: SupportType,
-    pub support_overhang_angle: f32,
-
-    // Non-planar (module-contributed; None if non-planar module disabled)
-    pub nonplanar_max_angle_deg: Option<f32>,
-    pub nonplanar_shell_count: Option<u32>,
-    pub nonplanar_amplitude: Option<f32>,
-
-    // Smoothificator (module-contributed)
-    pub smoothificator_target_height: Option<f32>,
-    pub smoothificator_adaptive: Option<bool>,
-
-    /// Overflow bucket: keys contributed by modules not in the current schema snapshot.
-    /// Round-trips safely without corrupting config. Migrated from
-    /// `HashMap` to `BTreeMap` in Packet 91 so that `ResolvedConfig`
-    /// can derive `Hash` (deterministic iteration order is the upside;
-    /// the existing `Hash` impl hashes f32 fields via `to_bits()` for
-    /// consistency within one process).
-    pub extensions: BTreeMap<String, ConfigValue>,
-}
-
 pub enum WallGenerator { Classic, Arachne }
 pub enum SupportType   { Traditional, Tree }
 ```
+
+### `ResolvedConfig`
+
+The fully resolved, typed config for one region at one layer. Generated by
+merging: global config → object config → modifier config → layer-range override.
+The merge is ordered and deterministic, last writer wins per key, and
+layer-range overrides only affect explicitly provided keys. `Option<T>` fields
+are contributed by optional modules and are `None` when the module is disabled.
+
+**The field list is not reproduced here.** `ResolvedConfig` is generated by the
+`declare_resolved_config!` macro invocation in
+`crates/slicer-ir/src/resolved_config.rs`, which is the authoritative list of
+fields, types, defaults, and per-field extractors. For the config **keys** those
+fields bind to — including host-only keys and namespaced module keys — see
+`15_config_keys_reference.md`.
+
+Field-shape rules that the macro invocation does not state, and that a reader
+must know:
+
+- **`layer_height` and `first_layer_height` are `f64`, deliberately — not
+  `f32`.** They feed the layer-Z formula (`z = n * layer_height`). An `f32`
+  round-trip re-taints the value and drifts onto an adjacent float at roughly
+  every 10th layer, which misses STL vertices stored as `f32(mm_value)` and
+  breaks `classify_vertex`'s exact `f32 ==` plane test. Other millimeter fields
+  are `f32`.
+- **`top_shell_layers` / `bottom_shell_layers` default to 3, which deviates from
+  OrcaSlicer's 4** (packet 35). `PrePass::RegionMapping` sets them per region;
+  they can be overridden per object or per paint semantic.
+- **The four `*_fill_holder` fields select claim holders, not values.** Each
+  names the module holding the corresponding fill-role claim for the region
+  (default `"rectilinear-infill"`). The claim↔key mapping is in
+  `03_wit_and_manifest.md` § "Known claim IDs"; resolution is in
+  `04_host_scheduler.md` § "Claim Resolution".
+- **`extensions: BTreeMap<String, ConfigValue>` is the overflow bucket** for
+  keys contributed by modules outside the current schema snapshot. It
+  round-trips without corrupting config. It was migrated from `HashMap` to
+  `BTreeMap` in Packet 91 so `ResolvedConfig` can derive `Hash`; deterministic
+  iteration order is the upside. The `Hash` impl hashes `f32` fields via
+  `to_bits()`, which is consistent within one process.
 
 ### Config Precedence Rules
 
@@ -824,13 +814,13 @@ Config keys follow a structured namespace convention used in `ResolvedConfig` an
 
 **Override precedence** (lowest → highest):
 
-```
+```text
 global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>) < per_tool (tool_config:<idx>:<key>)
 ```
 
 Per-tool config is applied **last (highest)**, mirroring OrcaSlicer's filament-override-last model (`PrintApply.cpp` applies the filament preset's overrides on top of print/object/modifier/material). At `RegionMapping` the per-tool overlay runs after the paint overlays for a painted tool's chain; at emit it overlays the global config.
 
-When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule (determines which semantic's config wins in `RegionPlan.config`) is distinct from the `paint_order`-based rule documented in the [Paint Region Resolution Contract](#paint-region-resolution-contract) above, which governs intra-semantic polygon overlap resolution during `PrePass::PaintSegmentation`.
+When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule determines which semantic's config wins in `RegionPlan.config`. It is distinct from the `paint_order`-based rule, which governs intra-semantic polygon overlap during `PrePass::PaintSegmentation`: the highest `paint_order` wins, and equal-order conflicting values are a fatal error. The `paint_order` field is defined in `crates/slicer-sdk/src/prepass_builders.rs`; its resolution rule is documented in `04_host_scheduler.md` § "Layer::PaintRegionAnnotation Stage" and traced in `10_scenario_traces.md`.
 
 **Overlap determination (Normative — Packet 51):** A region's polygons
 are considered to overlap a `PaintSemantic` when
@@ -845,9 +835,14 @@ for audit visibility.
 
 ## IR 6 — SliceIR
 
-**Stage:** Output of `Layer::Slice`, mutated by `Layer::SlicePostProcess`
+**Stage:** Output of `PrePass::Slice`, refined by `PrePass::ShellClassification`
+and `PrePass::PaintSegmentation`, then mutated by `Layer::SlicePostProcess`
 
-**Current schema_version: 2.0.0** (Major bump by Packet 99 — SliceIR schema reset to 2.0.0 to align with the post-roadmap paint-pipeline shape: `SlicedRegion.boundary_paint` renamed to `segment_annotations`, `SlicedRegion.variant_chain` added. Prior versions: 1.2.0 (packet 36, bridge fields), 3.0.0 (slice-prepass migration, shell index + solid_fill), 4.0.0 (packet 91 segment annotations + variant chain), 4.1.0 (additive `SlicedRegion.sparse_infill_area` field).)
+**Current schema_version: 4.7.0** (`CURRENT_SLICE_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Minor bump to 4.7.0 by P112 — additive
+`ExtrusionJunction` / `ExtrusionLine` types for Arachne variable-width walls.
+The full version history is in the "IR Versioning Contract" table at the end of
+this document; that table is authoritative for this IR's history.
 
 ```rust
 pub struct SliceIR {
@@ -907,7 +902,8 @@ pub struct SlicedRegion {
     /// `perimeter.infill_areas − union(bridge_areas, bottom_solid_fill, top_solid_fill)`.
     /// Pairwise disjoint with the other three canonical fill polygons after the
     /// host hook in `crates/slicer-runtime/src/region_partition.rs` runs.
-    /// Added in `docs/specs/infill-fill-partition-plan.md`.
+    /// Added in `docs/specs/_OLD/infill-fill-partition-plan.md` (superseded
+    /// spec, retained for the partition write-up).
     pub sparse_infill_area: Vec<ExPolygon>,
     /// Per-variant paint semantic chain. Empty in packet 91 (scaffold);
     /// populated by packet 93 (region splitting cross-product) for
@@ -1343,7 +1339,9 @@ pub struct SupportPlanIR {
 }
 
 pub struct SupportPlanEntry {
-    pub global_layer_index: u32,
+    /// Signed: negative values (`-1`, `-2`, ...) are reserved for raft prefix
+    /// layers; non-negative values refer to model layers.
+    pub global_layer_index: i32,
     pub object_id: ObjectId,
     pub region_id: RegionId,
     /// Pre-planned organic branch geometry. Each `ExtrusionPath3D` is typically
@@ -1472,12 +1470,21 @@ A module in `PostPass::LayerFinalization` receives a mutable view of the
 full layer sequence. A module in any per-layer stage receives only the
 current layer and cannot see or modify any other layer's `LayerCollectionIR`.
 
+<!-- VERIFY: LayerCollectionIR.global_layer_index is `u32` in
+     crates/slicer-ir/src/slice_ir.rs, so negative raft prefix indices are NOT
+     representable here. SupportPlanEntry.global_layer_index IS `i32` and does
+     reserve negatives for raft prefix layers. This doc previously specified
+     `i32` for both; the LayerCollectionIR half does not match the code. Either
+     the raft design was never carried into LayerCollectionIR (doc was
+     aspirational) or the u32 is a defect that makes raft layers unrepresentable
+     in the layer collection. Resolve before relying on either type here. -->
+
 ```rust
 pub struct LayerCollectionIR {
     pub schema_version: SemVer,
-    /// Signed to support raft prefix layers. Raft entries use negative indices
-    /// (`-1, -2, ..., -raft_layers`) so raft always sorts before model layers.
-    pub global_layer_index: i32,
+    /// Unsigned in code today; see the VERIFY note preceding this block
+    /// regarding raft prefix layers and negative indices.
+    pub global_layer_index: u32,
     pub z: f32,
     /// Ordered, ready-to-emit extrusion entities.
     /// Produced by travel minimization + DAG topo sort.
@@ -1486,6 +1493,8 @@ pub struct LayerCollectionIR {
     pub z_hops: Vec<ZHop>,
     /// Guest-emitted per-layer annotations (comments / raw G-code lines).
     pub annotations: Vec<LayerAnnotation>,
+    /// Retract/unretract decisions from `Layer::PathOptimization`.
+    pub retracts: Vec<TravelRetract>,
     /// Travels between entities. Anchors are by `entity_id`, not positional index
     /// (packet 39), so finalization mutations cannot dangle anchors.
     pub travel_moves: Vec<TravelMove>,
@@ -1517,14 +1526,19 @@ pub struct PrintEntity {
 }
 
 pub struct TravelMove {
-    /// Travel anchor: the entity this travel was emitted before.
-    /// Replaces the previous `entity_idx: u32` positional anchor;
+    /// Travel anchor: the entity in `ordered_entities` after which this travel
+    /// is emitted. Replaces the previous `entity_idx: u32` positional anchor;
     /// the emitter resolves it via an `entity_id -> index` map
     /// built per-layer. Added in packet 39.
     pub entity_id: u64,
-    pub from: Point3WithWidth,
-    pub to: Point3WithWidth,
-    pub speed: f32,
+    /// Destination, in millimeters. Each axis is independently optional; `None`
+    /// leaves that axis unchanged. The travel carries a destination only — the
+    /// start point is wherever the previous move ended.
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+    pub z: Option<f32>,
+    /// Feed-rate override in mm/s. `None` keeps the current speed.
+    pub f: Option<f32>,
 }
 
 pub struct ToolChange {
@@ -1541,8 +1555,10 @@ pub struct ZHop {
 pub enum ExtrusionRole {
     OuterWall, InnerWall, ThinWall,
     TopSolidInfill, BottomSolidInfill, SparseInfill,
+    InternalSolidInfill,
     SupportMaterial, SupportInterface,
     WipeTower, PrimeTower,
+    Skirt, Brim,
     Ironing, BridgeInfill,
     GapFill,           // thin-gap fill paths (added P105, schema 4.4.0)
     Custom(String),    // community modules may register new roles
@@ -1556,23 +1572,28 @@ pub enum ExtrusionRole {
 inserted into a layer when the inserting module does not supply an explicit
 priority. Lower numbers print earlier. Added in packet 40.
 
+Values below are ordered as they print (lowest first) and mirror
+`ExtrusionRole::default_priority()` in `crates/slicer-ir/src/slice_ir.rs`.
+
 | Role                  | `default_priority()` |
 |-----------------------|----------------------|
-| `Skirt` (`Custom("slicer.builtin/skirt@1")`)        | 100 |
-| `Brim`  (`Custom("slicer.builtin/brim@1")`)         | 110 |
-| `PrimeTower`          | 200 |
-| `WipeTower`           | 210 |
-| `OuterWall`           | 300 |
-| `InnerWall`           | 310 |
-| `ThinWall`            | 320 |
-| `BridgeInfill`        | 400 |
-| `TopSolidInfill`      | 410 |
-| `BottomSolidInfill`   | 420 |
-| `SparseInfill`        | 430 |
-| `SupportMaterial`     | 500 |
-| `SupportInterface`    | 510 |
-| `Ironing`             | 900 |
-| `Custom(_)` (unknown) | 1000 |
+| `Skirt`               | 0    |
+| `Brim`                | 110  |
+| `OuterWall`           | 1000 |
+| `InnerWall`           | 1500 |
+| `ThinWall`            | 1700 |
+| `GapFill`             | 2000 |
+| `SparseInfill`        | 3000 |
+| `BridgeInfill`        | 3500 |
+| `InternalSolidInfill` | 3800 |
+| `BottomSolidInfill`   | 4000 |
+| `TopSolidInfill`      | 4500 |
+| `SupportMaterial`     | 5000 |
+| `SupportInterface`    | 5500 |
+| `Ironing`             | 6000 |
+| `WipeTower`           | 8000 |
+| `PrimeTower`          | 8500 |
+| `Custom(_)` (unknown) | 9000 |
 
 When two entities share a `default_priority` (or two callers pass equal
 explicit priorities), insertion order is preserved (stable sort).
@@ -1589,9 +1610,10 @@ explicit priorities), insertion order is preserved (stable sort).
   existing IDs.
 - `GCodeEmit` resolves travels by building an `entity_id -> index` map per
   layer; lookup is `O(1)` per travel.
-- `validate_travel_anchors(layer: &LayerCollectionIR) -> Result<(), ValidateError>`
-  short-circuits on the first dangling travel anchor; finalization invokes
-  it before the layer is handed off to `PostPass::GCodeEmit`.
+- `validate_travel_anchors(layer: &LayerCollectionIR) -> Result<(), String>`
+  (`crates/slicer-ir/src/validation.rs`) short-circuits on the first dangling
+  travel anchor; the error string names the offending `entity_id`. Finalization
+  invokes it before the layer is handed off to `PostPass::GCodeEmit`.
 
 ### `LayerCollectionIR::default()` contract (Normative — Packet 79 fixture support)
 
@@ -1673,7 +1695,7 @@ pub enum GCodeCommand {
     Unretract  { length: f32, speed: f32, mode: RetractMode },
     FanSpeed   { value: u8 },
     Temperature { tool: u32, celsius: f32, wait: bool },
-    ToolChange  { from: u32, to: u32 },
+    ToolChange  { after_entity_index: u32, from: u32, to: u32 },
     Comment     { text: String },
     Raw         { text: String },       // escape hatch for printer-specific codes
     /// Extrusion mode selector (M82 = absolute, M83 = relative).
@@ -1737,7 +1759,7 @@ contract — frontends and post-processors parse these tokens.
 
 **Envelope sequence (top to bottom of the `.gcode` output):**
 
-```
+```text
 ; HEADER_BLOCK_START
 ;   <semicolon-prefixed metadata lines: model name, layer count, filament
 ;    used, max Z, slicer version, etc.>
@@ -1820,15 +1842,15 @@ unless stated.
 | Key                       | Type | Default        | Consumer                                                          |
 |---------------------------|------|----------------|-------------------------------------------------------------------|
 | `gcode_resolution`        | f32  | `0.0125 mm`    | Per-role Douglas-Peucker tolerance for wall-family / brim roles.  |
-| `infill_resolution`       | f32  | `0.0125 mm`    | Per-role tolerance for infill / solid-infill / bridge / top / bottom. |
-| `support_resolution`      | f32  | `0.05 mm`      | Per-role tolerance for support material / interface.              |
-| `min_segment_length`      | f32  | `0.025 mm`     | Drop adjacent segments shorter than this after D-P.               |
+| `infill_resolution`       | f32  | `0.04 mm`      | Per-role tolerance for infill / solid-infill / bridge / top / bottom. |
+| `support_resolution`      | f32  | `0.0375 mm`    | Per-role tolerance for support material / interface.              |
+| `min_segment_length`      | f32  | `0.05 mm`      | Drop adjacent segments shorter than this after D-P.               |
 | `gcode_xy_decimals`       | u32  | `3`            | Decimal places for X / Y / Z token formatting (via `format_xyz`). |
-| `perimeter_arc_tolerance` | f32  | `0.0025 mm`    | Clipper2 arc-tolerance for `slicer_core::polygon_ops::offset(...)` — read per-module by `classic-perimeters` (the fake `arachne-perimeters` module was deleted in P108). |
-| `slice_closing_radius`    | f32  | `0.0 mm` (off) | Per-layer Clipper2 `inflate(+r) → inflate(-r)` round-trip after `simplify_polygon_points` in `triangle_mesh_slicer`. |
+| `perimeter_arc_tolerance` | f32  | `0.0125 mm`    | Clipper2 arc-tolerance for `slicer_core::polygon_ops::offset(...)` — declared and read per-module by `classic-perimeters`. (P108 deleted an earlier stub `arachne-perimeters`; the module of that name today is a real Arachne generator that does not declare this key.) |
+| `slice_closing_radius`    | f32  | `0.049 mm`     | Per-layer Clipper2 `inflate(+r) → inflate(-r)` round-trip after `simplify_polygon_points` in `triangle_mesh_slicer`. |
 
 Per-role tolerance dispatch (consumed by `tolerance_for_role` in
-`gcode_emit.rs`):
+`crates/slicer-gcode/src/serialize.rs`):
 
 | `ExtrusionRole`                                                   | Tolerance source     |
 |-------------------------------------------------------------------|----------------------|

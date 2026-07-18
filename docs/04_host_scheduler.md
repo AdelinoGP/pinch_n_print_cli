@@ -1,5 +1,16 @@
 # Pinch 'n Print — Host Scheduler
 
+**What this covers:** how the scheduler ingests manifests, builds and validates
+the module DAG, freezes an execution plan, and runs the four execution phases
+(prepass, per-layer, finalization, postpass) — plus RegionMapIR compilation and
+claim resolution.
+
+**Who it's for:** anyone changing scheduling, validation, or execution order, and
+anyone debugging why a module was rejected or ordered a certain way.
+
+**Prerequisites:** `01_system_architecture.md` for the stage tiers and
+`03_wit_and_manifest.md` for the manifest fields the scheduler reads.
+
 > **Reading this doc.** The Rust snippets below illustrate the scheduler's
 > contracts and data flow. They are NOT literal copies of the production
 > source — they elide error variants, instrumentation hooks, and lifetimes
@@ -152,7 +163,7 @@ Ingestion does **not** validate that a declared path exists in the IR schema —
 Unknown or misspelled stage identifiers are fatal and must not be silently ignored.
 
 ```rust
-fn validate_stage_id(module: &LoadedModule) -> Result<(), SchedulerError> {
+fn validate_stage_ids(module: &LoadedModule) -> Result<(), SchedulerError> {
     if STAGE_ORDER.contains(&module.stage) {
         Ok(())
     } else {
@@ -170,41 +181,56 @@ fn validate_stage_id(module: &LoadedModule) -> Result<(), SchedulerError> {
 
 ### Fixed Stage Order (never changes at runtime)
 
+The canonical stage list is `STAGE_ORDER` — a `&[&str]` of stage-id strings, not
+an enum — in `crates/slicer-scheduler/src/execution_plan.rs`. The scheduler's
+validation passes use this declared order for cross-stage dependency and
+ordering checks. In declaration order:
+
 ```rust
-pub static STAGE_ORDER: &[StageId] = &[
-    StageId::PrePassMeshAnalysis,
-    StageId::PrePassLayerPlanning,
-    StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
-    StageId::PrePassSupportGeometry,     // optional; runs when a support-planner module is loaded
-    StageId::PrePassPaintSegmentation,
-    StageId::PrePassRegionMapping,   // host-built-in, not a module stage
-    StageId::LayerSlice,             // host-built-in
-    StageId::PrePassOverhangAnnotation,  // introduced P106; runs AFTER Slice (P-overhang-inversion), derives overhang from the committed SliceIR
-    StageId::LayerPaintRegionAnnotation, // host-built-in; WASM override contract — any module claiming this stage runs instead of the host
-    StageId::LayerSlicePostProcess,
-    StageId::LayerPerimeters,
-    StageId::LayerPerimetersPostProcess,
-    StageId::LayerInfill,
-    StageId::LayerInfillPostProcess,
-    StageId::LayerSupport,
-    StageId::LayerSupportPostProcess,
-    StageId::LayerPathOptimization,
-    // PathOptimization note (packet 33): nearest-neighbour entity ordering is
-    // owned entirely by `path-optimization-default`. The host carries no
-    // entity-ordering fallback. When no module claims `path-optimization` on a
-    // layer, `LayerCollectionIR.ordered_entities` retains the order produced by
-    // upstream per-layer stages (no reorder). Packet 18 is marked superseded.
+pub const STAGE_ORDER: &[&str] = &[
+    "PrePass::MeshAnalysis",
+    "PrePass::LayerPlanning",
+    "PrePass::SeamPlanning",         // optional; runs when a seam-planner module is loaded
+    "PrePass::PaintSegmentation",
+    "PrePass::RegionMapping",        // host-built-in, not a module stage
+    "PrePass::Slice",                // host-built-in
+    "PrePass::OverhangAnnotation",   // host-built-in; derives overhang from the committed SliceIR
+    "PrePass::ShellClassification",  // host-built-in; annotates the committed SliceIR
+    "PrePass::SupportGeometry",      // host built-in always runs; guest optional
+    "Layer::PaintRegionAnnotation",  // host-built-in; a module claiming this stage runs instead of the host
+    "Layer::SlicePostProcess",
+    "Layer::Perimeters",
+    "Layer::PerimetersPostProcess",
+    "Layer::Infill",
+    "Layer::InfillPostProcess",
+    "Layer::Support",
+    "Layer::SupportPostProcess",
+    "Layer::PathOptimization",
     // ── rayon join happens here ──────────────────────────────────────────
     // PostPass tier — all stages below are sequential, whole-print.
     // Full Vec<LayerCollectionIR> visible. Never parallelized.
-    StageId::PostPassLayerFinalization,
-    StageId::PostPassGCodeEmit,      // host-built-in
-    StageId::PostPassGCodePostProcess,
-    StageId::PostPassTextPostProcess,
+    "PostPass::LayerFinalization",
+    "PostPass::GCodeEmit",           // host-built-in
+    "PostPass::GCodePostProcess",
+    "PostPass::TextPostProcess",
 ];
 ```
 
-`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`). Introduced in P106; moved after Slice by the overhang-after-Slice inversion.
+Two caveats a reader must know:
+
+- **PathOptimization** (packet 33): nearest-neighbour entity ordering is owned
+  entirely by `path-optimization-default`; the host carries no entity-ordering
+  fallback. When no module claims it on a layer,
+  `LayerCollectionIR.ordered_entities` keeps the order produced by upstream
+  per-layer stages (no reorder).
+- **Declared vs. executed order.** The list above is the declared order the
+  scheduler validates against. The prepass host built-ins actually *execute* in
+  a different sequence (`Slice` → `OverhangAnnotation` → `ShellClassification` →
+  `PaintSegmentation` → `SupportGeometry`) — see `01_system_architecture.md`
+  §"PrePass Stage Order", which documents the executed chain and the known
+  divergence between the two.
+
+`PrePass::OverhangAnnotation` — populates `SurfaceClassificationIR.overhang_quartile_polygons` by diffing consecutive-layer footprints, mirroring OrcaSlicer's `detect_overhangs_for_lift` (`PrintObject.cpp`) which diffs consecutive `lslices`. It runs **strictly after `PrePass::Slice`** and reads the committed `SliceIR` (each object's final per-layer region polygons) rather than re-slicing the mesh — the object meshes are sliced exactly once, in `PrePass::Slice`. Host built-in (`host:overhang_annotation`).
 
 ### Intra-Stage DAG (within one stage)
 
@@ -274,7 +300,7 @@ filter at dispatch time using this set; the granularity is per-(module
   output, missing the skip wastes a no-op call.
 
 The filter helper is `module_invocation_allowed_on_layer(...)` (called
-from `layer_executor.rs:362`). Filter cost is `O(|regions| × |S|)` per
+from `module_invocation_allowed_on_layer` in `crates/slicer-runtime/src/layer_executor.rs`). Filter cost is `O(|regions| × |S|)` per
 dispatch decision; the `region_split_semantics` HashSet keeps the
 inner check at O(1).
 
@@ -412,6 +438,8 @@ This dual-layer design prevents privilege escalation through custom bindings whi
 Claims are evaluated only over modules that remain enabled after config filtering.
 
 ```rust
+// Illustrative. The real claim-conflict validation pass is
+// `validate_claim_conflicts` in `crates/slicer-scheduler/src/validation.rs`.
 fn effective_claim_holders(
     claim: &ClaimId,
     modules: &[LoadedModule],
@@ -468,7 +496,7 @@ Selection rules, in order:
    scheduler forces `com.core.classic-perimeters` as the `perimeter-generator`
    holder regardless of `wall_generator`. This mirrors OrcaSlicer, which gates
    Arachne dispatch on `wall_generator == Arachne && !spiral_mode`
-   (`OrcaSlicerDocumented/src/libslic3r/LayerRegion.cpp:138-141`): spiral / vase
+   (canonical `LayerRegion.cpp`): spiral / vase
    mode produces a single continuous Z-ramped wall that the Arachne
    variable-width beading pipeline is not designed to emit, so upstream always
    falls back to the classic perimeter generator in vase mode. The fallback
@@ -572,7 +600,7 @@ pub fn topological_sort(
 /// A valid multi-writer scenario: A writes F, B reads F and writes F.
 /// This creates edge A→B (A's write satisfies B's read), establishing a
 /// deterministic transformation chain. This is NOT a conflict.
-fn check_write_conflicts(
+fn validate_write_conflicts(
     nodes: &[ModuleNode],
     errors: &mut Vec<SchedulerError>,
     stage: StageId,
@@ -660,7 +688,7 @@ fn compute_reachability(
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 
-During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (`PrintApply.cpp:590-594`). Scope is global per object — the only `ModifierScope` variant in use is `AllFeatures`; bbox / polygon-level overlap is a future refinement when partial-volume scopes are introduced.
+During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (canonical `PrintApply.cpp`). Scope is global per object — the only `ModifierScope` variant in use is `AllFeatures`; bbox / polygon-level overlap is a future refinement when partial-volume scopes are introduced.
 
 ### RegionMapping (Builtin) — `aggregated_region_split` Threading (Normative — Packet 93)
 
@@ -701,6 +729,9 @@ for the `AggregatedRegionSplitEntry` type. Relocating the type to
 `cargo tree -p slicer-core --edges normal`.
 
 ```rust
+// Illustrative. The real entry point is `execute_region_mapping` in
+// `crates/slicer-core/src/algos/region_mapping.rs`, invoked from the
+// `host:region_mapping` built-in producer.
 fn build_region_map(
     layer_plan: &LayerPlanIR,
     modules: &[LoadedModule],
@@ -818,7 +849,7 @@ order: `Material` paint > `extensions.extruder` > default `0`).
 Required bounds:
 
 - Host must enforce a configurable cap on RegionMapIR entry count.
-- Default cap: `1_000` entries.
+- Default cap: `DEFAULT_REGION_MAP_CAP = 750_000` entries (`crates/slicer-ir/src/slice_ir.rs`; raised from `1_000` in packet 93).
 - Exceeding cap is a fatal planning error with actionable diagnostics.
 
 Required representation guidance:
@@ -988,12 +1019,12 @@ Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.ob
 #### Negative-Part Per-Layer Subtract (Normative — Packet 56c)
 
 Negative-part subtract is a **per-layer host stage** inserted inside
-`layer_executor.rs::run_paint_annotation`, after `arena.take_slice()`
+`run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`), after `arena.take_slice()`
 returns the layer's `SliceIR` and BEFORE the paint annotation loop
 begins. This insertion point is binding (see proposed ADR-0012):
 
 - Earlier designs put the subtract in a prepass phase-0 built-in or in
-  `pipeline.rs`; both were infeasible because `Vec<SliceIR>` is
+  `crates/slicer-runtime/src/pipeline.rs`; both were infeasible because `Vec<SliceIR>` is
   produced per-layer during execution, not during prepass.
 - The per-layer seam guarantees paint annotation and all downstream
   per-layer consumers (perimeters, infill, support) see post-subtract
@@ -1071,7 +1102,7 @@ is unnecessary.
 
 #### Layer::PaintRegionAnnotation Stage (packet 64)
 
-`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `execute_slice_postprocess_paint_annotation()` annotates slice-region entities with paint data from `PaintRegionIR`. Any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
+`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `run_paint_annotation` (`crates/slicer-runtime/src/layer_executor.rs`) annotates slice-region entities with paint data carried on `SliceIR` (`segment_annotations`). Any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
 
 The annotation loop processes contour points in **parallel chunks of
 32** (`par_chunks(32)`, rayon). Results are byte-identical to serial
@@ -1272,7 +1303,7 @@ Normative behavior:
 - Every non-fatal or fatal module error must emit a structured progress event (`module_error`).
 - Slice result metadata must include `degraded=true` if any non-fatal error occurred.
 
-See progress event schema: `./docs/09_progress_events.md`.
+See progress event schema: `09_progress_events.md`.
 
 ### PostPass::GCodeEmit Emission Contract (packet 11, Normative)
 
@@ -1303,7 +1334,7 @@ pub trait GCodeSerializer {
 `PostPass::GCodeEmit` is implemented in
 `slicer-runtime/src/builtins/gcode_emit_producer.rs` as a metadata-only
 `BuiltinProducer` descriptor (~42 LOC). The actual call site lives in
-`run.rs` / `postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode`,
+`crates/slicer-runtime/src/run.rs` / `crates/slicer-runtime/src/postpass.rs` and wraps `DefaultGCodeEmitter::emit_gcode`,
 converting `GCodeEmitError` → `PostpassError` at the boundary via a free
 function (not a `From` impl — orphan rule prevents that). This
 preserves ADR-0001's in-stage-commit pattern without introducing a
@@ -1322,7 +1353,7 @@ dispatch the matching `overhang_*_4_speed` config key per wall point.
 
 Why inside `emit_gcode`: this single call site covers both pipeline
 arms (`pnp_cli slice` and the WASM dispatch path) without separate
-plumbing in `pipeline.rs`. The classifier short-circuits when all four
+plumbing in `crates/slicer-runtime/src/pipeline.rs`. The classifier short-circuits when all four
 `overhang_*_4_speed` keys are zero (legacy-equivalent mode produces
 byte-identical output to pre-Packet-57).
 
@@ -1375,7 +1406,7 @@ mid-layer. The host drains the queue at `PostPass::LayerFinalization` time,
 inserting the `ToolChange` commands at the appropriate entity boundaries based
 on per-region `tool_index` transitions.
 
-Host-side tool-grouping in `layer_executor.rs` is intentionally absent;
+Host-side tool-grouping in `crates/slicer-runtime/src/layer_executor.rs` is intentionally absent;
 re-ordering entities to consolidate same-tool runs is the path-optimization
 module's responsibility (via `LayerCollectionBuilder::set_entity_order`). The
 host neither sorts by tool nor synthesises tool-change records — both are
@@ -1455,12 +1486,13 @@ slice command
   ├─ execute_prepass()
     │    ├─ PrePassMeshAnalysis          → SurfaceClassificationIR   → Blackboard
     │    ├─ PrePassLayerPlanning         → LayerPlanIR               → Blackboard
-    │    ├─ PrePassSlice                 → SliceIR → Blackboard
-    │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons, from SliceIR) → Blackboard  (P106; after Slice)
-    │    ├─ PrePassSeamPlanning          → SeamPlanIR                → Blackboard  (optional)
-    │    ├─ PrePassSupportGeometry  → SupportGeometryIR+SupportPlanIR → Blackboard  (optional)
-        │    ├─ PrePassPaintSegmentation→ PaintRegionIR             → Blackboard
-    │    └─ PrePassRegionMapping    → RegionMapIR               → Blackboard
+    │    ├─ PrePassSeamPlanning          → SeamPlanIR                → Blackboard  (optional guest)
+    │    ├─ PrePassRegionMapping         → RegionMapIR               → Blackboard
+    │    ├─ PrePassSlice                 → SliceIR                   → Blackboard
+    │    ├─ PrePassOverhangAnnotation    → SurfaceClassificationIR (overhang_quartile_polygons, from SliceIR) → Blackboard  (after Slice)
+    │    ├─ PrePassShellClassification   → SliceIR (shell indices, solid fill) → Blackboard
+    │    ├─ PrePassPaintSegmentation     → SliceIR (per-variant regions)       → Blackboard
+    │    └─ PrePassSupportGeometry       → SupportGeometryIR+SupportPlanIR      → Blackboard  (guest optional)
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerSlice              (host-built-in)

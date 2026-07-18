@@ -16,7 +16,7 @@
 # `cargo xtask gen-config-docs`; the lock test fails until they agree.
 
 # Per-role print speeds (packet 52, 57). mm/s.
-# Consumer: crates/slicer-runtime/src/gcode_emit.rs `FeedrateConfig::default()`.
+# Consumer: crates/slicer-ir/src/feedrate.rs `FeedrateConfig::default()`.
 [speeds]
 outer_wall_speed           = { default = 60.0,  range = "> 0" }
 inner_wall_speed           = { default = 60.0,  range = "> 0" }

@@ -1,18 +1,28 @@
 # Pinch 'n Print — Config Keys Reference
 
+**What this covers:** the catalog of config keys the host binary and core modules
+recognise — their types, defaults, and which module or host struct registers
+each.
+
+**Who it's for:** anyone setting a config value, adding a config key, or tracking
+where a default lives.
+
+**Prerequisites:** `03_wit_and_manifest.md` for the manifest schema rules that
+govern how a module declares a key.
+
 This file is the canonical catalog of config keys recognised by the host
 binary, core modules, and the resolved-config pipeline. For the manifest
 **schema rules** (table format, valid types, validation expressions) see
-`docs/03_wit_and_manifest.md`. For namespaced override conventions
-(`object_config:`, `paint_config:`) see also `docs/02_ir_schemas.md` IR 5
-"Config Key Namespaces".
+`03_wit_and_manifest.md`. For namespaced override conventions
+(`object_config:`, `paint_config:`) see also `02_ir_schemas.md`
+§"Config Key Namespaces".
 
 > **Generated, not hand-maintained.** The three tables below marked _(generated)_
 > are produced by `cargo xtask gen-config-docs` from the authoritative sources —
 > module `[config.schema]` manifests and `docs/config/host-keys.toml` (itself
 > locked to the live code defaults — `FeedrateConfig::default()`,
 > `ResolvedConfig::default()`, and named `DEFAULT_*` constants — by the
-> `gcode_emit::host_keys_doc_lock` slicer-runtime test). Do not edit them by hand;
+> `host_keys_doc_lock_tdd` slicer-runtime test (`crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs`)). Do not edit them by hand;
 > CI fails (`gen-config-docs --check`) if they drift. The hand-written sections
 > further down add per-domain prose (units, macros, semantics).
 
@@ -29,7 +39,7 @@ Each entry below lists:
 - **Source-of-truth** — module-owned keys live in the module's manifest TOML
   (`modules/core-modules/<name>/<name>.toml`); host-registered keys live in the
   consumer struct under `crates/slicer-runtime/src/` (e.g.
-  `gcode_emit.rs::FeedrateConfig`) and are mirrored into
+  `feedrate.rs::FeedrateConfig`) and are mirrored into
   `docs/config/host-keys.toml`. There is no single `config_schema.rs` file.
 
 ---
@@ -217,11 +227,11 @@ Accepted on both `seam-placer` and `seam-planner-default` (default `"nearest"`):
 ## Host-registered config keys (generated)
 
 Keys consumed by host built-ins, mirrored from their code source of truth
-(`gcode_emit.rs::FeedrateConfig` for per-role speeds in mm/s;
+(`feedrate.rs::FeedrateConfig` for per-role speeds in mm/s;
 `resolved_config.rs::ResolvedConfig` for shell-window / slicing-precision /
 fill-role keys; named `DEFAULT_*` constants in `run.rs` / `pipeline.rs` for keys
 read directly from the config source) via `docs/config/host-keys.toml`, which the
-`gcode_emit::host_keys_doc_lock` slicer-runtime test holds equal to those defaults
+`host_keys_doc_lock_tdd` slicer-runtime test (`crates/slicer-runtime/tests/unit/host_keys_doc_lock_tdd.rs`) holds equal to those defaults
 (the speed check is exhaustive — adding a `FeedrateConfig` field fails the build
 until it is documented). Per-role speeds feed
 `DefaultGCodeEmitter::resolve_feedrate(role, paint_layer, …)`, which emits F-tokens
@@ -230,32 +240,32 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 <!-- BEGIN GENERATED: host-speeds (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Source |
 |---|---|---|---|---|
-| `bottom_surface_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `bridge_speed` | float | `25.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | `gcode_emit.rs::FeedrateConfig` |
-| `gap_infill_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `initial_layer_infill_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `initial_layer_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `initial_layer_travel_speed` | float | `120.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `inner_wall_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `internal_bridge_speed` | float | `37.5` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `ironing_speed` | float | `20.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `outer_wall_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
-| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
-| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
-| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
-| `prime_tower_speed` | float | `90.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `skirt_speed` | float | `50.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `sparse_infill_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `support_interface_speed` | float | `80.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `support_speed` | float | `80.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `thin_wall_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `top_surface_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `travel_speed` | float | `120.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `gcode_emit.rs::FeedrateConfig` |
-| `wipe_speed` | float | `96.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
-| `wipe_tower_speed` | float | `90.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `bottom_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `bridge_speed` | float | `25.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | `feedrate.rs::FeedrateConfig` |
+| `gap_infill_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_infill_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `initial_layer_travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `inner_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `internal_bridge_speed` | float | `37.5` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `ironing_speed` | float | `20.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `outer_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
+| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
+| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
+| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
+| `prime_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `skirt_speed` | float | `50.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `sparse_infill_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `support_interface_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `support_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `thin_wall_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `top_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `feedrate.rs::FeedrateConfig` |
+| `wipe_speed` | float | `96.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `wipe_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
@@ -279,7 +289,7 @@ The four `overhang_*_4_speed` keys all-zero short-circuits the overhang
 classifier for byte-identical pre-packet-57 output.
 
 **Overhang speed key consumption (Packet 88):** the four `overhang_*_4_speed`
-keys are still REGISTERED on `gcode_emit.rs::FeedrateConfig` (table above)
+keys are still REGISTERED on `feedrate.rs::FeedrateConfig` (table above)
 so host-side fallback resolution stays trivial, but the active CONSUMER
 is the `overhang-classifier-default` FinalizationModule
 (`modules/core-modules/overhang-classifier-default/`) — see ADR-0008.
@@ -291,16 +301,15 @@ mutations on wall-family entities; the host's
 keys. Treat the source column above as "registration site"; treat ADR-0008
 as the authoritative pointer to the consumer.
 
-**`union_paint_regions_at_harvest` toggle (Packet 64):** a temporary
-benchmarking key was added on the `paint-segmentation` scope —
-`union_paint_regions_at_harvest: bool, default true`. When `true`,
-paint regions are unioned per-`(layer, object, semantic, value)` at
-harvest (the production path; see `docs/02_ir_schemas.md` §"Harvest
-Strategy"). When `false`, regions retain per-facet polygons but
-`SemanticRegion.aabb` is still computed. The toggle exists to
-A/B-test the union step's wall-clock impact; not recommended for
-production use. Once Packet 64's perf claims are independently
-re-verified the key can be retired.
+<!-- VERIFY: this section previously documented a `union_paint_regions_at_harvest`
+     bool key (default true) on a `paint-segmentation` scope, plus a
+     `docs/02_ir_schemas.md` §"Harvest Strategy" cross-reference. Neither exists:
+     the key has zero hits under `crates/`, there is no `paint-segmentation`
+     module (paint segmentation is host-native in
+     `crates/slicer-core/src/algos/paint_segmentation/`), and no "Harvest
+     Strategy" section exists in `02_ir_schemas.md`. The `SemanticRegion` type it
+     referenced was deleted with `PaintRegionIR` in packet 95. Removed as
+     fabricated/retired. -->
 
 ## Deviations from OrcaSlicer (generated)
 
@@ -395,7 +404,7 @@ no `config_source` key for them:
 
 - `filament_diameter` / `filament_density` are emitter constants
   (`1.75 mm` / `1.24 g·cm⁻³`) on `DefaultGCodeEmitter`
-  (`crates/slicer-runtime/src/gcode_emit.rs`), overridable only programmatically
+  (`FeedrateConfig` in `crates/slicer-ir/src/feedrate.rs`), overridable only programmatically
   via `with_filament_config(...)`. Wiring them to config keys is a future
   enhancement, not a current capability.
 - `max_z_height` in the header is the **computed** top-layer Z (with fallback
@@ -629,7 +638,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 | `min_length_factor` | float | `0.5` | dimensionless ratio | `arachne-perimeters` |
 | `initial_layer_min_bead_width` | float | `3400` | slicer units (0.34 mm) | `arachne-perimeters` |
 | `outer_wall_offset` | float | `0` | slicer units | `arachne-perimeters` |
-| `max_bead_count` | int | `9` | count | `arachne-perimeters` |
+| `max_bead_count` | int | `0` | >= 0 | `arachne-perimeters` |
 | `detect_thin_wall` | bool | `false` | boolean | `arachne-perimeters` |
 | `inner_wall_line_width` | float | `0.4` | mm (canonical `bead_width_x` source) | `arachne-perimeters` |
 | `outer_wall_line_width` | float | `0.4` | mm (canonical `bead_width_0` source) | `arachne-perimeters` |
@@ -652,7 +661,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
 
 **`outer_wall_offset`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; it is an internal Arachne algorithm parameter (`coord_t`) threaded through `BeadingStrategyFactory`/`OuterWallInsetBeadingStrategy`. Maps to `OuterWallInsetBeadingStrategy`'s offset amount; `0` (matches the packet's original suggestion) disables the decorator's inward offset.
 
-**`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold; `9` (the packet's original suggestion) is kept as a reasonable exposed default since no literal upstream constant exists to cite.
+**`max_bead_count`** — not a user-facing OrcaSlicer `PrintConfig.cpp` option; upstream computes it internally as `2 * inset_count` (capped) in `Arachne/WallToolPaths.cpp`. This codebase exposes it directly as a config key consumed by `LimitedBeadingStrategy`'s cap threshold. The manifest default is `0`, meaning auto-derive `2 × wall_count`; an explicit non-zero `max_bead_count` overrides that.
 
 **`inner_wall_line_width` / `outer_wall_line_width`** (on `arachne-perimeters`) — plain mm floats mirroring the classic-perimeters keys. The module derives its two beading targets from them: `optimal_width` (struct field; canonical `bead_width_x` = `perimeter_flow.scaled_spacing()`, i.e. the INNER wall) from `inner_wall_line_width`, and `preferred_bead_width_outer` (struct field; canonical `bead_width_0` = `ext_perimeter_flow.scaled_spacing()`, i.e. the OUTER wall) from `outer_wall_line_width`, converting width → Flow spacing via `line_width_to_spacing` before feeding the strategy stack and converting back at emission (`VariableWidth.cpp::thick_polyline_to_multi_path`). The former config keys `optimal_width`/`preferred_bead_width_outer` — Arachne-internal knobs exposed as user config — are RETIRED per ADR-0043 (D-160: they shadowed the wall widths, so arachne ignored the user's setting). The `ArachneParams` STRUCT fields keep the canonical names; only the config keys are gone. Upstream models both wall-width keys as `coFloatOrPercent` default `0` (auto from nozzle); PnP's plain float [0.1, 2.0] cannot express auto (logged as a deviation).
 
@@ -671,7 +680,7 @@ Keys registered on `arachne-perimeters` for the `slicer_core::beading` `BeadingS
      automatically. Do not hand-edit the generated blocks.
   3. For a **host-registered** key: add the default to the consumer struct, mirror
      it into `docs/config/host-keys.toml`, extend the lock test in
-     `gcode_emit.rs` (`host_keys_doc_lock`), then run `cargo xtask gen-config-docs`.
+     `FeedrateConfig` in `crates/slicer-ir/src/feedrate.rs` (locked by `host_keys_doc_lock_tdd`), then run `cargo xtask gen-config-docs`.
   4. Cross-reference from the relevant packet's design doc.
 - Removing a key requires a major IR / WIT bump (see
   `docs/02_ir_schemas.md` "IR Versioning Contract").

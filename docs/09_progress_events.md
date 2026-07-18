@@ -1,5 +1,15 @@
 # Pinch 'n Print — Progress & Error Event Contract
 
+**What this covers:** the JSON-Lines event stream the host emits on stderr during
+a slice — the event types, their required fields, ordering guarantees, and the
+schema-version history.
+
+**Who it's for:** anyone building a frontend or agent that consumes slice
+progress, and anyone adding or changing an emitted event.
+
+**Prerequisites:** none. The instrumented-stream section pairs with
+`17_agent_debugging.md`.
+
 This document is authoritative for structured runtime events emitted by the host during one `slice` command.
 
 ## Transport
@@ -214,15 +224,14 @@ and omitted otherwise (prepass / postpass stages).
 dispatch. Host built-ins report `0`.
 
 Compatibility: the flag is fully composable with `--report` so an agent
-can stream live timing
-to a file while also producing the HTML report (see
-`docs/specs/agent-cli-debugging.md` §4.2).
+can stream live timing to a file while also producing the HTML report. For the
+agent-facing workflow, see `17_agent_debugging.md`.
 
 Example excerpt (one prepass stage + one per-layer module):
 
 ```jsonl
-{"schema_version":"1.1.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
-{"schema_version":"1.1.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok"}
-{"schema_version":"1.1.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
-{"schema_version":"1.1.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
+{"schema_version":"1.2.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
+{"schema_version":"1.2.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok"}
+{"schema_version":"1.2.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
+{"schema_version":"1.2.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
 ```

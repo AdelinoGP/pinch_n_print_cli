@@ -1,5 +1,15 @@
 # Implementation Status
 
+**What this covers:** the live task backlog and phase status — what is done, in
+progress, or blocked. This is an append-only working ledger; entries are dated
+and reflect state at time of writing, so treat any specific count, task id, or
+"current phase" as a snapshot to re-derive, not a durable fact.
+
+**Who it's for:** anyone picking up work or checking whether something shipped.
+
+**Prerequisites:** none. For registered architecture deviations see
+`14_deviation_audit_history.md` and `DEVIATION_LOG.md`.
+
 ## Status Markers
 
 - `[x]` complete
@@ -169,7 +179,7 @@
 - [x] TASK-154 Enforce `min_host_version` at startup and add semver pass/fail coverage for compatible and incompatible manifests. Covers DEV-026. Closed 2026-07-03 — corrects stale status, not new work: `DagValidationPass::HostVersionCompatibility` landed in an earlier commit (`ca8fe483`) but this checkbox and the DEV-026 log row were never updated until now.
 - [ ] TASK-155 Make manifest-schema validation surface a real `Schema` failure for missing or invalid schema declarations, with CLI and host regression tests. Continues DEV-026.
 - [ ] TASK-156 Add runtime-budget evidence collection for docs/12 memory, host-call, and full-slice time thresholds, plus reproducible benchmark/report hooks. Continues DEV-026.
-- [x] TASK-200 Workspace-wide `Default` / builder ergonomics migration per [`docs/specs/default-builder-migration.md`](./specs/default-builder-migration.md) — 271 production structs classified into 71 Bucket A (`#[derive(Default)]`), 28 Bucket B (manual `impl Default`), 5 Bucket C (consuming-style builders), 167 Bucket D (untouched). Spec status: ready for implementation; all §11 open questions resolved 2026-05-17. Next worker starts on TASK-200a (no gating questions remain). Land chunks in order: each chunk is a separate PR, independently mergeable with green `cargo check --workspace` and the chunk's narrow tests; full `cargo test --workspace` runs at chunk close via sub-agent dispatch per CLAUDE.md test discipline.
+- [x] TASK-200 Workspace-wide `Default` / builder ergonomics migration per [`docs/specs/_OLD/default-builder-migration.md`](./specs/_OLD/default-builder-migration.md) (superseded spec) — 271 production structs classified into 71 Bucket A (`#[derive(Default)]`), 28 Bucket B (manual `impl Default`), 5 Bucket C (consuming-style builders), 167 Bucket D (untouched). Spec status: ready for implementation; all §11 open questions resolved 2026-05-17. Next worker starts on TASK-200a (no gating questions remain). Land chunks in order: each chunk is a separate PR, independently mergeable with green `cargo check --workspace` and the chunk's narrow tests; full `cargo test --workspace` runs at chunk close via sub-agent dispatch per CLAUDE.md test discipline.
 - [x] TASK-200a Chunk 1 — `slicer-ir` Bucket A POD leaf types: `#[derive(Default)]` added to ~30 small `slice_ir.rs` structs plus `#[default]` variants on `WallGenerator`/`InfillType`/`SupportType`. Semver: patch. Spec §9 Chunk 1, §4.1.
 - [x] TASK-200b Chunk 2 — `slicer-ir` schema-versioned IR `Default` impls + composite struct `Default` derives + workspace call-site struct-update sweep. Adds 13 `CURRENT_*_IR_SCHEMA_VERSION` constants (per-IR audit; known non-1.0.0 cases: `MeshIR` → 1.1.0, `RegionMapIR` → 1.1.0); adds manual `impl Default` for 13 schema-versioned IR types plus `#[derive(Default)]` on composite IR structs; sweeps struct-literal call sites across slicer-host, core-modules, and tests. Semver: patch on `slicer-ir`. Spec §9 Chunk 2, §5.1, §11 Q1. Sweep landed partial — ~50 files still carried verbose literals; completed separately by TASK-200b-sweep.
 - [x] TASK-200b-sweep Completed the chunk-2 call-site sweep deferred from TASK-200b: replaced verbose `schema_version: SemVer { ... }` and zero-valued field literals with `..Default::default()` across slicer-host, slicer-sdk, core-module tests, and slicer-helpers. Pure mechanical, no contract change. Spec §9 Chunk 2 (sweep half), §11 Q1.

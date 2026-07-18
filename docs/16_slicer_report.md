@@ -141,11 +141,12 @@ runs where arrays are empty and counts are zero.
     approach is deliberate; reviewers should not propose deriving
     `Serialize` on model.rs structs to "simplify" the JSON path.
 
-Hook points: `pipeline.rs::run_pipeline_with_instrumentation` brackets
-each phase; `layer_executor.rs::execute_single_layer` brackets layer /
-stage / module boundaries for per-layer; `prepass.rs` and `postpass.rs`
-have `_with_instrumentation` variants that bracket per-stage and
-per-module for those tiers, including host built-ins.
+Hook points (all in `crates/slicer-runtime/src/`):
+`run_pipeline_with_instrumentation` (`pipeline.rs`) brackets each phase;
+`execute_single_layer` (`layer_executor.rs`) brackets layer / stage / module
+boundaries for per-layer; `prepass.rs` and `postpass.rs` have
+`_with_instrumentation` variants that bracket per-stage and per-module for those
+tiers, including host built-ins.
 
 ## Global allocator contract
 
@@ -184,7 +185,7 @@ correctness; they bound the level of detail the report can surface.
 ## WASM linear-memory sampling
 
 Each per-call `wasmtime::Store` installs a `MemTracker` (in
-`crates/slicer-runtime/src/wit_host.rs`) as its `ResourceLimiter`. The
+`crates/slicer-wasm-host/src/host.rs`) as its `ResourceLimiter`. The
 limiter records every `memory.grow` notification (including the initial
 instantiation grow) and surfaces two values per dispatch:
 
@@ -199,7 +200,7 @@ host built-ins leave the WASM columns blank without any extra wiring.
 
 ## Test coverage
 
-`crates/slicer-runtime/tests/slicer_report_html_tdd.rs` exercises the
+`crates/slicer-runtime/tests/e2e/slicer_report_html_tdd.rs` exercises the
 collector directly via the trait surface and asserts the HTML contains
 every expected section, stage id, and reason label. No real WASM, no
 mesh, no pipeline — fast, deterministic, runs in <1s.

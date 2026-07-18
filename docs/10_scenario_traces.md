@@ -51,7 +51,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 ### Execution trace
 
 1. The host loader normalizes sub-facet paint strokes into deterministic whole-triangle assignments at model-load (`split_triangle_strokes`), before PrePass.
-2. `PrePass::PaintSegmentation` emits `PaintRegionIR` per semantic per layer with `paint_order`.
+2. `PrePass::PaintSegmentation` writes per-variant polygons into `SliceIR` (via `replace_slice_ir`), carrying each semantic's `paint_order` for overlap resolution.
 3. `Layer::SlicePostProcess` annotates `SlicedRegion.segment_annotations` after polygon edits.
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.
 5. `Layer::PerimetersPostProcess` applies perpendicular XY fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
@@ -157,20 +157,21 @@ Each scenario should be mapped to a runnable validation artifact:
 - Scenario 1 → catch-up planning fixture + assertion on sync/catch-up metadata.
 - Scenario 2 → paint overlap fixture + assertion on precedence and fuzzy/material propagation.
 - Scenario 3 → failure-injection fixture + assertion on degraded/fatal event behavior.
-- Scenario 4 → overhang fixture + `prepass_support_generation_tdd` (positive,
-  empty-overhang, missing-`LayerPlanIR`, dedup, determinism) and
-  `live_support_generation_tdd::planner_consuming_tier` (plan-driven emission,
-  fallback, traditional-support no-op).
+- Scenario 4 → overhang fixture + `prepass_support_geometry_tdd` /
+  `prepass_support_geometry_layer_plan_tdd` (positive, empty-overhang,
+  missing-`LayerPlanIR`, dedup, determinism) and `live_layer_support_tdd`
+  (plan-driven emission, fallback, traditional-support no-op), under
+  `crates/slicer-runtime/tests/executor/`.
 
 Evidence files should be stored under:
 
-- `./docs/evidence/<release-id>/scenario-1-*`
-- `./docs/evidence/<release-id>/scenario-2-*`
-- `./docs/evidence/<release-id>/scenario-3-*`
+- `docs/evidence/<release-id>/scenario-1-*`
+- `docs/evidence/<release-id>/scenario-2-*`
+- `docs/evidence/<release-id>/scenario-3-*`
 
 <!-- VERIFY: `docs/evidence/` does not exist at the time of writing. The
      path is the prescribed location for the Architecture Acceptance Gate
      evidence (see `docs/11_operational_governance_and_acceptance_gate.md`);
      it will be created when evidence is first staged. -->
 
-- `./docs/evidence/<release-id>/scenario-4-*`
+- `docs/evidence/<release-id>/scenario-4-*`
