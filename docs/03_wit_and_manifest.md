@@ -254,6 +254,17 @@ resources (`infill-output-builder`, `perimeter-output-builder`,
 file for the current method and field sets rather than relying on a snapshot
 here.
 
+Notable records/methods worth surfacing (not obvious from the resource names):
+- `slice-region-view` exposes `surface-group: func() -> option<surface-group>`,
+  returning the read-side `record surface-group` (`type surface-group-id = u64`;
+  fields `id`, `facet-indices`, `z-min`, `z-max`, `area-mm2`, `printable`,
+  `shell-count`) — distinct from the smaller write-side `surface-group-proposal`
+  (PrePass). Added packet 104.
+- `perimeter-output-builder` and `infill-output-builder` both carry
+  `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
+  which tags the region currently being iterated so buffered per-region pushes are
+  attributed correctly (packet 127, ADR-0022; see the `begin_region` SDK method).
+
 Two contract points that the file alone does not state are the ID
 canonicalization rule and the wall-loop flag invariant below.
 
@@ -1183,15 +1194,19 @@ per-layer stage runs. Declare the slice paths you need:
 reads = ["SliceIR.regions.segment_annotations"]
 ```
 
-<!-- VERIFY: `PaintRegionIR` was deleted in packet 95 (the type is absent from
-     crates/slicer-ir), so `PaintRegionIR.FuzzySkin` / `.SupportEnforcer` /
-     `.SupportBlocker` / `.Material` / `.Custom.<id>` are no longer live
-     ir-access read paths and have been removed from this section. Note that
-     modules/core-modules/classic-perimeters/classic-perimeters.toml and
-     modules/core-modules/arachne-perimeters/arachne-perimeters.toml still
-     declare reads = ["SliceIR", "PaintRegionIR"] — dangling declarations naming
-     a deleted type. Confirm the intended replacement declaration and update
-     those manifests; this section should then state it explicitly. -->
+<!-- NOTE: Packet 95 deleted the standalone `PaintRegionIR` *Rust struct* (per-variant
+     polygons were inlined into `SliceIR.regions[*]` via `SlicedRegion.variant_chain`),
+     so the per-semantic dotted read paths `PaintRegionIR.FuzzySkin` / `.SupportEnforcer`
+     / `.SupportBlocker` / `.Material` / `.Custom.<id>` no longer exist and were removed
+     from this section. HOWEVER, `PaintRegionIR` survives as the ir-access
+     read-attribution NAME for the `PaintRegionLayerView` WIT accessor: the host stamps
+     `runtime_reads.push("PaintRegionIR")` when a guest reads paint regions per layer
+     (`crates/slicer-wasm-host/src/host.rs`), and the ir-access contract mandates
+     `Layer::Perimeters => reads ["SliceIR", "PaintRegionIR"]`
+     (`crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs`).
+     The `classic-perimeters` / `arachne-perimeters` manifests declaring
+     `reads = ["SliceIR", "PaintRegionIR"]` are therefore CORRECT and contract-required —
+     NOT dangling. Do not remove them. -->
 
 ### Wall feature flags
 
