@@ -11,40 +11,53 @@ context_cost_estimate: M
 
 ## Goal
 
-Port the lightning orchestration — `Lightning::Layer` (`generateNewTrees`, `reconnectRoots`,
-`convertToLines`) and `Generator` (`generateInitialInternalOverhangs` + the two top-down
-all-layers passes of `generateTrees`, `getTreesForLayer`) — into
+Port the lightning orchestration — `Lightning::Layer` (`generateNewTrees`,
+`reconnectRoots`, `convertToLines`) and `Generator` (`generateInitialInternalOverhangs`
++ the two top-down all-layers passes of `generateTrees`, `getTreesForLayer`) — into
 `crates/slicer-core/src/algos/lightning/`, and wire the packet-137 producer so
 `PrePass::LightningTreeGen` commits real per-layer tree segments into `LightningTreeIR`.
 
 ## Scope Boundaries
 
-Host-side orchestration port plus producer wiring — completes the generation pipeline behind
-the 137 seam. The `lightning-infill` module still runs its stub (rewired in 140), so no
-user-visible output changes for lightning prints yet, and non-lightning prints stay skipped.
-Cross-layer behavior (overhang seeding, continuity, determinism) is the test focus.
+Host-side orchestration port plus producer wiring — completes the generation pipeline
+behind the 137 seam. The `lightning-infill` module still runs its stub (rewired in 140),
+so no user-visible output changes for lightning prints yet, and non-lightning prints stay
+skipped (skip promise preserved). Cross-layer behavior (overhang seeding, continuity,
+determinism) is the test focus. The 138 primitive APIs are frozen at this packet's start
+— any signature change forced by the orchestration port is a recorded deviation here, with
+the 138 tests co-updated in the same step, never left red between steps.
 
 ## Prerequisites and Blockers
 
-- Depends on: `137_lightning-prepass-contract` (seam), `138_lightning-distancefield-treenode`
-  (primitives; API frozen).
+- **FORWARD-DEP on draft `137_lightning-prepass-contract`** — packet 139 needs
+  `crates/slicer-core/src/algos/lightning/mod.rs` (skeleton with
+  `generate_lightning_trees(...)` + `// 139 wiring point` marker), `LightningTreeIR`
+  with the 2-point integer-unit `tree_edge_segments` shape, the blackboard commit slot
+  + accessor, and the WIT read-view `lightning-tree-segments` method on
+  `paint-region-layer-view`. Names + shapes match 137's plan; reconciled at 137 close.
+- **FORWARD-DEP on draft `138_lightning-distancefield-treenode`** — packet 139 needs
+  `DistanceField::{new, unsupported_point, update}` and the `tree_node` graph operations
+  (propagate, straighten, reroot, prune) frozen at 138 close. 138's API freeze is
+  recorded in 138's `requirements.md` §Step Completion Expectations; 139 records any
+  signature change as a deviation in the same step.
 - Unblocks: `140_lightning-module-rewrite`.
-- Activation blockers: none.
+- Activation blockers: 137 and 138 must both be `status: implemented` (forward-deps
+  above).
 
 ## Acceptance Criteria
 
-- **AC-1. Given** a two-layer synthetic object where layer N's sparse outline extends beyond
-  layer N−1's, **when** `generate_initial_internal_overhangs` runs, **then** the overhang
-  region for layer N equals outline(N) minus the dilated outline(N−1) (ported dilation
-  constant, ÷100), within Clipper tolerance. | `cargo test -p slicer-core -- lightning_generator_overhangs 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-1. Given** a two-layer synthetic object where layer `N`'s sparse outline extends
+  beyond layer `N-1`'s, **when** `generate_initial_internal_overhangs` runs, **then** the
+  overhang region for layer `N` equals `outline(N) − dilated(outline(N-1))` (ported
+  dilation constant, ÷100), within Clipper tolerance. | `cargo test -p slicer-core -- lightning_generator_overhangs 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-2. Given** a synthetic prism with a single internal overhang near its top, **when**
   `generate_trees` runs top-down, **then** trees exist on every layer between the overhang
   and its support ground, and each layer's tree endpoints lie within the per-layer move
   distance of the layer below's trees or outline (continuity, ported bound). | `cargo test -p slicer-core -- lightning_generator_tree_continuity 2>&1 | tee target/test-output.log | grep "^test result"`
-- **AC-3. Given** a generated object, **when** `trees_for_layer` output is compared with the
-  producer-committed `LightningTreeIR` for the same layers, **then** they are identical —
-  the 137 producer now commits real segments (empty-skeleton behavior gone for
-  lightning-configured prints). | `cargo test -p slicer-runtime --test executor -- lightning_producer_commits_trees 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-3. Given** a generated object, **when** `trees_for_layer` output is compared with
+  the producer-committed `LightningTreeIR` for the same layers, **then** they are
+  identical — the 137 producer now commits real segments (empty-skeleton behavior gone
+  for lightning-configured prints). | `cargo test -p slicer-runtime --test executor -- lightning_producer_commits_trees 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** the same input run twice, **when** the committed `LightningTreeIR`s are
   compared, **then** they are byte-identical (whole-pipeline determinism over the 138
   primitives). | `cargo test -p slicer-core -- lightning_generator_deterministic 2>&1 | tee target/test-output.log | grep "^test result"`
@@ -52,10 +65,10 @@ Cross-layer behavior (overhang seeding, continuity, determinism) is the test foc
 ## Negative Test Cases
 
 - **AC-N1. Given** a uniform prism with no internal overhangs, **when** generation runs,
-  **then** the committed `LightningTreeIR` is valid with zero tree segments on every layer
-  (no spurious trees). | `cargo test -p slicer-core -- lightning_generator_no_overhang_no_trees 2>&1 | tee target/test-output.log | grep "^test result"`
-- **AC-N2. Given** a default-config wedge slice (no lightning holder), **when** run, **then**
-  the g-code SHA is byte-identical (skip path untouched). | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 | tee target/test-output.log | grep "^test result"`
+  **then** the committed `LightningTreeIR` is valid with zero tree segments on every
+  layer (no spurious trees). | `cargo test -p slicer-core -- lightning_generator_no_overhang_no_trees 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-N2. Given** a default-config wedge slice (no lightning holder), **when** run,
+  **then** the g-code SHA is byte-identical (skip path untouched). | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Verification
 
@@ -66,7 +79,7 @@ Cross-layer behavior (overhang seeding, continuity, determinism) is the test foc
 ## Authoritative Docs
 
 - `docs/specs/lightning-infill-parity.md` §Phase L3 — full read (short).
-- `docs/adr/0029-…` — delegate SUMMARY.
+- `docs/adr/0029-lightning-prepass-tree-generator.md` — delegate SUMMARY.
 - `docs/ORCASLICER_ATTRIBUTION.md` — header template.
 
 <!-- snippet: orca-delegation -->
@@ -76,15 +89,15 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.hpp` / `.cpp` (171/587) — `generateNewTrees`, `reconnectRoots`, `convertToLines` (sectioned dispatches).
-- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.hpp` / `.cpp` (261/475) — constructor sequence (`Generator.cpp:189-190`), `generateInitialInternalOverhangs`, `generateTrees` two-pass structure (`Generator.cpp:342`), `getTreesForLayer`.
-- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp:145` — `build_generator` inputs (what per-object data the generator consumes).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.hpp` (92 lines) / `.cpp` (448 lines) — `generateNewTrees`, `reconnectRoots`, `convertToLines` (sectioned dispatches; the 540-line total is the largest single read in this packet — ≥ 4 sections).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.hpp` (138 lines) / `.cpp` (285 lines) — constructor inputs (with density coupling), `generateInitialInternalOverhangs`, `generateTrees` two-pass structure, `getTreesForLayer` (sectioned).
+- `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp` (37 lines) / `.hpp` (42 lines) — `build_generator` inputs (the density coupling handed to the generator constructor).
 
 ## Doc Impact Statement (Required)
 
-**`none`** — completes the implementation behind the packet-137 contract; the IR, stage, and
-view documentation landed with 137 (docs/02 + docs/03), and the architecture with ADR-0029.
-No new public surface.
+**`none`** — completes the implementation behind the packet-137 contract; the IR, stage,
+and view documentation landed with 137 (docs/02 + docs/03), and the architecture with
+ADR-0029. No new public surface.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
@@ -94,6 +107,6 @@ This packet was generated against the context_discipline preamble shared by `spe
 - treat `design.md`'s code change surface as the authoritative files-in-scope list
 - honor `design.md`'s out-of-bounds list — those files must not be loaded directly
 - delegate every cargo run and authoritative-doc fact-check
-- stop reading at 60% context and hand off at 85%
+- obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
-Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).
