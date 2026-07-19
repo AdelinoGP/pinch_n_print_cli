@@ -256,6 +256,10 @@ impl WasmRuntimeDispatcher {
         mesh_ir: Arc<slicer_ir::MeshIR>,
         held_claims_map: std::collections::HashMap<(String, String), Vec<String>>,
         effective_config_view: slicer_ir::ConfigView,
+        config_fields_per_region: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, host::ConfigValueStorage>,
+        >,
         layer_index: u32,
         layer_z: f32,
         _paint_ir: Option<&()>,
@@ -316,6 +320,19 @@ impl WasmRuntimeDispatcher {
         store.limiter(|ctx| &mut ctx.mem_tracker);
 
         store.data_mut().set_held_claims_per_region(held_claims_map);
+
+        // Per-region effective config (packet 131, Step 3): stash the
+        // pre-derived per-region config-field maps and the object-level
+        // fallback so the region-view `config()` WIT accessor resolves the
+        // correct per-region overrides (falling back to the object-level
+        // config for regions without a pool entry — AC-N1/AC-N2).
+        let default_config_fields = host::config_view_to_data(&effective_config_view).fields;
+        store
+            .data_mut()
+            .set_config_fields_per_region(config_fields_per_region);
+        store
+            .data_mut()
+            .set_default_config_fields(default_config_fields);
 
         let config_handle = store
             .data_mut()
@@ -1809,25 +1826,67 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let (envelope_floor, envelope_height) =
             derive_layer_output_envelope_from_input(layer, input.slice);
 
-        // Build the effective config from the region-map overlay (mirrors the original
-        // dispatch.rs `blackboard.region_map()` overlay logic).
-        let effective_config_view: slicer_ir::ConfigView = input
-            .region_map
-            .as_deref()
-            .and_then(|map| {
-                map.entries
-                    .keys()
-                    .find(|key| key.global_layer_index == layer.index)
-                    .map(|key| {
-                        let region_map = resolved_config_to_map(map.config_for(key));
-                        let declared_keys = module.config_view.keys();
-                        slicer_ir::ConfigView::from_declared(
-                            &region_map,
-                            declared_keys.iter().map(String::as_str),
-                        )
-                    })
-            })
-            .unwrap_or_else(|| module.config_view.as_ref().clone());
+        // Per-region effective-config resolution (packet 131, Step 3, TASK-256).
+        //
+        // Replaces the legacy first-match `region_map.entries.keys().find(...)`
+        // derivation (which picked ONE region's config for the whole layer) with
+        // a `RegionKey`-matched, per-region resolution via
+        // `RegionMapIR::config_for(&RegionKey)`. Each region's config is derived
+        // once here (memoized per dispatch) and stashed on the host context,
+        // keyed by `(object_id, region_id)`, so the region-view `config()` WIT
+        // accessor resolves the correct per-region overrides.
+        //
+        // The object-level `effective_config_view` remains the module-level
+        // config and is also the fallback for regions without a pool entry —
+        // this preserves single-region output byte-for-byte (AC-N1/AC-N2).
+        let effective_config_view: slicer_ir::ConfigView = module.config_view.as_ref().clone();
+
+        let declared_keys = module.config_view.keys();
+        let config_fields_per_region: HashMap<
+            (String, String),
+            HashMap<String, host::ConfigValueStorage>,
+        > = match (input.slice, input.region_map.as_deref()) {
+            (Some(slice_ir), Some(map)) => {
+                // Memoize per interned ResolvedConfig identity so N regions
+                // sharing a config only derive the ConfigView once.
+                let mut by_config: HashMap<
+                    slicer_ir::ConfigId,
+                    HashMap<String, host::ConfigValueStorage>,
+                > = HashMap::new();
+                let mut out = HashMap::new();
+                for region in &slice_ir.regions {
+                    let key = slicer_ir::RegionKey {
+                        global_layer_index: layer.index,
+                        object_id: region.object_id.clone(),
+                        region_id: region.region_id,
+                        variant_chain: region.variant_chain.clone(),
+                    };
+                    // Object-level fallback: regions without a pool entry are
+                    // left absent here so the accessor falls back to the
+                    // object-level config (AC-N1/AC-N2 invariant).
+                    let Some(plan) = map.entries.get(&key) else {
+                        continue;
+                    };
+                    let fields = by_config
+                        .entry(plan.config)
+                        .or_insert_with(|| {
+                            let region_config_map = resolved_config_to_map(map.config_for(&key));
+                            let view = slicer_ir::ConfigView::from_declared(
+                                &region_config_map,
+                                declared_keys.iter().map(String::as_str),
+                            );
+                            host::config_view_to_data(&view).fields
+                        })
+                        .clone();
+                    out.insert(
+                        (region.object_id.clone(), region.region_id.to_string()),
+                        fields,
+                    );
+                }
+                out
+            }
+            _ => HashMap::new(),
+        };
 
         // Build the held-claims map from the slice IR + region-map config.
         // Inlines the `resolve_held_claims` logic from slicer-runtime::validation
@@ -1914,6 +1973,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.mesh.clone(),
             held_claims_map,
             effective_config_view,
+            config_fields_per_region,
             layer.index,
             layer.z,
             None,

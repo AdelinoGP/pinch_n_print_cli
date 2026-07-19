@@ -5,7 +5,7 @@
 - Grouped task IDs:
   - `TASK-256`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented` (closed 2026-07-19)
 - Aggregate context cost: `M`
 
 ## Problem Statement

@@ -42,6 +42,7 @@
 
 #![allow(missing_docs)]
 
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -437,6 +438,36 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
          live-path feature gap rather than the older placeholder/deep-copy \
          regressions. G-code preview (first 30 lines):\n{}",
         preview(gcode, 30)
+    );
+}
+
+#[test]
+fn wedge_per_region_config_delivery_byte_identical() {
+    const WEDGE_DEFAULT_GCODE_SHA256: &str =
+        "8a3b645ee54fa5dbfa1232008db4820d2a364a30b4d196a504b424271308019f";
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let output = tmp.path().join("wedge.gcode");
+    let run = crate::common::slicer_cache::run_pnp_cli_uncached(
+        &fixture_stl(),
+        &crate::common::slicer_cache::module_dir_paths(
+            &crate::common::slicer_cache::ModuleDirKind::CoreModules,
+        ),
+        &output,
+        None,
+    );
+    assert!(
+        run.status.success(),
+        "pnp_cli must succeed for the default wedge run. Stderr:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let gcode = std::fs::read(&output).expect("default wedge g-code output");
+    let digest = Sha256::digest(&gcode);
+    assert_eq!(
+        format!("{digest:x}"),
+        WEDGE_DEFAULT_GCODE_SHA256,
+        "default wedge G-code changed"
     );
 }
 

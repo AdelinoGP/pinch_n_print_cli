@@ -2,6 +2,7 @@ package slicer:ir-handles;
 
 interface ir-handles {
     use slicer:types/geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role, point2-with-width, thick-polyline};
+    use slicer:config/config-types.{config-view};
 
     type object-id = string;
     type region-id = string;
@@ -72,6 +73,10 @@ interface ir-handles {
         // (`("fuzzy_skin", flag(true))`) so the perimeter guest can enable
         // per-vertex jitter without routing through segment-annotations (D14).
         variant-chain: func() -> list<tuple<string, paint-value>>;
+        // Per-region config view for this slice region. Host-populated at
+        // dispatch time (packet 131, Step 3) so region-scoped modules can read
+        // per-region overrides without routing through the module-level config.
+        config: func() -> config-view;
     }
 
     record seam-position { point: point3-with-width, wall-index: u32 }
@@ -118,6 +123,10 @@ interface ir-handles {
         // none = this region owns its walls; some(base) = this region
         // shares the base region's walls (ADR-0028 §Amendment 2026-07-01).
         wall-source-region-id: func() -> option<region-id>;
+        // Per-region config view for this perimeter region. Host-populated at
+        // dispatch time (packet 131, Step 3) so region-scoped modules can read
+        // per-region overrides without routing through the module-level config.
+        config: func() -> config-view;
     }
 
     /// Read-only snapshot of one `InfillIR` region bucket, mirroring

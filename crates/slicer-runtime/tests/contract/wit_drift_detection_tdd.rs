@@ -65,8 +65,8 @@ fn macro_layer_world_package_name_is_canonical() {
         fs::read_to_string(root.join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit"))
             .expect("read canonical world-layer.wit");
     assert!(
-        world_layer.contains(r#"package slicer:world-layer@2.0.0;"#),
-        "canonical world-layer.wit must use 'slicer:world-layer@2.0.0', not 'slicer:layer-world@1.0.0'"
+        world_layer.contains(r#"package slicer:world-layer@2.1.0;"#),
+        "canonical world-layer.wit must use 'slicer:world-layer@2.1.0', not 'slicer:layer-world@1.0.0'"
     );
     assert!(
         !world_layer.contains(r#"package slicer:layer-world@1.0.0"#),
@@ -597,8 +597,8 @@ fn canonical_world_layer_run_infill_postprocess_takes_prior_infill() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
     let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
     assert!(
-        content.contains("package slicer:world-layer@2.0.0;"),
-        "world-layer must be at package version 2.0.0"
+        content.contains("package slicer:world-layer@2.1.0;"),
+        "world-layer must be at package version 2.1.0"
     );
     assert!(
         content.contains("prior-infill-region,"),

@@ -826,6 +826,20 @@ pub struct HostExecutionContext {
     /// treats as "holds all" — packet 36 / 12-rev1 behavior).
     pub(crate) held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
 
+    /// Per-region effective config fields keyed by `(object_id, region_id)`,
+    /// resolved host-side from `RegionMapIR::config_for(&RegionKey)` before the
+    /// WIT call (packet 131). Looked up by the `config-view` accessor on the
+    /// slice-/perimeter-region-view resources. Regions without a pool entry are
+    /// absent here and fall back to `default_config_fields`.
+    pub(crate) config_fields_per_region:
+        std::collections::HashMap<(String, String), HashMap<String, ConfigValueStorage>>,
+
+    /// Object-level effective config fields used as the fallback for regions
+    /// that have no per-region pool entry (packet 131 AC-N1/AC-N2 invariant:
+    /// single-region layers resolve to the same config the legacy first-match
+    /// derivation produced).
+    pub(crate) default_config_fields: HashMap<String, ConfigValueStorage>,
+
     /// Linear-memory tracker, installed as the store's `ResourceLimiter`
     /// to sample guest memory growth for the slicer report.
     pub(crate) mem_tracker: MemTracker,
@@ -898,6 +912,8 @@ impl HostExecutionContextBuilder {
             mesh_analysis_surface_groups: Vec::new(),
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
+            config_fields_per_region: HashMap::new(),
+            default_config_fields: HashMap::new(),
             finalization_pushes: Vec::new(),
             finalization_layer_snapshot: Vec::new(),
             layer_collection_proposal: None,
@@ -1108,6 +1124,37 @@ impl HostExecutionContext {
             .get(&(object_id.to_string(), region_id.to_string()))
             .map(Vec::as_slice)
             .unwrap_or(&[])
+    }
+
+    /// Replace the per-region effective-config map (packet 131, Step 3).
+    /// Called by the dispatcher after resolving each region's effective config
+    /// via `RegionMapIR::config_for(&RegionKey)`. Keyed by `(object_id, region_id)`.
+    pub fn set_config_fields_per_region(
+        &mut self,
+        map: std::collections::HashMap<(String, String), HashMap<String, ConfigValueStorage>>,
+    ) {
+        self.config_fields_per_region = map;
+    }
+
+    /// Set the object-level fallback config fields used for regions without a
+    /// per-region pool entry (packet 131 AC-N1/AC-N2 invariant).
+    pub fn set_default_config_fields(&mut self, fields: HashMap<String, ConfigValueStorage>) {
+        self.default_config_fields = fields;
+    }
+
+    /// Resolve the effective config fields for a specific region, falling back
+    /// to the object-level config when the region has no per-region pool entry
+    /// (packet 131). Clones so the caller can hand the map to a fresh
+    /// `ConfigViewData` resource.
+    fn config_fields_for(
+        &self,
+        object_id: &str,
+        region_id: &str,
+    ) -> HashMap<String, ConfigValueStorage> {
+        self.config_fields_per_region
+            .get(&(object_id.to_string(), region_id.to_string()))
+            .cloned()
+            .unwrap_or_else(|| self.default_config_fields.clone())
     }
 
     /// Returns the Z envelope floor for this layer.
@@ -2402,6 +2449,23 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.table.delete(rep)?;
         Ok(())
     }
+    /// Per-region config view (packet 131, Step 3): returns the host-resolved
+    /// effective config for this slice region, derived from
+    /// `RegionMapIR::config_for(&RegionKey)` at dispatch time and pre-filtered
+    /// to the module's declared reads. Regions without a per-region pool entry
+    /// fall back to the object-level config (AC-N1/AC-N2 invariant).
+    fn config(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Resource<ConfigViewData>> {
+        self.runtime_reads.push(String::from("SliceIR.config"));
+        let (object_id, region_id) = {
+            let data = self.table.get(&self_)?;
+            (data.object_id.clone(), data.region_id.clone())
+        };
+        let fields = self.config_fields_for(&object_id, &region_id);
+        self.push_config_view(ConfigViewData { fields })
+    }
 }
 
 impl HostExecutionContext {
@@ -2560,6 +2624,23 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
+    }
+    /// Per-region config view (packet 131, Step 3): returns the host-resolved
+    /// effective config for this perimeter region, derived from
+    /// `RegionMapIR::config_for(&RegionKey)` at dispatch time and pre-filtered
+    /// to the module's declared reads. Regions without a per-region pool entry
+    /// fall back to the object-level config (AC-N1/AC-N2 invariant).
+    fn config(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Resource<ConfigViewData>> {
+        self.runtime_reads.push(String::from("PerimeterIR.config"));
+        let (object_id, region_id) = {
+            let data = self.table.get(&self_)?;
+            (data.object_id.clone(), data.region_id.clone())
+        };
+        let fields = self.config_fields_for(&object_id, &region_id);
+        self.push_config_view(ConfigViewData { fields })
     }
 }
 

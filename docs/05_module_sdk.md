@@ -246,6 +246,15 @@ fn generate_schwartz_d(
 ) -> Vec<ExtrusionPath3D> {
     // pure Rust geometry — no host calls needed for most infill generation
     todo!()
+ }
+ ```
+
+Inside the per-region loop, use the region-view accessor for per-region config:
+
+```rust
+for region in regions {
+    let density = region.config().get_float("density").unwrap_or(0.15);
+    generate_for_region(region, density);
 }
 ```
 

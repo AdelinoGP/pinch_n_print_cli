@@ -42,7 +42,7 @@ crates/slicer-schema/wit/
     config.wit         # package slicer:config      — interface config-types
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
-    world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
+    world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
@@ -260,6 +260,10 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   fields `id`, `facet-indices`, `z-min`, `z-max`, `area-mm2`, `printable`,
   `shell-count`) — distinct from the smaller write-side `surface-group-proposal`
   (PrePass). Added packet 104.
+- `slice-region-view` and `perimeter-region-view` expose
+  `config: func() -> config-view`, providing a per-region config accessor for
+  resolved settings inside each region loop. Packet 131 bumps `world-layer`
+  from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
   which tags the region currently being iterated so buffered per-region pushes are
@@ -336,7 +340,7 @@ from region top/bottom metadata**:
 ## `world-layer.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
-(package `slicer:world-layer@2.0.0`). The `layer-module` world imports
+(package `slicer:world-layer@2.1.0`). The `layer-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
 shared `module-error` from `slicer:common/module-errors`.

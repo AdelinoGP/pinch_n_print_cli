@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 131_per-region-config-delivery
 task_ids:
   - TASK-256

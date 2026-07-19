@@ -1,4 +1,4 @@
-package slicer:world-layer@2.0.0;
+package slicer:world-layer@2.1.0;
 
 world layer-module {
     import slicer:common/host-services;

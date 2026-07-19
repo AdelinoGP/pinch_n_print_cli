@@ -29,6 +29,7 @@ mod only_one_wall_top_tdd;
 mod overhang_areas_empty_until_p106_tdd;
 mod paint_region_transport_widening_tdd;
 mod per_layer_config_override_tdd;
+mod per_region_config_tdd;
 mod per_vertex_is_bridge_propagation_tdd;
 mod perimeter_builder_capacity_error_tdd;
 mod postpass_gcode_boundary_tdd;
