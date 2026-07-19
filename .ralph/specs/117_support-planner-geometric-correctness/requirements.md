@@ -2,53 +2,47 @@
 
 ## Packet Metadata
 
-- Grouped task IDs:
-  - `TASK-254` — Tip cone in `tapered_radius` (B5 from `docs/specs/support-modules-orca-port.md`)
-  - `TASK-255` — `inflate_polygon` replacement with `slicer_core::polygon_ops::offset` (B6)
+- Grouped source-plan work items: B5 and B6; no current `docs/07_implementation_status.md` task IDs are mapped.
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
-- Aggregate context cost: `S`
+- Aggregate context cost: `M`
 
 ## Problem Statement
 
-`support_planner::tapered_radius` is mathematically incorrect at the branch tip. The current formula `radius = clamp(branch_radius + tan(angle) * dist * h, branch_radius, MAX)` floors at `branch_radius`, so the function never returns a value below `branch_radius`. The intended 45° tip cone — where the radius linearly tapers from 0 at the tip (dist_to_top = 0) up to `branch_radius` at depth `branch_radius` — is unreachable. Visually, every branch in the planner's output has a flat-headed-nail tip instead of an organic teardrop. Matches OrcaSlicer's `TreeSupport::calc_branch_radius` second overload, which uses the two-piece formula this packet ports.
+`support_planner::tapered_radius` currently clamps its expansion to `[branch_radius, MAX_BRANCH_RADIUS_MM]`, so `dist_to_top = 0` returns the branch radius instead of a point tip. The source plan's B5 formula is still an open correctness correction even though the older broad `TASK-163 (algorithmic)` row is closed; that row cannot be treated as proof that this exact fix landed because the current function still has the floor.
 
-Separately, `support_planner::inflate_polygon` is a hand-rolled vertex-offset routine using averaged adjacent-edge normals. It self-intersects on inward sharp corners, drops vertices at degenerate edges (`len_prev < 1e-8`), and silently ignores holes (the function inflates only the outer contour vertices, never traverses `expoly.holes`). Avoidance polygons computed from any non-convex or hole-bearing object outline are wrong; node-clamp decisions made downstream propagate the error.
+The current B6 packet was also stale about the guest boundary. `slicer-core` is not a dependency of `support-planner`, and ADR-0023/guest-build rules forbid adding the host-only crate directly to this guest graph. The existing `slicer_sdk::host::offset_polygons` API is the guest-compatible geometry seam; it accepts `&[ExPolygon]`, a millimeter `f32` delta, and `OffsetJoinType`, and returns `Vec<ExPolygon>` with hole nesting preserved. The planner currently flattens scaled integer points into raw `f32` values, calls a deleted-in-scope DIY `inflate_polygon`, and stores avoidance contours in a hole-less shape. The correction must use the SDK seam and keep the mm/scaled-unit boundary explicit.
 
-A correctly-implemented Clipper-equivalent offset routine already exists in the workspace at `crates/slicer-core/src/polygon_ops.rs:205` as `pub fn offset(...)`. Calling it from the planner replaces the broken DIY routine with no algorithmic novelty.
-
-This packet closes both correctness gaps in one slice — both are geometric correctness fixes localized to `support-planner/src/lib.rs`, both have self-evident unit-test oracles, and they share the same code review surface.
+B5 and B6 are one coherent local geometry slice: both affect the support planner's local geometric oracles, share one source file and the existing SDK geometry seam, and gate the downstream validation harness. Their source-plan task IDs are not canonical current backlog ownership, so activation is blocked rather than guessed.
 
 ## In Scope
 
-- Replace the body of `tapered_radius` in `modules/core-modules/support-planner/src/lib.rs` (current line 888) with the two-piece formula:
-  ```
-  let mm_to_top = (dist_to_top as f32) * effective_layer_height;
-  let radius = if mm_to_top <= branch_radius {
-      mm_to_top.max(0.0)         // 45° tip cone
-  } else {
-      branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
-  };
-  radius.clamp(0.0, MAX_BRANCH_RADIUS_MM)
-  ```
-- Update the function-level doc-comment on `tapered_radius` to describe the two-piece formula and cite OrcaSlicer's `calc_branch_radius` second overload.
-- Delete the `fn inflate_polygon(...)` helper (current line 901) and remove the helper's private call site by replacing it with a call to `slicer_core::polygon_ops::offset`. The original call site is in the prepass-side avoidance build (`run_support_geometry`'s collision/avoidance cache loop; `LayerCollisionCache.avoidance_polys.push(inflated)`).
-- Verify the `slicer_core::polygon_ops::offset` signature matches what the planner needs (delta in mm, miter join, miter limit ≥ 1.2 to match Orca's `offset_ex(_, jtMiter, 1.2)`, hole-bearing input/output preserved).
-- Add a new test file `modules/core-modules/support-planner/tests/tapered_radius_tip_cone.rs` with the four tests in AC-1, AC-2, AC-3, AC-4 plus AC-N1.
-- Add a new test file `modules/core-modules/support-planner/tests/avoidance_offset_concave.rs` with the two tests in AC-6 and AC-7.
+- Replace `tapered_radius` with `mm_to_top = dist_to_top * effective_layer_height`, a `mm_to_top.max(0.0)` tip-cone branch through `branch_radius`, a linear-above-cone branch using `tan_diameter_angle`, and a final clamp to `[0.0, MAX_BRANCH_RADIUS_MM]`.
+- Update `tapered_radius`'s function documentation to describe the two-piece formula without claiming a broader unported overload or interface-aware widening.
+- Use the existing `slicer_sdk::host::offset_polygons` API and `OffsetJoinType::Miter`; do not add a direct `slicer-core` dependency to the guest module.
+- Delete `inflate_polygon` and replace its sole call in `run_support_geometry` with the SDK offset operation over the complete input `ExPolygon`, passing `avoid_inflate` as a millimeter delta.
+- Change the internal collision/avoidance cache and containment/clamping helpers as needed to retain `ExPolygon` holes and compare planner mm coordinates against scaled integer polygons through `Point2::from_mm`/`mm_to_units` or equivalent canonical helpers.
+- Add focused unit tests to the existing `support-planner/src/lib.rs` test module for the radius cases, concave offset simplicity via a test-local edge-intersection invariant, hole preservation, and the mm coordinate boundary.
+- Migrate the existing `radius_tapers_with_distance_to_top` test in `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` from the obsolete floor expectation to the tip-cone expectation; update its geometry fixture to use canonical scaled coordinates if the cache type change requires it.
 
 ## Out of Scope
 
-- Changes to `smooth_nodes`, MST propagation, `to_buildplate` tracking, raft handling, paint policy — covered by sibling Block C packets.
-- Refactoring `tapered_radius` callers (the function signature is preserved).
-- Reorganizing or renaming `slicer_core::polygon_ops::offset` — the helper is consumed as-is.
-- Removing other DIY geometric helpers from `support-planner` that aren't `inflate_polygon` (e.g., `point_in_polygon`, `closest_point_on_segment`).
+- Assigning or inventing replacement backlog IDs for B5/B6.
+- Changing `SupportPlanIR`, `SupportGeometryIR`, WIT packages, manifests, scheduler behavior, or public planner function signatures.
+- Porting interface-aware radius widening, `smooth_nodes`, multi-neighbour MST propagation, buildplate pruning, raft behavior, or paint migration.
+- Reorganizing `slicer-core::polygon_ops`, changing the global coordinate convention, or deleting other private geometry helpers such as `point_in_polygon` and `closest_point_on_segment`.
+- Replacing self-capture tests with real Orca output; the separate Orca-reference backlog item remains blocked by fixture/runner/metric decisions.
 
 ## Authoritative Docs
 
-- `docs/specs/support-modules-orca-port.md` — read §B5 (≈10 lines), §B6 (≈10 lines), §D2 (≈5 lines) directly.
-- `docs/08_coordinate_system.md` — ≈30 lines; read directly. Confirms `1 unit = 100 nm` so `delta_mm` is converted correctly when passed to `polygon_ops::offset`.
-- `crates/slicer-core/src/polygon_ops.rs` — read the `pub fn offset(...)` definition at line 205 (±20 lines). Confirm the function takes mm-valued `delta`, the join enum type, and the return type. Do NOT read the rest of the file.
+- `docs/specs/support-modules-orca-port.md` - direct read of §B5, §B6, and §D2; source of the formula and the local offset-removal intent.
+- `docs/08_coordinate_system.md` - direct read of the rule, conversion, and Clipper2 sections; source of 10,000 scaled units/mm and mm-valued float boundaries.
+- `docs/05_module_sdk.md` - bounded read of the guest dependency rules and the prohibition on adding host-only crates to guest modules.
+- `crates/slicer-sdk/src/host.rs` - bounded read of `offset_polygons` and `OffsetJoinType`; current guest-facing API authority.
+- `crates/slicer-schema/wit/deps/common.wit` - existing `offset-polygons` host-service signature; no WIT change is proposed.
+- `docs/adr/0023-arachne-port-strategy.md` - current host-side crate strategy; do not silently amend it for B6.
+- `docs/specs/support-modules-orca-port-plan.md` - packet 117 queue row only; source-plan labels and dependency order.
+- `docs/07_implementation_status.md` - targeted lookup of all colliding `TASK-254`/`TASK-255` entries and support `TASK-163` rows; current ledger authority, not edited here.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -57,45 +51,46 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — `TreeSupport::calc_branch_radius` (second overload). Confirm the two-piece formula: 45° tip cone for `mm_to_top <= base_radius` (`radius = mm_to_top`), linear above (`radius = base_radius + (mm_to_top - base_radius) * diameter_angle_scale_factor`), clamp to `[MIN_BRANCH_RADIUS, MAX_BRANCH_RADIUS]`. Confirm that for `support_interface_top_layers > 0`, Orca additionally enforces `radius = max(radius, base_radius)` — but **this packet does NOT port that branch** (interface-aware radius widening is deferred; B5's scope is the tip cone only).
+- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` - delegated `TreeSupport::calc_branch_radius` second overload; confirm only the tip-cone and linear-above-cone formula is asserted, while interface-aware widening remains out of scope.
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` through `AC-7` from `packet.spec.md`.
-  - `AC-1` through `AC-4` + `AC-N1` are pure-math assertions on the new `tapered_radius` body; numerical tolerances are `1e-6`.
-  - `AC-5` is a static grep: the DIY `inflate_polygon` function and all its call sites are gone; `polygon_ops::offset` is called instead.
-  - `AC-6` and `AC-7` are geometric correctness assertions on the offset call: concave inputs produce non-self-intersecting outputs; hole-bearing inputs preserve holes.
-- Negative cases: `AC-N1` from `packet.spec.md`.
-- Cross-packet impact: `121_support-planner-smooth-nodes` and `122_support-planner-multi-neighbour-mst` will inherit the corrected `tapered_radius` and avoidance polygons. The validation harness packet (`119_support-validation-wedge-harness`) becomes more meaningful because invariant 5 (radius monotone non-decreasing with `dist_to_top`) now actually holds at the tip.
+Reference, never duplicate, the criteria from `packet.spec.md`.
+
+- Positive: `AC-1` through `AC-8`; pure radius cases, static SDK-helper replacement without a direct guest dependency, concave simplicity, hole retention, coordinate boundary, and migration of the existing old-radius test.
+- Negative: `AC-N1` through `AC-N2`; the old branch-radius floor and raw scaled-coordinate interpretation must not return.
+- Cross-packet impact: packet 119 must capture validation evidence after this correction; packets 121 and 122 consume the changed radii; packet 116 is queued first for shared-file review. No packet may infer B5/B6 backlog closure from `TASK-163 (algorithmic)` or the colliding IDs.
 
 ## Verification Commands
 
+This is the authoritative full matrix; cargo commands use `--all-targets`, and every test invocation tees output as required.
+
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo check -p support-planner --all-targets` | Compile gate. | FACT pass/fail |
-| `cargo clippy -p support-planner --all-targets -- -D warnings` | No lint regression after the routine deletion. | FACT pass/fail |
-| `cargo test -p support-planner --test tapered_radius_tip_cone 2>&1 \| tee target/test-output.log` | Gates AC-1 through AC-4 + AC-N1. | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
-| `cargo test -p support-planner --test avoidance_offset_concave 2>&1 \| tee target/test-output.log` | Gates AC-6 and AC-7. | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
-| `! rg -q 'fn inflate_polygon' modules/core-modules/support-planner/src/lib.rs` | AC-5: DIY routine removed. | FACT pass/fail |
-| `! rg -q 'inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs` | AC-5: call sites removed. | FACT pass/fail |
-| `rg -q 'slicer_core::polygon_ops::offset' modules/core-modules/support-planner/src/lib.rs` | AC-5: replacement helper called. | FACT pass/fail |
-| `cargo test -p support-planner 2>&1 \| tee target/test-output.log` | Full planner suite green; the existing `radius_tapers_with_distance_to_top` test in `tests/orca_parity_tdd.rs` MUST be updated or removed since its expected behavior assumed the floor-at-`branch_radius` semantics. | FACT pass/fail; SNIPPETS ≤ 30 lines on failure |
-| `cargo xtask build-guests --check` | Guest WASM up to date after src/lib.rs edit. | FACT pass/fail |
+| `cargo test -p support-planner --all-targets -- tapered_radius_at_tip_is_zero --nocapture 2>&1 \| tee target/test-output.log` | AC-1 tip radius. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --all-targets -- tapered_radius_inside_cone_is_mm_to_top --nocapture 2>&1 \| tee target/test-output.log` | AC-2 cone branch. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --all-targets -- tapered_radius_above_cone_is_linear --nocapture 2>&1 \| tee target/test-output.log` | AC-3 linear branch. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --all-targets -- tapered_radius_clamps_at_max --nocapture 2>&1 \| tee target/test-output.log` | AC-4 upper clamp. | FACT pass/fail; bounded failure SNIPPETS |
+| `! rg -q 'fn inflate_polygon|inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs && rg -q 'slicer_sdk::host::offset_polygons' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'slicer-core' modules/core-modules/support-planner/Cargo.toml` | AC-5 removal, SDK replacement, and guest dependency boundary. | FACT pass/fail |
+| `cargo test -p support-planner --all-targets -- offset_concave_l_shape_no_self_intersection --nocapture 2>&1 \| tee target/test-output.log` | AC-6 concave offset validity. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --all-targets -- offset_polygon_with_hole_preserves_hole --nocapture 2>&1 \| tee target/test-output.log` | AC-7 hole retention. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --test orca_parity_tdd --all-targets -- radius_tapers_with_distance_to_top --nocapture 2>&1 \| tee target/test-output.log` | AC-8 migration of the existing old oracle. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo test -p support-planner --all-targets -- offset_preserves_mm_coordinate_boundary --nocapture 2>&1 \| tee target/test-output.log` | AC-N2 unit-boundary regression. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo check -p support-planner --all-targets` | Compile production, unit, and integration targets. | FACT pass/fail |
+| `cargo clippy -p support-planner --all-targets -- -D warnings` | Lint gate. | FACT pass/fail; bounded failure SNIPPETS |
+| `cargo xtask build-guests --check` | Freshness gate after planner source edits. | FACT `up to date` or `STALE: <path>` |
 
 ## Step Completion Expectations
 
-- The existing test `radius_tapers_with_distance_to_top` in `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` (introduced by packet 31b) embeds the OLD broken behavior: it asserts the topmost width equals `branch_diameter = 5.0` because `tapered_radius(0)` returned `branch_radius = 2.5`. The new tip cone returns `0.0` at `dist_to_top = 0`. Step 3 of the implementation plan owns the migration of this test — either re-anchor its assertion to the new tip cone (preferred; matches Orca more closely) or remove the test and re-state the intent in the new `tapered_radius_tip_cone` test file. The implementer MUST NOT leave the old test in conflict with the new behavior.
-- The `polygon_ops::offset` call replaces the planner's prior `inflate_polygon` call site only — it does NOT add new call sites elsewhere in the planner. Step 4 of the implementation plan asserts the call count is exactly 1 in `support-planner/src/lib.rs`.
+- The radius test migration owns the existing direct oracle; no old assertion may continue to require `tapered_radius(0) == branch_radius`.
+- The offset call must consume complete `ExPolygon` values and the internal cache must not flatten away holes merely to preserve the old `Vec<Vec<[f32; 2]>>` shape.
+- `avoid_inflate` remains a millimeter scalar; all cache comparisons with planner node coordinates use the canonical 10,000-units/mm boundary.
+- The current SDK `offset_polygons` signature and `OffsetJoinType::Miter` are authoritative. Do not prescribe the stale `JoinType` name, an arc-tolerance argument absent from the SDK seam, or a direct host-only planner dependency.
+- The exact call count in `support-planner/src/lib.rs` is one production use of `slicer_sdk::host::offset_polygons`; tests may call the SDK helper as their local oracle.
 
 ## Context Discipline Notes
 
-- Large files in the read-only path that MUST be ranged or delegated:
-  - `crates/slicer-core/src/polygon_ops.rs` — read only `pub fn offset(...)` signature at line 205 (±20 lines). Do NOT read the whole file (320+ lines).
-  - `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — delegate `calc_branch_radius` SUMMARY (≤ 200 words). Never load the 3,834-LOC file.
-  - `modules/core-modules/support-planner/src/lib.rs` — 1,000+ lines; range-read around the two edit sites (lines 880-940 covers both).
-- Likely temptation reads (skip these):
-  - Other DIY geometric helpers in `support-planner/src/lib.rs` (e.g., `closest_point_on_segment`, `point_in_polygon`) — out of scope; do not open or evaluate them in this packet.
-  - `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` — the existing tests use the old behavior; the implementer needs to know the ONE test that requires migration, but should not browse the file end-to-end. Delegate: "Find the test in `tests/orca_parity_tdd.rs` that calls `tapered_radius` directly; return SNIPPETS ≤ 20 lines."
-- Sub-agent return-format hints for heaviest dispatches:
-  - `cargo test -p support-planner` (full suite) — FACT pass/fail on first pass; on failure SNIPPETS ≤ 30 lines with the failing test names + assertion text. Do NOT paste the full cargo output.
-  - "Summarize OrcaSlicer `calc_branch_radius` second overload" — SUMMARY ≤ 200 words; no code unless explicitly requested.
+- `modules/core-modules/support-planner/src/lib.rs` is long; read only `tapered_radius`, `run_support_geometry`, `LayerCollisionCache`, the containment/clamping helpers, and the existing `tests` module.
+- `crates/slicer-sdk/src/host.rs` is long; read only `OffsetJoinType` and `offset_polygons` plus their immediate bodies.
+- `docs/07_implementation_status.md` is mutable ledger state; re-derive the collision evidence at mapping time and never edit it in this packet.
+- Delegate the Orca source lookup and all cargo commands; return Orca as `SUMMARY` and cargo as `FACT` with bounded failure snippets.

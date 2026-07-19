@@ -1,8 +1,10 @@
 # Task Map: support-planner-geometric-correctness
 
-| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| `TASK-254` | Step 1, Step 2, Step 3, Step 6 | `docs/specs/support-modules-orca-port.md` §B5 | `modules/core-modules/support-planner/src/lib.rs::tapered_radius` (current line 888) + new `tests/tapered_radius_tip_cone.rs` + migrated `radius_tapers_with_distance_to_top` in existing `tests/orca_parity_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp::calc_branch_radius` second overload (delegate; never load) | S | Step 2 RED; Step 3 GREEN; Step 6 gates AC-1, AC-2, AC-3, AC-4, AC-N1. |
-| `TASK-255` | Step 1, Step 4, Step 5, Step 6 | `docs/specs/support-modules-orca-port.md` §B6 | `modules/core-modules/support-planner/src/lib.rs` — delete `inflate_polygon` (current line 901); substitute `slicer_core::polygon_ops::offset` at the call site around line 226; new `tests/avoidance_offset_concave.rs` | none (Orca's Clipper2 use is described in §B6 directly) | S | Step 4 RED; Step 5 GREEN; Step 6 gates AC-5, AC-6, AC-7. Verify `slicer-core` is already a path dependency in `support-planner/Cargo.toml`. |
+The batch anchor names B5/B6 as `TASK-254`/`TASK-255`, but current `docs/07_implementation_status.md` assigns those IDs to unrelated infill work. The closed broad `TASK-163 (algorithmic)` row mentions radius tapering but does not own this still-present tip-floor or offset replacement. No replacement IDs are invented here.
 
-Aggregate context cost across rows: `S`. No row exceeds `S`; no row L.
+| docs/07 task ID | Source-plan work item | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `— (unmapped B5)` | B5 | Steps 1-3, 6 | `docs/specs/support-modules-orca-port.md` §B5 | `support-planner/src/lib.rs::tapered_radius`, source unit tests, existing `radius_tapers_with_distance_to_top` oracle | `TreeSupport.cpp::calc_branch_radius` second overload; delegated | S | Do not reuse closed `TASK-163 (algorithmic)` or colliding `TASK-254`. |
+| `— (unmapped B6)` | B6 | Steps 1, 4-6 | `docs/specs/support-modules-orca-port.md` §B6 | `support-planner/src/lib.rs::run_support_geometry`, `LayerCollisionCache`, existing `slicer_sdk::host::offset_polygons` seam, source geometry tests, coordinate fixture | none additional | M | `SupportGeometryViewEntry.outlines` and the SDK API return `ExPolygon` values; no direct `slicer-core` dependency may be added to the guest graph. |
+
+Aggregate context cost across rows: `M`; no row exceeds `M` and no row is L. Activation is blocked until the backlog maintainer supplies canonical IDs.

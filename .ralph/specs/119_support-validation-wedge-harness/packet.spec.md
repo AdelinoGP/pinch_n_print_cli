@@ -1,8 +1,7 @@
 ---
 status: draft
 packet: 119
-task_ids:
-  - TASK-260
+task_ids: []
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -11,48 +10,53 @@ context_cost_estimate: M
 
 ## Goal
 
-Stand up the validation harness that gates every subsequent Block C support packet: six invariant tests asserted on `resources/regression_wedge.stl` against the planner's output, plus a self-capture golden regression that captures branch count and endpoints as `resources/golden/support_regression_wedge_*.txt` and asserts future drift stays within ±10% on count and ≤ 0.5 mm Hausdorff on endpoints.
+Stand up a current-contract wedge harness that runs the real prepass against `resources/regression_wedge.stl`, asserts six observable `SupportPlanIR.entries[*].branch_segments[*].points` invariants, and guards branch-count and endpoint drift with committed self-capture goldens.
 
 ## Scope Boundaries
 
-Touches only test files and golden artifacts. No production code change. No IR change, no WIT change, no manifest change. The invariant list is documented as v1 and expected to grow as future C-block items land (smooth_nodes adds a curvature invariant; multi-neighbour-MST adds a symmetry invariant; etc.). The self-capture goldens are written from the planner's CURRENT post-Packet-2 output, so this packet MUST land after `117_support-planner-geometric-correctness` to avoid baking the broken `tapered_radius` tip behavior into the baseline.
+Touches only the runtime test harness, its shared fixture helper, the integration aggregate registration, and two text goldens. It does not change support production code, `SupportPlanIR`, WIT, manifests, or scheduler rules. The source plan's `dist_to_top` parent-chain assertion and `SupportPlanIR.raft_plan` assertion are not representable by the current public IR and remain explicit blockers rather than invented test claims.
 
 ## Prerequisites and Blockers
 
-- Depends on: `117_support-planner-geometric-correctness` (tip cone + inflate_polygon fix). Without it, the goldens encode the broken floor-at-`branch_radius` behavior and the radius-monotone invariant would be coincidentally satisfied by an algorithm-level bug.
-- Unblocks: `121_support-planner-smooth-nodes`, `122_support-planner-multi-neighbour-mst`, `123_support-planner-to-buildplate-pruning` — all four ship algorithmic changes that need this harness as their correctness gate.
-- Activation blockers: regression_wedge.stl must produce a non-empty support plan with default config. If a sub-agent confirms it does not, the implementer must adjust config (e.g., enable supports, set `support_threshold_angle = 45`) inside the test setup to ensure the harness has something to assert.
+- Depends on: packets 116, 117, and 118 in the batch queue; current packet directories 116, 117, and 118 are draft, and packet 117's `tapered_radius` and `inflate_polygon` fixes are still absent from the tree.
+- Unblocks: later support validation packets only after the current-contract harness is green and the unresolved source-plan invariants have an owner decision.
+- Activation blockers: source-plan `TASK-260` collides with current `docs/07_implementation_status.md` gyroid work; `SupportPlanIR` currently has no `raft_plan` field, and its public branch points do not expose `dist_to_top` or parent links. `resources/regression_wedge.stl` must also prove a non-empty support plan through the real prepass driver before golden capture.
 
 ## Acceptance Criteria
 
-- **AC-1. Given** `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs`, **when** the test `reachability_every_chain_terminates_at_buildplate_or_contact` runs against the wedge fixture with default-plus-support config, **then** every `SupportPlanIR.entries[*].branch_segments[*]` endpoint chain terminates at either `z ≤ 1e-3 mm` (build plate) or at an overhang facet's contact point at the facet's origin layer (within `branch_distance` tolerance). | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- reachability_every_chain_terminates_at_buildplate_or_contact --nocapture 2>&1 | tee target/test-output.log`
-- **AC-2. Given** the same fixture and config, **when** the test `no_endpoint_inside_collision_polys` runs, **then** no `branch_segment` endpoint lies inside any `collision_polys` for its layer (as computed by the planner's avoidance cache). | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- no_endpoint_inside_collision_polys --nocapture 2>&1 | tee target/test-output.log`
-- **AC-3. Given** the same fixture, **when** the test `dist_to_top_monotone_along_chain` runs, **then** `dist_to_top` is monotone non-decreasing along every parent-child chain in the planner's output (verified by reconstructing parent links from `branch_segments` shared endpoints and the implicit MST topology recorded in the test fixture's introspection helper). | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- dist_to_top_monotone_along_chain --nocapture 2>&1 | tee target/test-output.log`
-- **AC-4. Given** the same fixture, **when** the test `overhang_facet_has_contact_at_origin_layer` runs, **then** for every overhang facet (triangle whose normal z-component is ≤ `-sin(45°)`) whose centroid passes the `support_threshold_angle` check, at least one contact point exists at the facet's origin layer within `tree_support_branch_distance` mm tolerance. | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- overhang_facet_has_contact_at_origin_layer --nocapture 2>&1 | tee target/test-output.log`
-- **AC-5. Given** the same fixture, **when** the test `branch_radius_monotone_along_chain` runs, **then** along every parent-child chain the `width / 2` of each `Point3WithWidth` is monotone non-decreasing with `dist_to_top` (clamped to `[0, MAX_BRANCH_RADIUS_MM = 6.0]`). | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- branch_radius_monotone_along_chain --nocapture 2>&1 | tee target/test-output.log`
-- **AC-6. Given** the wedge fixture with `support_raft_layers = 0` (default), **when** the test `raft_plan_count_zero_when_disabled` runs, **then** the planner emits NO raft entries (current `support-planner` placeholder code path; this invariant evolves into "exactly `support_raft_layers × n_objects_needing_raft` `RaftPlan` rows when `> 0`" after sibling packet `124_support-plan-raft-plan-and-raftinfill-role` lands). The test as written for v1 asserts the zero-raft case only; the documented evolution path is recorded inline. | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- raft_plan_count_zero_when_disabled --nocapture 2>&1 | tee target/test-output.log`
-- **AC-7. Given** `resources/golden/support_regression_wedge_branch_count.txt` (newly captured by this packet) and `resources/golden/support_regression_wedge_endpoints.txt` (newly captured), **when** `crates/slicer-runtime/tests/integration/support_golden_regression_wedge_tdd.rs` runs, **then** the planner's current branch count is within ±10% of the captured baseline AND the Hausdorff distance between the current endpoint set and the captured endpoint set is ≤ 0.5 mm. Either failure fails the test. | `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd 2>&1 | tee target/test-output.log`
+- **AC-1. Given** the real prepass context prepared from `resources/regression_wedge.stl` with `support_enabled = true`, **when** the wedge invariant test runs, **then** `SupportPlanIR.entries` is non-empty, every `branch_segments` path has at least two finite `Point3WithWidth` points, and every `x`, `y`, `z`, and `width` is finite. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::support_plan_has_finite_branch_paths --nocapture 2>&1 | tee target/test-output.log`
+- **AC-2. Given** the same context and current `SupportGeometryIR.entries`, **when** every first and last point of every branch path is checked against the support collision outlines after mm conversion, **then** no branch endpoint is inside an outline contour excluding its holes. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::branch_endpoints_are_outside_support_collision_outlines --nocapture 2>&1 | tee target/test-output.log`
+- **AC-3. Given** the same context with default `support_raft_layers = 0`, **when** each `SupportPlanEntry` is checked, **then** every path point has a `z` equal to the `LayerPlanIR` layer Z selected by `global_layer_index` within `1e-4` mm. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::branch_points_match_entry_layer_z --nocapture 2>&1 | tee target/test-output.log`
+- **AC-4. Given** each downward-facing wedge mesh triangle whose normal z-component is at or below `-sin(45 degrees)`, **when** its centroid is assigned to the first `LayerPlanIR` layer at or above the centroid Z, **then** at least one emitted branch endpoint at that layer is within `tree_support_branch_distance` mm of the centroid. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::overhang_facets_have_wedge_layer_contacts --nocapture 2>&1 | tee target/test-output.log`
+- **AC-5. Given** all emitted `Point3WithWidth` values from the wedge plan, **when** branch radii are calculated as `width / 2`, **then** every radius is finite, non-negative, and no greater than the current `MAX_BRANCH_RADIUS_MM = 6.0` contract. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::branch_radii_stay_within_current_bounds --nocapture 2>&1 | tee target/test-output.log`
+- **AC-6. Given** the wedge context with default `support_raft_layers = 0`, **when** `SupportPlanIR.entries` is inspected, **then** no entry has a negative `global_layer_index`; this is the current pre-C6 raft-prefix invariant. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::disabled_raft_has_no_negative_entries --nocapture 2>&1 | tee target/test-output.log`
+- **AC-7. Given** committed `resources/golden/support_regression_wedge_branch_count.txt` and `resources/golden/support_regression_wedge_endpoints.txt`, **when** the golden test runs, **then** the current `branch_segments.len()` total stays within plus or minus 10 percent of the count baseline and the symmetric endpoint Hausdorff distance stays at or below `0.5` mm. | `cargo test -p slicer-runtime --all-targets --test integration -- support_golden_regression_wedge_tdd::current_wedge_output_stays_within_self_capture_tolerance --nocapture 2>&1 | tee target/test-output.log`
 
 ## Negative Test Cases
 
-- **AC-N1. Given** the wedge fixture with `support_enabled = false`, **when** any invariant test runs, **then** the test detects an empty support plan and short-circuits to PASS (no false positives from empty input). The test must NOT silently pass if `support_enabled = true` but the planner's output is empty — that's a regression, not an empty-input case. | `cargo test -p slicer-runtime --test support_invariants_wedge_tdd -- empty_support_plan_short_circuits_under_disabled --nocapture 2>&1 | tee target/test-output.log`
-- **AC-N2. Given** a deliberately-mutated golden file (e.g., `branch_count.txt` set to a value > 25% off the captured baseline), **when** AC-7's test runs, **then** the test fails with an assertion message naming `branch count drift > 10%`. The test does not silently accept large drift. | `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd -- detects_intentional_branch_count_drift --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N1. Given** the same wedge fixture with `support_enabled = false`, **when** prepass completes, **then** `SupportPlanIR.entries` is empty and the harness reports the disabled-support case explicitly rather than treating an enabled empty plan as a pass. | `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd::support_disabled_produces_explicit_empty_plan --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N2. Given** an in-memory golden count mutated to more than 25 percent from its committed baseline, **when** the golden comparison helper runs, **then** it returns a failure containing `branch count drift > 10%` and the test passes only because that failure was detected. | `cargo test -p slicer-runtime --all-targets --test integration -- support_golden_regression_wedge_tdd::detects_intentional_branch_count_drift --nocapture 2>&1 | tee target/test-output.log`
 
 ## Verification
 
 - `cargo xtask build-guests --check`
-- `cargo test -p slicer-runtime --test support_invariants_wedge_tdd 2>&1 | tee target/test-output.log`
-- `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd 2>&1 | tee target/test-output.log`
+- `cargo test -p slicer-runtime --all-targets --test integration -- support_invariants_wedge_tdd 2>&1 | tee target/test-output.log`
+- `cargo test -p slicer-runtime --all-targets --test integration -- support_golden_regression_wedge_tdd 2>&1 | tee target/test-output.log`
 
 ## Authoritative Docs
 
-- `docs/specs/support-modules-orca-port.md` — §C1, §Validation Strategy, §D3. Read directly; defines the six invariants and the tolerance numbers.
-- `crates/slicer-runtime/tests/common/` — confirm the fixture-loading and slicer-cache patterns used by neighboring integration tests (e.g. `region_mapping_tdd.rs`, `cube_4color_paint_tdd.rs`). Delegate `LOCATIONS` if not obvious.
-- `docs/02_ir_schemas.md` §"SupportPlanIR" — read lines 862-921 directly; the test code asserts against these field paths.
+- `docs/specs/support-modules-orca-port.md` sections C1, Validation Strategy, and D3 - source invariant names and tolerance values; direct bounded read.
+- `docs/02_ir_schemas.md` section `IR 9b - SupportPlanIR` - current field paths; direct bounded read.
+- `docs/01_system_architecture.md` `PrePass::SupportGeometry` section - real prepass ordering and guest stage contract; direct bounded read.
+- `crates/slicer-runtime/src/run.rs` `prepare_prepass_context` - real production prepass driver; range-read only.
+- `crates/slicer-runtime/tests/integration/main.rs` - actual aggregate test target; direct small read.
+- `crates/slicer-runtime/tests/common/` - fixture and WIT artifact helpers; targeted symbol lookup.
+- `docs/07_implementation_status.md` - targeted lookup proving `TASK-260` is current gyroid work and wedge fixture availability.
+- `CLAUDE.md` - test-output tee and Guest WASM Staleness guidance.
 
 ## Doc Impact Statement (Required)
 
-`none` — this packet adds test files and resource files. The Validation Strategy section in `docs/specs/support-modules-orca-port.md` already documents the invariant list and tolerance numbers. No public surface, IR, WIT, claim, or manifest schema change.
+`none` - this packet adds test code and committed text resources only. It does not change IR, WIT, scheduler, claim, manifest, SDK, or host-service contracts.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
@@ -62,6 +66,6 @@ This packet was generated against the context_discipline preamble shared by `spe
 - treat `design.md`'s code change surface as the authoritative files-in-scope list
 - honor `design.md`'s out-of-bounds list — those files must not be loaded directly
 - delegate every cargo run and authoritative-doc fact-check
-- stop reading at 60% context and hand off at 85%
+- obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
-Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).

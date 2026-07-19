@@ -3,96 +3,95 @@
 ## Controlling Code Paths
 
 - Primary code paths:
-  - `modules/core-modules/tree-support/src/lib.rs` — lead `//!` block (current lines 1-12); add `# Speed normalization` section.
-  - `modules/core-modules/traditional-support/src/lib.rs` — lead `//!` block (current lines 1-16); add `# Speed normalization` section.
-  - `modules/core-modules/support-planner/src/lib.rs` — lead `//!` block (current lines 1-35); delete `support_interface_bottom_layers` field on `SupportPlanner` struct; rewrite the parse block in `on_print_start` (current lines 156-160 and 178); add `# Speed normalization` section.
-  - `modules/core-modules/rectilinear-infill/src/lib.rs` — lead `//!` block; add `# Speed normalization` section only (B3).
-  - `modules/core-modules/support-planner/support-planner.toml` — add `# Not yet implemented` comment next to the `support_interface_bottom_layers` schema entry.
-- Neighboring tests/fixtures:
-  - `modules/core-modules/support-planner/tests/` — add three new tests (AC-5, AC-N1, AC-N2). Likely new file `tests/interface_bottom_layers_warning_tdd.rs`.
-- OrcaSlicer comparison surface: not consulted by this packet. The new doc-comments declare what these modules are *not*; no Orca behavior is being ported.
+  - `modules/core-modules/tree-support/src/lib.rs` contiguous leading `//!` block, including its opening line and `BASE_SPEED` consumer documentation.
+  - `modules/core-modules/traditional-support/src/lib.rs` contiguous leading `//!` block, including its opening line and `BASE_SPEED` consumer documentation.
+  - `modules/core-modules/support-planner/src/lib.rs` contiguous leading `//!` block, `SupportPlanner`, `PrepassModule::on_print_start`, and the existing private `default_planner` test fixture.
+  - `modules/core-modules/rectilinear-infill/src/lib.rs` contiguous leading `//!` block and `BASE_SPEED` consumer documentation.
+  - `modules/core-modules/support-planner/support-planner.toml` `[config.schema.support_interface_bottom_layers]` entry.
+- Neighboring tests/fixtures: none added. Packet 118 owns the typed warning tests; this packet only compiles the dead-state removal and documentation changes.
+- OrcaSlicer comparison: none; this packet removes unsupported parity claims and does not assert borrowed Orca behavior.
 
 ## Architecture Constraints
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
-- The deletion of `support_interface_bottom_layers` from the Rust struct preserves the TOML config key. The implementer MUST NOT remove the key from `[config.schema]` — that would be a user-facing API change beyond this packet's scope.
-
-- The `LogLevel::Warn` diagnostic added in B2 ships as a string-prefixed log call (`log(LogLevel::Warn, "support-planner: support_interface_bottom_layers is not yet implemented ...")`), NOT a typed `Diagnostic`. The typed Diagnostic channel lands in sibling packet `118_support-planner-typed-diagnostics`; this packet ships the string form deliberately so the diagnostic exists before its typed migration.
+- The config key `support_interface_bottom_layers` remains in the TOML schema. Packet 116 removes its unused Rust field and parse branch and does not inspect it for a warning; packet 118 owns the typed D11 diagnostic.
+- AC-1, AC-2, and AC-3 extract only the contiguous leading `//!` block from a maximum 80-line prefix, then assert the required opening line and honesty wording inside that block; a later matching comment cannot satisfy them.
+- AC-4 rejects every `support_interface_bottom_layers:` or `support_interface_bottom_layers =` field/struct-literal assignment and separately rejects the `config.get("support_interface_bottom_layers")` parse-and-store lookup.
+- AC-7 checks the snake_case schema section and an immediately adjacent deferred-status comment in a maximum 200-line TOML prefix.
+- Packet 116 must not emit the pre-typed string warning. Packet 118's current dependency on a packet-116 warning path is an activation blocker that must be reconciled there, not satisfied by this packet.
+- `BASE_SPEED` documentation is limited to current in-scope consumers: `tree-support`, `traditional-support`, and `rectilinear-infill`. AC-6 extracts each consumer's contiguous leading `//!` block and asserts `# Speed normalization`, the normalization formula, and `BASE_SPEED = 50.0`; `support-planner` has no `BASE_SPEED` constant in the current tree.
 
 ## Code Change Surface
 
-- Selected approach: edit-in-place. Each of the four module files receives a targeted edit to its lead `//!` block; `support-planner/src/lib.rs` additionally receives field deletion + parse replacement; `support-planner.toml` receives a one-line comment addition.
-- Exact functions/structs/manifests/tests to change:
-  - `tree_support::TreeSupport` — module doc-comment only (B1 + B3 section).
-  - `traditional_support::TraditionalSupport` — module doc-comment only (B1 + B3 section).
-  - `support_planner::SupportPlanner` — module doc-comment (B1 + B3 section); struct field deleted; `on_print_start` parse block replaced (B2).
-  - `rectilinear_infill::RectilinearInfill` — module doc-comment only (B3 section).
-  - `support_planner.toml [config.schema.support_interface_bottom_layers]` — TOML comment added (B2).
-  - New test file `modules/core-modules/support-planner/tests/interface_bottom_layers_warning_tdd.rs` — three tests for AC-5, AC-N1, AC-N2.
-- Rejected alternatives:
-  - **Removing `support_interface_bottom_layers` from `support-planner.toml`** — rejected: user-facing config breakage exceeds the scope of an "honesty + cleanup" packet.
-  - **Migrating B2's warning straight to a typed `Diagnostic`** — rejected: introduces WIT changes (`world-prepass.wit`) that belong to the sibling typed-diagnostics packet. Bundling them grows this packet beyond `S` cost.
-  - **Replacing the `BASE_SPEED = 50.0` constant with config-driven speeds** — rejected: would be a real behavior change with downstream gcode-emit consequences; this packet only documents the existing convention.
+- Selected approach: edit the existing contiguous leading documentation blocks in place; delete only the dead bottom-interface field/state; preserve the TOML key and add its immediately adjacent deferred-status comment. No warning branch or warning test is added here.
+- Exact functions, structs, and fixtures:
+  - `SupportPlanner` in `support-planner/src/lib.rs` - remove `support_interface_bottom_layers` from the struct and its `default_planner` literal.
+  - `PrepassModule::on_print_start` in the same file - remove the parse-and-store branch without adding a string warning; packet 118 owns the typed lookup/emission.
+  - The four named module `//!` blocks - update only contiguous leading documentation; add the speed section to the three actual consumers.
+  - `[config.schema.support_interface_bottom_layers]` in `support-planner.toml` - add the adjacent status comment without changing schema fields.
+- Rejected alternatives and reasons:
+  - Remove the TOML key - rejected because it breaks the existing user-facing schema.
+  - Add a speed section to `support-planner` - rejected because the current module has no speed-factor consumer or `BASE_SPEED` symbol.
+  - Emit a typed diagnostic now - rejected because packet 118 owns the WIT/channel contract.
 
 ## Files in Scope (read + edit)
 
-The packet edits 5 source files plus one new test file (6 total). This exceeds the soft `≤ 3` ceiling and is justified inline below — the work is doc-shaped and uniform across modules; splitting would multiply ralph ceremony for no reduction in implementer work.
+The five files are a uniform documentation/dead-state slice; they cover the four comments, the preserved schema signal, and D8's dead-state cleanup without taking D11's diagnostic channel.
 
-- `modules/core-modules/tree-support/src/lib.rs` — role: B1 doc-comment + B3 speed-normalization section; expected change: lead `//!` block replaced/extended.
-- `modules/core-modules/traditional-support/src/lib.rs` — role: B1 doc-comment + B3 speed-normalization section; expected change: lead `//!` block replaced/extended.
-- `modules/core-modules/support-planner/src/lib.rs` — role: B1 doc-comment + B2 field deletion + B2 parse replacement + B3 speed-normalization section; expected change: lead `//!` block replaced/extended, `SupportPlanner` struct field removed, `on_print_start` parse block replaced.
-- `modules/core-modules/rectilinear-infill/src/lib.rs` — role: B3 only (consistency across all `BASE_SPEED` consumers); expected change: lead `//!` block extended with `# Speed normalization` section.
-- `modules/core-modules/support-planner/support-planner.toml` — role: B2 user-facing signal; expected change: one TOML comment line added next to the config schema entry.
-- `modules/core-modules/support-planner/tests/interface_bottom_layers_warning_tdd.rs` — role: three new unit tests for AC-5, AC-N1, AC-N2; expected change: file created.
+- `modules/core-modules/tree-support/src/lib.rs` - role: B1/B3 documentation; expected change: leading comment block only.
+- `modules/core-modules/traditional-support/src/lib.rs` - role: B1/B3 documentation; expected change: leading comment block only.
+- `modules/core-modules/support-planner/src/lib.rs` - role: B1/B2 documentation and D8 state; expected change: comment rewrite, field/parse/fixture deletion, no warning branch.
+- `modules/core-modules/rectilinear-infill/src/lib.rs` - role: B3 documentation; expected change: leading comment block only.
+- `modules/core-modules/support-planner/support-planner.toml` - role: B2 user-facing signal; expected change: preserve the snake_case entry and add one immediately adjacent comment.
 
 ## Read-Only Context
 
-- `docs/specs/support-modules-orca-port.md` — read §B1, §B2, §B3, §D8, §D9 only. Contains the exact doc-comment text the implementer copies.
-- `crates/slicer-sdk/src/host.rs` — confirm the `log(LogLevel::Warn, ...)` call shape used elsewhere in core modules so AC-5 / AC-N1 / AC-N2 tests assert the right call surface. Read only the `log` fn signature + nearest existing caller (≤ 30 lines around the use site).
-- `modules/core-modules/support-planner/src/lib.rs` current lead `//!` block (lines 1-35) — implementer reads to confirm the replacement target before editing.
+- `docs/specs/support-modules-orca-port.md` - §B1-B3 and §D8-D9 only - source wording and dead-state boundary.
+- `docs/adr/0010-typed-diagnostic-channel.md` - typed D11 contract owned by packet 118; packet 116 must not create its string predecessor.
+- `docs/specs/support-modules-orca-port-plan.md` - packet 116 queue row only - source-plan labels and dependency order.
+- `docs/07_implementation_status.md` - targeted support/task-ID searches only - resolve the blocked crosswalk; never edit it here.
 
 ## Out-of-Bounds Files
 
-- `OrcaSlicerDocumented/**` — not consulted (no Orca behavior being ported).
-- `target/`, `Cargo.lock`, generated code — never load.
-- `crates/slicer-runtime/**`, `crates/slicer-scheduler/**`, `crates/slicer-host/**` — out of scope; this packet edits only `modules/core-modules/` and one TOML.
-- `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` — historical packet 31b test; unrelated to this packet, do not open.
-- Other infill modules (`gyroid-infill`, `lightning-infill`) — `BASE_SPEED` is consumed by them too but they were not in the original Block B scope and are deferred. Do not extend the B3 edit to them in this packet.
+- `docs/07_implementation_status.md` - mutable backlog ownership; maintainer-only mapping, not a packet edit.
+- `modules/core-modules/{gyroid-infill,lightning-infill,classic-perimeters,top-surface-ironing,support-surface-ironing}/**` - other `BASE_SPEED` consumers are outside the source-plan slice.
+- `crates/slicer-schema/wit/**`, `crates/slicer-ir/**`, `crates/slicer-runtime/**`, `crates/slicer-scheduler/**` - no contract or host pipeline change.
+- `OrcaSlicerDocumented/**` - no parity assertion in this packet.
+- `target/`, `Cargo.lock`, generated code, and every other packet directory - never load or edit.
 
 ## Expected Sub-Agent Dispatches
 
-- "Run `cargo build -p tree-support -p traditional-support -p support-planner -p rectilinear-infill`; return FACT pass/fail" — purpose: validate compile after each module's doc-comment + struct edit.
-- "Run `cargo test -p support-planner --test interface_bottom_layers_warning_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on failure with the assertion + offending line" — purpose: gate AC-5, AC-N1, AC-N2.
-- "Run `cargo xtask build-guests --check`; return FACT (`up to date` or `STALE: <which>`)" — purpose: confirm guest WASM artifacts caught up after src/lib.rs edits.
-- "Find all callers of `slicer_sdk::host::log` inside `modules/core-modules/`; return LOCATIONS (max 20)" — purpose: confirm the `LogLevel::Warn` call shape for AC-5 matches existing convention.
-- "Run `rg -c 'BASE_SPEED' modules/core-modules/`; return FACT (number per module)" — purpose: confirm B3 doc-comment scope covers every module that uses the constant.
+- Question: Which current backlog rows own source-plan B1, B2, and B3 after checking all collisions for `TASK-250`, `TASK-251`, and `TASK-252`? Scope: `docs/07_implementation_status.md` targeted searches. Return: `LOCATIONS` with at most 20 entries; purpose: unblock activation without inventing IDs.
+- Question: Run the targeted module compile, clippy, planner test, and guest freshness checks. Scope: commands in `requirements.md`. Return: `FACT` pass/fail; on test failure, at most 20 relevant lines; purpose: packet gate.
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: none. The TOML `[config.schema.support_interface_bottom_layers]` entry retains its existing `type`, `default`, `min`, `max`, `display`, `group` keys. Only a TOML comment is added.
-- WIT boundary considerations: none in this packet. Guest WASM rebuild is required because `modules/core-modules/*/src/lib.rs` are guest sources; that is operational, not contractual.
-- Determinism: `LogLevel::Warn` is recoverable, does not affect IR commit semantics. The warning fires deterministically once per `on_print_start` invocation when the trigger condition is met.
+- IR/manifest contracts: none; the TOML schema key and its type/default/range remain unchanged.
+- WIT boundary: none; packet 118 owns the D11 typed channel and its WIT change.
+- Determinism/scheduler constraints: this packet emits no diagnostic; comments and dead-state removal do not affect stage ordering or geometry output.
 
 ## Locked Assumptions and Invariants
 
-- `slicer_sdk::host::log(LogLevel::Warn, &str)` is the canonical recoverable-warning API used by core modules at print-start. New diagnostic stays on this API until sibling packet `118_support-planner-typed-diagnostics` migrates it.
-- `support-planner.toml [config.schema.support_interface_bottom_layers]` user-facing key is preserved; downstream user profile files referencing it continue to load without warning unless they set it to a non-`-1` value.
-- The four-module `BASE_SPEED = 50.0` convention is documented but unchanged. Any future change to the normalization base must update all four doc-comments in lockstep.
+- `support_interface_bottom_layers` remains a snake_case config key with default `-1`.
+- The TOML key keeps default `-1`; packet 116 makes no runtime warning claim for any value. Packet 118 must own the typed behavior for non-default, default, and absent-key cases.
+- `BASE_SPEED = 50.0` and each existing speed calculation remain unchanged; only explanatory comments are added.
+- No canonical backlog ID is assigned by this packet. Until the blocker is resolved, status remains `draft`.
 
 ## Risks and Tradeoffs
 
-- **Risk**: A future contributor sees the doc-comment "honesty downgrade" (Orca-port → "not a port of") and erroneously decides the algorithmic-shape work in `121_support-planner-smooth-nodes` and `122_support-planner-multi-neighbour-mst` is non-binding. **Mitigation**: each new doc-comment cross-references the path forward (`docs/specs/support-modules-orca-port.md` Block C) where Orca-shape work continues.
-- **Tradeoff**: keeping the TOML config key after deleting the Rust field means a future C-block implementation of bottom-interface bands will need to re-introduce the field. Acceptable: user-facing surface stability > field-symmetry purity.
-- **Risk**: `cargo xtask build-guests --check` failing post-edit. **Mitigation**: explicitly listed as a verification step.
+- The typed-warning packet currently references a packet-116 warning path that this narrowed packet deliberately does not create; that cross-packet mismatch is an explicit activation blocker.
+- Removing the dead field changes no output because the field was never consumed, but struct literals in the module's private test fixture must be updated in the same edit.
+- Restricting B3 to current consumers corrects the old packet's false `support-planner` claim but leaves other modules' comments for separate work.
 
 ## Context Cost Estimate
 
-- Aggregate (sum across all steps): `S`
-- Largest single step: `S`
-- Highest-risk dispatch: `cargo test -p support-planner` after the AC-5/N1/N2 tests land. Required return format: FACT pass/fail, SNIPPETS ≤ 20 lines on failure with assertion text + offending line.
+- Aggregate: `S`
+- Largest step: `S`
+- Highest-risk dispatch and required return format: backlog crosswalk survey; `LOCATIONS` at most 20 entries, with exact collision context.
 
 ## Open Questions
 
-None.
+- `[BLOCK]` Which non-colliding canonical `docs/07_implementation_status.md` row owns source-plan B1, B2, and B3? Current support backlog has `TASK-163`/`TASK-163b-diagnostic` rows, while `TASK-250`/`TASK-252` are unrelated current work and `TASK-251` has no support row. A maintainer must either add/map explicit rows or amend the batch anchor before activation; this packet must not choose an existing ID by inference.
+- `[BLOCK]` Will packet 118 amend its current dependency/AC wording so D11 creates the typed `support_interface_bottom_layers` diagnostic without a packet-116 string-warning prerequisite? Packet 116 intentionally owns only D8 dead-state cleanup and must not emit the untyped predecessor.

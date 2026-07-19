@@ -1,58 +1,61 @@
 ---
 status: draft
 packet: 117
-task_ids:
-  - TASK-254
-  - TASK-255
+task_ids: []
 backlog_source: docs/07_implementation_status.md
-context_cost_estimate: S
+context_cost_estimate: M
 ---
 
 # Packet Contract: support-planner-geometric-correctness
 
 ## Goal
 
-Replace `support-planner::tapered_radius` with a two-piece formula that produces the 45° tip cone OrcaSlicer's `calc_branch_radius` defines (eliminating the current `clamp(_, branch_radius, MAX)` floor that suppresses any tip), and delete the DIY `inflate_polygon` vertex-offset routine, replacing it with calls to the existing Clipper-backed `slicer_core::polygon_ops::offset` helper at the avoidance-inflation call site.
+Correct `support_planner::tapered_radius`'s tip geometry and route support-outline avoidance through the existing guest-compatible `slicer_sdk::host::offset_polygons` API with preserved `ExPolygon` holes and explicit mm/scaled-unit boundaries.
 
 ## Scope Boundaries
 
-Touches one source file (`modules/core-modules/support-planner/src/lib.rs`) and adds two test files for the new behaviors. No IR change, no WIT change, no manifest change. Both fixes are local correctness changes with self-evident unit-test oracles — tip cone is checkable by computing `tapered_radius` at the cone boundary, polygon offset correctness is checkable by feeding an L-shaped polygon and asserting no self-intersection.
+This packet changes `tapered_radius`, the support planner's avoidance-cache representation and SDK host-geometry call, focused unit tests, and the existing radius-parity test that asserts the obsolete floor behavior. It does not add a direct `slicer-core` dependency to the guest, change IR/WIT schemas, planner connectivity, Block C algorithms, or unrelated geometry helpers. The source-plan B5/B6 labels have no current canonical support rows, so this packet remains draft.
 
 ## Prerequisites and Blockers
 
-- Depends on: packet `116_support-modules-doc-honesty-cleanup` recommended to land first (shares review surface in `support-planner/src/lib.rs`) but not strictly required — the two packets edit disjoint regions (doc-honesty edits the `//!` block + struct + parse; this packet edits `tapered_radius` body and the `inflate_polygon` site).
-- Unblocks: Block C algorithm packets (`121_support-planner-smooth-nodes`, `122_support-planner-multi-neighbour-mst`) — those depend on the validation harness in packet 4, but `tapered_radius` and avoidance-inflation correctness are common preconditions for them too.
-- Activation blockers: none.
+- Depends on: packet `116_support-modules-doc-honesty-cleanup` is queued first because both touch `support-planner/src/lib.rs`; the geometric work has no semantic dependency on its comments or warning.
+- Unblocks: packet `119_support-validation-wedge-harness` and the Block C planner packets that consume corrected widths and avoidance geometry.
+- Activation blockers: `[BLOCK]` source-plan `TASK-254` and `TASK-255` collide with unrelated current backlog entries; no canonical support rows own B5 and B6.
 
 ## Acceptance Criteria
 
-- **AC-1. Given** `support_planner::tapered_radius(branch_radius=2.5, tan_diameter_angle=tan(5°), dist_to_top=0, effective_layer_height=0.2)`, **when** invoked, **then** the return value is `0.0` (within `1e-6`). | `cargo test -p support-planner --test tapered_radius_tip_cone -- tapered_radius_at_tip_is_zero --nocapture 2>&1 | tee target/test-output.log`
-- **AC-2. Given** `support_planner::tapered_radius(branch_radius=2.5, tan_diameter_angle=tan(5°), dist_to_top=12, effective_layer_height=0.2)` (so `mm_to_top = 2.4 < branch_radius = 2.5`, still inside the cone), **when** invoked, **then** the return value equals `2.4` (within `1e-6`) — the 45° cone formula `radius = mm_to_top`. | `cargo test -p support-planner --test tapered_radius_tip_cone -- tapered_radius_inside_cone_is_mm_to_top --nocapture 2>&1 | tee target/test-output.log`
-- **AC-3. Given** `support_planner::tapered_radius(branch_radius=2.5, tan_diameter_angle=tan(5°), dist_to_top=50, effective_layer_height=0.2)` (so `mm_to_top = 10.0 > branch_radius`), **when** invoked, **then** the return value equals `2.5 + (10.0 - 2.5) * tan(5°)` (within `1e-6`) — the linear-above-cone formula. | `cargo test -p support-planner --test tapered_radius_tip_cone -- tapered_radius_above_cone_is_linear --nocapture 2>&1 | tee target/test-output.log`
-- **AC-4. Given** `support_planner::tapered_radius(branch_radius=2.5, tan_diameter_angle=tan(80°), dist_to_top=10_000, effective_layer_height=0.5)` (an unbounded linear ramp), **when** invoked, **then** the return value equals exactly `MAX_BRANCH_RADIUS_MM = 6.0` (within `1e-6`) — the upper clamp still fires. | `cargo test -p support-planner --test tapered_radius_tip_cone -- tapered_radius_clamps_at_max --nocapture 2>&1 | tee target/test-output.log`
-- **AC-5. Given** `modules/core-modules/support-planner/src/lib.rs`, **when** searched for `fn inflate_polygon` and for any private call site of `inflate_polygon(`, **then** no match exists; the prior call site in `run_support_geometry` (formerly around line 226 of the spec's audit) now calls `slicer_core::polygon_ops::offset(...)`. | `! rg -q 'fn inflate_polygon' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs && rg -q 'slicer_core::polygon_ops::offset' modules/core-modules/support-planner/src/lib.rs`
-- **AC-6. Given** an L-shaped concave `ExPolygon` (5×5 mm outer arm + 5×5 mm orthogonal arm), **when** passed through the new offset call inside `support-planner` with a `delta_mm = 0.5` inflation, **then** the result has no self-intersections at the concave corner and Clipper2's validity check passes. | `cargo test -p support-planner --test avoidance_offset_concave -- offset_concave_l_shape_no_self_intersection --nocapture 2>&1 | tee target/test-output.log`
-- **AC-7. Given** an `ExPolygon` with a single hole (10×10 mm contour, 4×4 mm hole), **when** passed through the new offset call with `delta_mm = 0.5`, **then** the result preserves the hole as a proportionally-eroded interior contour (hole present, hole area shrunk by approximately `Δ-area = π·delta² ± offset perimeter effects`). | `cargo test -p support-planner --test avoidance_offset_concave -- offset_polygon_with_hole_preserves_hole --nocapture 2>&1 | tee target/test-output.log`
+- **AC-1. Given** `tapered_radius(2.5, tan(5°), 0, 0.2)`, **when** it is called, **then** it returns `0.0` within `1e-6`. | `cargo test -p support-planner --all-targets -- tapered_radius_at_tip_is_zero --nocapture 2>&1 | tee target/test-output.log`
+- **AC-2. Given** `tapered_radius(2.5, tan(5°), 12, 0.2)`, **when** it is called, **then** it returns `2.4` within `1e-6` because `mm_to_top = 2.4` remains inside the 45-degree tip cone. | `cargo test -p support-planner --all-targets -- tapered_radius_inside_cone_is_mm_to_top --nocapture 2>&1 | tee target/test-output.log`
+- **AC-3. Given** `tapered_radius(2.5, tan(5°), 50, 0.2)`, **when** it is called, **then** it returns `2.5 + (10.0 - 2.5) * tan(5°)` within `1e-6`. | `cargo test -p support-planner --all-targets -- tapered_radius_above_cone_is_linear --nocapture 2>&1 | tee target/test-output.log`
+- **AC-4. Given** `tapered_radius(2.5, tan(80°), 10_000, 0.5)`, **when** it is called, **then** it returns exactly `MAX_BRANCH_RADIUS_MM = 6.0` within `1e-6`. | `cargo test -p support-planner --all-targets -- tapered_radius_clamps_at_max --nocapture 2>&1 | tee target/test-output.log`
+- **AC-5. Given** `support-planner/src/lib.rs`, **when** it is searched, **then** no `inflate_polygon` definition or call remains, the planner calls the existing `slicer_sdk::host::offset_polygons` API, the replacement uses `OffsetJoinType::Miter`, and the support-planner manifest does not add `slicer-core`. | `! rg -q 'fn inflate_polygon|inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs && rg -q 'slicer_sdk::host::offset_polygons' modules/core-modules/support-planner/src/lib.rs && rg -q 'OffsetJoinType::Miter' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'slicer-core' modules/core-modules/support-planner/Cargo.toml`
+- **AC-6. Given** a concave L-shaped `ExPolygon` built with `Point2::from_mm`, **when** the support planner's SDK offset operation inflates it by `0.5` mm, **then** the returned outer contour passes the test-local edge-intersection invariant and contains no self-intersection at the concave corner. | `cargo test -p support-planner --all-targets -- offset_concave_l_shape_no_self_intersection --nocapture 2>&1 | tee target/test-output.log`
+- **AC-7. Given** an `ExPolygon` with a single 10 mm square contour and a 4 mm square hole, **when** the support planner's offset operation inflates it by `0.5` mm, **then** one hole remains and its area is smaller than the original hole area. | `cargo test -p support-planner --all-targets -- offset_polygon_with_hole_preserves_hole --nocapture 2>&1 | tee target/test-output.log`
+- **AC-8. Given** the existing `radius_tapers_with_distance_to_top` test, **when** it runs after the tip-cone change, **then** its top-radius assertion expects `0.0` rather than the obsolete `branch_radius` floor and the test passes. | `cargo test -p support-planner --test orca_parity_tdd --all-targets -- radius_tapers_with_distance_to_top --nocapture 2>&1 | tee target/test-output.log`
 
 ## Negative Test Cases
 
-- **AC-N1. Given** `support_planner::tapered_radius(branch_radius=2.5, tan_diameter_angle=tan(5°), dist_to_top=10, effective_layer_height=0.2)` (`mm_to_top = 2.0`, inside the cone), **when** invoked, **then** the return value is NOT `2.5` (the previous broken behavior of returning the floor `branch_radius` while inside the cone) — it is `2.0`. | `cargo test -p support-planner --test tapered_radius_tip_cone -- tapered_radius_no_longer_floors_at_branch_radius --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N1. Given** `tapered_radius(2.5, tan(5°), 10, 0.2)`, **when** it is called, **then** it returns `2.0` within `1e-6` and is not the old floor value `2.5`. | `cargo test -p support-planner --all-targets -- tapered_radius_no_longer_floors_at_branch_radius --nocapture 2>&1 | tee target/test-output.log`
+- **AC-N2. Given** a 1 mm square represented by scaled `Point2::from_mm` coordinates, **when** the support offset uses `delta_mm = 0.5`, **then** the resulting outer span is approximately 2.0 mm after `units_to_mm`, proving raw scaled integers were not treated as millimeters. | `cargo test -p support-planner --all-targets -- offset_preserves_mm_coordinate_boundary --nocapture 2>&1 | tee target/test-output.log`
 
 ## Verification
 
 - `cargo check -p support-planner --all-targets`
 - `cargo clippy -p support-planner --all-targets -- -D warnings`
-- `cargo test -p support-planner 2>&1 | tee target/test-output.log`
+- `cargo test -p support-planner --all-targets 2>&1 | tee target/test-output.log`
 
 ## Authoritative Docs
 
-- `docs/specs/support-modules-orca-port.md` §B5 (tip cone formula), §B6 (inflate replacement), §D2 (Bucket B cutline).
-- `docs/08_coordinate_system.md` — read directly (≈30 lines); confirms `1 unit = 100 nm` so the implementer applies the right factor when passing `delta_mm` to `polygon_ops::offset`.
-- `crates/slicer-core/src/polygon_ops.rs` — read the `pub fn offset(...)` definition at line 205 (±20 lines) only; do not browse the whole file.
+- `docs/specs/support-modules-orca-port.md` - direct read of §B5, §B6, and §D2; source of the two-piece radius formula and offset replacement boundary.
+- `docs/08_coordinate_system.md` - direct read of the coordinate rule and Clipper2 integration sections; source of 10,000 units/mm and mm-valued float conventions.
+- `docs/05_module_sdk.md` - bounded read of the guest dependency rules and existing SDK host-geometry seam.
+- `docs/adr/0023-arachne-port-strategy.md` - current host-side crate strategy; no silent ADR amendment is permitted.
+- `crates/slicer-sdk/src/host.rs` - bounded read of `offset_polygons` and `OffsetJoinType`; current guest-facing wrapper and hole-preserving return shape.
+- `crates/slicer-schema/wit/deps/common.wit` - existing `offset-polygons` host-service contract; no new WIT change is proposed.
 
 ## Doc Impact Statement (Required)
 
-`none` — this packet replaces in-place algorithm internals. The public function signatures (`tapered_radius`, the planner's call sites) are unchanged. The IR shape is unchanged. The user-facing config schema is unchanged. The acceptance evidence is the new unit tests (`tapered_radius_tip_cone`, `avoidance_offset_concave`) which document the new behavior in code.
+**`none`** - the public IR/WIT shape and user-facing schema do not change; tests and function documentation describe the corrected local behavior.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -61,7 +64,7 @@ All OrcaSlicer reads MUST be delegated to a sub-agent. Never load `OrcaSlicerDoc
 
 Files to inspect for this packet:
 
-- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` — `TreeSupport::calc_branch_radius` (second overload, signature `(coordf_t base_radius, coordf_t mm_to_top, double diameter_angle_scale_factor, bool use_min_distance)`). The 45° tip cone (`radius = mm_to_top` while `mm_to_top <= base_radius`, then `base_radius + (mm_to_top - base_radius) * diameter_angle_scale_factor` above) is the exact formula this packet ports.
+- `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp` - delegated `TreeSupport::calc_branch_radius` second overload; confirm the 45-degree tip-cone branch and linear-above-cone branch being asserted by AC-1 through AC-4.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
@@ -71,6 +74,6 @@ This packet was generated against the context_discipline preamble shared by `spe
 - treat `design.md`'s code change surface as the authoritative files-in-scope list
 - honor `design.md`'s out-of-bounds list — those files must not be loaded directly
 - delegate every cargo run and authoritative-doc fact-check
-- stop reading at 60% context and hand off at 85%
+- obey the shared absolute context bands: 120k reading budget with hand-off at 150k (standard); the extended band (240k reading / 300k hard stop) only via swarm's escalation protocol
 
-Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation (an extended-band run may carry a single L step only when `design.md` justifies why it cannot be split).

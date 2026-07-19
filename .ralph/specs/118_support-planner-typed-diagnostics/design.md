@@ -2,114 +2,127 @@
 
 ## Controlling Code Paths
 
-- Primary code paths:
-  - `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — add `record diagnostic` + `enum severity-level` + `push-diagnostic: func(d: diagnostic)` on the prepass output-builder interface.
-  - `crates/slicer-sdk/src/lib.rs` (or its `prepass_builders` submodule — confirm exact path via dispatch) — `Diagnostic` Rust struct + `push_diagnostic(&mut self, d: Diagnostic)` impl on the prepass output-builder type.
-  - `crates/slicer-runtime/src/prepass.rs` — per-stage audit struct gains a `diagnostics: Vec<Diagnostic>` field; the commit/drain path collects guest-emitted diagnostics into it.
-  - `modules/core-modules/support-planner/src/lib.rs` — three call sites migrated; one new counter + emission for the 1024 cap path.
-- Neighboring tests/fixtures:
-  - `crates/slicer-runtime/tests/contract/wit_drift_detection_tdd.rs` — extended to assert the new `diagnostic` record and `severity-level` enum.
-  - `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — new file.
-  - `crates/slicer-runtime/tests/integration/support_planner_diagnostic_emission_tdd.rs` — new file.
-- OrcaSlicer comparison surface: not consulted by this packet. No Orca behavior is being ported.
+- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit::support-geometry-output` owns the canonical WIT method.
+- `crates/slicer-ir/src/stage_io.rs::{Diagnostic, DiagnosticSeverity}` owns the host-side mirror used across runtime, scheduler, and WASM host.
+- `crates/slicer-sdk/src/prepass_types.rs::{Diagnostic, DiagnosticSeverity}` and `prepass_builders.rs::SupportGeometryOutput` own the guest API and ordered collection.
+- `crates/slicer-wasm-host/src/host.rs::{HostExecutionContext, pm::HostSupportGeometryOutput for HostExecutionContext}` convert and collect WIT values.
+- `crates/slicer-wasm-host/src/traits.rs::PrepassStageRunner`, `crates/slicer-wasm-host/src/dispatch.rs::{WasmRuntimeDispatcher::run_stage, dispatch_prepass_call}`, and `crates/slicer-runtime/src/prepass.rs::execute_prepass_with_instrumentation` carry the side channel into audits.
+- `crates/slicer-scheduler/src/validation.rs::ModuleAccessAudit` owns `diagnostics: Vec<slicer_ir::Diagnostic>`.
+- `modules/core-modules/support-planner/src/lib.rs::SupportPlanner::run_support_geometry` owns the node, cap, and config-driven `support_interface_bottom_layers` diagnostic paths.
+- Tests use the existing `contract` and `integration` aggregate targets plus the support-planner test targets: `crates/slicer-runtime/tests/contract/wit_drift_detection_tdd.rs`, `crates/slicer-runtime/tests/integration/main.rs`, `modules/core-modules/support-planner/tests/orca_parity_tdd.rs`, and the new `modules/core-modules/support-planner/tests/diagnostics_tdd.rs`. There is no standalone `support_planner_diagnostic_emission_tdd` binary.
 
 ## Architecture Constraints
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
 
-- The WIT change is **additive** (new record + new enum + new method on the output-builder interface). Existing guests that don't call `push-diagnostic` continue to work; only `support-planner` adopts it in this packet.
-- Per ADR-0010 §"Why a record + enum, not a variant": `Diagnostic` is a record (open code-space via `code: u32`), not a variant. Adding a new diagnostic class is a module-internal change, not a WIT change. The implementer MUST NOT introduce a `variant diagnostic { ... }` form.
-- Per ADR-0010 §"Field semantics": `layer: option<s32>` (NOT `option<u32>`) so future raft-default-module work can emit diagnostics with negative raft layer indices without a WIT-schema bump.
-- Per ADR-0010 §"code allocation": `support-planner` uses range `1000-1999`. This packet allocates `1001` (max-branches-cap), `1002` (node-clamped-out), `1003` (interface-bottom-layers).
-- Diagnostic emission is recoverable. `ModuleError::fatal(...)` remains the abort path for unrecoverable errors. The implementer MUST NOT use `Diagnostic` as a substitute for `ModuleError`.
+- The WIT addition is additive and scoped to `support-geometry-output`; other prepass export signatures remain unchanged.
+- `Diagnostic` is a record with an open `u32` code space, not a WIT variant. The host does not enforce the support-planner range `1000-1999`.
+- `layer` is signed `option<s32>` and maps to Rust `Option<i32>`; negative future raft indices must remain representable.
+- Diagnostics are recoverable metadata. `ModuleError::fatal` remains the only abort path for unrecoverable module errors.
+- `SupportPlanIR` and its schema version do not change. `PrepassStageOutput` does not change; `PrepassStageRunner::last_diagnostics` transports side-channel values.
+- Every audit constructor, including layer/postpass and test-only literals, initializes an empty diagnostic vector. Scheduler validation ignores this vector.
 
 ## Code Change Surface
 
 - Selected approach:
-  - WIT additions are minimal and additive (avoid the temptation to also add `tracing`-style fields like `span` or `target` — those are future evolutions, not B7 scope).
-  - The host audit struct gains one new vector field with a stable ordering guarantee.
-  - `support-planner`'s three migration sites use a small helper closure or inline calls; no abstraction layer is introduced (overkill for three call sites).
-  - The 1024-cap path retains its `continue` / `truncate` behavior at the data-flow level; only the *counter increment + post-loop emission* is added.
-- Exact functions/structs/manifests/tests to change:
-  - `world-prepass.wit` — top-level deps file gains `record diagnostic`, `enum severity-level`; the world's output interface gains `push-diagnostic`.
-  - `slicer-sdk::prepass_builders::SupportGeometryOutput` (or the relevant output-builder type) — `push_diagnostic` impl + a re-exported `Diagnostic` struct.
-  - `crates/slicer-runtime/src/prepass.rs::PrepassStageAudit` (or whatever the audit struct is named) — new `diagnostics: Vec<Diagnostic>` field.
-  - `crates/slicer-runtime/src/prepass.rs` commit/drain path — collect diagnostics from the guest's audit return.
-  - `support_planner::plan_for_object` — three migration sites + one new per-layer counter + one new emission point at the end of each layer's contact-collection loop.
+  - Add `Diagnostic` and `severity-level` to the canonical WIT and `push-diagnostic` only to `support-geometry-output`.
+  - Add host and SDK mirrors with explicit field conversion and FIFO vectors.
+  - Reuse the existing runner log side-channel shape for `last_diagnostics` instead of changing `PrepassStageOutput`.
+  - Keep cap `continue`/`truncate` behavior and add one post-collection diagnostic per affected global layer.
+  - Read the preserved `support_interface_bottom_layers` key in `SupportPlanner::run_support_geometry` and emit code `1003` once before its layer loop. This keeps the typed D11 implementation in packet 118 and avoids any packet-116 warning dependency or planner field.
+- Exact functions and types:
+  - `world-prepass.wit::{diagnostic, severity-level, support-geometry-output.push-diagnostic}`.
+  - `slicer_ir::stage_io::{Diagnostic, DiagnosticSeverity}` and `slicer-ir/src/lib.rs` re-exports.
+  - `slicer_sdk::prepass_types::{Diagnostic, DiagnosticSeverity}` and `SupportGeometryOutput::{push_diagnostic, diagnostics}`.
+  - `HostExecutionContext::{diagnostics, diagnostics_mut}`, the `push_diagnostic` method in the `pm::HostSupportGeometryOutput for HostExecutionContext` impl, `PrepassStageRunner::last_diagnostics`, and the dispatcher stash.
+  - `ModuleAccessAudit::diagnostics`, both prepass audit constructors, and all existing `ModuleAccessAudit` literals.
+  - `SupportPlanner::run_support_geometry` codes `1001`, `1002`, and planner-owned code `1003` read from the preserved config key.
 - Rejected alternatives:
-  - **Variant `diagnostic` with per-class arms** — rejected per ADR-0010 §"Why a record + enum, not a variant". Adding a new diagnostic class would require a WIT change.
-  - **Bundling B4's cap diagnostic on the old string channel and migrating later** — rejected: doubles the migration work and ships a known-temporary string for one packet.
-  - **A central `code: u32` registry crate** — rejected per ADR-0010 §"code allocation is module-allocated, not centrally registered". If collisions become a problem in practice, a registry can land later.
-  - **Adding `Diagnostic` emission to `tree-support` and `traditional-support` in this packet** — rejected: scope creep. The channel works; other modules adopt later.
+  - A generic diagnostic parameter on all four prepass exports: rejected because current WIT has stage-specific output resources and this slice only needs support geometry.
+  - A new `PrepassStageOutput` variant: rejected because it would churn every scripted runner and match site for audit metadata.
+  - A shared Rust diagnostic library used by guest modules: rejected across the Rust/WIT module boundary; the SDK type is the guest API.
+  - Workspace-wide log migration: rejected by ADR-0010 and outside this packet.
 
 ## Files in Scope (read + edit)
 
-The packet edits 5 source files plus 2 new test files (7 total). This exceeds the soft `≤ 3` ceiling; the work is justified because the channel is structurally end-to-end (WIT → SDK → host audit → guest call sites → tests) and cannot be partially landed without leaving the workspace in a half-typed state.
-
-- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — role: new types + method; expected change: ≈10 lines added.
-- `crates/slicer-sdk/src/lib.rs` (or `src/prepass_builders/...`) — role: SDK helper API; expected change: `Diagnostic` struct + `push_diagnostic` impl (≈40 lines).
-- `crates/slicer-runtime/src/prepass.rs` — role: host-side collection + audit; expected change: audit struct field + drain logic (≈20 lines).
-- `modules/core-modules/support-planner/src/lib.rs` — role: three migration sites + per-layer counter; expected change: counter, emission points, and three replaced `log(...)` calls (≈30 lines net).
-- `docs/02_ir_schemas.md` — Doc Impact: new `Diagnostic` section.
-- `docs/03_wit_and_manifest.md` — Doc Impact: note the new WIT types.
-- `crates/slicer-runtime/tests/integration/prepass_diagnostic_roundtrip_tdd.rs` — new file.
-- `crates/slicer-runtime/tests/integration/support_planner_diagnostic_emission_tdd.rs` — new file.
+- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` - canonical WIT record, enum, and support-output method.
+- `crates/slicer-ir/src/stage_io.rs` and `crates/slicer-ir/src/lib.rs` - host mirror and re-export.
+- `crates/slicer-sdk/src/prepass_types.rs`, `prepass_builders.rs`, and `prelude.rs` - SDK type and ordered builder API.
+- `crates/slicer-wasm-host/src/host.rs`, `dispatch.rs`, and `traits.rs` - WIT conversion, collection, prepass dispatch, and runner drain.
+- `crates/slicer-scheduler/src/validation.rs` - public audit field; all existing audit literals are part of its blast radius.
+- `crates/slicer-runtime/src/prepass.rs` - attach drained diagnostics to prepass audits.
+- `modules/core-modules/support-planner/src/lib.rs` - node warning, cap diagnostics, and config-driven code `1003` emission in `run_support_geometry`.
+- `crates/slicer-wasm-host/test-guests/sdk-support-diagnostic-guest/{Cargo.toml,src/lib.rs}` - new macro-authored diagnostic guest.
+- `crates/slicer-runtime/tests/integration/{main.rs,prepass_diagnostic_roundtrip_tdd.rs}` - actual runtime WIT round-trip driver.
+- `modules/core-modules/support-planner/tests/{orca_parity_tdd.rs,diagnostics_tdd.rs}` - direct module drivers.
+- `docs/{02_ir_schemas.md,03_wit_and_manifest.md,05_module_sdk.md}` - same-packet contract documentation.
 
 ## Read-Only Context
 
-- `docs/adr/0010-typed-diagnostic-channel.md` — read fully (≈90 lines). Source of WIT shape + code allocation rationale.
-- `CLAUDE.md` — read §"WIT/Type Changes Checklist" + §"Guest WASM Staleness" only.
-- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — read fully before editing (≤ 200 lines).
-- `crates/slicer-runtime/tests/contract/wit_drift_detection_tdd.rs` — confirm the assertion pattern used for existing types; the new types follow the same pattern.
+- `docs/adr/0010-typed-diagnostic-channel.md` - full bounded read for exact fields and code convention.
+- `docs/specs/support-modules-orca-port.md` - B4/B7/D10/D11 only.
+- `docs/01_system_architecture.md` - `PrePass::SupportGeometry` section only.
+- `docs/03_wit_and_manifest.md` - delegated SUMMARY only.
+- `docs/05_module_sdk.md` - delegated SUMMARY only.
+- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` - full 150-line file.
+- `crates/slicer-sdk/src/prepass_builders.rs` - `SupportGeometryOutput` block only.
+- `crates/slicer-wasm-host/src/host.rs` - `HostExecutionContext`, builder, and `pm::HostSupportGeometryOutput for HostExecutionContext` blocks only.
+- `crates/slicer-wasm-host/src/dispatch.rs` - `dispatch_prepass_call` and prepass runner blocks only.
+- `crates/slicer-runtime/src/prepass.rs` - audit construction blocks only.
+- `crates/slicer-scheduler/src/validation.rs` - `ModuleAccessAudit` block only.
+- `modules/core-modules/support-planner/src/lib.rs` - `SupportPlanner::run_support_geometry` and cap/node regions only; do not restore the packet-116 dead field.
+- `docs/07_implementation_status.md` - targeted rows only; do not read the backlog end-to-end.
 
 ## Out-of-Bounds Files
 
-- `OrcaSlicerDocumented/**` — not consulted by this packet.
-- `target/`, `Cargo.lock`, generated bindgen output — never load directly; rely on `cargo xtask build-guests --check` for staleness verification.
-- All 20 guest crates outside `support-planner` — out of scope; do not browse to "see how their bindgen will react." Rely on `cargo build --workspace` post-WIT to surface any breakage.
-- `OrcaSlicerDocumented/**` — no Orca behavior being ported.
-- The full body of `modules/core-modules/support-planner/src/lib.rs` outside the three migration sites (line 326-434 region; line 633 region; and the doc-honesty packet's `on_print_start` insertion region) — range-read only.
+- `OrcaSlicerDocumented/**` - no Orca behavior is ported.
+- `target/`, generated bindgen output, and guest lockfiles - never load directly.
+- Guest sources outside `crates/slicer-wasm-host/test-guests/sdk-support-diagnostic-guest/` - do not browse or edit.
+- `crates/slicer-ir/src/slice_ir.rs` - no `SupportPlanIR` change.
+- `docs/07_implementation_status.md` - no direct edit in this packet; closure status is a worker responsibility.
+- Unrelated module log callsites and unrelated scheduler behavior.
 
 ## Expected Sub-Agent Dispatches
 
-- "Summarize `docs/03_wit_and_manifest.md` §'how to add a new type to a world's deps/* file'; return SUMMARY ≤ 200 words. No code unless asked." — purpose: confirm the conventional shape of the WIT addition.
-- "Locate the prepass output-builder impl in `crates/slicer-sdk/src/`; return LOCATIONS (file:line + 1-line context, ≤ 10 entries) for the type definition and impl block." — purpose: find the right edit target in the SDK.
-- "Locate `PrepassStageAudit` (or equivalent) in `crates/slicer-runtime/src/prepass.rs`; return SNIPPETS ≤ 30 lines showing the struct definition + the commit path." — purpose: identify where the `diagnostics: Vec<Diagnostic>` field lands.
-- "Run `cargo xtask build-guests --check`; return FACT (`up to date` or `STALE: <list of guests>`). Do NOT paste the rebuild log." — purpose: guest-rebuild ceremony.
-- "Run `cargo build --workspace`; return FACT pass/fail; on fail SNIPPETS ≤ 30 lines with the FIRST error only." — purpose: post-WIT compile gate.
-- "Run `cargo test -p slicer-runtime --test wit_drift_detection_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on failure." — purpose: bindgen drift gate.
-- "Run `cargo test -p slicer-runtime --test prepass_diagnostic_roundtrip_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on failure." — purpose: AC-3, AC-N2.
-- "Run `cargo test -p slicer-runtime --test support_planner_diagnostic_emission_tdd`; return FACT pass/fail; SNIPPETS ≤ 30 lines on failure." — purpose: AC-4, AC-5, AC-6, AC-N1.
+- Question: does packet 116 explicitly emit no warning, and does packet 118 own code `1003` without a reverse dependency? Scope: packet-116 metadata and this packet's ownership wording. Return: `FACT` <= 5 lines.
+- Question: enumerate every `ModuleAccessAudit {` literal and `PrepassStageRunner` implementation. Scope: workspace `*.rs`, exact symbols only. Return: `LOCATIONS` <= 20 entries.
+- Question: summarize how a new WIT record/enum is added under canonical world dependencies. Scope: `docs/03_wit_and_manifest.md` relevant section. Return: `SUMMARY` <= 200 words.
+- Question: summarize prepass output-builder authoring rules. Scope: `docs/05_module_sdk.md` relevant section. Return: `SUMMARY` <= 200 words.
+- Question: run `cargo xtask build-guests --check`. Scope: guest artifacts. Return: `FACT` `up to date` or `STALE: <list>`.
+- Question: run the targeted contract, integration, direct planner, workspace check, and clippy commands from `requirements.md`. Scope: each command separately. Return: `FACT` pass/fail and bounded failure `SNIPPETS`.
 
 ## Data and Contract Notes
 
-- IR or manifest contracts touched: the prepass output-builder WIT interface gains one method. No IR struct changes.
-- WIT boundary considerations: `s32` for `layer` (signed; not `u32`) is required for ADR-0010 forward-compatibility with negative raft layer indices.
-- Determinism: emission order MUST be preserved in the host audit (FIFO). The collection is `Vec<Diagnostic>`, not a set.
-- The `code: u32` field is not validated at the WIT boundary; AC-N2 asserts the channel accepts any value. Convention is documented in ADR-0010 + the migrated call sites.
+- WIT contract: `diagnostic` has exactly five fields; `severity-level` has exactly five variants; `push-diagnostic` returns `result<_, string>`.
+- Host mirror: `DiagnosticSeverity::{Trace, Debug, Info, Warn, Error}` maps one-to-one to WIT variants. `object-id` maps to `object_id`.
+- Audit contract: `ModuleAccessAudit.diagnostics` is FIFO and does not participate in scheduler read/write validation.
+- Support planner codes: `1001` cap, `1002` node-clamped, `1003` interface-bottom-layers. The host accepts code `99` in the round-trip test.
+- No manifest, IR schema version, scheduler stage ordering, or coordinate conversion changes are introduced.
 
 ## Locked Assumptions and Invariants
 
-- `Diagnostic` is recoverable. `ModuleError::fatal(...)` remains the abort path. This invariant MUST be preserved.
-- `severity-level` enum is exactly `{ trace, debug, info, warn, error }` — no `critical`/`fatal` variant.
-- The per-stage audit `Vec<Diagnostic>` preserves emission order.
-- `support-planner` allocates `code` values in `1000-1999`. This packet uses `1001`, `1002`, `1003`. Future diagnostic classes in `support-planner` allocate within range.
-- The 1024-cap behavior is unchanged at the data-flow level: drops still happen via `continue`/`truncate`. Only the *signal* of the drop changes (silent → typed Diagnostic).
+- `Diagnostic` never aborts a run.
+- The support cap's configured limit and truncation behavior are unchanged.
+- One cap diagnostic is emitted per affected global layer, not once per dropped candidate.
+- The host audit preserves guest emission order.
+- Existing guests that do not call `push-diagnostic` continue to execute after the guest rebuild.
+- Packet 116 remains the owner of dead-field cleanup and emits no warning; packet 118 owns the typed `support_interface_bottom_layers` diagnostic and never adds packet-116 state or a string-warning predecessor.
 
 ## Risks and Tradeoffs
 
-- **Risk**: bindgen drift — adding a WIT record can change the generated host-side `bindgen!` output in subtle ways (e.g., `option<s32>` may map differently than expected). **Mitigation**: AC-2 gates `wit_drift_detection_tdd`; AC-3 gates the SDK round-trip; the implementer MUST run these before considering Step 2 complete.
-- **Risk**: existing guests that don't adopt the channel are silently rebuilt with no behavior change, BUT a typo in the WIT change could break their bindgen. **Mitigation**: `cargo xtask build-guests --check` after the WIT edit is mandatory; FAIL means rebuild and re-check before moving on.
-- **Tradeoff**: per-layer per-object emission for the cap diagnostic produces O(layers × objects-with-cap-fires) diagnostics on a worst-case dense fixture. Acceptable: the channel is unbounded; the count is bounded by total layers × objects (modest); if a future user complains about diagnostic flood, deduplication can be added without WIT change.
-- **Risk**: the `support-planner.node-clamped-out` migration changes the message format slightly (typed structured fields instead of string prefix). Downstream tooling that grepped the old string is broken. **Mitigation**: AC-4 asserts the new shape; downstream tooling migrates to the typed channel separately.
+- WIT bindgen changes can break every guest artifact. Mitigation: rebuild and freshness-check before every guest-dependent test.
+- `ModuleAccessAudit` is shared by scheduler, runtime, and tests. Mitigation: inventory and update every literal in the same implementation step.
+- `run_support_geometry` owns the output builder while `on_print_start` does not. Mitigation: read the preserved config key at the start of `run_support_geometry`, emit once before the layer loop, and test both configured and default/absent cases.
+- The diagnostic method is limited to `support-geometry-output` rather than generalized to every prepass stage. This minimizes WIT signature churn and matches the current support warning surface.
 
 ## Context Cost Estimate
 
-- Aggregate (sum across all steps): `M`
-- Largest single step: `M` (Step 2 — WIT change + guest rebuild).
-- Highest-risk dispatch: `cargo xtask build-guests --check`. Required return format: FACT (`up to date` or `STALE: <list>`); MUST NOT paste rebuild log.
+- Aggregate: `M`
+- Largest step: `M` (host drain plus audit blast radius, or planner cap fixture).
+- Highest-risk dispatch and required return format: `cargo xtask build-guests --check` -> `FACT` only, `up to date` or `STALE: <list>`.
 
 ## Open Questions
 
-- `[FWD]` Diagnostic emission from inside `on_print_start` (which is called before the per-stage audit context exists in the current host plumbing) may require a transitional buffering mechanism: the guest's `on_print_start` calls `push_diagnostic` against a per-instance buffer that the host drains on first stage invocation. This is forward-looking — Step 4 of the implementation plan inspects the current `on_print_start` plumbing and decides between (a) plumbing the output-builder into `on_print_start` directly, (b) buffering the call until the first stage invocation, or (c) deferring the AC-6 (`interface_bottom_layers`) migration to a follow-up packet. The decision lands as a packet-author note in `requirements.md` Step Completion Expectations before Step 5 begins; it does not block packet activation because options (a) and (b) are both within scope and the decision is local to Step 4.
+- `[BLOCK]` Source-plan `TASK-253` is a current paint-segmentation task, not a support task. A maintainer must map the B4 cap slice to a support-owned backlog row before closure; this packet proposes no replacement ID.
+- `[DECISION]` Packet 116 is not a prerequisite for D11: it explicitly emits no warning, while packet 118 reads the preserved config key in `SupportPlanner::run_support_geometry` and owns the typed code `1003` diagnostic. Shared-file edits may be serialized `116 -> 118`, but no dependency edge is required and no cycle exists.
