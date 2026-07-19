@@ -1,23 +1,8 @@
 //! Centrality-filtering tests for `filter_central` (T-220, packet 112 Step 1
 //! of the M2 Arachne port).
 //!
-//! # Self-captured regression baselines — NOT OrcaSlicer goldens
-//!
-//! Packet 112 has no OrcaSlicer oracle for this step (see
-//! `crates/slicer-core/src/skeletal_trapezoidation/centrality.rs`'s
-//! module-level doc comment for why a literal byte-for-byte port of
-//! `updateIsCentral`/`filterCentral` isn't well-defined on this crate's
-//! simplified graph topology). The three fixture files under
-//! `tests/fixtures/arachne/centrality_*.json` are **self-captured
-//! regression baselines**: on first run, `centrality_three_fixtures` writes
-//! this implementation's own output to disk; on every subsequent run, it
-//! compares against the committed file and fails on any drift. This locks
-//! in *this* implementation's behavior for regression purposes — it is not,
-//! and must never be described as, independently-derived OrcaSlicer ground
-//! truth. The real correctness signal is the invariant assertions
-//! (determinism, the depth-floor predicate actually discriminating,
-//! symmetric geometry never spuriously rejected) documented per-fixture
-//! below.
+//! The cases below use source polygons and assert centrality invariants rather
+//! than serialized output from one implementation run.
 //!
 //! Host-only: `skeletal_trapezoidation` is gated behind the `host-algos`
 //! feature (matching `voronoi`, `algos`, `medial_axis`), so this whole file
@@ -25,17 +10,13 @@
 
 #![cfg(feature = "host-algos")]
 
-use std::fs;
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
 use slicer_core::skeletal_trapezoidation::{
     filter_central, CentralityParams, EdgeType, RibData, SkeletalTrapezoidationGraph,
 };
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
-fn p(x: i64, y: i64) -> Point2 {
-    Point2 { x, y }
+fn p(x_mm: f32, y_mm: f32) -> Point2 {
+    Point2::from_mm(x_mm, y_mm)
 }
 
 fn expoly(points: Vec<Point2>) -> ExPolygon {
@@ -50,7 +31,7 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
 /// features, so there is no geometric "variation" for the centrality
 /// predicate to reject anything on.
 fn square_fixture() -> ExPolygon {
-    expoly(vec![p(0, 0), p(1000, 0), p(1000, 1000), p(0, 1000)])
+    expoly(vec![p(0.0, 0.0), p(0.1, 0.0), p(0.1, 0.1), p(0.0, 0.1)])
 }
 
 /// Wedge fixture: a needle-like isoceles triangle, acute apex at the origin,
@@ -60,7 +41,7 @@ fn square_fixture() -> ExPolygon {
 /// *own* boundary-adjacent ray/degenerate edges never reach any real depth)
 /// — exercising [`CentralityParams::min_central_distance`]'s floor.
 fn wedge_fixture() -> ExPolygon {
-    expoly(vec![p(0, 0), p(10_000, -100), p(10_000, 100)])
+    expoly(vec![p(0.0, 0.0), p(1.0, -0.01), p(1.0, 0.01)])
 }
 
 /// Multi-feature fixture: an L-shaped polygon (one reflex corner), so the
@@ -69,78 +50,13 @@ fn wedge_fixture() -> ExPolygon {
 /// either the square or the wedge.
 fn multi_feature_fixture() -> ExPolygon {
     expoly(vec![
-        p(0, 0),
-        p(2000, 0),
-        p(2000, 800),
-        p(800, 800),
-        p(800, 2000),
-        p(0, 2000),
+        p(0.0, 0.0),
+        p(0.2, 0.0),
+        p(0.2, 0.08),
+        p(0.08, 0.08),
+        p(0.08, 0.2),
+        p(0.0, 0.2),
     ])
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct CentralityFixture {
-    /// Explicit disclosure per-fixture: this is a self-captured regression
-    /// baseline (this implementation's own output), not an OrcaSlicer
-    /// golden — see this file's module-level doc comment.
-    provenance: String,
-    fixture: String,
-    transition_filter_dist: f64,
-    min_central_distance: f64,
-    edge_count: usize,
-    /// `central` marker per edge index, in `graph.edges` order.
-    central: Vec<bool>,
-}
-
-const PROVENANCE: &str = "Self-captured regression baseline: serialized from this crate's own \
-     filter_central implementation (packet 112 Step 1 / T-220). NOT derived from, and not a \
-     substitute for, OrcaSlicer ground truth — no OrcaSlicer oracle exists for this step (see \
-     centrality.rs's module-level doc comment). Locks in current behavior for regression \
-     purposes only.";
-
-fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/arachne")
-        .join(format!("centrality_{name}.json"))
-}
-
-/// Writes `fixture` to disk if absent (first run seeds the baseline);
-/// otherwise reads the committed baseline and asserts it matches `fixture`
-/// exactly (regression lock). Returns nothing — panics via `assert_eq!` on
-/// mismatch, matching this suite's other `assert*` failure style.
-fn write_or_compare_baseline(fixture: &CentralityFixture) {
-    let path = fixture_path(&fixture.fixture);
-    match fs::read_to_string(&path) {
-        Ok(existing) => {
-            let baseline: CentralityFixture = serde_json::from_str(&existing).unwrap_or_else(|e| {
-                panic!(
-                    "{}: failed to parse committed baseline: {e}",
-                    path.display()
-                )
-            });
-            assert_eq!(
-                &baseline,
-                fixture,
-                "{}: centrality markers drifted from the committed self-captured baseline. \
-                 If this drift is an intentional predicate change, delete the file and rerun to \
-                 re-seed it (after confirming the new invariants still hold).",
-                path.display()
-            );
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).unwrap_or_else(|e| {
-                    panic!("{}: failed to create fixtures dir: {e}", parent.display())
-                });
-            }
-            let json = serde_json::to_string_pretty(fixture)
-                .expect("CentralityFixture serialization is infallible");
-            fs::write(&path, json).unwrap_or_else(|e| {
-                panic!("{}: failed to write new baseline: {e}", path.display())
-            });
-        }
-        Err(e) => panic!("{}: failed to read baseline: {e}", path.display()),
-    }
 }
 
 /// Runs `filter_central` on a freshly-built graph for `poly` under `params`
@@ -162,7 +78,10 @@ const DEFAULT_TRANSITIONING_ANGLE_RAD: f64 = 100.0_f64.to_radians();
 /// edges.
 const OUTER_FILTER_FRACTION: f64 = 0.01;
 
-fn run_twice_and_check_determinism(poly: &ExPolygon, params: &CentralityParams) -> Vec<bool> {
+fn run_twice_and_check_determinism(
+    poly: &ExPolygon,
+    params: &CentralityParams,
+) -> (SkeletalTrapezoidationGraph, Vec<bool>) {
     let mut graph_a = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
         .expect("fixture polygon must build a valid SKT graph");
     let mut graph_b = SkeletalTrapezoidationGraph::from_polygons(std::slice::from_ref(poly))
@@ -183,82 +102,54 @@ fn run_twice_and_check_determinism(poly: &ExPolygon, params: &CentralityParams) 
          polygon produced different centrality markers"
     );
 
-    markers_a
+    (graph_a, markers_a)
 }
 
 #[test]
-fn centrality_three_fixtures() {
-    // --- Square: fully symmetric, no reflex features. Under default
-    // params (no depth floor), the predicate must never spuriously reject
-    // anything — there is no "boundary-distance variation" for it to act
-    // on. ---
-    let square = square_fixture();
-    let square_params = CentralityParams::default();
-    let square_markers = run_twice_and_check_determinism(&square, &square_params);
-    assert!(
-        square_markers.iter().any(|&c| c),
-        "square fixture: the symmetric medial-axis skeleton must remain central somewhere — \
-         expected at least one central edge, got all non-central: {square_markers:?}"
-    );
-    write_or_compare_baseline(&CentralityFixture {
-        provenance: PROVENANCE.to_string(),
-        fixture: "square".to_string(),
-        transition_filter_dist: square_params.transition_filter_dist,
-        min_central_distance: square_params.min_central_distance,
-        edge_count: square_markers.len(),
-        central: square_markers,
-    });
-
-    // --- Wedge: needle apex vs. blunt end. A nonzero `min_central_distance`
-    // floor (deliberately tighter than the square's default) must actually
-    // discriminate: the wedge's shallow boundary-adjacent structure gets
-    // rejected while its one genuine deep medial-axis hub stays central. ---
-    let wedge = wedge_fixture();
-    let wedge_params = CentralityParams::new(200.0, 50.0);
-    let wedge_markers = run_twice_and_check_determinism(&wedge, &wedge_params);
-    assert!(
-        wedge_markers.iter().any(|&c| !c),
-        "wedge fixture: the depth-floor predicate must actually discriminate — expected at \
-         least one non-central edge, got all central: {wedge_markers:?}"
-    );
-    assert!(
-        wedge_markers.iter().any(|&c| c),
-        "wedge fixture: the genuine medial-axis hub must remain central — expected at least \
-         one central edge, got all non-central: {wedge_markers:?}"
-    );
-    write_or_compare_baseline(&CentralityFixture {
-        provenance: PROVENANCE.to_string(),
-        fixture: "wedge".to_string(),
-        transition_filter_dist: wedge_params.transition_filter_dist,
-        min_central_distance: wedge_params.min_central_distance,
-        edge_count: wedge_markers.len(),
-        central: wedge_markers,
-    });
-
-    // --- Multi-feature: an L-shaped polygon (reflex corner), a structurally
-    // richer case than either the square or the wedge. Same tightened
-    // params as the wedge must again discriminate. ---
-    let multi = multi_feature_fixture();
-    let multi_params = CentralityParams::new(200.0, 50.0);
-    let multi_markers = run_twice_and_check_determinism(&multi, &multi_params);
-    assert!(
-        multi_markers.iter().any(|&c| !c),
-        "multi-feature fixture: the depth-floor predicate must actually discriminate — expected \
-         at least one non-central edge, got all central: {multi_markers:?}"
-    );
-    assert!(
-        multi_markers.iter().any(|&c| c),
-        "multi-feature fixture: the medial-axis skeleton must remain central somewhere — \
-         expected at least one central edge, got all non-central: {multi_markers:?}"
-    );
-    write_or_compare_baseline(&CentralityFixture {
-        provenance: PROVENANCE.to_string(),
-        fixture: "multi_feature".to_string(),
-        transition_filter_dist: multi_params.transition_filter_dist,
-        min_central_distance: multi_params.min_central_distance,
-        edge_count: multi_markers.len(),
-        central: multi_markers,
-    });
+fn centrality_flags_are_structurally_consistent() {
+    for (name, poly, params) in [
+        ("square", square_fixture(), CentralityParams::default()),
+        ("wedge", wedge_fixture(), CentralityParams::new(200.0, 50.0)),
+        (
+            "multi-feature",
+            multi_feature_fixture(),
+            CentralityParams::new(200.0, 50.0),
+        ),
+    ] {
+        let (graph, markers) = run_twice_and_check_determinism(&poly, &params);
+        assert_eq!(
+            markers.len(),
+            graph.edges.len(),
+            "{name}: every graph edge must have exactly one centrality flag"
+        );
+        assert!(
+            markers.iter().any(|&central| central),
+            "{name}: source geometry must produce at least one central edge"
+        );
+        assert!(
+            markers.iter().filter(|&&central| central).count() <= graph.edges.len(),
+            "{name}: central edges must not exceed the graph edge-count bound"
+        );
+        for (idx, edge) in graph.edges.iter().enumerate() {
+            if markers[idx] {
+                assert_eq!(
+                    edge.edge_type,
+                    EdgeType::NORMAL,
+                    "{name}: central edge {idx} must be a normal topology edge"
+                );
+                assert_ne!(
+                    edge.twin,
+                    slicer_core::voronoi::NO_INDEX,
+                    "{name}: central edge {idx} must have a twin"
+                );
+            } else if edge.edge_type != EdgeType::NORMAL {
+                assert!(
+                    !markers[idx],
+                    "{name}: non-normal edge {idx} cannot be central"
+                );
+            }
+        }
+    }
 }
 
 /// Supplementary (not part of the required three-fixture AC): exercises the

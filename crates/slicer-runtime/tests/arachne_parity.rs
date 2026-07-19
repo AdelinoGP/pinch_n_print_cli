@@ -13,7 +13,7 @@
 //!   parity via Classic; the Arachne path diverges. Tracked as
 //!   `D-104-OVERHANG-QUARTILE-NONE` and this test suite.
 //! - **GAP_PIPELINE** — feature absent from the PnP pipeline as a whole.
-//!   Proposed new deviations: D-104b/c/d/e/f (see
+//!   D-104f is the sole intentionally open red runtime case (see
 //!   `tmp/arachne_parity_audit_20260709.md`).
 //! - **STALE_DOC** — behavior implemented but a manifest description string
 //!   or module doc-comment still claims otherwise (doc-hygiene only).
@@ -23,10 +23,9 @@
 //! audit doc but NOT locked by tests in this file — they are deliberate
 //! divergences, not defects.
 //!
-//! Every test below **fails on purpose** on the current `parity/arachne` tree,
-//! panicking with a `PARITY GAP: <category>: <feature> | expected: <orcaslicer
-//! behavior> | got: <current behavior> | ref: <OrcaSlicer path:line>` message.
-//! The failure message *is* the deliverable.
+//! These tests lock the Arachne parity behavior described above. D-104f is the
+//! sole intentionally open red runtime case; all other cases are expected to
+//! pass on the current tree.
 //!
 //! Coordinate convention (`docs/08_coordinate_system.md`): 1 unit = 100 nm =
 //! 10⁻⁴ mm. OrcaSlicer uses 1 µm units; mm constants are ported via

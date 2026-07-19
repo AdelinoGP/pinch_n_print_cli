@@ -373,9 +373,20 @@ Cleanup noted for Track B: `arachne_parity.rs`'s "every test fails on purpose" h
 stale (14/15 are now green regression locks; only the D-104f test is open).
 - **A — benchy visual defect inventory (LLM-visual):** slice benchy w/ arachne, render
   PnP vs OrcaSlicer PNGs, walk stage taps to localize breaks, catalog defects → backlog + fixture specs.
-- **B — fixture & methodology redesign:** minimal synthetic fixtures reproducing each
-  benchy error class; extend `arachne_invariants.rs`; demote self-captured baselines;
-  rehome `arachne_parity_red_*.rs` into stage-grouped homes.
+- **B — fixture & methodology redesign: replacement recorded 2026-07-19; packet
+  gate pending.** The former
+  self-captured JSON oracles were replaced by structural invariants over five
+  reproducible source-geometry coverage subjects: `tapered_wedge`,
+  `narrow_strip_widening`, `max_bead_count_cap`, `complex_multi_feature`, and
+  `cube_4color_arachne`. The measured coverage threshold is `0.99`; the
+  repeatability margin is `0.000000`, below the `0.02` cap. Eight core tests
+  now construct source geometry in memory, and the standalone runtime
+  `arachne_structural_invariants` binary measures the paired Classic/Arachne
+  outputs at aligned Z planes. The migration deleted 19 JSON oracles (eight
+  core snapshots and eleven perimeter `expected_perimeter_ir.json` files).
+  The D5 discriminator is explicit: broken coverage `0.668` fails and fixed
+  coverage `0.990` passes. The tapered-wedge structural corpus is therefore
+  the replacement for re-baselining, not a blind re-recording.
 - **C — closure-chain fix: ✅ DONE 2026-07-16 — the north star is met.**
   `cube_4color_arachne_outer_walls_close_end_to_end` is at **0/699 (0.00%), mean gap
   0.0000mm, across all 125 layers** and is **un-ignored**; so is its sibling

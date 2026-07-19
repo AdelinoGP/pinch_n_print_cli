@@ -176,7 +176,9 @@ pub struct ArachneParams {
 impl Default for ArachneParams {
     /// Mirrors `BeadingFactoryParams::default()`'s registered-config defaults
     /// converted to millimeters (`optimal_width` = 0.4mm,
-    /// `preferred_bead_width_outer` = 0.4mm, `max_bead_count` = 9,
+    /// `preferred_bead_width_outer` = 0.4mm, `max_bead_count` = 10 (the
+    /// canonical even maximum mandated by OrcaSlicer's
+    /// `WallToolPaths.cpp::generate` as `2 * inset_count`),
     /// `distribution_count` = 1, `transition_filter_dist` = 0.1mm — the
     /// factory's own `1000.0`-unit default), plus this pipeline's own
     /// post-process defaults: `min_central_distance` = 0.0mm (no floor,
@@ -196,7 +198,7 @@ impl Default for ArachneParams {
         Self {
             optimal_width: 0.4,
             preferred_bead_width_outer: 0.4,
-            max_bead_count: 9,
+            max_bead_count: 10,
             distribution_count: 1,
             transition_filter_dist: 0.1,
             min_central_distance: 0.0,

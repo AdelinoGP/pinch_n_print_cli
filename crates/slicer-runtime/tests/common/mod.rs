@@ -10,6 +10,7 @@
 pub mod dispatch_fixture;
 pub mod ir_builders;
 pub mod model_cache;
+pub mod perimeter_harness;
 pub mod seed;
 pub mod slicer_cache;
 pub mod wasm_cache;

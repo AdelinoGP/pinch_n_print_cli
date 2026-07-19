@@ -89,7 +89,7 @@ fn factory_params() -> BeadingFactoryParams {
         min_input_width: 5.0,
         min_output_width: 20.0,
         outer_wall_offset: 0.0,
-        max_bead_count: 9,
+        max_bead_count: 10,
         minimum_variable_line_ratio: 0.5,
         print_thin_walls: false,
         preferred_bead_width_outer: 20.0,

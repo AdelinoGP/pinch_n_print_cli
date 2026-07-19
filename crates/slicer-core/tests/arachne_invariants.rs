@@ -350,6 +350,55 @@ fn build_domain_chains(graph: &SkeletalTrapezoidationGraph) -> Vec<Vec<usize>> {
 }
 
 // ---------------------------------------------------------------------------
+// Production defaults and bead-width invariant
+// ---------------------------------------------------------------------------
+
+#[test]
+fn production_defaults_max_bead_count_is_even() {
+    let arachne_max_bead_count = ArachneParams::default().max_bead_count;
+    let factory_max_bead_count = BeadingFactoryParams::default().max_bead_count;
+
+    assert!(
+        arachne_max_bead_count == 10
+            && arachne_max_bead_count % 2 == 0
+            && factory_max_bead_count == 10
+            && factory_max_bead_count % 2 == 0,
+        "production max_bead_count defaults must both be 10 and even: ArachneParams = {arachne_max_bead_count}, BeadingFactoryParams = {factory_max_bead_count}"
+    );
+}
+
+#[test]
+fn bead_width_invariant_rejects_oversized_bead() {
+    let factory_params = BeadingFactoryParams::default();
+    let optimal_spacing_mm = factory_params.optimal_width / UNITS_PER_MM;
+    let cap_mm = 2.0 * optimal_spacing_mm;
+    let oversized_spacing_mm = cap_mm + 0.01;
+    let strategy = BeadingStrategyFactory::create_stack(&factory_params);
+    let beading = strategy.compute(oversized_spacing_mm * UNITS_PER_MM, 1);
+    let diagnostic = beading
+        .bead_widths
+        .iter()
+        .enumerate()
+        .find_map(|(bead_idx, &width)| {
+            let width_mm = width / UNITS_PER_MM;
+            (width_mm > cap_mm).then(|| {
+                format!(
+                    "bead {bead_idx} spacing {width_mm:.6}mm exceeds cap 2 * optimal_spacing_mm = {cap_mm:.6}mm"
+                )
+            })
+        });
+    let spacing_text = format!("{oversized_spacing_mm:.6}");
+    let cap_text = format!("{cap_mm:.6}");
+
+    assert!(
+        diagnostic.as_deref().is_some_and(|message| {
+            message.contains(&spacing_text) && message.contains(&cap_text)
+        }),
+        "bead-width invariant must reject spacing {oversized_spacing_mm:.6}mm with cap {cap_mm:.6}mm; diagnostic: {diagnostic:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Invariant 1: closed-ring outer wall for simple input
 // ---------------------------------------------------------------------------
 

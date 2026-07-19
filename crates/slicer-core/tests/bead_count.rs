@@ -1,20 +1,8 @@
 //! Bead-count assignment tests for `assign_bead_counts` (T-221, packet 112
 //! Step 2 of the M2 Arachne port).
 //!
-//! # Self-captured regression baseline — NOT an OrcaSlicer golden
-//!
-//! Packet 112 has no OrcaSlicer oracle for this step (see
-//! `crates/slicer-core/src/skeletal_trapezoidation/bead_count.rs`'s
-//! module-level doc comment). `tests/fixtures/arachne/bead_count_tapered_wedge.json`
-//! is a **self-captured regression baseline**: on first run,
-//! `bead_count_tapered_wedge` writes this implementation's own per-vertex
-//! `bead_count` output to disk; on every subsequent run, it compares against
-//! the committed file and fails on any drift. This locks in *this*
-//! implementation's behavior for regression purposes only — it is not, and
-//! must never be described as, independently-derived OrcaSlicer ground truth.
-//! The real correctness signal is the invariant assertions
-//! (central-adjacent vertex ⇔ `Some`, otherwise `None`, bounds,
-//! determinism) documented inline below.
+//! The cases below use source polygons and assert bead-count invariants rather
+//! than serialized output from one implementation run.
 //!
 //! Host-only: `skeletal_trapezoidation` is gated behind the `host-algos`
 //! feature (matching `voronoi`, `algos`, `medial_axis`), so this whole file
@@ -22,10 +10,6 @@
 
 #![cfg(feature = "host-algos")]
 
-use std::fs;
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
 use slicer_core::beading::factory::{BeadingFactoryParams, BeadingStrategyFactory};
 use slicer_core::skeletal_trapezoidation::{
     assign_bead_counts, filter_central, BeadCountError, CentralityParams,
@@ -34,8 +18,8 @@ use slicer_core::skeletal_trapezoidation::{
 use slicer_core::voronoi::NO_INDEX;
 use slicer_ir::{ExPolygon, Point2, Polygon};
 
-fn p(x: i64, y: i64) -> Point2 {
-    Point2 { x, y }
+fn p(x_mm: f32, y_mm: f32) -> Point2 {
+    Point2::from_mm(x_mm, y_mm)
 }
 
 fn expoly(points: Vec<Point2>) -> ExPolygon {
@@ -53,7 +37,7 @@ fn expoly(points: Vec<Point2>) -> ExPolygon {
 /// (varied bead counts) and, under the same tightened `CentralityParams` as
 /// `centrality.rs`, a genuine mix of central/non-central edges.
 fn tapered_wedge_fixture() -> ExPolygon {
-    expoly(vec![p(0, 0), p(10_000, -100), p(10_000, 100)])
+    expoly(vec![p(0.0, 0.0), p(1.0, -0.01), p(1.0, 0.01)])
 }
 
 /// Beading-strategy factory params scaled to the tapered wedge's `r` range
@@ -106,76 +90,6 @@ fn centrality_params() -> CentralityParams {
 
 const CENTRALITY_TRANSITIONING_ANGLE_RAD: f64 = 0.17453292519943295; // 10°
 const OUTER_FILTER_FRACTION: f64 = 0.01;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct BeadCountFixture {
-    /// Explicit disclosure: this is a self-captured regression baseline
-    /// (this implementation's own output), not an OrcaSlicer golden — see
-    /// this file's module-level doc comment.
-    provenance: String,
-    /// Renamed from `edge_count` in Step 3; kept as `edge_count` for JSON
-    /// backward compatibility with the fixture file.
-    edge_count: usize,
-    /// `bead_count` per vertex index, in `graph.vertices` order.
-    bead_counts: Vec<Option<u32>>,
-}
-
-const PROVENANCE: &str = "Self-captured regression baseline (CHANGE-DETECTOR, NOT a correctness \
-     oracle -- ADR-0042): serialized from this crate's own assign_bead_counts implementation \
-     (packet 112 Step 2 / T-221). NOT derived from, and not a substitute for, OrcaSlicer ground \
-     truth -- no OrcaSlicer oracle exists for this step (see bead_count.rs's module-level doc \
-     comment). Re-captured 2026-07-16 after the D5 taper-peak-dropout fix (commit 5d0e1bcf), the \
-     D4 beading-propagation over-extrusion fix (commit 1dfac847), and correcting this fixture's \
-     factory_params() max_bead_count from an invalid odd 9 to an even 10 (OrcaSlicer always uses \
-     2 * inset_count, WallToolPaths.cpp:525). Green here means only \"unchanged from this \
-     recapture\", never \"correct\" -- the real correctness signal is this file's structural \
-     invariants (central-adjacent vertex <=> Some(_)/None, bounds, determinism, no bead wider \
-     than ~2x optimal_width, bead count non-decreasing toward the wedge's thick end).";
-
-fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/arachne")
-        .join("bead_count_tapered_wedge.json")
-}
-
-/// Writes `fixture` to disk if absent (first run seeds the baseline);
-/// otherwise reads the committed baseline and asserts it matches `fixture`
-/// exactly (regression lock).
-fn write_or_compare_baseline(fixture: &BeadCountFixture) {
-    let path = fixture_path();
-    match fs::read_to_string(&path) {
-        Ok(existing) => {
-            let baseline: BeadCountFixture = serde_json::from_str(&existing).unwrap_or_else(|e| {
-                panic!(
-                    "{}: failed to parse committed baseline: {e}",
-                    path.display()
-                )
-            });
-            assert_eq!(
-                &baseline,
-                fixture,
-                "{}: bead counts drifted from the committed self-captured baseline. If this \
-                 drift is an intentional behavior change, delete the file and rerun to re-seed \
-                 it (after confirming the new invariants still hold).",
-                path.display()
-            );
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).unwrap_or_else(|e| {
-                    panic!("{}: failed to create fixtures dir: {e}", parent.display())
-                });
-            }
-            let json = serde_json::to_string_pretty(fixture)
-                .expect("BeadCountFixture serialization is infallible");
-            fs::write(&path, json).unwrap_or_else(|e| {
-                panic!("{}: failed to write new baseline: {e}", path.display())
-            });
-        }
-        Err(e) => panic!("{}: failed to read baseline: {e}", path.display()),
-    }
-}
-
 /// Builds a fresh graph for `poly`, runs `filter_central` then
 /// `assign_bead_counts` with a freshly-built strategy instance, and returns
 /// the per-vertex `bead_count` markers alongside the `central` markers used
@@ -246,7 +160,7 @@ fn build_assign_and_measure(poly: &ExPolygon) -> Vec<(f64, f64, Option<u32>)> {
 }
 
 #[test]
-fn bead_count_tapered_wedge() {
+fn bead_count_sequence_is_monotonic_within_transition_bounds() {
     let wedge = tapered_wedge_fixture();
     let params = factory_params();
     let max_bead_count = params.max_bead_count as u32;
@@ -312,10 +226,8 @@ fn bead_count_tapered_wedge() {
         }
     }
 
-    // --- ADR-0042 structural invariants: these, not the self-captured baseline
-    // below, are the real correctness signal. Both are unit-independent and
-    // would fail on the D4/D5 classes of defect this campaign found hiding
-    // behind a green self-captured board.
+    // These structural invariants are unit-independent and cover the tapered
+    // source geometry's centrality, width, and bead-count sequence.
     let measured = build_assign_and_measure(&wedge);
     let strategy = BeadingStrategyFactory::create_stack(&factory_params());
     let optimal_width = factory_params().optimal_width;
@@ -385,12 +297,6 @@ fn bead_count_tapered_wedge() {
              the apex) had a lower bead_count={next_n}"
         );
     }
-
-    write_or_compare_baseline(&BeadCountFixture {
-        provenance: PROVENANCE.to_string(),
-        edge_count: bead_counts_a.len(),
-        bead_counts: bead_counts_a,
-    });
 }
 
 /// AC-N1: `assign_bead_counts` must refuse to run on a graph that has never

@@ -481,17 +481,14 @@ meaningful even where absolute-coordinate comparison would be
 flaky-by-construction. See ADR-0042.
 
 ### Coverage subject
-A reproducible source-geometry input for which classic and Arachne perimeter
-runs can be executed at the same aligned Z planes and compared by a structural
-measurement. A coverage subject is not a serialized self-captured baseline;
-the source geometry and both generator configurations must remain available to
-reproduce its ratio.
+A source geometry that supplies reproducible Arachne perimeter input and paired
+Classic/Arachne output at aligned Z planes. Only coverage subjects contribute to
+the observed coverage minimum; the source geometry and both generator
+configurations must remain available for reproduction.
 
 ### Repeatability margin
-The bounded tolerance derived from repeated runs of the same coverage subject
-at the same Z planes. It absorbs measurement noise and sampling instability,
-not fixture-to-fixture variation, and is never widened to make a known failure
-ratio pass.
+The maximum same-subject/same-Z repeated-run delta, capped at `0.02`. It absorbs
+measurement instability, not fixture spread or known regressions.
 
 ### LLM-visual oracle
 The uncommitted OrcaSlicer reference gcode (`tmp/orcaSlicer_arachne_benchy.gcode`),

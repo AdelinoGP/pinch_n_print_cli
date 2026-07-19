@@ -116,7 +116,7 @@
   - measurement run; return `FACT` with five ratios and repeat deltas only.
 - Context cost: M.
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test arachne_structural_invariants -- coverage_subjects_repeat_and_record_ratios --exact --nocapture 2>&1 | tee target/test-output.log | rg -q 'test result: ok\. 1 passed'`.
+  - `mkdir -p target && cargo test -p slicer-runtime --test arachne_structural_invariants -- coverage_subjects_repeat_and_report_ratios --exact --nocapture 2>&1 | tee target/test-output.log | rg -q 'test result: ok\. 1 passed'`.
   - `rg` checks for five numeric rows, observed minimum, margin, threshold,
     and repeatability prose in `design.md`.
 - Exit condition: all five rows are measured at aligned Z; margin equals the

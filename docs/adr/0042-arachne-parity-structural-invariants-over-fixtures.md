@@ -187,21 +187,31 @@ artifact; present in one and absent in the other = real defect).
   change-detectors, not parity oracles, and should be labeled as such in
   their own doc comments (matching the D-109/D-112 "Honesty note" convention
   already established for the pre-campaign fixtures).
-- The tapered-wedge self-captured baselines that drifted under the D5 fix
-  (`bead_count_tapered_wedge`, `generate_toolpaths_tapered_wedge`) are a
-  concrete, open follow-up: re-verify (don't blind-rebless) and convert to
-  structural invariants where practical, per the campaign's Track B.
+- Track B completed the conversion of the self-captured Arachne oracles to a
+  measured source-geometry corpus. The measured coverage threshold is `0.99`
+  (pinned, not derived — see ADR-0047),
+  with a repeatability margin of `0.000000` (the maximum same-subject,
+  same-Z repeated-run delta, below the `0.02` cap). The five coverage subjects
+  are `tapered_wedge`, `narrow_strip_widening`, `max_bead_count_cap`,
+  `complex_multi_feature`, and `cube_4color_arachne`.
+- The conversion deleted 19 self-captured JSON oracles: eight core snapshots
+  and eleven `expected_perimeter_ir.json` files. Eight core tests now construct
+  their source geometry in memory, and the runtime corpus is exercised by the
+  standalone `arachne_structural_invariants` test binary.
+- The D5 sanity discriminator is part of the contract: broken coverage `0.668`
+  fails, while fixed coverage `0.990` passes. This prevents the coverage floor
+  from becoming a vacuous re-recording of the known tapered-wedge failure.
 - Any future agent proposing an absolute-numeric OrcaSlicer fixture as an
   automated Arachne parity test must be pointed at this ADR and at
   `docs/08_coordinate_system.md`'s 1-unit=100nm rule.
 - Any future agent treating an LLM-visual read as sufficient evidence of a
   defect (without a corresponding gcode/IR structural check) is reintroducing
   exactly the failure mode this ADR documents three instances of.
-- `docs/DEVIATION_LOG.md` rows `D-109-SELF-CAPTURED-FIXTURES` and
-  `D-112-SELFCAPTURED-BASELINES` remain open/accepted-limitation records of
-  the underlying no-OrcaSlicer-binary constraint; this ADR does not close
-  them, it changes what is asked of the automated suite given that
-  constraint.
+- `docs/DEVIATION_LOG.md` row `D-109-SELF-CAPTURED-FIXTURES` remains an
+  open/accepted-limitation record of the underlying no-OrcaSlicer-binary
+  constraint. `D-112-SELFCAPTURED-BASELINES` records the replacement of its 19
+  JSON oracles by the measured structural corpus above; its status remains open
+  until the packet gate verifies the runtime corpus.
 
 ## Future reviewers
 

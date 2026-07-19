@@ -145,10 +145,12 @@ impl Default for BeadingFactoryParams {
     /// `wall_transition_filter_deviation` (1000), `outer_wall_offset` =
     /// `outer_wall_offset` (0, meaning `OuterWallInsetBeadingStrategy` is
     /// correctly ABSENT by default — see the module doc comment),
-    /// `max_bead_count` = `max_bead_count` (9). Previously these values
-    /// silently diverged from the registered config defaults (a real,
-    /// confirmed bug from a prior review); this is a bug fix, not an
-    /// intentional behavior change. `minimum_variable_line_ratio` (0.5) has
+    /// `max_bead_count` = 10, the canonical even maximum mandated by
+    /// OrcaSlicer's `WallToolPaths.cpp::generate` as `2 * inset_count`.
+    /// Previously these values silently diverged from the registered config
+    /// defaults (a real, confirmed bug from a prior review); this is a bug
+    /// fix, not an intentional behavior change. `minimum_variable_line_ratio`
+    /// (0.5) has
     /// no registered config key — see its own field doc. `print_thin_walls` =
     /// `detect_thin_wall` (`false`) and `preferred_bead_width_outer` =
     /// `preferred_bead_width_outer` (4000) mirror those two keys' registered
@@ -162,7 +164,7 @@ impl Default for BeadingFactoryParams {
             min_input_width: 1000.0,
             min_output_width: 4000.0,
             outer_wall_offset: 0.0,
-            max_bead_count: 9,
+            max_bead_count: 10,
             minimum_variable_line_ratio: 0.5,
             print_thin_walls: false,
             preferred_bead_width_outer: 4000.0,
