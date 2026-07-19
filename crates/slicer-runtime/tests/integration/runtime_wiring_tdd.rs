@@ -442,6 +442,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);

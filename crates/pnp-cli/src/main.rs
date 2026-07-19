@@ -37,6 +37,9 @@ use slicer_scheduler::{
     Producer,
 };
 
+/// Exit status used when a slice is cancelled by a signal or stdin EOF.
+pub const EXIT_CODE_CANCELLED: i32 = 130;
+
 // ---------------------------------------------------------------------------
 // Top-level CLI
 // ---------------------------------------------------------------------------
@@ -84,6 +87,9 @@ enum Cmd {
         /// Suppress the default JSONL progress-event stream on stderr.
         #[arg(long = "no-progress-events")]
         no_progress_events: bool,
+        /// Cancel the slice when stdin is closed (EOF). The process exits with code 130.
+        #[arg(long = "cancel-on-stdin-eof")]
+        cancel_on_stdin_eof: bool,
     },
     /// Generate a versioned visual-debug bundle.
     VisualDebug {
@@ -364,6 +370,7 @@ fn main() {
             report_verbose,
             instrument_stderr,
             no_progress_events,
+            cancel_on_stdin_eof,
         } => {
             if !model.exists() {
                 eprintln!("error: model file not found: {}", model.display());
@@ -406,6 +413,30 @@ fn main() {
                     );
                 }
             }
+            let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let signal_cancel_flag = cancel_flag.clone();
+            if let Err(e) = ctrlc::set_handler(move || {
+                signal_cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            }) {
+                eprintln!("warning: failed to install cancellation signal handler: {e}");
+            }
+            if cancel_on_stdin_eof {
+                let stdin_cancel_flag = cancel_flag.clone();
+                std::thread::spawn(move || {
+                    let mut stdin = std::io::stdin();
+                    let mut buffer = [0_u8; 4096];
+                    loop {
+                        match std::io::Read::read(&mut stdin, &mut buffer) {
+                            Ok(0) => {
+                                stdin_cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                break;
+                            }
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                    }
+                });
+            }
             let opts = SliceRunOptions {
                 mesh,
                 model_label,
@@ -418,6 +449,7 @@ fn main() {
                 report_verbose: report_verbose_opt,
                 instrument_stderr,
                 progress_events: !no_progress_events,
+                cancel_flag: Some(cancel_flag.clone()),
                 config_overrides,
             };
             match slicer_runtime::run_slice(opts) {
@@ -433,6 +465,17 @@ fn main() {
                     }
                 }
                 Err(e) => {
+                    if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                        if let Some(ref out_path) = output_path {
+                            let _ = std::fs::remove_file(out_path);
+                        }
+                        let output_label = output_path.as_ref().map_or_else(
+                            || "<stdout>".to_owned(),
+                            |path| path.display().to_string(),
+                        );
+                        eprintln!("slice cancelled; output not written: {output_label}");
+                        std::process::exit(EXIT_CODE_CANCELLED);
+                    }
                     eprintln!("error: {e}");
                     std::process::exit(1);
                 }

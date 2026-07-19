@@ -12,6 +12,7 @@ mod blackboard_layer_arena_tdd;
 mod blackboard_support_geometry_slot_tdd;
 mod bridge_detector_tdd;
 mod builtin_producers_tdd;
+mod cancel_flag_tdd;
 mod dag_validation_tdd;
 mod host_keys_doc_lock_tdd;
 mod layer_collection_builder_tdd;

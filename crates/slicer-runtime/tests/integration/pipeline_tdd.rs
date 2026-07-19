@@ -240,6 +240,7 @@ fn run_pipeline_empty_modules() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -277,6 +278,7 @@ fn run_pipeline_returns_gcode_string() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).unwrap();
@@ -331,6 +333,7 @@ fn run_pipeline_propagates_prepass_error() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -390,6 +393,7 @@ fn run_pipeline_propagates_layer_error() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -425,6 +429,7 @@ fn run_pipeline_propagates_postpass_error() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -532,6 +537,7 @@ fn run_pipeline_calls_stages_in_order() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -597,6 +603,7 @@ fn run_pipeline_propagates_finalization_error() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -676,6 +683,7 @@ fn run_pipeline_with_layers_produces_output() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).unwrap();
@@ -755,6 +763,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -831,6 +840,7 @@ fn prepass_audits_live_path() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -950,6 +960,7 @@ fn layer_audits_live_path() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1049,6 +1060,7 @@ fn access_audits_live_path() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1211,6 +1223,7 @@ fn access_audits_live_path_read_performing() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");

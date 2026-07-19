@@ -49,6 +49,8 @@ pub struct PipelineStageRunners {
 
 /// Configuration for the pipeline orchestration function.
 pub struct PipelineConfig {
+    /// Optional cooperative cancellation flag shared with the slice caller.
+    pub cancel_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// Loaded mesh to slice.
     pub mesh_ir: Arc<MeshIR>,
     /// Frozen execution plan from the scheduler.
@@ -175,6 +177,7 @@ pub fn run_pipeline_with_events(
         default_resolved_config,
         bounds,
         wasm_handles,
+        cancel_flag: _,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -310,6 +313,7 @@ fn run_pipeline_core(
         default_resolved_config,
         bounds,
         wasm_handles,
+        cancel_flag,
     } = config;
 
     // Plan-freeze: emit one `record_edges` call per stage so the report has
@@ -334,6 +338,14 @@ fn run_pipeline_core(
 
     let mut blackboard = Blackboard::new(mesh_ir, 0);
 
+    if cancel_flag
+        .as_ref()
+        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+    {
+        return Err(PipelineError::LayerExecution(
+            LayerExecutionError::Cancelled,
+        ));
+    }
     instrumentation.on_phase_start(Phase::PrePass);
     let prepass_audits = crate::prepass::execute_prepass_with_builtins_configured_instr(
         &plan,
@@ -353,6 +365,14 @@ fn run_pipeline_core(
         plan.global_layers = Arc::new(layer_plan.global_layers.clone());
     }
 
+    if cancel_flag
+        .as_ref()
+        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+    {
+        return Err(PipelineError::LayerExecution(
+            LayerExecutionError::Cancelled,
+        ));
+    }
     instrumentation
         .on_phase_start_with_layer_count(Phase::PerLayer, Some(plan.global_layers.len() as u32));
     let per_layer_result = execute_per_layer_with_instrumentation(
@@ -362,10 +382,19 @@ fn run_pipeline_core(
         sink,
         instrumentation,
         &wasm_handles,
+        cancel_flag.as_deref(),
     );
     instrumentation.on_phase_end(Phase::PerLayer);
     let (mut layer_irs, layer_audits) = per_layer_result?;
 
+    if cancel_flag
+        .as_ref()
+        .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+    {
+        return Err(PipelineError::LayerExecution(
+            LayerExecutionError::Cancelled,
+        ));
+    }
     instrumentation.on_phase_start(Phase::PostPass);
     let post_result = (|| -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
         // Bracket layer finalization as a synthetic stage so the report's

@@ -167,6 +167,7 @@ fn slice_to_gcode(thumbnail_path: Option<&str>) -> Result<String, String> {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -446,6 +447,7 @@ fn config_block_includes_user_passed() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -554,6 +556,7 @@ fn config_block_fork_keys_never_shadowed() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
         .expect("pipeline should succeed");
@@ -731,6 +734,7 @@ fn rejects_missing_thumbnail_file() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -765,6 +769,7 @@ fn rejects_non_png_thumbnail() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -800,6 +805,7 @@ fn empty_config_view_still_emits_sentinels() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

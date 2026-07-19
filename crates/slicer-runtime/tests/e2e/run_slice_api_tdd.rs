@@ -52,6 +52,7 @@ fn run_slice_against_wedge_returns_nonempty_gcode() {
         report_verbose: false,
         instrument_stderr: false,
         progress_events: false,
+        cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
     };
 

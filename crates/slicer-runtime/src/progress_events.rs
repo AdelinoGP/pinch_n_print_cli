@@ -32,13 +32,13 @@ use crate::layer_executor::LayerProgressSink;
 /// `gcode_prediction_seconds`, `gcode_weight_grams`, `gcode_filament_length_mm`,
 /// `layer_count`, `first_layer_height_mm`, `extruded_volume_mm3`, and
 /// `toolchange_count` fields.
-pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.2.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.3.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
 /// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
 /// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
-pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.2.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.3.0";
 
 /// Stable `ProgressError.code` for a `validation_error` raised by intra-stage
 /// DAG construction failure during the 14-pass startup validation.
@@ -83,6 +83,8 @@ pub enum ProgressEventType {
     ModuleError,
     /// Emitted when validation fails.
     ValidationError,
+    /// Emitted when a slice is cancelled before completion.
+    Cancelled,
     /// Emitted when the entire slice operation completes.
     SliceComplete,
     /// Emitted exactly once per successful slice (including degraded
@@ -214,6 +216,34 @@ pub struct ProgressEvent {
 }
 
 impl ProgressEvent {
+    /// Create a cancelled event.
+    pub fn cancelled(slice_id: String, timestamp_ms: u64) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION.to_string(),
+            event: ProgressEventType::Cancelled,
+            timestamp_ms,
+            slice_id,
+            phase: None,
+            stage: None,
+            layer_index: None,
+            module_id: None,
+            status: ProgressStatus::FatalError,
+            elapsed_ms: None,
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
+        }
+    }
+
     /// Create a phase_start event.
     ///
     /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, status
@@ -487,7 +517,7 @@ impl ProgressEvent {
         toolchange_count: u32,
     ) -> Self {
         Self {
-            schema_version: PROGRESS_EVENT_SCHEMA_VERSION.to_string(),
+            schema_version: "1.2.0".to_string(),
             event: ProgressEventType::SliceStats,
             timestamp_ms,
             slice_id,

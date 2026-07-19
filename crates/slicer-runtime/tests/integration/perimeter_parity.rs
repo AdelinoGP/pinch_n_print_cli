@@ -295,6 +295,7 @@ pub fn run_pipeline_capturing_perimeters(
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
         wasm_handles,
+        cancel_flag: None,
     };
 
     let _output =

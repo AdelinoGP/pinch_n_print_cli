@@ -56,6 +56,8 @@ impl LayerProgressSink for NoopLayerProgressSink {
 /// Top-level execution failure for the per-layer parallel executor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayerExecutionError {
+    /// Cooperative cancellation was requested by the slice caller.
+    Cancelled,
     /// Fatal error in one layer (layer index included).
     FatalLayer {
         /// Layer that failed.
@@ -100,6 +102,7 @@ pub enum LayerExecutionError {
 impl fmt::Display for LayerExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Cancelled => write!(f, "layer execution cancelled"),
             Self::FatalLayer {
                 layer_index,
                 stage_id,
@@ -179,6 +182,7 @@ pub fn execute_per_layer_with_events(
         sink,
         &NoopInstrumentation,
         wasm_handles,
+        None,
     )
 }
 
@@ -193,6 +197,7 @@ pub fn execute_per_layer_with_instrumentation(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
 
@@ -201,6 +206,9 @@ pub fn execute_per_layer_with_instrumentation(
         global_layers
             .par_iter()
             .map(|layer| {
+                if cancel_flag.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Relaxed)) {
+                    return Err(LayerExecutionError::Cancelled);
+                }
                 execute_single_layer(
                     plan,
                     blackboard,

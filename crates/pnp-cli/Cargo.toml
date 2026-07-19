@@ -17,6 +17,7 @@ default = ["report"]
 report = ["slicer-runtime/report"]
 
 [dependencies]
+ctrlc = "3"
 slicer-runtime = { path = "../slicer-runtime", default-features = false }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-schema = { path = "../slicer-schema" }

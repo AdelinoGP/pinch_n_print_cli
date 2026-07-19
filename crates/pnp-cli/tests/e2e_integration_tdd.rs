@@ -191,6 +191,7 @@ fn e2e_load_stl_empty_plan() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -216,6 +217,7 @@ fn e2e_deterministic_output() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     })
     .unwrap();
 
@@ -227,6 +229,7 @@ fn e2e_deterministic_output() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     })
     .unwrap();
 
@@ -308,6 +311,7 @@ fn e2e_with_layers() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).unwrap();
@@ -348,6 +352,7 @@ fn e2e_pipeline_uses_real_mesh() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -371,6 +376,7 @@ fn e2e_output_to_file() {
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: HashMap::new(),
+        cancel_flag: None,
     };
 
     let output = run_pipeline(config).unwrap();

@@ -160,11 +160,20 @@ Fatal failure excerpt:
 2. `module_error(status=fatal_error,fatal=true)`
 3. (stream ends; process exits non-zero — no `slice_complete` on fatal abort)
 
+Cancellation (`--cancel-on-stdin-eof` or Ctrl+C/Ctrl+Break)
+──────────────────────────────────────────────────────────
+`layer_start` (Layer N)
+  … layer in progress …
+`cancelled` { "schema_version": "1.3.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "..." }
+(stream ends; no `slice_complete`; process exits with code 130; `--output` path is absent)
+
 Note: under `--instrument-stderr` the failing module's `module_complete`
 timing event precedes its `module_error` (the runtime samples timing before
 matching on the dispatch result).
 
 ## Schema Version Cadence
+
+- `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`. `slice_stats` remains at `1.2.0` (its constructor hard-codes the version literal).
 
 The `schema_version` field follows additive minor bumps:
 

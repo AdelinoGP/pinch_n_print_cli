@@ -252,6 +252,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
         default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles,
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -334,6 +335,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles,
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);
@@ -518,6 +520,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles,
+        cancel_flag: None,
     };
 
     let result = run_pipeline(config);

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 174-graceful-cancel
 task_ids:
   - TASK-278

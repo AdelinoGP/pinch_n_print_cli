@@ -241,6 +241,7 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -315,6 +316,7 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     // `Arc<Collector>` implements `PipelineInstrumentation` via the inner
@@ -496,6 +498,7 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -648,6 +651,7 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
+        cancel_flag: None,
     };
 
     let recorder = StageEndRecorder::new();

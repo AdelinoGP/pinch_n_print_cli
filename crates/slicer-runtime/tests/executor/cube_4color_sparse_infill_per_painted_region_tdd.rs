@@ -68,6 +68,7 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report_verbose: false,
         instrument_stderr: false,
         progress_events: false,
+        cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),
     };
     run_slice(opts)

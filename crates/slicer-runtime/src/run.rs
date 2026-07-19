@@ -6,7 +6,7 @@
 pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::time::Instant;
 
 use slicer_ir::{ConfigValue, MeshIR};
@@ -75,6 +75,8 @@ pub struct SliceRunOptions {
     /// (`--no-progress-events`), nothing is written to stderr, though error
     /// aggregation still runs internally.
     pub progress_events: bool,
+    /// Cooperative cancellation flag checked by the slicing pipeline.
+    pub cancel_flag: Option<Arc<AtomicBool>>,
     /// Config values derived from the loaded model (e.g. the 3MF project's
     /// `filament_colour`) that seed `config_source` as defaults. An explicit
     /// `--config` key always wins over an override with the same name.
@@ -169,13 +171,16 @@ struct ProgressChannel {
 /// (`--no-progress-events`) swaps the JSONL stderr emitter for a
 /// [`NullEmitter`]: the collector still aggregates error counts but nothing
 /// reaches stderr.
-fn build_progress_channel(emit_to_stderr: bool) -> ProgressChannel {
+fn build_progress_channel(
+    emit_to_stderr: bool,
+    collector: Option<Arc<Mutex<SliceEventCollector>>>,
+) -> ProgressChannel {
     let emitter_arc: Arc<dyn ProgressEventEmitter> = if emit_to_stderr {
         Arc::new(JsonLinesEmitter::new(std::io::stderr()))
     } else {
         Arc::new(NullEmitter)
     };
-    let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
+    let collector = collector.unwrap_or_else(|| Arc::new(Mutex::new(SliceEventCollector::new())));
     let sink = Arc::new(RuntimeProgressSink::new(
         emitter_arc,
         Arc::clone(&collector),
@@ -275,7 +280,19 @@ fn run_pipeline_fork(
         (None, None) => run_pipeline_with_raw_config(config, config_source, sink_arc.as_ref()),
     };
 
-    result.map_err(|e| SliceRunError(format!("{e}")))
+    result.map_err(|e| {
+        if opts
+            .cancel_flag
+            .as_ref()
+            .is_some_and(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+        {
+            channel.sink.record(ProgressEvent::cancelled(
+                channel.slice_id.clone(),
+                now_unix_ms(),
+            ));
+        }
+        SliceRunError(format!("{e}"))
+    })
 }
 
 /// Whole-print statistics for the `slice_stats` progress event (packet 169).
@@ -356,8 +373,18 @@ pub fn emit_end_of_slice_events(
 /// Composes the 4-way instrumentation fork (report, progress, both, none)
 /// internally based on `opts.report` and `opts.instrument_stderr`.
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
+    run_slice_with_collector(opts, None)
+}
+
+/// Test-support entry point that lets callers inspect the same collector used
+/// by [`run_slice`], including when the pipeline returns an error.
+#[doc(hidden)]
+pub fn run_slice_with_collector(
+    opts: SliceRunOptions,
+    collector: Option<Arc<Mutex<SliceEventCollector>>>,
+) -> Result<SliceOutcome, SliceRunError> {
     let t0 = Instant::now();
-    let channel = build_progress_channel(opts.progress_events);
+    let channel = build_progress_channel(opts.progress_events, collector);
 
     // Mesh is pre-loaded by the caller (see SliceRunOptions::mesh).
     let mesh_ir = Arc::clone(&opts.mesh);
@@ -711,6 +738,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     let stats_first_layer_height_mm = default_resolved_config.first_layer_height as f32;
 
     let pipeline_config = PipelineConfig {
+        cancel_flag: opts.cancel_flag.clone(),
         mesh_ir,
         plan,
         runners: PipelineStageRunners {
