@@ -102,9 +102,6 @@ impl LayerModule for RectilinearInfill {
             return Ok(());
         }
 
-        let line_spacing_mm = self.line_width / self.density;
-        let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
-
         // Compute angle: base + 90 degree alternation per layer
         let layer_rotation = if layer_index.is_multiple_of(2) {
             0.0_f64
@@ -131,13 +128,31 @@ impl LayerModule for RectilinearInfill {
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
         // `bottom_solid_fill`, `bridge_areas`) with precedence
         // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick.
+        // polygon — zero polygon math, zero per-region role-pick. Per-region
+        // `infill_density` / `line_width` overrides (packet 131 / TASK-256)
+        // are read through `slicer_sdk::config_resolution` and forwarded to
+        // each `scan_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
             let z = region.z();
             let std_cos_a = cos_a;
             let std_sin_a = sin_a;
+
+            // Per-region config resolution (packet 131 / TASK-256):
+            // fall back to module-global defaults when the per-region view
+            // is absent or the key is not declared.
+            let region_density = slicer_sdk::config_resolution::resolve_float(
+                region,
+                "infill_density",
+                self.density,
+            );
+            let region_line_width =
+                slicer_sdk::config_resolution::resolve_float(region, "line_width", self.line_width);
+            if region_density <= 0.0 {
+                continue;
+            }
+            let line_spacing = slicer_ir::mm_to_units(region_line_width / region_density);
 
             // SparseInfill over the host-partitioned sparse-only polygon.
             let sparse = region.sparse_infill_area();
@@ -151,7 +166,7 @@ impl LayerModule for RectilinearInfill {
                         z,
                         speed_factor,
                         &ExtrusionRole::SparseInfill,
-                        self.line_width,
+                        region_line_width,
                         false,
                         x_shift_units,
                     );
@@ -176,7 +191,7 @@ impl LayerModule for RectilinearInfill {
                         z,
                         speed_factor,
                         &role,
-                        self.line_width,
+                        region_line_width,
                         true,
                         x_shift_units,
                     );
@@ -203,7 +218,7 @@ impl LayerModule for RectilinearInfill {
                         z,
                         speed_factor,
                         &role,
-                        self.line_width,
+                        region_line_width,
                         true,
                         x_shift_units,
                     );
@@ -228,7 +243,7 @@ impl LayerModule for RectilinearInfill {
                         z,
                         speed_factor,
                         &ExtrusionRole::BridgeInfill,
-                        self.line_width,
+                        region_line_width,
                         false,
                         x_shift_units,
                     );

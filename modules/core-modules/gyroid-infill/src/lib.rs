@@ -153,11 +153,25 @@ impl LayerModule for GyroidInfill {
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
         // `bottom_solid_fill`, `bridge_areas`) with precedence
         // bridge > bottom > top > sparse. Each role emits over its own
-        // polygon — zero polygon math, zero per-region role-pick.
+        // polygon — zero polygon math, zero per-region role-pick. Per-region
+        // `infill_density` / `line_width` overrides (packet 131 / TASK-256)
+        // are read through `slicer_sdk::config_resolution` and forwarded to
+        // each `fill_expolygon` call below.
         // See `crates/slicer-runtime/src/region_partition.rs`.
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
             let z = region.z();
+
+            // Per-region config resolution (packet 131 / TASK-256):
+            // fall back to module-global defaults when the per-region view
+            // is absent or the key is not declared.
+            let region_density = slicer_sdk::config_resolution::resolve_float(
+                region,
+                "infill_density",
+                self.density,
+            );
+            let region_line_width =
+                slicer_sdk::config_resolution::resolve_float(region, "line_width", self.line_width);
 
             // `gate_role` decides ownership (claim) and `role` is the emitted
             // label. They differ only for internal solid infill, where the
@@ -172,7 +186,13 @@ impl LayerModule for GyroidInfill {
                     return;
                 }
                 for expoly in polys {
-                    let mut paths = self.fill_expolygon(expoly, z, speed_factor);
+                    let mut paths = self.fill_expolygon(
+                        expoly,
+                        z,
+                        speed_factor,
+                        region_density,
+                        region_line_width,
+                    );
                     for path in &mut paths {
                         path.role = role.clone();
                     }
@@ -225,18 +245,24 @@ impl LayerModule for GyroidInfill {
 
 impl GyroidInfill {
     /// Generate gyroid wave fill for a single ExPolygon.
+    ///
+    /// `density` and `line_width` are passed in by the caller rather than
+    /// read from `self` so the per-region config (packet 131 / TASK-256) can
+    /// override the module-global default set in `on_print_start`.
     fn fill_expolygon(
         &self,
         expoly: &ExPolygon,
         z: f32,
         speed_factor: f32,
+        density: f32,
+        line_width: f32,
     ) -> Vec<ExtrusionPath3D> {
         // Compute density-adjusted spacing in mm
-        let density_adjusted = (self.density as f64) * DENSITY_ADJUST;
+        let density_adjusted = (density as f64) * DENSITY_ADJUST;
         if density_adjusted <= 0.0 {
             return Vec::new();
         }
-        let spacing_mm = self.line_width as f64 / density_adjusted;
+        let spacing_mm = line_width as f64 / density_adjusted;
 
         // Compute world-space bbox center (BEFORE rotation) — used as rotation pivot
         let (bb_w_min_x, bb_w_min_y, bb_w_max_x, bb_w_max_y) = {

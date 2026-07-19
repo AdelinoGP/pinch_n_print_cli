@@ -5,6 +5,10 @@ task_ids:
   - TASK-260
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
+depends-on-after-merge:
+  - packet: 133_infill-linker-module
+    task_id: TASK-258
+    reason: "raw-emit output is unclipped until the linker lands; print is degraded-but-not-failed per ADR-0025. 136's AC-N1 pins the trade-off at e2e."
 ---
 
 # Packet Contract: 135_gyroid-raw-emit
@@ -65,12 +69,28 @@ across all four fill-holder keys; gyroid is not referenced in `resolved_config.r
   `4.0 * spacing_mm` at `lib.rs:259`). | `cargo test -p gyroid-infill -- expand_factor_is_10x_spacing 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-5. Given** the manifest, **when** grepped, **then** `claims.holds` contains all four:
   `claim:sparse-fill`, `claim:top-fill`, `claim:bottom-fill`, `claim:bridge-fill`
-  (ADR-0027). | `rg -c 'claim:(sparse|top|bottom|bridge)-fill' modules/core-modules/gyroid-infill/gyroid-infill.toml | grep -q '^4$' && echo CLAIMS-OK`
+  (ADR-0027). | `rg -U 'holds\s*=\s*\[[^\]]*claim:sparse-fill[^\]]*claim:top-fill[^\]]*claim:bottom-fill[^\]]*claim:bridge-fill[^\]]*\]' modules/core-modules/gyroid-infill/gyroid-infill.toml | grep -q . && echo CLAIMS-OK`
 - **AC-6. Given** the module source, **when** grepped, **then**
   `clip_polyline_to_expolygon` (lib.rs:611), `point_in_expolygon` (lib.rs:570),
   `point_in_polygon` (lib.rs:585), and `polygon_bbox_mm` (lib.rs:551) are deleted
   (zero definitions), and the wave core (`gyroid_f`, `make_one_period`, `make_wave`) plus
   the existing `asin_nan_protection` test remain. | `rg -c 'fn (clip_polyline_to_expolygon|point_in_expolygon|point_in_polygon|polygon_bbox_mm)' modules/core-modules/gyroid-infill/src/lib.rs | grep -q '^0$' && rg -q 'fn gyroid_f' modules/core-modules/gyroid-infill/src/lib.rs && echo DELETED-OK`
+- **AC-7. Given** a per-region `ConfigView` carrying `infill_density = 0.8`
+  (vs. the module-global default 0.2), **when** the module runs, **then** the
+  emitted wave bbox extent is materially smaller (since
+  `spacing_mm = line_width / density` halves), and `region.config()` is
+  consulted inside the per-region loop (zero `region.config()` hits in
+  `lib.rs` is a fail). | `cargo test -p gyroid-infill -- per_region_density_overrides_module_global 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-8. Given** a 10mm square at z=0.3 with `infill_angle = 0°` and `45°`,
+  **when** both runs emit polylines, **then** for a regular grid of witness
+  points in the world frame, the nearest emitted point in each run (45°
+  points inverse-rotated to the 0° frame) is within 2mm. This is the strict
+  per-point counterpart to AC-2's bbox test. | `cargo test -p gyroid-infill -- rotated_square_45_per_point_correspondence_within_2mm 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-9. Given** a per-region `ConfigView` carrying `infill_density = 0.4`
+  in `rectilinear-infill`, **when** the module runs, **then** the line count
+  is ~2× the module-global default (density 0.2 → ~5 lines on a 10mm square;
+  per-region 0.4 → ~10 lines). The same `slicer_sdk::config_resolution`
+  helper is used by both modules. | `cargo test -p rectilinear-infill -- per_region_density_overrides_module_global 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Negative Test Cases
 

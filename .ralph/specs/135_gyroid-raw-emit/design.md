@@ -52,14 +52,24 @@
 - `modules/core-modules/gyroid-infill/src/lib.rs` — role: the fixes; expected change:
   rotation block replacement (lib.rs:344), four function deletions (lib.rs:551, 570, 585,
   611), `align_to_grid` helper added (~10 lines), expand constant at lib.rs:259 (~120 lines
-  net negative).
+  net negative). Per-region `infill_density` / `line_width` read via the 131 accessor
+  (forwarded to each `fill_expolygon` call).
 - `modules/core-modules/gyroid-infill/gyroid-infill.toml` — role: multi-role claims; expected
   change: 3 lines added to `claims.holds`.
 - `modules/core-modules/gyroid-infill/tests/gyroid_infill_tdd.rs` — role: TDD; expected
-  change: +6 new tests (AC-1, AC-2, AC-3, AC-4, AC-N1, and one regression helper); the
-  existing 11 tests stay green; rotation-block-affected ones are rewritten with header
-  comments naming each encoded bug. No point-in-polygon tests to remove (FACT I 2026-07-19:
-  none exist in the test file).
+  change: +7 new tests (AC-1, AC-2, AC-3, AC-4, AC-7, AC-8, AC-N1) plus the regression
+  helper `adjacent_layers_have_phase_coherent_bbox`; the existing 11 tests stay green;
+  rotation-block-affected ones are rewritten with header comments naming each encoded bug.
+  No point-in-polygon tests to remove (FACT I 2026-07-19: none exist in the test file).
+- `modules/core-modules/rectilinear-infill/src/lib.rs` — role: per-region density
+  consumer (parity fix for the same gap; rectilinear shares the 131 accessor pattern with
+  gyroid). Per-region `infill_density` / `line_width` read via the 131 accessor
+  (forwarded to each `scan_expolygon` call).
+- `modules/core-modules/rectilinear-infill/tests/rectilinear_infill_tdd.rs` — role: TDD;
+  expected change: +1 new test (AC-9 per-region density); existing tests stay green.
+- `crates/slicer-sdk/src/config_resolution.rs` — role: shared `resolve_float` helper
+  (one place that owns the per-region vs. global resolution rule; both modules consume
+  it). Expected change: new file, ~30 lines + 3 unit tests.
 
 ## Read-Only Context
 
@@ -73,9 +83,12 @@
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/**` — delegate; never load.
-- `modules/core-modules/{rectilinear,lightning}-infill/**`,
+- `modules/core-modules/lightning-infill/**`,
   `modules/core-modules/infill-linker/**` — other packets' surfaces.
 - Host crates; `target/`; `Cargo.lock` — never load.
+- `modules/core-modules/rectilinear-infill/**` is **partially in-scope** (the per-region
+  density read at lib.rs:158 and the new AC-9 test); other rectilinear surfaces (perimeter
+  selection, scan_expolygon internals) remain out-of-bounds.
 
 ## Expected Sub-Agent Dispatches
 

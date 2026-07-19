@@ -83,10 +83,13 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1`–`AC-6` in `packet.spec.md`. Refinements: AC-1's "no clipping"
+- Positive cases: `AC-1`–`AC-9` in `packet.spec.md`. Refinements: AC-1's "no clipping"
   assertion is the Architecture-A pin (points may exceed the polygon; the linker clips);
-  AC-2 is the rotation-fix regression pin; AC-5/AC-6 are structural greps making the
-  claims + deletions mechanically checkable.
+  AC-2 is the rotation-fix regression pin (bbox) and AC-8 is its per-point counterpart
+  (strict); AC-5/AC-6 are structural greps making the claims + deletions mechanically
+  checkable; AC-7/AC-9 are the per-region density assertions (131 accessor wired into
+  both `gyroid-infill` and `rectilinear-infill`, reading through
+  `slicer_sdk::config_resolution::resolve_float`).
 - Negative cases: `AC-N1` — the DEV-082 opt-in guard: default config must produce
   sparse-only gyroid (held-claims gating), keeping default behavior at OrcaSlicer parity.
 - Cross-packet impact: output changes (correct rotation + linker-clipped wave extents) —

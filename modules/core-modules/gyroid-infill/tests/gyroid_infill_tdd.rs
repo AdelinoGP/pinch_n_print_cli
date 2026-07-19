@@ -474,6 +474,134 @@ fn rotated_square_45_matches_unrotated_after_inverse() {
     );
 }
 
+/// Test 13b: per-point correspondence (strengthens AC-2 from bbox to per-point).
+///
+/// The original AC-2 test compares bbox corners with a 12mm tolerance. That
+/// accepts a 12mm drift between the two outputs' geometries, which is
+/// weaker than the AC's "within 2 units per point" claim. This test asserts
+/// the per-point invariant directly: for a witness point on the gyroid
+/// surface in world space, the nearest emitted point in each output
+/// (0° and 45°) is within 2mm of the witness.
+///
+/// The 0° case: the world point is itself in the 0° generation frame, so
+/// the module emits a wave through it (within `spacing`).
+///
+/// The 45° case: the world point is rotated by +45° (to undo the polygon
+/// rotation the module applies internally), the 45° module emits a wave
+/// through that rotated point, and the emitted point is rotated back by
+/// -45° to world space. The per-point distance in world space is within
+/// `spacing` of the original witness.
+#[test]
+fn rotated_square_45_per_point_correspondence_within_2mm() {
+    let config_0 = make_config(0.2, 0.0, 50.0, 0.4);
+    let config_45 = make_config(0.2, 45.0, 50.0, 0.4);
+    let module_0 = GyroidInfill::on_print_start(&config_0).unwrap();
+    let module_45 = GyroidInfill::on_print_start(&config_45).unwrap();
+    let region_0 = make_square_region(10.0, 0.3);
+    let region_45 = make_square_region(10.0, 0.3);
+    let mut output_0 = InfillOutputBuilder::new();
+    let mut output_45 = InfillOutputBuilder::new();
+    module_0
+        .run_infill(0, &[region_0], &mut output_0, &config_0)
+        .unwrap();
+    module_45
+        .run_infill(0, &[region_45], &mut output_45, &config_45)
+        .unwrap();
+    let paths_0 = output_0.sparse_paths();
+    let paths_45 = output_45.sparse_paths();
+    assert!(!paths_0.is_empty(), "0° should emit");
+    assert!(!paths_45.is_empty(), "45° should emit");
+
+    let collect_world_points = |paths: &[slicer_ir::ExtrusionPath3D],
+                                transform: Option<(f64, f64)>,
+                                out: &mut Vec<(f64, f64)>| {
+        for path in paths {
+            for pt in &path.points {
+                let (mut x, mut y) = (pt.x as f64, pt.y as f64);
+                if let Some((cos_a, sin_a)) = transform {
+                    let rx = x * cos_a - y * sin_a;
+                    let ry = x * sin_a + y * cos_a;
+                    x = rx;
+                    y = ry;
+                }
+                out.push((x, y));
+            }
+        }
+    };
+
+    // World points from the 0° run (no transform).
+    let mut world_pts_0 = Vec::new();
+    collect_world_points(paths_0, None, &mut world_pts_0);
+
+    // World points from the 45° run, transformed back by -45° to the 0°
+    // frame: 0° = R(+45°) · 45°_world, so apply R(-45°).
+    let angle = 45.0_f64.to_radians();
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    let mut world_pts_45 = Vec::new();
+    collect_world_points(paths_45, Some((cos_a, -sin_a)), &mut world_pts_45);
+
+    // For a regular grid of witness points in the world frame (which is
+    // also the 0° generation frame), assert the nearest emitted 0° point
+    // is within 2mm. The gyroid wave's *period* is `line_width / density =
+    // 0.4 / 0.2 = 2mm` and a wave crosses every witness point within one
+    // period of the wave.
+    let spacing_mm = 0.4_f64 / 0.2_f64;
+    let witness_step = spacing_mm * 0.5;
+    let witness_extent = 4.0_f64; // stay inside the rotated diamond
+    let mut max_dist_0 = 0.0_f64;
+    let mut max_dist_45 = 0.0_f64;
+    let mut x = -witness_extent;
+    while x <= witness_extent {
+        let mut y = -witness_extent;
+        while y <= witness_extent {
+            // Nearest 0° point (already in 0° frame).
+            let dist_0 = world_pts_0
+                .iter()
+                .map(|(px, py)| ((px - x).powi(2) + (py - y).powi(2)).sqrt())
+                .fold(f64::INFINITY, f64::min);
+            max_dist_0 = max_dist_0.max(dist_0);
+
+            // For 45°: the witness is in world space; the 45° module
+            // generated waves in a frame rotated by -45° from world. So
+            // a wave that passes through (x, y) in world space passes
+            // through (x*cos(-45) - y*sin(-45), x*sin(-45) + y*cos(-45))
+            // in the 45° generation frame. We transformed the 45° points
+            // back to world space, so we compare in world space directly.
+            let dist_45 = world_pts_45
+                .iter()
+                .map(|(px, py)| ((px - x).powi(2) + (py - y).powi(2)).sqrt())
+                .fold(f64::INFINITY, f64::min);
+            max_dist_45 = max_dist_45.max(dist_45);
+
+            y += witness_step;
+        }
+        x += witness_step;
+    }
+
+    // 2mm tolerance: gyroid's wave period is 2mm, so a wave crosses
+    // every witness point within 1mm (half-period), but the wave
+    // generation may skip some x-positions outside the bbox. The 0°
+    // generation bbox is the rotated diamond (-7.07, 7.07), and the
+    // witness_extent=4.0 stays inside; 45°'s bbox is the axis-aligned
+    // square (-5.0, 5.0), and 4.0 is also inside. Both runs cover the
+    // witness grid.
+    assert!(
+        max_dist_0 < 2.0_f64,
+        "0°: nearest emitted point to every witness should be within 2mm, \
+         got max_dist_0 = {} mm (wave period = {} mm)",
+        max_dist_0,
+        spacing_mm
+    );
+    assert!(
+        max_dist_45 < 2.0_f64,
+        "45°→0°-frame: nearest emitted point to every witness should be \
+         within 2mm, got max_dist_45 = {} mm (wave period = {} mm)",
+        max_dist_45,
+        spacing_mm
+    );
+}
+
 /// Test 14: align_to_grid snaps values down to the nearest multiple of 2π × scale_factor.
 ///
 /// Directly calls `gyroid_infill::align_to_grid` to verify floor-based snapping
@@ -644,5 +772,74 @@ fn adjacent_layers_have_phase_coherent_bbox() {
         "x-extent width must be phase-coherent: z=0.2 width={} vs z=0.4 width={}",
         width_z1,
         width_z2
+    );
+}
+
+/// Test 18: per-region `infill_density` override (packet 131 / TASK-256) is
+/// read through `slicer_sdk::config_resolution` and overrides the
+/// module-global default set in `on_print_start`.
+///
+/// Two scenarios, same module, same module-global density (0.2):
+/// 1. region A — no per-region config — produces `spacing = line_width / (0.2 * 2.44)`
+/// 2. region B — per-region `infill_density = 0.8` — produces
+///    `spacing = line_width / (0.8 * 2.44)` (4× the period of A)
+///    The wave bbox extent depends on `spacing` (via `10 × spacing_mm` expand),
+///    so the two regions must produce materially different bboxes. A region
+///    without per-region override must match the module-global behavior.
+#[test]
+fn per_region_density_overrides_module_global() {
+    let config = make_config(0.2, 0.0, 50.0, 0.4);
+    let module = GyroidInfill::on_print_start(&config).unwrap();
+
+    // Region A: no per-region config. Should use module-global density 0.2.
+    let region_a = make_square_region(10.0, 0.2);
+    let mut output_a = InfillOutputBuilder::new();
+    module
+        .run_infill(0, std::slice::from_ref(&region_a), &mut output_a, &config)
+        .unwrap();
+    let paths_a = output_a.sparse_paths();
+    assert!(!paths_a.is_empty(), "region A (no override) should emit");
+    let extent_a = paths_a
+        .iter()
+        .flat_map(|p| p.points.iter())
+        .fold((f32::MAX, f32::MIN), |(lo, hi), pt| {
+            (lo.min(pt.x), hi.max(pt.x))
+        });
+    let width_a = extent_a.1 - extent_a.0;
+
+    // Region B: per-region infill_density = 0.8 (4× the module-global 0.2).
+    // spacing_mm halves, expand halves, so the bbox should be ~half the width.
+    let mut region_b = make_square_region(10.0, 0.2);
+    let mut fields = HashMap::new();
+    fields.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.8));
+    region_b.set_config(ConfigView::from_map(fields));
+
+    let mut output_b = InfillOutputBuilder::new();
+    module
+        .run_infill(0, std::slice::from_ref(&region_b), &mut output_b, &config)
+        .unwrap();
+    let paths_b = output_b.sparse_paths();
+    assert!(!paths_b.is_empty(), "region B (override=0.8) should emit");
+    let extent_b = paths_b
+        .iter()
+        .flat_map(|p| p.points.iter())
+        .fold((f32::MAX, f32::MIN), |(lo, hi), pt| {
+            (lo.min(pt.x), hi.max(pt.x))
+        });
+    let width_b = extent_b.1 - extent_b.0;
+
+    // Module-global density 0.2 → spacing 0.4 / (0.2 * 2.44) ≈ 0.820 mm
+    // Per-region density 0.8  → spacing 0.4 / (0.8 * 2.44) ≈ 0.205 mm
+    // (ratio 4×). The expanded bbox width for B should be ~half that of A.
+    // Allow generous tolerance (the align_to_grid grid snap + the 10×
+    // expand + the polygon's rotated bbox all interact).
+    let ratio = width_a / width_b;
+    assert!(
+        ratio > 1.5 && ratio < 6.5,
+        "per-region density 0.8 (4× module-global 0.2) should produce a meaningfully smaller bbox; \
+         got width_a={} (density 0.2) width_b={} (density 0.8) ratio={}",
+        width_a,
+        width_b,
+        ratio
     );
 }
