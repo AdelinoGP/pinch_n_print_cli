@@ -18,7 +18,10 @@ use slicer_wasm_host::{WasmComponent, WasmInstancePool};
 /// `gcode_emit::host_keys_doc_lock`.
 pub const DEFAULT_THUMBNAIL_PATH: &str = "";
 
-use slicer_gcode::{resolved_config_to_map, ThumbnailAwareSerializer};
+use slicer_gcode::{
+    parse_thumbnails_key, render_thumbnail_entries, resolved_config_to_map, RenderedThumbnail,
+    ThumbnailAwareSerializer, ThumbnailFormat, ThumbnailSpec,
+};
 
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization,
@@ -490,9 +493,39 @@ fn run_postpass_with_thumbnail(
         &mut runners.serializer,
         Box::new(slicer_gcode::DefaultGCodeSerializer::new()),
     );
+    // Build the rendered thumbnail entries. When thumbnail bytes are present,
+    // read the `thumbnails` config key (if any) to determine which
+    // resolutions/formats to render. Absent the key, default to a single PNG
+    // entry at the source PNG's native dimensions (IHDR bytes 16-23), passed
+    // through verbatim by the renderer's same-size PNG fast path.
+    let thumbnails: Option<Vec<RenderedThumbnail>> = if let Some(bytes) = thumbnail_bytes.as_ref() {
+        let (src_w, src_h) = {
+            let mut reader = std::io::Cursor::new(bytes);
+            let decoder = png::Decoder::new(&mut reader);
+            let info = decoder
+                .read_info()
+                .expect("validated PNG header must decode");
+            (info.info().width, info.info().height)
+        };
+        let specs: Vec<ThumbnailSpec> = match raw_config_source.get("thumbnails") {
+            Some(ConfigValue::String(s)) => {
+                parse_thumbnails_key(s).map_err(|e| PostpassError::GCodeSerialization {
+                    message: format!("invalid `thumbnails` config key: {e}"),
+                })?
+            }
+            _ => vec![ThumbnailSpec::new(src_w, src_h, ThumbnailFormat::Png)],
+        };
+        Some(render_thumbnail_entries(bytes, &specs).map_err(|e| {
+            PostpassError::GCodeSerialization {
+                message: format!("{e}"),
+            }
+        })?)
+    } else {
+        None
+    };
     runners.serializer = Box::new(ThumbnailAwareSerializer::new(
         inner_serializer,
-        thumbnail_bytes,
+        thumbnails,
         effective_config,
     ));
 

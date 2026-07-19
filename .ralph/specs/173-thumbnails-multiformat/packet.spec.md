@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 173-thumbnails-multiformat
 task_ids:
   - TASK-277

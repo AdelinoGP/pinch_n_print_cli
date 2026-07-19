@@ -1772,7 +1772,8 @@ contract — frontends and post-processors parse these tokens.
 ;    used, max Z, slicer version, etc.>
 ; HEADER_BLOCK_END
 ; THUMBNAIL_BLOCK_START                          (only when --thumbnail set)
-;   <Base64-encoded PNG, 76 chars per line, each prefixed with "; ">
+;   <inner-framed entries: `; <tag> begin <W>x<H> <len>` / `; <tag> end`,
+;    Base64 bodies wrapped at 78 chars/line each prefixed with "; ">
 ; THUMBNAIL_BLOCK_END
 ; ; <per-role width comments, e.g. "; outer_wall_width = 0.42">
 <machine_start_gcode expanded — packet 59>
@@ -1798,9 +1799,45 @@ M83  (or M82 — packet 54)
 - Triggered by `--thumbnail <path>` CLI flag pointing to a PNG file.
 - Bytes are validated against the PNG magic header (`\x89PNG\r\n\x1a\n`);
   non-PNG inputs are a fatal error.
-- Base64-encoded with 76 characters per line, each line prefixed by `"; "`,
+- Base64-encoded with 78 characters per line, each line prefixed by `"; "`,
   matching OrcaSlicer's wire format exactly so downstream tools (printer
   UIs, gcode preview viewers) parse it identically.
+
+The block is **OrcaSlicer-parseable**: printer firmware and Orca-family parsers
+key off the inner `; <tag> begin <W>x<H> <len>` / `; <tag> end` framing that
+canonical `export_thumbnails_to_file` (`OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp`)
+emits. Per entry:
+
+  ; <tag> begin <W>x<H> <len>
+  ; <base64 chunk, ≤ 78 chars per line>
+  ; <tag> end
+
+  e.g. (PNG):  ; thumbnail begin 300x300 123456
+                ; <base64 ...>
+                ; thumbnail end
+
+`<tag>` is one of five values returned by the per-format `tag()` overrides:
+  - PNG  → `thumbnail`
+  - JPG  → `thumbnail_JPG`
+  - QOI  → `thumbnail_QOI`
+  - BTT_TFT (Biqu/BIQU RGB565 hex, `;<WWWW><HHHH>\r\n` header, per-row `;` prefix + `\r\n`)  → `thumbnail_BIQU` (Raw body, spliced verbatim)
+  - ColPic (QIDI `;gimage:`/`;simage:` chunked, 512px aspect-preserved cap)  → `thumbnail_QIDI` (Raw body, spliced verbatim)
+
+`<len>` is the total base64 character count for the entry (Base64 bodies only;
+Raw bodies have no `<len>` header). Base64 lines are wrapped at 78 characters
+(canonical `max_row_length`). ColPic and BTT_TFT payloads are self-framed
+and spliced verbatim between the outer sentinels.
+
+The block contains one entry per spec in the `thumbnails` config key
+(`"WxH/EXT,WxH/EXT"`, e.g. `"48x48/PNG,300x300/PNG"`), in spec order. When
+the key is absent, the block contains a single `thumbnail` entry at the
+source PNG's dimensions, with the source bytes passed through un-re-encoded.
+
+**Fork-facing single-source-PNG contract (deviation from fork ticket 011).**
+The fork renders ONE high-res top-down PNG and passes it via `--thumbnail`;
+requested sizes/formats travel in the `thumbnails` config key; PnP owns
+the decode/resize/encode fan-out. See `D-173-THUMBNAIL-SINGLE-PNG` in
+`docs/DEVIATION_LOG.md`.
 
 **Configurable header fields (config keys, packet 55):**
 

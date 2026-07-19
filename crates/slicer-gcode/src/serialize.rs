@@ -11,7 +11,7 @@ use slicer_ir::{ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, ResolvedConfi
 
 use crate::error::GCodeEmitError;
 use crate::flavor::GcodeFlavor;
-use crate::thumbnail::serialize_thumbnail_block;
+use crate::thumbnail::{serialize_thumbnail_block, RenderedThumbnail};
 
 /// Trait for GCode serialization (host-built-in).
 pub trait GCodeSerializer {
@@ -506,17 +506,17 @@ const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
 /// view into the serialization step without changing the `GCodeSerializer` trait.
 pub struct ThumbnailAwareSerializer {
     inner: Box<dyn GCodeSerializer>,
-    thumbnail_bytes: Option<Vec<u8>>,
+    thumbnails: Option<Vec<RenderedThumbnail>>,
     raw_config: HashMap<String, ConfigValue>,
     flavor: GcodeFlavor,
 }
 
 impl ThumbnailAwareSerializer {
-    /// Create a new wrapper around `inner`, optionally attaching thumbnail bytes
-    /// and a raw config map for CONFIG_BLOCK emission.
+    /// Create a new wrapper around `inner`, optionally attaching rendered
+    /// thumbnails and a raw config map for CONFIG_BLOCK emission.
     pub fn new(
         inner: Box<dyn GCodeSerializer>,
-        thumbnail_bytes: Option<Vec<u8>>,
+        thumbnails: Option<Vec<RenderedThumbnail>>,
         raw_config: HashMap<String, ConfigValue>,
     ) -> Self {
         let flavor = raw_config
@@ -528,7 +528,7 @@ impl ThumbnailAwareSerializer {
             .unwrap_or_default();
         Self {
             inner,
-            thumbnail_bytes,
+            thumbnails,
             raw_config,
             flavor,
         }
@@ -545,7 +545,7 @@ impl Default for ThumbnailAwareSerializer {
     fn default() -> Self {
         Self {
             inner: Box::new(DefaultGCodeSerializer::default()),
-            thumbnail_bytes: None,
+            thumbnails: None,
             raw_config: HashMap::new(),
             flavor: GcodeFlavor::Marlin,
         }
@@ -557,17 +557,18 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
         let base = self.inner.serialize_gcode(gcode_ir)?;
 
         // 1. Insert THUMBNAIL_BLOCK immediately after HEADER_BLOCK_END (if thumbnail present).
-        let base = if let Some(ref bytes) = self.thumbnail_bytes {
+        let base = if let Some(ref entries) = self.thumbnails {
             let sentinel = "; HEADER_BLOCK_END\n";
+            let block = serialize_thumbnail_block(entries);
             if let Some(pos) = base.find(sentinel) {
                 let insert_at = pos + sentinel.len();
-                let mut result = String::with_capacity(base.len() + bytes.len() * 2);
+                let mut result = String::with_capacity(base.len() + block.len());
                 result.push_str(&base[..insert_at]);
-                result.push_str(&serialize_thumbnail_block(bytes));
+                result.push_str(&block);
                 result.push_str(&base[insert_at..]);
                 result
             } else {
-                let mut result = serialize_thumbnail_block(bytes);
+                let mut result = block;
                 result.push_str(&base);
                 result
             }

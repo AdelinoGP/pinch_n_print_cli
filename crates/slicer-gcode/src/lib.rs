@@ -12,6 +12,8 @@ pub mod estimator;
 pub mod m73;
 pub mod serialize;
 pub mod thumbnail;
+pub mod thumbnail_btt;
+pub mod thumbnail_colpic;
 
 pub use emit::{reconcile_finalization_travel, DefaultGCodeEmitter, GCodeEmitter};
 pub use error::GCodeEmitError;
@@ -21,7 +23,13 @@ pub use serialize::{
     format_coord, format_xyz, resolved_config_to_map, tolerance_for_role, DefaultGCodeSerializer,
     GCodeSerializer, ThumbnailAwareSerializer,
 };
-pub use thumbnail::serialize_thumbnail_block;
+pub use thumbnail::{
+    decode_base64, encode_base64, parse_thumbnails_key, render_thumbnail_entries,
+    serialize_thumbnail_block, RenderedThumbnail, ThumbnailBody, ThumbnailError, ThumbnailFormat,
+    ThumbnailSpec,
+};
+pub use thumbnail_btt::encode_btt_tft;
+pub use thumbnail_colpic::{encode_colpic, encode_colpic_with_capped_dims};
 /// G-code flavor dialect layer ported from OrcaSlicer's `GCodeWriter.cpp`.
 pub mod flavor;
 pub use flavor::GcodeFlavor;

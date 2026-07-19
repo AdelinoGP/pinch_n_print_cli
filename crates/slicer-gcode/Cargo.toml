@@ -10,6 +10,10 @@ slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-helpers = { path = "../slicer-helpers" }
 thiserror = "1.0"
 log = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "qoi"] }
 
 [lints]
 workspace = true

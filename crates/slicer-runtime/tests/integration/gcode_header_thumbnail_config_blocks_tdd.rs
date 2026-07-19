@@ -148,6 +148,15 @@ fn default_runners() -> PipelineStageRunners {
 /// Run the pipeline with an optional thumbnail path injected via raw config.
 /// Returns the gcode text string.
 fn slice_to_gcode(thumbnail_path: Option<&str>) -> Result<String, String> {
+    slice_to_gcode_with_key(thumbnail_path, None)
+}
+
+/// Run the pipeline with an optional thumbnail path AND an optional `thumbnails`
+/// config key injected via raw config. Returns the gcode text string.
+fn slice_to_gcode_with_key(
+    thumbnail_path: Option<&str>,
+    thumbnails_key: Option<&str>,
+) -> Result<String, String> {
     let mesh_ir =
         Arc::new(load_model(&stl_fixture_path()).map_err(|e| format!("load_model failed: {e:?}"))?);
 
@@ -156,6 +165,12 @@ fn slice_to_gcode(thumbnail_path: Option<&str>) -> Result<String, String> {
         raw.insert(
             "thumbnail_path".to_string(),
             ConfigValue::String(path.to_string()),
+        );
+    }
+    if let Some(key) = thumbnails_key {
+        raw.insert(
+            "thumbnails".to_string(),
+            ConfigValue::String(key.to_string()),
         );
     }
 
@@ -207,16 +222,86 @@ fn region_between<'a>(gcode: &'a str, start_sentinel: &str, end_sentinel: &str) 
     &gcode[start..end]
 }
 
+/// A decoded thumbnail entry parsed out of the THUMBNAIL_BLOCK inner framing.
+#[derive(Debug)]
+struct ParsedThumbEntry {
+    tag: String,
+    width: u32,
+    height: u32,
+    declared_len: usize,
+    base64: String,
+}
+
+/// Parse the inner-framed THUMBNAIL_BLOCK region into decoded entries.
+///
+/// Each entry is framed as:
+/// ```text
+/// ; <tag> begin <W>x<H> <len>
+/// ; <base64_chunk>
+/// ...
+/// ; <tag> end
+/// ```
+fn parse_thumb_entries(thumb_region: &str) -> Vec<ParsedThumbEntry> {
+    let mut entries = Vec::new();
+    let mut current: Option<ParsedThumbEntry> = None;
+    for raw_line in thumb_region.lines() {
+        let line = raw_line.trim_end();
+        if line.trim().is_empty() {
+            continue;
+        }
+        let content = line
+            .strip_prefix("; ")
+            .unwrap_or_else(|| panic!("thumbnail line must start with '; ', got: {line:?}"));
+        let tokens: Vec<&str> = content.split_whitespace().collect();
+        // begin line: "<tag> begin <W>x<H> <len>"
+        if tokens.len() == 4 && tokens[1] == "begin" {
+            let tag = tokens[0].to_string();
+            let dims: Vec<&str> = tokens[2].splitn(2, 'x').collect();
+            let width = dims[0].parse::<u32>().expect("width in begin line");
+            let height = dims[1].parse::<u32>().expect("height in begin line");
+            let declared_len = tokens[3].parse::<usize>().expect("len in begin line");
+            current = Some(ParsedThumbEntry {
+                tag,
+                width,
+                height,
+                declared_len,
+                base64: String::new(),
+            });
+            continue;
+        }
+        // end line: "<tag> end"
+        if tokens.len() == 2 && tokens[1] == "end" {
+            if let Some(entry) = current.take() {
+                entries.push(entry);
+            }
+            continue;
+        }
+        // otherwise a base64 chunk line
+        if let Some(entry) = current.as_mut() {
+            entry.base64.push_str(content);
+        }
+    }
+    entries
+}
+
+/// Decode base64 (standard alphabet) via the `base64` dev-dep engine.
+fn decode_b64(s: &str) -> Vec<u8> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .expect("thumbnail base64 must be valid")
+}
+
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // POSITIVE TESTS (AC-1 through AC-12)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// AC-1: Sentinels present without thumbnail.
-/// HEADER_BLOCK_START, HEADER_BLOCK_END, CONFIG_BLOCK_START, CONFIG_BLOCK_END
-/// each appear exactly once; THUMBNAIL_BLOCK_START does NOT appear.
+/// AC-N2: `thumbnails` config key present but no `thumbnail_path` source PNG.
+/// With no source image to render, no THUMBNAIL_BLOCK is emitted, but the other
+/// sentinels remain present exactly once each.
 #[test]
 fn sentinels_present_no_thumbnail() {
-    let gcode = slice_no_thumb();
+    let gcode = slice_to_gcode_with_key(None, Some("48x48/PNG"))
+        .expect("pipeline should succeed with thumbnails key but no source PNG");
 
     assert_eq!(
         count_occurrences(&gcode, "; HEADER_BLOCK_START"),
@@ -241,7 +326,7 @@ fn sentinels_present_no_thumbnail() {
     );
     assert!(
         !gcode.contains("; THUMBNAIL_BLOCK_START"),
-        "THUMBNAIL_BLOCK_START must NOT appear when no thumbnail is provided"
+        "THUMBNAIL_BLOCK_START must NOT appear when no source PNG is provided (AC-N2)"
     );
 }
 
@@ -582,7 +667,9 @@ fn config_block_fork_keys_never_shadowed() {
     );
 }
 
-/// AC-10: THUMBNAIL_BLOCK base64 roundtrip matches input file bytes.
+/// AC-10: THUMBNAIL_BLOCK inner-framed base64 roundtrip matches input file bytes.
+/// The default (no `thumbnails` key) emits a single PNG entry at source
+/// dimensions whose decoded body is the source PNG bytes verbatim.
 #[test]
 fn thumbnail_roundtrip_matches_input() {
     let gcode = slice_with_thumb();
@@ -593,33 +680,62 @@ fn thumbnail_roundtrip_matches_input() {
     );
 
     let thumb_region = region_between(&gcode, "; THUMBNAIL_BLOCK_START", "; THUMBNAIL_BLOCK_END");
+    let entries = parse_thumb_entries(thumb_region);
+    assert_eq!(
+        entries.len(),
+        1,
+        "default (no thumbnails key) must emit exactly one entry, got: {entries:?}"
+    );
+    let entry = &entries[0];
+    assert_eq!(entry.tag, "thumbnail", "default entry must be a PNG entry");
 
-    // Strip "; " prefix from each non-empty content line and concatenate
-    let b64_raw: String = thumb_region
-        .lines()
-        .filter(|l| {
-            !l.trim().is_empty() && *l != "; THUMBNAIL_BLOCK_START" && *l != "; THUMBNAIL_BLOCK_END"
-        })
-        .map(|l| {
-            l.strip_prefix("; ")
-                .unwrap_or_else(|| panic!("thumbnail line must start with '; ', got: {l:?}"))
-        })
-        .collect::<Vec<_>>()
-        .join("");
-
-    let decoded = base64::engine::general_purpose::STANDARD
-        .decode(&b64_raw)
-        .expect("thumbnail base64 must be valid");
-
+    let decoded = decode_b64(&entry.base64);
     let expected = std::fs::read(fake_thumb_path()).expect("fake_thumb.png must be readable");
 
     assert_eq!(
         decoded, expected,
         "decoded thumbnail bytes must match input file bytes"
     );
+
+    // AC-1: the `; thumbnail begin <W>x<H>` framing dimensions must equal the
+    // source PNG's actual IHDR dimensions (4-byte big-endian at bytes 16-19 for
+    // width, 20-23 for height).
+    assert!(
+        expected.len() >= 24,
+        "source PNG too short to read IHDR dimensions"
+    );
+    let ihdr_w = u32::from_be_bytes([expected[16], expected[17], expected[18], expected[19]]);
+    let ihdr_h = u32::from_be_bytes([expected[20], expected[21], expected[22], expected[23]]);
+    assert_eq!(
+        (entry.width, entry.height),
+        (ihdr_w, ihdr_h),
+        "begin-line dimensions must match source PNG IHDR dimensions"
+    );
 }
 
-/// AC-11: Every line in THUMBNAIL_BLOCK starts with "; " and base64 portion â‰¤ 76 chars.
+/// AC-N1: a malformed `thumbnails` config key is rejected by the pipeline and no
+/// THUMBNAIL_BLOCK is emitted. With a valid `thumbnail_path` but `thumbnails =
+/// "48x48/BMP"` (unsupported format), `parse_thumbnails_key` fails and the error
+/// is propagated as `PostpassError::GCodeSerialization`.
+#[test]
+fn rejects_malformed_thumbnails_key() {
+    let p = fake_thumb_path();
+    let p_str = p.to_str().expect("path to str");
+    let result = slice_to_gcode_with_key(Some(p_str), Some("48x48/BMP"));
+
+    let err = result.expect_err("pipeline must reject malformed `thumbnails` key");
+    assert!(
+        err.contains("48x48/BMP"),
+        "error message must reference the offending key token, got: {err:?}"
+    );
+    assert!(
+        !err.contains("THUMBNAIL_BLOCK_START"),
+        "on rejection no THUMBNAIL_BLOCK emitted; error must not leak sentinel text"
+    );
+}
+
+/// AC-11: THUMBNAIL_BLOCK inner framing is present and each base64 line is
+/// â‰¤ 78 chars after the "; " prefix (Orca row length).
 #[test]
 fn thumbnail_base64_chunking_orca_parity() {
     let gcode = slice_with_thumb();
@@ -631,18 +747,118 @@ fn thumbnail_base64_chunking_orca_parity() {
 
     let thumb_region = region_between(&gcode, "; THUMBNAIL_BLOCK_START", "; THUMBNAIL_BLOCK_END");
 
+    // Inner framing must be present.
+    let has_begin = thumb_region
+        .lines()
+        .any(|l| l.starts_with("; thumbnail begin ") && l.contains('x'));
+    assert!(
+        has_begin,
+        "block must contain a '; thumbnail begin <W>x<H> <len>' frame line, got:\n{thumb_region}"
+    );
+    assert!(
+        thumb_region.lines().any(|l| l.trim() == "; thumbnail end"),
+        "block must contain a '; thumbnail end' frame line"
+    );
+
+    // Every base64 chunk line's content after "; " is â‰¤ 78 chars, and the
+    // declared <len> equals the total base64 char count.
+    let entries = parse_thumb_entries(thumb_region);
+    assert!(!entries.is_empty(), "at least one entry must be parsed");
+    for entry in &entries {
+        assert_eq!(
+            entry.declared_len,
+            entry.base64.len(),
+            "declared <len> must equal total base64 char count (incl. padding)"
+        );
+    }
     for line in thumb_region.lines().filter(|l| !l.trim().is_empty()) {
         assert!(
             line.starts_with("; "),
             "every thumbnail block line must start with '; ', got: {line:?}"
         );
-        let b64_part = &line[2..]; // strip "; "
+        let content = &line[2..]; // strip "; "
+                                  // Only base64 chunk lines are bounded; frame lines are short anyway.
         assert!(
-            b64_part.len() <= 76,
-            "base64 chunk must be â‰¤ 76 chars, got {} chars: {b64_part:?}",
-            b64_part.len()
+            content.len() <= 78,
+            "line content must be â‰¤ 78 chars, got {} chars: {content:?}",
+            content.len()
         );
     }
+}
+
+/// AC (multi-entry resize): `thumbnails = "48x48/PNG,300x300/PNG"` renders two
+/// PNG entries whose decoded IHDR dimensions match the framing header.
+#[test]
+fn thumbnail_multi_entry_resized_png() {
+    let p = fake_thumb_path();
+    let p_str = p.to_str().expect("path to str");
+    let gcode = slice_to_gcode_with_key(Some(p_str), Some("48x48/PNG,300x300/PNG"))
+        .expect("pipeline should succeed with multi PNG thumbnails key");
+
+    let thumb_region = region_between(&gcode, "; THUMBNAIL_BLOCK_START", "; THUMBNAIL_BLOCK_END");
+    let entries = parse_thumb_entries(thumb_region);
+    assert_eq!(
+        entries.len(),
+        2,
+        "two PNG specs must produce two entries, got: {entries:?}"
+    );
+
+    let expected_dims = [(48u32, 48u32), (300u32, 300u32)];
+    for (entry, (ew, eh)) in entries.iter().zip(expected_dims.iter()) {
+        assert_eq!(
+            entry.tag, "thumbnail",
+            "PNG entries carry the 'thumbnail' tag"
+        );
+        assert_eq!((entry.width, entry.height), (*ew, *eh), "framing dims");
+
+        let bytes = decode_b64(&entry.base64);
+        // PNG signature is 8 bytes; IHDR data begins at byte 16: width (4 BE)
+        // then height (4 BE). (8 sig + 4 len + 4 type = 16.)
+        assert!(bytes.len() >= 24, "decoded PNG too short to read IHDR");
+        let ihdr_w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
+        let ihdr_h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
+        assert_eq!(
+            (ihdr_w, ihdr_h),
+            (*ew, *eh),
+            "decoded PNG IHDR dimensions must match the framing header"
+        );
+    }
+}
+
+/// AC (multiformat): `thumbnails = "64x64/JPG,64x64/QOI"` renders a JPG entry
+/// (SOI 0xFF 0xD8) and a QOI entry (magic "qoif").
+#[test]
+fn thumbnail_jpg_qoi_entries() {
+    let p = fake_thumb_path();
+    let p_str = p.to_str().expect("path to str");
+    let gcode = slice_to_gcode_with_key(Some(p_str), Some("64x64/JPG,64x64/QOI"))
+        .expect("pipeline should succeed with JPG+QOI thumbnails key");
+
+    let thumb_region = region_between(&gcode, "; THUMBNAIL_BLOCK_START", "; THUMBNAIL_BLOCK_END");
+    let entries = parse_thumb_entries(thumb_region);
+    assert_eq!(
+        entries.len(),
+        2,
+        "JPG+QOI specs must produce two entries, got: {entries:?}"
+    );
+
+    let jpg = &entries[0];
+    assert_eq!(jpg.tag, "thumbnail_JPG", "first entry must be JPG");
+    let jpg_bytes = decode_b64(&jpg.base64);
+    assert!(
+        jpg_bytes.len() >= 2 && jpg_bytes[0] == 0xFF && jpg_bytes[1] == 0xD8,
+        "JPG entry must begin with SOI 0xFF 0xD8, got: {:?}",
+        &jpg_bytes[..jpg_bytes.len().min(4)]
+    );
+
+    let qoi = &entries[1];
+    assert_eq!(qoi.tag, "thumbnail_QOI", "second entry must be QOI");
+    let qoi_bytes = decode_b64(&qoi.base64);
+    assert!(
+        qoi_bytes.len() >= 4 && &qoi_bytes[..4] == b"qoif",
+        "QOI entry must begin with magic 'qoif', got: {:?}",
+        &qoi_bytes[..qoi_bytes.len().min(4)]
+    );
 }
 
 /// AC-12: Block ordering â€” HEADER before first ;TYPE:, CONFIG after last ;TYPE:.
