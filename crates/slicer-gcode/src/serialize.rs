@@ -10,6 +10,7 @@ use std::fmt::Write;
 use slicer_ir::{ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, ResolvedConfig};
 
 use crate::error::GCodeEmitError;
+use crate::flavor::GcodeFlavor;
 use crate::thumbnail::serialize_thumbnail_block;
 
 /// Trait for GCode serialization (host-built-in).
@@ -57,6 +58,7 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
 /// `relative` controls whether `M83` (relative-E) or `M82` (absolute-E) is
 /// emitted in the preamble, and how E values are rendered during serialization.
 pub struct DefaultGCodeSerializer {
+    flavor: GcodeFlavor,
     /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
     relative: bool,
     /// Filament diameter in mm (default 1.75 per schema).
@@ -92,6 +94,7 @@ impl DefaultGCodeSerializer {
     /// - `relative = false` → emits `M82` in preamble; E values are absolute.
     pub fn with_extrusion_mode(relative: bool) -> Self {
         Self {
+            flavor: GcodeFlavor::Marlin,
             relative,
             filament_diameter_mm: 1.75,
             filament_density_g_cm3: 1.24,
@@ -104,6 +107,12 @@ impl DefaultGCodeSerializer {
             support_line_width: 0.35,
             gcode_xy_decimals: 3,
         }
+    }
+
+    /// Sets the G-code dialect used for flavor-specific commands.
+    pub fn with_flavor(mut self, flavor: GcodeFlavor) -> Self {
+        self.flavor = flavor;
+        self
     }
 
     /// Sets filament diameter and density (overrides schema defaults).
@@ -283,6 +292,7 @@ pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigVal
 fn serialize_config_block(
     raw_config: &HashMap<String, ConfigValue>,
     filament_colour_csv: &str,
+    flavor: GcodeFlavor,
 ) -> String {
     use std::collections::BTreeSet;
 
@@ -337,6 +347,14 @@ fn serialize_config_block(
             "Generic PNP Printer",
         );
     }
+    let flavor_value = raw_config
+        .get("gcode_flavor")
+        .and_then(|value| match value {
+            ConfigValue::String(value) => Some(value.as_str()),
+            _ => None,
+        })
+        .unwrap_or_else(|| flavor.config_str());
+    emit_config_kv(&mut out, &mut emitted, "gcode_flavor", flavor_value);
 
     // Sort keys for deterministic output.
     let mut keys: Vec<&String> = raw_config.keys().collect();
@@ -407,7 +425,6 @@ fn emit_config_kv(
 /// responsibility per the CONFIG_BLOCK viewer-key contract in
 /// `docs/02_ir_schemas.md`.
 const ORCA_CONFIG_PADDING: &[(&str, &str)] = &[
-    ("gcode_flavor", "marlin"),
     ("single_extruder_multi_material", "1"),
     ("seam_position", "aligned"),
     ("spiral_mode", "0"),
@@ -491,6 +508,7 @@ pub struct ThumbnailAwareSerializer {
     inner: Box<dyn GCodeSerializer>,
     thumbnail_bytes: Option<Vec<u8>>,
     raw_config: HashMap<String, ConfigValue>,
+    flavor: GcodeFlavor,
 }
 
 impl ThumbnailAwareSerializer {
@@ -501,10 +519,35 @@ impl ThumbnailAwareSerializer {
         thumbnail_bytes: Option<Vec<u8>>,
         raw_config: HashMap<String, ConfigValue>,
     ) -> Self {
+        let flavor = raw_config
+            .get("gcode_flavor")
+            .and_then(|value| match value {
+                ConfigValue::String(value) => Some(GcodeFlavor::from_config_str(value)),
+                _ => None,
+            })
+            .unwrap_or_default();
         Self {
             inner,
             thumbnail_bytes,
             raw_config,
+            flavor,
+        }
+    }
+
+    /// Set the resolved G-code dialect used for synthetic CONFIG_BLOCK keys.
+    pub fn with_flavor(mut self, flavor: GcodeFlavor) -> Self {
+        self.flavor = flavor;
+        self
+    }
+}
+
+impl Default for ThumbnailAwareSerializer {
+    fn default() -> Self {
+        Self {
+            inner: Box::new(DefaultGCodeSerializer::default()),
+            thumbnail_bytes: None,
+            raw_config: HashMap::new(),
+            flavor: GcodeFlavor::Marlin,
         }
     }
 }
@@ -553,7 +596,7 @@ impl GCodeSerializer for ThumbnailAwareSerializer {
 
         // 3. Append CONFIG_BLOCK at the end of the output, with the per-filament
         // colour list sized to the tools in use (drives the OrcaSlicer preview).
-        let config_block = serialize_config_block(&self.raw_config, &colour_csv);
+        let config_block = serialize_config_block(&self.raw_config, &colour_csv, self.flavor);
         let mut result = base;
         result.push_str(&config_block);
         Ok(result)
@@ -728,8 +771,7 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     celsius,
                     wait,
                 } => {
-                    let cmd = if *wait { "M109" } else { "M104" };
-                    writeln!(output, "{} T{} S{}", cmd, tool, format_coord(*celsius)).unwrap();
+                    output.push_str(&self.flavor.set_temperature(*tool, *celsius, *wait));
                 }
                 GCodeCommand::ToolChange { to, .. } => {
                     writeln!(output, "T{}", to).unwrap();
@@ -794,7 +836,7 @@ mod tests {
 
         assert_eq!(resolve_filament_colour_csv(&cfg, 4), authored);
 
-        let block = serialize_config_block(&cfg, &filament_colour_csv(4));
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
         assert!(
             block.contains(&format!("; filament_colour = {authored}")),
             "config block must emit authored palette; got:\n{block}"

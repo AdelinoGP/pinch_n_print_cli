@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 171-gcode-flavor-writer
 task_ids:
   - TASK-276

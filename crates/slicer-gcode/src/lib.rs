@@ -20,3 +20,6 @@ pub use serialize::{
     GCodeSerializer, ThumbnailAwareSerializer,
 };
 pub use thumbnail::serialize_thumbnail_block;
+/// G-code flavor dialect layer ported from OrcaSlicer's `GCodeWriter.cpp`.
+pub mod flavor;
+pub use flavor::GcodeFlavor;

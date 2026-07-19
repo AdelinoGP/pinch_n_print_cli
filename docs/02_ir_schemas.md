@@ -1750,6 +1750,13 @@ When `raw_config` lacks `printer_model`, PNP emits
 deduplication path, `emit_config_kv` plus `BTreeSet<String>`, so a fork-supplied
 value always wins.
 
+`gcode_flavor` is a real honored key, not cosmetic padding. It supports five
+values: `marlin` (default), `marlin2`, `klipper`, `reprapfirmware`, and
+`repetier`; the dialect is implemented in `crates/slicer-gcode/src/flavor.rs`
+(packet 171) and echoed in the `CONFIG_BLOCK` between `; CONFIG_BLOCK_START`
+and `; CONFIG_BLOCK_END`. Unknown values fall back to `marlin` with a
+`log::warn!`.
+
 Packet 169-time-estimator-slice-stats depends on this contract when constructing
 fork-realistic machine-limit fixtures.
 

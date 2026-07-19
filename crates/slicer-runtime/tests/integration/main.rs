@@ -15,6 +15,7 @@ mod core_module_macro_adoption_tdd;
 mod extra_perimeters_config_tdd;
 mod extra_perimeters_on_overhangs_tdd;
 mod gap_fill_emission_tdd;
+mod gcode_flavor_config_block_tdd;
 mod gcode_header_thumbnail_config_blocks_tdd;
 mod gcode_part_cooling_emission_tdd;
 mod gcode_skirt_brim_emission_tdd;

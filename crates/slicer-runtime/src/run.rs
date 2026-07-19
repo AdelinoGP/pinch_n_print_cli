@@ -33,7 +33,9 @@ use crate::progress_instrumentation::{now_unix_ms, ProgressPipelineInstrumentati
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
-use slicer_gcode::{estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits};
+use slicer_gcode::{
+    estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
+};
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
@@ -687,6 +689,10 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     .map_err(|e| SliceRunError(format!("failed to build execution plan: {e}")))?;
 
     let engine = Arc::clone(&loaded.engine);
+    let flavor = match config_source.get("gcode_flavor") {
+        Some(ConfigValue::String(value)) => GcodeFlavor::from_config_str(value),
+        _ => GcodeFlavor::Marlin,
+    };
     let relative = match config_source.get("use_relative_e_distances") {
         Some(ConfigValue::Bool(b)) => *b,
         _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
@@ -717,7 +723,9 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
                     .with_resolved_config(default_resolved_config.clone())
                     .with_tool_configs(per_tool_configs_map.clone()),
             ),
-            serializer: Box::new(DefaultGCodeSerializer::with_extrusion_mode(relative)),
+            serializer: Box::new(
+                DefaultGCodeSerializer::with_extrusion_mode(relative).with_flavor(flavor),
+            ),
         },
         resolved_configs: Arc::new(resolved_configs_map),
         default_resolved_config: Arc::new(default_resolved_config),
