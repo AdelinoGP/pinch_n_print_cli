@@ -17,16 +17,25 @@
 //! Algorithm adapted from OrcaSlicer FillGyroid.cpp:
 //! 1. Compute z phase: z_sin = sin(z / scale), z_cos = cos(z / scale)
 //! 2. Choose orientation: vertical if |z_sin| <= |z_cos|, else horizontal
-//! 3. Adaptively sample one period of the Gyroid curve f(x)
-//! 4. Tile wave periods across bounding box
-//! 5. Clip waves to infill polygon boundaries
-//! 6. Convert to ExtrusionPath3D with SparseInfill role
+//! 3. Rotate the input ExPolygon by `-(base_angle + CorrectionAngle)` so wave
+//!    generation can run axis-aligned in the rotated frame
+//! 4. Adaptively sample one period of the Gyroid curve f(x) in the rotated frame
+//! 5. Tile wave periods across the rotated bounding box (snapped via
+//!    `align_to_grid` to a `2π × scale_factor` grid for phase coherence across
+//!    layers, expanded by 10 × spacing for edge coverage)
+//! 6. Rotate the emitted wave points back by `+(base_angle + CorrectionAngle)`
+//!    and emit raw (no clipping — the `infill-linker` module post-processes
+//!    the raw waves; packet 133, TASK-258)
+//! 7. Convert to ExtrusionPath3D with the role chosen by the dispatcher
+//!    (`SparseInfill` for sparse-fill; `Top/Bottom/BridgeSolidInfill` when
+//!    the dispatcher explicitly routes those claims to gyroid — DEV-082 opt-in)
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
+    Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -229,14 +238,31 @@ impl GyroidInfill {
         }
         let spacing_mm = self.line_width as f64 / density_adjusted;
 
-        // Compute bounding box of the polygon in mm
-        let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = polygon_bbox_mm(expoly);
-        let bb_width = bb_max_x - bb_min_x;
-        let bb_height = bb_max_y - bb_min_y;
+        // Compute world-space bbox center (BEFORE rotation) — used as rotation pivot
+        let (bb_w_min_x, bb_w_min_y, bb_w_max_x, bb_w_max_y) = {
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+            for pt in &expoly.contour.points {
+                let x = slicer_ir::units_to_mm(pt.x) as f64;
+                let y = slicer_ir::units_to_mm(pt.y) as f64;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+            (min_x, min_y, max_x, max_y)
+        };
+        let bb_w_width = bb_w_max_x - bb_w_min_x;
+        let bb_w_height = bb_w_max_y - bb_w_min_y;
 
-        if bb_width <= 0.0 || bb_height <= 0.0 {
+        if bb_w_width <= 0.0 || bb_w_height <= 0.0 {
             return Vec::new();
         }
+
+        let cx = (bb_w_min_x + bb_w_max_x) / 2.0;
+        let cy = (bb_w_min_y + bb_w_max_y) / 2.0;
 
         // Compute rotation angle (base + correction)
         let infill_angle_rad = ((self.base_angle as f64) + CORRECTION_ANGLE_DEG).to_radians();
@@ -255,12 +281,42 @@ impl GyroidInfill {
         // Choose orientation based on z phase
         let vertical = z_sin.abs() <= z_cos.abs();
 
+        // Rotate the polygon by -angle around the world bbox center so we work
+        // in the rotated frame. Using the bbox center as the pivot (not the
+        // origin) ensures the back-rotation around the same center is an exact
+        // inverse for off-center polygons.
+        let rotated_expoly = rotate_expolygon(expoly, -infill_angle_rad, cx, cy);
+
+        // Compute bbox of the rotated polygon in mm
+        let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = {
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+            for pt in &rotated_expoly.contour.points {
+                let x = slicer_ir::units_to_mm(pt.x) as f64;
+                let y = slicer_ir::units_to_mm(pt.y) as f64;
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+            }
+            (min_x, min_y, max_x, max_y)
+        };
+        let mut bb_width = bb_max_x - bb_min_x;
+        let mut bb_height = bb_max_y - bb_min_y;
+
+        // Align bbox minima to grid for phase-coherent waves across layers
+        let grid = 2.0 * PI * scale_factor;
+        let bb_min_x = align_to_grid(bb_min_x, grid);
+        let bb_min_y = align_to_grid(bb_min_y, grid);
+
         // Expand bounding box by a few spacings to prevent edge artifacts
-        let expand = 4.0 * spacing_mm;
+        let expand = 10.0 * spacing_mm;
         let bb_min_x = bb_min_x - expand;
         let bb_min_y = bb_min_y - expand;
-        let bb_width = bb_width + 2.0 * expand;
-        let bb_height = bb_height + 2.0 * expand;
+        bb_width += 2.0 * expand;
+        bb_height += 2.0 * expand;
 
         // Convert bbox dimensions to gyroid units
         let mut width = bb_width / scale_factor;
@@ -328,56 +384,51 @@ impl GyroidInfill {
             y0 += PI;
         }
 
-        // Convert wave polylines from gyroid units to mm, then clip to polygon
+        // Convert wave polylines from gyroid units to mm in the rotated frame,
+        // then rotate back to world space around the world bbox center.
         let cos_a = infill_angle_rad.cos();
         let sin_a = infill_angle_rad.sin();
 
         let mut result = Vec::new();
 
         for wave_pts in &wave_points_set {
-            // Convert to mm coordinates relative to bbox origin, then to absolute mm
+            // Convert to mm in the rotated frame, then rotate back to world space
             let mm_points: Vec<(f64, f64)> = wave_pts
                 .iter()
                 .map(|&(gx, gy)| {
-                    let mx = gx * scale_factor + bb_min_x;
-                    let my = gy * scale_factor + bb_min_y;
-                    // Apply rotation around bbox center
-                    let cx = bb_min_x + bb_width / 2.0;
-                    let cy = bb_min_y + bb_height / 2.0;
-                    let dx = mx - cx;
-                    let dy = my - cy;
-                    let rx = dx * cos_a - dy * sin_a + cx;
-                    let ry = dx * sin_a + dy * cos_a + cy;
-                    (rx, ry)
+                    let mx_rot = gx * scale_factor + bb_min_x;
+                    let my_rot = gy * scale_factor + bb_min_y;
+                    // Rotate back by +angle around the world bbox center
+                    let dx = mx_rot - cx;
+                    let dy = my_rot - cy;
+                    let wx = dx * cos_a - dy * sin_a + cx;
+                    let wy = dx * sin_a + dy * cos_a + cy;
+                    (wx, wy)
                 })
                 .collect();
 
-            // Clip the polyline to the polygon and collect segments
-            let clipped = clip_polyline_to_expolygon(&mm_points, expoly);
-
-            for segment in clipped {
-                if segment.len() < 2 {
-                    continue;
-                }
-
-                let points: Vec<Point3WithWidth> = segment
-                    .iter()
-                    .map(|&(x, y)| Point3WithWidth {
-                        x: x as f32,
-                        y: y as f32,
-                        z,
-                        width: self.line_width,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    })
-                    .collect();
-
-                result.push(ExtrusionPath3D {
-                    points,
-                    role: ExtrusionRole::SparseInfill,
-                    speed_factor,
-                });
+            // Emit raw — no clipping (ADR-0025 degraded-not-failed)
+            if mm_points.len() < 2 {
+                continue;
             }
+
+            let points: Vec<Point3WithWidth> = mm_points
+                .iter()
+                .map(|&(x, y)| Point3WithWidth {
+                    x: x as f32,
+                    y: y as f32,
+                    z,
+                    width: self.line_width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                })
+                .collect();
+
+            result.push(ExtrusionPath3D {
+                points,
+                role: ExtrusionRole::SparseInfill,
+                speed_factor,
+            });
         }
 
         result
@@ -547,92 +598,48 @@ fn make_wave(
     result
 }
 
-/// Compute bounding box of an ExPolygon in mm coordinates.
-fn polygon_bbox_mm(expoly: &ExPolygon) -> (f64, f64, f64, f64) {
-    let mut min_x = f64::MAX;
-    let mut min_y = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut max_y = f64::MIN;
+/// Snap a value down to the nearest multiple of `grid`.
+///
+/// Mirrors OrcaSlicer's `align_to_grid` (FillGyroid.cpp): `std::floor(val/grid)*grid`.
+/// Rust's `%` is a truncated remainder (toward zero), so `val - val%grid` would round
+/// negative values toward zero instead of down. Use `(val/grid).floor() * grid` for the
+/// correct `floor` semantics.
+pub fn align_to_grid(val: f64, grid: f64) -> f64 {
+    (val / grid).floor() * grid
+}
 
-    for pt in &expoly.contour.points {
+/// Rotate an ExPolygon around the pivot `(pivot_x, pivot_y)` by `angle_rad`.
+///
+/// The pivot is the world bbox center of the input polygon; using the same
+/// pivot at the back-rotation step makes the rotation an exact inverse.
+fn rotate_expolygon(expoly: &ExPolygon, angle_rad: f64, pivot_x: f64, pivot_y: f64) -> ExPolygon {
+    let cos_a = angle_rad.cos();
+    let sin_a = angle_rad.sin();
+    let rotate_pt = |pt: Point2| -> Point2 {
         let x = slicer_ir::units_to_mm(pt.x) as f64;
         let y = slicer_ir::units_to_mm(pt.y) as f64;
-        min_x = min_x.min(x);
-        min_y = min_y.min(y);
-        max_x = max_x.max(x);
-        max_y = max_y.max(y);
-    }
-
-    (min_x, min_y, max_x, max_y)
-}
-
-/// Simple point-in-ExPolygon test using ray casting.
-fn point_in_expolygon(x: f64, y: f64, expoly: &ExPolygon) -> bool {
-    // Must be inside contour
-    if !point_in_polygon(x, y, &expoly.contour.points) {
-        return false;
-    }
-    // Must be outside all holes
-    for hole in &expoly.holes {
-        if point_in_polygon(x, y, &hole.points) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Ray casting point-in-polygon test.
-fn point_in_polygon(x: f64, y: f64, points: &[Point2]) -> bool {
-    let n = points.len();
-    if n < 3 {
-        return false;
-    }
-
-    let mut inside = false;
-    let mut j = n - 1;
-    for i in 0..n {
-        let xi = slicer_ir::units_to_mm(points[i].x) as f64;
-        let yi = slicer_ir::units_to_mm(points[i].y) as f64;
-        let xj = slicer_ir::units_to_mm(points[j].x) as f64;
-        let yj = slicer_ir::units_to_mm(points[j].y) as f64;
-
-        if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
-            inside = !inside;
-        }
-        j = i;
-    }
-
-    inside
-}
-
-/// Clip a polyline (series of mm points) to an ExPolygon.
-///
-/// Returns a list of segments (sub-polylines) that are inside the polygon.
-fn clip_polyline_to_expolygon(points: &[(f64, f64)], expoly: &ExPolygon) -> Vec<Vec<(f64, f64)>> {
-    if points.len() < 2 {
-        return Vec::new();
-    }
-
-    let mut result: Vec<Vec<(f64, f64)>> = Vec::new();
-    let mut current_segment: Vec<(f64, f64)> = Vec::new();
-
-    for &(x, y) in points {
-        if point_in_expolygon(x, y, expoly) {
-            current_segment.push((x, y));
-        } else {
-            if current_segment.len() >= 2 {
-                result.push(std::mem::take(&mut current_segment));
-            } else {
-                current_segment.clear();
-            }
-        }
-    }
-
-    if current_segment.len() >= 2 {
-        result.push(current_segment);
-    }
-
-    result
+        let dx = x - pivot_x;
+        let dy = y - pivot_y;
+        let rx = dx * cos_a - dy * sin_a + pivot_x;
+        let ry = dx * sin_a + dy * cos_a + pivot_y;
+        Point2::from_mm(rx as f32, ry as f32)
+    };
+    let contour = Polygon {
+        points: expoly
+            .contour
+            .points
+            .iter()
+            .map(|p| rotate_pt(*p))
+            .collect(),
+    };
+    let holes = expoly
+        .holes
+        .iter()
+        .map(|h| Polygon {
+            points: h.points.iter().map(|p| rotate_pt(*p)).collect(),
+        })
+        .collect();
+    ExPolygon { contour, holes }
 }
 
 #[cfg(test)]
@@ -679,17 +686,5 @@ mod tests {
         for i in 1..pts.len() {
             assert!(pts[i].0 >= pts[i - 1].0, "points should be x-sorted");
         }
-    }
-
-    #[test]
-    fn point_in_polygon_basic() {
-        let pts = vec![
-            Point2::from_mm(-5.0, -5.0),
-            Point2::from_mm(5.0, -5.0),
-            Point2::from_mm(5.0, 5.0),
-            Point2::from_mm(-5.0, 5.0),
-        ];
-        assert!(point_in_polygon(0.0, 0.0, &pts));
-        assert!(!point_in_polygon(10.0, 10.0, &pts));
     }
 }

@@ -18,7 +18,7 @@ writes = ["InfillIR"]
 # Retired the legacy `infill-generator` blanket claim 2026-06-09 (see DEV-065)
 # so gyroid can coexist with rectilinear/lightning. Per-region resolution
 # via `ResolvedConfig.sparse_fill_holder` picks the active sparse-fill module.
-holds    = ["claim:sparse-fill"]
+holds    = ["claim:sparse-fill", "claim:top-fill", "claim:bottom-fill", "claim:bridge-fill"]
 requires = []
 
 [compatibility]
