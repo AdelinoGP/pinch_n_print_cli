@@ -625,7 +625,9 @@ fn canonical_world_layer_run_infill_postprocess_takes_prior_infill() {
 
 /// Recursively collect files with one of `exts`, skipping build/VCS dirs.
 fn collect_files(dir: &std::path::Path, exts: &[&str], out: &mut Vec<PathBuf>) {
-    let skip = ["target", ".git", "node_modules"];
+    // The repository may contain developer-created linked worktrees. They are
+    // separate checkouts, not workspace source, and can retain old WIT names.
+    let skip = ["target", ".git", "node_modules", "worktrees"];
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };

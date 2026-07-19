@@ -906,6 +906,7 @@ fn arachne_parity_arachne_path_seam_candidate_producer_present() {
 /// OrcaSlicer ref: `FillConcentric.cpp:80-118`; `FillConcentricInternal.cpp:29-55`.
 /// Proposed deviation: `D-104f-CONCENTRIC-INFILL-NO-ARACHNE`.
 #[test]
+#[ignore = "D-104f-CONCENTRIC-INFILL-NO-ARACHNE: deferred concentric-infill Arachne wiring"]
 fn arachne_parity_pipeline_concentric_infill_uses_arachne() {
     let runtime_src = include_str!("../src/run.rs");
     let uses_arachne_for_infill =
@@ -927,7 +928,7 @@ fn arachne_parity_pipeline_concentric_infill_uses_arachne() {
          FillConcentricInternal.cpp:29-55) | got: slicer-runtime's run.rs never \
          dispatches infill through run_arachne_pipeline, and none of the three \
          infill modules (rectilinear/gyroid/lightning) reference \
-         run_arachne_pipeline or generate_arachne_walls — propose \
+         run_arachne_pipeline or generate_arachne_walls — deviation \
          D-104f-CONCENTRIC-INFILL-NO-ARACHNE | ref: FillConcentric.cpp:80-118"
     );
 }

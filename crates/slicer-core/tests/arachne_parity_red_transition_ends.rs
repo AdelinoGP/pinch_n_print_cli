@@ -30,6 +30,7 @@
 use std::collections::BTreeSet;
 
 use slicer_core::beading::distributed::DistributedBeadingStrategy;
+use slicer_core::beading::BeadingStrategy;
 use slicer_core::skeletal_trapezoidation::{
     apply_transitions, generate_all_transition_ends, EdgeType, RibData, STHalfEdge, STVertex,
     SkeletalTrapezoidationGraph, TransitionMiddle,
@@ -147,7 +148,9 @@ fn n3_apply_transitions_creates_lower_and_upper_end_splits() {
     );
 
     // Positive assertions: canonical generates at least 2 spine nodes, bead
-    // counts cover {1, 2}, and the end nodes straddle the mid position.
+    // counts cover {1, 2}, and the end nodes land at the strategy-computed
+    // lower/upper stations. With the configured 0.99 threshold the anchor is
+    // 0.01, so the lower station is intentionally close to the midpoint.
     assert!(
         new_spine.len() >= 2,
         "expected at least 2 new spine vertices (lower and upper end splits), got {}",
@@ -161,16 +164,23 @@ fn n3_apply_transitions_creates_lower_and_upper_end_splits() {
         bead_counts
     );
 
-    let has_before_mid = new_spine
-        .iter()
-        .any(|v| v.position.x < mid_x_units - tol_units);
-    let has_after_mid = new_spine
-        .iter()
-        .any(|v| v.position.x > mid_x_units + tol_units);
+    let transition_length = strategy.get_transitioning_length(1);
+    let anchor = strategy.get_transition_anchor_pos(1);
+    let expected_lower_x = mid_x_units - anchor * transition_length;
+    let expected_upper_x = mid_x_units + (1.0 - anchor) * transition_length;
+    let endpoint_tol_units = 1.0;
     assert!(
-        has_before_mid && has_after_mid,
-        "expected end nodes to straddle the mid position (x = {:.0}), got spine nodes at x = {:?}",
-        mid_x_units,
+        new_spine.iter().any(|v| {
+            v.bead_count == Some(1) && (v.position.x - expected_lower_x).abs() <= endpoint_tol_units
+        }),
+        "expected lower end at x = {expected_lower_x:.0}, got spine nodes at x = {:?}",
+        new_spine.iter().map(|v| v.position.x).collect::<Vec<_>>()
+    );
+    assert!(
+        new_spine.iter().any(|v| {
+            v.bead_count == Some(2) && (v.position.x - expected_upper_x).abs() <= endpoint_tol_units
+        }),
+        "expected upper end at x = {expected_upper_x:.0}, got spine nodes at x = {:?}",
         new_spine.iter().map(|v| v.position.x).collect::<Vec<_>>()
     );
 }

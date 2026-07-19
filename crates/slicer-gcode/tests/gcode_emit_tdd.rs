@@ -303,8 +303,10 @@ fn emit_tool_change_at_correct_position() {
     );
     let gcode_ir = result.unwrap();
 
-    // Should have: 1 ExtrusionMode + 3 header + 1 ;TYPE + 3 Move + 1 ToolChange = 9 commands
-    assert_eq!(gcode_ir.commands.len(), 9, "should produce 9 commands");
+    // The tool change resets the role label, so the post-change entity emits a
+    // second ;TYPE marker: 1 ExtrusionMode + 3 header + 1 ;TYPE + 2 Move +
+    // 1 ToolChange + 1 ;TYPE + 1 Move = 10 commands.
+    assert_eq!(gcode_ir.commands.len(), 10, "should produce 10 commands");
 
     // Commands 5 and 6 should be Move (after ExtrusionMode + 3 header + 1 ;TYPE lines)
     assert!(matches!(&gcode_ir.commands[5], GCodeCommand::Move { .. }));
@@ -323,8 +325,14 @@ fn emit_tool_change_at_correct_position() {
         other => panic!("expected ToolChange command at index 7, got {:?}", other),
     }
 
-    // Command 8 should be Move
-    assert!(matches!(&gcode_ir.commands[8], GCodeCommand::Move { .. }));
+    // Command 8 should re-emit the role label after the tool change.
+    assert!(matches!(
+        &gcode_ir.commands[8],
+        GCodeCommand::Raw { text } if text == ";TYPE:Outer wall"
+    ));
+
+    // Command 9 should be the final Move.
+    assert!(matches!(&gcode_ir.commands[9], GCodeCommand::Move { .. }));
 }
 
 // ============================================================================

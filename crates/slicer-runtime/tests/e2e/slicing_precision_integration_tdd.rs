@@ -217,6 +217,9 @@ fn default_emits_fewer_lines_than_legacy() {
 /// gyroid/lightning fill-emission bug that the previous golden had (unknowingly)
 /// baked in.
 ///
+/// Re-blessed 2026-07-18 after packet 171 made `gcode_flavor` an explicit
+/// CONFIG_BLOCK key; motion lines remain unchanged.
+///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text
 /// BLESS_GOLDEN=1 cargo test -p slicer-runtime --test slicing_precision_integration_tdd -- legacy_zero_matches_golden --nocapture

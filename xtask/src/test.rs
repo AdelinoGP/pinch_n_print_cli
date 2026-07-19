@@ -88,10 +88,6 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
     // (arachne_parity_gaps.rs, arachne_parity_round2.rs) carry a checked-in policy
     // forbidding `#[ignore]` on this test family, and the roster stays diffable here.
     const QUARANTINED_TESTS: &[&str] = &[
-        // N3 transition-ends RED anchor — deliberate parity target (finding N3 /
-        // D-147-CHAIN-CLOSURE); "FAILS on current code" by design until the
-        // canonical generateTransitioningRibs ramping port lands.
-        "n3_apply_transitions_creates_lower_and_upper_end_splits",
         // Concentric-infill-through-Arachne — out of scope (D-104f; user decision
         // 2026-07-15: not on the roadmap, may never be Arachne).
         "arachne_parity_pipeline_concentric_infill_uses_arachne",
