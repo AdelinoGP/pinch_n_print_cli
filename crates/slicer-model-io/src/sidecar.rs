@@ -40,14 +40,26 @@ pub struct ObjectSidecarInfo {
     pub object_metadata: BTreeMap<String, String>,
 }
 
+/// Full sidecar parse result, carrying both per-object and per-plate metadata.
+///
+/// `plate_metadata` holds the key-value pairs from `<metadata key="â€¦" value="â€¦"/>`
+/// inside the build-plate's `<plate>` element. OrcaSlicer authors build-wide
+/// settings here (e.g. `filament_map_mode`, `filament_maps`, `thumbnail_file`).
+/// These flow through the runtime as global config keys (no `object_config:`
+/// prefix), because they apply to the whole build, not a single object.
+pub struct ParsedSidecar {
+    /// Per-object data, keyed by `<object id>`.
+    pub objects: HashMap<u32, ObjectSidecarInfo>,
+    /// Build-plate metadata (`<plate>` section in `model_settings.config`).
+    pub plate_metadata: BTreeMap<String, String>,
+}
+
 /// Parse `Metadata/model_settings.config` from a 3MF ZIP archive.
 ///
-/// Returns a map from object id â†’ [`ObjectSidecarInfo`].
-/// - Missing sidecar file â†’ empty map, no warning (silent default).
-/// - Read error or malformed XML â†’ empty map + `log::warn!`.
-pub fn parse_3mf_sidecar<R: Read + Seek>(
-    zip: &mut zip::ZipArchive<R>,
-) -> HashMap<u32, ObjectSidecarInfo> {
+/// Returns a [`ParsedSidecar`] with per-object and per-plate metadata.
+/// - Missing sidecar file → empty `ParsedSidecar`, no warning (silent default).
+/// - Read error or malformed XML → empty `ParsedSidecar` + `log::warn!`.
+pub fn parse_3mf_sidecar<R: Read + Seek>(zip: &mut zip::ZipArchive<R>) -> ParsedSidecar {
     let sidecar_bytes = match zip.by_name("Metadata/model_settings.config") {
         Ok(mut file) => {
             let mut buf = Vec::new();
@@ -58,20 +70,26 @@ pub fn parse_3mf_sidecar<R: Read + Seek>(
                         target: "slicer_model_io::sidecar",
                         "3MF sidecar read error: {e}; treating all parts as normal_part"
                     );
-                    return HashMap::new();
+                    return ParsedSidecar {
+                        objects: HashMap::new(),
+                        plate_metadata: BTreeMap::new(),
+                    };
                 }
             }
         }
         Err(_) => {
             // Missing sidecar is the silent default per DEV-051.
-            return HashMap::new();
+            return ParsedSidecar {
+                objects: HashMap::new(),
+                plate_metadata: BTreeMap::new(),
+            };
         }
     };
 
     parse_sidecar_bytes(&sidecar_bytes)
 }
 
-fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> {
+fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> ParsedSidecar {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -79,13 +97,16 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
 
-    let mut result: HashMap<u32, ObjectSidecarInfo> = HashMap::new();
+    let mut objects: HashMap<u32, ObjectSidecarInfo> = HashMap::new();
+    let mut plate_metadata: BTreeMap<String, String> = BTreeMap::new();
+
     let mut current_object_id: Option<u32> = None;
     let mut current_part_id: Option<u32> = None;
     let mut current_subtype = PartSubtype::NormalPart;
     let mut current_metadata: BTreeMap<String, String> = BTreeMap::new();
     let mut current_object_metadata: BTreeMap<String, String> = BTreeMap::new();
     let mut inside_part = false;
+    let mut inside_plate = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -100,7 +121,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                                 if let Ok(s) = std::str::from_utf8(&attr.value) {
                                     if let Ok(id) = s.trim().parse::<u32>() {
                                         current_object_id = Some(id);
-                                        result.entry(id).or_insert_with(|| ObjectSidecarInfo {
+                                        objects.entry(id).or_insert_with(|| ObjectSidecarInfo {
                                             parts: HashMap::new(),
                                             object_metadata: BTreeMap::new(),
                                         });
@@ -128,6 +149,14 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                             }
                         }
                     }
+                    b"plate" => {
+                        // Begin accumulating the build-plate's metadata.
+                        // The single plate in a typical 3MF is what we want; a
+                        // hypothetical second plate would still flow through,
+                        // the last writer wins (the sidecar is a tiny XML
+                        // config, not a real list).
+                        inside_plate = true;
+                    }
                     b"metadata" if inside_part => {
                         let mut key = String::new();
                         let mut val = String::new();
@@ -146,7 +175,25 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                             current_metadata.insert(key, val);
                         }
                     }
-                    b"metadata" if current_object_id.is_some() && !inside_part => {
+                    b"metadata" if inside_plate && !inside_part => {
+                        let mut key = String::new();
+                        let mut val = String::new();
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"key" => {
+                                    key = String::from_utf8_lossy(&attr.value).into_owned();
+                                }
+                                b"value" => {
+                                    val = String::from_utf8_lossy(&attr.value).into_owned();
+                                }
+                                _ => {}
+                            }
+                        }
+                        if !key.is_empty() {
+                            plate_metadata.insert(key, val);
+                        }
+                    }
+                    b"metadata" if current_object_id.is_some() && !inside_part && !inside_plate => {
                         let mut key = String::new();
                         let mut val = String::new();
                         for attr in e.attributes().flatten() {
@@ -174,7 +221,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                     b"part" => {
                         inside_part = false;
                         if let (Some(oid), Some(pid)) = (current_object_id, current_part_id) {
-                            let obj = result.entry(oid).or_insert_with(|| ObjectSidecarInfo {
+                            let obj = objects.entry(oid).or_insert_with(|| ObjectSidecarInfo {
                                 parts: HashMap::new(),
                                 object_metadata: BTreeMap::new(),
                             });
@@ -190,7 +237,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                     }
                     b"object" => {
                         if let Some(oid) = current_object_id {
-                            let obj = result.entry(oid).or_insert_with(|| ObjectSidecarInfo {
+                            let obj = objects.entry(oid).or_insert_with(|| ObjectSidecarInfo {
                                 parts: HashMap::new(),
                                 object_metadata: BTreeMap::new(),
                             });
@@ -198,6 +245,9 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                         }
                         current_object_id = None;
                         inside_part = false;
+                    }
+                    b"plate" => {
+                        inside_plate = false;
                     }
                     _ => {}
                 }
@@ -208,22 +258,29 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                     target: "slicer_model_io::sidecar",
                     "3MF sidecar XML parse error: {e}; treating all parts as normal_part"
                 );
-                return HashMap::new();
+                return ParsedSidecar {
+                    objects: HashMap::new(),
+                    plate_metadata: BTreeMap::new(),
+                };
             }
             _ => {}
         }
         buf.clear();
     }
 
-    let total_parts: usize = result.values().map(|o| o.parts.len()).sum();
+    let total_parts: usize = objects.values().map(|o| o.parts.len()).sum();
     log::trace!(
         target: "slicer_model_io::sidecar",
-        "parse_3mf_sidecar: {} object(s), {} part(s)",
-        result.len(),
-        total_parts
+        "parse_3mf_sidecar: {} object(s), {} part(s), {} plate metadata key(s)",
+        objects.len(),
+        total_parts,
+        plate_metadata.len()
     );
 
-    result
+    ParsedSidecar {
+        objects,
+        plate_metadata,
+    }
 }
 
 fn parse_part_subtype(raw: &[u8]) -> PartSubtype {

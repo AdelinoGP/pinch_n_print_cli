@@ -2663,6 +2663,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "quick-xml 0.39.2",
+ "serde_json",
  "slicer-ir",
  "stl_io",
  "tempfile",

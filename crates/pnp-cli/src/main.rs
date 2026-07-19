@@ -395,22 +395,33 @@ fn main() {
             let (report_opt, report_verbose_opt) = (report, report_verbose);
             #[cfg(not(feature = "report"))]
             let (report_opt, report_verbose_opt): (Option<PathBuf>, bool) = (None, false);
-            // Seed the model's authored per-filament palette (from a 3MF project's
-            // project_settings.config) so the G-code emits the real colours rather
-            // than the serializer's hardcoded default palette.
+            // Seed the model's authored config (from a 3MF project's
+            // project_settings.config) so the G-code / pipeline sees the
+            // real, per-model OrcaSlicer settings rather than the
+            // serializer's hardcoded defaults. The extractor is generic:
+            // every key in the sidecar is ingested with heuristic string
+            // coercion (see `coerce_string_to_config_value`), so any
+            // OrcaSlicer key PNP learns to consume later is already
+            // available in `config_overrides` without further wiring.
             let mut config_overrides: std::collections::HashMap<String, slicer_ir::ConfigValue> =
                 std::collections::HashMap::new();
-            if let Some(colours) = slicer_model_io::read_3mf_filament_colours(&model) {
-                if !colours.is_empty() {
-                    let csv = colours.join(";");
-                    config_overrides.insert(
-                        "filament_colour".to_string(),
-                        slicer_ir::ConfigValue::String(csv.clone()),
-                    );
-                    config_overrides.insert(
-                        "extruder_colour".to_string(),
-                        slicer_ir::ConfigValue::String(csv),
-                    );
+            if let Some(sidecar) = slicer_model_io::read_3mf_project_settings(&model) {
+                // `filament_colour` / `extruder_colour` come through as
+                // `ConfigValue::List` from the generic extractor (they are
+                // JSON arrays in `project_settings.config`). Downstream
+                // consumers (`serialize.rs::resolve_filament_colour_csv`,
+                // `visual_debug.rs::filament_tool_colors`) accept both
+                // `String` (semicolon-joined) and `List`, so we forward the
+                // list form directly.
+                for (key, value) in sidecar {
+                    if key == "thumbnail_path" {
+                        // `thumbnail_path` is an invocation-time routing
+                        // key for `pipeline.rs` to read a PNG from disk;
+                        // a 3MF should never override it — the CLI
+                        // `--thumbnail` flag is the correct source.
+                        continue;
+                    }
+                    config_overrides.insert(key, value);
                 }
             }
             let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

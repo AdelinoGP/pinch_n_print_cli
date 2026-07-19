@@ -13,7 +13,7 @@ pub mod writer;
 
 pub use loader::{
     assemble_object, check_basename_collisions, detect_format, load_model,
-    read_3mf_filament_colours, ModelFormat, ModelLoadError,
+    read_3mf_project_settings, ModelFormat, ModelLoadError,
 };
 pub use sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
 pub use writer::{write_3mf, write_obj};
