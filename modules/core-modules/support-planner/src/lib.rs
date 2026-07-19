@@ -29,9 +29,12 @@
 //!   `branch_radius + tree_support_branch_distance / 2`). Move-pass clamps
 //!   nodes into `avoidance_polys`; nodes whose target lies in
 //!   `collision_polys` are dropped.
-//! - **Radius tapering**: per-emit radius = `clamp(branch_diameter/2 +
-//!   tan(diameter_angle) * dist_to_top * effective_layer_height,
-//!   branch_diameter/2, MAX_BRANCH_RADIUS)` with `MAX_BRANCH_RADIUS = 6.0`.
+//! - **Radius tapering**: two-piece per-emit radius. With
+//!   `mm_to_top = dist_to_top * effective_layer_height`,
+//!   `raw = if mm_to_top <= branch_radius { mm_to_top }
+//!          else { branch_radius + (mm_to_top - branch_radius) * tan(diameter_angle) }`,
+//!   then `radius = clamp(raw, 0.0, MAX_BRANCH_RADIUS_MM = 6.0)`. The top of the column
+//!   tapers to a point (`mm_to_top = 0 → 0.0`).
 //! - **Wall-count scaling**: `max_move_distance = tan(angle) * height *
 //!   wall_count.max(1)`.
 //! - **dist_to_top tracking**: `u32` counter on each `PlannedSupportNode`
@@ -99,10 +102,12 @@ struct PlannedSupportNode {
 /// Holds collision and avoidance polygons for a single support layer.
 #[derive(Clone, Debug, Default)]
 struct LayerCollisionCache {
-    /// Direct support-outline polygons — nodes must stay outside these.
-    collision_polys: Vec<Vec<[f32; 2]>>,
-    /// Inflated collision polygons — nodes must stay inside these.
-    avoidance_polys: Vec<Vec<[f32; 2]>>,
+    /// Direct support-outline ExPolygons — nodes must stay outside these.
+    /// Holes are preserved so a point inside a hole is not in collision.
+    collision_polys: Vec<ExPolygon>,
+    /// Inflated collision ExPolygons — nodes must stay inside these.
+    /// Holes are preserved from the offset result.
+    avoidance_polys: Vec<ExPolygon>,
 }
 
 #[slicer_module]
@@ -217,29 +222,19 @@ impl PrepassModule for SupportPlanner {
                 continue;
             }
             for expoly in &entry.outlines {
-                let outer: Vec<[f32; 2]> = expoly
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| [p.x as f32, p.y as f32])
-                    .collect();
-                if outer.len() >= 3 {
+                if expoly.contour.points.len() >= 3 {
                     collision_cache[layer_idx]
                         .collision_polys
-                        .push(outer.clone());
-                    let inflated = inflate_polygon(&outer, avoid_inflate);
-                    if !inflated.is_empty() {
-                        collision_cache[layer_idx].avoidance_polys.push(inflated);
-                    }
-                }
-                for hole in &expoly.holes {
-                    let hole_points: Vec<[f32; 2]> = hole
-                        .points
-                        .iter()
-                        .map(|p| [p.x as f32, p.y as f32])
-                        .collect();
-                    if hole_points.len() >= 3 {
-                        collision_cache[layer_idx].collision_polys.push(hole_points);
+                        .push(expoly.clone());
+                    let inflated = host::offset_polygons(
+                        &[expoly.clone()],
+                        avoid_inflate,
+                        OffsetJoinType::Miter,
+                    );
+                    for off in inflated {
+                        if off.contour.points.len() >= 3 {
+                            collision_cache[layer_idx].avoidance_polys.push(off);
+                        }
                     }
                 }
             }
@@ -633,7 +628,7 @@ impl SupportPlanner {
                         // structured `support-planner.node-clamped-out` prefix
                         // until a typed `Diagnostic` channel is plumbed through
                         // the prepass output WIT (follow-up to packet 31b).
-                        if point_in_any_polygon(collision_polys, cx, cy) {
+                        if point_in_any_expoly(collision_polys, cx, cy) {
                             log(
                                 LogLevel::Warn,
                                 &format!(
@@ -789,6 +784,28 @@ fn point_in_any_polygon(polygons: &[Vec<[f32; 2]>], x: f32, y: f32) -> bool {
     polygons.iter().any(|poly| point_in_polygon(poly, x, y))
 }
 
+fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
+    polygons.iter().any(|ex| {
+        let outer: Vec<[f32; 2]> = ex
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
+        point_in_polygon(&outer, x, y)
+            && !ex.holes.iter().any(|h| {
+                point_in_polygon(
+                    &h.points
+                        .iter()
+                        .map(|p| [p.x as f32, p.y as f32])
+                        .collect::<Vec<_>>(),
+                    x,
+                    y,
+                )
+            })
+    })
+}
+
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.
 pub fn point_in_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> bool {
     if poly.len() < 3 {
@@ -876,86 +893,50 @@ fn euclidean_distance(a: &PlannedSupportNode, b: &PlannedSupportNode) -> f32 {
 
 /// Compute tapered radius at a node given its distance from the top of the column.
 ///
-/// Formula (per OrcaSlicer `TreeSupport.cpp`):
-/// `radius = clamp(branch_radius + tan(diameter_angle) * dist_to_top * layer_height,
-///                 branch_radius, MAX_BRANCH_RADIUS)`
+/// Two-piece tip-cone formula:
+/// - If `mm_to_top <= branch_radius`: radius = mm_to_top (linearly widen from 0 at the tip
+///   to `branch_radius` at the cone base).
+/// - Otherwise: radius = branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
+///   (continue the same slope above the cone).
+///   Clamped to `[0, MAX_BRANCH_RADIUS_MM]`.
 pub fn tapered_radius(
     branch_radius: f32,
     tan_diameter_angle: f32,
     dist_to_top: u32,
     effective_layer_height: f32,
 ) -> f32 {
-    let expanded =
-        branch_radius + tan_diameter_angle * (dist_to_top as f32) * effective_layer_height;
-    expanded.clamp(branch_radius, MAX_BRANCH_RADIUS_MM)
-}
-
-/// Inflate a polygon by `delta` mm using a simple edge-parallel offset approach.
-/// Returns the inflated polygon vertices.
-pub(crate) fn inflate_polygon(outer: &[[f32; 2]], delta: f32) -> Vec<[f32; 2]> {
-    if outer.len() < 3 || delta <= 0.0 {
-        return outer.to_vec();
-    }
-    let n = outer.len();
-    let mut result = Vec::with_capacity(n);
-    for i in 0..n {
-        let p0 = outer[i];
-        let p1 = outer[(i + 1) % n];
-        let p2 = outer[(i + 2) % n];
-
-        let dx = p1[0] - p0[0];
-        let dy = p1[1] - p0[1];
-        let len = (dx * dx + dy * dy).sqrt();
-        if len < 1e-8 {
-            continue;
-        }
-        // Outward normal (90° CCW) for edge p0→p1
-        let nx = -dy / len;
-        let ny = dx / len;
-
-        // Average with previous edge normal for smoother miter at vertices
-        let dx_prev = p0[0] - p2[0];
-        let dy_prev = p0[1] - p2[1];
-        let len_prev = (dx_prev * dx_prev + dy_prev * dy_prev).sqrt();
-        let nx_prev = if len_prev > 1e-8 {
-            -dy_prev / len_prev
-        } else {
-            nx
-        };
-        let ny_prev = if len_prev > 1e-8 {
-            dx_prev / len_prev
-        } else {
-            ny
-        };
-
-        let avg_nx = nx + nx_prev;
-        let avg_ny = ny + ny_prev;
-        let avg_len = (avg_nx * avg_nx + avg_ny * avg_ny).sqrt();
-        let off_x = if avg_len > 1e-8 { avg_nx / avg_len } else { nx };
-        let off_y = if avg_len > 1e-8 { avg_ny / avg_len } else { ny };
-
-        result.push([p1[0] + off_x * delta, p1[1] + off_y * delta]);
-    }
-    result
+    let mm_to_top = (dist_to_top as f32) * effective_layer_height;
+    let raw = if mm_to_top <= branch_radius {
+        mm_to_top
+    } else {
+        branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
+    };
+    raw.clamp(0.0, MAX_BRANCH_RADIUS_MM)
 }
 
 /// Clamp a point into the union of avoidance polygons.
 /// Returns the original point if avoidance_polys is empty; otherwise returns
 /// the closest point on any avoidance polygon boundary.
-fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[Vec<[f32; 2]>]) -> (f32, f32) {
+fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f32) {
     if avoidance_polys.is_empty() {
         return (x, y);
     }
-    if point_in_any_polygon(avoidance_polys, x, y) {
+    if point_in_any_expoly(avoidance_polys, x, y) {
         return (x, y);
     }
     let mut best_dist = f32::INFINITY;
     let mut best = (x, y);
-    for poly in avoidance_polys {
+    for ex in avoidance_polys {
+        let poly: Vec<[f32; 2]> = ex
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
         if poly.len() < 3 {
             continue;
         }
-        let (cp, cd) = closest_point_on_polygon(poly, x, y);
+        let (cp, cd) = closest_point_on_polygon(&poly, x, y);
         if cd < best_dist {
             best_dist = cd;
             best = (cp[0], cp[1]);
@@ -1021,7 +1002,7 @@ fn push_interface_scan_lines(
     width: f32,
     spacing: f32,
     parity: i32,
-    avoidance_polys: &[Vec<[f32; 2]>],
+    avoidance_polys: &[ExPolygon],
 ) {
     if spacing <= 0.0 || half <= 0.0 {
         return;
@@ -1045,8 +1026,8 @@ fn push_interface_scan_lines(
             (x, ymin, x, ymax)
         };
         if !avoidance_polys.is_empty()
-            && (!point_in_any_polygon(avoidance_polys, p1x, p1y)
-                || !point_in_any_polygon(avoidance_polys, p2x, p2y))
+            && (!point_in_any_expoly(avoidance_polys, p1x, p1y)
+                || !point_in_any_expoly(avoidance_polys, p2x, p2y))
         {
             continue;
         }
@@ -1268,6 +1249,246 @@ mod tests {
         assert!(
             err.to_string().contains("empty layer-plan-view"),
             "error was: {err}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_at_tip_is_zero() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 0_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        assert!(
+            (result - 0.0).abs() < 1e-6,
+            "tapered_radius at tip (dist_to_top=0) must be 0.0; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_inside_cone_is_mm_to_top() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 12_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let expected = 2.4_f32;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius inside cone must be {expected}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_above_cone_is_linear() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 50_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let mm_to_top = 50.0 * 0.2;
+        let expected = branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius above cone must be {expected}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_clamps_at_max() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (80.0_f32).to_radians().tan();
+        let dist_to_top = 10_000_u32;
+        let effective_layer_height = 0.5_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        assert!(
+            (result - MAX_BRANCH_RADIUS_MM).abs() < 1e-12,
+            "tapered_radius must clamp at MAX_BRANCH_RADIUS_MM={MAX_BRANCH_RADIUS_MM}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_no_longer_floors_at_branch_radius() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 10_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let expected = 2.0_f32;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius must be {expected} (not floor at branch_radius={branch_radius}); got {result}"
+        );
+    }
+
+    #[test]
+    fn offset_concave_l_shape_no_self_intersection() {
+        let ex = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(3.0, 1.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(1.0, 3.0),
+                    Point2::from_mm(0.0, 3.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        for poly in &result {
+            let pts = &poly.contour.points;
+            let n = pts.len();
+            for i in 0..n {
+                let a1 = pts[i];
+                let a2 = pts[(i + 1) % n];
+                for j in 0..n {
+                    if j == i || j == (i + 1) % n || j == (i + n - 1) % n {
+                        continue;
+                    }
+                    let b1 = pts[j];
+                    let b2 = pts[(j + 1) % n];
+                    let (x1, y1) = (a1.x as f32, a1.y as f32);
+                    let (x2, y2) = (a2.x as f32, a2.y as f32);
+                    let (x3, y3) = (b1.x as f32, b1.y as f32);
+                    let (x4, y4) = (b2.x as f32, b2.y as f32);
+                    let denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                    if denom.abs() < 1e-12 {
+                        continue;
+                    }
+                    let t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+                    let u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+                    if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+                        panic!(
+                            "self-intersection at edges {}->{} and {}->{}",
+                            i,
+                            (i + 1) % n,
+                            j,
+                            (j + 1) % n
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn offset_polygon_with_hole_preserves_hole() {
+        let outer = Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        };
+        let hole = Polygon {
+            points: vec![
+                Point2::from_mm(3.0, 3.0),
+                Point2::from_mm(3.0, 7.0),
+                Point2::from_mm(7.0, 7.0),
+                Point2::from_mm(7.0, 3.0),
+            ],
+        };
+        let ex = ExPolygon {
+            contour: outer,
+            holes: vec![hole],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        for poly in &result {
+            assert!(
+                !poly.holes.is_empty(),
+                "offset polygon must preserve at least one hole"
+            );
+            for h in &poly.holes {
+                let area_units = {
+                    let pts = &h.points;
+                    let n = pts.len();
+                    let mut a = 0.0_f64;
+                    for i in 0..n {
+                        let (x1, y1) = (pts[i].x as f64, pts[i].y as f64);
+                        let (x2, y2) = (pts[(i + 1) % n].x as f64, pts[(i + 1) % n].y as f64);
+                        a += x1 * y2 - x2 * y1;
+                    }
+                    a.abs() / 2.0
+                };
+                let area_mm2 = area_units / 100_000_000.0;
+                assert!(
+                    area_mm2 < 16.0,
+                    "hole area {area_mm2} mm² must be less than original 16 mm²"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn offset_preserves_mm_coordinate_boundary() {
+        let ex = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(1.0, 0.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(0.0, 1.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        let pts = &result[0].contour.points;
+        let xs: Vec<f32> = pts.iter().map(|p| units_to_mm(p.x)).collect();
+        let ys: Vec<f32> = pts.iter().map(|p| units_to_mm(p.y)).collect();
+        let min_x = xs.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max_x = xs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_y = ys.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max_y = ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let span_x = max_x - min_x;
+        let span_y = max_y - min_y;
+        assert!(
+            (span_x - 2.0).abs() < 1e-4,
+            "span_x must be ~2.0 mm; got {span_x}"
+        );
+        assert!(
+            (span_y - 2.0).abs() < 1e-4,
+            "span_y must be ~2.0 mm; got {span_y}"
         );
     }
 }

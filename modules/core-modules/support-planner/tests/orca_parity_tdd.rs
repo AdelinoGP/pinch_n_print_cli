@@ -53,15 +53,16 @@ fn radius_tapers_with_distance_to_top() {
     let tan_diameter_angle = diameter_angle_deg.to_radians().tan();
     let layer_height = 0.2_f32; // mm per layer
 
-    // Top layer: dist_to_top = 0 → radius should be exactly branch_radius (2.5mm)
+    // Top layer: dist_to_top = 0 → radius should be 0.0 (tip-cone starts at zero)
     let radius_top = tapered_radius(branch_radius, tan_diameter_angle, 0, layer_height);
     assert!(
-        (radius_top - branch_radius).abs() < 1e-6,
-        "radius at dist_to_top=0 must equal branch_radius={branch_radius}; got {radius_top}"
+        (radius_top - 0.0).abs() < 1e-6,
+        "radius at dist_to_top=0 must be 0.0 (tip-cone); got {radius_top}"
     );
 
     // 10 layers down: dist_to_top = 10
-    // radius should grow: branch_radius + tan(10°) * 10 * 0.2
+    // radius should grow: mm_to_top = 10 * 0.2 = 2.0, which is inside the tip-cone
+    // (mm_to_top <= branch_radius=2.5), so radius = mm_to_top = 2.0
     let dist_to_top_10 = 10_u32;
     let radius_10 = tapered_radius(
         branch_radius,
@@ -69,27 +70,19 @@ fn radius_tapers_with_distance_to_top() {
         dist_to_top_10,
         layer_height,
     );
-    let expected_growth = tan_diameter_angle * (dist_to_top_10 as f32) * layer_height;
-    let expected_radius_10 = branch_radius + expected_growth;
+    let expected_radius_10 = (dist_to_top_10 as f32) * layer_height; // mm_to_top = 2.0
 
-    assert!(
-        radius_10 > branch_radius,
-        "radius must grow with dist_to_top; got {radius_10}, branch_radius={branch_radius}"
-    );
     assert!(
         (radius_10 - expected_radius_10).abs() < 1e-4,
-        "radius_10={radius_10} must match expected={expected_radius_10} (branch_radius + tan*dist*height)"
+        "radius_10={radius_10} must match expected={expected_radius_10} (mm_to_top inside tip-cone)"
     );
 
-    // Width = 2 * radius. Bottom width should be > top width.
+    // Width = 2 * radius. Bottom width should be > top width (top is 0).
     let width_top = 2.0 * radius_top;
     let width_10 = 2.0 * radius_10;
-    let height_diff = dist_to_top_10 as f32 * layer_height; // 10 * 0.2 = 2.0mm
-
     assert!(
-        width_10 > width_top + tan_diameter_angle * height_diff - 1e-4,
-        "AC-2: bottom_width={width_10} must exceed top_width + tan(angle)*height_diff \
-         = {width_top} + {tan_diameter_angle}*{height_diff}"
+        width_10 > width_top,
+        "AC-2: bottom_width={width_10} must exceed top_width={width_top}"
     );
 }
 
@@ -490,14 +483,14 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
     // also contain the move targets, so clamp_to_avoidance is satisfied —
     // but point_in_any_polygon(collision_polys, ...) hits and the node is
     // dropped with a warn log.
-    // Note: support-planner reads Point2 fields as `p.x as f32` / `p.y as f32`,
-    // bypassing the 100-nm scaling helper. To stay aligned with the planner's
-    // mesh coordinate space, construct Point2 with raw i64 values that the
-    // planner will interpret as f32 millimetres.
-    let pt = |x: i64, y: i64| Point2 { x, y };
     let big_box = ExPolygon {
         contour: Polygon {
-            points: vec![pt(-10, -10), pt(14, -10), pt(14, 14), pt(-10, 14)],
+            points: vec![
+                Point2::from_mm(-10.0, -10.0),
+                Point2::from_mm(14.0, -10.0),
+                Point2::from_mm(14.0, 14.0),
+                Point2::from_mm(-10.0, 14.0),
+            ],
         },
         holes: vec![],
     };

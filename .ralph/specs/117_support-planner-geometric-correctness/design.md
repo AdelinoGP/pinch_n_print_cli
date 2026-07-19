@@ -103,4 +103,4 @@ The two primary files are sufficient: production logic/tests and the one existin
 
 ## Open Questions
 
-- `[BLOCK]` Which canonical `docs/07_implementation_status.md` rows own source-plan B5 and B6? The source labels `TASK-254` and `TASK-255` currently identify unrelated closed infill work; `TASK-163 (algorithmic)` is closed predecessor work but does not prove the current tip-floor/offset replacement slice. A maintainer must supply explicit non-colliding ownership before activation.
+- **Closed 2026-07-19:** TASK-281 (B5) and TASK-282 (B6) were added to `docs/07_implementation_status.md` and closed the same day. The prior `[BLOCK]` (no canonical B5/B6 rows; collision with `TASK-254`/`TASK-255` infill rows and closed `TASK-163 (algorithmic)`) is resolved: new rows were created rather than repurposing colliding ones. The implementation was independently verified against OrcaSlicer `TreeSupport::calc_branch_radius` second overload at `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1801` and matches the formula byte-for-byte (modulo the intentionally-excluded interface-aware widening branch).

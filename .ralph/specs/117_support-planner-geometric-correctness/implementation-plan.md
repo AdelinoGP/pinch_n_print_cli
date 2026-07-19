@@ -10,7 +10,7 @@
 
 ### Step 1: Re-ground the formula, API, dependency, and existing oracles
 
-- Task IDs: none mapped; source-plan B5 and B6.
+- Task IDs: TASK-281, TASK-282; source-plan B5 and B6.
 - Objective: confirm the current `tapered_radius` body, `run_support_geometry` offset site, cache/helper types, the existing SDK `offset_polygons` signature and host-service contract, unchanged planner dependency list, old radius test, and raw-coordinate fixture.
 - Precondition: source authority and current tree are available.
 - Postcondition: implementer has no stale line-pinned API or test assumptions; B5/B6 mapping blocker is recorded without assigning an ID.
@@ -44,7 +44,7 @@
 
 ### Step 2: Add radius oracles and migrate the obsolete direct test
 
-- Task IDs: none mapped; source-plan B5.
+- Task IDs: TASK-281; source-plan B5.
 - Objective: add the five named radius tests to the existing source unit-test module and update `radius_tapers_with_distance_to_top` so it no longer asserts the branch-radius floor.
 - Precondition: Step 1 confirms the public `tapered_radius` signature and the old test's direct assertions.
 - Postcondition: the new tests compile; at least the tip, inside-cone, and no-floor assertions are RED against the current implementation; the migrated existing test expresses the intended tip semantics.
@@ -72,7 +72,7 @@
 
 ### Step 3: Implement the two-piece tip-cone formula
 
-- Task IDs: none mapped; source-plan B5.
+- Task IDs: TASK-281; source-plan B5.
 - Objective: replace `tapered_radius`'s body and function documentation with the mm-to-top tip-cone/linear-above-cone formula and final `[0.0, MAX_BRANCH_RADIUS_MM]` clamp.
 - Precondition: Step 2 radius tests are RED and the existing direct oracle has been migrated.
 - Postcondition: AC-1 through AC-4, AC-N1, and AC-8 pass; the public signature and `MAX_BRANCH_RADIUS_MM` remain unchanged.
@@ -98,7 +98,7 @@
 
 ### Step 4: Add geometry oracles through the SDK seam
 
-- Task IDs: none mapped; source-plan B6.
+- Task IDs: TASK-282; source-plan B6.
 - Objective: add focused unit tests for concave simplicity, hole preservation, and the mm/scaled-unit boundary using the existing `slicer_sdk::host::offset_polygons` API; do not edit the guest manifest.
 - Precondition: Step 1 confirmed the SDK seam returns `Vec<ExPolygon>` and the support-planner dependency graph must remain unchanged.
 - Postcondition: the geometry tests compile against the guest-compatible API and assert a test-local non-self-intersection invariant, hole count/area, and a 2.0 mm span for a 1.0 mm square inflated by 0.5 mm.
@@ -126,7 +126,7 @@
 
 ### Step 5: Replace the DIY avoidance path and repair coordinate boundaries
 
-- Task IDs: none mapped; source-plan B6.
+- Task IDs: TASK-282; source-plan B6.
 - Objective: delete `inflate_polygon`, call `slicer_sdk::host::offset_polygons` over each complete support outline, preserve holes in `LayerCollisionCache`, update containment/clamping/scan-line consumers, and migrate the existing raw-coordinate fixture.
 - Precondition: Step 4 SDK geometry oracles are present; Step 1 inventory identifies all consumers of `LayerCollisionCache` and its helper signatures.
 - Postcondition: AC-5 through AC-7 and AC-N2 pass; one production offset call remains at the existing avoidance-cache site; `node_dropped_when_avoidance_rejects_all_moves` uses canonical mm-to-unit fixture construction and still passes its intended diagnostic assertion.
@@ -155,7 +155,7 @@
 
 ### Step 6: Run planner gates and guest freshness check
 
-- Task IDs: none mapped; source-plan B5 and B6.
+- Task IDs: TASK-281, TASK-282; source-plan B5 and B6.
 - Objective: run the full targeted planner matrix, including guest freshness, and preserve draft status pending backlog mapping.
 - Precondition: Steps 2-5 pass their exits.
 - Postcondition: every packet AC and gate command returns pass; guest artifacts are clean after any required rebuild; no backlog row is changed.
