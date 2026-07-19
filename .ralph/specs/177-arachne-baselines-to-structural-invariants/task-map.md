@@ -1,24 +1,33 @@
 # Task Map: 177-arachne-baselines-to-structural-invariants
 
-**This packet has no `docs/07_implementation_status.md` task IDs** (`task_ids: []`). It is audit-driven, sourced from `docs/DEVIATION_LOG.md` row `D-112-SELFCAPTURED-BASELINES` — the precedent set by packets 150-156, which were all authored against a `backlog_source` with no task ID. **Do not invent a `TASK-###` for it.** This file therefore records the deviation-to-step crosswalk in place of the usual backlog crosswalk, and exists because the packet spans a multi-step conversion whose steps must each trace to a named deviation obligation.
+This packet has no `docs/07_implementation_status.md` task IDs. It is an
+audit-driven remediation sourced from `D-112-SELFCAPTURED-BASELINES` in
+`docs/DEVIATION_LOG.md`; no `TASK-###` is invented.
 
-Verify the deviation ID at the point of use — `Status` is a ledger fact and will rot:
+Verify the deviation at point of use:
 
-```
+```text
 rg -n 'D-112-SELFCAPTURED-BASELINES' docs/DEVIATION_LOG.md
 ```
 
-| Backlog source | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| `D-112-SELFCAPTURED-BASELINES` (blocker: odd `max_bead_count` entanglement per `docs/specs/arachne-parity-recovery.md`) | `Step 1a` | `docs/specs/arachne-parity-recovery.md` | `crates/slicer-core/src/arachne/pipeline.rs` (`ArachneParams::default()`), `crates/slicer-core/src/beading/factory.rs` (`BeadingFactoryParams::default()`) | `WallToolPaths.cpp::generate`, `LimitedBeadingStrategy.cpp::compute` | `S` | Both production defaults even. The `beading/factory.rs` site was missed by an earlier draft — re-derive, never quote. |
-| `D-112-SELFCAPTURED-BASELINES` (same blocker, test surface) | `Step 1b` | `docs/specs/arachne-parity-recovery.md` | odd-`max_bead_count` test helpers named by `rg -n 'max_bead_count:\s*9' crates/slicer-core/tests/` | `LimitedBeadingStrategy.cpp::compute` | `S` | Four files at authoring time; exceeds the ≤3 edit cap, so iterate in sub-passes. |
-| `D-112-SELFCAPTURED-BASELINES` + ADR-0042 (coverage ratio vs known-correct reference) | `Step 2` | `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md`, `docs/08_coordinate_system.md` | measurement harness under `crates/slicer-core/tests/`; `design.md` §Measured Coverage Baseline | none (reference is in-tree classic, not Orca) | `M` | Threshold is an **output**. Z-aligned sampling is a validity precondition (ADR-0042 D3 corollary). |
-| ADR-0042 (the only invariant class that would have caught D5) | `Step 3` | `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` | `crates/slicer-core/tests/arachne_invariants.rs` | none | `M` | **The packet's thesis.** Closure, loop count, and bead-count sequence were all green throughout D5; coverage ratio was not. |
-| ADR-0042 ("no bead wider than ~2× optimal width"; D4's 19.6 mm bead on a 0.45 mm nozzle) | `Step 4` | `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` | `crates/slicer-core/tests/arachne_invariants.rs` | `BeadingStrategyFactory.cpp::makeStrategy` | `S` | Gives `toolpaths_tapered_wedge.json`'s absolute `junction_widths_mm` a structural successor. |
-| `D-112-SELFCAPTURED-BASELINES` (centrepiece: the deliberately-RED tapered-wedge baseline) | `Step 5` | `docs/specs/arachne-parity-recovery.md` (no-rebless mandate) | `crates/slicer-runtime/tests/integration/perimeter_parity.rs` (`arachne_perimeter_parity`) | none | `M` | Convert, never rebless. AC-N3 enforces mechanically. Commit `1d7eb1de` missed this fixture; do not complete the mistake. |
-| `D-112-SELFCAPTURED-BASELINES` (convert the eight slicer-core baselines) | `Step 6` | `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` | `crates/slicer-core/tests/{centrality,propagation,bead_count,generate_toolpaths}.rs` | none | `M` | `propagation_fills_gap_from_central_neighbor` asserted the D5 defect and **passed** — it must not survive in a form that could do so again. |
-| `D-112-SELFCAPTURED-BASELINES` (demote survivors to labelled change-detectors) | `Step 7` | `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` | the six older-wording fixtures under `crates/slicer-core/tests/fixtures/arachne/` | none | `S` | **Gated on the `[BLOCK]` change-detector CI-authority decision** (`design.md` §Open Questions). |
-| Hygiene noted for Track B in `docs/specs/arachne-parity-recovery.md` | `Step 8` | `docs/DEVIATION_LOG.md` (D-104f status, delegated FACT) | the nine `crates/slicer-core/tests/arachne_parity_red_*.rs`; `crates/slicer-runtime/tests/arachne_parity.rs` header | none | `S` | No behavioural claim; first to cut under context pressure. Capture the AC-9 test-name baseline **before** moving. |
-| `D-112-SELFCAPTURED-BASELINES` closure + ADR-0042 instantiation | `Step 9` | `docs/DEVIATION_LOG.md`, `docs/adr/0042-arachne-parity-structural-invariants-over-fixtures.md` | those two docs only | none | `S` | A closed deviation over a red gate is the ratification this packet exists to end. |
+| Backlog source | Packet step | Primary evidence | Expected surface | Context cost |
+| --- | --- | --- | --- | --- |
+| D-112: odd defaults | Step 1a/1b | recovery Track B; canonical `WallToolPaths.cpp::generate` | production defaults and surviving test helpers | S |
+| D-112: self-captured JSON oracles | Step 2/5 | ADR-0042 structural classes | four core consumers, `arachne_invariants`, eight core + eleven perimeter JSON deletions | M |
+| D-112 + ADR-0042: coverage floor | Step 3/4 | ADR-0042 coverage class; coordinate checklist | shared runtime harness, standalone coverage binary, five STL subjects | M |
+| D-112: tapered-wedge conversion | Step 5 | recovery Track B; no-recapture rule | perimeter integration and deleted expected IR | M |
+| Track B hygiene | Step 6 | D-104f deviation row | nine exact red-test moves and runtime header | S |
+| D-112 closure + ADR instantiation | Step 7 | D-112 row and ADR-0042 Consequences | recovery doc, ADR, deviation log, glossary | S |
 
-Costs copied from `implementation-plan.md`. Aggregate `M`; no row is `L`. The packet is deliberately not split (explicit user decision, `requirements.md` §Out of Scope); `/swarm` stages **execution** at the Step 3 / Step 4 boundary, carrying `design.md`'s measured threshold table as the handoff interface.
+## Decisions Captured
+
+- All eight core snapshots and all eleven perimeter expected-IR snapshots are
+  deleted, not retained as archives or change-detectors.
+- Coverage subjects are the five Arachne perimeter STLs; D5 is synthetic-only.
+- Coverage lives in a standalone runtime test binary with a shared harness under
+  `tests/common/`.
+- The default correction remains `10`, with corrected canonical rationale.
+- The repeatability margin is derived from same-subject/same-Z reruns and capped
+  at `0.02`; fixture spread cannot widen it.
+- The tapered-wedge expected IR snapshot is deleted.
+- Track B recovery prose is corrected in this packet.
