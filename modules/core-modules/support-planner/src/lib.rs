@@ -8,7 +8,7 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Multi-layer organic tree-support planner for `PrePass::SupportGeometry`.
+//! Multi-layer support planner inspired by OrcaSlicer's TreeSupport::drop_nodes
 //!
 //! Port of OrcaSlicer's `TreeSupport::detect_overhangs` +
 //! `TreeSupport::drop_nodes` (see `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`):
@@ -36,6 +36,8 @@
 //!   wall_count.max(1)`.
 //! - **dist_to_top tracking**: `u32` counter on each `PlannedSupportNode`
 //!   incremented as nodes propagate downward; drives the radius taper formula.
+//!
+//! This module provides algorithmic shape detection, contact-point emission, top-down MST propagation, and emit logic — it is a faithful port for correctness, not numerical parity with OrcaSlicer.
 //!
 //! # Raft prefix layers
 //!
@@ -81,8 +83,6 @@ pub struct SupportPlanner {
     support_raft_layers: i32,
     /// Number of interface layers at top of each branch column.
     support_interface_top_layers: i32,
-    /// Number of interface layers at bottom of each branch column (-1 = all layers).
-    support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
     tree_support_interface_spacing_mm: f32,
 }
@@ -163,11 +163,6 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 2,
         };
-        let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => -1, // -1 means "all layers" per OrcaSlicer convention
-        };
         let tree_support_interface_spacing_mm =
             match config.get("tree_support_interface_spacing_mm") {
                 Some(ConfigValue::Float(w)) => *w as f32,
@@ -186,7 +181,6 @@ impl PrepassModule for SupportPlanner {
             tree_support_wall_count,
             support_raft_layers,
             support_interface_top_layers,
-            support_interface_bottom_layers,
             tree_support_interface_spacing_mm,
         })
     }
@@ -1094,7 +1088,6 @@ mod tests {
             tree_support_wall_count: 1,
             support_raft_layers: 0,
             support_interface_top_layers: 2,
-            support_interface_bottom_layers: -1,
             tree_support_interface_spacing_mm: 0.4,
         }
     }

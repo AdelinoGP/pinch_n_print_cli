@@ -12,6 +12,11 @@
 //!
 //! Implements `LayerModule::run_infill` for the `Layer::Infill` stage.
 //! Generates parallel scan-line fill patterns with per-layer angle alternation.
+//!
+//! # Speed normalization
+//!
+//! Speed is normalized via `speed_factor = configured_speed / BASE_SPEED` where
+//! `BASE_SPEED = 50.0`.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]

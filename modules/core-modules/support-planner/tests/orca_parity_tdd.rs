@@ -163,7 +163,6 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         ("support_enabled", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(3)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (
@@ -285,7 +284,6 @@ fn benchy_orca_parity_within_tolerance() {
         ("support_enabled", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(2)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (
