@@ -860,7 +860,7 @@ These options typically appear in the Filament tab.
 | "scan_first_layer" | Scan first layer | coBool | 0 | - | comAdvanced | Enable camera to check quality of first layer. | ❌ |
 | "bbl_calib_mark_logo" | Show auto-calibration marks | coBool | 1 | - | comAdvanced | Show auto-calibration marks on print. | ❌ |
 | "head_wrap_detect_zone" | Head wrap detect zone | coPoints | {} | - | comDevelop | Detection area for head wrap. | ❌ |
-| "disable_m73" | Disable M73 progress | coBool | 0 | - | comAdvanced | Disable generating M73 set remaining print time. | ❌ |
+| "disable_m73" | Disable M73 progress | coBool | 0 | - | comAdvanced | Disable generating M73 set remaining print time. | ✅ |
 | "silent_mode" | Supports silent mode | coBool | 0 | - | comDevelop | Whether machine supports silent mode with lower acceleration. | ❌ |
 | "emit_machine_limits_to_gcode" | Emit limits to G-code | coBool | 1 | - | comAdvanced | Emit machine limits to G-code; ignored for Klipper. | ❌ |
 

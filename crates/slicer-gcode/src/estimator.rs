@@ -160,17 +160,14 @@ fn junction_speed(a: &Segment, b: &Segment) -> f64 {
     a.jerk.min(b.jerk).min(v)
 }
 
-/// Estimates print time and per-tool extruded volume for a `GCodeIR` stream.
-///
-/// One forward walk over `gcode_ir.commands` with a Marlin-style simplified
-/// trapezoid per segment. `tool_diameters` maps tool index → filament
-/// diameter in mm (missing tools default to 1.75 mm).
-pub fn estimate_print(
-    gcode_ir: &GCodeIR,
-    limits: &EstimatorLimits,
-    tool_diameters: &BTreeMap<u32, f32>,
-) -> PrintEstimate {
-    let mut segments: Vec<Segment> = Vec::new();
+struct CommandEstimate {
+    elapsed_deltas_s: Vec<f64>,
+    filament_length_mm: BTreeMap<u32, f64>,
+    toolchange_count: u32,
+}
+
+fn estimate_command_deltas(gcode_ir: &GCodeIR, limits: &EstimatorLimits) -> CommandEstimate {
+    let mut segments: Vec<(usize, Segment)> = Vec::new();
     let mut filament_length_mm: BTreeMap<u32, f64> = BTreeMap::new();
     let mut toolchange_count: u32 = 0;
 
@@ -189,7 +186,7 @@ pub fn estimate_print(
     let jerk_z = limits.jerk_z as f64;
     let jerk_e = limits.jerk_e as f64;
 
-    for command in &gcode_ir.commands {
+    for (command_index, command) in gcode_ir.commands.iter().enumerate() {
         match command {
             GCodeCommand::Move {
                 x,
@@ -252,25 +249,31 @@ pub fn estimate_print(
                         (AxisClass::Z, max_z, jerk_z, (0.0, 0.0))
                     };
                     let v = if feed_mm_s > 0.0 { feed_mm_s } else { cap };
-                    segments.push(Segment {
-                        dist,
-                        v_target: v.min(cap).max(1e-6),
-                        accel,
-                        jerk,
-                        dir,
-                        axis,
-                    });
+                    segments.push((
+                        command_index,
+                        Segment {
+                            dist,
+                            v_target: v.min(cap).max(1e-6),
+                            accel,
+                            jerk,
+                            dir,
+                            axis,
+                        },
+                    ));
                 } else if e_delta.abs() > 1e-9 {
                     // E-only move.
                     let v = if feed_mm_s > 0.0 { feed_mm_s } else { max_e };
-                    segments.push(Segment {
-                        dist: e_delta.abs(),
-                        v_target: v.min(max_e).max(1e-6),
-                        accel: accel_extrude,
-                        jerk: jerk_e,
-                        dir: (0.0, 0.0),
-                        axis: AxisClass::E,
-                    });
+                    segments.push((
+                        command_index,
+                        Segment {
+                            dist: e_delta.abs(),
+                            v_target: v.min(max_e).max(1e-6),
+                            accel: accel_extrude,
+                            jerk: jerk_e,
+                            dir: (0.0, 0.0),
+                            axis: AxisClass::E,
+                        },
+                    ));
                 }
             }
             GCodeCommand::Retract { length, speed, .. } => {
@@ -279,26 +282,32 @@ pub fn estimate_print(
                 // F value (mm/min).
                 e_accumulator -= *length as f64;
                 let v = (*speed as f64 / 60.0).max(1e-6).min(max_e);
-                segments.push(Segment {
-                    dist: (*length as f64).abs(),
-                    v_target: v,
-                    accel: accel_extrude,
-                    jerk: jerk_e,
-                    dir: (0.0, 0.0),
-                    axis: AxisClass::E,
-                });
+                segments.push((
+                    command_index,
+                    Segment {
+                        dist: (*length as f64).abs(),
+                        v_target: v,
+                        accel: accel_extrude,
+                        jerk: jerk_e,
+                        dir: (0.0, 0.0),
+                        axis: AxisClass::E,
+                    },
+                ));
             }
             GCodeCommand::Unretract { length, speed, .. } => {
                 e_accumulator += *length as f64;
                 let v = (*speed as f64 / 60.0).max(1e-6).min(max_e);
-                segments.push(Segment {
-                    dist: (*length as f64).abs(),
-                    v_target: v,
-                    accel: accel_extrude,
-                    jerk: jerk_e,
-                    dir: (0.0, 0.0),
-                    axis: AxisClass::E,
-                });
+                segments.push((
+                    command_index,
+                    Segment {
+                        dist: (*length as f64).abs(),
+                        v_target: v,
+                        accel: accel_extrude,
+                        jerk: jerk_e,
+                        dir: (0.0, 0.0),
+                        axis: AxisClass::E,
+                    },
+                ));
             }
             GCodeCommand::ToolChange { to, .. } => {
                 toolchange_count += 1;
@@ -327,15 +336,15 @@ pub fn estimate_print(
     }
 
     // Plan junction speeds and integrate time.
-    let mut total_time_s = 0.0;
-    for (i, seg) in segments.iter().enumerate() {
+    let mut elapsed_deltas_s = vec![0.0; gcode_ir.commands.len()];
+    for (i, (command_index, seg)) in segments.iter().enumerate() {
         let entry = if i == 0 {
             seg.jerk.min(seg.v_target)
         } else {
-            junction_speed(&segments[i - 1], seg)
+            junction_speed(&segments[i - 1].1, seg)
         };
         let exit = if i + 1 < segments.len() {
-            junction_speed(seg, &segments[i + 1])
+            junction_speed(seg, &segments[i + 1].1)
         } else {
             seg.jerk.min(seg.v_target)
         };
@@ -343,10 +352,24 @@ pub fn estimate_print(
         let v_reach = |from: f64| (from * from + 2.0 * seg.accel * seg.dist).sqrt();
         let exit = exit.min(v_reach(entry));
         let entry = entry.min(v_reach(exit));
-        total_time_s += segment_time(seg.dist, entry, exit, seg.v_target, seg.accel);
+        elapsed_deltas_s[*command_index] +=
+            segment_time(seg.dist, entry, exit, seg.v_target, seg.accel);
     }
 
-    let extruded_volume_mm3 = filament_length_mm
+    CommandEstimate {
+        elapsed_deltas_s,
+        filament_length_mm,
+        toolchange_count,
+    }
+}
+
+fn print_estimate(
+    command_estimate: CommandEstimate,
+    tool_diameters: &BTreeMap<u32, f32>,
+) -> (PrintEstimate, Vec<f64>) {
+    let total_time_s = command_estimate.elapsed_deltas_s.iter().sum();
+    let extruded_volume_mm3 = command_estimate
+        .filament_length_mm
         .iter()
         .map(|(&tool, &len)| {
             let d = tool_diameters
@@ -357,11 +380,42 @@ pub fn estimate_print(
             (tool, len * area)
         })
         .collect();
-
-    PrintEstimate {
-        total_time_s,
-        extruded_volume_mm3,
-        filament_length_mm,
-        toolchange_count,
+    let mut elapsed_s = Vec::with_capacity(command_estimate.elapsed_deltas_s.len());
+    let mut cumulative_s = 0.0;
+    for delta_s in command_estimate.elapsed_deltas_s {
+        cumulative_s += delta_s;
+        elapsed_s.push(cumulative_s);
     }
+
+    (
+        PrintEstimate {
+            total_time_s,
+            extruded_volume_mm3,
+            filament_length_mm: command_estimate.filament_length_mm,
+            toolchange_count: command_estimate.toolchange_count,
+        },
+        elapsed_s,
+    )
+}
+
+/// Estimates print time and per-tool extruded volume for a `GCodeIR` stream.
+///
+/// One forward walk over `gcode_ir.commands` with a Marlin-style simplified
+/// trapezoid per segment. `tool_diameters` maps tool index → filament
+/// diameter in mm (missing tools default to 1.75 mm).
+pub fn estimate_print(
+    gcode_ir: &GCodeIR,
+    limits: &EstimatorLimits,
+    tool_diameters: &BTreeMap<u32, f32>,
+) -> PrintEstimate {
+    estimate_print_with_elapsed(gcode_ir, limits, tool_diameters).0
+}
+
+/// Estimates print time and cumulative elapsed time after every G-code command.
+pub fn estimate_print_with_elapsed(
+    gcode_ir: &GCodeIR,
+    limits: &EstimatorLimits,
+    tool_diameters: &BTreeMap<u32, f32>,
+) -> (PrintEstimate, Vec<f64>) {
+    print_estimate(estimate_command_deltas(gcode_ir, limits), tool_diameters)
 }

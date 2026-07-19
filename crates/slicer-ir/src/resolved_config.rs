@@ -718,10 +718,12 @@ declare_resolved_config! {
     ///   closing ~92% of `PrePass::Slice` on high-vertex cross-sections.
     cli "flat_bridge_closing_join" flat_bridge_closing_join: String = String::from("miter") => extract_string;
 
-    // Support
-    /// Whether support is enabled.
-    cli "support_enabled"        support_enabled: bool = false => extract_bool;
-    /// Support generation type. Not CLI-bound today.
+     // Support
+     /// Whether support is enabled.
+     cli "support_enabled"        support_enabled: bool = false => extract_bool;
+     /// Whether to suppress M73 progress commands.
+     cli "disable_m73"             disable_m73: bool = false => extract_bool;
+     /// Support generation type. Not CLI-bound today.
     plain                        support_type: SupportType = SupportType::Traditional;
     /// Support overhang angle threshold in degrees.
     cli "support_overhang_angle" support_overhang_angle: f32 = 45.0 => extract_float;
@@ -787,7 +789,6 @@ declare_resolved_config! {
     /// Maximum extruder (E-axis) jerk in mm/s (optional).
     cli_opt "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float;
 
-    // Filament (time/usage estimator)
     /// Filament density in g/cm³ (optional).
     cli_opt "filament_density" filament_density: Option<f32> = None => extract_float;
 }

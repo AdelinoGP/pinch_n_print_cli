@@ -233,3 +233,53 @@ fn fallback_defaults_when_machine_limits_absent() {
         est.total_time_s
     );
 }
+#[test]
+fn elapsed_time_tracks_command_boundaries() {
+    use std::collections::BTreeMap;
+
+    use slicer_gcode::estimator::{estimate_print_with_elapsed, EstimatorLimits};
+    use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR};
+
+    let gcode_ir = GCodeIR {
+        commands: vec![
+            GCodeCommand::Move {
+                x: Some(0.0),
+                y: Some(0.0),
+                z: Some(0.0),
+                e: None,
+                f: Some(60.0),
+                role: ExtrusionRole::Custom("Travel".to_string()),
+            },
+            GCodeCommand::Comment {
+                text: ";LAYER_CHANGE".to_string(),
+            },
+            GCodeCommand::Move {
+                x: Some(10.0),
+                y: Some(0.0),
+                z: Some(0.0),
+                e: None,
+                f: None,
+                role: ExtrusionRole::Custom("Travel".to_string()),
+            },
+            GCodeCommand::Move {
+                x: Some(20.0),
+                y: Some(0.0),
+                z: Some(0.0),
+                e: None,
+                f: None,
+                role: ExtrusionRole::Custom("Travel".to_string()),
+            },
+        ],
+        ..Default::default()
+    };
+
+    let (estimate, elapsed) =
+        estimate_print_with_elapsed(&gcode_ir, &EstimatorLimits::default(), &BTreeMap::new());
+
+    assert_eq!(elapsed.len(), gcode_ir.commands.len());
+    assert!(elapsed.windows(2).all(|window| window[0] <= window[1]));
+    assert!((elapsed.last().copied().unwrap() - estimate.total_time_s).abs() < f64::EPSILON);
+    assert_eq!(elapsed[0], 0.0);
+    assert_eq!(elapsed[1], 0.0);
+    assert!(elapsed[2] > 0.0);
+}

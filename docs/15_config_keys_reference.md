@@ -135,6 +135,7 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
+| `disable_m73` | bool | `false` | — | `machine-gcode-emit` |
 | `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |

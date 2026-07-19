@@ -754,7 +754,17 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             },
             ..Default::default()
         };
-        let estimate = crate::estimator::estimate_print(&gcode_ir, &limits, &tool_diameters);
+        let (estimate, elapsed) =
+            crate::estimator::estimate_print_with_elapsed(&gcode_ir, &limits, &tool_diameters);
+        if !self.resolved_config.disable_m73 {
+            crate::m73::inject_m73(&mut gcode_ir, &elapsed);
+        }
+        gcode_ir
+            .commands
+            .extend(crate::m73::filament_stats_comment_block(
+                &estimate,
+                self.resolved_config.filament_density,
+            ));
         gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
         Ok(gcode_ir)
     }
