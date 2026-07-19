@@ -10,7 +10,8 @@
 
 use slicer_ir::SemVer;
 use slicer_scheduler::{
-    dedup_same_claim_modules_with_wall_generator, LoadDiagnostic, LoadedModule, LoadedModuleBuilder,
+    dedup_same_claim_modules_for_test, dedup_same_claim_modules_with_wall_generator,
+    LoadDiagnostic, LoadedModule, LoadedModuleBuilder,
 };
 use std::path::PathBuf;
 
@@ -21,6 +22,8 @@ const ARACHNE_PERIMETERS_MODULE_ID: &str = "com.core.arachne-perimeters";
 
 const PERIMETER_STAGE: &str = "Layer::Perimeters";
 const PERIMETER_GENERATOR_CLAIM: &str = "perimeter-generator";
+const INFILL_POSTPROCESS_STAGE: &str = "Layer::InfillPostProcess";
+const INFILL_LINK_CLAIM: &str = "claim:infill-link";
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -71,6 +74,23 @@ fn kept_ids(
     kept.iter().map(|m| m.id().to_string()).collect()
 }
 
+fn infill_link_module(id: &str) -> LoadedModule {
+    LoadedModuleBuilder::new(
+        id,
+        semver(0, 1, 0),
+        INFILL_POSTPROCESS_STAGE,
+        slicer_schema::WORLD_LAYER,
+        PathBuf::from("/tmp/placeholder.wasm"),
+    )
+    .claims(vec![INFILL_LINK_CLAIM.to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .placeholder_wasm(true)
+    .build()
+}
+
 #[test]
 fn spiral_vase_arachne_dispatch_inactive_keeps_arachne() {
     // wall_generator=arachne, spiral_vase=false → arachne wins.
@@ -96,4 +116,18 @@ fn spiral_vase_arachne_dispatch_active_forces_classic() {
          wall_generator=arachne; got {:?}",
         ids
     );
+}
+
+#[test]
+fn infill_link_claim_dedup() {
+    let mut modules = vec![
+        infill_link_module("com.test.infill-linker-a"),
+        infill_link_module("com.test.infill-linker-b"),
+    ];
+    let mut diagnostics = Vec::new();
+
+    let kept = dedup_same_claim_modules_for_test(&mut modules, &mut diagnostics);
+    let kept_ids: Vec<_> = kept.iter().map(|module| module.id()).collect();
+
+    assert_eq!(kept_ids, vec!["com.test.infill-linker-a"]);
 }

@@ -569,6 +569,10 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
 
+| Claim ID                 | Kind     | Dedup          | Owner                                                                    |
+|--------------------------|----------|----------------|--------------------------------------------------------------------------|
+| `claim:infill-link`      | non-fill | first-winner   | `infill-linker` (`Layer::InfillPostProcess`, packet 130; ADR-0025)       |
+
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 
 ### Holder identifier matching
