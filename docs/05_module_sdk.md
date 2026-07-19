@@ -348,6 +348,63 @@ The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
 carries no version").
 
+#### `SupportGeometryOutput::push_diagnostic` (Normative — Packet 118)
+
+`SupportGeometryOutput` (`crates/slicer-sdk/src/prepass_builders.rs`) is the
+SDK builder that backs the WIT `support-geometry-output` resource. In addition
+to `push_support_plan_entry`, it exposes a typed diagnostic channel that
+mirrors the WIT `push-diagnostic` method:
+
+```rust
+pub struct SupportGeometryOutput {
+    entries: Vec<super::prepass_types::SupportPlanEntry>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl SupportGeometryOutput {
+    pub fn new() -> Self { /* entries: Vec::new(), diagnostics: Vec::new() */ }
+
+    /// Push a diagnostic record. Per docs/adr/0010-typed-diagnostic-channel.md:
+    /// ```wit
+    /// push-diagnostic: func(d: diagnostic) -> result<_, string>;
+    /// ```
+    pub fn push_diagnostic(&mut self, d: Diagnostic) -> Result<(), String> {
+        self.diagnostics.push(d);
+        Ok(())
+    }
+
+    /// Get all diagnostics in insertion order (for testing).
+    #[doc(hidden)]
+    pub fn diagnostics(&self) -> &[Diagnostic] { &self.diagnostics }
+}
+```
+
+Contract (matches the WIT contract in `03_wit_and_manifest.md` §
+`support-geometry-output.push-diagnostic`):
+
+- **FIFO ordering.** Each `push_diagnostic` call appends to the internal
+  `Vec<Diagnostic>`. The host drains the SDK's `diagnostics()` accessor in
+  the same order on the way to `ModuleAccessAudit.diagnostics` — see
+  `02_ir_schemas.md` § "`ModuleAccessAudit.diagnostics`".
+- **`Result<(), String>` return.** Mirrors the WIT signature; current
+  implementation always returns `Ok(())` (no allocation-failure path). Code
+  must still `.map_err(...)` the result so future validation does not require
+  refactors at the call site.
+- **`diagnostics()` test accessor.** `pub fn diagnostics(&self) -> &[Diagnostic]`
+  is `#[doc(hidden)]` and intended for round-trip and parity tests only
+  (e.g. `prepass_diagnostic_roundtrip_tdd`); production module code should
+  not call it.
+- **Not on every output builder.** The diagnostic method is added to
+  `SupportGeometryOutput` only. Other prepass output builders
+  (`MeshAnalysisOutput`, `LayerPlanOutput`, `PaintSegmentationOutput`,
+  `SeamPlanningOutput`) are unchanged in Packet 118.
+- **Guest rebuild obligation.** `support-geometry-output` gained a new WIT
+  method; any pre-built guest WASM that imports the world will fail typed
+  instantiation at runtime. After `cargo build` of `slicer-schema` /
+  `slicer-sdk` / `slicer-macros`, run `cargo xtask build-guests` (drop
+  `--check`) and re-run the full test suite. The freshness check
+  `cargo xtask build-guests --check` is the canonical pre-test gate.
+
 #### PrePass Config-View Plumbing (Normative — Packet 73)
 
 Every PrePass export receives a `config-view` parameter providing

@@ -30,11 +30,12 @@ pub use crate::prepass_builders::{
     SeamPlanningOutput, SupportGeometryOutput,
 };
 pub use crate::prepass_types::{
-    FacetAnnotation, FacetClass, LayerPlanView, LayerPlanViewEntry, LayerProposal, MeshObjectView,
-    ObjectId, PaintLayerView, PaintSegmentationObjectView, PaintStrokeView, PaintValueView,
-    RegionId as PrepassRegionId, RegionLayerProposal, RegionSegmentationView,
-    RegionSegmentationViewEntry, ScoredSeamCandidate, SeamPlanEntry, SeamReason,
-    SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry, SurfaceGroupProposal,
+    Diagnostic, DiagnosticSeverity, FacetAnnotation, FacetClass, LayerPlanView, LayerPlanViewEntry,
+    LayerProposal, MeshObjectView, ObjectId, PaintLayerView, PaintSegmentationObjectView,
+    PaintStrokeView, PaintValueView, RegionId as PrepassRegionId, RegionLayerProposal,
+    RegionSegmentationView, RegionSegmentationViewEntry, ScoredSeamCandidate, SeamPlanEntry,
+    SeamReason, SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry,
+    SurfaceGroupProposal,
 };
 
 // IR re-exports

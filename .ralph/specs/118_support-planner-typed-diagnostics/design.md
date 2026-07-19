@@ -124,5 +124,5 @@
 
 ## Open Questions
 
-- `[BLOCK]` Source-plan `TASK-253` is a current paint-segmentation task, not a support task. A maintainer must map the B4 cap slice to a support-owned backlog row before closure; this packet proposes no replacement ID.
-- `[DECISION]` Packet 116 is not a prerequisite for D11: it explicitly emits no warning, while packet 118 reads the preserved config key in `SupportPlanner::run_support_geometry` and owns the typed code `1003` diagnostic. Shared-file edits may be serialized `116 -> 118`, but no dependency edge is required and no cycle exists.
+- `[RESOLVED]` Source-plan `TASK-253` was a current paint-segmentation task, not a support task. Resolution: packet 118 closes against the live `TASK-163b-diagnostic` row in `docs/07_implementation_status.md`; no replacement ID is invented; the closure note in `docs/07` records the resolution.
+- `[RESOLVED]` Packet 116 is not a prerequisite for D11: it explicitly emits no warning, while packet 118 reads the preserved config key in `SupportPlanner::run_support_geometry` and owns the typed code `1003` diagnostic. Shared-file edits are serialized `116 -> 118` (packet 116 implemented first; packet 118 second), no dependency edge required, no cycle.

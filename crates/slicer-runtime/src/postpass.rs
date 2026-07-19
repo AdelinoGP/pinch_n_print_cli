@@ -291,6 +291,7 @@ pub fn execute_postpass_with_capture(
                             module_id: module.module_id().to_owned(),
                             runtime_reads: reads,
                             runtime_writes: vec![String::from("GCodeIR")],
+                            diagnostics: Vec::new(),
                         });
                     }
                     PostpassOutput::NonFatalError { message: _ } => {
@@ -391,6 +392,7 @@ pub fn execute_postpass_with_capture(
                         module_id: module.module_id().to_owned(),
                         runtime_reads: reads,
                         runtime_writes: vec![String::from("GCodeIR")],
+                        diagnostics: Vec::new(),
                     });
                     text = new_text;
                 }

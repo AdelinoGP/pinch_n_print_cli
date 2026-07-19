@@ -26,7 +26,6 @@ use slicer_ir::{
     ConfigKey, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
     SemVer, SupportPlanEntry,
 };
-use slicer_sdk::host::{test_support as log_test_support, LogLevel};
 use slicer_sdk::module_test;
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
@@ -451,12 +450,14 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 /// When the planner's MST move pass clamps a node into avoidance and the
 /// clamped target lies inside the collision_polys (i.e. the only valid
 /// destination is occupied by the model), the node is dropped and a
-/// `support-planner.node-clamped-out` warn-level diagnostic is emitted via
-/// `host-services.log`.
+/// typed code 1002 warn-level `Diagnostic` is emitted via the
+/// `SupportGeometryOutput::push_diagnostic` channel.
 #[module_test]
 fn node_dropped_when_avoidance_rejects_all_moves() {
     // Note: #[module_test] already drains and reinstalls log capture via
     // reset_global_state() + mock_host_setup(). No explicit install needed here.
+
+    use slicer_sdk::prepass_types::{Diagnostic, DiagnosticSeverity};
 
     let config = make_planner_config(&[
         ("support_enabled", ConfigValue::Bool(true)),
@@ -482,7 +483,7 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
     // entirely contains it. avoidance_polys (collision inflated outward) will
     // also contain the move targets, so clamp_to_avoidance is satisfied —
     // but point_in_any_polygon(collision_polys, ...) hits and the node is
-    // dropped with a warn log.
+    // dropped with a typed code-1002 diagnostic.
     let big_box = ExPolygon {
         contour: Polygon {
             points: vec![
@@ -510,19 +511,21 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
-    let logs = log_test_support::take_log_messages();
-    let clamped: Vec<_> = logs
+    let diagnostics = output.diagnostics();
+    let clamped: Vec<&Diagnostic> = diagnostics
         .iter()
-        .filter(|(lvl, msg)| {
-            matches!(lvl, LogLevel::Warn) && msg.contains("support-planner.node-clamped-out")
+        .filter(|d| {
+            d.code == 1002
+                && matches!(d.severity, DiagnosticSeverity::Warn)
+                && d.message.contains("node-clamped-out")
         })
         .collect();
     assert!(
         !clamped.is_empty(),
-        "AC-N3: expected at least one warn log containing \
-         'support-planner.node-clamped-out'; got {} log entries: {:?}",
-        logs.len(),
-        logs
+        "AC-N3: expected at least one code 1002 warn diagnostic containing \
+         'node-clamped-out'; got {} diagnostics: {:?}",
+        diagnostics.len(),
+        diagnostics
     );
 }
 

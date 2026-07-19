@@ -135,8 +135,25 @@ world prepass-module {
         entries: list<support-geometry-view-entry>,
     }
 
+    record diagnostic {
+        severity: severity-level,
+        code: u32,
+        layer: option<s32>,
+        object-id: option<string>,
+        message: string,
+    }
+
+    enum severity-level {
+        trace,
+        debug,
+        info,
+        warn,
+        error,
+    }
+
     resource support-geometry-output {
         push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+        push-diagnostic: func(d: diagnostic) -> result<_, string>;
     }
 
     export run-support-geometry: func(

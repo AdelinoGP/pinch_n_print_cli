@@ -1617,6 +1617,33 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                         });
                     }
                 }
+                for __slicer_diag in sdk_output.diagnostics() {
+                    let __slicer_wit_severity = match __slicer_diag.severity {
+                        ::slicer_sdk::prepass_types::DiagnosticSeverity::Trace => SeverityLevel::Trace,
+                        ::slicer_sdk::prepass_types::DiagnosticSeverity::Debug => SeverityLevel::Debug,
+                        ::slicer_sdk::prepass_types::DiagnosticSeverity::Info => SeverityLevel::Info,
+                        ::slicer_sdk::prepass_types::DiagnosticSeverity::Warn => SeverityLevel::Warn,
+                        ::slicer_sdk::prepass_types::DiagnosticSeverity::Error => SeverityLevel::Error,
+                    };
+                    let __slicer_wit_diag = Diagnostic {
+                        severity: __slicer_wit_severity,
+                        code: __slicer_diag.code,
+                        layer: __slicer_diag.layer,
+                        object_id: __slicer_diag.object_id.clone(),
+                        message: __slicer_diag.message.clone(),
+                    };
+                    if let Err(e) = _output.push_diagnostic(&__slicer_wit_diag) {
+                        // Parallel to the entry-emission branch above (code 11). The host
+                        // impl at `host.rs::push_diagnostic` always returns Ok(Ok(()))
+                        // today, so this branch is defensive against a future host impl
+                        // change — same shape as the established entry pattern.
+                        return Err(ModuleError {
+                            code: 12,
+                            message: e,
+                            fatal: true,
+                        });
+                    }
+                }
                 match out {
                     Ok(()) => Ok(()),
                     Err(e) => Err(__slicer_error_out(e)),

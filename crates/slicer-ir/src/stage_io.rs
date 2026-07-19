@@ -409,6 +409,40 @@ impl fmt::Display for PrepassRunnerError {
 impl std::error::Error for PrepassRunnerError {}
 
 // ============================================================================
+// Diagnostic types (prepass diagnostic channel, ADR-0010)
+// ============================================================================
+
+/// Severity level for prepass diagnostics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    /// Trace-level diagnostic, most verbose.
+    Trace,
+    /// Debug-level diagnostic, verbose.
+    Debug,
+    /// Informational diagnostic.
+    Info,
+    /// Warning diagnostic; recoverable, does not abort the slice.
+    Warn,
+    /// Error diagnostic; recoverable, does not abort the slice.
+    Error,
+}
+
+/// A typed diagnostic record emitted by a prepass module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    /// Severity of the diagnostic.
+    pub severity: DiagnosticSeverity,
+    /// Numeric code per diagnostic class; module-allocated (e.g. support-planner 1000-1999).
+    pub code: u32,
+    /// Global layer index when the diagnostic is layer-scoped; `None` for prepass-global diagnostics. Signed to allow negative raft prefix layer indices.
+    pub layer: Option<i32>,
+    /// Object identifier when the diagnostic is object-scoped; `None` for object-agnostic diagnostics.
+    pub object_id: Option<String>,
+    /// Human-readable description; includes parameters that don't fit the fixed fields.
+    pub message: String,
+}
+
+// ============================================================================
 // Per-stage layer commit (ADR-0020)
 // ============================================================================
 //

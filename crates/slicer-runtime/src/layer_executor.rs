@@ -419,6 +419,7 @@ fn execute_single_layer_inner(
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: writes,
+                    diagnostics: Vec::new(),
                 });
             }
         }

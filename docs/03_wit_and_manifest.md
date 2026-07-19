@@ -407,6 +407,53 @@ There is **no `run-paint-segmentation` export.** Paint segmentation runs as the
 on-disk file for each export's parameters, the view records they consume, and
 the output-builder resources they write through.
 
+### `support-geometry-output.push-diagnostic` (Normative — Packet 118)
+
+`support-geometry-output` exposes a second resource method in addition to
+`push-support-plan-entry`:
+
+```wit
+push-diagnostic: func(d: diagnostic) -> result<_, string>;
+```
+
+The `diagnostic` record carries a typed severity, a module-allocated numeric
+code, optional layer/object scoping, and a free-form human-readable message:
+
+```wit
+record diagnostic {
+    severity: severity-level,
+    code: u32,
+    layer: option<s32>,
+    object-id: option<string>,
+    message: string,
+}
+
+enum severity-level {
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+}
+```
+
+Field and variant notes (match the on-disk file in
+`crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`):
+
+- Field names are kebab-case in WIT (`object-id`), converted to snake_case
+  (`object_id`) in the Rust SDK and IR.
+- Field order in the record is `severity, code, layer, object-id, message` —
+  bindgen-generated structs follow this order; do not reorder.
+- The `severity-level` enum has exactly five variants; the WIT order is
+  `trace, debug, info, warn, error` (lowest verbosity first).
+- `layer: option<s32>` is signed so negative raft prefix layer indices can be
+  expressed; `None` for prepass-global diagnostics.
+- `code: u32` is module-allocated. The support-planner reserves
+  `1000..=1999`; the host does not enforce a range (out-of-range codes pass
+  through unchanged).
+- `push-diagnostic` is the only new method on `support-geometry-output`;
+  no other prepass output builder gains a diagnostic method in Packet 118.
+
 ---
 
 ## `world-postpass.wit`

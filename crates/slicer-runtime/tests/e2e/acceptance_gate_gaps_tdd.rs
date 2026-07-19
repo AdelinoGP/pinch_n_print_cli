@@ -84,6 +84,7 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
         module_id: m.id().to_string(),
         runtime_reads: vec!["A.undeclared.read".to_string()],
         runtime_writes: vec![],
+        diagnostics: Vec::new(),
     };
     let report = validate_startup_dag(&dag_request(vec![m], vec![audit]));
     let hits: Vec<_> = report
@@ -117,6 +118,7 @@ fn undeclared_runtime_write_emits_structured_diagnostic_with_kind_write() {
         module_id: m.id().to_string(),
         runtime_reads: vec![],
         runtime_writes: vec!["A.undeclared.write".to_string()],
+        diagnostics: Vec::new(),
     };
     let report = validate_startup_dag(&dag_request(vec![m], vec![audit]));
     let kinds: Vec<&AccessKind> = report
@@ -142,6 +144,7 @@ fn declared_access_produces_no_undeclared_access_diagnostic() {
         module_id: m.id().to_string(),
         runtime_reads: vec!["A.r".to_string()],
         runtime_writes: vec!["A.w".to_string()],
+        diagnostics: Vec::new(),
     };
     let report = validate_startup_dag(&dag_request(vec![m], vec![audit]));
     assert!(report

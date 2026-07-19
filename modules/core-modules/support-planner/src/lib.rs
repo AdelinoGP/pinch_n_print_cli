@@ -51,7 +51,6 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_sdk::host::{log, LogLevel};
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
@@ -240,6 +239,39 @@ impl PrepassModule for SupportPlanner {
             }
         }
 
+        // ── Packet 118 D11: planner-owned code 1003 warning ─────────────
+        // Read the preserved `support_interface_bottom_layers` config key
+        // and emit exactly one typed diagnostic before the layer loop when
+        // the value is not -1. Packet 116 owns dead-state cleanup and
+        // emits no warning; this packet owns the typed record.
+        let interface_bottom_layers = match _config.get("support_interface_bottom_layers") {
+            Some(ConfigValue::Int(n)) => *n as i32,
+            Some(ConfigValue::Float(n)) => *n as i32,
+            _ => -1,
+        };
+        if interface_bottom_layers != -1 {
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1003,
+                layer: None,
+                object_id: None,
+                message: format!(
+                    "support-planner interface-bottom-layers: support_interface_bottom_layers \
+                     is not yet implemented (config value={interface_bottom_layers})"
+                ),
+            });
+        }
+
+        // ── Packet 118 B4: cross-object merged cap diagnostic ───────────
+        // Accumulate drops across all objects on the same global layer so
+        // we emit one code-1001 diagnostic per affected global layer
+        // (design.md Locked Assumptions: 'one cap diagnostic per affected
+        // global layer, not once per dropped candidate'). The map is
+        // populated inside plan_for_object and drained in run_support_geometry
+        // after the per-object loop.
+        let mut dropped_by_layer: std::collections::BTreeMap<u32, usize> =
+            std::collections::BTreeMap::new();
+
         for obj in objects {
             self.plan_for_object(
                 obj,
@@ -247,8 +279,32 @@ impl PrepassModule for SupportPlanner {
                 region_segmentation,
                 &collision_cache,
                 output,
+                &mut dropped_by_layer,
             )?;
         }
+
+        // Emit one code-1001 diagnostic per affected global layer. The
+        // cap is enforced per-layer globally, so a layer hit by multiple
+        // objects' drops collapses to a single diagnostic with the merged
+        // dropped_count. object_id is None because the cap is layer-level,
+        // not object-level.
+        for (global_layer_index, dropped) in &dropped_by_layer {
+            if *dropped == 0 {
+                continue;
+            }
+            let cap = self.max_branches_per_layer;
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1001,
+                layer: Some(*global_layer_index as i32),
+                object_id: None,
+                message: format!(
+                    "support-planner cap: max_branches_per_layer cap exceeded: \
+                     dropped_count={dropped} kept_count={cap}"
+                ),
+            });
+        }
+
         Ok(())
     }
 }
@@ -261,6 +317,7 @@ impl SupportPlanner {
         region_segmentation: &RegionSegmentationView,
         collision_cache: &[LayerCollisionCache],
         output: &mut SupportGeometryOutput,
+        dropped_by_layer: &mut std::collections::BTreeMap<u32, usize>,
     ) -> Result<(), ModuleError> {
         if obj.triangles.is_empty() {
             return Ok(());
@@ -297,6 +354,13 @@ impl SupportPlanner {
         let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
             vec![Vec::new(); num_layers as usize];
 
+        // Per-affected-layer drop count for the code 1001 cap diagnostic.
+        // Keyed by global_layer_index so the message carries the right value
+        // even when layer_rev doesn't line up with the layer-plan index.
+        // Owned by run_support_geometry; this function increments into the
+        // shared map so per-layer totals are merged across all objects
+        // before emission.
+
         for (v0, v1, v2) in &overhang_facets {
             let centroid = [
                 (v0[0] + v1[0] + v2[0]) / 3.0,
@@ -323,6 +387,8 @@ impl SupportPlanner {
                 .position(|l| l.z >= centroid[2])
                 .unwrap_or(layer_plan.layers.len() - 1);
             if contacts_by_layer[layer_idx].len() >= self.max_branches_per_layer {
+                let global_li = layer_plan.layers[layer_idx].global_layer_index;
+                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
                 continue;
             }
             contacts_by_layer[layer_idx].push(PlannedSupportNode {
@@ -338,6 +404,8 @@ impl SupportPlanner {
                 continue;
             }
             if contacts_by_layer[li].len() >= self.max_branches_per_layer {
+                let global_li = layer_plan.layers[li].global_layer_index;
+                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
                 continue;
             }
             contacts_by_layer[li].push(PlannedSupportNode {
@@ -431,7 +499,11 @@ impl SupportPlanner {
                 continue;
             }
             if active_nodes.len() > self.max_branches_per_layer {
+                let dropped = active_nodes.len() - self.max_branches_per_layer;
                 active_nodes.truncate(self.max_branches_per_layer);
+                *dropped_by_layer
+                    .entry(current_global_layer_index)
+                    .or_insert(0) += dropped;
             }
 
             // Sort for deterministic MST/merge ordering.
@@ -623,22 +695,18 @@ impl SupportPlanner {
                         let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
 
                         // Drop nodes whose target lies inside collision_polys
-                        // (AC-N3: node-clamped-out diagnostic).
-                        // Diagnostic is emitted via host-services.log with a
-                        // structured `support-planner.node-clamped-out` prefix
-                        // until a typed `Diagnostic` channel is plumbed through
-                        // the prepass output WIT (follow-up to packet 31b).
+                        // (AC-N3: code 1002 node-clamped-out typed diagnostic).
                         if point_in_any_expoly(collision_polys, cx, cy) {
-                            log(
-                                LogLevel::Warn,
-                                &format!(
-                                    "support-planner.node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
-                                    current_global_layer_index,
-                                    obj.object_id,
-                                    cx,
-                                    cy
+                            let _ = output.push_diagnostic(Diagnostic {
+                                severity: DiagnosticSeverity::Warn,
+                                code: 1002,
+                                layer: Some(current_global_layer_index as i32),
+                                object_id: Some(obj.object_id.clone()),
+                                message: format!(
+                                    "node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
+                                    current_global_layer_index, obj.object_id, cx, cy
                                 ),
-                            );
+                            });
                             continue;
                         }
 
@@ -660,6 +728,11 @@ impl SupportPlanner {
 
             active_nodes = next_nodes;
         }
+
+        // ── Packet 118 B4: cap drops are merged into the shared map ──────
+        // (Emission happens in run_support_geometry after all objects are
+        // processed, so the diagnostic is one per affected global layer
+        // across all objects, not one per (object, layer) pair.)
 
         // Emit entries in top-to-bottom order.
         for entry in entries_in_order {

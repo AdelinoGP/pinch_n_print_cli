@@ -761,6 +761,11 @@ pub struct HostExecutionContext {
     /// non-prepass stages.
     pub(crate) support_plan_entries: Vec<prepass::SupportPlanEntry>,
 
+    /// Diagnostics emitted by the guest via `support-geometry-output.push-diagnostic`.
+    /// Stored as `slicer_ir::Diagnostic` after WIT-to-IR conversion. Drained by the
+    /// prepass dispatch path after the WIT call returns. Empty for all non-prepass stages.
+    pub(crate) diagnostics: Vec<slicer_ir::Diagnostic>,
+
     /// Finalization builder pushes collected during a finalization
     /// `run-finalization` invocation. The host-side
     /// `HostFinalizationOutputBuilder::drop` moves the resource's
@@ -898,6 +903,7 @@ impl HostExecutionContextBuilder {
             mesh_analysis_surface_groups: Vec::new(),
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
+            diagnostics: Vec::new(),
             finalization_pushes: Vec::new(),
             finalization_layer_snapshot: Vec::new(),
             layer_collection_proposal: None,
@@ -1052,6 +1058,16 @@ impl HostExecutionContext {
     /// Support-plan entries collected during `run-support-geometry`.
     pub fn support_plan_entries(&self) -> &[prepass::SupportPlanEntry] {
         &self.support_plan_entries
+    }
+
+    /// Diagnostics emitted by the guest during the most recent prepass call.
+    pub fn diagnostics(&self) -> &[slicer_ir::Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Mutable access to the diagnostics collector.
+    pub fn diagnostics_mut(&mut self) -> &mut Vec<slicer_ir::Diagnostic> {
+        &mut self.diagnostics
     }
 
     /// Finalization builder pushes captured during `run-finalization`.
@@ -3260,6 +3276,27 @@ mod prepass_impls {
                 )));
             }
             self.support_plan_entries.push(entry);
+            Ok(Ok(()))
+        }
+        fn push_diagnostic(
+            &mut self,
+            _handle: Resource<pm::SupportGeometryOutput>,
+            d: pm::Diagnostic,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let severity = match d.severity {
+                pm::SeverityLevel::Trace => slicer_ir::DiagnosticSeverity::Trace,
+                pm::SeverityLevel::Debug => slicer_ir::DiagnosticSeverity::Debug,
+                pm::SeverityLevel::Info => slicer_ir::DiagnosticSeverity::Info,
+                pm::SeverityLevel::Warn => slicer_ir::DiagnosticSeverity::Warn,
+                pm::SeverityLevel::Error => slicer_ir::DiagnosticSeverity::Error,
+            };
+            self.diagnostics.push(slicer_ir::Diagnostic {
+                severity,
+                code: d.code,
+                layer: d.layer,
+                object_id: d.object_id,
+                message: d.message,
+            });
             Ok(Ok(()))
         }
         fn drop(&mut self, rep: Resource<pm::SupportGeometryOutput>) -> wasmtime::Result<()> {

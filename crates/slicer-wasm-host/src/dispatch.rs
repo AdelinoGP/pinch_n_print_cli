@@ -43,6 +43,13 @@ thread_local! {
     /// Read and cleared by `last_log_messages` on the runner traits.
     static LAST_MODULE_LOG_MESSAGES: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding the diagnostics emitted by the most
+    /// recent prepass module invocation on this thread. Each entry is a
+    /// `slicer_ir::Diagnostic`. Read and cleared by `last_diagnostics` on
+    /// the `PrepassStageRunner` trait.
+    static LAST_PREPASS_DIAGNOSTICS: std::cell::RefCell<Vec<slicer_ir::Diagnostic>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -853,6 +860,12 @@ impl WasmRuntimeDispatcher {
                 module_err.code, module_err.fatal, module_err.message
             ),
         })?;
+
+        // Drain diagnostics from the context into the thread-local stash
+        // before the store (and its HostExecutionContext) is consumed.
+        let diags: Vec<slicer_ir::Diagnostic> =
+            store.data_mut().diagnostics_mut().drain(..).collect();
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
         Ok(store.into_data())
     }
@@ -1794,6 +1807,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().drain(..).collect())
     }
 }
 
