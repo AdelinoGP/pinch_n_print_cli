@@ -14,28 +14,47 @@ Packets 129–135 each proved their slice in isolation; nothing yet proves the c
 that a modifier's density reaches a rewritten module through the per-region accessor, that
 the linker's two branches behave on real pipeline output, and that the user-visible result
 matches the OrcaSlicer reference behavior that motivated the roadmap. Meanwhile the golden
-baseline has been carved since packet 131 (D6 decision: carve early, bless once) — the
-longer it stays carved, the weaker the repo's regression signal. This packet closes both
-gaps: end-to-end proof and a single justified re-bless.
+baseline has been carved since packet 131 (D6 decision: carve early, bless once; carve list
+at `.ralph/specs/131_per-region-config-delivery/carve-list.md` enumerates ~20 carved tests
+across 5 `cube_4color_*` files in `crates/slicer-runtime/tests/executor/`) — the longer it
+stays carved, the weaker the repo's regression signal. This packet closes both gaps:
+end-to-end proof and a single justified re-bless.
+
+Pre-activation state (verified 2026-07-19): TASK-254/255/256 closed (clip_polylines, WIT
+contract, per-region config); TASK-257/258/259/260/261 open (modifier split, linker,
+rectilinear rewrite, gyroid rewrite, integration). The packet refuses to activate until
+257, 258, 259, 260 are closed; the linker is what makes the AC-2/AC-3/AC-N1 assertions
+meaningful (the no-linker guard AC-N1 is the only one that does not require the linker,
+and even it is more meaningful with 133 in place).
 
 ## In Scope
 
 - M3 e2e fixture: a cube with a centered infill-modifier volume (base 0.15 / modifier 0.40).
-  Preference: extend `resources/cube_cilindrical_modifier.3mf` with the density delta in its
-  modifier metadata if the loader's delta path supports it; otherwise author a new
-  `resources/cube_infill_modifier.3mf` offline (packet-89/90 fixture precedent). `[FWD]` —
-  decided at Step 1.
+  Preference: extend `resources/cube_cilindrical_modifier.3mf` (30625 bytes, exists) with
+  the density delta in its `Metadata/model_settings.config` sidecar, since that sidecar is
+  the established channel (FACT R 2026-07-19). If the loader's path
+  (`ModifierVolume.config_delta.fields` at `loader.rs:702-710`) does not currently read
+  per-volume density from the sidecar, either:
+  - extend the loader to do so (small, in-scope), or
+  - author `resources/cube_infill_modifier.3mf` offline (packet-89/90 fixture precedent),
+    or
+  - programmatic 3MF construction in-test (the design's fallback).
+  `[FWD]` — decided at Step 1.
 - E2e tests: AC-1 (one wall set + two spacings), AC-2 (containment + shared-arc anchoring +
   linkage), AC-3 (wedge linked-infill + `--report` artifact), AC-N1 (no-linker degraded
-  guard).
-- `infill_overlap` CLI binding (pattern: `crates/slicer-ir/tests/fill_holder_cli_binding_tdd.rs`)
-  + its test.
-- Golden restore: remove every `carved: infill-parity D6` `#[ignore]`; re-bless each restored
-  expectation against verified output with a per-fixture closure-log justification (bless is
-  gated on AC-2/AC-3 passing first — geometry before SHAs).
+  guard). The existing `wedge_default_emits_sparse_infill_marker` and similar tests in
+  `slice_end_to_end_tdd.rs` cover gcode-level marker presence but not IR-level linkage —
+  the new tests assert on `points_per_path` (no such assertion exists today).
+- `infill_overlap` CLI binding (pattern: `crates/slicer-ir/tests/fill_holder_cli_binding_tdd.rs`
+  — 3 tests, 66 lines; `resolved_config.rs:99-112` production site) + its test.
+- Golden restore: remove every `carved: infill-parity D6` `#[ignore]` from the 5 carved
+  files; re-bless each restored expectation against verified output with a per-fixture
+  closure-log justification (bless is gated on AC-2/AC-3 passing first — geometry before
+  SHAs).
 - Workspace acceptance ceremony via `cargo xtask test --workspace --summary` (permitted: the
   packet-close case), dispatched to a sub-agent with a FACT return.
-- docs/07 closure sweep for TASK-254…TASK-261.
+- docs/07 closure sweep for TASK-257, TASK-258, TASK-259, TASK-260, TASK-261 (TASK-254/255/256
+  already closed; not in scope).
 
 ## Out of Scope
 
