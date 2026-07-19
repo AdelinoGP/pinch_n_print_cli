@@ -35,6 +35,8 @@ State ACs only here; `requirements.md` references their IDs.
 
 Every AC names exact fields, paths, counts, errors, variants, or output fragments and ends with its own runnable command. Repeat shared commands; never write "see AC-N". Commands that dump more than 200 successful output lines must be wrapped or filtered so a subagent can return a FACT.
 
+AC verification command rule (mandatory): each pipe-suffixed command's `--test` binary must be one that can actually drive the asserted behavior. Before authoring an AC that requires an end-to-end driver (e.g. `run_slice`, full pipeline, real module dispatch), verify the target test binary has a working setup for that driver today — dispatch a `LOCATIONS` check for existing call sites. If the target binary is the wrong home (e.g. `--test unit` for a `run_slice` test when no unit test today calls `run_slice`), either pick a binary that has the setup, or author a shim/test fixture in the same step and document the shim in `requirements.md` §In Scope.
+
 ## Negative Test Cases
 
 - **AC-N1. Given** [rejection/failure condition], **when** [action], **then** [observable rejection]. | `[verification command]`

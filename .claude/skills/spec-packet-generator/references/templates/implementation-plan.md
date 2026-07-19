@@ -20,6 +20,9 @@
   - `[path]`
 - Files explicitly out of bounds:
   - `[path/category]`
+- Blast-radius discipline (mandatory when adding a new struct field or schema constant):
+  - When the step adds a field to a struct or a new entry to a schema/version constant, list the **struct-literal blast radius** in "Files allowed to edit" — every test/non-test struct-literal site that compiles against the struct today, plus the test files that hard-assert on the constant's old value. Budget this in the step's context cost; do not let a follow-up "cargo check" discover it.
+  - Dispatch a `LOCATIONS` worker for the struct-literal sites before authoring this step; cite the result inline below.
 - Expected sub-agent dispatches:
   - Question: [question]; scope: `[path/glob]`; return: `[bounded format]`
 - Context cost: `S | M` (split an L step)
@@ -29,6 +32,7 @@
   - `[OrcaSlicerDocumented/path]` - delegate; never load
 - Verification:
   - `[targeted command]` - FACT pass/fail or bounded failure SNIPPETS
+  - When the step bumps a schema/version constant: include the test binary that asserts on the old constant value, e.g. `cargo test -p <crate> --test <file>`. Do not defer this to the acceptance ceremony — the bump and its test fallout land in the same step.
 - Exit condition:
 
 Repeat this complete field set for every step. A read-only discovery step states the inventory, decision, or count proving completion and normally delegates the read.

@@ -11,6 +11,7 @@
 - [Packet-specific constraint]
 - [Exact `wasm-staleness` snippet bullet when applicable]
 - [Exact `coord-system` snippet bullet when applicable]
+- Schema/version constants and event-specific locking (mandatory when the change surface bumps a `PROGRESS_EVENT_SCHEMA_VERSION` or any other public version constant): any event whose wire format is locked at a specific minor version must hard-code that version literal in its constructor, not read the live constant. The live constant drives new event emissions; locked events stay pinned. Bumping the constant ripples into every test that hard-asserts on the old value — author the bump and the test fallout in the same step.
 
 ## Code Change Surface
 
