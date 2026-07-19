@@ -1,4 +1,11 @@
 // -----------------------------------------------------------------------------
+// Ported from OrcaSlicer (AGPLv3). This file is an LLM-generated Rust port
+// of the rectilinear scan-line discipline in
+// OrcaSlicerDocumented/src/libslic3r/Fill/FillRectilinear.cpp
+// (fill_surface_by_lines / slice_region_by_vertical_lines) and
+// FillBase.cpp (infill_direction, adjust_solid_spacing).
+// -----------------------------------------------------------------------------
+//
 // Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
@@ -41,6 +48,9 @@ pub struct RectilinearInfill {
     infill_speed: f32,
     /// Extrusion line width in millimeters.
     line_width: f32,
+    /// Per-layer scan-line shift step (mm). Alternates sign each layer
+    /// to interleave, not stack. Default 0.0 (no shift).
+    infill_shift_step: f32,
 }
 
 #[slicer_module]
@@ -67,11 +77,17 @@ impl LayerModule for RectilinearInfill {
             _ => 0.4,
         };
 
+        let infill_shift_step = match config.get("infill_shift_step") {
+            Some(ConfigValue::Float(s)) => *s as f32,
+            _ => 0.0,
+        };
+
         Ok(Self {
             density,
             base_angle,
             infill_speed,
             line_width,
+            infill_shift_step,
         })
     }
 
@@ -103,6 +119,13 @@ impl LayerModule for RectilinearInfill {
 
         let speed_factor = self.infill_speed / BASE_SPEED;
 
+        // Per-layer pattern shift: alternates sign each layer so scan lines
+        // interleave rather than stack. OrcaSlicer's raw `pattern_shift` is
+        // always 0 for plain rectilinear; the user-facing per-layer shift is
+        // `infill_shift_step` applied here.
+        let x_shift_units = slicer_ir::mm_to_units(self.infill_shift_step)
+            * if layer_index.is_multiple_of(2) { 1 } else { -1 };
+
         // Per-role per-polygon emit (Q3 + Q5 partition contract): the host
         // pre-partitions every region's wall-inset into four pairwise-disjoint
         // canonical fill polygons (`sparse_infill_area`, `top_solid_fill`,
@@ -119,17 +142,22 @@ impl LayerModule for RectilinearInfill {
             // SparseInfill over the host-partitioned sparse-only polygon.
             let sparse = region.sparse_infill_area();
             if !sparse.is_empty() && region.should_emit(ExtrusionRole::SparseInfill) {
-                let paths = self.fill_expolygon_multi(
-                    sparse,
-                    line_spacing,
-                    std_cos_a,
-                    std_sin_a,
-                    z,
-                    speed_factor,
-                    ExtrusionRole::SparseInfill,
-                );
-                for path in paths {
-                    let _ = output.push_sparse_path(path);
+                for expoly in sparse {
+                    let paths = scan_expolygon(
+                        expoly,
+                        line_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        &ExtrusionRole::SparseInfill,
+                        self.line_width,
+                        false,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_sparse_path(path);
+                    }
                 }
             }
 
@@ -139,17 +167,22 @@ impl LayerModule for RectilinearInfill {
             let top = region.top_solid_fill();
             if !top.is_empty() && region.should_emit(ExtrusionRole::TopSolidInfill) {
                 let role = solid_fill_role(region.top_shell_index(), ExtrusionRole::TopSolidInfill);
-                let paths = self.fill_expolygon_multi(
-                    top,
-                    line_spacing,
-                    std_cos_a,
-                    std_sin_a,
-                    z,
-                    speed_factor,
-                    role,
-                );
-                for path in paths {
-                    let _ = output.push_solid_path(path);
+                for expoly in top {
+                    let paths = scan_expolygon(
+                        expoly,
+                        line_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        &role,
+                        self.line_width,
+                        true,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_solid_path(path);
+                    }
                 }
             }
 
@@ -161,17 +194,22 @@ impl LayerModule for RectilinearInfill {
                     region.bottom_shell_index(),
                     ExtrusionRole::BottomSolidInfill,
                 );
-                let paths = self.fill_expolygon_multi(
-                    bottom,
-                    line_spacing,
-                    std_cos_a,
-                    std_sin_a,
-                    z,
-                    speed_factor,
-                    role,
-                );
-                for path in paths {
-                    let _ = output.push_solid_path(path);
+                for expoly in bottom {
+                    let paths = scan_expolygon(
+                        expoly,
+                        line_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        &role,
+                        self.line_width,
+                        true,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_solid_path(path);
+                    }
                 }
             }
 
@@ -181,17 +219,22 @@ impl LayerModule for RectilinearInfill {
                 let deg = region.bridge_orientation_deg() as f64;
                 let rad = deg.to_radians();
                 let (bridge_cos_a, bridge_sin_a) = (rad.cos(), rad.sin());
-                let paths = self.fill_expolygon_multi(
-                    bridge,
-                    line_spacing,
-                    bridge_cos_a,
-                    bridge_sin_a,
-                    z,
-                    speed_factor,
-                    ExtrusionRole::BridgeInfill,
-                );
-                for path in paths {
-                    let _ = output.push_solid_path(path);
+                for expoly in bridge {
+                    let paths = scan_expolygon(
+                        expoly,
+                        line_spacing,
+                        bridge_cos_a,
+                        bridge_sin_a,
+                        z,
+                        speed_factor,
+                        &ExtrusionRole::BridgeInfill,
+                        self.line_width,
+                        false,
+                        x_shift_units,
+                    );
+                    for path in paths {
+                        let _ = output.push_solid_path(path);
+                    }
                 }
             }
         }
@@ -214,127 +257,235 @@ fn solid_fill_role(shell_index: Option<u8>, exposed: ExtrusionRole) -> Extrusion
     }
 }
 
-impl RectilinearInfill {
-    /// Generate fill lines for multiple ExPolygons with a shared role and angle.
-    #[allow(clippy::too_many_arguments)]
-    fn fill_expolygon_multi(
-        &self,
-        expolies: &[ExPolygon],
-        line_spacing: i64,
-        cos_a: f64,
-        sin_a: f64,
-        z: f32,
-        speed_factor: f32,
-        role: ExtrusionRole,
-    ) -> Vec<ExtrusionPath3D> {
-        // Collect all edges (contour + holes) from all expolygons.
-        let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
-        for expoly in expolies {
-            collect_edges(&expoly.contour.points, &mut edges);
-            for hole in &expoly.holes {
-                collect_edges(&hole.points, &mut edges);
-            }
-        }
-
-        if edges.is_empty() {
-            return Vec::new();
-        }
-
-        // Rotate all edge endpoints by -angle into working space.
-        let rotated_edges: Vec<(i64, i64, i64, i64)> = edges
-            .iter()
-            .map(|&(x1, y1, x2, y2)| {
-                let (rx1, ry1) = rotate_point(x1, y1, cos_a, -sin_a);
-                let (rx2, ry2) = rotate_point(x2, y2, cos_a, -sin_a);
-                (rx1, ry1, rx2, ry2)
-            })
-            .collect();
-
-        // Compute bounding box in rotated space across all polygons.
-        let (mut min_y, mut max_y) = (i64::MAX, i64::MIN);
-        for &(_, ry1, _, ry2) in &rotated_edges {
-            min_y = min_y.min(ry1).min(ry2);
-            max_y = max_y.max(ry1).max(ry2);
-        }
-
-        if min_y >= max_y || line_spacing <= 0 {
-            return Vec::new();
-        }
-
-        // Generate scan lines.
-        let mut paths = Vec::new();
-        let mut scan_y = min_y + line_spacing;
-
-        while scan_y < max_y {
-            // Find intersections with all edges.
-            let mut x_intersections: Vec<i64> = Vec::new();
-
-            for &(rx1, ry1, rx2, ry2) in &rotated_edges {
-                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
-
-                // Strictly between.
-                if scan_y > edge_min_y && scan_y < edge_max_y {
-                    let x = rx1 as f64
-                        + (scan_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
-                    x_intersections.push(x.round() as i64);
-                }
-            }
-
-            x_intersections.sort();
-
-            // Pair intersections as enter/exit segments.
-            let mut i = 0;
-            while i + 1 < x_intersections.len() {
-                let x_start = x_intersections[i];
-                let x_end = x_intersections[i + 1];
-
-                // Rotate back by +angle.
-                let (start_x, start_y) = rotate_point(x_start, scan_y, cos_a, sin_a);
-                let (end_x, end_y) = rotate_point(x_end, scan_y, cos_a, sin_a);
-
-                let start = Point3WithWidth {
-                    x: slicer_ir::units_to_mm(start_x),
-                    y: slicer_ir::units_to_mm(start_y),
-                    z,
-                    width: self.line_width,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                };
-                let end = Point3WithWidth {
-                    x: slicer_ir::units_to_mm(end_x),
-                    y: slicer_ir::units_to_mm(end_y),
-                    z,
-                    width: self.line_width,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                };
-
-                paths.push(ExtrusionPath3D {
-                    points: vec![start, end],
-                    role: role.clone(),
-                    speed_factor,
-                });
-
-                i += 2;
-            }
-
-            scan_y += line_spacing;
-        }
-
-        paths
+/// Adjust solid infill line spacing so that the polygon width is divided
+/// evenly, producing uniform scan lines that exactly span the polygon.
+///
+/// Ported from OrcaSlicer FillBase.cpp::adjust_solid_spacing.
+fn adjust_solid_spacing(width: i64, distance: i64) -> i64 {
+    let count = width / distance;
+    if count < 1 {
+        return distance;
     }
+    let new_distance = ((width as f64) / (count as f64)).round() as i64;
+    if (new_distance as f64) > (distance as f64) * 1.2 {
+        return distance;
+    }
+    new_distance
 }
 
-/// Collect edges from a polygon's point list as (x1, y1, x2, y2) tuples.
-fn collect_edges(points: &[slicer_ir::Point2], edges: &mut Vec<(i64, i64, i64, i64)>) {
-    let n = points.len();
-    if n < 2 {
-        return;
+/// Scan a single ExPolygon and produce fill segments.
+///
+/// Each ExPolygon is scanned independently using its own bounding-box center
+/// as the reference point (AC-3 invariant). The half-open vertex test
+/// (include at min_y, exclude at max_y) prevents double-counting at
+/// polygon vertices (AC-N1).
+///
+/// When `adjust_for_solid` is true, the line spacing is adjusted via
+/// `adjust_solid_spacing` so that the polygon is divided evenly.
+#[allow(clippy::too_many_arguments)]
+fn scan_expolygon(
+    expoly: &ExPolygon,
+    line_spacing: i64,
+    cos_a: f64,
+    sin_a: f64,
+    z: f32,
+    speed_factor: f32,
+    role: &ExtrusionRole,
+    line_width: f32,
+    adjust_for_solid: bool,
+    x_shift: i64,
+) -> Vec<ExtrusionPath3D> {
+    if line_spacing <= 0 {
+        return Vec::new();
     }
-    for i in 0..n {
-        let j = (i + 1) % n;
-        edges.push((points[i].x, points[i].y, points[j].x, points[j].y));
+
+    // Collect edges from contour and holes. Inlined per the packet 134 design
+    // (replaces the previous `collect_edges` free function).
+    let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
+    let mut contour_edges: Vec<(i64, i64, i64, i64)> = Vec::new();
+    let contour_pts = &expoly.contour.points;
+    let n = contour_pts.len();
+    if n >= 2 {
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let p_i = &contour_pts[i];
+            let p_j = &contour_pts[j];
+            edges.push((p_i.x, p_i.y, p_j.x, p_j.y));
+            contour_edges.push((p_i.x, p_i.y, p_j.x, p_j.y));
+        }
     }
+    for hole in &expoly.holes {
+        let pts = &hole.points;
+        let m = pts.len();
+        if m >= 2 {
+            for i in 0..m {
+                let j = (i + 1) % m;
+                let p_i = &pts[i];
+                let p_j = &pts[j];
+                edges.push((p_i.x, p_i.y, p_j.x, p_j.y));
+            }
+        }
+    }
+    if edges.is_empty() {
+        return Vec::new();
+    }
+
+    // Compute bbox center of this expolygon in working (unrotated) space.
+    let (mut min_x, mut max_x) = (i64::MAX, i64::MIN);
+    let (mut min_y, mut max_y) = (i64::MAX, i64::MIN);
+    for &(x1, y1, x2, y2) in &edges {
+        min_x = min_x.min(x1).min(x2);
+        max_x = max_x.max(x1).max(x2);
+        min_y = min_y.min(y1).min(y2);
+        max_y = max_y.max(y1).max(y2);
+    }
+    if min_x >= max_x || min_y >= max_y {
+        return Vec::new();
+    }
+    let refpt_x = min_x + (max_x - min_x) / 2;
+    let refpt_y = min_y + (max_y - min_y) / 2;
+
+    // Translate to refpt-centered, then rotate by -angle.
+    let cos_neg = cos_a;
+    let sin_neg = -sin_a;
+    let mut rotated_edges: Vec<(i64, i64, i64, i64)> = Vec::with_capacity(edges.len());
+    let mut rotated_contour: Vec<(i64, i64, i64, i64)> = Vec::with_capacity(contour_edges.len());
+    for &(x1, y1, x2, y2) in &edges {
+        let (rx1, ry1) = rotate_point(x1 - refpt_x, y1 - refpt_y, cos_neg, sin_neg);
+        let (rx2, ry2) = rotate_point(x2 - refpt_x, y2 - refpt_y, cos_neg, sin_neg);
+        rotated_edges.push((rx1, ry1, rx2, ry2));
+    }
+    for &(x1, y1, x2, y2) in &contour_edges {
+        let (rx1, ry1) = rotate_point(x1 - refpt_x, y1 - refpt_y, cos_neg, sin_neg);
+        let (rx2, ry2) = rotate_point(x2 - refpt_x, y2 - refpt_y, cos_neg, sin_neg);
+        rotated_contour.push((rx1, ry1, rx2, ry2));
+    }
+
+    // Bbox in rotated space.
+    let (mut rmin_y, mut rmax_y) = (i64::MAX, i64::MIN);
+    for &(_, ry1, _, ry2) in &rotated_edges {
+        rmin_y = rmin_y.min(ry1).min(ry2);
+        rmax_y = rmax_y.max(ry1).max(ry2);
+    }
+    if rmin_y >= rmax_y {
+        return Vec::new();
+    }
+
+    // For solid roles, adjust spacing so the polygon is divided evenly.
+    let effective_spacing = if adjust_for_solid {
+        adjust_solid_spacing(rmax_y - rmin_y, line_spacing)
+    } else {
+        line_spacing
+    };
+
+    // Skip both the main scan-line loop and the post-pass when the polygon
+    // is too small for the line spacing.
+    if rmax_y - rmin_y < effective_spacing {
+        return Vec::new();
+    }
+
+    let mut paths = Vec::new();
+    let mut scan_y = rmin_y;
+
+    while scan_y <= rmax_y {
+        let mut x_intersections: Vec<i64> = Vec::new();
+
+        for &(rx1, ry1, rx2, ry2) in &rotated_edges {
+            // Skip horizontal edges.
+            if ry1 == ry2 {
+                continue;
+            }
+            let (lo, hi) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
+            // Half-open: include at min_y, exclude at max_y.
+            if scan_y < lo || scan_y >= hi {
+                continue;
+            }
+            let t = (scan_y - ry1) as f64 / (ry2 - ry1) as f64;
+            let x = rx1 as f64 + t * (rx2 - rx1) as f64;
+            x_intersections.push(x.round() as i64);
+        }
+
+        x_intersections.sort();
+
+        let mut i = 0;
+        while i + 1 < x_intersections.len() {
+            let x_start = x_intersections[i];
+            let x_end = x_intersections[i + 1];
+
+            // Skip degenerate zero-length segments.
+            if x_start == x_end {
+                i += 2;
+                continue;
+            }
+
+            // Rotate back by +angle about refpt. The x_shift is applied
+            // here (in world space) so that the output endpoints shift
+            // by `x_shift` units, matching OrcaSlicer's `pattern_shift`
+            // semantics (FillRectilinear.cpp:3023-3024).
+            let (sx, sy) = rotate_point(x_start, scan_y, cos_a, sin_a);
+            let (ex, ey) = rotate_point(x_end, scan_y, cos_a, sin_a);
+
+            let start = Point3WithWidth {
+                x: slicer_ir::units_to_mm(sx + refpt_x + x_shift),
+                y: slicer_ir::units_to_mm(sy + refpt_y),
+                z,
+                width: line_width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            };
+            let end = Point3WithWidth {
+                x: slicer_ir::units_to_mm(ex + refpt_x + x_shift),
+                y: slicer_ir::units_to_mm(ey + refpt_y),
+                z,
+                width: line_width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            };
+
+            paths.push(ExtrusionPath3D {
+                points: vec![start, end],
+                role: role.clone(),
+                speed_factor,
+            });
+
+            i += 2;
+        }
+
+        scan_y += effective_spacing;
+    }
+
+    // Post-pass: emit horizontal contour edges at the top boundary (rmax_y).
+    // The half-open vertex test excludes the top boundary from scan lines, so
+    // we add it here to ensure the top edge of the polygon is filled.
+    for &(rx1, ry1, rx2, ry2) in &rotated_contour {
+        if ry1 == ry2 && ry1 == rmax_y {
+            let (sx, sy) = rotate_point(rx1, ry1, cos_a, sin_a);
+            let (ex, ey) = rotate_point(rx2, ry2, cos_a, sin_a);
+            let start = Point3WithWidth {
+                x: slicer_ir::units_to_mm(sx + refpt_x + x_shift),
+                y: slicer_ir::units_to_mm(sy + refpt_y),
+                z,
+                width: line_width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            };
+            let end = Point3WithWidth {
+                x: slicer_ir::units_to_mm(ex + refpt_x + x_shift),
+                y: slicer_ir::units_to_mm(ey + refpt_y),
+                z,
+                width: line_width,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            };
+            paths.push(ExtrusionPath3D {
+                points: vec![start, end],
+                role: role.clone(),
+                speed_factor,
+            });
+        }
+    }
+
+    paths
 }
 
 /// Rotate a point by angle. cos_a, sin_a are cos/sin of the rotation angle.

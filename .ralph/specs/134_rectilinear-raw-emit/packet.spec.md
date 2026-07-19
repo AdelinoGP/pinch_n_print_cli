@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 134_rectilinear-raw-emit
 task_ids:
   - TASK-259

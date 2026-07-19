@@ -46,10 +46,10 @@ fn single_square_sparse_fill() {
         .unwrap();
 
     let paths = output.sparse_paths();
-    // spacing=2mm over 10mm range -> expect 4 lines
+    // spacing=2mm over 10mm range -> expect 6 lines
     assert!(
-        paths.len() >= 3 && paths.len() <= 5,
-        "expected 3-5 lines, got {}",
+        paths.len() >= 5 && paths.len() <= 7,
+        "expected 5-7 lines, got {}",
         paths.len()
     );
 
