@@ -6,6 +6,10 @@ For pipeline geometry diagnosis, read `docs/19_visual_debug.md` alongside
 `docs/17_agent_debugging.md`; the former defines visual-debug bundles and the
 latter defines timing, DAG, and manifest diagnosis.
 
+## Workflow
+
+- For complex issues, verify the root cause and plan the proper implementation before editing code, rather than applying quick band-aid fixes.
+
 ## Build & Test Commands
 
 ```bash
@@ -26,6 +30,8 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 - `slicer` / `slicer-host` binaries → `pnp_cli`
 
 ## Test Discipline
+
+**Canonical parity correctness is the highest priority.** Leave self-captured-baseline tests red if needed; never weaken the canonical implementation to make them pass. Do not defer parity-audit findings with inconsistent or fabricated justifications — verify canonical equivalents thoroughly before claiming absence, and update test fixtures to match canonical-correct output when the canonical fix changes behaviour.
 
 **Do not run `cargo test --workspace` by default.** The full suite is >1000 tests, ≥11 minutes. Default to the narrowest test that proves the change:
 - A single test:        `cargo test -p <crate> --test <file> -- <test_name> --nocapture`
@@ -82,6 +88,10 @@ All config key strings in Rust code (host-side and module-side) must use **snake
 - Wrong:   `config.get("apply-to-all")`, `ConfigKey::from("fuzzy_skin.apply-to-all")`
 
 Module manifest TOML section headers already use snake_case. Runtime key strings must match.
+
+## Code Style
+
+- **Never load large JSON fixture files (>1MB) directly.** Re-record via dedicated `record_*` test functions instead. (Confidence: 0.70)
 
 ## Guest WASM Staleness (MUST follow)
 
