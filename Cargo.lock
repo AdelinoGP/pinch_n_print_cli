@@ -2751,6 +2751,7 @@ dependencies = [
  "slicer-ir",
  "slicer-macros",
  "slicer-schema",
+ "slicer-sdk",
  "wit-bindgen 0.57.1",
 ]
 

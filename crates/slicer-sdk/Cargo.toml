@@ -20,5 +20,87 @@ wit-bindgen.workspace = true
 [features]
 test = []
 
+# Tests that import the `test_prelude` / `test_support` modules must run
+# with the `test` feature enabled; those modules are gated on
+# `#[cfg(any(test, feature = "test"))]` so they're invisible to
+# integration tests otherwise. The non-gated test files are
+# auto-discovered by cargo and don't need entries.
+[[test]]
+name = "smoke"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_assert_paths_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_config_view_builder_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_layer_collection_fixture_builder_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_log_capture_round_trip_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_mock_host_adapter_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_mock_host_isolation_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_output_capture_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_panic_handler_drains_logs_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_perimeter_region_view_builder_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_print_entity_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_rect_polygon_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_seam_candidate_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_slice_region_view_builder_setters_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_slice_region_view_builder_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_tool_change_tdd"
+required-features = ["test"]
+
+[[test]]
+name = "test_support_wall_loop_with_flags_tdd"
+required-features = ["test"]
+
+# Enable the `test` feature for the library when `cargo test` runs against
+# this crate's own integration tests. Without this, the gated modules
+# (test_prelude, test_support) are invisible to the `tests/*.rs`
+# binaries even though `required-features = ["test"]` is set above.
+# This is the conventional pattern: a crate enables its own test
+# feature for its own test build via a dev-dependency self-reference.
+[dev-dependencies]
+slicer-sdk = { path = ".", features = ["test"] }
+
 [lints]
 workspace = true
