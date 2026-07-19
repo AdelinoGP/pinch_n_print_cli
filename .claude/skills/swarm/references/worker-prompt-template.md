@@ -18,6 +18,7 @@ Context discipline: you are bound by the same hard limits as the planner.
 - Files allowed to edit: <exact list from manifest>
 - You MUST NOT paste full cargo/test logs in your return. Use the `failing_assertion` field with ≤ 20 lines on failure only.
 - You MUST NOT load files outside the allowed-read list, even to "double-check" something. Re-dispatch is the planner's job, not yours.
+- If you report a file as unreadable / ghost / missing / permissions-blocked / inaccessible, your return MUST include the exact `ls -la <path>` or `rg --files <path>` (or equivalent) command you ran and the literal tool output as the last lines of your return. A claim of "unreadable" without that evidence is non-compliant and will be rejected and re-dispatched. This rule exists to prevent fabricating a "file is unreadable" diagnosis to skip work.
 
 Packet digest:
 - Goal: <1-3 lines>
