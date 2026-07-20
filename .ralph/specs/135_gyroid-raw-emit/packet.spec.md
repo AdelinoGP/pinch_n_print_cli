@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 135_gyroid-raw-emit
 task_ids:
   - TASK-260
