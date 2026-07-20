@@ -941,6 +941,40 @@ pub struct SlicedRegion {
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
 /// emits over exactly one of these polygons with zero polygon math.
 
+### Modifier sub-regions
+
+A *modifier sub-region* is a wall-less region spawned by a modifier volume. A
+modifier volume (e.g. a density / speed override) does **not** carve its own
+walls. Packet 132 (`132_modifier-region-split`, binding per ADR-0030 —
+*Modifier splits fill, not perimeters*) instead spawns **wall-less sub-regions**
+that share the base region's walls: a sub-region carries
+`wall_source_region_id = Some(base)` so the perimeter stage traces walls once on
+the base region and the sub-region's infill is emitted against that shared wall
+geometry (no duplicate outer wall). ADR-0030 is the governing decision; the
+binding implementation and tests live in packet 132.
+
+**Per-sub-region config binding.** Each sub-region is bound to its own resolved
+config via the `stamp_modifier_sub_region_configs` map keyed by `region_id`
+(see `crates/slicer-core/src/algos/region_mapping.rs:335`: it overlays the
+modifier volumes' config deltas onto the base `ResolvedConfig`, skipping
+`support_enforcer` / `support_blocker` subtypes, and returns a
+`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region).
+
+**Sub-region `region_id` namespace.** Sub-region IDs are derived from the base
+region ID with a dedicated coprime stride so they never collide with paint's
+`1_000_000`-stride namespace:
+
+```
+sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(footprint_geo)
+```
+
+where `MODIFIER_VARIANT_REGION_ID_STRIDE = 1_000_003` (the next prime above
+paint's `1_000_000`, hence coprime — see
+`crates/slicer-runtime/src/region_partition.rs:71`). `modifier_hash` folds the
+footprint geometry into a non-zero value `< stride` (so the low-order band is
+reserved for `base_region_id * stride` itself), giving a stable, collision-free
+sub-region id that round-trips through `RegionMapIR` and dispatch.
+
 /// Polygon with holes. Contour is CCW; holes are CW.
 pub struct ExPolygon {
     pub contour: Polygon,

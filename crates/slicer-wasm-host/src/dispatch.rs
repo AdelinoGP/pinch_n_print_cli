@@ -1453,20 +1453,50 @@ pub fn perimeter_region_index(
         .collect()
 }
 
+/// Modifier `region_id` namespace stride (packet 132), matching
+/// `slicer_runtime::region_partition::MODIFIER_VARIANT_REGION_ID_STRIDE`.
+const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+
+/// ADR-0030: identifies ids in the modifier namespace.
+///
+/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// with `hash != 0` (see `slicer_runtime::region_partition`). This predicate is
+/// disjoint from paint's namespace (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`)
+/// and from base regions (`id == 0`, or a small base id that owns its own walls
+/// via `has_own_perimeter_entry`). The `!is_multiple_of` term enforces
+/// `hash != 0`; `id != 0` excludes the base region itself.
+pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
+    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+}
+
 /// ADR-0028 §Amendment wall-source predicate.
 ///
-/// Returns `Some(base_region_id)` iff `region` is a virtual paint-variant
-/// region (non-empty `variant_chain`) WITHOUT its own per-variant
-/// `PerimeterIR` entry — such a region shares the base region's walls. The
-/// base id inverts `paint_segmentation::paint_variant_region_id`
-/// (`base * STRIDE + hash`) by integer division. Returns `None` when the
-/// region has its own `PerimeterIR` entry (it owns its walls) or is a base
-/// region.
+/// Returns `Some(base_region_id)` iff `region` borrows another region's walls:
+///   * a paint-variant region (non-empty `variant_chain`) WITHOUT its own
+///     `PerimeterIR` entry — inverts `paint_segmentation::paint_variant_region_id`
+///     (`base * STRIDE + hash`) by integer division; or
+///   * a modifier sub-region (packet 132): id in the modifier namespace
+///     (`base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`, `hash != 0`) with an
+///     empty `variant_chain` and no own `PerimeterIR` entry — inverts by integer
+///     division to the base id.
+///
+/// Returns `None` when the region has its own `PerimeterIR` entry (it owns its
+/// walls) or is a base region.
 pub fn wall_source_region_id(
     has_own_perimeter_entry: bool,
     region: &slicer_ir::SlicedRegion,
 ) -> Option<slicer_ir::RegionId> {
-    if has_own_perimeter_entry || region.variant_chain.is_empty() {
+    if has_own_perimeter_entry {
+        return None;
+    }
+    // Modifier sub-region (packet 132): empty variant_chain, id in the modifier
+    // namespace (`base * STRIDE + hash`, `hash != 0`), no own PerimeterIR entry.
+    if region.variant_chain.is_empty() && is_modifier_namespace_id(region.region_id) {
+        return Some(region.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE);
+    }
+    // Paint-variant arm (ADR-0028 §Amendment): non-empty variant_chain, no own
+    // perimeter entry → shares the base region's walls.
+    if region.variant_chain.is_empty() {
         return None;
     }
     Some(region.region_id / slicer_core::algos::paint_segmentation::PAINT_VARIANT_REGION_ID_STRIDE)

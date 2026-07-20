@@ -90,6 +90,7 @@ mod live_seam_path_tdd;
 mod live_top_bottom_fill_tdd;
 mod live_travel_policy_tdd;
 mod macro_finalization_deep_copy_tdd;
+mod modifier_region_split_tdd;
 mod paint_channel_consumer_paths_tdd;
 mod paint_segmentation_skip_when_no_paint_or_no_opted_in_semantic;
 mod postpass_executor_tdd;

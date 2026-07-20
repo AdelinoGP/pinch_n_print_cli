@@ -313,6 +313,69 @@ fn stamp_modifier_config_deltas(
     result
 }
 
+/// Packet 132 (AC-4) — bind a modifier's config delta to the modifier's
+/// minted sub-region `RegionKey` instead of stamping the whole object.
+///
+/// This is the geometric counterpart to [`stamp_modifier_config_deltas`]:
+/// where the legacy `AllFeatures` arm stamps a single object-wide
+/// [`ResolvedConfig`], this variant returns a `region_id → config` map that
+/// keeps the base region's config untouched while merging every modifier
+/// delta onto a *separate* config keyed by the minted sub-region id.
+///
+/// Concretely, given a base `infill_density = 0.15` and a modifier volume
+/// carrying `infill_density = 0.40`:
+/// * `map[base_region_id]`  → `base_config` (0.15, unchanged)
+/// * `map[sub_region_id]`   → `base_config` + merged modifier deltas (0.40)
+///
+/// The same skip rules as [`stamp_modifier_config_deltas`] apply: modifier
+/// volumes whose subtype is `support_enforcer` / `support_blocker` are
+/// skipped entirely, empty string/list values are skipped, and modifiers are
+/// merged in priority-ascending order (last writer wins) via
+/// [`overlay_resolved`].
+pub fn stamp_modifier_sub_region_configs(
+    base_config: ResolvedConfig,
+    base_region_id: u64,
+    sub_region_id: u64,
+    modifier_volumes: &[ModifierVolume],
+) -> BTreeMap<u64, ResolvedConfig> {
+    // Sort modifier indices by priority ascending so higher-priority writes
+    // last (overlay_resolved is last-writer-wins on the `extensions` map).
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&i| modifier_volumes[i].priority);
+
+    let mut sub_config = base_config.clone();
+    for idx in order {
+        let mv = &modifier_volumes[idx];
+        // OrcaSlicer parity: skip support_enforcer / support_blocker entirely.
+        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
+            if s == "support_enforcer" || s == "support_blocker" {
+                continue;
+            }
+        }
+        let mut overlay = ResolvedConfig::default();
+        for (k, v) in &mv.config_delta.fields {
+            if k == "subtype" {
+                continue;
+            }
+            match v {
+                ConfigValue::String(s) if s.is_empty() => continue,
+                ConfigValue::List(l) if l.is_empty() => continue,
+                _ => {}
+            }
+            overlay.extensions.insert(k.clone(), v.clone());
+        }
+        if overlay.extensions.is_empty() {
+            continue;
+        }
+        sub_config = overlay_resolved(sub_config, &overlay);
+    }
+
+    let mut map = BTreeMap::new();
+    map.insert(base_region_id, base_config);
+    map.insert(sub_region_id, sub_config);
+    map
+}
+
 /// Serialize a `PaintSemantic` to its namespace key string for sort ordering.
 ///
 /// Built-in variants serialize as `material`/`fuzzy_skin`/`support_enforcer`/

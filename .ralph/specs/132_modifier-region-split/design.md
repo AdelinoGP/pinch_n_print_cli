@@ -145,3 +145,76 @@
 - `[FWD]` Overlapping-modifier semantics: mirror the existing stamping priority order; if the
   existing order is undefined for spatial overlap, split by document order and record a
   deviation.
+
+## Step 1 Discovery Memo (FWD resolutions)
+
+### FWD-RESOLVED 1: Region plumbing chain
+
+Region identity + partitioned polygons travel as `SlicedRegion`
+(`crates/slicer-ir/src/slice_ir.rs`) — `(object_id, region_id, variant_chain, bridge_areas,
+bottom_solid_fill, top_solid_fill, sparse_infill_area)` — inside
+`SliceIR.regions`. `sync_perimeter_infill_areas_into_slice`
+(`crates/slicer-runtime/src/region_partition.rs`) mutates this in place at
+`Layer::Perimeters` commit. The dispatcher (`crates/slicer-wasm-host/src/dispatch.rs`)
+marshals each `SlicedRegion` into the guest view at two sites:
+- `push_slice_regions` (Layer::Infill) via `sliced_region_to_data`
+- `push_infill_postprocess_regions` (Layer::InfillPostProcess) via
+  `perimeter_region_to_data` enriched with `wall_source_region_id`.
+
+`wall_source_region_id` is set for paint virtual-variants in
+`push_infill_postprocess_regions` (`dispatch.rs:1589`) via the predicate
+`wall_source_region_id(own_entry.is_some(), region)` (`dispatch.rs:1465`). The predicate keys
+off `region.variant_chain` non-empty + no own perimeter entry. **The modifier arm extends
+exactly there**; sub-regions, like paint variants, carry no own `PerimeterIR` entry so they
+borrow base walls (Some(base)).
+
+### FWD-RESOLVED 2: Sub-region `RegionKey` / `region_id` derivation
+
+Pattern the paint `paint_variant_region_id` synthesis
+(`crates/slicer-core/src/algos/paint_segmentation/mod.rs`):
+- `base_region_id * PAINT_VARIANT_REGION_ID_STRIDE + paint_variant_hash(chain_key)` (STRIDE =
+  1_000_000).
+- BASE chain returns base unchanged.
+- `paint_variant_hash` is a fixed, per-process-stable content hash (not `DefaultHasher`).
+- Wall-source id inverts by integer division (`id / STRIDE`).
+
+Modifier sub-region synthesis:
+- `sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(mi)`
+  with `MODIFIER_VARIANT_REGION_ID_STRIDE` chosen to be coprime with paint's
+  (`1_000_003`, the next prime above 1e6) so the two namespace hierarchies never collide.
+- `modifier_hash(mi) = stable_hash((object_id, modifier_index, priority))` derived from
+  document order in `object.modifier_volumes`. NEVER from HashMap iteration.
+- **Decision (verified post-impl):** the sub-region carries an **empty** `variant_chain` and is identified by its modifier-namespace `region_id` alone (`base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(mi)`). The `wall_source_region_id` predicate inverts `sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE` → `Some(base)` for these ids. RegionMapIR's `config_for(RegionKey)` looks up the sub-region by its empty-chain key. The infill linker (packet 133) reads only `wall_source_region_id` + `tool_index` + the four fill polygons; it does not read `variant_chain`. Carrying the base's chain would mis-route the `wall_source_region_id` predicate (wrong stride) and miss the RegionMapIR lookup — the original "or appends a `("modifier", ...)`" wording was a *proposal* that the implementation deliberately did not adopt.
+- `wall_source_region_id` predicate inverts `sub_region_id / MODIFIER_VARIANT_REGION_ID_STRIDE` → base.
+
+### FWD-RESOLVED 3: Modifier-mesh slicing site
+
+`prepass_cache`. `slice_modifier_volumes` already exists in
+`crates/slicer-core/src/algos/paint_segmentation/modifier_volumes.rs`; it calls
+`slice_mesh_ex(&mv.mesh, layer_zs)` once per modifier and returns
+`Vec<Vec<ModifierVolumeLayer>>` (outer = layer_idx). Full `MeshIR` (with
+`modifier_volumes`) is available at prepass time. `region_partition.rs` at Tier-2 has
+`SliceIR` + `PerimeterIR` only — no mesh — so lazy slicing would require plumbing
+`MeshIR` into the `LayerArena`. Prepass caching reuses existing infra, keeps
+`region_partition.rs` mesh-free, and preserves AC-N1 (no-modifier objects yield empty
+modifier buckets → partition unchanged).
+
+**Caveat:** existing `slice_modifier_volumes` only routes
+`support_enforcer` / `support_blocker` subtypes. The modifier-region-split consumer must
+extend it (or add a sibling) to slice material/config-delta modifier meshes too. Step 3
+will add the slice call (or a sibling fn) keyed by modifier `subtype != support_*`.
+
+### FWD-RESOLVED 4 (incidental): Overlapping-modifier semantics
+
+Mirror the existing `stamp_modifier_config_deltas` priority order
+(`region_mapping.rs:269-314`): `ModifierScope` priority is per-volume `priority` field, then
+document order on tie. For spatial overlap of two non-support modifier volumes, document
+order resolves (first modifier in `object.modifier_volumes` "wins" the footprint — the
+later modifier's footprint is intersected only against the base's remainder). This is
+recorded as the packet's chosen semantics, not a deviation.
+
+### Approach impact
+
+Approach section still valid: partition-time splitting of the four already-partitioned
+polygons, with sub-region minting at partition time and prepass-cached modifier
+cross-sections consumed by the split.

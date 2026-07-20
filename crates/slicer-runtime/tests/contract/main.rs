@@ -24,6 +24,7 @@ mod inner_wall_boundary_type_tdd;
 mod layer_stage_commit_stages_tdd;
 mod macro_all_worlds_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;
+mod modifier_split_subregion_density_tdd;
 mod only_one_wall_first_layer_tdd;
 mod only_one_wall_top_tdd;
 mod overhang_areas_empty_until_p106_tdd;

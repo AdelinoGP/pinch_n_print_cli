@@ -222,7 +222,7 @@ cross-section with its base region's fill areas: it has its own region
 identity and config (e.g. a different infill density) but shares the base
 region's walls — no perimeters are generated at the modifier boundary.
 Contrast with paint splits, which produce fully walled regions. The mechanism
-behind local-stiffness infill modifiers. See ADR-0030.
+behind local-stiffness infill modifiers. The sub-region carries an empty `variant_chain`; its identity is its modifier-namespace `region_id` (base × 1 000 003 + modifier_hash), with `wall_source_region_id` pointing back to the base region. See ADR-0030.
 
 ### Lightning tree
 The branching structure that lightning infill extrudes: grown top-down across
