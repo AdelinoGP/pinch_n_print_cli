@@ -3,14 +3,15 @@
 ## Controlling Code Paths
 
 - Primary code paths:
-  - `crates/slicer-core/src/paint_policy.rs` (NEW) — `SupportPaintPolicy` enum + `support_eligibility` function + sub-helpers (`polygon_intersects_segment_annotation`, `annotation_area_in_region`).
+  - `crates/slicer-core/src/paint_policy.rs` (NEW) — `SupportPaintPolicy` enum (re-export of `slicer_sdk::traits::SupportPaintPolicy`) + `support_eligibility` function + sub-helpers (`polygon_intersects_segment_annotation`, `annotation_area_in_region`).
   - `crates/slicer-core/src/lib.rs` — re-export the new module.
-  - `modules/core-modules/tree-support/src/lib.rs` — delete local `fn support_paint_policy`; replace call site with `slicer_core::paint_policy::support_eligibility(&region)`.
-  - `modules/core-modules/traditional-support/src/lib.rs` — same change.
-  - `modules/core-modules/support-planner/src/lib.rs` — replace `collect_paint_enforcer_contacts` + `collect_paint_blocker_polygons` with new functions sourcing from per-region `segment_annotations`. Update the planner's contact-gathering loop in `plan_for_object` to iterate over `SliceRegionView`s (or whatever per-region input shape is available to the prepass).
+  - `crates/slicer-sdk/src/traits.rs` (line 172) — `paint_policy_for` body becomes a thin wrapper that iterates `SliceIR.regions`, calls `support_eligibility`, and aggregates with blocker-wins precedence. The `expolygon_centroid` and `regions_cover_point` helpers (lines 220, 238) are deleted.
+  - `crates/slicer-wasm-host/src/host.rs` (lines 3054-3120) — `HostPaintRegionLayerView` impl: stop pushing `"PaintRegionIR"` into `runtime_reads`; replace kebab-case semantic-name keys with snake_case.
+  - The two support modules' `match paint.paint_policy_for(expoly) { ... }` call sites at `modules/core-modules/tree-support/src/lib.rs:176` and `modules/core-modules/traditional-support/src/lib.rs:155` are **unchanged in shape** (the enum and variants don't change; only the SDK helper body changes).
 - Neighboring tests/fixtures:
-  - `crates/slicer-core/tests/paint_policy.rs` (NEW) — AC-1 through AC-5.
-  - `crates/slicer-runtime/tests/executor/live_layer_support_tdd.rs` — extend with AC-10 + AC-N1 + AC-N2.
+  - `crates/slicer-core/tests/paint_policy.rs` (NEW) — AC-1 through AC-5 + AC-N3.
+  - `modules/core-modules/tree-support/tests/enforcer_blocker_tdd.rs` (EXTEND) — add `enforcer_works_when_centroid_outside_paint_region` (AC-8). 8 existing tests pass unchanged.
+  - `modules/core-modules/traditional-support/tests/enforcer_blocker_tdd.rs` (EXTEND) — mirror of AC-8.
 - OrcaSlicer comparison surface: not consulted by this packet. The new IR shape is Pinch 'n Print's post-P95 design (D14), not an Orca port.
 
 ## Architecture Constraints
@@ -25,38 +26,41 @@
 - `support_eligibility` must be `#[inline]`-able and free of host-only side effects (no `log` calls, no I/O) — guest modules call it inside their layer hot path.
 - Polygon intersection uses `slicer_core::polygon_ops::intersection` (or `intersection_ex` if the post-P95 ExPolygon-aware variant landed). The implementer confirms the exact function name via Step 1 dispatch.
 - The precedence "Blocker wins" is encoded in the function body, not in the call site. Callers receive a single tri-state result.
+- The `SupportPaintPolicy` enum is re-exported from `slicer-core` so `crates/slicer-sdk/src/traits.rs` keeps its `pub use` alias; the two consumer modules' `match` arms continue to compile without source edits. This is a deliberate decision: the public ABI of `slicer-sdk` is unchanged; only the implementation moves.
 
 ## Code Change Surface
 
-- Selected approach: single shared helper in `slicer-core`; three modules consume it; manifest updates aligned with helper usage.
+- Selected approach: extract helper to `slicer-core`; refactor `slicer-sdk::traits::paint_policy_for` to a thin wrapper; clean dead manifest strings; add L-shape regression test; clean host shim.
 - Exact functions/structs/tests to change:
-  - `slicer_core::paint_policy::SupportPaintPolicy` (new enum, three variants).
+  - `slicer_core::paint_policy::SupportPaintPolicy` (re-export of the existing `slicer_sdk::traits::SupportPaintPolicy`).
   - `slicer_core::paint_policy::support_eligibility` (new fn).
-  - `tree_support::run_support` (call site change; deletion of `support_paint_policy` local fn).
-  - `traditional_support::run_support` (same).
-  - `support_planner::collect_paint_enforcer_contacts` and `collect_paint_blocker_polygons` (deleted; replaced with new region-iterating functions, likely `collect_segment_annotations_for_object(&[SliceRegionView]) -> EnforcerContactSet`).
-  - `support_planner::plan_for_object` (call-site update to consume the new function's output).
-  - Three module manifests (`tree-support.toml`, `traditional-support.toml`, `support-planner.toml`) — `[ir-access].reads` change.
-  - New test files + test additions per ACs.
+  - `slicer_sdk::traits::PaintRegionLayerView::paint_policy_for` (refactored to wrapper; deletes `expolygon_centroid` and `regions_cover_point`).
+  - `slicer_wasm_host::host::HostPaintRegionLayerView` (kebab-case → snake_case; remove dead `runtime_reads.push("PaintRegionIR")`).
+  - Three module manifests (`tree-support.toml`, `traditional-support.toml`, `support-planner.toml`) — `[ir-access].reads` drops `"PaintRegionIR"`.
+  - Two test files (extend `enforcer_blocker_tdd.rs` in both modules with the L-shape regression test).
+  - New test file `crates/slicer-core/tests/paint_policy.rs`.
+  - `docs/05_module_sdk.md` — one paragraph.
 - Rejected alternatives:
-  - **Inline the helper in each module instead of moving to `slicer-core`** — rejected: duplication is the gap this packet closes.
+  - **Inline the helper in each module instead of moving to `slicer-core`** — rejected: the bug currently lives in the SDK helper, not in the modules. Fixing it in place at `slicer-sdk/src/traits.rs` (without extraction) is also viable but the spec commits to extraction to `slicer-core` because (a) the helper is geometrically pure and belongs in the geometry crate, (b) the `slicer-core::polygon_ops` dependency is already there.
   - **Make the helper return `bool` instead of `SupportPaintPolicy`** — rejected: the three-state semantics (Blocked / Enforced / DefaultEligible) is meaningful for downstream code; collapsing to a bool loses the distinction between "no paint" and "blocker says no".
   - **Use centroid-in-paint-region as a fast path before falling back to polygon intersection** — rejected: the centroid bug is exactly what this packet is fixing. Fast paths that re-introduce it are forbidden.
+  - **Edit `tree-support` / `traditional-support` to call the new helper directly** (skip the SDK wrapper) — rejected: forces module source edits to change the `SupportPaintPolicy` import path from `slicer_sdk::traits` to `slicer_core::paint_policy`; the re-export pattern keeps the import path stable.
 
 ## Files in Scope (read + edit)
 
-The packet edits 4 source files + 3 manifests + 3 new/extended test files (10 total). The count is justified because the migration is structurally three-prong (helper extraction + per-module call-site swap + manifest update) and removing any prong leaves the workspace in a broken half-migrated state.
+The packet edits 4 source files + 3 manifests + 3 new/extended test files (10 total). The count is justified because the migration is structurally three-prong (helper extraction + SDK refactor + manifest + host shim cleanup + per-module regression test) and removing any prong leaves the workspace in a broken half-migrated state.
 
 - `crates/slicer-core/src/paint_policy.rs` — role: shared helper module; expected change: file created.
 - `crates/slicer-core/src/lib.rs` — role: re-export; expected change: one line added.
-- `crates/slicer-core/tests/paint_policy.rs` — role: AC-1 through AC-5; expected change: file created.
-- `modules/core-modules/tree-support/src/lib.rs` — role: helper removal + call-site swap; expected change: ≈30 lines deleted, ≈3 lines added.
-- `modules/core-modules/traditional-support/src/lib.rs` — role: same; expected change: same magnitude.
-- `modules/core-modules/support-planner/src/lib.rs` — role: contact extraction migration; expected change: two function bodies rewritten (≈60 lines), call site in `plan_for_object` updated.
+- `crates/slicer-core/tests/paint_policy.rs` — role: AC-1 through AC-5 + AC-N3; expected change: file created.
+- `crates/slicer-sdk/src/traits.rs` — role: refactor `paint_policy_for` to wrapper; delete centroid helpers; expected change: ≈60 lines net (≈80 removed, ≈20 added).
+- `crates/slicer-wasm-host/src/host.rs` — role: `HostPaintRegionLayerView` kebab→snake; drop dead `runtime_reads.push`; expected change: ≈5 line edits in the impl block.
 - `modules/core-modules/tree-support/tree-support.toml` — role: manifest reads update; expected change: 1 line edit.
 - `modules/core-modules/traditional-support/traditional-support.toml` — role: same.
 - `modules/core-modules/support-planner/support-planner.toml` — role: same.
-- `crates/slicer-runtime/tests/executor/live_layer_support_tdd.rs` — role: AC-10, AC-N1, AC-N2 integration cases; expected change: three test functions added.
+- `modules/core-modules/tree-support/tests/enforcer_blocker_tdd.rs` — role: AC-8 L-shape regression; expected change: 1 test function added.
+- `modules/core-modules/traditional-support/tests/enforcer_blocker_tdd.rs` — role: AC-8 mirror; expected change: 1 test function added.
+- `crates/slicer-runtime/tests/executor/live_layer_support_tdd.rs` — role: AC-10/AC-N1/AC-N2 verification; expected change: NONE (the three tests already exist at lines 200, 361, 236 — packet verifies they still pass).
 
 ## Read-Only Context
 
@@ -64,7 +68,7 @@ The packet edits 4 source files + 3 manifests + 3 new/extended test files (10 to
 - `docs/specs/paint-pipeline-orca-parity-roadmap.md` §D14 — directly.
 - `docs/01_system_architecture.md` §"Support Stage Paint Precedence" — directly.
 - `docs/02_ir_schemas.md` §"SliceIR" — range-read the `SlicedRegion` + `segment_annotations` definitions.
-- `crates/slicer-sdk/src/views.rs::SliceRegionView::segment_annotations` — accessor only.
+- `crates/slicer-sdk/src/views.rs::SliceRegionView::segment_annotations` — accessor only (line 368).
 - `crates/slicer-core/src/polygon_ops.rs` — read `intersection` (line 93-108 area) + `area_ex` (delegate if exact line unknown) signatures only.
 
 ## Out-of-Bounds Files
@@ -74,46 +78,51 @@ The packet edits 4 source files + 3 manifests + 3 new/extended test files (10 to
 - `target/`, `Cargo.lock`, generated code — never load.
 - Other paint consumers (`fuzzy-skin`, `seam-placer`) — out of scope; do not browse for consistency.
 - The full body of `crates/slicer-sdk/src/views.rs` outside the accessor — range-read.
-- The full body of `support-planner/src/lib.rs` outside lines around 729 and 755 and the planner's `plan_for_object` site — range-read.
+- The full body of `support-planner/src/lib.rs` — out of scope for this packet. The planner already reads `PaintRegionIR` from its manifest and calls `collect_paint_enforcer_contacts` from the per-facet mesh; the planner's contact extraction is NOT being migrated in this packet. The planner's IR-availability in `[ir-access].reads` simply has `"PaintRegionIR"` dropped (the data still flows via the same `collect_paint_enforcer_contacts` path that the planner already uses; the path reads `MeshObjectView` directly, not the deleted IR).
 
 ## Expected Sub-Agent Dispatches
 
 - "Locate `SliceRegionView::segment_annotations` accessor in `crates/slicer-sdk/src/views.rs`; return LOCATIONS + SNIPPETS ≤ 20 lines showing the signature." — purpose: confirm helper input type.
 - "Confirm whether `crates/slicer-core/src/polygon_ops.rs` defines `intersection_ex` (ExPolygon-aware) or only `intersection` (flat-polygon). Return FACT (which) + file:line." — purpose: choose the right helper for `support_eligibility`.
-- "Return current state of `fn support_paint_policy` in `modules/core-modules/tree-support/src/lib.rs` post-P95; SNIPPETS ≤ 30 lines showing the current body (likely a stub returning `DefaultEligible`)." — purpose: confirm Step 1 baseline.
-- "Return current state of `collect_paint_enforcer_contacts` + `collect_paint_blocker_polygons` in `modules/core-modules/support-planner/src/lib.rs`; SNIPPETS ≤ 60 lines combined." — purpose: confirm migration target.
+- "Return current state of `fn paint_policy_for` in `crates/slicer-sdk/src/traits.rs`; SNIPPETS ≤ 30 lines showing the current body + the two helpers (`expolygon_centroid`, `regions_cover_point`) at lines 220 + 238." — purpose: confirm Step 3 baseline.
+- "Return current state of `HostPaintRegionLayerView` impl in `crates/slicer-wasm-host/src/host.rs` (lines 3054-3120); SNIPPETS ≤ 70 lines." — purpose: confirm Step 6 baseline (the kebab-case keys + the `runtime_reads.push` lines).
 - "Return current `[ir-access].reads` values for `tree-support.toml`, `traditional-support.toml`, `support-planner.toml`; FACT (per-manifest list)." — purpose: confirm manifest baseline.
-- "Run `cargo test -p slicer-core --test paint_policy`; return FACT (per-test pass/fail); SNIPPETS ≤ 20 lines on failure." — purpose: AC-1 through AC-5 gate.
-- "Run `cargo test -p slicer-runtime --test live_layer_support_tdd`; return FACT (per-test pass/fail); SNIPPETS ≤ 30 lines on failure." — purpose: AC-10 / N1 / N2 gate.
-- "Run `cargo xtask build-guests --check`; return FACT (`up to date` or `STALE: <list>`). NEVER paste rebuild log." — purpose: WASM gate post manifest changes.
+- "Confirm `rg -c 'expolygon_centroid\|regions_cover_point' crates/` returns 0 callers outside the helpers themselves; return FACT." — purpose: confirm safe-to-delete.
+- "Run `cargo test -p slicer-core --test paint_policy`; return FACT (per-test pass/fail); SNIPPETS ≤ 20 lines on failure." — purpose: AC-1 through AC-5 + AC-N3 gate.
+- "Run `cargo test -p tree-support --test enforcer_blocker_tdd` and `cargo test -p traditional-support --test enforcer_blocker_tdd`; return FACT (per-test pass/fail); SNIPPETS ≤ 30 lines on failure." — purpose: AC-8 gate.
+- "Run `cargo test -p slicer-runtime --test live_layer_support_tdd -- enforcer_forces_live_support_commit_even_when_needs_support_is_false blocker_overrides_needs_support_true_at_commit_level disabled_or_ineligible_support_stage_commits_empty_support_ir`; return FACT pass/fail per-test; SNIPPETS ≤ 30 lines on failure." — purpose: AC-10 / N1 / N2 gate.
+- "Run `cargo test -p slicer-wasm-host`; return FACT pass/fail; SNIPPETS ≤ 30 lines on failure." — purpose: AC-N4 host shim gate (the dead `runtime_reads.push` removal + the kebab→snake key replacement).
+- "Run `cargo xtask build-guests --check`; return FACT (`up to date` or `STALE: <list>`). NEVER paste rebuild log." — purpose: WASM gate.
 
 ## Data and Contract Notes
 
 - IR contracts touched: none structurally — `SliceRegion.segment_annotations` already exists post-P95. The packet consumes the existing contract.
-- WIT boundary considerations: none (the existing prepass + layer interfaces already plumb the segment_annotations into the SDK views).
+- WIT boundary considerations: the `HostPaintRegionLayerView` cleanup changes the kebab-case semantic-name keys to snake_case; this is a host-side string change. If any guest module currently looks up `regions_by_semantic` with a kebab-case key, the lookup would return empty. The implementer's Step 1 dispatch audits the guest side (`rg 'regions_by_semantic.get' crates/slicer-wasm-host/test-guests/` and `rg 'get_regions' crates/slicer-wasm-host/test-guests/`) to confirm whether any test-guest uses the kebab-case form. If so, the test-guest is updated in Step 6 alongside the host shim.
 - Determinism: `support_eligibility` is pure; polygon intersection is deterministic.
 - Helper threading model: callable from both host (planner prepass) and guest (layer modules) contexts. Stateless.
 
 ## Locked Assumptions and Invariants
 
 - Blocker-wins-over-enforcer precedence per `docs/01_system_architecture.md` is fixed. The helper encodes the order explicitly; downstream callers do not override it.
-- "Non-trivial intersection" means area > some small epsilon (suggested: 1e-6 mm² in unscaled mm, i.e. roughly one polygon-op unit²). The implementer picks a defensible epsilon in Step 2 and documents it; AC tests assert against it.
+- "Non-trivial intersection" means area > `1e-6 mm²` (the area epsilon in the workspace's polygon ops; confirm via Step 1 dispatch).
 - `support_eligibility` does NOT consult `SurfaceClassificationIR.needs_support`. That fallback is the caller's responsibility (kept exactly as today). The helper returns `DefaultEligible` when there's no paint, and the caller falls back to `needs_support` exactly like today.
 - The helper does NOT emit diagnostics. Misuse (e.g., region with no segment_annotations key at all) returns `DefaultEligible`.
+- The `SupportPaintPolicy` enum is unchanged: three variants, same names, same variants. The re-export from `slicer-core` is a strict alias.
 
 ## Risks and Tradeoffs
 
 - **Risk**: polygon intersection on every region × every layer adds work the old centroid hit didn't. **Mitigation**: typical region count per layer is modest (single-digit to low-double-digit on real models); Clipper2 intersection is fast at this scale. If profiling later shows hot-spot behavior, a bbox-overlap fast path can be added inside the helper without changing the signature.
-- **Risk**: segment_annotations may not be populated for layers where the paint kernel decided there's no paint coverage. The helper must handle empty / missing keys gracefully (return `DefaultEligible`, NOT panic). AC-N2 explicitly tests this.
-- **Risk**: the integration tests in `live_layer_support_tdd.rs` require fixtures with painted enforcer/blocker regions. The cube_4color fixtures (P95-era) carry tool/material paint, not support paint. The implementer may need to author a small new fixture (`cube_with_support_enforcer.3mf` or equivalent). **Mitigation**: if the existing `bridge_support_enforcers.3mf` already covers this (P67 referenced), reuse it; otherwise document a fixture-authoring sub-step in Step 7.
+- **Risk**: the L-shape regression test (AC-8) might be GREEN on the pre-packet code by accident if the implementer picks an L-shape whose vertex-mean centroid lies inside the painted region. **Mitigation**: Step 2 (RED tests) MUST author a fixture whose centroid is provably outside the painted region (the L's notch is in the corner of the painted square); confirm via the `expolygon_centroid` helper output before committing the test. The implementer writes a brief comment in the test explaining the centroid coordinate it expects.
+- **Risk**: removing `"PaintRegionIR"` from the support-planner manifest could surface as a build error if some dispatch contract test still asserts the planner reads `PaintRegionIR`. **Mitigation**: Step 5 dispatch greps for any such assertion (`rg 'support-planner.*PaintRegionIR\|PaintRegionIR.*support-planner' crates/`); if any, the assertion is updated to use `"MeshIR"` (the actual post-P95 source for the planner's contact extraction path).
+- **Risk**: the host shim cleanup (kebab→snake) is the most likely silent-failure surface. A test-guest that still uses kebab-case would return empty regions_by_semantic. **Mitigation**: Step 6 audit (see Expected Sub-Agent Dispatches) catches this before the runtime test passes by accident with empty annotations.
+- **Tradeoff**: the `SupportPaintPolicy` re-export from `slicer-core` is a small import-path indirection. The benefit (call-site imports don't change) outweighs the cost (one extra `pub use`).
 
 ## Context Cost Estimate
 
 - Aggregate (sum across all steps): `M`
-- Largest single step: `M` (Step 4 — `support-planner` extraction rewrite).
+- Largest single step: `M` (Step 3 — `paint_policy_for` refactor + `expolygon_centroid` / `regions_cover_point` deletion).
 - Highest-risk dispatch: `cargo build --workspace` after the manifest changes — return FACT pass/fail; on fail SNIPPETS ≤ 30 lines with FIRST error.
 
 ## Open Questions
 
-- `[FWD]` The exact `[ir-access].reads` key to declare in the three manifests depends on whether segment_annotations is keyed under `SliceIR` or has its own IR name post-P95. Step 1 discovery dispatches the LOCATIONS lookup; the answer becomes a packet-author note before Step 5 (manifest update). Forward-looking because resolution is local to the implementer and does not change the packet shape.
-- `[FWD]` The integration-test fixture for AC-10 / AC-N1: reuse `bridge_support_enforcers.3mf` (if it carries the right paint) vs. author a small new fixture. Decision in Step 7 of the implementation plan.
+- None. The collision with the source-plan TASK-261 has been resolved by renumbering to `TASK-285` (recorded in `requirements.md` §Packet Metadata and `task-map.md`).
