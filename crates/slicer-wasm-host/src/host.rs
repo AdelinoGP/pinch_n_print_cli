@@ -3068,13 +3068,12 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         semantic: PaintSemantic,
     ) -> wasmtime::Result<Vec<SemanticRegion>> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         let data = self.table.get(&self_)?;
         let key = match semantic {
             PaintSemantic::Material => "material",
-            PaintSemantic::FuzzySkin => "fuzzy-skin",
-            PaintSemantic::SupportEnforcer => "support-enforcer",
-            PaintSemantic::SupportBlocker => "support-blocker",
+            PaintSemantic::FuzzySkin => "fuzzy_skin",
+            PaintSemantic::SupportEnforcer => "support_enforcer",
+            PaintSemantic::SupportBlocker => "support_blocker",
             PaintSemantic::Custom(ref s) => {
                 // Leak the string so the &str is valid for the HashMap lookup.
                 // The HashMap lookup is immediate; no lingering reference afterward.
@@ -3092,7 +3091,6 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         module_id: String,
     ) -> wasmtime::Result<Vec<SemanticRegion>> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self
             .table
             .get(&self_)?
@@ -3102,7 +3100,6 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
             .unwrap_or_default())
     }
     fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<i32> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self.table.get(&self_)?.layer_index as i32)
     }
     fn support_plan_segments(

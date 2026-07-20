@@ -630,6 +630,25 @@ let len_3d: f32 = seg_len_3d(dx, dy, dz);
 let flow: f32 = flow_correction(dx, dy, dz);
 ```
 
+### `slicer_core::paint_policy::support_eligibility` (packet 120)
+
+Canonical support-eligibility entry point for the `Layer::Support` paint precedence rules (see `docs/01_system_architecture.md` §"Support Stage Paint Precedence"). It replaces the centroid-based paint-classification probe that previously lived in `slicer_sdk::traits::PaintRegionLayerView::paint_policy_for` (`crates/slicer-sdk/src/traits.rs`) — that function is now a thin wrapper that first filters `SliceIR.regions[*]` to the cells whose polygon contains at least one vertex of the caller's `expoly` (the *region-ownership* check, performed via the `region_covers_expoly` contour-vertex probe; a centroid probe is intentionally NOT used here either, because in the L-shape regression fixture the caller's `expoly` IS the L-shape and its vertex-mean centroid falls in the L's notch), then forwards each matching region to this helper for paint classification.
+
+The helper is a **presence check on `segment_annotations` with a region-area floor** — NOT a polygon-intersection between region and a separate annotation polygon. The `SlicedRegion` IR stores paint as per-polygon per-vertex `Some(_)` flags (see `docs/02_ir_schemas.md` §"SlicedRegion.segment_annotations"), not as separate annotation polygons, so the painted area is implicitly the region polygon itself; the area floor (`NON_TRIVIAL_AREA_UNITS_SQ = 200` workspace units², ≈ 2 µm²) is used only to suppress degenerate / empty regions from being classified as enforcer or blocker. Why this fixes the centroid bug: the pre-packet `paint_policy_for` used a centroid probe to *classify paint*, which failed for L-shaped regions whose vertex-mean centroid fell in the L's notch (outside the polygon) — see the `enforcer_works_for_l_shape_with_centroid_outside_polygon` regression test in `crates/slicer-core/tests/paint_policy.rs` (L-shape vertex-mean centroid (4.667, 4.667) mm lies in the notch, outside the polygon; the helper still returns `Enforced`). Signature:
+
+```rust
+use slicer_core::paint_policy::{support_eligibility, SupportPaintPolicy};
+use slicer_ir::{ExPolygon, PaintSemantic, PaintValue};
+use std::collections::HashMap;
+
+pub fn support_eligibility(
+    region_polygons: &[ExPolygon],
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+) -> SupportPaintPolicy;
+```
+
+Precedence: `Blocked > Enforced > DefaultEligible`. The signature takes the two fields directly (rather than a `SliceRegionView` reference) to keep `slicer-core` independent of `slicer-sdk` and avoid a Cargo cycle. `SupportPaintPolicy` is the canonical three-variant enum declared in `slicer_ir::paint_policy`; it is re-exported at `slicer_core::paint_policy::SupportPaintPolicy` and aliased at `slicer_sdk::traits::SupportPaintPolicy` for call-site compatibility with code that already names the SDK path.
+
 ### `ModuleError` Builder
 
 ```rust

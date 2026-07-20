@@ -39,6 +39,7 @@
   - Three module manifests (`tree-support.toml`, `traditional-support.toml`, `support-planner.toml`) — `[ir-access].reads` drops `"PaintRegionIR"`.
   - Two test files (extend `enforcer_blocker_tdd.rs` in both modules with the L-shape regression test).
   - New test file `crates/slicer-core/tests/paint_policy.rs`.
+  - Two prepass test fixtures (`prepass_support_geometry_tdd.rs` and `prepass_support_geometry_layer_plan_tdd.rs` under `crates/slicer-runtime/tests/executor/`) — replace the dead `PaintRegionIR.per_layer` `ir_reads` string in the `loaded_support_planner_module` helper with `RegionMapIR.entries` + `SupportGeometryIR.entries` (the real post-P95 sources the planner reads via `MeshObjectView`).
   - `docs/05_module_sdk.md` — one paragraph.
 - Rejected alternatives:
   - **Inline the helper in each module instead of moving to `slicer-core`** — rejected: the bug currently lives in the SDK helper, not in the modules. Fixing it in place at `slicer-sdk/src/traits.rs` (without extraction) is also viable but the spec commits to extraction to `slicer-core` because (a) the helper is geometrically pure and belongs in the geometry crate, (b) the `slicer-core::polygon_ops` dependency is already there.
@@ -61,6 +62,8 @@ The packet edits 4 source files + 3 manifests + 3 new/extended test files (10 to
 - `modules/core-modules/tree-support/tests/enforcer_blocker_tdd.rs` — role: AC-8 L-shape regression; expected change: 1 test function added.
 - `modules/core-modules/traditional-support/tests/enforcer_blocker_tdd.rs` — role: AC-8 mirror; expected change: 1 test function added.
 - `crates/slicer-runtime/tests/executor/live_layer_support_tdd.rs` — role: AC-10/AC-N1/AC-N2 verification; expected change: NONE (the three tests already exist at lines 200, 361, 236 — packet verifies they still pass).
+- `crates/slicer-runtime/tests/executor/prepass_support_geometry_tdd.rs` — role: pre-existing test fixture for `loaded_support_planner_module` (the `support-planner.wasm` mock loader); expected change: replace the dead `PaintRegionIR.per_layer` `ir_reads` string with `RegionMapIR.entries` and `SupportGeometryIR.entries` (the two real post-P95 sources the planner reads via `MeshObjectView`). Same justification as the manifest `PaintRegionIR` cleanup — the IR was deleted by packet 95; the literal string in this test fixture is dead.
+- `crates/slicer-runtime/tests/executor/prepass_support_geometry_layer_plan_tdd.rs` — role: same as above; expected change: same `PaintRegionIR.per_layer` → `RegionMapIR.entries` + `SupportGeometryIR.entries` string replacement in the `loaded_support_planner_module` helper.
 
 ## Read-Only Context
 

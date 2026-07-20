@@ -11,7 +11,7 @@ wit-world    = "slicer:world-prepass"
 id = "PrePass::SupportGeometry"
 
 [ir-access]
-reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR", "SupportGeometryIR"]
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "SupportGeometryIR"]
 writes = ["SupportPlanIR"]
 
 [claims]

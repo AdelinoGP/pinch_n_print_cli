@@ -26,6 +26,7 @@ pub mod flow;
 pub mod geometry;
 #[cfg(feature = "host-algos")]
 pub mod medial_axis;
+pub mod paint_policy;
 pub mod perimeter_utils;
 pub mod polygon_ops;
 pub mod polygon_tree;
