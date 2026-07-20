@@ -292,6 +292,7 @@ fn interpolate_point(start: Point3WithWidth, end: Point3WithWidth, t: f32) -> Po
         width: start.width + ((end.width - start.width) * t),
         flow_factor: start.flow_factor + ((end.flow_factor - start.flow_factor) * t),
         overhang_quartile: start.overhang_quartile,
+        dist_to_top_mm: start.dist_to_top_mm + ((end.dist_to_top_mm - start.dist_to_top_mm) * t),
     }
 }
 

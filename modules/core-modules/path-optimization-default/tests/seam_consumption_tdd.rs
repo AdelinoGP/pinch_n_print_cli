@@ -26,7 +26,7 @@ use slicer_sdk::views::PerimeterRegionView;
 /// Helper: make a 2-point horizontal wall loop.
 #[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> WallLoop {
-    let p = |x, y| Point3WithWidth { x, y, z, width, flow_factor: 1.0, overhang_quartile: None };
+    let p = |x, y| Point3WithWidth { x, y, z, width, flow_factor: 1.0, overhang_quartile: None, dist_to_top_mm: 0.0};
     PerimeterRegionViewBuilder::new().add_outer_wall(ExtrusionPath3D { points: vec![p(x1, y1), p(x2, y2)], role: ExtrusionRole::OuterWall, speed_factor: 1.0 }).build().wall_loops()[0].clone()
 }
 
@@ -48,6 +48,7 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
             width: 0.0,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         wall_index: 0,
     };
@@ -175,6 +176,7 @@ fn seam_started_wall_replay_is_deterministic() {
             width: 0.0,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         wall_index: 0,
     };

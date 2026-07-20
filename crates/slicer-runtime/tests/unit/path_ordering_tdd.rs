@@ -43,6 +43,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     }
 }
 

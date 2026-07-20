@@ -308,6 +308,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    dist_to_top_mm: 0.0,
                     ..Default::default()
                 }],
                 role: ExtrusionRole::OuterWall,
@@ -358,6 +359,7 @@ fn seam_plan_blackboard_slot_is_write_once() {
     let dummy_position = slicer_ir::Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
+        dist_to_top_mm: 0.0,
         ..Default::default()
     };
     let seam_position = SeamPosition {

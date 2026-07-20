@@ -126,6 +126,7 @@ impl SupportSurfaceIroning {
                     width: self.line_width,
                     flow_factor: self.ironing_flow_rate,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
                 let end = Point3WithWidth {
                     x: slicer_ir::units_to_mm(x_end),
@@ -134,6 +135,7 @@ impl SupportSurfaceIroning {
                     width: self.line_width,
                     flow_factor: self.ironing_flow_rate,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
 
                 paths.push(ExtrusionPath3D {

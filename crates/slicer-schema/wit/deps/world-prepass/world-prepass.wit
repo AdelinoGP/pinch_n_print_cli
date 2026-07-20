@@ -5,7 +5,7 @@ world prepass-module {
     import slicer:config/config-types;
 
     use slicer:config/config-types.{config-view};
-    use slicer:types/geometry.{ex-polygon, point3, point3-with-width};
+    use slicer:types/geometry.{ex-polygon, point3, point3-with-width, seam-point3-with-width};
     use slicer:common/module-errors.{module-error};
 
     type object-id = string;
@@ -75,7 +75,7 @@ world prepass-module {
 
     record seam-reason { tag: string }
     record scored-seam-candidate {
-        position: point3-with-width,
+        position: seam-point3-with-width,
         score: f32,
         reason: seam-reason,
     }
@@ -83,7 +83,7 @@ world prepass-module {
         global-layer-index: u32,
         object-id: object-id,
         region-id: region-id,
-        chosen-position: point3-with-width,
+        chosen-position: seam-point3-with-width,
         chosen-wall-index: u32,
         scored-candidates: list<scored-seam-candidate>,
     }
@@ -106,6 +106,13 @@ world prepass-module {
         object-id: object-id,
         region-id: region-id,
         branch-segments: list<list<point3-with-width>>,
+    }
+
+    record raft-plan {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
     }
 
     record layer-plan-view-entry {
@@ -153,6 +160,7 @@ world prepass-module {
 
     resource support-geometry-output {
         push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+        push-raft-plan: func(plan: raft-plan) -> result<_, string>;
         push-diagnostic: func(d: diagnostic) -> result<_, string>;
     }
 

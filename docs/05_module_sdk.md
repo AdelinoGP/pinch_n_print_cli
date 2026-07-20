@@ -328,8 +328,14 @@ impl PrepassModule for MySupportPlanner {
                 object_id: obj.object_id.clone(),
                 region_id: "0".to_string(),
                 branch_segments: vec![vec![
-                    Point3WithWidth { x: 1.0, y: 2.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
-                    Point3WithWidth { x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth {
+                        x: 1.0, y: 2.0, z: 1.0, width: 0.4, flow_factor: 1.0,
+                        overhang_quartile: None, dist_to_top_mm: 0.0,
+                    },
+                    Point3WithWidth {
+                        x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0,
+                        overhang_quartile: None, dist_to_top_mm: 0.0,
+                    },
                 ]],
             };
             output.push_support_plan_entry(entry).map_err(|e| {
@@ -343,10 +349,24 @@ impl PrepassModule for MySupportPlanner {
 
 The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
-"SurfaceClassificationIR", "LayerPlanIR"]`, `writes = ["SupportPlanIR"]`, and
+"SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR",
+"SupportGeometryIR"]`, `writes = ["SupportPlanIR"]`, and
 `[module] wit-world = "slicer:world-prepass"` (unversioned — a versioned
 `wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
 carries no version").
+
+The bundled `support-planner` produces one `SupportPlanEntry` per active
+`(global_layer_index, object_id, region_id)` with branch paths carrying
+millimeter `Point3WithWidth` values. Its optional
+`SupportGeometryOutput::push_raft_plan` call mirrors `support_raft_layers`,
+`raft_first_layer_density`, `base_raft_layers`, and
+`interface_raft_layers` into `SupportPlanIR.raft_plan: Option<RaftPlan>`. The
+output builder accepts only one raft plan per invocation, and
+`support_raft_layers = 0` leaves the option as `None`.
+
+This is a configuration seam, not a raft renderer: the support planner emits
+no raft polygons or raft-layer geometry. Packet 124 owns that geometry and its
+downstream rendering contract.
 
 #### `SupportGeometryOutput::push_diagnostic` (Normative — Packet 118)
 

@@ -1,7 +1,7 @@
 //! Regression tests for packet 73 — support-geometry config normalization.
 //!
-//! AC-2:  `support_raft_layers` config key reaches the guest planner
-//!         and produces raft entries with negative global_layer_index.
+//! AC-2:  `support_raft_layers` and raft-plan config keys reach the guest
+//!         planner without producing raft geometry entries.
 //! AC-N1: `support_enabled = false` produces zero plan entries.
 //! AC-N2: an empty layer-plan-view makes the planner return a fatal
 //!         `ModuleError`, which the host surfaces as `PrepassExecutionError`.
@@ -255,9 +255,8 @@ fn base_config(enabled: bool) -> HashMap<String, ConfigValue> {
 
 // ── AC-2: raft layers config is honored ──────────────────────────────────────
 
-/// AC-2: a slice configured with `support_raft_layers = 2` and one supported
-/// region must produce raft entries with **negative** `global_layer_index`
-/// values (-1 and -2), proving the config key now reaches the guest.
+/// AC-2: a slice configured with `support_raft_layers = 2` must produce one
+/// configuration-only raft plan, proving the config keys reach the guest.
 #[test]
 fn raft_layers_config_is_honored() {
     let engine = wasm_cache::shared_engine();
@@ -278,22 +277,20 @@ fn raft_layers_config_is_honored() {
         .support_plan()
         .expect("SupportPlanIR must be committed after dispatch");
 
-    let raft_indices: Vec<i32> = support_plan
-        .entries
-        .iter()
-        .map(|e| e.global_layer_index)
-        .filter(|&i| i < 0)
-        .collect();
-
+    let raft_plan = support_plan
+        .raft_plan
+        .as_ref()
+        .expect("SupportPlanIR must contain a raft plan");
+    assert_eq!(raft_plan.raft_layers, 2);
+    assert!((raft_plan.raft_first_layer_density - 0.4).abs() < f32::EPSILON);
+    assert_eq!(raft_plan.base_raft_layers, 1);
+    assert_eq!(raft_plan.interface_raft_layers, 0);
     assert!(
-        raft_indices.contains(&-1),
-        "SupportPlanIR must contain a raft entry with global_layer_index = -1; \
-         got raft indices: {raft_indices:?}"
-    );
-    assert!(
-        raft_indices.contains(&-2),
-        "SupportPlanIR must contain a raft entry with global_layer_index = -2; \
-         got raft indices: {raft_indices:?}"
+        support_plan
+            .entries
+            .iter()
+            .all(|entry| entry.global_layer_index >= 0),
+        "raft planning must not emit raft geometry entries"
     );
 }
 

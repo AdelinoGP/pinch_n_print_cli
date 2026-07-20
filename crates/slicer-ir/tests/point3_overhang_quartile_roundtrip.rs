@@ -19,6 +19,7 @@ fn overhang_quartile_roundtrip_some() {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: Some(2),
+        dist_to_top_mm: 0.0,
     };
 
     let json = serde_json::to_string(&original).expect("serialization failed");

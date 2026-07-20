@@ -44,6 +44,7 @@ fn make_support_path(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: x2,
@@ -52,6 +53,7 @@ fn make_support_path(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ],
         role: IrExtrusionRole::SupportMaterial,
@@ -1094,6 +1096,7 @@ mod planner_consuming_tier {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: 7.0,
@@ -1102,6 +1105,7 @@ mod planner_consuming_tier {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -1273,6 +1277,7 @@ mod planner_consuming_tier {
                         width: 0.4,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     Point3WithWidth {
                         x: 7.0,
@@ -1281,6 +1286,7 @@ mod planner_consuming_tier {
                         width: 0.4,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                 ],
                 role: IrExtrusionRole::SupportMaterial,

@@ -145,6 +145,7 @@ fn synthetic_wall() -> WallLoop {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: 1.0,
@@ -153,6 +154,7 @@ fn synthetic_wall() -> WallLoop {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -173,6 +175,7 @@ fn synthetic_seam_candidate() -> SeamCandidate {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         score: 0.5,
         reason: SeamReason::Aligned,

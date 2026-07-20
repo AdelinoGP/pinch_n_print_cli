@@ -42,6 +42,7 @@ fn make_path(z: f32) -> ExtrusionPath3d {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -50,6 +51,7 @@ fn make_path(z: f32) -> ExtrusionPath3d {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -70,6 +72,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -78,6 +81,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::OuterWall,

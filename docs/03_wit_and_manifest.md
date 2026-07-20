@@ -202,10 +202,16 @@ The `geometry` interface defines the shared geometric primitives: `point2`
 `polygon`, `ex-polygon`, `extrusion-path3d`, the `extrusion-role` variant, and
 `semver`.
 
-`point3-with-width` carries an `overhang-quartile: option<u8>` field (1..=4 for
-wall-family roles only; `none` otherwise), added in packet 57. The bindgen
-`with:` remap also accepts the legacy 5-field shape so older host builds still
-load.
+The current `point3-with-width` record has seven fields: `x`, `y`, `z`,
+`width`, `flow-factor`, `overhang-quartile`, and `dist-to-top-mm`. The first
+five are millimeter `f32` geometry/flow values; `overhang-quartile` is the
+optional wall-family classification; and `dist-to-top-mm` is the per-point
+support-planner distance from the point to the top of its support column.
+
+Seam candidates intentionally use the separate six-field
+`seam-point3-with-width` record (`x`, `y`, `z`, `width`, `flow-factor`, and
+`overhang-quartile`). It does not carry `dist-to-top-mm`; keeping this ABI
+shape separate avoids widening the seam record when the support point changes.
 
 The WIT `extrusion-role` variant is **narrower than the Rust `ExtrusionRole`
 enum** (`02_ir_schemas.md`). Roles with no dedicated WIT case round-trip
@@ -407,10 +413,43 @@ There is **no `run-paint-segmentation` export.** Paint segmentation runs as the
 on-disk file for each export's parameters, the view records they consume, and
 the output-builder resources they write through.
 
+### Support-plan output seam (Normative — Packet 119)
+
+The support-geometry world carries branch entries and one optional
+configuration-only raft plan through the same output resource:
+
+```wit
+record support-plan-entry {
+    global-layer-index: s32,
+    object-id: object-id,
+    region-id: region-id,
+    branch-segments: list<list<point3-with-width>>,
+}
+
+record raft-plan {
+    raft-layers: u32,
+    raft-first-layer-density: f32,
+    base-raft-layers: u32,
+    interface-raft-layers: u32,
+}
+
+resource support-geometry-output {
+    push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+    push-raft-plan: func(plan: raft-plan) -> result<_, string>;
+    push-diagnostic: func(d: diagnostic) -> result<_, string>;
+}
+```
+
+`push-raft-plan` may be called at most once per support-geometry invocation.
+The host harvests it into `SupportPlanIR.raft_plan: Option<RaftPlan>`; no call
+produces `None`. The current support planner calls it only when
+`support_raft_layers > 0`, and the record carries configuration rather than
+raft polygons or generated raft layers.
+
 ### `support-geometry-output.push-diagnostic` (Normative — Packet 118)
 
-`support-geometry-output` exposes a second resource method in addition to
-`push-support-plan-entry`:
+`support-geometry-output` exposes a typed diagnostic method in addition to
+`push-support-plan-entry` and `push-raft-plan`:
 
 ```wit
 push-diagnostic: func(d: diagnostic) -> result<_, string>;
@@ -1009,6 +1048,32 @@ type    = "int"
 default = 0
 min     = 0
 display = "Support raft layers"
+group   = "Support"
+
+# `support_raft_layers > 0` emits the optional raft-plan seam. These three
+# fields are mirrored into the configuration-only `RaftPlan` record.
+[config.schema.raft_first_layer_density]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 1.0
+display = "Raft First Layer Density"
+group   = "Support"
+
+[config.schema.base_raft_layers]
+type    = "int"
+default = 1
+min     = 0
+max     = 20
+display = "Base Raft Layers"
+group   = "Support"
+
+[config.schema.interface_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Interface Raft Layers"
 group   = "Support"
 
 [config.schema.support_interface_top_layers]

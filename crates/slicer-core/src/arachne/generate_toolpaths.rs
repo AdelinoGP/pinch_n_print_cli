@@ -455,6 +455,7 @@ pub fn generate_junctions(
                     width: width_mm,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 perimeter_index: idx as u32,
             });
@@ -862,6 +863,7 @@ fn generate_local_maxima_single_beads(
                     width: width_mm,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 perimeter_index: mid_bead as u32,
             });

@@ -275,6 +275,7 @@ fn make_wall_loop_impl(perimeter_index: u32, z: f32, point_count: usize) -> Wall
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         })
         .collect();
     let feature_flags: Vec<WallFeatureFlags> = (0..point_count)

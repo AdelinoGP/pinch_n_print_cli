@@ -84,6 +84,7 @@ fn dummy_entity(z: f32, index: u32) -> PrintEntity {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         }],
         RegionKey {
             global_layer_index: index,
