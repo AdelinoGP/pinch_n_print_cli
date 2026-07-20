@@ -42,11 +42,10 @@
 //!
 //! This module provides algorithmic shape detection, contact-point emission, top-down MST propagation, and emit logic — it is a faithful port for correctness, not numerical parity with OrcaSlicer.
 //!
-//! # Raft prefix layers
+//! # Raft plan
 //!
-//! When `support_raft_layers > 0`, the planner emits raft entries before all
-//! model-layer entries. Raft entries carry negative `global_layer_index`
-//! (`-1, -2, ..., -raft_layers`) so they always sort before model layers.
+//! When `support_raft_layers > 0`, the planner emits one configuration-only
+//! `RaftPlan`. Raft geometry is owned by a later packet.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -81,8 +80,14 @@ pub struct SupportPlanner {
     tree_support_branch_distance: f32,
     /// Number of wall rings around each branch. Scales max move distance.
     tree_support_wall_count: u32,
-    /// Number of raft layers to emit (negative indices -1, -2, ...).
+    /// Number of raft layers to describe.
     support_raft_layers: i32,
+    /// Density of the first raft layer.
+    raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    base_raft_layers: u32,
+    /// Number of interface raft layers.
+    interface_raft_layers: u32,
     /// Number of interface layers at top of each branch column.
     support_interface_top_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
@@ -162,6 +167,21 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 0,
         };
+        let raft_first_layer_density = match config.get("raft_first_layer_density") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => 0.4,
+        };
+        let base_raft_layers = match config.get("base_raft_layers") {
+            Some(ConfigValue::Int(n)) => *n as u32,
+            Some(ConfigValue::Float(n)) => *n as u32,
+            _ => 1,
+        };
+        let interface_raft_layers = match config.get("interface_raft_layers") {
+            Some(ConfigValue::Int(n)) => *n as u32,
+            Some(ConfigValue::Float(n)) => *n as u32,
+            _ => 0,
+        };
         let support_interface_top_layers = match config.get("support_interface_top_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
             Some(ConfigValue::Float(n)) => *n as i32,
@@ -184,6 +204,9 @@ impl PrepassModule for SupportPlanner {
             tree_support_branch_distance,
             tree_support_wall_count,
             support_raft_layers,
+            raft_first_layer_density,
+            base_raft_layers,
+            interface_raft_layers,
             support_interface_top_layers,
             tree_support_interface_spacing_mm,
         })
@@ -204,6 +227,17 @@ impl PrepassModule for SupportPlanner {
 
         if layer_plan.layers.is_empty() {
             return Err(ModuleError::fatal(1, "empty layer-plan-view"));
+        }
+
+        if self.support_raft_layers > 0 {
+            output
+                .push_raft_plan(RaftPlan {
+                    raft_layers: self.support_raft_layers as u32,
+                    raft_first_layer_density: self.raft_first_layer_density,
+                    base_raft_layers: self.base_raft_layers,
+                    interface_raft_layers: self.interface_raft_layers,
+                })
+                .map_err(|e| ModuleError::fatal(1, format!("push_raft_plan failed: {e}")))?;
         }
 
         // ── Build per-layer collision / avoidance caches ──────────────────
@@ -439,56 +473,6 @@ impl SupportPlanner {
         // top-to-bottom layer order in output.
         let mut entries_in_order: Vec<SupportPlanEntry> = Vec::new();
 
-        // ── Raft prefix layers ─────────────────────────────────────────
-        // When support_raft_layers > 0, emit full-cross-section dense-fill
-        // raft entries BEFORE all model-layer entries. Each raft entry carries
-        // a negative global_layer_index (-1, -2, ...) so raft always sorts
-        // before model layers. Z values are z_bed - i * raft_layer_height_mm
-        // (raft_layer_height = effective_layer_height of layer 0).
-        if self.support_raft_layers > 0 {
-            let raft_layer_height_mm = layer_plan.layers[0].effective_layer_height;
-            let first_layer_z = layer_plan.layers[0].z;
-            // z_bed is the build plate Z; raft sits below first model layer.
-            // If layer 0 has z = raft_layer_height_mm, z_bed = first_layer_z - raft_layer_height_mm
-            let z_bed = if first_layer_z > raft_layer_height_mm {
-                first_layer_z - raft_layer_height_mm
-            } else {
-                0.0
-            };
-            // Collect unique region_ids for this object once — raft emits
-            // one entry per (raft_layer, region), not per (raft_layer, layer,
-            // region). Without dedup, repeated region_ids across model layers
-            // would multiply the raft entry count.
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            for e in &region_segmentation.entries {
-                if e.object_id == obj.object_id {
-                    for rid in &e.region_ids {
-                        seen.insert(rid.clone());
-                    }
-                }
-            }
-            let unique_region_ids: Vec<String> = seen.into_iter().collect();
-            for i in 1..=self.support_raft_layers {
-                let raft_z = z_bed - (i as f32) * raft_layer_height_mm;
-                let raft_index = -i;
-                for region_id in &unique_region_ids {
-                    entries_in_order.push(SupportPlanEntry {
-                        global_layer_index: raft_index,
-                        object_id: obj.object_id.clone(),
-                        region_id: region_id.clone(),
-                        branch_segments: vec![vec![Point3WithWidth {
-                            x: 0.0,
-                            y: 0.0,
-                            z: raft_z,
-                            width: self.line_width_mm,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                        }]],
-                    });
-                }
-            }
-        }
-
         // Iterate top → bottom.
         let top = num_layers as usize;
         for layer_rev in (0..top).rev() {
@@ -546,6 +530,7 @@ impl SupportPlanner {
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+            let mut origin_contacts_emitted = vec![false; active_nodes.len()];
             for (a_idx, b_idx, _) in &mst_edges {
                 if drop[*a_idx] || drop[*b_idx] {
                     continue;
@@ -567,6 +552,14 @@ impl SupportPlanner {
                     effective_height,
                 );
 
+                if point_in_any_expoly(collision_polys, na.x, na.y)
+                    || point_in_any_expoly(collision_polys, nb.x, nb.y)
+                {
+                    continue;
+                }
+
+                let dist_a_mm = na.dist_to_top as f32 * effective_height;
+                let dist_b_mm = nb.dist_to_top as f32 * effective_height;
                 branch_segments.push(vec![
                     Point3WithWidth {
                         x: na.x,
@@ -575,6 +568,7 @@ impl SupportPlanner {
                         width: radius_a * 2.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: dist_a_mm,
                     },
                     Point3WithWidth {
                         x: nb.x,
@@ -583,8 +577,45 @@ impl SupportPlanner {
                         width: radius_b * 2.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: dist_b_mm,
                     },
                 ]);
+                if na.dist_to_top == 0 {
+                    origin_contacts_emitted[*a_idx] = true;
+                }
+                if nb.dist_to_top == 0 {
+                    origin_contacts_emitted[*b_idx] = true;
+                }
+            }
+
+            // A fresh contact is the tip of a support column and must be
+            // represented on its origin layer even when it has no surviving
+            // MST edge. This is intentionally limited to dist_to_top == 0;
+            // propagated nodes remain subject to collision exclusion below.
+            for (i, node) in active_nodes.iter().enumerate() {
+                if node.dist_to_top != 0 || origin_contacts_emitted[i] {
+                    continue;
+                }
+                let width = tapered_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    node.dist_to_top,
+                    effective_height,
+                ) * 2.0;
+                // Origin contacts are the support tips required to reach the
+                // overhang centroid. They may intentionally lie in model
+                // collision geometry; propagated nodes remain guarded below.
+                let (contact_x, contact_y) = (node.x, node.y);
+                let point = Point3WithWidth {
+                    x: contact_x,
+                    y: contact_y,
+                    z: z_current,
+                    width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                };
+                branch_segments.push(vec![point, point]);
             }
 
             // Top-interface densification (Step 6 AC-4):
@@ -624,6 +655,7 @@ impl SupportPlanner {
                         self.tree_support_interface_spacing_mm,
                         layer_parity,
                         avoidance_polys,
+                        collision_polys,
                     );
                 }
             }
@@ -858,6 +890,8 @@ fn point_in_any_polygon(polygons: &[Vec<[f32; 2]>], x: f32, y: f32) -> bool {
 }
 
 fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
+    let sx = x * SCALING_FACTOR as f32;
+    let sy = y * SCALING_FACTOR as f32;
     polygons.iter().any(|ex| {
         let outer: Vec<[f32; 2]> = ex
             .contour
@@ -865,15 +899,15 @@ fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
             .iter()
             .map(|p| [p.x as f32, p.y as f32])
             .collect();
-        point_in_polygon(&outer, x, y)
+        point_in_polygon(&outer, sx, sy)
             && !ex.holes.iter().any(|h| {
                 point_in_polygon(
                     &h.points
                         .iter()
                         .map(|p| [p.x as f32, p.y as f32])
                         .collect::<Vec<_>>(),
-                    x,
-                    y,
+                    sx,
+                    sy,
                 )
             })
     })
@@ -999,6 +1033,8 @@ fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f3
     }
     let mut best_dist = f32::INFINITY;
     let mut best = (x, y);
+    let query_x_internal = x * SCALING_FACTOR as f32;
+    let query_y_internal = y * SCALING_FACTOR as f32;
     for ex in avoidance_polys {
         let poly: Vec<[f32; 2]> = ex
             .contour
@@ -1009,10 +1045,10 @@ fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f3
         if poly.len() < 3 {
             continue;
         }
-        let (cp, cd) = closest_point_on_polygon(&poly, x, y);
+        let (cp, cd) = closest_point_on_polygon(&poly, query_x_internal, query_y_internal);
         if cd < best_dist {
             best_dist = cd;
-            best = (cp[0], cp[1]);
+            best = (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32);
         }
     }
     best
@@ -1076,6 +1112,7 @@ fn push_interface_scan_lines(
     spacing: f32,
     parity: i32,
     avoidance_polys: &[ExPolygon],
+    collision_polys: &[ExPolygon],
 ) {
     if spacing <= 0.0 || half <= 0.0 {
         return;
@@ -1104,6 +1141,12 @@ fn push_interface_scan_lines(
         {
             continue;
         }
+        if !collision_polys.is_empty()
+            && (point_in_any_expoly(collision_polys, p1x, p1y)
+                || point_in_any_expoly(collision_polys, p2x, p2y))
+        {
+            continue;
+        }
         out.push(vec![
             Point3WithWidth {
                 x: p1x,
@@ -1112,6 +1155,7 @@ fn push_interface_scan_lines(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: p2x,
@@ -1120,6 +1164,7 @@ fn push_interface_scan_lines(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ]);
     }
@@ -1141,6 +1186,9 @@ mod tests {
             tree_support_branch_distance: 1.0,
             tree_support_wall_count: 1,
             support_raft_layers: 0,
+            raft_first_layer_density: 0.4,
+            base_raft_layers: 1,
+            interface_raft_layers: 0,
             support_interface_top_layers: 2,
             tree_support_interface_spacing_mm: 0.4,
         }
@@ -1273,6 +1321,155 @@ mod tests {
             "overhanging plate must yield non-empty plan; got {} entries",
             output.entries().len()
         );
+    }
+
+    #[test]
+    fn lone_fresh_contact_emits_tip_on_origin_layer() {
+        let vertices = vec![
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.8],
+            [4.0, 0.0, 1.8],
+            [4.0, 4.0, 1.8],
+        ];
+        let triangles = vec![[1, 3, 2]];
+        let obj = MeshObjectView {
+            object_id: "lone-contact".to_string(),
+            vertices,
+            triangles,
+            paint_layers: vec![],
+        };
+        let planner = default_planner();
+        let lp = default_layer_plan(10, 0.0, 0.2);
+        let rs = default_region_segmentation("lone-contact", 10);
+        let collision_box = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(-10.0, -10.0),
+                    Point2::from_mm(14.0, -10.0),
+                    Point2::from_mm(14.0, 14.0),
+                    Point2::from_mm(-10.0, 14.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let sg = SupportGeometryView {
+            entries: (0..10)
+                .map(|layer| SupportGeometryViewEntry {
+                    global_support_layer_index: layer,
+                    object_id: "lone-contact".to_string(),
+                    region_id: "0".to_string(),
+                    outlines: vec![collision_box.clone()],
+                })
+                .collect(),
+        };
+        let mut output = SupportGeometryOutput::new();
+        planner
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .unwrap();
+
+        let origin_entry = output
+            .entries()
+            .iter()
+            .find(|entry| entry.global_layer_index == 8)
+            .expect("lone fresh contact must emit on its origin layer");
+        assert_eq!(origin_entry.branch_segments.len(), 1);
+        let segment = &origin_entry.branch_segments[0];
+        assert_eq!(segment.len(), 2);
+        assert_eq!(segment[0].x, segment[1].x);
+        assert_eq!(segment[0].y, segment[1].y);
+        assert!((segment[0].z - 1.8).abs() < 1e-5);
+        assert!((segment[1].z - 1.8).abs() < 1e-5);
+        assert_eq!(segment[0].width, 0.0);
+        assert_eq!(segment[1].width, 0.0);
+        assert_eq!(segment[0].dist_to_top_mm, 0.0);
+        assert_eq!(segment[1].dist_to_top_mm, 0.0);
+    }
+
+    #[test]
+    fn dist_to_top_increments_for_parent_child_propagation() {
+        let vertices = vec![
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.8],
+            [4.0, 0.0, 1.8],
+            [4.0, 4.0, 1.8],
+            [0.0, 4.0, 1.8],
+        ];
+        let triangles = vec![[1, 3, 2], [1, 4, 3]];
+        let obj = MeshObjectView {
+            object_id: "plate".to_string(),
+            vertices,
+            triangles,
+            paint_layers: vec![],
+        };
+        let mut planner = default_planner();
+        planner.support_interface_top_layers = 0;
+        let layer_height = 0.2_f32;
+        let lp = default_layer_plan(10, 0.0, layer_height);
+        let rs = default_region_segmentation("plate", 10);
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
+        planner
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .unwrap();
+
+        let mut distances_by_layer = std::collections::BTreeMap::<u32, Vec<u32>>::new();
+        for entry in output.entries() {
+            assert!(entry.global_layer_index >= 0);
+            for segment in &entry.branch_segments {
+                for point in segment {
+                    let distance_in_layers = point.dist_to_top_mm / layer_height;
+                    let rounded_distance = distance_in_layers.round();
+                    assert!(
+                        (distance_in_layers - rounded_distance).abs() <= 1e-4,
+                        "dist_to_top_mm={} is not an integral layer distance",
+                        point.dist_to_top_mm
+                    );
+                    distances_by_layer
+                        .entry(entry.global_layer_index as u32)
+                        .or_default()
+                        .push(rounded_distance as u32);
+                }
+            }
+        }
+
+        let emitted_layers: Vec<u32> = distances_by_layer.keys().copied().collect();
+        assert!(
+            emitted_layers.len() >= 2,
+            "fixture must emit at least one parent-child layer pair, got {:?}",
+            emitted_layers
+        );
+        for layer_pair in emitted_layers.windows(2) {
+            let child_layer = layer_pair[0];
+            let parent_layer = layer_pair[1];
+            assert_eq!(
+                parent_layer,
+                child_layer + 1,
+                "fixture must expose adjacent parent-child propagation layers: layers={:?} distances={:?}",
+                emitted_layers,
+                distances_by_layer
+            );
+            let parent_distances = &distances_by_layer[&parent_layer];
+            let child_distances = &distances_by_layer[&child_layer];
+            let parent_dist = parent_distances[0];
+            assert!(
+                parent_distances
+                    .iter()
+                    .all(|&distance| distance == parent_dist),
+                "parent layer {} has inconsistent dist_to_top values: {:?}",
+                parent_layer,
+                parent_distances
+            );
+            assert!(
+                child_distances
+                    .iter()
+                    .all(|&distance| distance == parent_dist + 1),
+                "child layer {} must have dist_to_top = parent layer {} + 1; parent={:?} child={:?}",
+                child_layer,
+                parent_layer,
+                parent_distances,
+                child_distances
+            );
+        }
     }
 
     #[test]

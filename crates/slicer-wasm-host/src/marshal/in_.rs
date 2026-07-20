@@ -531,6 +531,7 @@ pub(crate) fn harvest_seam_plan_ir_from(
                     width: sc.position.width,
                     flow_factor: sc.position.flow_factor,
                     overhang_quartile: sc.position.overhang_quartile,
+                    dist_to_top_mm: 0.0,
                 },
                 score: sc.score,
                 reason: match sc.reason.tag.as_str() {
@@ -550,6 +551,7 @@ pub(crate) fn harvest_seam_plan_ir_from(
                 width: entry.chosen_position.width,
                 flow_factor: entry.chosen_position.flow_factor,
                 overhang_quartile: entry.chosen_position.overhang_quartile,
+                dist_to_top_mm: 0.0,
             },
             wall_index: entry.chosen_wall_index,
         };
@@ -570,9 +572,10 @@ pub(crate) fn harvest_seam_plan_ir_from(
 /// Pure core of `harvest_support_plan_ir`: WIT `SupportPlanEntry`s → `SupportPlanIR`.
 pub(crate) fn harvest_support_plan_ir_from(
     support_plan_entries: Vec<host::prepass::SupportPlanEntry>,
+    raft_plan: Option<host::prepass::RaftPlan>,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
     use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SupportPlanEntry, SupportPlanIR,
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RaftPlan, SupportPlanEntry, SupportPlanIR,
     };
 
     let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
@@ -597,6 +600,7 @@ pub(crate) fn harvest_support_plan_ir_from(
                     width: p.width,
                     flow_factor: p.flow_factor,
                     overhang_quartile: p.overhang_quartile,
+                    dist_to_top_mm: p.dist_to_top_mm,
                 })
                 .collect();
             branch_segments.push(ExtrusionPath3D {
@@ -616,6 +620,12 @@ pub(crate) fn harvest_support_plan_ir_from(
 
     Ok(SupportPlanIR {
         entries,
+        raft_plan: raft_plan.map(|plan| RaftPlan {
+            raft_layers: plan.raft_layers,
+            raft_first_layer_density: plan.raft_first_layer_density,
+            base_raft_layers: plan.base_raft_layers,
+            interface_raft_layers: plan.interface_raft_layers,
+        }),
         ..Default::default()
     })
 }

@@ -984,6 +984,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             width: pt.width,
                             flow_factor: pt.flow_factor,
                             overhang_quartile: pt.overhang_quartile,
+                            dist_to_top_mm: 0.0,
                         })
                         .collect(),
                     role: __slicer_role_ir_to_wit(&p.role),
@@ -1003,6 +1004,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             width: pt.width,
                             flow_factor: pt.flow_factor,
                             overhang_quartile: pt.overhang_quartile,
+                            dist_to_top_mm: 0.0,
                         })
                         .collect(),
                     role: __slicer_role_wit_to_ir(p.role.clone()),
@@ -1310,6 +1312,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 width: sdk_pt.width,
                 flow_factor: sdk_pt.flow_factor,
                 overhang_quartile: sdk_pt.overhang_quartile,
+                dist_to_top_mm: 0.0,
             }
         }
 
@@ -1489,17 +1492,16 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     &module, &sdk_objects, &sdk_layer_plan, &mut sdk_output, &ir_config,
                 );
                 for __slicer_entry in sdk_output.entries() {
-                    // Construct the wit-bindgen `Point3WithWidth` inline.
+                    // Construct the seam-specific wit-bindgen record inline.
                     // `__slicer_point3_with_width_from_sdk` returns the SDK
                     // (slicer_ir) flavour, which is a different type from
-                    // the wit-bindgen-generated record even though the
-                    // field shape is identical (5 f32 fields). Same fix
-                    // pattern as the SupportGeneration arm below.
+                    // the wit-bindgen-generated record. The seam boundary
+                    // intentionally omits `dist_to_top_mm`.
                     let __slicer_wit_candidates: ::std::vec::Vec<ScoredSeamCandidate> = __slicer_entry
                         .scored_candidates
                         .iter()
                         .map(|sc| ScoredSeamCandidate {
-                            position: Point3WithWidth {
+                            position: SeamPoint3WithWidth {
                                 x: sc.position.x,
                                 y: sc.position.y,
                                 z: sc.position.z,
@@ -1515,7 +1517,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                         global_layer_index: __slicer_entry.global_layer_index,
                         object_id: __slicer_entry.object_id.clone(),
                         region_id: __slicer_entry.region_id.clone(),
-                        chosen_position: Point3WithWidth {
+                        chosen_position: SeamPoint3WithWidth {
                             x: __slicer_entry.chosen_position.x,
                             y: __slicer_entry.chosen_position.y,
                             z: __slicer_entry.chosen_position.z,
@@ -1599,6 +1601,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                                     width: pt.width,
                                     flow_factor: pt.flow_factor,
                                     overhang_quartile: pt.overhang_quartile,
+                                    dist_to_top_mm: pt.dist_to_top_mm,
                                 })
                                 .collect()
                         })
@@ -1612,6 +1615,21 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     if let Err(e) = _output.push_support_plan_entry(&__slicer_wit_entry) {
                         return Err(ModuleError {
                             code: 11,
+                            message: e,
+                            fatal: true,
+                        });
+                    }
+                }
+                if let Some(__slicer_raft_plan) = sdk_output.raft_plan() {
+                    let __slicer_wit_raft_plan = RaftPlan {
+                        raft_layers: __slicer_raft_plan.raft_layers,
+                        raft_first_layer_density: __slicer_raft_plan.raft_first_layer_density,
+                        base_raft_layers: __slicer_raft_plan.base_raft_layers,
+                        interface_raft_layers: __slicer_raft_plan.interface_raft_layers,
+                    };
+                    if let Err(e) = _output.push_raft_plan(__slicer_wit_raft_plan) {
+                        return Err(ModuleError {
+                            code: 13,
                             message: e,
                             fatal: true,
                         });
@@ -2069,6 +2087,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 ::slicer_ir::Point3WithWidth {
                     x: p.x, y: p.y, z: p.z, width: p.width, flow_factor: p.flow_factor,
                     overhang_quartile: p.overhang_quartile,
+                    dist_to_top_mm: 0.0,
                 }
             }
             fn __slicer_wit_path_to_ir(p: &WitExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
@@ -2278,6 +2297,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         width: 0.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     score: sc.score,
                     reason: ::slicer_ir::SeamReason::Aligned,
@@ -2390,6 +2410,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                                     width: p.width,
                                     flow_factor: p.flow_factor,
                                     overhang_quartile: p.overhang_quartile,
+                                    dist_to_top_mm: p.dist_to_top_mm,
                                 })
                                 .collect(),
                             role: ::slicer_ir::ExtrusionRole::SupportMaterial,
@@ -2404,8 +2425,9 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     });
                 }
                 ::std::sync::Arc::new(::slicer_ir::SupportPlanIR {
-                    schema_version: ::slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+                    schema_version: ::slicer_ir::CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
                     entries,
+                    raft_plan: None,
                 })
             }
 
@@ -2454,6 +2476,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     points: p.points.iter().map(|pt| WitPoint3WithWidth {
                         x: pt.x, y: pt.y, z: pt.z, width: pt.width, flow_factor: pt.flow_factor,
                         overhang_quartile: pt.overhang_quartile,
+                        dist_to_top_mm: 0.0,
                     }).collect(),
                     role: __slicer_ir_role_to_wit(&p.role),
                     speed_factor: p.speed_factor,
@@ -2647,6 +2670,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             width: pos.width,
                             flow_factor: pos.flow_factor,
                             overhang_quartile: pos.overhang_quartile,
+                            dist_to_top_mm: 0.0,
                         },
                         *wall_index,
                         &__slicer_ir_wallloop_to_wit(loop_),

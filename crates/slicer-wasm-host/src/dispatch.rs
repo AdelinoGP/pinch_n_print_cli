@@ -1349,6 +1349,7 @@ fn build_paint_layer_data_with_plan(
                         width: p.width,
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
+                        dist_to_top_mm: p.dist_to_top_mm,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1625,7 +1626,7 @@ fn harvest_support_plan_ir(
     _module_id: &str,
     ctx: host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
-    harvest_support_plan_ir_from(ctx.support_plan_entries)
+    harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)
 }
 
 // Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).

@@ -1,8 +1,6 @@
 # Source: Pinch 'n Print self-capture (synthetic overhang fixture, packet 31b)
 # Replace with real OrcaSlicer reference data for regression_wedge.stl before promoting to status: implemented.
 # Tracked by: docs/07 follow-up to packet 31b_support-planner-algorithmic-parity.
-0,0,-0.4
-0,0,-0.2
 0.7162,1.4838,1.4
 0.7162,1.8838,1.4
 0.7162,2.2838,1.4

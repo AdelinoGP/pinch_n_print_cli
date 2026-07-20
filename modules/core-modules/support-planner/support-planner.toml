@@ -80,6 +80,30 @@ max     = 20
 display = "Support Raft Layers"
 group   = "Support"
 
+[config.schema.raft_first_layer_density]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 1.0
+display = "Raft First Layer Density"
+group   = "Support"
+
+[config.schema.base_raft_layers]
+type    = "int"
+default = 1
+min     = 0
+max     = 20
+display = "Base Raft Layers"
+group   = "Support"
+
+[config.schema.interface_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Interface Raft Layers"
+group   = "Support"
+
 [config.schema.support_interface_top_layers]
 type    = "int"
 default = 2

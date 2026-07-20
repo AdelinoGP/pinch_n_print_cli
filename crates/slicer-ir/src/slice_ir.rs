@@ -246,11 +246,11 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `SupportPlanIR`. Bumped to 1.2.0 by packet 119 — additive
+/// `Point3WithWidth.dist_to_top_mm` and optional `RaftPlan` fields.
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 2,
     patch: 0,
 };
 
@@ -1125,6 +1125,22 @@ pub struct SupportPlanEntry {
     pub branch_segments: Vec<ExtrusionPath3D>,
 }
 
+/// Configuration-only raft plan emitted during support planning.
+///
+/// This record intentionally carries no raft geometry. Packet 124 owns
+/// generating the geometry from this plan.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaftPlan {
+    /// Number of raft layers below the model.
+    pub raft_layers: u32,
+    /// Density of the first raft layer.
+    pub raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    pub base_raft_layers: u32,
+    /// Number of interface raft layers.
+    pub interface_raft_layers: u32,
+}
+
 /// Support plan IR — committed once to the blackboard by
 /// `PrePass::SupportGeometry`.
 ///
@@ -1142,6 +1158,9 @@ pub struct SupportPlanIR {
     /// planned branches. Multiple entries may share `(layer, object)` when
     /// a single object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
+    /// Optional raft configuration. Geometry is emitted by a later packet.
+    #[serde(default)]
+    pub raft_plan: Option<RaftPlan>,
 }
 
 impl Default for SupportPlanIR {
@@ -1149,6 +1168,7 @@ impl Default for SupportPlanIR {
         Self {
             schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
             entries: Vec::new(),
+            raft_plan: None,
         }
     }
 }
@@ -1629,6 +1649,8 @@ pub struct Point3WithWidth {
     /// Overhang severity quartile (0-3), None if not classified
     #[serde(default)]
     pub overhang_quartile: Option<u8>,
+    /// Distance from this point to the top of its support column in mm
+    pub dist_to_top_mm: f32,
 }
 
 /// Extrusion role
@@ -1766,6 +1788,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
                 width: p.width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             })
             .collect(),
         role,

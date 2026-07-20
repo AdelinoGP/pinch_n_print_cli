@@ -271,6 +271,19 @@ pub struct SupportPlanEntry {
     pub branch_segments: Vec<Vec<Point3WithWidth>>,
 }
 
+/// Configuration-only raft plan emitted by the support planner.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaftPlan {
+    /// Number of raft layers below the model.
+    pub raft_layers: u32,
+    /// Density of the first raft layer.
+    pub raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    pub base_raft_layers: u32,
+    /// Number of interface raft layers.
+    pub interface_raft_layers: u32,
+}
+
 /// Entry in the layer plan view, representing one layer's metadata.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerPlanViewEntry {

@@ -107,6 +107,7 @@ pub use slice_ir::{
     PrintEntity,
     PrintMetadata,
 
+    RaftPlan,
     RegionId,
     RegionKey,
     RegionMapIR,

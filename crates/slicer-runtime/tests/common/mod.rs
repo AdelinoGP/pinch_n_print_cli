@@ -13,6 +13,7 @@ pub mod model_cache;
 pub mod perimeter_harness;
 pub mod seed;
 pub mod slicer_cache;
+pub mod support_wedge;
 pub mod wasm_cache;
 
 use std::collections::HashMap;

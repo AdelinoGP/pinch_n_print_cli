@@ -32,7 +32,7 @@ pub use crate::prepass_builders::{
 pub use crate::prepass_types::{
     Diagnostic, DiagnosticSeverity, FacetAnnotation, FacetClass, LayerPlanView, LayerPlanViewEntry,
     LayerProposal, MeshObjectView, ObjectId, PaintLayerView, PaintSegmentationObjectView,
-    PaintStrokeView, PaintValueView, RegionId as PrepassRegionId, RegionLayerProposal,
+    PaintStrokeView, PaintValueView, RaftPlan, RegionId as PrepassRegionId, RegionLayerProposal,
     RegionSegmentationView, RegionSegmentationViewEntry, ScoredSeamCandidate, SeamPlanEntry,
     SeamReason, SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry,
     SurfaceGroupProposal,

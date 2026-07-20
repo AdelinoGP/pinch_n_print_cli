@@ -141,14 +141,14 @@ fn avoidance_keeps_branches_inside_support_outline() {
     );
 }
 
-/// AC-4: raft + interface — 3 raft entries with negative indices,
-/// plus interface-densified entries.
+/// AC-4: raft plan + interface — one configuration-only raft plan,
+/// plus interface-densified model entries.
 #[test]
 fn raft_and_interface_layers_emit_expected_entry_count() {
     // AC-4: Run the planner with support_raft_layers=3 and
     // support_interface_top_layers=2 against an overhang fixture whose contact
     // sits near layer 10. Expect:
-    //   - exactly 3 raft entries with global_layer_index < 0
+    //   - exactly one raft plan with raft_layers = 3
     //   - top-interface layers (just below contact) carry MORE branch_segments
     //     than the contact layer itself
     let config = make_planner_config(&[
@@ -177,15 +177,14 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         .expect("run_support_geometry");
 
     let entries = output.entries();
-    let raft: Vec<_> = entries
-        .iter()
-        .filter(|e| e.global_layer_index < 0)
-        .collect();
-    assert_eq!(
-        raft.len(),
-        3,
-        "AC-4: expected exactly 3 raft entries (-1,-2,-3); got {}",
-        raft.len()
+    let raft_plan = output.raft_plan().expect("AC-4: expected one raft plan");
+    assert_eq!(raft_plan.raft_layers, 3);
+    assert!((raft_plan.raft_first_layer_density - 0.4).abs() < f32::EPSILON);
+    assert_eq!(raft_plan.base_raft_layers, 1);
+    assert_eq!(raft_plan.interface_raft_layers, 0);
+    assert!(
+        entries.iter().all(|entry| entry.global_layer_index >= 0),
+        "AC-4: raft plan must not emit raft geometry entries"
     );
 
     // Group model-layer entries by global_layer_index and count total
@@ -611,6 +610,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -619,6 +619,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -642,6 +643,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
