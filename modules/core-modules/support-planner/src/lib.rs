@@ -761,6 +761,9 @@ impl SupportPlanner {
             active_nodes = next_nodes;
         }
 
+        // Apply per-column Laplacian smoothing (Orca TreeSupport::smooth_nodes port; packet 121).
+        smooth_branches(&mut entries_in_order, 100);
+
         // ── Packet 118 B4: cap drops are merged into the shared map ──────
         // (Emission happens in run_support_geometry after all objects are
         // processed, so the diagnostic is one per affected global layer
@@ -773,6 +776,126 @@ impl SupportPlanner {
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
         Ok(())
+    }
+}
+
+/// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
+/// sorted by `global_layer_index` descending (tip → root). Returns the list of
+/// index groups referencing positions in the original `entries` slice.
+pub fn group_branches_into_columns(
+    entries: &[slicer_sdk::prepass_types::SupportPlanEntry],
+) -> Vec<Vec<usize>> {
+    let mut groups: std::collections::BTreeMap<
+        (
+            slicer_sdk::prepass_types::ObjectId,
+            slicer_sdk::prepass_types::RegionId,
+        ),
+        Vec<usize>,
+    > = std::collections::BTreeMap::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        groups
+            .entry((entry.object_id.clone(), entry.region_id.clone()))
+            .or_default()
+            .push(idx);
+    }
+    let mut columns: Vec<Vec<usize>> = groups.into_values().collect();
+    for col in columns.iter_mut() {
+        col.sort_by(|&a, &b| {
+            entries[b]
+                .global_layer_index
+                .cmp(&entries[a].global_layer_index)
+        });
+    }
+    columns
+}
+
+/// Returns `(x, y, width)` of the first point of the first branch segment, if
+/// present. Used by `smooth_branches` so malformed entries never panic.
+fn first_point_xyw(entry: &slicer_sdk::prepass_types::SupportPlanEntry) -> Option<(f32, f32, f32)> {
+    entry
+        .branch_segments
+        .first()
+        .and_then(|p| p.first())
+        .map(|pt| (pt.x, pt.y, pt.width))
+}
+
+/// Rust port of Orca's `TreeSupport::smooth_nodes`. Applies an in-place
+/// three-point Laplacian smoother to each `(object_id, region_id)` column of
+/// `SupportPlanEntry` rows, chaining the single point of each entry's first
+/// branch segment. Endpoints (first and last in the descending-layer chain) are
+/// held fixed. Only the `(x, y, width)` of interior points are mutated; `z`,
+/// `role`, `speed_factor`, layer index, ids, and all counts are preserved.
+pub fn smooth_branches(
+    entries: &mut Vec<slicer_sdk::prepass_types::SupportPlanEntry>,
+    iterations: usize,
+) {
+    if entries.is_empty() {
+        return;
+    }
+    // Heuristic: branches in different support trees are typically separated by
+    // 25mm+; per-layer stairsteps are 1-2mm. 5mm comfortably separates "tree"
+    // from "stairstep" without affecting legitimate smoothing within a single
+    // tree.
+    const CHAIN_BREAK_THRESHOLD_MM: f32 = 5.0;
+    let columns = group_branches_into_columns(entries);
+    for column in columns {
+        if column.len() < 3 {
+            continue;
+        }
+        // Split each column into sub-chains at gaps > CHAIN_BREAK_THRESHOLD_MM
+        // between consecutive (x, y) points. Distinct support trees merged into
+        // one region column must not be smoothed across their topological
+        // discontinuity. Sub-chain boundaries act as additional pinning points.
+        let mut sub_starts: Vec<usize> = vec![0usize];
+        for k in 1..column.len() {
+            let a = match first_point_xyw(&entries[column[k - 1]]) {
+                Some(p) => p,
+                None => break,
+            };
+            let b = match first_point_xyw(&entries[column[k]]) {
+                Some(p) => p,
+                None => break,
+            };
+            let dx = b.0 - a.0;
+            let dy = b.1 - a.1;
+            if (dx * dx + dy * dy).sqrt() > CHAIN_BREAK_THRESHOLD_MM {
+                sub_starts.push(k);
+            }
+        }
+        sub_starts.push(column.len());
+        for w in sub_starts.windows(2) {
+            let (s, e) = (w[0], w[1]);
+            if e - s < 3 {
+                continue;
+            }
+            for _ in 0..iterations {
+                for i in (s + 1)..(e - 1) {
+                    let prev = match first_point_xyw(&entries[column[i - 1]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let cur = match first_point_xyw(&entries[column[i]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let next = match first_point_xyw(&entries[column[i + 1]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let new_x = (prev.0 + cur.0 + next.0) / 3.0;
+                    let new_y = (prev.1 + cur.1 + next.1) / 3.0;
+                    let mut new_w = (prev.2 + cur.2 + next.2) / 3.0;
+                    new_w = new_w.clamp(0.0, MAX_BRANCH_RADIUS_MM);
+                    if let Some(path) = entries[column[i]].branch_segments.first_mut() {
+                        if let Some(pt) = path.first_mut() {
+                            pt.x = new_x;
+                            pt.y = new_y;
+                            pt.width = new_w;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

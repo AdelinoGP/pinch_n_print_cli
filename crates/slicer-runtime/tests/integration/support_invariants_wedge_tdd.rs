@@ -396,3 +396,123 @@ fn disabled_raft_config_has_no_raft_plan() {
 
     assert!(support_plan.raft_plan.is_none());
 }
+
+#[test]
+fn branch_curvature_below_threshold() {
+    // Gate for packet 121 (smooth_nodes port). The Laplacian smoother in
+    // `support_planner::smooth_branches` operates on the column chain formed
+    // by each entry's first branch segment's first point across consecutive
+    // layers (tip -> root). This invariant reconstructs that exact chain and
+    // asserts no consecutive-segment turn angle exceeds the threshold, so a
+    // regression that drops the smoothing pass surfaces as ~90° stairstep
+    // turns here.
+    use std::collections::BTreeMap;
+
+    let ctx = prepare_ctx();
+    let entries = plan_entries(&ctx);
+
+    let mut columns: BTreeMap<(slicer_ir::ObjectId, slicer_ir::RegionId), Vec<usize>> =
+        BTreeMap::new();
+    for (i, e) in entries.iter().enumerate() {
+        columns
+            .entry((e.object_id.clone(), e.region_id))
+            .or_default()
+            .push(i);
+    }
+    for col in columns.values_mut() {
+        col.sort_by(|&a, &b| {
+            entries[b]
+                .global_layer_index
+                .cmp(&entries[a].global_layer_index)
+        });
+    }
+
+    const MAX_TURN_DEG: f32 = 30.0;
+    let mut max_turn = 0.0f32;
+    let mut chains_checked = 0usize;
+    let mut total_columns = 0usize;
+    for col in columns.values() {
+        total_columns += 1;
+        if col.len() < 3 {
+            continue;
+        }
+        let mut pts: Vec<(f32, f32)> = Vec::new();
+        for &idx in col {
+            if let Some(seg) = entries[idx].branch_segments.first() {
+                if let Some(p) = seg.points.first() {
+                    pts.push((p.x, p.y));
+                }
+            }
+        }
+        if pts.len() < 3 {
+            continue;
+        }
+        // Mirror the smoother's CHAIN_BREAK_THRESHOLD_MM = 5.0 in
+        // support-planner/src/lib.rs — distinct support trees are typically
+        // 25+ mm apart; per-layer stairsteps are 1-2 mm. Skipping inter-tree
+        // gaps is what the smoother itself does, so the invariant must match.
+        const CHAIN_BREAK_MM: f32 = 5.0;
+        eprintln!(
+            "DBG pts=[{}]",
+            pts.iter()
+                .map(|(x, y)| format!("({:.1},{:.1})", x, y))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let mut sub_start = 0usize;
+        for k in 1..pts.len() {
+            let dx = pts[k].0 - pts[k - 1].0;
+            let dy = pts[k].1 - pts[k - 1].1;
+            if (dx * dx + dy * dy).sqrt() > CHAIN_BREAK_MM {
+                if k - sub_start >= 3 {
+                    chains_checked += 1;
+                    for j in sub_start..k.saturating_sub(2) {
+                        let v1 = (pts[j + 1].0 - pts[j].0, pts[j + 1].1 - pts[j].1);
+                        let v2 = (pts[j + 2].0 - pts[j + 1].0, pts[j + 2].1 - pts[j + 1].1);
+                        let cross = v1.0 * v2.1 - v1.1 * v2.0;
+                        let dot = v1.0 * v2.0 + v1.1 * v2.1;
+                        let ang = cross.atan2(dot).to_degrees().abs();
+                        if ang > max_turn {
+                            max_turn = ang;
+                            eprintln!("DBG max at k={}: pts[k..k+3]={:?}", j, &pts[j..j + 3]);
+                        }
+                    }
+                }
+                sub_start = k;
+            }
+        }
+        if pts.len() - sub_start >= 3 {
+            chains_checked += 1;
+            for j in sub_start..pts.len().saturating_sub(2) {
+                let v1 = (pts[j + 1].0 - pts[j].0, pts[j + 1].1 - pts[j].1);
+                let v2 = (pts[j + 2].0 - pts[j + 1].0, pts[j + 2].1 - pts[j + 1].1);
+                let cross = v1.0 * v2.1 - v1.1 * v2.0;
+                let dot = v1.0 * v2.0 + v1.1 * v2.1;
+                let ang = cross.atan2(dot).to_degrees().abs();
+                if ang > max_turn {
+                    max_turn = ang;
+                    eprintln!("DBG max at k={}: pts[k..k+3]={:?}", j, &pts[j..j + 3]);
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "branch_curvature_below_threshold: total_columns={}, chains_checked={}, max_turn={:.2}° (threshold {:.1}°)",
+        total_columns, chains_checked, max_turn, MAX_TURN_DEG
+    );
+
+    assert!(
+        chains_checked > 0,
+        "curvature invariant found no multi-layer (>2) branch columns to check; total_columns={}",
+        total_columns
+    );
+    assert!(
+        max_turn <= MAX_TURN_DEG,
+        "max consecutive-segment turn angle {:.2}° exceeds {:.1}° threshold after Laplacian smoothing (packet 121); chains_checked={}, total_columns={}",
+        max_turn,
+        MAX_TURN_DEG,
+        chains_checked,
+        total_columns
+    );
+}

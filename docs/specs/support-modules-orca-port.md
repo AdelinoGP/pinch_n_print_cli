@@ -450,11 +450,18 @@ run against `resources/regression_wedge.stl` with default config and
    non-negative, and no greater than `MAX_BRANCH_RADIUS_MM = 6.0`.
 6. **Disabled raft prefix.** With `support_raft_layers = 0`, no support-plan
    entry has a negative `global_layer_index`.
+7. **Branch curvature below threshold** (`branch_curvature_below_threshold` in `support_invariants_wedge_tdd`). Across all
+   `SupportPlanEntry.branch_segments[*].points[*]`, no consecutive
+   (x, y) segment pair exceeds 30° turn angle after the Laplacian
+   smoothing pass (`support-planner::smooth_branches`, packet 121
+   port of OrcaSlicer's `TreeSupport::smooth_nodes`). The chain
+   reconstruction mirrors the smoother's 5 mm sub-chain break to
+   ignore inter-tree gaps.
 
-The list is documented as "v1, expected to grow." Specifically, C3 adds a
-curvature invariant; C4 adds a multi-neighbour-symmetry invariant; C5 adds a
-build-plate-only invariant. Each C-item that introduces a new invariant
-documents it before merging.
+The list is documented as "v1, expected to grow." C4 adds a
+multi-neighbour-symmetry invariant; C5 adds a build-plate-only
+invariant. Each C-item that introduces a new invariant documents it
+before merging.
 
 Packet 119 also verifies the additive public seams:
 
