@@ -28,8 +28,32 @@ the whole PrePass architecture exists (ADR-0029). This packet makes the seam rea
   per-object driver. `generate_lightning_trees(...)` builds the generator over the
   committed `SliceIR` sparse outlines (per-object, top-down) and stores the
   `convertToLines` output as `LightningTreeIR` entries.
-- Tests per AC-1…AC-4, AC-N1, AC-N2 (synthetic multi-layer fixtures constructed
-  programmatically; no new resource files).
+- **DEVIATION CLOSURE (D-137-LIGHTNING-PER-OBJECT-COLLAPSE):**
+  - `LightningTreeEntry` gains `region_id: RegionId` field (a `u64` type alias
+    at `slice_ir.rs:36`; mirrors `SupportPlanEntry.region_id: RegionId` at
+    `slice_ir.rs:1129` — same shape, same default of `0`). The
+    `Default` impl stays derive-driven; the field is the per-region
+    identifier within a `(object, layer)` pair. The IR's
+    `tree_edge_segments: Vec<[Point2; 2]>` are scoped to
+    `(object_id, region_id, global_layer_index)`.
+  - The host dispatch HashMap keying at
+    `crates/slicer-wasm-host/src/dispatch.rs:1383` is fixed: the `wildcard_region =
+    String::from("*")` line is replaced by `entry.region_id.to_string()` (or
+    equivalent decimal form). Mirrors the `support-plan-segments` keying at
+    `dispatch.rs:1353`.
+  - The SDK accessor `PaintRegionLayerView::lightning_tree_segments_for` at
+    `crates/slicer-sdk/src/traits.rs:195-199` updates from `_region_id: u64` to
+    `region_id: u64` (no longer underscore-prefixed) and filters entries by both
+    `layer_index` and `region_id` (not just `object_id`).
+  - A new SDK-level per-region roundtrip test (AC-N3) is added in
+    `crates/slicer-runtime/tests/contract/lightning_tree_per_region_roundtrip_tdd.rs`
+    (new file; register in `tests/contract/main.rs`): two regions on the same
+    `(object, layer)`, each with distinct committed segments, and the accessor
+    returns only the queried region's segments. The existing
+    `lightning_tree_view_roundtrip_tdd.rs` (137) is updated to include a
+    per-region assertion alongside the existing host-side projection test.
+- Tests per AC-1…AC-4, AC-N1, AC-N2, AC-N3 (synthetic multi-layer fixtures
+  constructed programmatically; no new resource files).
 
 ## Out of Scope
 
@@ -62,17 +86,30 @@ Files to inspect for this packet:
 - Positive cases: `AC-1`–`AC-4` in `packet.spec.md`. Refinements: AC-2's continuity
   bound is THE cross-layer parity property (a tree that jumps farther than the move
   distance per layer is un-printable); AC-3 pins seam-fills-seam (generator output ==
-  IR content); AC-4 extends 138's determinism to the whole pipeline.
-- Negative cases: `AC-N1` (no overhang → no trees), `AC-N2` (wedge byte-identity).
-- Cross-packet impact: 140 samples exactly what this packet commits; the per-layer
-  segment ordering frozen here is 140's input contract.
+  IR content) **at per-region granularity** (the 137 placeholder was per-object
+  only; 139 adds `region_id` so two regions on the same `(object, layer)` get
+  distinct segment buckets); AC-4 extends 138's determinism to the whole pipeline
+  (now includes the per-region keying dimension).
+- Negative cases: `AC-N1` (no overhang → no trees), `AC-N2` (wedge byte-identity),
+  `AC-N3` (per-region accessor isolation — the `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
+  closure proof).
+- Cross-packet impact: 140 samples exactly what this packet commits, keyed by
+  `region_id`; the per-layer segment ordering AND the per-region keying frozen
+  here are 140's input contract.
+- DEVIATION CLOSURE: this packet closes
+  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` via the per-region IR field + dispatch
+  keying + SDK projection. The skip-predicate remains print-wide (per the
+  investigation's conclusion — `ResolvedConfig::sparse_fill_holder` is print-wide,
+  not per-region, and the per-region predicate was the unrecoverable half of the
+  deviation).
 
 ## Verification Commands
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo test -p slicer-core -- lightning_generator 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-1/2/4/N1 | FACT + counts |
-| `cargo test -p slicer-runtime --test executor -- lightning_producer_commits_trees 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 wiring | FACT |
+| `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 per-region wiring | FACT |
+| `cargo test -p slicer-runtime --test contract -- lightning_tree_per_region_roundtrip 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N3 per-region SDK isolation | FACT |
 | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N2 | FACT |
 | `cargo clippy --workspace --all-targets -- -D warnings` + `cargo check --workspace --all-targets` | gates | FACT each |
 | `cargo xtask build-guests --check` | workspace habit | FACT |

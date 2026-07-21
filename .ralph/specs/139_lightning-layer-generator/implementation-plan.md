@@ -11,13 +11,96 @@
 
 ## Steps
 
+### Step 0: Per-region refinement bundle (RED→GREEN) — closes `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
+
+- Task IDs: `TASK-264`
+- Objective: add `region_id: RegionId` field to `LightningTreeEntry`; fix the host
+  dispatch HashMap keying in `dispatch.rs:1383` from `wildcard_region = "*"` to
+  the actual `region_id` (mirroring `support-plan-segments` at `:1353`); update the
+  SDK accessor `lightning_tree_segments_for` at `traits.rs:195-199` to honor
+  `region_id` (no longer `_region_id`); update the 137 roundtrip test in
+  `lightning_tree_view_roundtrip_tdd.rs` to add a per-region assertion; add a new
+  `lightning_tree_per_region_roundtrip_tdd.rs` (AC-N3) that proves two regions on
+  the same `(object, layer)` get distinct segment buckets.
+- Precondition: packet 137 status `implemented` (forward-dep), packets 138+139
+  algorithm bodies NOT YET LANDED (this step is the per-region scaffolding that
+  the algorithm body will later fill; runs before Steps 1-4 to lock the IR shape
+  the algorithm will commit into).
+- Postcondition: AC-3 per-region wiring green; AC-N3 per-region SDK isolation
+  green; `cargo check --workspace --all-targets` clean.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-ir/src/slice_ir.rs` (lines 1100-1200 — `SupportPlanIR` +
+    `SupportPlanEntry` precedent at `:1129`; lines 1215-1247 for
+    `LightningTreeEntry` + `LightningTreeIR` shape)
+  - `crates/slicer-wasm-host/src/dispatch.rs` (lines 1330-1410 — the
+    `build_paint_layer_data_with_plan` function and its `support-plan-segments`
+    keying at `:1353`)
+  - `crates/slicer-sdk/src/traits.rs` (lines 50-200 — `PaintRegionLayerView` +
+    accessor methods)
+  - `crates/slicer-runtime/tests/contract/lightning_tree_view_roundtrip_tdd.rs` (137;
+    full — small file)
+- Files allowed to edit (at most 4):
+  - `crates/slicer-ir/src/slice_ir.rs` (one field addition on
+    `LightningTreeEntry`; one `pub use` re-export if needed)
+  - `crates/slicer-wasm-host/src/dispatch.rs` (~5 lines around `:1383` —
+    `wildcard_region` → `entry.region_id.to_string()`)
+  - `crates/slicer-sdk/src/traits.rs` (~5 lines in
+    `lightning_tree_segments_for` — add `region_id` to the filter)
+  - `crates/slicer-runtime/tests/contract/lightning_tree_view_roundtrip_tdd.rs`
+    (add a per-region assertion; preserve the existing single-region case as
+    `region_id = 0` default)
+  - `crates/slicer-runtime/tests/contract/lightning_tree_per_region_roundtrip_tdd.rs`
+    (new file — the AC-N3 per-region isolation test)
+  - `crates/slicer-runtime/tests/contract/main.rs` (one `mod` line to register the
+    new test file)
+- Blast-radius discipline (mandatory for the new `region_id` field):
+  - **Struct-literal blast radius for `LightningTreeEntry`:** the 137 test
+    `lightning_tree_view_roundtrip_tdd.rs` constructs `LightningTreeEntry` via a
+    helper `fixture_entry(...)` that takes `(object_id, layer_index, segments)` —
+    must be extended to take `region_id` (default `0` for backward compat) AND
+    all three existing call sites in that file must be updated. Any other
+    `LightningTreeEntry` construction sites (e.g. in 138's test home, if 138
+    lands first) must be discovered via a `rg 'LightningTreeEntry \{'` FACT
+    BEFORE this step edits. If 138 has not yet landed, the only construction
+    site is the 137 test file.
+  - **HashMap keying blast radius:** the wildcard `*` key is replaced by
+    `region_id.to_string()`. The corresponding test assertion in the 137 test
+    file (which uses `wildcard_region = "*"`) must be replaced by the per-region
+    assertion. No other site in the tree references the wildcard.
+- Files explicitly out-of-bounds for this step: `crates/slicer-core/src/algos/lightning/{layer,generator}.rs`
+  (Steps 1-2's new files; this step runs first and is purely a host/IR plumbing
+  change); `modules/core-modules/lightning-infill/**` (140's surface).
+- Expected sub-agent dispatches:
+  - "FACT: every `LightningTreeEntry` construction site in the tree (rg
+    `'LightningTreeEntry \{'`)" — Step 0 driver.
+  - "FACT: every reference to `wildcard_region` in the tree (rg)" — Step 0
+    driver.
+  - "Run `cargo test -p slicer-ir --lib lightning_tree_ir` + `cargo test -p
+    slicer-runtime --test contract -- lightning_tree_per_region_roundtrip` +
+    `cargo test -p slicer-runtime --test contract -- lightning_tree_view_roundtrip`;
+    FACT each" — Step 0 verification.
+- Context cost: `L` (justified: IR field + dispatch keying + SDK projection +
+  137-test update + new test file are all coupled — partial state breaks the
+  `LightningTreeEntry` construction sites and leaves the workspace un-compiling
+  at the seam. The 139 design's `§Context Cost Estimate` carries the
+  justification.)
+- Authoritative docs: ADR-0029 (per-region discipline), `docs/DEVIATION_LOG.md`
+  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` (the deviation being closed).
+- OrcaSlicer refs: none.
+- Verification:
+  - AC-3 pipe command — FACT
+  - AC-N3 pipe command — FACT
+- Exit condition: per-region refinement green; per-region construction-site
+  survey done; the 137 test file's per-region assertion added.
+
 ### Step 1: Overhang pass — `generate_initial_internal_overhangs` (RED→GREEN)
 
 - Task IDs: `TASK-264`
 - Objective: constants FACT first (dilation constant, per-layer move distance, density-
   coupled inputs from `FillLightning.cpp`); author the AC-1 two-layer synthetic test
   (RED); port the overhang pass into `generator.rs` (attribution header) to GREEN.
-- Precondition: packet 138 closed (primitive APIs frozen).
+- Precondition: Step 0 exit condition (per-region IR + dispatch + SDK projection
+  in place).
 - Postcondition: AC-1 green; `[FWD]` density-coupling recorded resolved.
 - Files allowed to read: own lightning module + `FillLightning.cpp` (delegated SUMMARY).
 - Files allowed to edit (at most 3):
@@ -26,7 +109,9 @@
   - the lightning test home (decided in 138; add the generator test beside the
     primitive tests)
 - Blast-radius discipline: none — both files are net-new; the 137 skeleton's
-  `generate_lightning_trees` signature is unchanged at this step.
+  `generate_lightning_trees` signature is unchanged at this step. The 137-era
+  `LightningTreeEntry` construction site is in the test file (Step 0 already
+  extended it for the `region_id` field).
 - Files explicitly out-of-bounds for this step: `OrcaSlicerDocumented/**` directly;
   `layer.rs` (Step 2).
 - Expected sub-agent dispatches:
@@ -144,6 +229,7 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
+| Step 0 | L (justified) | per-region IR + dispatch + SDK projection + 137 test update + new test file — atomic coupled bundle that closes D-137-LIGHTNING-PER-OBJECT-COLLAPSE |
 | Step 1 | M | overhang pass + constants |
 | Step 2 | M | `Layer.cpp` port (448 lines; tripwire armed) |
 | Step 3 | M | two-pass growth + determinism |

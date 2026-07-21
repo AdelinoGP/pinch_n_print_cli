@@ -14,8 +14,12 @@ context_cost_estimate: M
 Port the lightning orchestration — `Lightning::Layer` (`generateNewTrees`,
 `reconnectRoots`, `convertToLines`) and `Generator` (`generateInitialInternalOverhangs`
 + the two top-down all-layers passes of `generateTrees`, `getTreesForLayer`) — into
-`crates/slicer-core/src/algos/lightning/`, and wire the packet-137 producer so
-`PrePass::LightningTreeGen` commits real per-layer tree segments into `LightningTreeIR`.
+`crates/slicer-core/src/algos/lightning/`, wire the packet-137 producer so
+`PrePass::LightningTreeGen` commits real per-layer tree segments into
+`LightningTreeIR`, and add the per-region refinement that closes
+`D-137-LIGHTNING-PER-OBJECT-COLLAPSE` (`region_id: RegionId` on `LightningTreeEntry`,
+per-region HashMap keying in the host dispatch, `region_id` honored by the SDK
+accessor).
 
 ## Scope Boundaries
 
@@ -29,20 +33,31 @@ the 138 tests co-updated in the same step, never left red between steps.
 
 ## Prerequisites and Blockers
 
-- **FORWARD-DEP on draft `137_lightning-prepass-contract`** — packet 139 needs
-  `crates/slicer-core/src/algos/lightning/mod.rs` (skeleton with
-  `generate_lightning_trees(...)` + `// 139 wiring point` marker), `LightningTreeIR`
-  with the 2-point integer-unit `tree_edge_segments` shape, the blackboard commit slot
-  + accessor, and the WIT read-view `lightning-tree-segments` method on
-  `paint-region-layer-view`. Names + shapes match 137's plan; reconciled at 137 close.
-- **FORWARD-DEP on draft `138_lightning-distancefield-treenode`** — packet 139 needs
-  `DistanceField::{new, unsupported_point, update}` and the `tree_node` graph operations
-  (propagate, straighten, reroot, prune) frozen at 138 close. 138's API freeze is
-  recorded in 138's `requirements.md` §Step Completion Expectations; 139 records any
-  signature change as a deviation in the same step.
+- **FORWARD-DEP on `137_lightning-prepass-contract`** (status: `implemented`) —
+  packet 139 needs `crates/slicer-core/src/algos/lightning/mod.rs` (skeleton
+  with `generate_lightning_trees(...)` + `// 139 wiring point` marker),
+  `LightningTreeIR` with the 2-point integer-unit `tree_edge_segments` shape,
+  the blackboard commit slot + accessor, and the WIT read-view
+  `lightning-tree-segments` method on `paint-region-layer-view`. Names +
+  shapes match 137's plan; reconciled at 137 close.
+- **FORWARD-DEP on `138_lightning-distancefield-treenode`** (status: `draft`) —
+  packet 139 needs `DistanceField::{new, unsupported_point, update}` and the
+  `tree_node` graph operations (propagate, straighten, reroot, prune) frozen
+  at 138 close. 138's API freeze is recorded in 138's `requirements.md`
+  §Step Completion Expectations; 139 records any signature change as a
+  deviation in the same step.
+- **DEVIATION-CLOSURE DEP on packet 137's review** — this packet must add
+  `region_id: RegionId` to `LightningTreeEntry` (mirroring
+  `SupportPlanEntry.region_id` at `crates/slicer-ir/src/slice_ir.rs:1129`),
+  update the host dispatch HashMap keying in
+  `crates/slicer-wasm-host/src/dispatch.rs:1383` from `wildcard_region = "*"`
+  to the actual `region_id`, and update the SDK accessor
+  `lightning_tree_segments_for` in `crates/slicer-sdk/src/traits.rs:195-199`
+  to honor its `region_id` argument. Closes
+  `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` in `docs/DEVIATION_LOG.md`.
 - Unblocks: `140_lightning-module-rewrite`.
-- Activation blockers: 137 and 138 must both be `status: implemented` (forward-deps
-  above).
+- Activation blockers: 137 and 138 must both be `status: implemented`
+  (forward-deps above).
 
 ## Acceptance Criteria
 
@@ -54,13 +69,18 @@ the 138 tests co-updated in the same step, never left red between steps.
   `generate_trees` runs top-down, **then** trees exist on every layer between the overhang
   and its support ground, and each layer's tree endpoints lie within the per-layer move
   distance of the layer below's trees or outline (continuity, ported bound). | `cargo test -p slicer-core -- lightning_generator_tree_continuity 2>&1 | tee target/test-output.log | grep "^test result"`
-- **AC-3. Given** a generated object, **when** `trees_for_layer` output is compared with
-  the producer-committed `LightningTreeIR` for the same layers, **then** they are
-  identical — the 137 producer now commits real segments (empty-skeleton behavior gone
-  for lightning-configured prints). | `cargo test -p slicer-runtime --test executor -- lightning_producer_commits_trees 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-3. Given** a generated object with at least two `SliceRegion`s on the same
+  `(object, layer)`, **when** the producer commits the per-layer `LightningTreeIR`, **then**
+  each `LightningTreeEntry` carries its `region_id` and the host dispatch's
+  `lightning_tree_segments` HashMap (`crates/slicer-wasm-host/src/dispatch.rs:1383`)
+  keys on the actual `region_id` (not the wildcard `*` from packet 137's skeleton) — two
+  regions on the same `(object, layer)` get distinct segment buckets; the SDK accessor
+  `lightning_tree_segments_for(object_id, region_id)` returns exactly the queried region's
+  segments. | `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** the same input run twice, **when** the committed `LightningTreeIR`s are
   compared, **then** they are byte-identical (whole-pipeline determinism over the 138
-  primitives). | `cargo test -p slicer-core -- lightning_generator_deterministic 2>&1 | tee target/test-output.log | grep "^test result"`
+  primitives) — and the per-region keying is stable (the same input produces the same
+  `(region_id → segments)` map across runs). | `cargo test -p slicer-core -- lightning_generator_deterministic 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Negative Test Cases
 
@@ -69,6 +89,11 @@ the 138 tests co-updated in the same step, never left red between steps.
   layer (no spurious trees). | `cargo test -p slicer-core -- lightning_generator_no_overhang_no_trees 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-N2. Given** a default-config wedge slice (no lightning holder), **when** run,
   **then** the g-code SHA is byte-identical (skip path untouched). | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-N3. Given** two regions on the same `(object, layer)` with different committed
+  segments, **when** `PaintRegionLayerView::lightning_tree_segments_for(object_id,
+  region_id)` is called, **then** it returns only the queried region's segments (no
+  cross-region leakage) — the `region_id` argument is honored, not discarded. |
+  `cargo test -p slicer-runtime --test contract -- lightning_tree_per_region_roundtrip 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Verification
 

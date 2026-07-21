@@ -12,30 +12,60 @@ context_cost_estimate: M
 ## Goal
 
 Rewrite `modules/core-modules/lightning-infill` as a per-layer sampler: read the layer's
-tree segments from the packet-137 `LightningTreeIR` view (accessed via the
-`PaintRegionLayerView` SDK accessor `lightning_tree_segments_for(object_id, region_id)`),
-emit them as raw `ExtrusionPath3D` polylines with `ExtrusionRole::SparseInfill` and the
-config-derived `speed_factor`, delete the single-layer stub (the `build_branches` function
-at `lib.rs:234` and the inline grid-sampling machinery in `run_infill`/`fill_expolygon`),
-close DEV-081, and run the contained lightning re-bless + roadmap-close workspace ceremony.
+tree segments from the packet-137 / packet-139 `LightningTreeIR` view (accessed via
+the `PaintRegionLayerView` SDK accessor `lightning_tree_segments_for(object_id,
+region_id)`, which 139 upgrades to per-region keying), emit them as raw
+`ExtrusionPath3D` polylines with `ExtrusionRole::SparseInfill` and the config-derived
+`speed_factor`, delete the single-layer stub (the `build_branches` function at
+`lib.rs:234` and the inline grid-sampling machinery in `run_infill`/`fill_expolygon`),
+close DEV-081, run the contained lightning re-bless + roadmap-close workspace
+ceremony, and **close the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW deviation** by extending
+the WIT `run-infill` signature with a `paint: paint-region-layer-view` argument,
+bumping `slicer:world-layer@2.2.0` → `@2.3.0`, threading the paint view through the
+SDK trait + macro glue + host dispatch + the four `run_infill`-implementing core
+modules, and adding a real `Layer::Infill` test-guest that calls
+`lightning-tree-segments` through the WIT boundary.
 
 ## Scope Boundaries
 
-One module rewrite plus roadmap closure: the module becomes ~sample-and-emit (the
+One module rewrite plus roadmap closure plus the WIT-extension bundle that closes
+D-137-WIT-RUN-INFILL-NO-PAINT-VIEW: the module becomes ~sample-and-emit (the
 generation intelligence lives host-side per ADR-0029), lightning output flows through
 the 133 linker like every other infill, DEV-081 flips to Closed, and lightning-affected
-expectations are re-blessed in one justified event. Manifest claims stay
-`["claim:sparse-fill"]`; no WIT/IR change. The 138/139 producer surface is the
-**read-only input** here — defects found are recorded deviations routed back to those
-packets, not patched in this packet.
+expectations are re-blessed in one justified event. The 138/139 producer surface is
+the **read-only input** here — defects found are recorded deviations routed back to
+those packets, not patched in this packet. Manifest claims stay
+`["claim:sparse-fill"]`; the WIT `run-infill` signature is extended (one additive
+argument) but no other WIT change is in scope. The four `run_infill`-implementing
+core modules (rectilinear/gyroid/lightning/top-surface-ironing) are updated to take
+the new paint-view arg (only `lightning-infill` calls it; the other three take
+`_paint` and ignore it). `support-surface-ironing` implements only
+`run_infill_postprocess` and is NOT in scope.
 
 ## Prerequisites and Blockers
 
-- Depends on: `137_lightning-prepass-contract` (view, `LightningTreeIR`),
-  `138_lightning-distancefield-treenode` (primitives), `139_lightning-layer-generator`
-  (real trees committed), `133_infill-linker-module` (the linker connects the emission).
+- Depends on: `137_lightning-prepass-contract` (view, `LightningTreeIR` —
+  `status: implemented`), `138_lightning-distancefield-treenode` (primitives),
+  `139_lightning-layer-generator` (real trees committed, per-region keying),
+  `133_infill-linker-module` (the linker connects the emission).
+- **DEVIATION-CLOSURE DEP on packet 137's review** — this packet must extend
+  the WIT `run-infill` signature with `paint: paint-region-layer-view`,
+  bump `slicer:world-layer@2.2.0` → `@2.3.0`, extend the SDK trait
+  `LayerModule::run_infill` at `crates/slicer-sdk/src/traits.rs:369`, update
+  the slicer-macros `infill_arm` at
+  `crates/slicer-macros/src/lib.rs:1779-1794` and the macro-emitted glue at
+  `:2804-2809`, update the host dispatch `Layer::Infill` arm at
+  `crates/slicer-wasm-host/src/dispatch.rs:442-465` to mirror the
+  `Layer::Support` arm at `:584-619`, update the four
+  `run_infill`-implementing core modules (rectilinear/gyroid/lightning/top-
+  surface-ironing) to take the new arg, extend the
+  `layer-infill-guest` test-guest to call `lightning-tree-segments` through
+  the WIT seam, and re-baseline the `wit_drift_detection_tdd` test that
+  pins the `run-infill` signature string. Closes
+  `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` in `docs/DEVIATION_LOG.md`.
 - Unblocks: — (roadmap end).
-- Activation blockers: none.
+- Activation blockers: 137 and 139 must both be `status: implemented`
+  (forward-deps above).
 
 ## Acceptance Criteria
 
@@ -51,6 +81,29 @@ packets, not patched in this packet.
   `Layer::InfillPostProcess` commits, **then** the sparse bucket contains linked multi-point
   polylines derived from tree segments (mean points-per-path > 2) — lightning flows through
   Architecture A like every other module. | `cargo test -p slicer-runtime --test executor -- lightning_pipeline_linked 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-3a. Given** the WIT canonical `world-layer.wit`, **when** grepped, **then** the
+  `run-infill` export's signature includes `paint: paint-region-layer-view` and the
+  package version reads `slicer:world-layer@2.3.0` (the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW
+  closure). | `rg -n 'run-infill: func\(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view' crates/slicer-schema/wit/deps/world-layer/world-layer.wit && rg -n 'package slicer:world-layer@2.3.0;' crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
+- **AC-3b. Given** the `layer-infill-guest` test-guest under
+  `crates/slicer-wasm-host/test-guests/layer-infill-guest/src/lib.rs`, **when** rebuilt
+  via `cargo xtask build-guests`, **then** the guest's `fn run_infill` accepts the
+  `paint: PaintRegionLayerView` argument, calls
+  `paint.lightning_tree_segments(object_id, region_id)` for each region in the
+  per-layer loop, and emits a witness path encoding the segment count
+  (`width == count_marker, x == 137.0`). The host pipeline reaches the test guest
+  end-to-end through the WIT boundary (this satisfies D-137's original AC-4
+  wording — "a `Layer::Infill` test guest calling the new read-view method
+  lightning-tree-segments"). | `cargo test -p slicer-wasm-host --test contract -- lightning_infill_guest_calls_lightning_tree_segments 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-3c. Given** the four `run_infill`-implementing core modules
+  (rectilinear-infill, gyroid-infill, lightning-infill, top-surface-ironing),
+  **when** compiled via `cargo check --workspace --all-targets`, **then** each
+  module's `fn run_infill` signature accepts the new
+  `paint: &PaintRegionLayerView` argument; only `lightning-infill` actually
+  calls it (the other three bind `_paint` and ignore it). | `rg -n 'fn run_infill\(' modules/core-modules/{rectilinear,gyroid,lightning,top-surface-ironing}-infill/src/lib.rs`
+- **AC-3d. Given** the `wit_drift_detection_tdd` suite, **when** run, **then** the
+  new assertions for the `run-infill` paint-view signature AND the
+  `world-layer@2.3.0` package version both pass. | `cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** `docs/DEVIATION_LOG.md`, **when** grepped, **then** the DEV-081 row's
   status column reads `Closed` (or the open status is replaced by a `Closed … packet
   140` suffix per the live log's convention — FACT at the time of editing). |
@@ -97,8 +150,14 @@ Files to inspect for this packet:
 
 - `docs/DEVIATION_LOG.md` — DEV-081 status → `Closed` (packet 140) —
   `rg -q 'DEV-081.*[Cc]losed' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` status →
+  `Closed` (packet 140) —
+  `rg -q 'D-137-WIT-RUN-INFILL-NO-PAINT-VIEW.*[Cc]losed' docs/DEVIATION_LOG.md`
 - `docs/07_implementation_status.md` — TASK-262…TASK-265 closure sweep —
   `rg -q 'TASK-265.*[Cc]losed' docs/07_implementation_status.md`
+- `docs/03_wit_and_manifest.md` §`world-layer.wit` — update the package version
+  `2.2.0` → `2.3.0` line and add a `run-infill` paint-view bullet (the WIT
+  signature change is load-bearing for this packet's deviation closure).
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
