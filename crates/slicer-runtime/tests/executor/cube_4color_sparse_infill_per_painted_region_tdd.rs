@@ -116,7 +116,6 @@ fn tools_with_sparse_infill_extrusion(gcode: &str) -> BTreeSet<u32> {
 }
 
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_sparse_infill_per_painted_region() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let tools = tools_with_sparse_infill_extrusion(&outcome.gcode_text);

@@ -844,7 +844,6 @@ fn parse_outer_wall_subloops_per_layer(gcode: &str) -> Vec<Vec<OuterSubLoop>> {
 // cube_4color.3mf (2026-07-03): every mid-body layer sampled showed all 4
 // painted tool indices as 4 distinct per-color outer-wall headers.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_arachne_fragments_walls_by_color() {
     let outcome = slice_cube_4color_with_arachne();
 
@@ -1030,7 +1029,6 @@ fn cube_4color_arachne_fragments_walls_by_color() {
 // `5d0e1bcf` taper-peak dropout + D4 `1dfac847` beading-propagation
 // pass order); this test's body is unchanged.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_arachne_per_color_footprint_within_bbox() {
     let outcome = slice_cube_4color_with_arachne();
 
@@ -1177,7 +1175,6 @@ fn cube_4color_arachne_per_color_footprint_within_bbox() {
 // Un-ignored 2026-07-16 at the 0-failure bar ADR-0035 requires (and the
 // N1-N13 plan's "F blocks on green" policy). See D-147-CHAIN-CLOSURE.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_arachne_outer_walls_close_end_to_end() {
     let outcome = slice_cube_4color_with_arachne();
 

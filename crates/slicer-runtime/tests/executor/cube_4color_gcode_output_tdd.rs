@@ -818,7 +818,6 @@ fn fmt_per_layer_diff(painted: &[usize], unpainted: &[usize], n: usize) -> Strin
 // --------------------------------------------------------------------------
 
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_gcode_emits_all_four_tool_indices() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let found = parse_tool_index_lines(&outcome.gcode_text);
@@ -877,7 +876,6 @@ fn cube_4color_gcode_emits_all_four_tool_indices() {
 // robust to the known boostvoronoi medial-axis non-determinism (byte-exact SHA
 // pinning is intentionally NOT used — see the determinism note at the end).
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_per_layer_outer_walls_fragment_by_color_with_tool_changes() {
     let painted = slice_fixture_file(&cube_4color_path());
 
@@ -1203,7 +1201,6 @@ fn outer_wall_points_at_z(gcode: &str, target_z_mm: f32, tolerance_mm: f32) -> V
 }
 
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_fuzzy_painted_face_jitter_present_on_painted_face_only() {
     // cube_fuzzyPainted layout (world-space after build transform 125,115,12.5):
     //   Front (-Y, y ≈ 102.7)  — bare (un-jittered)
@@ -1346,7 +1343,6 @@ fn count_type(gcode: &str, ty: &str) -> usize {
 /// extrusion deficit) while unpainted models were fine. This guards against the
 /// per-color regions silently losing their solid fill again.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_painted_model_emits_top_and_bottom_solid_surfaces() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let top = count_type(&outcome.gcode_text, "Top surface");
@@ -1368,7 +1364,6 @@ fn cube_4color_painted_model_emits_top_and_bottom_solid_surfaces() {
 /// well over the deterministic-ish ~86) so the known medial-axis non-determinism
 /// cannot flake it.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_gapfill_does_not_flood_bisector_seams() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let gapfill = count_type(&outcome.gcode_text, "Gap infill");
@@ -1388,7 +1383,6 @@ fn cube_4color_gapfill_does_not_flood_bisector_seams() {
 /// the model paints ≥2 distinct tool indices (this fixture has 4). Sliced here
 /// with no config, so only the auto-enable path can produce the tower.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_auto_enables_wipe_tower_for_mmu() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let prime = count_type(&outcome.gcode_text, "Prime tower");
@@ -1406,7 +1400,6 @@ fn cube_4color_auto_enables_wipe_tower_for_mmu() {
 /// multi-tool print renders monochrome despite `T<n>` tool changes. The header
 /// must now list one colour per filament slot (semicolon-separated).
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_header_declares_per_filament_colours() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let colour_line = outcome
@@ -1439,7 +1432,6 @@ fn cube_4color_header_declares_per_filament_colours() {
 /// that all 10 iterations complete and produce non-empty gcode is therefore the
 /// direct witness that the OOM is permanently gone — no tripwire fired.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn mmu_no_oversized_alloc_repeat() {
     let path = cube_fuzzy_painted_path();
     for i in 0..10 {

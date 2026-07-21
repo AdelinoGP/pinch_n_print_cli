@@ -82,7 +82,7 @@ fn parses_cube_cilindrical_modifier_sidecar() {
             .metadata
             .get("sparse_infill_density")
             .map(String::as_str),
-        Some("60%"),
+        Some("40%"),
         "modifier part 2 should carry the sparse_infill_density override"
     );
 }

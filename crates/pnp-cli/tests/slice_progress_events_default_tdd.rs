@@ -200,9 +200,20 @@ fn assert_core_contract(events: &[Value]) {
         "slice_stats.toolchange_count required"
     );
 
-    // Uniform schema version and a single slice_id across the stream.
+    // Uniform schema version (slice_stats is on 1.2.0 per packet 169; all
+    // other events are on 1.3.0). The test asserts each event's schema
+    // matches its event type, not that the stream is single-versioned.
     for e in events {
-        assert_eq!(e["schema_version"].as_str(), Some("1.2.0"));
+        let event_name = e["event"].as_str().unwrap_or("");
+        let expected_schema = match event_name {
+            "slice_stats" => "1.2.0",
+            _ => "1.3.0",
+        };
+        assert_eq!(
+            e["schema_version"].as_str(),
+            Some(expected_schema),
+            "event {event_name} has unexpected schema_version"
+        );
         assert_eq!(
             e["slice_id"].as_str(),
             events[0]["slice_id"].as_str(),

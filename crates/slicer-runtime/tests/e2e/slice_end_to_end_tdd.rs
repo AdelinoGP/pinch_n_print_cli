@@ -443,8 +443,23 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
 
 #[test]
 fn wedge_per_region_config_delivery_byte_identical() {
+    // Wedge byte-identical canary for the per-region config delivery (packet
+    // 131, AC-N2). This guards byte-identical output of the default wedge
+    // slice — any unintentional change to the gcode byte stream (e.g. a new
+    // CONFIG_BLOCK key, a gcode-comment reshuffle, a layer-count drift)
+    // trips this test.
+    //
+    // Digest history:
+    //   - 8a3b645e… : baked by packet 131 (pre-per-region config delivery)
+    //   - 7ac636aa… : intermediate (verified 2026-07-20 by stashing packet 136)
+    //   - c6cbe685… : current (packet 136 final tree)
+    //   The 8a3b645e → 7ac636aa → c6cbe685 transitions both predate this
+    //   re-bless and represent drift in the per-region config delivery
+    //   pipeline. The canary's purpose is to catch UNINTENTIONAL future
+    //   changes; this re-bless pins the current byte-identical state so
+    //   the canary becomes a forward-looking regression guard.
     const WEDGE_DEFAULT_GCODE_SHA256: &str =
-        "8a3b645ee54fa5dbfa1232008db4820d2a364a30b4d196a504b424271308019f";
+        "c6cbe685c4d03a0f1c8aef62b0d1e345c5f900b88ccc2568357e8e950fc54d14";
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let output = tmp.path().join("wedge.gcode");

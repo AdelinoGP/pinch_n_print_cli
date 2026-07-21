@@ -19,6 +19,27 @@ use slicer_ir::{
     PaintStroke, PaintValue, Point3, Transform3d,
 };
 
+/// Parse a density value from a 3MF sidecar metadata string.
+///
+/// Accepts plain floats (`"0.4"`) and percent forms (`"40%"`). Returns the
+/// density as a fraction in `[0.0, 1.0]` (i.e. `40%` becomes `0.4`). Values
+/// outside that range, malformed strings, and NaN/inf are rejected (returns
+/// `None` so the caller can log a warning rather than panic).
+fn parse_density_value(raw: &str) -> Option<f64> {
+    let trimmed = raw.trim();
+    let (num_str, is_percent) = if let Some(stripped) = trimmed.strip_suffix('%') {
+        (stripped.trim(), true)
+    } else {
+        (trimmed, false)
+    };
+    let parsed: f64 = num_str.parse().ok()?;
+    let value = if is_percent { parsed / 100.0 } else { parsed };
+    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+        return None;
+    }
+    Some(value)
+}
+
 /// Detected model file format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
@@ -697,6 +718,24 @@ fn resolve_object(
                         config_fields
                             .insert("matrix".to_string(), ConfigValue::String(matrix.clone()));
                     }
+                    if let Some(density_str) = part.metadata.get("sparse_infill_density") {
+                        match parse_density_value(density_str) {
+                            Some(v) => {
+                                config_fields.insert(
+                                    "sparse_infill_density".to_string(),
+                                    ConfigValue::Float(v),
+                                );
+                            }
+                            None => {
+                                log::warn!(
+                                    target: "slicer_model_io::loader",
+                                    "sparse_infill_density value '{}' on part {} is not a valid density, skipping",
+                                    density_str,
+                                    comp.objectid
+                                );
+                            }
+                        }
+                    }
                 }
 
                 modifier_volumes.push(ModifierVolume {
@@ -851,6 +890,20 @@ fn object_metadata_to_config_data(
     }
     if let Some(s) = metadata.get("support_type") {
         out.insert("support_type".to_string(), ConfigValue::String(s.clone()));
+    }
+    if let Some(s) = metadata.get("sparse_infill_density") {
+        match parse_density_value(s) {
+            Some(v) => {
+                out.insert("sparse_infill_density".to_string(), ConfigValue::Float(v));
+            }
+            None => {
+                log::warn!(
+                    target: "slicer_model_io::loader",
+                    "object-level sparse_infill_density value '{}' is not a valid density, skipping",
+                    s
+                );
+            }
+        }
     }
     out
 }

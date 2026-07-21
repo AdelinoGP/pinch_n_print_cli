@@ -87,7 +87,6 @@ fn motion(gcode: &str) -> Vec<String> {
 
 /// AC-5 — width limiting erodes painted variant regions (geometry changes).
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_phase5_width_limit_bands() {
     let default_g = slice_cube("ac5_default", None);
     let width_g = slice_cube(
@@ -106,7 +105,6 @@ fn cube_4color_phase5_width_limit_bands() {
 /// AC-6 — interlocking depth erodes EVEN layers only (alternation), so it differs
 /// from both the default slice AND a uniform all-layer width erosion.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_phase5_interlocking_alternates() {
     let default_g = slice_cube("ac6_default", None);
     let depth_g = slice_cube(
@@ -134,7 +132,6 @@ fn cube_4color_phase5_interlocking_alternates() {
 /// AC-7 — `interlocking_beam = true` skips Phase 5 at the driver: geometry is
 /// byte-identical to the default despite non-zero width/depth.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_phase5_interlocking_beam_skips_phase5() {
     let default_g = slice_cube("ac7_default", None);
     let beam_g = slice_cube(

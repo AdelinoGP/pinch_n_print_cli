@@ -176,7 +176,6 @@ fn tools_per_ironing_block(gcode: &str) -> Vec<BTreeSet<u32>> {
 /// (harmonised by the propagation block above) so the new region
 /// carries `top_shell_index = Some(0)`.
 #[test]
-#[ignore = "carved: infill-parity D6; restored in packet 136"]
 fn cube_4color_ironing_per_painted_top_color() {
     let outcome = slice_fixture_file(&cube_4color_path());
     let blocks = tools_per_ironing_block(&outcome.gcode_text);
