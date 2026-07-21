@@ -682,78 +682,85 @@ impl SupportPlanner {
 
             // Build the "moved" node set for the next (lower) layer.
             //
-            // For each surviving node, move toward its MST parent by
-            // `step_xy` in the XY plane. Nodes without an MST edge simply
-            // propagate unchanged.
+            // For each surviving node, move toward the reciprocal-distance-
+            // squared weighted aggregate of ALL its MST neighbours (Orca
+            // `TreeSupport::drop_nodes` non-`is_strong` behaviour, packet 122).
+            // Nodes without an MST edge simply propagate unchanged. The
+            // existing `max_move_xy` cap and `clamp_to_avoidance` post-cap
+            // are preserved: only the move *direction* changes.
             let mut next_nodes: Vec<PlannedSupportNode> = Vec::with_capacity(active_nodes.len());
-            // Build a neighbour lookup: for node i, remember its closest MST
-            // neighbour (the other endpoint of its lowest-distance edge).
-            let mut nearest_neighbour: Vec<Option<usize>> = vec![None; active_nodes.len()];
-            let mut nearest_distance: Vec<f32> = vec![f32::INFINITY; active_nodes.len()];
+            // Per-node list of (neighbour_index, edge_distance) for every
+            // MST edge incident on the node. Replaces the old
+            // `nearest_neighbour` / `nearest_distance` single-entry lookup.
+            let mut neighbours_of: Vec<Vec<(usize, f32)>> = vec![Vec::new(); active_nodes.len()];
             for (a, b, d) in &mst_edges {
-                if *d < nearest_distance[*a] {
-                    nearest_distance[*a] = *d;
-                    nearest_neighbour[*a] = Some(*b);
-                }
-                if *d < nearest_distance[*b] {
-                    nearest_distance[*b] = *d;
-                    nearest_neighbour[*b] = Some(*a);
-                }
+                neighbours_of[*a].push((*b, *d));
+                neighbours_of[*b].push((*a, *d));
             }
 
             for (i, node) in active_nodes.iter().enumerate() {
                 if drop[i] {
                     continue;
                 }
-                let moved = match nearest_neighbour[i] {
-                    Some(j) => {
-                        let neighbour = &active_nodes[j];
-                        let dx = neighbour.x - node.x;
-                        let dy = neighbour.y - node.y;
-                        let len = (dx * dx + dy * dy).sqrt();
-
-                        let raw_step = if len > max_move_xy && len > 1e-6 {
-                            // Scale to max_move_xy (wall-count scaled)
-                            let scale = max_move_xy / len;
-                            (node.x + dx * scale, node.y + dy * scale)
-                        } else if len > 1e-6 {
-                            // Short link — move fully toward neighbour
-                            (neighbour.x, neighbour.y)
-                        } else {
-                            (node.x, node.y)
-                        };
-
-                        // Clamp into avoidance_polys (Step 5 AC-3)
-                        let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
-
-                        // Drop nodes whose target lies inside collision_polys
-                        // (AC-N3: code 1002 node-clamped-out typed diagnostic).
-                        if point_in_any_expoly(collision_polys, cx, cy) {
-                            let _ = output.push_diagnostic(Diagnostic {
-                                severity: DiagnosticSeverity::Warn,
-                                code: 1002,
-                                layer: Some(current_global_layer_index as i32),
-                                object_id: Some(obj.object_id.clone()),
-                                message: format!(
-                                    "node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
-                                    current_global_layer_index, obj.object_id, cx, cy
-                                ),
-                            });
-                            continue;
-                        }
-
-                        PlannedSupportNode {
-                            x: cx,
-                            y: cy,
-                            // dist_to_top increments as we move down
-                            dist_to_top: node.dist_to_top.saturating_add(1),
-                        }
-                    }
-                    None => PlannedSupportNode {
+                let neighbours = &neighbours_of[i];
+                let moved = if neighbours.is_empty() {
+                    // No MST edge: propagate the node unchanged.
+                    PlannedSupportNode {
                         x: node.x,
                         y: node.y,
                         dist_to_top: node.dist_to_top.saturating_add(1),
-                    },
+                    }
+                } else {
+                    // Build the parallel slices for the aggregate helper.
+                    let positions: Vec<(f32, f32)> = neighbours
+                        .iter()
+                        .map(|&(j, _)| (active_nodes[j].x, active_nodes[j].y))
+                        .collect();
+                    let distances: Vec<f32> = neighbours.iter().map(|&(_, d)| d).collect();
+                    let (tx, ty) = aggregate_neighbour_targets(&positions, &distances)
+                        .unwrap_or((node.x, node.y));
+
+                    // Apply the existing `max_move_xy` cap to the displacement
+                    // from the current node toward the aggregate target. This
+                    // preserves the wall-count-scaled step cap (line 715 in
+                    // the old code; packet 122 explicitly preserves it).
+                    let dx = tx - node.x;
+                    let dy = ty - node.y;
+                    let len = (dx * dx + dy * dy).sqrt();
+                    let raw_step = if len > max_move_xy && len > 1e-6 {
+                        let scale = max_move_xy / len;
+                        (node.x + dx * scale, node.y + dy * scale)
+                    } else if len > 1e-6 {
+                        (tx, ty)
+                    } else {
+                        (node.x, node.y)
+                    };
+
+                    // Clamp into avoidance_polys (Step 5 AC-3)
+                    let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
+
+                    // Drop nodes whose target lies inside collision_polys
+                    // (AC-N3: code 1002 node-clamped-out typed diagnostic).
+                    if point_in_any_expoly(collision_polys, cx, cy) {
+                        let _ = output.push_diagnostic(Diagnostic {
+                            severity: DiagnosticSeverity::Warn,
+                            code: 1002,
+                            layer: Some(current_global_layer_index as i32),
+                            object_id: Some(obj.object_id.clone()),
+                            message: format!(
+                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
+                                current_global_layer_index, obj.object_id, cx, cy
+                            ),
+                        });
+                        continue;
+                    }
+
+                    PlannedSupportNode {
+                        x: cx,
+                        y: cy,
+                        // dist_to_top increments as we move down
+                        dist_to_top: node.dist_to_top.saturating_add(1),
+                    }
                 };
                 next_nodes.push(moved);
             }
@@ -1117,6 +1124,82 @@ fn euclidean_distance(a: &PlannedSupportNode, b: &PlannedSupportNode) -> f32 {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     (dx * dx + dy * dy).sqrt()
+}
+
+/// Reciprocal-distance-squared weighted aggregate of MST-neighbour positions.
+///
+/// Pure math helper used by the propagation block in `plan_for_object` to
+/// synthesise the move target for a node from ALL its MST neighbours at once
+/// (replacing the old single-neighbour lookup). Matches OrcaSlicer's
+/// `TreeSupport::drop_nodes` non-`is_strong` aggregation: each neighbour's
+/// position is weighted by `1.0 / D_j²` where `D_j` is the MST edge distance
+/// from the central node to neighbour `j`. Weights are normalised so they
+/// sum to 1.0. With equal `D_j`s (symmetric fan) the aggregate equals the
+/// geometric centroid; with one close neighbour the close neighbour
+/// dominates (1/d² is a strong bias).
+///
+/// Degenerate `D_j < 1e-6 mm` (coincident point): weight saturates to
+/// infinity; implementation short-circuits and returns that neighbour's
+/// position directly. This avoids the divide-by-zero path AND the unstable
+/// "huge weight / huge denominator" path that would otherwise depend on
+/// floating-point ordering of the sum.
+///
+/// Empty input → `None`. Single-element input → that element's position.
+///
+/// Reference: OrcaSlicer `TreeSupport::drop_nodes` (the second-pass move
+/// step), `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`. The
+/// packet 122 design reconciles Orca's 1/d² weighting with the implementation.
+pub fn aggregate_neighbour_targets(
+    neighbour_positions: &[(f32, f32)],
+    distances: &[f32],
+) -> Option<(f32, f32)> {
+    debug_assert_eq!(
+        neighbour_positions.len(),
+        distances.len(),
+        "neighbour_positions and distances must be parallel slices"
+    );
+    if neighbour_positions.is_empty() {
+        return None;
+    }
+    if neighbour_positions.len() == 1 {
+        return Some(neighbour_positions[0]);
+    }
+    // Degenerate-collision short-circuit: any D_j below the epsilon collapses
+    // the aggregate to that neighbour's position.
+    const EPS_MM: f32 = 1e-6;
+    for &d in distances {
+        if d < EPS_MM {
+            // Find the matching position. Multiple zeros are possible; pick
+            // the first — the test asserts it does not panic and the result
+            // equals ONE of the zero-distance neighbours' positions.
+            for (idx, &dd) in distances.iter().enumerate() {
+                if dd < EPS_MM {
+                    return Some(neighbour_positions[idx]);
+                }
+            }
+        }
+    }
+    // 1/d² weighted mean.
+    let mut sum_wx = 0.0_f64;
+    let mut sum_wy = 0.0_f64;
+    let mut sum_w = 0.0_f64;
+    for (idx, &(nx, ny)) in neighbour_positions.iter().enumerate() {
+        let d = distances[idx] as f64;
+        let w = 1.0 / (d * d);
+        sum_wx += w * (nx as f64);
+        sum_wy += w * (ny as f64);
+        sum_w += w;
+    }
+    if sum_w <= 0.0 {
+        // Defensive: should not happen given the short-circuit above, but
+        // if all distances are non-finite or NaN we fall back to the
+        // unweighted centroid of the neighbour positions.
+        let n = neighbour_positions.len() as f64;
+        let mx = neighbour_positions.iter().map(|p| p.0 as f64).sum::<f64>() / n;
+        let my = neighbour_positions.iter().map(|p| p.1 as f64).sum::<f64>() / n;
+        return Some((mx as f32, my as f32));
+    }
+    Some(((sum_wx / sum_w) as f32, (sum_wy / sum_w) as f32))
 }
 
 // ── Step-5 helper functions ───────────────────────────────────────────────────

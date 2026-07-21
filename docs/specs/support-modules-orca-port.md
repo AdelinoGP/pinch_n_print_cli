@@ -457,6 +457,7 @@ run against `resources/regression_wedge.stl` with default config and
    port of OrcaSlicer's `TreeSupport::smooth_nodes`). The chain
    reconstruction mirrors the smoother's 5 mm sub-chain break to
    ignore inter-tree gaps.
+10. **Multi-neighbour merge symmetry** (`merge_geometry_symmetric_for_n_branches` in `support_invariants_wedge_tdd`). For every node with ≥ 3 incoming MST edges (equivalently, every `SupportPlanEntry.branch_segments` endpoint shared by three or more segments in the same entry), the standard deviation of distances from the merge point to its contributing endpoint XYs is at most 30% of the mean distance. Gates the packet 122 reciprocal-distance-squared aggregate (`support-planner::aggregate_neighbour_targets`, port of OrcaSlicer's `TreeSupport::drop_nodes`) against regressions of the old single-neighbour asymmetric lookup.
 
 The list is documented as "v1, expected to grow." C4 adds a
 multi-neighbour-symmetry invariant; C5 adds a build-plate-only

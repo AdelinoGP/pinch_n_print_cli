@@ -10,15 +10,15 @@
 
 ## Problem Statement
 
-`support-planner`'s propagation block at `modules/core-modules/support-planner/src/lib.rs:669-704` uses a single `nearest_neighbour` lookup per node — each surviving node moves toward exactly one MST neighbour (the lowest-distance one). For nodes with ≥ 3 MST neighbours, the result is asymmetric: a "fan" of three branches converging on one node produces a chain that veers toward whichever fan-arm happens to have the smallest edge weight, ignoring the other two. The output is visibly skewed where Orca's `drop_nodes` produces a centered merge.
+`support-planner`'s propagation block at `modules/core-modules/support-planner/src/lib.rs:669-704` (current line numbers have drifted; symbol names are stable identifiers) uses a single `nearest_neighbour` lookup per node — each surviving node moves toward exactly one MST neighbour (the lowest-distance one). For nodes with ≥ 3 MST neighbours, the result is asymmetric: a "fan" of three branches converging on one node produces a chain that veers toward whichever fan-arm happens to have the smallest edge weight, ignoring the other two. The output is visibly skewed where Orca's `drop_nodes` produces a centered merge.
 
-This packet replaces the single-neighbour lookup with multi-neighbour aggregation matching OrcaSlicer's pattern: the move target is the reciprocal-distance-weighted aggregate of ALL MST neighbours of the node. Adds a symmetry invariant to the wedge harness.
+This packet replaces the single-neighbour lookup with multi-neighbour aggregation matching OrcaSlicer's pattern: the move target is the reciprocal-distance-squared (1/d²) weighted aggregate of ALL MST neighbours of the node. Adds a symmetry invariant to the wedge harness.
 
 ## In Scope
 
-- Replace the `nearest_neighbour` + `nearest_distance` lookup blocks in `modules/core-modules/support-planner/src/lib.rs:671-682` with a per-node aggregate computation.
-- For each node `i`: collect all MST edges incident on `i`; let `D_j` be the distance to neighbour `j`; the move target is `sum(neighbour_j_position / D_j) / sum(1 / D_j)`.
-- Apply the existing `max_move_xy` cap to the displacement (line 695-704) AFTER the aggregate is computed; apply the existing `clamp_to_avoidance` post-cap (line 707).
+- Replace the `nearest_neighbour` + `nearest_distance` lookup blocks in `modules/core-modules/support-planner/src/lib.rs:671-682` (current line numbers have drifted) with a per-node aggregate computation.
+- For each node `i`: collect all MST edges incident on `i`; let `D_j` be the distance to neighbour `j`; the move target is `sum(neighbour_j_position / (D_j * D_j)) / sum(1 / (D_j * D_j))` (reciprocal-distance-squared, 1/d² — matches Orca's `TreeSupport::drop_nodes` non-`is_strong` path).
+- Apply the existing `max_move_xy` cap to the displacement (line 695-704 of the prior version, current line numbers have drifted) AFTER the aggregate is computed; apply the existing `clamp_to_avoidance` post-cap (line 727 of the prior version, current line numbers have drifted).
 - Add the wedge harness invariant `merge_geometry_symmetric_for_n_branches` (the 9th invariant; the 8th is the curvature invariant from packet 121).
 - Add `modules/core-modules/support-planner/tests/multi_neighbour_mst_tdd.rs` with AC-2, AC-3, AC-N1, AC-N2 unit tests.
 - Regenerate the wedge goldens via `SUPPORT_WEDGE_REGEN_GOLDEN=1` and `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd -- current_wedge_output_stays_within_self_capture_tolerance`.

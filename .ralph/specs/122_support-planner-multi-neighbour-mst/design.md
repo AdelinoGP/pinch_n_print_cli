@@ -21,7 +21,7 @@
 <!-- snippet: coord-system -->
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 
-- The reciprocal-distance weighting MUST handle the degenerate case `D_j = 0` (zero distance) without dividing by zero. Implementation: when any `D_j < 1e-6 mm`, the target collapses to that neighbour's position (the weight is dominant).
+- The reciprocal-distance-squared (1/d²) weighting MUST handle the degenerate case `D_j = 0` (zero distance) without dividing by zero. Implementation: when any `D_j < 1e-6 mm`, the target collapses to that neighbour's position (the weight is dominant). 1/d² matches OrcaSlicer `TreeSupport::drop_nodes` (the second-pass move step, non-`is_strong` path); the more aggressive 1/d² bias on closer neighbours is the canonical Orca behavior, not 1/d.
 - The aggregation is deterministic: same input MST, same output target.
 - Existing `max_move_xy` cap (line 695-704) and `clamp_to_avoidance` enforcement (line 707) are preserved.
 - The `aggregate_neighbour_targets` helper is a pure function (no side effects), making it directly unit-testable without planner setup.
@@ -38,7 +38,7 @@
   - Goldens (regenerated).
   - `docs/specs/support-modules-orca-port.md` (one line in the invariant list).
 - Rejected alternatives:
-  - **Equal-weight averaging (no reciprocal)** — rejected: Orca uses distance-weighted aggregation per the survey SUMMARY; equal weighting would lose the "closer matters more" property.
+  - **Equal-weight averaging (no reciprocal)** — rejected: Orca uses distance-squared-weighted aggregation per the survey SUMMARY; equal weighting would lose the "closer matters more" property.
   - **Limit aggregation to top-3 nearest neighbours** — rejected: not Orca's behavior; arbitrary cutoff.
   - **Smoothing across multi-neighbour merges** — out of scope for this packet; the merging rule (which nodes are dropped) is preserved; only the *direction* of the move changes.
 

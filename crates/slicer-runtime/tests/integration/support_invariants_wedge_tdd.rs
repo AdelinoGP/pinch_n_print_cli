@@ -516,3 +516,159 @@ fn branch_curvature_below_threshold() {
         total_columns
     );
 }
+
+/// Packet 122 invariant: at merge points (a node with ≥ 3 incoming MST
+/// edges), the distances from the merge point to its contributing
+/// branch-segment endpoint XYs must be approximately equal — i.e. the
+/// merge is centred. Under the old single-neighbour propagation, the
+/// move target skewed toward whichever MST edge had the lowest
+/// distance, so the merge geometry was visibly asymmetric. The
+/// reciprocal-distance-squared weighted aggregate (`support_planner::
+/// aggregate_neighbour_targets`, packet 122) restores symmetry.
+///
+/// Detection rule: within each `SupportPlanEntry`, treat every
+/// 2-point `branch_segment` as an MST edge between its two endpoints.
+/// A "merge point" is a (x, y) that appears as an endpoint of three or
+/// more segments within the same entry. For each merge point, gather
+/// the *other* endpoint of each contributing segment and compute the
+/// set of distances from the merge point to those other endpoints.
+/// The invariant requires `stddev / mean ≤ 0.30` — the threshold 30%
+/// is empirical (packet 122 design §Risks).
+#[test]
+fn merge_geometry_symmetric_for_n_branches() {
+    use std::collections::HashMap;
+
+    let ctx = prepare_ctx();
+    let entries = plan_entries(&ctx);
+
+    // Round endpoints to 1e-3 mm so floating-point near-matches count as the
+    // same merge point. The merge point itself is shared between segments;
+    // if it moved during smoothing it should be identical to the integer-
+    // rounded reference.
+    const ROUND_MM: f64 = 1e-3;
+    const MAX_STDDEV_OVER_MEAN: f64 = 0.30;
+
+    let mut merge_points_checked: usize = 0;
+    let mut total_entries_scanned: usize = 0;
+    let mut total_segments_scanned: usize = 0;
+    let mut worst_ratio: f64 = 0.0;
+    let mut worst_anchor: Option<(f32, f32)> = None;
+    let mut worst_distances: Vec<f32> = Vec::new();
+
+    for entry in entries {
+        if entry.global_layer_index < 0 {
+            // Raft prefix layers are not MST-derived; skip.
+            continue;
+        }
+        total_entries_scanned += 1;
+        if entry.branch_segments.is_empty() {
+            continue;
+        }
+        // Build a map: merge-point (rounded) → list of "other endpoint" XYs
+        // for each segment that touches the merge point.
+        let mut merge_map: HashMap<(i64, i64), Vec<(f32, f32)>> = HashMap::new();
+        for seg in &entry.branch_segments {
+            // Each branch_segment is a 2-point ExtrusionPath3D (see
+            // SupportPlanEntry doc). Take first and last point.
+            let first = match seg.points.first() {
+                Some(p) => p,
+                None => continue,
+            };
+            let last = match seg.points.last() {
+                Some(p) if seg.points.len() > 1 => p,
+                _ => continue,
+            };
+            total_segments_scanned += 1;
+            let key_first = (
+                (first.x as f64 / ROUND_MM).round() as i64,
+                (first.y as f64 / ROUND_MM).round() as i64,
+            );
+            let key_last = (
+                (last.x as f64 / ROUND_MM).round() as i64,
+                (last.y as f64 / ROUND_MM).round() as i64,
+            );
+            merge_map
+                .entry(key_first)
+                .or_default()
+                .push((last.x, last.y));
+            merge_map
+                .entry(key_last)
+                .or_default()
+                .push((first.x, first.y));
+        }
+        for (key, others) in &merge_map {
+            if others.len() < 3 {
+                // Less than 3 incoming → not a merge point.
+                continue;
+            }
+            merge_points_checked += 1;
+            // Reconstruct the merge point XY by averaging the endpoints that
+            // round to the same key. (All endpoints at this key should be
+            // within ROUND_MM of each other.)
+            let mp_x = (key.0 as f64) * ROUND_MM;
+            let mp_y = (key.1 as f64) * ROUND_MM;
+            // Distances from the merge point to each contributing other endpoint.
+            let distances: Vec<f32> = others
+                .iter()
+                .map(|&(x, y)| {
+                    ((x as f64 - mp_x).powi(2) + (y as f64 - mp_y).powi(2)).sqrt() as f32
+                })
+                .filter(|d| d.is_finite() && *d > 0.0)
+                .collect();
+            if distances.len() < 3 {
+                continue;
+            }
+            let n = distances.len() as f64;
+            let mean = distances.iter().map(|d| *d as f64).sum::<f64>() / n;
+            if mean < 1e-6 {
+                // Degenerate cluster — skip (no meaningful spread).
+                continue;
+            }
+            let var = distances
+                .iter()
+                .map(|d| {
+                    let diff = (*d as f64) - mean;
+                    diff * diff
+                })
+                .sum::<f64>()
+                / n;
+            let stddev = var.sqrt();
+            let ratio = stddev / mean;
+            if ratio > worst_ratio {
+                worst_ratio = ratio;
+                worst_anchor = Some((mp_x as f32, mp_y as f32));
+                worst_distances = distances.clone();
+            }
+            assert!(
+                ratio <= MAX_STDDEV_OVER_MEAN,
+                "merge point ({:.3}, {:.3}) at layer {} obj={} region={} has asymmetric geometry: stddev/mean = {:.3} (> {:.2}); distances = {:?} mm",
+                mp_x,
+                mp_y,
+                entry.global_layer_index,
+                entry.object_id,
+                entry.region_id,
+                ratio,
+                MAX_STDDEV_OVER_MEAN,
+                distances
+            );
+        }
+    }
+
+    eprintln!(
+        "merge_geometry_symmetric_for_n_branches: entries_scanned={}, segments_scanned={}, merge_points_checked={}, worst_ratio={:.3} (threshold {:.2})",
+        total_entries_scanned,
+        total_segments_scanned,
+        merge_points_checked,
+        worst_ratio,
+        MAX_STDDEV_OVER_MEAN
+    );
+    if let Some((mx, my)) = worst_anchor {
+        eprintln!(
+            "  worst merge anchor: ({:.3}, {:.3}) distances={:?} mm",
+            mx, my, worst_distances
+        );
+    }
+    // The wedge has at most a few branches, so a small or zero count is OK;
+    // we only assert the ratio is bounded.
+    let _ = merge_points_checked; // suppress unused warning when zero
+}
