@@ -761,6 +761,16 @@ pub struct HostExecutionContext {
     /// non-prepass stages.
     pub(crate) support_plan_entries: Vec<prepass::SupportPlanEntry>,
 
+    /// Optional raft plan collected during a prepass
+    /// `run-support-geometry` invocation. At most one plan may be emitted per
+    /// call.
+    pub(crate) raft_plan: Option<prepass::RaftPlan>,
+
+    /// Diagnostics emitted by the guest via `support-geometry-output.push-diagnostic`.
+    /// Stored as `slicer_ir::Diagnostic` after WIT-to-IR conversion. Drained by the
+    /// prepass dispatch path after the WIT call returns. Empty for all non-prepass stages.
+    pub(crate) diagnostics: Vec<slicer_ir::Diagnostic>,
+
     /// Finalization builder pushes collected during a finalization
     /// `run-finalization` invocation. The host-side
     /// `HostFinalizationOutputBuilder::drop` moves the resource's
@@ -898,6 +908,8 @@ impl HostExecutionContextBuilder {
             mesh_analysis_surface_groups: Vec::new(),
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
+            raft_plan: None,
+            diagnostics: Vec::new(),
             finalization_pushes: Vec::new(),
             finalization_layer_snapshot: Vec::new(),
             layer_collection_proposal: None,
@@ -1052,6 +1064,21 @@ impl HostExecutionContext {
     /// Support-plan entries collected during `run-support-geometry`.
     pub fn support_plan_entries(&self) -> &[prepass::SupportPlanEntry] {
         &self.support_plan_entries
+    }
+
+    /// Optional raft plan collected during `run-support-geometry`.
+    pub fn raft_plan(&self) -> Option<&prepass::RaftPlan> {
+        self.raft_plan.as_ref()
+    }
+
+    /// Diagnostics emitted by the guest during the most recent prepass call.
+    pub fn diagnostics(&self) -> &[slicer_ir::Diagnostic] {
+        &self.diagnostics
+    }
+
+    /// Mutable access to the diagnostics collector.
+    pub fn diagnostics_mut(&mut self) -> &mut Vec<slicer_ir::Diagnostic> {
+        &mut self.diagnostics
     }
 
     /// Finalization builder pushes captured during `run-finalization`.
@@ -1882,6 +1909,7 @@ impl hs::Host for HostExecutionContext {
                                 width: j.p.width,
                                 flow_factor: j.p.flow_factor,
                                 overhang_quartile: j.p.overhang_quartile,
+                                dist_to_top_mm: j.p.dist_to_top_mm,
                             },
                             perimeter_index: j.perimeter_index,
                         })
@@ -2476,6 +2504,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                         width: 0.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     wall_index,
                 }))
@@ -2951,6 +2980,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     width: v.start_point.width,
                     flow_factor: v.start_point.flow_factor,
                     overhang_quartile: v.start_point.overhang_quartile,
+                    dist_to_top_mm: v.start_point.dist_to_top_mm,
                 },
                 end_point: Point3WithWidth {
                     x: v.end_point.x,
@@ -2959,6 +2989,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     width: v.end_point.width,
                     flow_factor: v.end_point.flow_factor,
                     overhang_quartile: v.end_point.overhang_quartile,
+                    dist_to_top_mm: v.end_point.dist_to_top_mm,
                 },
                 point_count: v.point_count,
             })
@@ -3037,13 +3068,12 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         semantic: PaintSemantic,
     ) -> wasmtime::Result<Vec<SemanticRegion>> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         let data = self.table.get(&self_)?;
         let key = match semantic {
             PaintSemantic::Material => "material",
-            PaintSemantic::FuzzySkin => "fuzzy-skin",
-            PaintSemantic::SupportEnforcer => "support-enforcer",
-            PaintSemantic::SupportBlocker => "support-blocker",
+            PaintSemantic::FuzzySkin => "fuzzy_skin",
+            PaintSemantic::SupportEnforcer => "support_enforcer",
+            PaintSemantic::SupportBlocker => "support_blocker",
             PaintSemantic::Custom(ref s) => {
                 // Leak the string so the &str is valid for the HashMap lookup.
                 // The HashMap lookup is immediate; no lingering reference afterward.
@@ -3061,7 +3091,6 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         module_id: String,
     ) -> wasmtime::Result<Vec<SemanticRegion>> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self
             .table
             .get(&self_)?
@@ -3071,7 +3100,6 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
             .unwrap_or_default())
     }
     fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<i32> {
-        self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self.table.get(&self_)?.layer_index as i32)
     }
     fn support_plan_segments(
@@ -3262,6 +3290,40 @@ mod prepass_impls {
             self.support_plan_entries.push(entry);
             Ok(Ok(()))
         }
+        fn push_raft_plan(
+            &mut self,
+            _handle: Resource<pm::SupportGeometryOutput>,
+            plan: pm::RaftPlan,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if self.raft_plan.is_some() {
+                return Ok(Err(String::from(
+                    "support-geometry-output: raft-plan may only be pushed once",
+                )));
+            }
+            self.raft_plan = Some(plan);
+            Ok(Ok(()))
+        }
+        fn push_diagnostic(
+            &mut self,
+            _handle: Resource<pm::SupportGeometryOutput>,
+            d: pm::Diagnostic,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let severity = match d.severity {
+                pm::SeverityLevel::Trace => slicer_ir::DiagnosticSeverity::Trace,
+                pm::SeverityLevel::Debug => slicer_ir::DiagnosticSeverity::Debug,
+                pm::SeverityLevel::Info => slicer_ir::DiagnosticSeverity::Info,
+                pm::SeverityLevel::Warn => slicer_ir::DiagnosticSeverity::Warn,
+                pm::SeverityLevel::Error => slicer_ir::DiagnosticSeverity::Error,
+            };
+            self.diagnostics.push(slicer_ir::Diagnostic {
+                severity,
+                code: d.code,
+                layer: d.layer,
+                object_id: d.object_id,
+                message: d.message,
+            });
+            Ok(Ok(()))
+        }
         fn drop(&mut self, rep: Resource<pm::SupportGeometryOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SupportGeometryOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
@@ -3302,6 +3364,7 @@ mod finalization_impls {
                     width: pt.width,
                     flow_factor: pt.flow_factor,
                     overhang_quartile: pt.overhang_quartile,
+                    dist_to_top_mm: pt.dist_to_top_mm,
                 })
                 .collect(),
             role: crate::marshal::leaf::convert_extrusion_role(&p.role),

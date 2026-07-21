@@ -29,6 +29,7 @@ fn make_finalization_path(role_tag: &str) -> fgeo::ExtrusionPath3d {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         }],
         role: fgeo::ExtrusionRole::Custom(role_tag.to_string()),
         speed_factor: 1.0,

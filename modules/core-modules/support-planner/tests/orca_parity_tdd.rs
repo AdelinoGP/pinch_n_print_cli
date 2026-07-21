@@ -26,7 +26,6 @@ use slicer_ir::{
     ConfigKey, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
     SemVer, SupportPlanEntry,
 };
-use slicer_sdk::host::{test_support as log_test_support, LogLevel};
 use slicer_sdk::module_test;
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
@@ -53,15 +52,16 @@ fn radius_tapers_with_distance_to_top() {
     let tan_diameter_angle = diameter_angle_deg.to_radians().tan();
     let layer_height = 0.2_f32; // mm per layer
 
-    // Top layer: dist_to_top = 0 → radius should be exactly branch_radius (2.5mm)
+    // Top layer: dist_to_top = 0 → radius should be 0.0 (tip-cone starts at zero)
     let radius_top = tapered_radius(branch_radius, tan_diameter_angle, 0, layer_height);
     assert!(
-        (radius_top - branch_radius).abs() < 1e-6,
-        "radius at dist_to_top=0 must equal branch_radius={branch_radius}; got {radius_top}"
+        (radius_top - 0.0).abs() < 1e-6,
+        "radius at dist_to_top=0 must be 0.0 (tip-cone); got {radius_top}"
     );
 
     // 10 layers down: dist_to_top = 10
-    // radius should grow: branch_radius + tan(10°) * 10 * 0.2
+    // radius should grow: mm_to_top = 10 * 0.2 = 2.0, which is inside the tip-cone
+    // (mm_to_top <= branch_radius=2.5), so radius = mm_to_top = 2.0
     let dist_to_top_10 = 10_u32;
     let radius_10 = tapered_radius(
         branch_radius,
@@ -69,27 +69,19 @@ fn radius_tapers_with_distance_to_top() {
         dist_to_top_10,
         layer_height,
     );
-    let expected_growth = tan_diameter_angle * (dist_to_top_10 as f32) * layer_height;
-    let expected_radius_10 = branch_radius + expected_growth;
+    let expected_radius_10 = (dist_to_top_10 as f32) * layer_height; // mm_to_top = 2.0
 
-    assert!(
-        radius_10 > branch_radius,
-        "radius must grow with dist_to_top; got {radius_10}, branch_radius={branch_radius}"
-    );
     assert!(
         (radius_10 - expected_radius_10).abs() < 1e-4,
-        "radius_10={radius_10} must match expected={expected_radius_10} (branch_radius + tan*dist*height)"
+        "radius_10={radius_10} must match expected={expected_radius_10} (mm_to_top inside tip-cone)"
     );
 
-    // Width = 2 * radius. Bottom width should be > top width.
+    // Width = 2 * radius. Bottom width should be > top width (top is 0).
     let width_top = 2.0 * radius_top;
     let width_10 = 2.0 * radius_10;
-    let height_diff = dist_to_top_10 as f32 * layer_height; // 10 * 0.2 = 2.0mm
-
     assert!(
-        width_10 > width_top + tan_diameter_angle * height_diff - 1e-4,
-        "AC-2: bottom_width={width_10} must exceed top_width + tan(angle)*height_diff \
-         = {width_top} + {tan_diameter_angle}*{height_diff}"
+        width_10 > width_top,
+        "AC-2: bottom_width={width_10} must exceed top_width={width_top}"
     );
 }
 
@@ -149,21 +141,20 @@ fn avoidance_keeps_branches_inside_support_outline() {
     );
 }
 
-/// AC-4: raft + interface — 3 raft entries with negative indices,
-/// plus interface-densified entries.
+/// AC-4: raft plan + interface — one configuration-only raft plan,
+/// plus interface-densified model entries.
 #[test]
 fn raft_and_interface_layers_emit_expected_entry_count() {
     // AC-4: Run the planner with support_raft_layers=3 and
     // support_interface_top_layers=2 against an overhang fixture whose contact
     // sits near layer 10. Expect:
-    //   - exactly 3 raft entries with global_layer_index < 0
+    //   - exactly one raft plan with raft_layers = 3
     //   - top-interface layers (just below contact) carry MORE branch_segments
     //     than the contact layer itself
     let config = make_planner_config(&[
         ("support_enabled", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(3)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (
@@ -186,15 +177,14 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         .expect("run_support_geometry");
 
     let entries = output.entries();
-    let raft: Vec<_> = entries
-        .iter()
-        .filter(|e| e.global_layer_index < 0)
-        .collect();
-    assert_eq!(
-        raft.len(),
-        3,
-        "AC-4: expected exactly 3 raft entries (-1,-2,-3); got {}",
-        raft.len()
+    let raft_plan = output.raft_plan().expect("AC-4: expected one raft plan");
+    assert_eq!(raft_plan.raft_layers, 3);
+    assert!((raft_plan.raft_first_layer_density - 0.4).abs() < f32::EPSILON);
+    assert_eq!(raft_plan.base_raft_layers, 1);
+    assert_eq!(raft_plan.interface_raft_layers, 0);
+    assert!(
+        entries.iter().all(|entry| entry.global_layer_index >= 0),
+        "AC-4: raft plan must not emit raft geometry entries"
     );
 
     // Group model-layer entries by global_layer_index and count total
@@ -285,7 +275,6 @@ fn benchy_orca_parity_within_tolerance() {
         ("support_enabled", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(2)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
-        ("support_interface_bottom_layers", ConfigValue::Int(-1)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (
@@ -460,12 +449,14 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 /// When the planner's MST move pass clamps a node into avoidance and the
 /// clamped target lies inside the collision_polys (i.e. the only valid
 /// destination is occupied by the model), the node is dropped and a
-/// `support-planner.node-clamped-out` warn-level diagnostic is emitted via
-/// `host-services.log`.
+/// typed code 1002 warn-level `Diagnostic` is emitted via the
+/// `SupportGeometryOutput::push_diagnostic` channel.
 #[module_test]
 fn node_dropped_when_avoidance_rejects_all_moves() {
     // Note: #[module_test] already drains and reinstalls log capture via
     // reset_global_state() + mock_host_setup(). No explicit install needed here.
+
+    use slicer_sdk::prepass_types::{Diagnostic, DiagnosticSeverity};
 
     let config = make_planner_config(&[
         ("support_enabled", ConfigValue::Bool(true)),
@@ -491,15 +482,15 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
     // entirely contains it. avoidance_polys (collision inflated outward) will
     // also contain the move targets, so clamp_to_avoidance is satisfied —
     // but point_in_any_polygon(collision_polys, ...) hits and the node is
-    // dropped with a warn log.
-    // Note: support-planner reads Point2 fields as `p.x as f32` / `p.y as f32`,
-    // bypassing the 100-nm scaling helper. To stay aligned with the planner's
-    // mesh coordinate space, construct Point2 with raw i64 values that the
-    // planner will interpret as f32 millimetres.
-    let pt = |x: i64, y: i64| Point2 { x, y };
+    // dropped with a typed code-1002 diagnostic.
     let big_box = ExPolygon {
         contour: Polygon {
-            points: vec![pt(-10, -10), pt(14, -10), pt(14, 14), pt(-10, 14)],
+            points: vec![
+                Point2::from_mm(-10.0, -10.0),
+                Point2::from_mm(14.0, -10.0),
+                Point2::from_mm(14.0, 14.0),
+                Point2::from_mm(-10.0, 14.0),
+            ],
         },
         holes: vec![],
     };
@@ -519,19 +510,21 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::new())
         .expect("run_support_geometry");
 
-    let logs = log_test_support::take_log_messages();
-    let clamped: Vec<_> = logs
+    let diagnostics = output.diagnostics();
+    let clamped: Vec<&Diagnostic> = diagnostics
         .iter()
-        .filter(|(lvl, msg)| {
-            matches!(lvl, LogLevel::Warn) && msg.contains("support-planner.node-clamped-out")
+        .filter(|d| {
+            d.code == 1002
+                && matches!(d.severity, DiagnosticSeverity::Warn)
+                && d.message.contains("node-clamped-out")
         })
         .collect();
     assert!(
         !clamped.is_empty(),
-        "AC-N3: expected at least one warn log containing \
-         'support-planner.node-clamped-out'; got {} log entries: {:?}",
-        logs.len(),
-        logs
+        "AC-N3: expected at least one code 1002 warn diagnostic containing \
+         'node-clamped-out'; got {} diagnostics: {:?}",
+        diagnostics.len(),
+        diagnostics
     );
 }
 
@@ -617,6 +610,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -625,6 +619,7 @@ fn make_support_entry(layer_index: i32, z: f32, width: f32) -> SupportPlanEntry 
                     width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::SupportMaterial,
@@ -648,6 +643,7 @@ fn make_entry_with_negative_index(index: i32) -> SupportPlanEntry {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,

@@ -73,6 +73,7 @@ fn quad_path(corners: [(f32, f32); 4], z: f32, width: f32) -> ExtrusionPath3D {
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             })
             .collect(),
         role: ExtrusionRole::OuterWall,
@@ -199,6 +200,7 @@ fn enforcer_bias_flips_seam_placer_selection() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             score: c.score,
             reason: SeamReason::Aligned,

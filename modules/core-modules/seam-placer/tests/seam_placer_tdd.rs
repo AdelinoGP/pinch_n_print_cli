@@ -26,6 +26,7 @@ fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCand
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         score,
         reason,
@@ -41,6 +42,7 @@ fn wall_at_z(z: f32) -> WallLoop {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     };
     let path = ExtrusionPath3D {
         points: vec![p(0.0), p(1.0), p(2.0)],
@@ -78,6 +80,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
             width: c.position.width,
             flow_factor: c.position.flow_factor,
             overhang_quartile: c.position.overhang_quartile,
+            dist_to_top_mm: 0.0,
         })
         .collect();
     let flags = vec![
@@ -451,6 +454,7 @@ fn multi_region_mixed_seam_match_preserves_all_walls() {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     };
     let mut region_a = PerimeterRegionView::default();
     region_a.set_object_id("obj-a".to_string());
@@ -474,6 +478,7 @@ fn multi_region_mixed_seam_match_preserves_all_walls() {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     };
     let mut region_b = PerimeterRegionView::default();
     region_b.set_object_id("obj-b".to_string());
@@ -554,6 +559,7 @@ fn make_wall(z: f32, points: &[(f32, f32)]) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         })
         .collect();
     let flags = vec![

@@ -343,7 +343,7 @@ package slicer:types {
     interface geometry {
         record point2 { x: s64, y: s64 }
         record point3 { x: f32, y: f32, z: f32 }
-        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
+        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8>, dist-to-top-mm: f32 }
         record bounding-box2 { min: point2, max: point2 }
         record bounding-box3 { min: point3, max: point3 }
         record polygon       { points: list<point2> }
@@ -627,7 +627,7 @@ package slicer:sdk-arachne-helper;
 package slicer:types {
     interface geometry {
         record point2 { x: s64, y: s64 }
-        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
+        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8>, dist-to-top-mm: f32 }
         record polygon       { points: list<point2> }
         record ex-polygon    { contour: polygon, holes: list<polygon> }
         record extrusion-junction { p: point3-with-width, perimeter-index: u32 }
@@ -778,6 +778,7 @@ world sdk-arachne {
                                         width: j.p.width,
                                         flow_factor: j.p.flow_factor,
                                         overhang_quartile: j.p.overhang_quartile,
+                                        dist_to_top_mm: 0.0,
                                     },
                                     perimeter_index: j.perimeter_index,
                                 })

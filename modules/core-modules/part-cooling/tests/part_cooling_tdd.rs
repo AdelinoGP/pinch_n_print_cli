@@ -31,6 +31,7 @@ fn entity(role: ExtrusionRole) -> PrintEntity {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: role.clone(),
             speed_factor: 1.0,

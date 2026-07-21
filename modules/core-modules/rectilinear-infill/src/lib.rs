@@ -12,6 +12,11 @@
 //!
 //! Implements `LayerModule::run_infill` for the `Layer::Infill` stage.
 //! Generates parallel scan-line fill patterns with per-layer angle alternation.
+//!
+//! # Speed normalization
+//!
+//! Speed is normalized via `speed_factor = configured_speed / BASE_SPEED` where
+//! `BASE_SPEED = 50.0`.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -299,6 +304,7 @@ impl RectilinearInfill {
                     width: self.line_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
                 let end = Point3WithWidth {
                     x: slicer_ir::units_to_mm(end_x),
@@ -307,6 +313,7 @@ impl RectilinearInfill {
                     width: self.line_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
 
                 paths.push(ExtrusionPath3D {

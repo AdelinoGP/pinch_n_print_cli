@@ -57,7 +57,11 @@ fn point3(x: f32, y: f32) -> Point3WithWidth {
     Point3WithWidth {
         x,
         y,
-        ..Point3WithWidth::default()
+        z: 0.0,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     }
 }
 
@@ -136,6 +140,7 @@ fn mixed_unit_shared_viewport() {
                         speed_factor: 1.0,
                     }],
                 }],
+                raft_plan: None,
             },
         },
     };

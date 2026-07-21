@@ -228,6 +228,7 @@ pub fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionP
                 width: p.width,
                 flow_factor: p.flow_factor,
                 overhang_quartile: p.overhang_quartile,
+                dist_to_top_mm: p.dist_to_top_mm,
             })
             .collect(),
         role: ir_to_wit_extrusion_role(&path.role),
@@ -359,6 +360,7 @@ pub fn convert_point(
         width: p.width,
         flow_factor: p.flow_factor,
         overhang_quartile: p.overhang_quartile,
+        dist_to_top_mm: p.dist_to_top_mm,
     })
 }
 
@@ -390,6 +392,7 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
         ExtrusionRole::GapFill => slicer_ir::ExtrusionRole::GapFill,
+        ExtrusionRole::RaftInfill => slicer_ir::ExtrusionRole::RaftInfill,
     }
 }
 

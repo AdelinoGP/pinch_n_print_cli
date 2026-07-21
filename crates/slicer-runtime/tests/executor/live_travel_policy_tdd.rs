@@ -362,6 +362,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,

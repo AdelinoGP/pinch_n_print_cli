@@ -328,8 +328,14 @@ impl PrepassModule for MySupportPlanner {
                 object_id: obj.object_id.clone(),
                 region_id: "0".to_string(),
                 branch_segments: vec![vec![
-                    Point3WithWidth { x: 1.0, y: 2.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
-                    Point3WithWidth { x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth {
+                        x: 1.0, y: 2.0, z: 1.0, width: 0.4, flow_factor: 1.0,
+                        overhang_quartile: None, dist_to_top_mm: 0.0,
+                    },
+                    Point3WithWidth {
+                        x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0,
+                        overhang_quartile: None, dist_to_top_mm: 0.0,
+                    },
                 ]],
             };
             output.push_support_plan_entry(entry).map_err(|e| {
@@ -343,10 +349,81 @@ impl PrepassModule for MySupportPlanner {
 
 The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
-"SurfaceClassificationIR", "LayerPlanIR"]`, `writes = ["SupportPlanIR"]`, and
+"SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR",
+"SupportGeometryIR"]`, `writes = ["SupportPlanIR"]`, and
 `[module] wit-world = "slicer:world-prepass"` (unversioned — a versioned
 `wit-world` is rejected at load; see `03_wit_and_manifest.md` § "Why `wit-world`
 carries no version").
+
+The bundled `support-planner` produces one `SupportPlanEntry` per active
+`(global_layer_index, object_id, region_id)` with branch paths carrying
+millimeter `Point3WithWidth` values. Its optional
+`SupportGeometryOutput::push_raft_plan` call mirrors `support_raft_layers`,
+`raft_first_layer_density`, `base_raft_layers`, and
+`interface_raft_layers` into `SupportPlanIR.raft_plan: Option<RaftPlan>`. The
+output builder accepts only one raft plan per invocation, and
+`support_raft_layers = 0` leaves the option as `None`.
+
+This is a configuration seam, not a raft renderer: the support planner emits
+no raft polygons or raft-layer geometry. Packet 124 owns that geometry and its
+downstream rendering contract.
+
+#### `SupportGeometryOutput::push_diagnostic` (Normative — Packet 118)
+
+`SupportGeometryOutput` (`crates/slicer-sdk/src/prepass_builders.rs`) is the
+SDK builder that backs the WIT `support-geometry-output` resource. In addition
+to `push_support_plan_entry`, it exposes a typed diagnostic channel that
+mirrors the WIT `push-diagnostic` method:
+
+```rust
+pub struct SupportGeometryOutput {
+    entries: Vec<super::prepass_types::SupportPlanEntry>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl SupportGeometryOutput {
+    pub fn new() -> Self { /* entries: Vec::new(), diagnostics: Vec::new() */ }
+
+    /// Push a diagnostic record. Per docs/adr/0010-typed-diagnostic-channel.md:
+    /// ```wit
+    /// push-diagnostic: func(d: diagnostic) -> result<_, string>;
+    /// ```
+    pub fn push_diagnostic(&mut self, d: Diagnostic) -> Result<(), String> {
+        self.diagnostics.push(d);
+        Ok(())
+    }
+
+    /// Get all diagnostics in insertion order (for testing).
+    #[doc(hidden)]
+    pub fn diagnostics(&self) -> &[Diagnostic] { &self.diagnostics }
+}
+```
+
+Contract (matches the WIT contract in `03_wit_and_manifest.md` §
+`support-geometry-output.push-diagnostic`):
+
+- **FIFO ordering.** Each `push_diagnostic` call appends to the internal
+  `Vec<Diagnostic>`. The host drains the SDK's `diagnostics()` accessor in
+  the same order on the way to `ModuleAccessAudit.diagnostics` — see
+  `02_ir_schemas.md` § "`ModuleAccessAudit.diagnostics`".
+- **`Result<(), String>` return.** Mirrors the WIT signature; current
+  implementation always returns `Ok(())` (no allocation-failure path). Code
+  must still `.map_err(...)` the result so future validation does not require
+  refactors at the call site.
+- **`diagnostics()` test accessor.** `pub fn diagnostics(&self) -> &[Diagnostic]`
+  is `#[doc(hidden)]` and intended for round-trip and parity tests only
+  (e.g. `prepass_diagnostic_roundtrip_tdd`); production module code should
+  not call it.
+- **Not on every output builder.** The diagnostic method is added to
+  `SupportGeometryOutput` only. Other prepass output builders
+  (`MeshAnalysisOutput`, `LayerPlanOutput`, `PaintSegmentationOutput`,
+  `SeamPlanningOutput`) are unchanged in Packet 118.
+- **Guest rebuild obligation.** `support-geometry-output` gained a new WIT
+  method; any pre-built guest WASM that imports the world will fail typed
+  instantiation at runtime. After `cargo build` of `slicer-schema` /
+  `slicer-sdk` / `slicer-macros`, run `cargo xtask build-guests` (drop
+  `--check`) and re-run the full test suite. The freshness check
+  `cargo xtask build-guests --check` is the canonical pre-test gate.
 
 #### PrePass Config-View Plumbing (Normative — Packet 73)
 
@@ -552,6 +629,25 @@ let len_3d: f32 = seg_len_3d(dx, dy, dz);
 // Extrusion volume correction factor for a segment with Z deviation.
 let flow: f32 = flow_correction(dx, dy, dz);
 ```
+
+### `slicer_core::paint_policy::support_eligibility` (packet 120)
+
+Canonical support-eligibility entry point for the `Layer::Support` paint precedence rules (see `docs/01_system_architecture.md` §"Support Stage Paint Precedence"). It replaces the centroid-based paint-classification probe that previously lived in `slicer_sdk::traits::PaintRegionLayerView::paint_policy_for` (`crates/slicer-sdk/src/traits.rs`) — that function is now a thin wrapper that first filters `SliceIR.regions[*]` to the cells whose polygon contains at least one vertex of the caller's `expoly` (the *region-ownership* check, performed via the `region_covers_expoly` contour-vertex probe; a centroid probe is intentionally NOT used here either, because in the L-shape regression fixture the caller's `expoly` IS the L-shape and its vertex-mean centroid falls in the L's notch), then forwards each matching region to this helper for paint classification.
+
+The helper is a **presence check on `segment_annotations` with a region-area floor** — NOT a polygon-intersection between region and a separate annotation polygon. The `SlicedRegion` IR stores paint as per-polygon per-vertex `Some(_)` flags (see `docs/02_ir_schemas.md` §"SlicedRegion.segment_annotations"), not as separate annotation polygons, so the painted area is implicitly the region polygon itself; the area floor (`NON_TRIVIAL_AREA_UNITS_SQ = 200` workspace units², ≈ 2 µm²) is used only to suppress degenerate / empty regions from being classified as enforcer or blocker. Why this fixes the centroid bug: the pre-packet `paint_policy_for` used a centroid probe to *classify paint*, which failed for L-shaped regions whose vertex-mean centroid fell in the L's notch (outside the polygon) — see the `enforcer_works_for_l_shape_with_centroid_outside_polygon` regression test in `crates/slicer-core/tests/paint_policy.rs` (L-shape vertex-mean centroid (4.667, 4.667) mm lies in the notch, outside the polygon; the helper still returns `Enforced`). Signature:
+
+```rust
+use slicer_core::paint_policy::{support_eligibility, SupportPaintPolicy};
+use slicer_ir::{ExPolygon, PaintSemantic, PaintValue};
+use std::collections::HashMap;
+
+pub fn support_eligibility(
+    region_polygons: &[ExPolygon],
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+) -> SupportPaintPolicy;
+```
+
+Precedence: `Blocked > Enforced > DefaultEligible`. The signature takes the two fields directly (rather than a `SliceRegionView` reference) to keep `slicer-core` independent of `slicer-sdk` and avoid a Cargo cycle. `SupportPaintPolicy` is the canonical three-variant enum declared in `slicer_ir::paint_policy`; it is re-exported at `slicer_core::paint_policy::SupportPaintPolicy` and aliased at `slicer_sdk::traits::SupportPaintPolicy` for call-site compatibility with code that already names the SDK path.
 
 ### `ModuleError` Builder
 

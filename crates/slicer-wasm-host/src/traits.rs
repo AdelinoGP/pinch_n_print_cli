@@ -77,6 +77,13 @@ pub trait PrepassStageRunner {
     fn last_log_messages(&self) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    /// Returns the diagnostics emitted by the module during the most recent
+    /// `run_stage` call, in FIFO order. Default returns an empty `Vec` for
+    /// runners that do not capture diagnostics.
+    fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
+        Vec::new()
+    }
 }
 
 /// Runner for postpass-stage dispatch (G-code and text postprocessing).

@@ -273,11 +273,13 @@ pub fn execute_prepass_with_instrumentation(
             // Always record the audit when there is a runtime_reads vector,
             // even if the output is None (read-performing modules that produce
             // no IR output still have their reads audited).
+            let diagnostics: Vec<slicer_ir::Diagnostic> = runner.last_diagnostics();
             if let Some(ir_path) = ir_path {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: vec![ir_path],
+                    diagnostics,
                 });
             } else if !runtime_reads.is_empty() {
                 // Module performed reads but produced no output — still record audit.
@@ -285,6 +287,7 @@ pub fn execute_prepass_with_instrumentation(
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: Vec::new(),
+                    diagnostics,
                 });
             }
         }

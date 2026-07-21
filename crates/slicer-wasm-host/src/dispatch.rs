@@ -43,6 +43,13 @@ thread_local! {
     /// Read and cleared by `last_log_messages` on the runner traits.
     static LAST_MODULE_LOG_MESSAGES: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding the diagnostics emitted by the most
+    /// recent prepass module invocation on this thread. Each entry is a
+    /// `slicer_ir::Diagnostic`. Read and cleared by `last_diagnostics` on
+    /// the `PrepassStageRunner` trait.
+    static LAST_PREPASS_DIAGNOSTICS: std::cell::RefCell<Vec<slicer_ir::Diagnostic>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -854,6 +861,12 @@ impl WasmRuntimeDispatcher {
             ),
         })?;
 
+        // Drain diagnostics from the context into the thread-local stash
+        // before the store (and its HostExecutionContext) is consumed.
+        let diags: Vec<slicer_ir::Diagnostic> =
+            store.data_mut().diagnostics_mut().drain(..).collect();
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
+
         Ok(store.into_data())
     }
 
@@ -1336,6 +1349,7 @@ fn build_paint_layer_data_with_plan(
                         width: p.width,
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
+                        dist_to_top_mm: p.dist_to_top_mm,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1612,7 +1626,7 @@ fn harvest_support_plan_ir(
     _module_id: &str,
     ctx: host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
-    harvest_support_plan_ir_from(ctx.support_plan_entries)
+    harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)
 }
 
 // Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
@@ -1794,6 +1808,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().drain(..).collect())
     }
 }
 

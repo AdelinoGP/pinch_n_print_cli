@@ -31,6 +31,7 @@ fn j(x: f32, y: f32, width: f32, perimeter_index: u32) -> ExtrusionJunction {
             width,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         perimeter_index,
     }

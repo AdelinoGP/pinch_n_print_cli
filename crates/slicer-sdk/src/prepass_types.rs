@@ -271,6 +271,19 @@ pub struct SupportPlanEntry {
     pub branch_segments: Vec<Vec<Point3WithWidth>>,
 }
 
+/// Configuration-only raft plan emitted by the support planner.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaftPlan {
+    /// Number of raft layers below the model.
+    pub raft_layers: u32,
+    /// Density of the first raft layer.
+    pub raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    pub base_raft_layers: u32,
+    /// Number of interface raft layers.
+    pub interface_raft_layers: u32,
+}
+
 /// Entry in the layer plan view, representing one layer's metadata.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerPlanViewEntry {
@@ -325,4 +338,46 @@ pub struct SupportGeometryViewEntry {
 pub struct SupportGeometryView {
     /// Ordered list of entries (ascending by (global_support_layer_index, object_id, region_id)).
     pub entries: Vec<SupportGeometryViewEntry>,
+}
+
+/// Severity level for a diagnostic message.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DiagnosticSeverity {
+    /// Trace-level diagnostic (finest granularity).
+    Trace,
+    /// Debug-level diagnostic.
+    Debug,
+    /// Informational diagnostic.
+    #[default]
+    Info,
+    /// Warning diagnostic.
+    Warn,
+    /// Error diagnostic.
+    Error,
+}
+
+/// A typed diagnostic record emitted by a prepass module.
+///
+/// Per docs/adr/0010-typed-diagnostic-channel.md:
+/// ```wit
+/// record diagnostic {
+///     severity: diagnostic-severity,
+///     code: u32,
+///     layer: option<i32>,
+///     object-id: option<string>,
+///     message: string,
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Diagnostic {
+    /// Severity level of the diagnostic.
+    pub severity: DiagnosticSeverity,
+    /// Numeric error/warning code (e.g. 1003 for support-planning failure).
+    pub code: u32,
+    /// Optional layer index (negative values for raft prefix layers).
+    pub layer: Option<i32>,
+    /// Optional object identifier.
+    pub object_id: Option<String>,
+    /// Human-readable diagnostic message.
+    pub message: String,
 }

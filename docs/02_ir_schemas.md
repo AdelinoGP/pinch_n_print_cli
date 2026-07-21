@@ -1089,7 +1089,8 @@ pub struct ThickPolyline { pub points: Vec<Point2WithWidth> }
 
 `variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPath3D`
 maps each `Point2WithWidth` to a `Point3WithWidth` with `z = 0.0`,
-`flow_factor = 1.0`, `overhang_quartile = None`, `speed_factor = 1.0`, and the
+`flow_factor = 1.0`, `overhang_quartile = None`, `dist_to_top_mm = 0.0`,
+`speed_factor = 1.0`, and the
 supplied `role` passed through unchanged.
 
 ```rust
@@ -1120,6 +1121,10 @@ pub struct Point3WithWidth {
     /// `1..=4` corresponding to the four overhang speed buckets
     /// (`overhang_1_4_speed` … `overhang_4_4_speed`). Added in packet 57.
     pub overhang_quartile: Option<u8>,
+    /// Distance from this point to the top of its support column in mm.
+    /// Support-planner emits this per point; non-support geometry uses `0.0`.
+    /// Added in packet 119.
+    pub dist_to_top_mm: f32,
 }
 ```
 
@@ -1318,6 +1323,10 @@ pub struct SupportGeometryKey {
 **Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
+**Current schema_version: 1.2.0** (`CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION` in
+`crates/slicer-ir/src/slice_ir.rs`). Packet 119 added the per-point
+`Point3WithWidth.dist_to_top_mm` field and the optional raft configuration seam.
+
 **Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
 guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
 the host built-in commits `SupportGeometryIR` first within the same stage
@@ -1336,6 +1345,20 @@ pub struct SupportPlanIR {
     /// that received planned branches. Multiple entries may share a `(layer,
     /// object)` when an object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
+    /// Optional configuration-only raft seam. `None` means no raft was
+    /// requested. The planner does not put raft geometry in this field.
+    pub raft_plan: Option<RaftPlan>,
+}
+
+pub struct RaftPlan {
+    /// Number of raft layers below the model.
+    pub raft_layers: u32,
+    /// Density of the first raft layer.
+    pub raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    pub base_raft_layers: u32,
+    /// Number of interface raft layers.
+    pub interface_raft_layers: u32,
 }
 
 pub struct SupportPlanEntry {
@@ -1351,6 +1374,11 @@ pub struct SupportPlanEntry {
     pub branch_segments: Vec<ExtrusionPath3D>,
 }
 ```
+
+`raft_plan` is emitted as `Some(RaftPlan)` when the support planner receives a
+positive `support_raft_layers` value. It mirrors the raft configuration only;
+raft polygons, layer geometry, and raft infill remain deferred to packet 124.
+The current support planner emits no negative raft-prefix entries.
 
 **Consumption pattern — tree-support precedence:**
 
@@ -1371,9 +1399,60 @@ module is installed, while enabling organic multi-layer branch geometry when
 one is loaded.
 
 **Determinism:** Identical PrePass inputs must produce byte-identical
-`SupportPlanIR` (`entries.len()`, every entry's `branch_segments.len()`, and
-every endpoint coordinate). The host-side prepass ceremony round-trips this via
+`SupportPlanIR` (`entries.len()`, every entry's `branch_segments.len()`, every
+endpoint coordinate, and the optional raft configuration). The host-side
+prepass ceremony round-trips this via
 the `support_planner_is_deterministic_across_runs` test.
+
+### `ModuleAccessAudit.diagnostics` (Normative — Packet 118)
+
+`ModuleAccessAudit` (`crates/slicer-scheduler/src/validation.rs`) records the
+runtime read/write paths a prepass module exercised during its most recent
+invocation, plus the typed diagnostics it emitted. The diagnostic field was
+added in Packet 118 to carry the prepass diagnostic channel defined in
+`docs/adr/0010-typed-diagnostic-channel.md` from the host into the scheduler
+audit surface.
+
+```rust
+pub struct ModuleAccessAudit {
+    pub module_id: ModuleId,
+    pub runtime_reads: Vec<String>,
+    pub runtime_writes: Vec<String>,
+    /// Typed diagnostics emitted by the module during prepass execution.
+    /// FIFO order, preserved from guest emission. Not compared by scheduler
+    /// validation — only runtime_reads and runtime_writes participate.
+    pub diagnostics: Vec<slicer_ir::Diagnostic>,
+}
+```
+
+The `diagnostics` field has the following contract:
+
+- **FIFO ordering.** The host (`WasmRuntimeDispatcher::dispatch_prepass_call`
+  in `crates/slicer-wasm-host/src/host.rs`) drains the per-call thread-local
+  diagnostic stash once and pushes the entries onto `ModuleAccessAudit.diagnostics`
+  in the order the guest emitted them. The order is preserved end-to-end:
+  guest `push-diagnostic` → `HostExecutionContext.diagnostics` →
+  `PrepassStageRunner::last_diagnostics` → `ModuleAccessAudit.diagnostics`.
+- **Not used by scheduler validation.** Pass 11 (`ModuleAccessAuditValidation`)
+  compares only `runtime_reads` and `runtime_writes`. `diagnostics` is
+  surfaced for the host's own log/metrics pipeline; it does not influence
+  startup validation outcomes.
+- **Empty when the module emits no diagnostic.** A module that does not call
+  `push-diagnostic` produces a `Vec::new()`. The field is not optional.
+- **Type mirror.** Entries are `slicer_ir::Diagnostic` (see
+  `crates/slicer-ir/src/stage_io.rs`); the host converts from the WIT
+  `diagnostic` record to `slicer_ir::Diagnostic` at the
+  `pm::HostSupportGeometryOutput::push_diagnostic` boundary in
+  `crates/slicer-wasm-host/src/host.rs` so the audit never sees WIT types.
+  The severity field is `slicer_ir::DiagnosticSeverity`
+  (`{Trace, Debug, Info, Warn, Error}`), the rust-mirrored 1:1 mapping of
+  the WIT `severity-level` enum (see
+  `03_wit_and_manifest.md` § "`support-geometry-output.push-diagnostic`").
+
+This adds a typed `Vec` field; the existing `runtime_reads` and `runtime_writes`
+shape and the pass-11 comparator are unchanged. Packet 118 does not introduce a
+generic all-prepass method, does not add a `SupportPlanIR` field, and does not
+change fatal-error behaviour.
 
 ---
 

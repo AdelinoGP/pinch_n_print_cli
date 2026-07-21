@@ -24,6 +24,7 @@ fn dummy_path(role: ExtrusionRole) -> ExtrusionPath3D {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         }],
         role,
         speed_factor: 1.0,

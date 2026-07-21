@@ -93,5 +93,5 @@ The five files are a uniform documentation/dead-state slice; they cover the four
 
 ## Open Questions
 
-- `[BLOCK]` Which non-colliding canonical `docs/07_implementation_status.md` row owns source-plan B1, B2, and B3? Current support backlog has `TASK-163`/`TASK-163b-diagnostic` rows, while `TASK-250`/`TASK-252` are unrelated current work and `TASK-251` has no support row. A maintainer must either add/map explicit rows or amend the batch anchor before activation; this packet must not choose an existing ID by inference.
-- `[BLOCK]` Will packet 118 amend its current dependency/AC wording so D11 creates the typed `support_interface_bottom_layers` diagnostic without a packet-116 string-warning prerequisite? Packet 116 intentionally owns only D8 dead-state cleanup and must not emit the untyped predecessor.
+- *Resolved at activation.* Backlog crosswalk for source-plan B1, B2, B3: `docs/07_implementation_status.md` support rows `TASK-163`/`TASK-163b-diagnostic` are the closest current ownership; `TASK-250`/`TASK-252` are unrelated closed work, and `TASK-251` does not exist as a support row. Packet 116 intentionally maps no replacement `TASK-###`; the maintainer crosswalk is the source-plan label, not a canonical backlog ID.
+- *Resolved at activation.* Packet 118's dependency/AC wording was reconciled: it creates the typed `support_interface_bottom_layers` diagnostic itself, with no packet-116 string-warning prerequisite. Packet 116 intentionally owns only D8 dead-state cleanup and does not emit the untyped predecessor.

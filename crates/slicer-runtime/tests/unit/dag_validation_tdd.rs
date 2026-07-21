@@ -457,6 +457,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             module_id: module_id.to_string(),
             runtime_reads,
             runtime_writes,
+            diagnostics: Vec::new(),
         }
     }
 

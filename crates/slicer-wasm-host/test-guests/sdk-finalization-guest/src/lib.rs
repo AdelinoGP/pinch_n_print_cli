@@ -109,6 +109,7 @@ impl FinalizationModule for SdkFinalizationModule {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 }],
                 role: ExtrusionRole::Custom("task-109-finalization-synth".into()),
                 speed_factor: 1.0,

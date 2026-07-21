@@ -269,7 +269,8 @@ fn loaded_support_planner_module(id: &str, wasm_path: std::path::PathBuf) -> Loa
         "MeshIR.objects".into(),
         "SurfaceClassificationIR.per_object".into(),
         "LayerPlanIR.global_layers".into(),
-        "PaintRegionIR.per_layer".into(),
+        "RegionMapIR.entries".into(),
+        "SupportGeometryIR.entries".into(),
     ])
     .ir_writes(vec!["SupportPlanIR.entries".into()])
     .claims(vec!["support-planner".into()])

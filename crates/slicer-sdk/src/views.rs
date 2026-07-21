@@ -485,6 +485,7 @@ impl SliceRegionView {
     /// - `BottomSolidInfill`  ↔ `claim:bottom-fill`
     /// - `BridgeInfill`       ↔ `claim:bridge-fill`
     /// - `SparseInfill`       ↔ `claim:sparse-fill`
+    /// - `RaftInfill`         ↔ `claim:raft-fill`
     ///
     /// Roles outside the four fill claims (walls, support, ironing, …) are
     /// always allowed — `should_emit` returns true for them.
@@ -497,6 +498,7 @@ impl SliceRegionView {
     pub fn should_emit(&self, role: ExtrusionRole) -> bool {
         let claim = match role {
             ExtrusionRole::TopSolidInfill => "claim:top-fill",
+            ExtrusionRole::RaftInfill => "claim:raft-fill",
             ExtrusionRole::BottomSolidInfill => "claim:bottom-fill",
             ExtrusionRole::BridgeInfill => "claim:bridge-fill",
             ExtrusionRole::SparseInfill => "claim:sparse-fill",

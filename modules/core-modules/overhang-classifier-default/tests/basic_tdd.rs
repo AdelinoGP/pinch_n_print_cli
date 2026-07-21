@@ -39,6 +39,7 @@ fn wall_square_with_quartile(
         width: w,
         flow_factor: 1.0,
         overhang_quartile: quartile,
+        dist_to_top_mm: 0.0,
     };
     print_entity(
         entity_id,

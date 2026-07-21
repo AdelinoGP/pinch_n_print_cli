@@ -207,6 +207,7 @@ fn seeded_support_geometry_and_plan() -> (SupportGeometryIR, SupportPlanIR) {
                 speed_factor: 1.0,
             }],
         }],
+        raft_plan: None,
     };
     (geometry, plan)
 }

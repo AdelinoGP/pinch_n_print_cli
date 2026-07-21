@@ -8,7 +8,7 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Multi-layer organic tree-support planner for `PrePass::SupportGeometry`.
+//! Multi-layer support planner inspired by OrcaSlicer's TreeSupport::drop_nodes
 //!
 //! Port of OrcaSlicer's `TreeSupport::detect_overhangs` +
 //! `TreeSupport::drop_nodes` (see `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`):
@@ -29,24 +29,27 @@
 //!   `branch_radius + tree_support_branch_distance / 2`). Move-pass clamps
 //!   nodes into `avoidance_polys`; nodes whose target lies in
 //!   `collision_polys` are dropped.
-//! - **Radius tapering**: per-emit radius = `clamp(branch_diameter/2 +
-//!   tan(diameter_angle) * dist_to_top * effective_layer_height,
-//!   branch_diameter/2, MAX_BRANCH_RADIUS)` with `MAX_BRANCH_RADIUS = 6.0`.
+//! - **Radius tapering**: two-piece per-emit radius. With
+//!   `mm_to_top = dist_to_top * effective_layer_height`,
+//!   `raw = if mm_to_top <= branch_radius { mm_to_top }
+//!          else { branch_radius + (mm_to_top - branch_radius) * tan(diameter_angle) }`,
+//!   then `radius = clamp(raw, 0.0, MAX_BRANCH_RADIUS_MM = 6.0)`. The top of the column
+//!   tapers to a point (`mm_to_top = 0 → 0.0`).
 //! - **Wall-count scaling**: `max_move_distance = tan(angle) * height *
 //!   wall_count.max(1)`.
 //! - **dist_to_top tracking**: `u32` counter on each `PlannedSupportNode`
 //!   incremented as nodes propagate downward; drives the radius taper formula.
 //!
-//! # Raft prefix layers
+//! This module provides algorithmic shape detection, contact-point emission, top-down MST propagation, and emit logic — it is a faithful port for correctness, not numerical parity with OrcaSlicer.
 //!
-//! When `support_raft_layers > 0`, the planner emits raft entries before all
-//! model-layer entries. Raft entries carry negative `global_layer_index`
-//! (`-1, -2, ..., -raft_layers`) so they always sort before model layers.
+//! # Raft plan
+//!
+//! When `support_raft_layers > 0`, the planner emits one configuration-only
+//! `RaftPlan`. Raft geometry is owned by a later packet.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_sdk::host::{log, LogLevel};
 use slicer_sdk::prelude::*;
 
 const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
@@ -77,14 +80,24 @@ pub struct SupportPlanner {
     tree_support_branch_distance: f32,
     /// Number of wall rings around each branch. Scales max move distance.
     tree_support_wall_count: u32,
-    /// Number of raft layers to emit (negative indices -1, -2, ...).
+    /// Number of raft layers to describe.
     support_raft_layers: i32,
+    /// Density of the first raft layer.
+    raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    base_raft_layers: u32,
+    /// Number of interface raft layers.
+    interface_raft_layers: u32,
     /// Number of interface layers at top of each branch column.
     support_interface_top_layers: i32,
-    /// Number of interface layers at bottom of each branch column (-1 = all layers).
-    support_interface_bottom_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
     tree_support_interface_spacing_mm: f32,
+    /// When true, contacts whose XY lies inside the object's projected
+    /// footprint at the contact's layer (`to_buildplate = false`) are
+    /// rejected at creation time — only build-plate-bound branches are
+    /// emitted. Default `false`: to-model contacts are admitted and
+    /// propagated like before. Packet 123.
+    support_on_build_plate_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -94,15 +107,27 @@ struct PlannedSupportNode {
     /// Number of layers from this node to the top of its support column.
     /// Drives radius tapering — nodes farther from the top are wider.
     dist_to_top: u32,
+    /// Whether this node must reach the build plate (true) or may rest
+    /// on the model (false). Set at contact creation from
+    /// `!point_in_any_expoly(collision_polys_at_contact_layer, x, y)`
+    /// (true iff the contact's XY lies OUTSIDE the object's projected
+    /// footprint at the contact's layer — OrcaSlicer's
+    /// `generate_contact_points` initial assignment, per packet 123).
+    /// Propagated unchanged through move-pass; merged with AND in
+    /// multi-neighbour aggregation (any contributor that is `false`
+    /// demotes the merged node to `false`).
+    to_buildplate: bool,
 }
 
 /// Holds collision and avoidance polygons for a single support layer.
 #[derive(Clone, Debug, Default)]
 struct LayerCollisionCache {
-    /// Direct support-outline polygons — nodes must stay outside these.
-    collision_polys: Vec<Vec<[f32; 2]>>,
-    /// Inflated collision polygons — nodes must stay inside these.
-    avoidance_polys: Vec<Vec<[f32; 2]>>,
+    /// Direct support-outline ExPolygons — nodes must stay outside these.
+    /// Holes are preserved so a point inside a hole is not in collision.
+    collision_polys: Vec<ExPolygon>,
+    /// Inflated collision ExPolygons — nodes must stay inside these.
+    /// Holes are preserved from the offset result.
+    avoidance_polys: Vec<ExPolygon>,
 }
 
 #[slicer_module]
@@ -158,15 +183,25 @@ impl PrepassModule for SupportPlanner {
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 0,
         };
+        let raft_first_layer_density = match config.get("raft_first_layer_density") {
+            Some(ConfigValue::Float(d)) => *d as f32,
+            Some(ConfigValue::Int(d)) => *d as f32,
+            _ => 0.4,
+        };
+        let base_raft_layers = match config.get("base_raft_layers") {
+            Some(ConfigValue::Int(n)) => *n as u32,
+            Some(ConfigValue::Float(n)) => *n as u32,
+            _ => 1,
+        };
+        let interface_raft_layers = match config.get("interface_raft_layers") {
+            Some(ConfigValue::Int(n)) => *n as u32,
+            Some(ConfigValue::Float(n)) => *n as u32,
+            _ => 0,
+        };
         let support_interface_top_layers = match config.get("support_interface_top_layers") {
             Some(ConfigValue::Int(n)) => *n as i32,
             Some(ConfigValue::Float(n)) => *n as i32,
             _ => 2,
-        };
-        let support_interface_bottom_layers = match config.get("support_interface_bottom_layers") {
-            Some(ConfigValue::Int(n)) => *n as i32,
-            Some(ConfigValue::Float(n)) => *n as i32,
-            _ => -1, // -1 means "all layers" per OrcaSlicer convention
         };
         let tree_support_interface_spacing_mm =
             match config.get("tree_support_interface_spacing_mm") {
@@ -174,6 +209,14 @@ impl PrepassModule for SupportPlanner {
                 Some(ConfigValue::Int(w)) => *w as f32,
                 _ => 0.4,
             };
+        // Packet 123: `support_on_build_plate_only` config — when true,
+        // contacts whose `to_buildplate` would be `false` are rejected
+        // at creation time (no to-model branches). Default `false` to
+        // preserve the current planner behavior.
+        let support_on_build_plate_only = match config.get("support_on_build_plate_only") {
+            Some(ConfigValue::Bool(b)) => *b,
+            _ => false,
+        };
         Ok(Self {
             enabled,
             branch_angle_deg,
@@ -185,9 +228,12 @@ impl PrepassModule for SupportPlanner {
             tree_support_branch_distance,
             tree_support_wall_count,
             support_raft_layers,
+            raft_first_layer_density,
+            base_raft_layers,
+            interface_raft_layers,
             support_interface_top_layers,
-            support_interface_bottom_layers,
             tree_support_interface_spacing_mm,
+            support_on_build_plate_only,
         })
     }
 
@@ -208,6 +254,17 @@ impl PrepassModule for SupportPlanner {
             return Err(ModuleError::fatal(1, "empty layer-plan-view"));
         }
 
+        if self.support_raft_layers > 0 {
+            output
+                .push_raft_plan(RaftPlan {
+                    raft_layers: self.support_raft_layers as u32,
+                    raft_first_layer_density: self.raft_first_layer_density,
+                    base_raft_layers: self.base_raft_layers,
+                    interface_raft_layers: self.interface_raft_layers,
+                })
+                .map_err(|e| ModuleError::fatal(1, format!("push_raft_plan failed: {e}")))?;
+        }
+
         // ── Build per-layer collision / avoidance caches ──────────────────
         // collision_polys[L] = union of all outlines at SupportGeometryView[L]
         // avoidance_polys[L] = collision_polys[L].inflate(branch_radius + branch_distance/2)
@@ -223,33 +280,56 @@ impl PrepassModule for SupportPlanner {
                 continue;
             }
             for expoly in &entry.outlines {
-                let outer: Vec<[f32; 2]> = expoly
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| [p.x as f32, p.y as f32])
-                    .collect();
-                if outer.len() >= 3 {
+                if expoly.contour.points.len() >= 3 {
                     collision_cache[layer_idx]
                         .collision_polys
-                        .push(outer.clone());
-                    let inflated = inflate_polygon(&outer, avoid_inflate);
-                    if !inflated.is_empty() {
-                        collision_cache[layer_idx].avoidance_polys.push(inflated);
-                    }
-                }
-                for hole in &expoly.holes {
-                    let hole_points: Vec<[f32; 2]> = hole
-                        .points
-                        .iter()
-                        .map(|p| [p.x as f32, p.y as f32])
-                        .collect();
-                    if hole_points.len() >= 3 {
-                        collision_cache[layer_idx].collision_polys.push(hole_points);
+                        .push(expoly.clone());
+                    let inflated = host::offset_polygons(
+                        &[expoly.clone()],
+                        avoid_inflate,
+                        OffsetJoinType::Miter,
+                    );
+                    for off in inflated {
+                        if off.contour.points.len() >= 3 {
+                            collision_cache[layer_idx].avoidance_polys.push(off);
+                        }
                     }
                 }
             }
         }
+
+        // ── Packet 118 D11: planner-owned code 1003 warning ─────────────
+        // Read the preserved `support_interface_bottom_layers` config key
+        // and emit exactly one typed diagnostic before the layer loop when
+        // the value is not -1. Packet 116 owns dead-state cleanup and
+        // emits no warning; this packet owns the typed record.
+        let interface_bottom_layers = match _config.get("support_interface_bottom_layers") {
+            Some(ConfigValue::Int(n)) => *n as i32,
+            Some(ConfigValue::Float(n)) => *n as i32,
+            _ => -1,
+        };
+        if interface_bottom_layers != -1 {
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1003,
+                layer: None,
+                object_id: None,
+                message: format!(
+                    "support-planner interface-bottom-layers: support_interface_bottom_layers \
+                     is not yet implemented (config value={interface_bottom_layers})"
+                ),
+            });
+        }
+
+        // ── Packet 118 B4: cross-object merged cap diagnostic ───────────
+        // Accumulate drops across all objects on the same global layer so
+        // we emit one code-1001 diagnostic per affected global layer
+        // (design.md Locked Assumptions: 'one cap diagnostic per affected
+        // global layer, not once per dropped candidate'). The map is
+        // populated inside plan_for_object and drained in run_support_geometry
+        // after the per-object loop.
+        let mut dropped_by_layer: std::collections::BTreeMap<u32, usize> =
+            std::collections::BTreeMap::new();
 
         for obj in objects {
             self.plan_for_object(
@@ -258,8 +338,32 @@ impl PrepassModule for SupportPlanner {
                 region_segmentation,
                 &collision_cache,
                 output,
+                &mut dropped_by_layer,
             )?;
         }
+
+        // Emit one code-1001 diagnostic per affected global layer. The
+        // cap is enforced per-layer globally, so a layer hit by multiple
+        // objects' drops collapses to a single diagnostic with the merged
+        // dropped_count. object_id is None because the cap is layer-level,
+        // not object-level.
+        for (global_layer_index, dropped) in &dropped_by_layer {
+            if *dropped == 0 {
+                continue;
+            }
+            let cap = self.max_branches_per_layer;
+            let _ = output.push_diagnostic(Diagnostic {
+                severity: DiagnosticSeverity::Warn,
+                code: 1001,
+                layer: Some(*global_layer_index as i32),
+                object_id: None,
+                message: format!(
+                    "support-planner cap: max_branches_per_layer cap exceeded: \
+                     dropped_count={dropped} kept_count={cap}"
+                ),
+            });
+        }
+
         Ok(())
     }
 }
@@ -272,6 +376,7 @@ impl SupportPlanner {
         region_segmentation: &RegionSegmentationView,
         collision_cache: &[LayerCollisionCache],
         output: &mut SupportGeometryOutput,
+        dropped_by_layer: &mut std::collections::BTreeMap<u32, usize>,
     ) -> Result<(), ModuleError> {
         if obj.triangles.is_empty() {
             return Ok(());
@@ -308,6 +413,13 @@ impl SupportPlanner {
         let mut contacts_by_layer: Vec<Vec<PlannedSupportNode>> =
             vec![Vec::new(); num_layers as usize];
 
+        // Per-affected-layer drop count for the code 1001 cap diagnostic.
+        // Keyed by global_layer_index so the message carries the right value
+        // even when layer_rev doesn't line up with the layer-plan index.
+        // Owned by run_support_geometry; this function increments into the
+        // shared map so per-layer totals are merged across all objects
+        // before emission.
+
         for (v0, v1, v2) in &overhang_facets {
             let centroid = [
                 (v0[0] + v1[0] + v2[0]) / 3.0,
@@ -333,13 +445,32 @@ impl SupportPlanner {
                 .iter()
                 .position(|l| l.z >= centroid[2])
                 .unwrap_or(layer_plan.layers.len() - 1);
+            // Packet 123: `to_buildplate = !point_in_any_expoly(collision_polys, x, y)`
+            // — the contact is build-plate-bound iff its XY lies OUTSIDE
+            // the object's projected footprint at the contact's layer.
+            let global_li = layer_plan.layers[layer_idx].global_layer_index as usize;
+            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
+                collision_cache[global_li].collision_polys.as_slice()
+            } else {
+                &[]
+            };
+            let to_buildplate =
+                !point_in_any_expoly(contact_collision_polys, centroid[0], centroid[1]);
+            // Honor `support_on_build_plate_only = true`: reject to-model contacts
+            // (to_buildplate = false) at creation time. Default false → no effect.
+            if self.support_on_build_plate_only && !to_buildplate {
+                continue;
+            }
             if contacts_by_layer[layer_idx].len() >= self.max_branches_per_layer {
+                let global_li = layer_plan.layers[layer_idx].global_layer_index;
+                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
                 continue;
             }
             contacts_by_layer[layer_idx].push(PlannedSupportNode {
                 x: centroid[0],
                 y: centroid[1],
                 dist_to_top: 0,
+                to_buildplate,
             });
         }
 
@@ -348,13 +479,27 @@ impl SupportPlanner {
             if point_in_any_polygon(&blocker_polys, *x, *y) {
                 continue;
             }
+            // Packet 123: same `to_buildplate` rule for enforcer contacts.
+            let global_li = layer_plan.layers[li].global_layer_index as usize;
+            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
+                collision_cache[global_li].collision_polys.as_slice()
+            } else {
+                &[]
+            };
+            let to_buildplate = !point_in_any_expoly(contact_collision_polys, *x, *y);
+            if self.support_on_build_plate_only && !to_buildplate {
+                continue;
+            }
             if contacts_by_layer[li].len() >= self.max_branches_per_layer {
+                let global_li = layer_plan.layers[li].global_layer_index;
+                *dropped_by_layer.entry(global_li).or_insert(0) += 1;
                 continue;
             }
             contacts_by_layer[li].push(PlannedSupportNode {
                 x: *x,
                 y: *y,
                 dist_to_top: 0,
+                to_buildplate,
             });
         }
 
@@ -382,56 +527,6 @@ impl SupportPlanner {
         // top-to-bottom layer order in output.
         let mut entries_in_order: Vec<SupportPlanEntry> = Vec::new();
 
-        // ── Raft prefix layers ─────────────────────────────────────────
-        // When support_raft_layers > 0, emit full-cross-section dense-fill
-        // raft entries BEFORE all model-layer entries. Each raft entry carries
-        // a negative global_layer_index (-1, -2, ...) so raft always sorts
-        // before model layers. Z values are z_bed - i * raft_layer_height_mm
-        // (raft_layer_height = effective_layer_height of layer 0).
-        if self.support_raft_layers > 0 {
-            let raft_layer_height_mm = layer_plan.layers[0].effective_layer_height;
-            let first_layer_z = layer_plan.layers[0].z;
-            // z_bed is the build plate Z; raft sits below first model layer.
-            // If layer 0 has z = raft_layer_height_mm, z_bed = first_layer_z - raft_layer_height_mm
-            let z_bed = if first_layer_z > raft_layer_height_mm {
-                first_layer_z - raft_layer_height_mm
-            } else {
-                0.0
-            };
-            // Collect unique region_ids for this object once — raft emits
-            // one entry per (raft_layer, region), not per (raft_layer, layer,
-            // region). Without dedup, repeated region_ids across model layers
-            // would multiply the raft entry count.
-            let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-            for e in &region_segmentation.entries {
-                if e.object_id == obj.object_id {
-                    for rid in &e.region_ids {
-                        seen.insert(rid.clone());
-                    }
-                }
-            }
-            let unique_region_ids: Vec<String> = seen.into_iter().collect();
-            for i in 1..=self.support_raft_layers {
-                let raft_z = z_bed - (i as f32) * raft_layer_height_mm;
-                let raft_index = -i;
-                for region_id in &unique_region_ids {
-                    entries_in_order.push(SupportPlanEntry {
-                        global_layer_index: raft_index,
-                        object_id: obj.object_id.clone(),
-                        region_id: region_id.clone(),
-                        branch_segments: vec![vec![Point3WithWidth {
-                            x: 0.0,
-                            y: 0.0,
-                            z: raft_z,
-                            width: self.line_width_mm,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                        }]],
-                    });
-                }
-            }
-        }
-
         // Iterate top → bottom.
         let top = num_layers as usize;
         for layer_rev in (0..top).rev() {
@@ -442,7 +537,11 @@ impl SupportPlanner {
                 continue;
             }
             if active_nodes.len() > self.max_branches_per_layer {
+                let dropped = active_nodes.len() - self.max_branches_per_layer;
                 active_nodes.truncate(self.max_branches_per_layer);
+                *dropped_by_layer
+                    .entry(current_global_layer_index)
+                    .or_insert(0) += dropped;
             }
 
             // Sort for deterministic MST/merge ordering.
@@ -485,6 +584,7 @@ impl SupportPlanner {
 
             // Emit branch segments with radius tapering (Step 5 AC-2)
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
+            let mut origin_contacts_emitted = vec![false; active_nodes.len()];
             for (a_idx, b_idx, _) in &mst_edges {
                 if drop[*a_idx] || drop[*b_idx] {
                     continue;
@@ -506,6 +606,14 @@ impl SupportPlanner {
                     effective_height,
                 );
 
+                if point_in_any_expoly(collision_polys, na.x, na.y)
+                    || point_in_any_expoly(collision_polys, nb.x, nb.y)
+                {
+                    continue;
+                }
+
+                let dist_a_mm = na.dist_to_top as f32 * effective_height;
+                let dist_b_mm = nb.dist_to_top as f32 * effective_height;
                 branch_segments.push(vec![
                     Point3WithWidth {
                         x: na.x,
@@ -514,6 +622,7 @@ impl SupportPlanner {
                         width: radius_a * 2.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: dist_a_mm,
                     },
                     Point3WithWidth {
                         x: nb.x,
@@ -522,8 +631,45 @@ impl SupportPlanner {
                         width: radius_b * 2.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: dist_b_mm,
                     },
                 ]);
+                if na.dist_to_top == 0 {
+                    origin_contacts_emitted[*a_idx] = true;
+                }
+                if nb.dist_to_top == 0 {
+                    origin_contacts_emitted[*b_idx] = true;
+                }
+            }
+
+            // A fresh contact is the tip of a support column and must be
+            // represented on its origin layer even when it has no surviving
+            // MST edge. This is intentionally limited to dist_to_top == 0;
+            // propagated nodes remain subject to collision exclusion below.
+            for (i, node) in active_nodes.iter().enumerate() {
+                if node.dist_to_top != 0 || origin_contacts_emitted[i] {
+                    continue;
+                }
+                let width = tapered_radius(
+                    branch_radius,
+                    tan_diameter_angle,
+                    node.dist_to_top,
+                    effective_height,
+                ) * 2.0;
+                // Origin contacts are the support tips required to reach the
+                // overhang centroid. They may intentionally lie in model
+                // collision geometry; propagated nodes remain guarded below.
+                let (contact_x, contact_y) = (node.x, node.y);
+                let point = Point3WithWidth {
+                    x: contact_x,
+                    y: contact_y,
+                    z: z_current,
+                    width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                };
+                branch_segments.push(vec![point, point]);
             }
 
             // Top-interface densification (Step 6 AC-4):
@@ -563,6 +709,7 @@ impl SupportPlanner {
                         self.tree_support_interface_spacing_mm,
                         layer_parity,
                         avoidance_polys,
+                        collision_polys,
                     );
                 }
             }
@@ -589,88 +736,107 @@ impl SupportPlanner {
 
             // Build the "moved" node set for the next (lower) layer.
             //
-            // For each surviving node, move toward its MST parent by
-            // `step_xy` in the XY plane. Nodes without an MST edge simply
-            // propagate unchanged.
+            // For each surviving node, move toward the reciprocal-distance-
+            // squared weighted aggregate of ALL its MST neighbours (Orca
+            // `TreeSupport::drop_nodes` non-`is_strong` behaviour, packet 122).
+            // Nodes without an MST edge simply propagate unchanged. The
+            // existing `max_move_xy` cap and `clamp_to_avoidance` post-cap
+            // are preserved: only the move *direction* changes.
             let mut next_nodes: Vec<PlannedSupportNode> = Vec::with_capacity(active_nodes.len());
-            // Build a neighbour lookup: for node i, remember its closest MST
-            // neighbour (the other endpoint of its lowest-distance edge).
-            let mut nearest_neighbour: Vec<Option<usize>> = vec![None; active_nodes.len()];
-            let mut nearest_distance: Vec<f32> = vec![f32::INFINITY; active_nodes.len()];
+            // Per-node list of (neighbour_index, edge_distance) for every
+            // MST edge incident on the node. Replaces the old
+            // `nearest_neighbour` / `nearest_distance` single-entry lookup.
+            let mut neighbours_of: Vec<Vec<(usize, f32)>> = vec![Vec::new(); active_nodes.len()];
             for (a, b, d) in &mst_edges {
-                if *d < nearest_distance[*a] {
-                    nearest_distance[*a] = *d;
-                    nearest_neighbour[*a] = Some(*b);
-                }
-                if *d < nearest_distance[*b] {
-                    nearest_distance[*b] = *d;
-                    nearest_neighbour[*b] = Some(*a);
-                }
+                neighbours_of[*a].push((*b, *d));
+                neighbours_of[*b].push((*a, *d));
             }
 
             for (i, node) in active_nodes.iter().enumerate() {
                 if drop[i] {
                     continue;
                 }
-                let moved = match nearest_neighbour[i] {
-                    Some(j) => {
-                        let neighbour = &active_nodes[j];
-                        let dx = neighbour.x - node.x;
-                        let dy = neighbour.y - node.y;
-                        let len = (dx * dx + dy * dy).sqrt();
-
-                        let raw_step = if len > max_move_xy && len > 1e-6 {
-                            // Scale to max_move_xy (wall-count scaled)
-                            let scale = max_move_xy / len;
-                            (node.x + dx * scale, node.y + dy * scale)
-                        } else if len > 1e-6 {
-                            // Short link — move fully toward neighbour
-                            (neighbour.x, neighbour.y)
-                        } else {
-                            (node.x, node.y)
-                        };
-
-                        // Clamp into avoidance_polys (Step 5 AC-3)
-                        let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
-
-                        // Drop nodes whose target lies inside collision_polys
-                        // (AC-N3: node-clamped-out diagnostic).
-                        // Diagnostic is emitted via host-services.log with a
-                        // structured `support-planner.node-clamped-out` prefix
-                        // until a typed `Diagnostic` channel is plumbed through
-                        // the prepass output WIT (follow-up to packet 31b).
-                        if point_in_any_polygon(collision_polys, cx, cy) {
-                            log(
-                                LogLevel::Warn,
-                                &format!(
-                                    "support-planner.node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
-                                    current_global_layer_index,
-                                    obj.object_id,
-                                    cx,
-                                    cy
-                                ),
-                            );
-                            continue;
-                        }
-
-                        PlannedSupportNode {
-                            x: cx,
-                            y: cy,
-                            // dist_to_top increments as we move down
-                            dist_to_top: node.dist_to_top.saturating_add(1),
-                        }
-                    }
-                    None => PlannedSupportNode {
+                let neighbours = &neighbours_of[i];
+                let moved = if neighbours.is_empty() {
+                    // No MST edge: propagate the node unchanged.
+                    PlannedSupportNode {
                         x: node.x,
                         y: node.y,
                         dist_to_top: node.dist_to_top.saturating_add(1),
-                    },
+                        to_buildplate: node.to_buildplate,
+                    }
+                } else {
+                    // Build the parallel slices for the aggregate helper.
+                    let positions: Vec<(f32, f32)> = neighbours
+                        .iter()
+                        .map(|&(j, _)| (active_nodes[j].x, active_nodes[j].y))
+                        .collect();
+                    let distances: Vec<f32> = neighbours.iter().map(|&(_, d)| d).collect();
+                    let (tx, ty) = aggregate_neighbour_targets(&positions, &distances)
+                        .unwrap_or((node.x, node.y));
+
+                    // Apply the existing `max_move_xy` cap to the displacement
+                    // from the current node toward the aggregate target. This
+                    // preserves the wall-count-scaled step cap (line 715 in
+                    // the old code; packet 122 explicitly preserves it).
+                    let dx = tx - node.x;
+                    let dy = ty - node.y;
+                    let len = (dx * dx + dy * dy).sqrt();
+                    let raw_step = if len > max_move_xy && len > 1e-6 {
+                        let scale = max_move_xy / len;
+                        (node.x + dx * scale, node.y + dy * scale)
+                    } else if len > 1e-6 {
+                        (tx, ty)
+                    } else {
+                        (node.x, node.y)
+                    };
+
+                    // Clamp into avoidance_polys (Step 5 AC-3)
+                    let (cx, cy) = clamp_to_avoidance(raw_step.0, raw_step.1, avoidance_polys);
+
+                    // Drop nodes whose target lies inside collision_polys
+                    // (AC-N3: code 1002 node-clamped-out typed diagnostic).
+                    // Packet 123: the existing drop is the additive prune
+                    // trigger for `to_buildplate = true` nodes (same
+                    // condition — drop when target in collision_polys).
+                    // `to_buildplate = false` nodes still follow the same
+                    // drop; the new rule is a tightening for the
+                    // `to_buildplate = true` subset, not a relaxation.
+                    if point_in_any_expoly(collision_polys, cx, cy) {
+                        let _ = output.push_diagnostic(Diagnostic {
+                            severity: DiagnosticSeverity::Warn,
+                            code: 1002,
+                            layer: Some(current_global_layer_index as i32),
+                            object_id: Some(obj.object_id.clone()),
+                            message: format!(
+                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3}) to_buildplate={}",
+                                current_global_layer_index, obj.object_id, cx, cy, node.to_buildplate
+                            ),
+                        });
+                        continue;
+                    }
+
+                    PlannedSupportNode {
+                        x: cx,
+                        y: cy,
+                        // dist_to_top increments as we move down
+                        dist_to_top: node.dist_to_top.saturating_add(1),
+                        to_buildplate: node.to_buildplate,
+                    }
                 };
                 next_nodes.push(moved);
             }
 
             active_nodes = next_nodes;
         }
+
+        // Apply per-column Laplacian smoothing (Orca TreeSupport::smooth_nodes port; packet 121).
+        smooth_branches(&mut entries_in_order, 100);
+
+        // ── Packet 118 B4: cap drops are merged into the shared map ──────
+        // (Emission happens in run_support_geometry after all objects are
+        // processed, so the diagnostic is one per affected global layer
+        // across all objects, not one per (object, layer) pair.)
 
         // Emit entries in top-to-bottom order.
         for entry in entries_in_order {
@@ -679,6 +845,126 @@ impl SupportPlanner {
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
         Ok(())
+    }
+}
+
+/// Group `SupportPlanEntry` indices by `(object_id, region_id)`, each group
+/// sorted by `global_layer_index` descending (tip → root). Returns the list of
+/// index groups referencing positions in the original `entries` slice.
+pub fn group_branches_into_columns(
+    entries: &[slicer_sdk::prepass_types::SupportPlanEntry],
+) -> Vec<Vec<usize>> {
+    let mut groups: std::collections::BTreeMap<
+        (
+            slicer_sdk::prepass_types::ObjectId,
+            slicer_sdk::prepass_types::RegionId,
+        ),
+        Vec<usize>,
+    > = std::collections::BTreeMap::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        groups
+            .entry((entry.object_id.clone(), entry.region_id.clone()))
+            .or_default()
+            .push(idx);
+    }
+    let mut columns: Vec<Vec<usize>> = groups.into_values().collect();
+    for col in columns.iter_mut() {
+        col.sort_by(|&a, &b| {
+            entries[b]
+                .global_layer_index
+                .cmp(&entries[a].global_layer_index)
+        });
+    }
+    columns
+}
+
+/// Returns `(x, y, width)` of the first point of the first branch segment, if
+/// present. Used by `smooth_branches` so malformed entries never panic.
+fn first_point_xyw(entry: &slicer_sdk::prepass_types::SupportPlanEntry) -> Option<(f32, f32, f32)> {
+    entry
+        .branch_segments
+        .first()
+        .and_then(|p| p.first())
+        .map(|pt| (pt.x, pt.y, pt.width))
+}
+
+/// Rust port of Orca's `TreeSupport::smooth_nodes`. Applies an in-place
+/// three-point Laplacian smoother to each `(object_id, region_id)` column of
+/// `SupportPlanEntry` rows, chaining the single point of each entry's first
+/// branch segment. Endpoints (first and last in the descending-layer chain) are
+/// held fixed. Only the `(x, y, width)` of interior points are mutated; `z`,
+/// `role`, `speed_factor`, layer index, ids, and all counts are preserved.
+pub fn smooth_branches(
+    entries: &mut Vec<slicer_sdk::prepass_types::SupportPlanEntry>,
+    iterations: usize,
+) {
+    if entries.is_empty() {
+        return;
+    }
+    // Heuristic: branches in different support trees are typically separated by
+    // 25mm+; per-layer stairsteps are 1-2mm. 5mm comfortably separates "tree"
+    // from "stairstep" without affecting legitimate smoothing within a single
+    // tree.
+    const CHAIN_BREAK_THRESHOLD_MM: f32 = 5.0;
+    let columns = group_branches_into_columns(entries);
+    for column in columns {
+        if column.len() < 3 {
+            continue;
+        }
+        // Split each column into sub-chains at gaps > CHAIN_BREAK_THRESHOLD_MM
+        // between consecutive (x, y) points. Distinct support trees merged into
+        // one region column must not be smoothed across their topological
+        // discontinuity. Sub-chain boundaries act as additional pinning points.
+        let mut sub_starts: Vec<usize> = vec![0usize];
+        for k in 1..column.len() {
+            let a = match first_point_xyw(&entries[column[k - 1]]) {
+                Some(p) => p,
+                None => break,
+            };
+            let b = match first_point_xyw(&entries[column[k]]) {
+                Some(p) => p,
+                None => break,
+            };
+            let dx = b.0 - a.0;
+            let dy = b.1 - a.1;
+            if (dx * dx + dy * dy).sqrt() > CHAIN_BREAK_THRESHOLD_MM {
+                sub_starts.push(k);
+            }
+        }
+        sub_starts.push(column.len());
+        for w in sub_starts.windows(2) {
+            let (s, e) = (w[0], w[1]);
+            if e - s < 3 {
+                continue;
+            }
+            for _ in 0..iterations {
+                for i in (s + 1)..(e - 1) {
+                    let prev = match first_point_xyw(&entries[column[i - 1]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let cur = match first_point_xyw(&entries[column[i]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let next = match first_point_xyw(&entries[column[i + 1]]) {
+                        Some(p) => p,
+                        None => continue,
+                    };
+                    let new_x = (prev.0 + cur.0 + next.0) / 3.0;
+                    let new_y = (prev.1 + cur.1 + next.1) / 3.0;
+                    let mut new_w = (prev.2 + cur.2 + next.2) / 3.0;
+                    new_w = new_w.clamp(0.0, MAX_BRANCH_RADIUS_MM);
+                    if let Some(path) = entries[column[i]].branch_segments.first_mut() {
+                        if let Some(pt) = path.first_mut() {
+                            pt.x = new_x;
+                            pt.y = new_y;
+                            pt.width = new_w;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -795,6 +1081,30 @@ fn point_in_any_polygon(polygons: &[Vec<[f32; 2]>], x: f32, y: f32) -> bool {
     polygons.iter().any(|poly| point_in_polygon(poly, x, y))
 }
 
+fn point_in_any_expoly(polygons: &[ExPolygon], x: f32, y: f32) -> bool {
+    let sx = x * SCALING_FACTOR as f32;
+    let sy = y * SCALING_FACTOR as f32;
+    polygons.iter().any(|ex| {
+        let outer: Vec<[f32; 2]> = ex
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
+        point_in_polygon(&outer, sx, sy)
+            && !ex.holes.iter().any(|h| {
+                point_in_polygon(
+                    &h.points
+                        .iter()
+                        .map(|p| [p.x as f32, p.y as f32])
+                        .collect::<Vec<_>>(),
+                    sx,
+                    sy,
+                )
+            })
+    })
+}
+
 /// Ray-casting point-in-polygon test: returns true if (x, y) is inside `poly`.
 pub fn point_in_polygon(poly: &[[f32; 2]], x: f32, y: f32) -> bool {
     if poly.len() < 3 {
@@ -878,93 +1188,135 @@ fn euclidean_distance(a: &PlannedSupportNode, b: &PlannedSupportNode) -> f32 {
     (dx * dx + dy * dy).sqrt()
 }
 
+/// Reciprocal-distance-squared weighted aggregate of MST-neighbour positions.
+///
+/// Pure math helper used by the propagation block in `plan_for_object` to
+/// synthesise the move target for a node from ALL its MST neighbours at once
+/// (replacing the old single-neighbour lookup). Matches OrcaSlicer's
+/// `TreeSupport::drop_nodes` non-`is_strong` aggregation: each neighbour's
+/// position is weighted by `1.0 / D_j²` where `D_j` is the MST edge distance
+/// from the central node to neighbour `j`. Weights are normalised so they
+/// sum to 1.0. With equal `D_j`s (symmetric fan) the aggregate equals the
+/// geometric centroid; with one close neighbour the close neighbour
+/// dominates (1/d² is a strong bias).
+///
+/// Degenerate `D_j < 1e-6 mm` (coincident point): weight saturates to
+/// infinity; implementation short-circuits and returns that neighbour's
+/// position directly. This avoids the divide-by-zero path AND the unstable
+/// "huge weight / huge denominator" path that would otherwise depend on
+/// floating-point ordering of the sum.
+///
+/// Empty input → `None`. Single-element input → that element's position.
+///
+/// Reference: OrcaSlicer `TreeSupport::drop_nodes` (the second-pass move
+/// step), `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`. The
+/// packet 122 design reconciles Orca's 1/d² weighting with the implementation.
+pub fn aggregate_neighbour_targets(
+    neighbour_positions: &[(f32, f32)],
+    distances: &[f32],
+) -> Option<(f32, f32)> {
+    debug_assert_eq!(
+        neighbour_positions.len(),
+        distances.len(),
+        "neighbour_positions and distances must be parallel slices"
+    );
+    if neighbour_positions.is_empty() {
+        return None;
+    }
+    if neighbour_positions.len() == 1 {
+        return Some(neighbour_positions[0]);
+    }
+    // Degenerate-collision short-circuit: any D_j below the epsilon collapses
+    // the aggregate to that neighbour's position.
+    const EPS_MM: f32 = 1e-6;
+    for &d in distances {
+        if d < EPS_MM {
+            // Find the matching position. Multiple zeros are possible; pick
+            // the first — the test asserts it does not panic and the result
+            // equals ONE of the zero-distance neighbours' positions.
+            for (idx, &dd) in distances.iter().enumerate() {
+                if dd < EPS_MM {
+                    return Some(neighbour_positions[idx]);
+                }
+            }
+        }
+    }
+    // 1/d² weighted mean.
+    let mut sum_wx = 0.0_f64;
+    let mut sum_wy = 0.0_f64;
+    let mut sum_w = 0.0_f64;
+    for (idx, &(nx, ny)) in neighbour_positions.iter().enumerate() {
+        let d = distances[idx] as f64;
+        let w = 1.0 / (d * d);
+        sum_wx += w * (nx as f64);
+        sum_wy += w * (ny as f64);
+        sum_w += w;
+    }
+    if sum_w <= 0.0 {
+        // Defensive: should not happen given the short-circuit above, but
+        // if all distances are non-finite or NaN we fall back to the
+        // unweighted centroid of the neighbour positions.
+        let n = neighbour_positions.len() as f64;
+        let mx = neighbour_positions.iter().map(|p| p.0 as f64).sum::<f64>() / n;
+        let my = neighbour_positions.iter().map(|p| p.1 as f64).sum::<f64>() / n;
+        return Some((mx as f32, my as f32));
+    }
+    Some(((sum_wx / sum_w) as f32, (sum_wy / sum_w) as f32))
+}
+
 // ── Step-5 helper functions ───────────────────────────────────────────────────
 
 /// Compute tapered radius at a node given its distance from the top of the column.
 ///
-/// Formula (per OrcaSlicer `TreeSupport.cpp`):
-/// `radius = clamp(branch_radius + tan(diameter_angle) * dist_to_top * layer_height,
-///                 branch_radius, MAX_BRANCH_RADIUS)`
+/// Two-piece tip-cone formula:
+/// - If `mm_to_top <= branch_radius`: radius = mm_to_top (linearly widen from 0 at the tip
+///   to `branch_radius` at the cone base).
+/// - Otherwise: radius = branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
+///   (continue the same slope above the cone).
+///   Clamped to `[0, MAX_BRANCH_RADIUS_MM]`.
 pub fn tapered_radius(
     branch_radius: f32,
     tan_diameter_angle: f32,
     dist_to_top: u32,
     effective_layer_height: f32,
 ) -> f32 {
-    let expanded =
-        branch_radius + tan_diameter_angle * (dist_to_top as f32) * effective_layer_height;
-    expanded.clamp(branch_radius, MAX_BRANCH_RADIUS_MM)
-}
-
-/// Inflate a polygon by `delta` mm using a simple edge-parallel offset approach.
-/// Returns the inflated polygon vertices.
-pub(crate) fn inflate_polygon(outer: &[[f32; 2]], delta: f32) -> Vec<[f32; 2]> {
-    if outer.len() < 3 || delta <= 0.0 {
-        return outer.to_vec();
-    }
-    let n = outer.len();
-    let mut result = Vec::with_capacity(n);
-    for i in 0..n {
-        let p0 = outer[i];
-        let p1 = outer[(i + 1) % n];
-        let p2 = outer[(i + 2) % n];
-
-        let dx = p1[0] - p0[0];
-        let dy = p1[1] - p0[1];
-        let len = (dx * dx + dy * dy).sqrt();
-        if len < 1e-8 {
-            continue;
-        }
-        // Outward normal (90° CCW) for edge p0→p1
-        let nx = -dy / len;
-        let ny = dx / len;
-
-        // Average with previous edge normal for smoother miter at vertices
-        let dx_prev = p0[0] - p2[0];
-        let dy_prev = p0[1] - p2[1];
-        let len_prev = (dx_prev * dx_prev + dy_prev * dy_prev).sqrt();
-        let nx_prev = if len_prev > 1e-8 {
-            -dy_prev / len_prev
-        } else {
-            nx
-        };
-        let ny_prev = if len_prev > 1e-8 {
-            dx_prev / len_prev
-        } else {
-            ny
-        };
-
-        let avg_nx = nx + nx_prev;
-        let avg_ny = ny + ny_prev;
-        let avg_len = (avg_nx * avg_nx + avg_ny * avg_ny).sqrt();
-        let off_x = if avg_len > 1e-8 { avg_nx / avg_len } else { nx };
-        let off_y = if avg_len > 1e-8 { avg_ny / avg_len } else { ny };
-
-        result.push([p1[0] + off_x * delta, p1[1] + off_y * delta]);
-    }
-    result
+    let mm_to_top = (dist_to_top as f32) * effective_layer_height;
+    let raw = if mm_to_top <= branch_radius {
+        mm_to_top
+    } else {
+        branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle
+    };
+    raw.clamp(0.0, MAX_BRANCH_RADIUS_MM)
 }
 
 /// Clamp a point into the union of avoidance polygons.
 /// Returns the original point if avoidance_polys is empty; otherwise returns
 /// the closest point on any avoidance polygon boundary.
-fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[Vec<[f32; 2]>]) -> (f32, f32) {
+fn clamp_to_avoidance(x: f32, y: f32, avoidance_polys: &[ExPolygon]) -> (f32, f32) {
     if avoidance_polys.is_empty() {
         return (x, y);
     }
-    if point_in_any_polygon(avoidance_polys, x, y) {
+    if point_in_any_expoly(avoidance_polys, x, y) {
         return (x, y);
     }
     let mut best_dist = f32::INFINITY;
     let mut best = (x, y);
-    for poly in avoidance_polys {
+    let query_x_internal = x * SCALING_FACTOR as f32;
+    let query_y_internal = y * SCALING_FACTOR as f32;
+    for ex in avoidance_polys {
+        let poly: Vec<[f32; 2]> = ex
+            .contour
+            .points
+            .iter()
+            .map(|p| [p.x as f32, p.y as f32])
+            .collect();
         if poly.len() < 3 {
             continue;
         }
-        let (cp, cd) = closest_point_on_polygon(poly, x, y);
+        let (cp, cd) = closest_point_on_polygon(&poly, query_x_internal, query_y_internal);
         if cd < best_dist {
             best_dist = cd;
-            best = (cp[0], cp[1]);
+            best = (cp[0] / SCALING_FACTOR as f32, cp[1] / SCALING_FACTOR as f32);
         }
     }
     best
@@ -1027,7 +1379,8 @@ fn push_interface_scan_lines(
     width: f32,
     spacing: f32,
     parity: i32,
-    avoidance_polys: &[Vec<[f32; 2]>],
+    avoidance_polys: &[ExPolygon],
+    collision_polys: &[ExPolygon],
 ) {
     if spacing <= 0.0 || half <= 0.0 {
         return;
@@ -1051,8 +1404,14 @@ fn push_interface_scan_lines(
             (x, ymin, x, ymax)
         };
         if !avoidance_polys.is_empty()
-            && (!point_in_any_polygon(avoidance_polys, p1x, p1y)
-                || !point_in_any_polygon(avoidance_polys, p2x, p2y))
+            && (!point_in_any_expoly(avoidance_polys, p1x, p1y)
+                || !point_in_any_expoly(avoidance_polys, p2x, p2y))
+        {
+            continue;
+        }
+        if !collision_polys.is_empty()
+            && (point_in_any_expoly(collision_polys, p1x, p1y)
+                || point_in_any_expoly(collision_polys, p2x, p2y))
         {
             continue;
         }
@@ -1064,6 +1423,7 @@ fn push_interface_scan_lines(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: p2x,
@@ -1072,6 +1432,7 @@ fn push_interface_scan_lines(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ]);
     }
@@ -1093,9 +1454,12 @@ mod tests {
             tree_support_branch_distance: 1.0,
             tree_support_wall_count: 1,
             support_raft_layers: 0,
+            raft_first_layer_density: 0.4,
+            base_raft_layers: 1,
+            interface_raft_layers: 0,
             support_interface_top_layers: 2,
-            support_interface_bottom_layers: -1,
             tree_support_interface_spacing_mm: 0.4,
+            support_on_build_plate_only: false,
         }
     }
 
@@ -1229,17 +1593,168 @@ mod tests {
     }
 
     #[test]
+    fn lone_fresh_contact_emits_tip_on_origin_layer() {
+        let vertices = vec![
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.8],
+            [4.0, 0.0, 1.8],
+            [4.0, 4.0, 1.8],
+        ];
+        let triangles = vec![[1, 3, 2]];
+        let obj = MeshObjectView {
+            object_id: "lone-contact".to_string(),
+            vertices,
+            triangles,
+            paint_layers: vec![],
+        };
+        let planner = default_planner();
+        let lp = default_layer_plan(10, 0.0, 0.2);
+        let rs = default_region_segmentation("lone-contact", 10);
+        let collision_box = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(-10.0, -10.0),
+                    Point2::from_mm(14.0, -10.0),
+                    Point2::from_mm(14.0, 14.0),
+                    Point2::from_mm(-10.0, 14.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let sg = SupportGeometryView {
+            entries: (0..10)
+                .map(|layer| SupportGeometryViewEntry {
+                    global_support_layer_index: layer,
+                    object_id: "lone-contact".to_string(),
+                    region_id: "0".to_string(),
+                    outlines: vec![collision_box.clone()],
+                })
+                .collect(),
+        };
+        let mut output = SupportGeometryOutput::new();
+        planner
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .unwrap();
+
+        let origin_entry = output
+            .entries()
+            .iter()
+            .find(|entry| entry.global_layer_index == 8)
+            .expect("lone fresh contact must emit on its origin layer");
+        assert_eq!(origin_entry.branch_segments.len(), 1);
+        let segment = &origin_entry.branch_segments[0];
+        assert_eq!(segment.len(), 2);
+        assert_eq!(segment[0].x, segment[1].x);
+        assert_eq!(segment[0].y, segment[1].y);
+        assert!((segment[0].z - 1.8).abs() < 1e-5);
+        assert!((segment[1].z - 1.8).abs() < 1e-5);
+        assert_eq!(segment[0].width, 0.0);
+        assert_eq!(segment[1].width, 0.0);
+        assert_eq!(segment[0].dist_to_top_mm, 0.0);
+        assert_eq!(segment[1].dist_to_top_mm, 0.0);
+    }
+
+    #[test]
+    fn dist_to_top_increments_for_parent_child_propagation() {
+        let vertices = vec![
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.8],
+            [4.0, 0.0, 1.8],
+            [4.0, 4.0, 1.8],
+            [0.0, 4.0, 1.8],
+        ];
+        let triangles = vec![[1, 3, 2], [1, 4, 3]];
+        let obj = MeshObjectView {
+            object_id: "plate".to_string(),
+            vertices,
+            triangles,
+            paint_layers: vec![],
+        };
+        let mut planner = default_planner();
+        planner.support_interface_top_layers = 0;
+        let layer_height = 0.2_f32;
+        let lp = default_layer_plan(10, 0.0, layer_height);
+        let rs = default_region_segmentation("plate", 10);
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
+        planner
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
+            .unwrap();
+
+        let mut distances_by_layer = std::collections::BTreeMap::<u32, Vec<u32>>::new();
+        for entry in output.entries() {
+            assert!(entry.global_layer_index >= 0);
+            for segment in &entry.branch_segments {
+                for point in segment {
+                    let distance_in_layers = point.dist_to_top_mm / layer_height;
+                    let rounded_distance = distance_in_layers.round();
+                    assert!(
+                        (distance_in_layers - rounded_distance).abs() <= 1e-4,
+                        "dist_to_top_mm={} is not an integral layer distance",
+                        point.dist_to_top_mm
+                    );
+                    distances_by_layer
+                        .entry(entry.global_layer_index as u32)
+                        .or_default()
+                        .push(rounded_distance as u32);
+                }
+            }
+        }
+
+        let emitted_layers: Vec<u32> = distances_by_layer.keys().copied().collect();
+        assert!(
+            emitted_layers.len() >= 2,
+            "fixture must emit at least one parent-child layer pair, got {:?}",
+            emitted_layers
+        );
+        for layer_pair in emitted_layers.windows(2) {
+            let child_layer = layer_pair[0];
+            let parent_layer = layer_pair[1];
+            assert_eq!(
+                parent_layer,
+                child_layer + 1,
+                "fixture must expose adjacent parent-child propagation layers: layers={:?} distances={:?}",
+                emitted_layers,
+                distances_by_layer
+            );
+            let parent_distances = &distances_by_layer[&parent_layer];
+            let child_distances = &distances_by_layer[&child_layer];
+            let parent_dist = parent_distances[0];
+            assert!(
+                parent_distances
+                    .iter()
+                    .all(|&distance| distance == parent_dist),
+                "parent layer {} has inconsistent dist_to_top values: {:?}",
+                parent_layer,
+                parent_distances
+            );
+            assert!(
+                child_distances
+                    .iter()
+                    .all(|&distance| distance == parent_dist + 1),
+                "child layer {} must have dist_to_top = parent layer {} + 1; parent={:?} child={:?}",
+                child_layer,
+                parent_layer,
+                parent_distances,
+                child_distances
+            );
+        }
+    }
+
+    #[test]
     fn prim_mst_on_two_nodes_returns_one_edge() {
         let nodes = vec![
             PlannedSupportNode {
                 x: 0.0,
                 y: 0.0,
                 dist_to_top: 0,
+                to_buildplate: true,
             },
             PlannedSupportNode {
                 x: 3.0,
                 y: 4.0,
                 dist_to_top: 0,
+                to_buildplate: true,
             },
         ];
         let edges = prim_mst(&nodes);
@@ -1275,6 +1790,246 @@ mod tests {
         assert!(
             err.to_string().contains("empty layer-plan-view"),
             "error was: {err}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_at_tip_is_zero() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 0_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        assert!(
+            (result - 0.0).abs() < 1e-6,
+            "tapered_radius at tip (dist_to_top=0) must be 0.0; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_inside_cone_is_mm_to_top() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 12_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let expected = 2.4_f32;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius inside cone must be {expected}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_above_cone_is_linear() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 50_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let mm_to_top = 50.0 * 0.2;
+        let expected = branch_radius + (mm_to_top - branch_radius) * tan_diameter_angle;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius above cone must be {expected}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_clamps_at_max() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (80.0_f32).to_radians().tan();
+        let dist_to_top = 10_000_u32;
+        let effective_layer_height = 0.5_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        assert!(
+            (result - MAX_BRANCH_RADIUS_MM).abs() < 1e-12,
+            "tapered_radius must clamp at MAX_BRANCH_RADIUS_MM={MAX_BRANCH_RADIUS_MM}; got {result}"
+        );
+    }
+
+    #[test]
+    fn tapered_radius_no_longer_floors_at_branch_radius() {
+        let branch_radius = 2.5_f32;
+        let tan_diameter_angle = (5.0_f32).to_radians().tan();
+        let dist_to_top = 10_u32;
+        let effective_layer_height = 0.2_f32;
+        let result = tapered_radius(
+            branch_radius,
+            tan_diameter_angle,
+            dist_to_top,
+            effective_layer_height,
+        );
+        let expected = 2.0_f32;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "tapered_radius must be {expected} (not floor at branch_radius={branch_radius}); got {result}"
+        );
+    }
+
+    #[test]
+    fn offset_concave_l_shape_no_self_intersection() {
+        let ex = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(3.0, 0.0),
+                    Point2::from_mm(3.0, 1.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(1.0, 3.0),
+                    Point2::from_mm(0.0, 3.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        for poly in &result {
+            let pts = &poly.contour.points;
+            let n = pts.len();
+            for i in 0..n {
+                let a1 = pts[i];
+                let a2 = pts[(i + 1) % n];
+                for j in 0..n {
+                    if j == i || j == (i + 1) % n || j == (i + n - 1) % n {
+                        continue;
+                    }
+                    let b1 = pts[j];
+                    let b2 = pts[(j + 1) % n];
+                    let (x1, y1) = (a1.x as f32, a1.y as f32);
+                    let (x2, y2) = (a2.x as f32, a2.y as f32);
+                    let (x3, y3) = (b1.x as f32, b1.y as f32);
+                    let (x4, y4) = (b2.x as f32, b2.y as f32);
+                    let denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+                    if denom.abs() < 1e-12 {
+                        continue;
+                    }
+                    let t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+                    let u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+                    if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+                        panic!(
+                            "self-intersection at edges {}->{} and {}->{}",
+                            i,
+                            (i + 1) % n,
+                            j,
+                            (j + 1) % n
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn offset_polygon_with_hole_preserves_hole() {
+        let outer = Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        };
+        let hole = Polygon {
+            points: vec![
+                Point2::from_mm(3.0, 3.0),
+                Point2::from_mm(3.0, 7.0),
+                Point2::from_mm(7.0, 7.0),
+                Point2::from_mm(7.0, 3.0),
+            ],
+        };
+        let ex = ExPolygon {
+            contour: outer,
+            holes: vec![hole],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        for poly in &result {
+            assert!(
+                !poly.holes.is_empty(),
+                "offset polygon must preserve at least one hole"
+            );
+            for h in &poly.holes {
+                let area_units = {
+                    let pts = &h.points;
+                    let n = pts.len();
+                    let mut a = 0.0_f64;
+                    for i in 0..n {
+                        let (x1, y1) = (pts[i].x as f64, pts[i].y as f64);
+                        let (x2, y2) = (pts[(i + 1) % n].x as f64, pts[(i + 1) % n].y as f64);
+                        a += x1 * y2 - x2 * y1;
+                    }
+                    a.abs() / 2.0
+                };
+                let area_mm2 = area_units / 100_000_000.0;
+                assert!(
+                    area_mm2 < 16.0,
+                    "hole area {area_mm2} mm² must be less than original 16 mm²"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn offset_preserves_mm_coordinate_boundary() {
+        let ex = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(1.0, 0.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(0.0, 1.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let result = host::offset_polygons(&[ex], 0.5, OffsetJoinType::Miter);
+        assert!(
+            !result.is_empty(),
+            "offset must return at least one polygon"
+        );
+        let pts = &result[0].contour.points;
+        let xs: Vec<f32> = pts.iter().map(|p| units_to_mm(p.x)).collect();
+        let ys: Vec<f32> = pts.iter().map(|p| units_to_mm(p.y)).collect();
+        let min_x = xs.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max_x = xs.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let min_y = ys.iter().cloned().fold(f32::INFINITY, f32::min);
+        let max_y = ys.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let span_x = max_x - min_x;
+        let span_y = max_y - min_y;
+        assert!(
+            (span_x - 2.0).abs() < 1e-4,
+            "span_x must be ~2.0 mm; got {span_x}"
+        );
+        assert!(
+            (span_y - 2.0).abs() < 1e-4,
+            "span_y must be ~2.0 mm; got {span_y}"
         );
     }
 }

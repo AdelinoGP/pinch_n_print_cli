@@ -86,6 +86,8 @@ Every verification command must be delegation-friendly: produce a small, parseab
 
 Never use `cargo test --workspace` as a pipe-suffixed AC command. Prefer `cargo test -p <crate> --test <file>` with an optional test name. A packet may list the workspace suite once under packet-level Verification only when closure explicitly requires it; otherwise use targeted tests plus `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings`.
 
+**AC verification strings must accept name-resolution-equivalent forms of every symbol they reference.** A literal-grep verification like `rg -q 'slicer_sdk::host::offset_polygons'` is brittle: a Rust call site that resolves the same symbol via the `slicer_sdk::prelude` re-export (`host::offset_polygons`) is semantically equivalent but fails the literal grep. When an AC verification names a symbol path, write it to accept all name-resolution-equivalent forms: `rg -q '<fully-qualified-path>' <file> || rg -q '<prelude-resolved-prefix>::<symbol>' <file> || rg -q '<in-scope-short-form>' <file>`. This applies to static-check ACs and to any piped-suffix command whose shell form is a literal `rg` against a fully-qualified path. The rule is enforced downstream by `.claude/skills/swarm/SKILL.md` Phase 1.3 preflight; authoring the AC right at this step avoids a preflight defect.
+
 Read `references/acceptance-criteria-examples.md` while authoring or reviewing criteria.
 
 ## Packet Ownership

@@ -2,72 +2,77 @@
 
 ## Execution Rules
 
-- One atomic step at a time. Maps to `TASK-262`.
-- TDD: AC-2 / AC-3 / AC-N1 unit tests authored RED before smoothing implementation.
-- The wedge curvature invariant (AC-5) is added first (RED on current planner output), then turned GREEN by the integration in Step 4.
+- One atomic step at a time. Maps to `TASK-286` (renumbered from source-plan `TASK-262`).
+- TDD: AC-2 / AC-3 / AC-N1 / AC-N2 unit tests authored RED before smoothing implementation.
+- The wedge curvature invariant (AC-5) is added first (RED on current planner output — pre-smoothing stairsteps WILL exceed 30°), then turned GREEN by the integration in Step 4.
 - Honors context-discipline preamble.
 
 ## Steps
 
-### Step 1: Confirm Orca formula + locate planner emission tail
+### Step 1: Confirm Orca formula + locate integration point + verify data shape
 
-- Task IDs: `TASK-262`
-- Objective: confirm 100-iter Laplacian; find the integration point in `plan_for_object`.
-- Files allowed to read: `docs/specs/support-modules-orca-port.md` §C3 directly; planner `plan_for_object` tail (range-read).
+- Task IDs: `TASK-286`
+- Objective: confirm 100-iter Laplacian; find the integration point in `plan_for_object` (after line 742, before line 750); confirm `SupportPlanEntry.branch_segments: Vec<ExtrusionPath3D>` and `ExtrusionPath3D.points: Vec<Point3WithWidth>` shapes; confirm `MAX_BRANCH_RADIUS_MM = 6.0` constant location.
+- Files allowed to read: `docs/specs/support-modules-orca-port.md` §C3 directly; `plan_for_object` tail (range-read); `SupportPlanEntry` + `ExtrusionPath3D` + `Point3WithWidth` definitions in `crates/slicer-ir/src/slice_ir.rs`.
 - Files allowed to edit: none.
 - Sub-agent dispatches:
   - "Summarize OrcaSlicer `TreeSupport::smooth_nodes`; return SUMMARY ≤ 200 words."
-  - "Locate the emission loop in `support-planner::plan_for_object` (where `SupportPlanEntry.branch_segments.push(...)` happens); return LOCATIONS file:line + 1-line context."
+  - "Locate the propagation loop tail and the final `entries_in_order` emit in `support-planner::plan_for_object`; return LOCATIONS file:line + 1-line context (lines 740-756 are the candidate zone)."
+  - "Locate `SupportPlanEntry.branch_segments` and `ExtrusionPath3D.points` field declarations in `crates/slicer-ir/src/slice_ir.rs`; return LOCATIONS file:line + 1-line context."
 - Context cost: `S`
 - Authoritative docs: `docs/specs/support-modules-orca-port.md` §C3
 - OrcaSlicer refs: delegate per Orca obligations.
-- Verification: implementer knows the formula and the integration point.
+- Verification: implementer knows the formula, the integration point, and the data shape.
 - Exit condition: discovery captured.
 
-### Step 2: Author AC-2 / AC-3 / AC-N1 as RED in `smooth_nodes_tdd.rs`
+### Step 2: Author AC-2 / AC-3 / AC-N1 / AC-N2 as RED in `smooth_nodes_tdd.rs`
 
-- Task IDs: `TASK-262`
-- Files allowed to read: planner internal type defs (range).
+- Task IDs: `TASK-286`
+- Objective: create `modules/core-modules/support-planner/tests/smooth_nodes_tdd.rs` with the four unit tests. AC-2 / AC-3 / AC-N1 are RED (the function doesn't exist yet); AC-N2 may pass coincidentally (empty input is naturally a no-op).
+- Files allowed to read: planner internal type defs (range); `SupportPlanEntry` + `ExtrusionPath3D` definitions.
 - Files allowed to edit (≤ 3): `modules/core-modules/support-planner/tests/smooth_nodes_tdd.rs` (new).
 - Files out-of-bounds: planner `lib.rs` (Step 3 owns).
 - Sub-agent dispatches:
-  - "Run `cargo test -p support-planner --test smooth_nodes_tdd`; return FACT (expected: AC-2 and AC-3 fail; AC-N1 may pass coincidentally)."
+  - "Run `cargo test -p support-planner --test smooth_nodes_tdd`; return FACT (expected: AC-2 and AC-3 fail because `smooth_branches` is not defined; AC-N1 may fail with a different message; AC-N2 may pass coincidentally)."
 - Context cost: `S`
 - Verification: tests compile; RED state confirmed for at least AC-2 and AC-3.
 - Exit condition: RED.
 
-### Step 3: Implement `smooth_chains` + helpers; pass AC-2 / AC-3 / AC-N1
+### Step 3: Implement `smooth_branches` + `group_branches_into_columns`; pass AC-2 / AC-3 / AC-N1 / AC-N2
 
-- Task IDs: `TASK-262`
-- Files allowed to read: planner internal type defs.
+- Task IDs: `TASK-286`
+- Objective: implement `fn smooth_branches(entries: &mut Vec<SupportPlanEntry>, iterations: usize)` and the `group_branches_into_columns` helper. The function groups `SupportPlanEntry` rows by `(object_id, region_id)`, sorts each group by `global_layer_index` descending, and applies 100 iterations of three-point Laplacian to (x, y) and width of interior points. Endpoints (highest z and lowest z) are held fixed. Width is clamped `[0.0, MAX_BRANCH_RADIUS_MM]`.
+- Files allowed to read: `ExtrusionPath3D`, `Point3WithWidth` definitions; `MAX_BRANCH_RADIUS_MM` constant.
 - Files allowed to edit (≤ 3): `modules/core-modules/support-planner/src/lib.rs`.
-- Files out-of-bounds: wedge harness file (Step 4 owns); goldens (Step 5).
+- Files out-of-bounds: wedge harness file (Step 4 owns); goldens (Step 4 regens them).
 - Sub-agent dispatches:
-  - "Run `cargo test -p support-planner --test smooth_nodes_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on failure."
+  - "Run `cargo test -p support-planner --test smooth_nodes_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on failure." — purpose: AC-2, AC-3, AC-N1, AC-N2 gate.
   - "Run `cargo build -p support-planner`; return FACT pass/fail."
 - Context cost: `M`
-- Verification: AC-2, AC-3, AC-N1 PASS; AC-1 grep PASS.
+- Verification: AC-2, AC-3, AC-N1, AC-N2 PASS; AC-1 grep PASS.
 - Exit condition: function exists and is tested in isolation.
 
-### Step 4: Integrate `smooth_chains` into `plan_for_object`; add wedge curvature invariant (AC-5); regenerate goldens
+### Step 4: Integrate `smooth_branches` into `plan_for_object`; add wedge curvature invariant (AC-5); regenerate goldens; update docs/specs invariant list
 
-- Task IDs: `TASK-262`
-- Files allowed to read: `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` (current state).
+- Task IDs: `TASK-286`
+- Files allowed to read: `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` (current state); `docs/specs/support-modules-orca-port.md` §Validation Strategy.
 - Files allowed to edit (4 — exceeds soft `≤ 3` ceiling; justified inline below):
   - `modules/core-modules/support-planner/src/lib.rs` (integration call only — implementation already in Step 3)
   - `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` (add AC-5 test)
-  - `resources/golden/support_regression_wedge_branch_count.txt` (regenerated)
+  - `resources/golden/support_regression_wedge_branch_count.txt` (regenerated via `SUPPORT_WEDGE_REGEN_GOLDEN=1`)
   - `resources/golden/support_regression_wedge_endpoints.txt` (regenerated)
-- Ceiling exception: the two golden files are mechanically rewritten by the xtask regen recipe (the implementer does not hand-edit them). Splitting "integrate smoothing" and "regen goldens" across two steps would put the goldens out of sync with the new emission for the duration of one step — exactly the wrong-baseline failure mode the packet is designed to prevent. Treat the two .txt regen as a single byproduct of the integration commit.
+  - `docs/specs/support-modules-orca-port.md` (one-line invariant list extension)
+- Ceiling exception: the two golden files are mechanically rewritten by the test at `support_golden_regression_wedge_tdd.rs:65` (when `SUPPORT_WEDGE_REGEN_GOLDEN=1` is set) and arrive paired. The `docs/specs/...` invariant list extension is one line; including it here keeps the "smoothing is live and documented" as a single commit's change. Splitting these across steps would leave the goldens out of sync with the emission or the spec out of sync with the test for the duration of one step.
 - Files out-of-bounds: other test files.
 - Sub-agent dispatches:
-  - "Run the xtask golden-regen for support; return FACT (file sizes + line counts)."
-  - "Run `cargo test -p slicer-runtime --test support_invariants_wedge_tdd`; return FACT (per-test pass/fail)."
-  - "Run `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd`; return FACT pass/fail."
-  - "Run `cargo xtask build-guests --check`; return FACT."
+  - "Run `SUPPORT_WEDGE_REGEN_GOLDEN=1 cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd -- current_wedge_output_stays_within_self_capture_tolerance`; return FACT (regen happened; report new branch_count.txt content and new endpoints.txt line count)." — purpose: re-anchor.
+  - "Run `cargo test -p slicer-runtime --test support_invariants_wedge_tdd`; return FACT (per-test pass/fail; AC-5 should now PASS; the 7 existing should still PASS)." — purpose: AC-4, AC-5, AC-7.
+  - "Run `cargo test -p slicer-runtime --test support_golden_regression_wedge_tdd` (without env var); return FACT pass/fail." — purpose: AC-6 without-regen tolerance check.
+  - "Run `cargo xtask build-guests --check`; return FACT clean / STALE." — purpose: WASM gate.
+  - "Run `rg -q 'branch_curvature_below_threshold' docs/specs/support-modules-orca-port.md`; return FACT pass/fail." — purpose: doc update.
 - Context cost: `M`
-- Verification: AC-4, AC-5, AC-6, AC-7 PASS; existing wedge invariants 1-5 still PASS.
-- Exit condition: smoothing live; harness gates green.
+- Verification: AC-4, AC-5, AC-6, AC-7 PASS; existing 7 wedge invariants still PASS; doc updated.
+- Exit condition: smoothing live; harness gates green; doc updated.
 
 ### Step 5: Final verification + close
 
@@ -87,15 +92,15 @@
 | 1 | S | Discovery |
 | 2 | S | RED tests |
 | 3 | M | Implementation |
-| 4 | M | Integration + goldens |
+| 4 | M | Integration + goldens + doc |
 | 5 | S | Verification |
 
-Aggregate: `M`.
+Aggregate: `M`. No step is L.
 
 ## Packet Completion Gate
 
-- All steps complete; all ACs PASS; `cargo xtask build-guests --check` clean; `docs/07` marks `TASK-262` `[x]`.
+- All steps complete; all ACs PASS; `cargo xtask build-guests --check` clean; `docs/07` marks `TASK-286` `[x]`; `docs/specs/support-modules-orca-port.md` §Validation Strategy extended.
 
 ## Acceptance Ceremony
 
-- Re-dispatch every AC command. Confirm gate commands green. Mark `TASK-262` `[x]`; transition to `status: implemented`.
+- Re-dispatch every AC command. Confirm gate commands green. Mark `TASK-286` `[x]`; transition to `status: implemented`.

@@ -153,6 +153,7 @@ fn run_aligned_planning(
                             width: c.flow_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         score: comparator.base_penalty(c), // lower = better
                         reason: SeamReason {
@@ -184,6 +185,7 @@ fn run_aligned_planning(
                         width: DEFAULT_FLOW_WIDTH_MM,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     chosen_wall_index: 0,
                     scored_candidates,
@@ -362,6 +364,7 @@ impl PrepassModule for SeamPlannerDefault {
                             width: 0.4, // default line width
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         score: 1.0 - curvature, // lower score = better (curvature inverted)
                         reason: SeamReason {
@@ -426,6 +429,7 @@ impl PrepassModule for SeamPlannerDefault {
                             width: 0.4,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         score: 100.0, // worst score
                         reason: SeamReason {

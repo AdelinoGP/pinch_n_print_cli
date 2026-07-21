@@ -550,6 +550,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     };
     let seam_position = SeamPosition {
         point: dummy_position,

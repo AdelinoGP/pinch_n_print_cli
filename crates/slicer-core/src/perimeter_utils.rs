@@ -344,6 +344,7 @@ pub fn expolygon_to_path3d(
                 width,
                 flow_factor: 1.0,
                 overhang_quartile,
+                dist_to_top_mm: 0.0,
             }
         })
         .collect();
