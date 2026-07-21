@@ -153,7 +153,7 @@
   verification.
 - "LOCATIONS ≤ 10: where the support-geometry producer is registered + committed in
   `prepass.rs`" — Step 2 driver.
-  - "Run `cargo test -p slicer-runtime --test executor -- lightning_prepass_skip_and_commit …`; FACT" —
+  - "Run `cargo test -p slicer-runtime --test executor -- lightning_prepass …`; FACT" —
     AC-3.
 - "Run `cargo build --tests 2>&1 | tail -40`; FACT or LOCATIONS ≤ 30" — after the WIT
   edit (Step 3).

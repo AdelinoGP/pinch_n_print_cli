@@ -272,6 +272,11 @@ pub enum BlackboardPrepassSlot {
     SliceIR,
     /// Support geometry coarse outlines produced by `PrePass::SupportGeometry`.
     SupportGeometry,
+    /// Lightning tree-edge segments produced by `PrePass::LightningTreeGen`.
+    /// Packet 137 lands the seam; the algorithm ships in 138/139. Skipped
+    /// (slot stays `None`) when no region's `sparse_fill_holder` is
+    /// `lightning-infill` — see ADR-0029.
+    LightningTreeIR,
 }
 
 impl fmt::Display for BlackboardPrepassSlot {
@@ -284,6 +289,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::RegionMap => "region-map",
             Self::SliceIR => "slice-ir",
             Self::SupportGeometry => "support-geometry",
+            Self::LightningTreeIR => "lightning-tree-ir",
         };
 
         f.write_str(name)

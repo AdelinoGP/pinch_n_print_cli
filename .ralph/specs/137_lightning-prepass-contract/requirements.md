@@ -78,7 +78,7 @@ algorithm into a stable seam and 140 can slim the module to a sampler.
 | `rg -n 'LightningTreeGen' crates/slicer-scheduler/src/execution_plan.rs` | AC-1 stage string present | FACT |
 | `cargo test -p slicer-scheduler --test stage_order_tdd 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-1 stage order green | FACT |
 | `cargo test -p slicer-ir -- lightning_tree_ir 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-2 IR shape | FACT |
-| `cargo test -p slicer-runtime --test executor -- lightning_prepass_skip_and_commit 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 skip/commit | FACT |
+| `cargo test -p slicer-runtime --test executor -- lightning_prepass 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 skip/commit | FACT |
 | `cargo test -p slicer-runtime --test contract -- lightning_tree_view_roundtrip 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-4 roundtrip | FACT |
 | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N1 byte-identity | FACT |
 | `cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N2 WIT drift | FACT |

@@ -36,7 +36,7 @@ pub mod traits;
 pub mod views;
 
 pub use layer_collection_builder::LayerCollectionBuilder;
-pub use traits::{EntityMutation, SortKey, SyntheticLayerData};
+pub use traits::{EntityMutation, PaintRegionLayerView, SortKey, SyntheticLayerData};
 pub use views::OrderedEntityView;
 
 /// Re-export of the shared IR crate used by host and modules.

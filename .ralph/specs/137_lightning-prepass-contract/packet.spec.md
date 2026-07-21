@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 137_lightning-prepass-contract
 task_ids:
   - TASK-262
@@ -55,7 +55,7 @@ stay byte-identical (AC-N1).
   a `LightningTreeIR` (empty trees are valid at this packet); **given** no lightning
   holder, **when** the prepass runs, **then** the producer is **not invoked** and the
   `LightningTreeIR` slot on the blackboard is `None` (skip promise, no commit). |
-  `cargo test -p slicer-runtime --test executor -- lightning_prepass_skip_and_commit 2>&1 | tee target/test-output.log | grep "^test result"`
+  `cargo test -p slicer-runtime --test executor -- lightning_prepass 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-4. Given** a `Layer::Infill` test guest calling the new read-view method
   `lightning-tree-segments`, **when** the layer dispatches, **then** the guest receives
   exactly the tree segments committed for its `(object_id, layer_index)` — count and

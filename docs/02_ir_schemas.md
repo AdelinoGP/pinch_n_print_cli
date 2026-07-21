@@ -1468,6 +1468,72 @@ operates on a pre-resolved seam without rescoring.
 
 ---
 
+## IR 9d — LightningTreeIR
+
+**Stage:** Output of `PrePass::LightningTreeGen` (optional; only committed when
+the print's `sparse_fill_holder` resolves to `lightning-infill` per ADR-0029).
+Positioned after `PrePass::SupportGeometry`, before `Layer::PaintRegionAnnotation`.
+
+**Current schema_version: 1.0.0** (authoritative source:
+`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+Packet 137 lands the contract; packets 138/139 fill the producer skeleton with
+the real cross-layer distance-field + tree-node generator.
+
+**Producer:** A host built-in committed via
+`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`. The producer is
+**skipped** (no commit, slot stays `None`) when no region's
+`sparse_fill_holder` is `lightning-infill` — the zero-cost skip promise from
+ADR-0029. When committed, the IR carries per-object, per-layer 2-point
+tree-edge segments in integer coordinate units (compact storage per ADR-0029's
+memory note; no full topology).
+
+**Consumers:** `Layer::Infill` modules that declare `LightningTreeIR` as a read
+in their manifest (the 137 contract provides the read-view; the 140 module
+rewrite consumes it). Until 140 lands, the existing `lightning-infill` module
+ignores the view and continues to use its single-layer approximation (the
+DEV-081 transitional state).
+
+```rust
+pub struct LightningTreeIR {
+    pub schema_version: SemVer,
+    /// One entry per active `(global_layer_index, object_id)` triple that
+    /// received tree-edge segments. Multiple entries may share `object_id`
+    /// when the object spans multiple layers.
+    pub entries: Vec<LightningTreeEntry>,
+}
+
+pub struct LightningTreeEntry {
+    pub object_id: ObjectId,
+    /// Signed: negative values (`-1`, `-2`, ...) are reserved for raft prefix
+    /// layers; non-negative values refer to model layers.
+    pub global_layer_index: i32,
+    /// 2-point tree-edge segments in integer coordinate units. Each pair
+    /// `[a, b]` is a straight segment the consumer renders directly. The
+    /// 137 producer skeleton returns an empty `Vec`; 138/139 populate it
+    /// with the real generator output.
+    pub tree_edge_segments: Vec<[Point2; 2]>,
+}
+```
+
+**Consumption pattern — read-view via `lightning-tree-segments`:**
+
+The host exposes the IR to a `Layer::Infill` guest via the
+`lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
+(`crates/slicer-schema/wit/deps/ir-types.wit:206`; canonical package
+`slicer:world-layer@2.2.0`). The guest looks up the per-layer
+`tree_edge_segments` matching `(object_id, layer_index)` via the SDK's
+`PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
+accessor (`crates/slicer-sdk/src/traits.rs:144`). When no `LightningTreeIR` is
+committed (skip-when-no-lightning-holder), the accessor returns an empty
+`Vec` and the module falls back to its non-lightning path.
+
+**Determinism:** Identical PrePass inputs must produce byte-identical
+`LightningTreeIR`. The `entries` Vec order is producer-defined and must be
+stable (no hash containers); per-layer segment ordering is the producer's
+responsibility. 138/139 inherit this contract.
+
+---
+
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`

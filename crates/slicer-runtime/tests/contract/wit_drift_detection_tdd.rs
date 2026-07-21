@@ -65,8 +65,8 @@ fn macro_layer_world_package_name_is_canonical() {
         fs::read_to_string(root.join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit"))
             .expect("read canonical world-layer.wit");
     assert!(
-        world_layer.contains(r#"package slicer:world-layer@2.1.0;"#),
-        "canonical world-layer.wit must use 'slicer:world-layer@2.1.0', not 'slicer:layer-world@1.0.0'"
+        world_layer.contains(r#"package slicer:world-layer@2.2.0;"#),
+        "canonical world-layer.wit must use 'slicer:world-layer@2.2.0' (packet 137 bump for lightning-tree-segments view), not 'slicer:layer-world@1.0.0'"
     );
     assert!(
         !world_layer.contains(r#"package slicer:layer-world@1.0.0"#),
@@ -597,8 +597,8 @@ fn canonical_world_layer_run_infill_postprocess_takes_prior_infill() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
     let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
     assert!(
-        content.contains("package slicer:world-layer@2.1.0;"),
-        "world-layer must be at package version 2.1.0"
+        content.contains("package slicer:world-layer@2.2.0;"),
+        "world-layer must be at package version 2.2.0 (bumped for packet 137 lightning-tree-segments view)"
     );
     assert!(
         content.contains("prior-infill-region,"),
@@ -760,4 +760,46 @@ fn macro_lib_rs_content() -> String {
 fn host_wit_host_rs_content() -> String {
     let path = workspace_root().join("crates/slicer-wasm-host/src/host.rs");
     fs::read_to_string(&path).expect("read host host.rs for inline WIT verification")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Packet 137: `lightning-tree-segments` view (AC-N2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verifies the canonical `ir-types.wit` exposes the new
+/// `lightning-tree-segments` method on the `paint-region-layer-view` resource
+/// (packet 137, AC-N2). The host `HostPaintRegionLayerView` impl in
+/// `slicer-wasm-host/src/host.rs` would fail to compile if this drifted.
+#[test]
+fn paint_region_layer_view_has_lightning_tree_segments_method() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    let view_block = content
+        .split("resource paint-region-layer-view")
+        .nth(1)
+        .expect("ir-types.wit declares resource paint-region-layer-view")
+        .split('}')
+        .next()
+        .expect("paint-region-layer-view resource block is closed");
+    assert!(
+        view_block
+            .contains("lightning-tree-segments: func(object-id: object-id, region-id: region-id)"),
+        "paint-region-layer-view must expose 'lightning-tree-segments' method (packet 137, AC-N2)"
+    );
+    assert!(
+        view_block.contains("-> list<list<point3-with-width>>"),
+        "lightning-tree-segments must return list<list<point3-with-width>> (mirrors support-plan-segments)"
+    );
+}
+
+/// Verifies the world-layer package version was bumped to 2.2.0 for the
+/// packet 137 additive read-view method.
+#[test]
+fn world_layer_package_version_bumped_for_lightning_view() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
+    assert!(
+        content.contains("package slicer:world-layer@2.2.0;"),
+        "world-layer must be at package version 2.2.0 (packet 137 lightning read-view bump)"
+    );
 }

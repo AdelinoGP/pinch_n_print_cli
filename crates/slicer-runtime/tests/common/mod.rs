@@ -398,6 +398,7 @@ pub fn layer_input<'a>(blackboard: &'a Blackboard, arena: &'a LayerArena) -> Lay
         paint_regions: None,
         seam_plan: blackboard.seam_plan().cloned(),
         support_plan: blackboard.support_plan().cloned(),
+        lightning_tree_ir: blackboard.lightning_tree_ir().cloned(),
         region_map: blackboard.region_map().cloned(),
         slice: arena.slice(),
         perimeter: arena.perimeter(),

@@ -209,5 +209,7 @@ interface ir-handles {
         layer-index: func() -> layer-idx;
         support-plan-segments: func(object-id: object-id, region-id: region-id)
             -> list<list<point3-with-width>>;
+        lightning-tree-segments: func(object-id: object-id, region-id: region-id)
+            -> list<list<point3-with-width>>;
     }
 }

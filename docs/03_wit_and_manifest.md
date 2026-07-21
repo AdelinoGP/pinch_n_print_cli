@@ -340,7 +340,8 @@ from region top/bottom metadata**:
 ## `world-layer.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
-(package `slicer:world-layer@2.1.0`). The `layer-module` world imports
+(package `slicer:world-layer@2.2.0` — packet 137 bump for the
+`lightning-tree-segments` read-view). The `layer-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
 shared `module-error` from `slicer:common/module-errors`.
@@ -387,6 +388,44 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 `set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
+
+### `lightning-tree-segments` read-view (packet 137)
+
+Available to `Layer::Infill` modules on the `paint-region-layer-view` resource.
+Mirrors the `support-plan-segments` read-view shape (same
+`list<list<point3-with-width>>` return type, same `object-id`/`region-id`
+parameters) so a `Layer::Infill` module reaches the committed
+`LightningTreeIR` for the dispatching `(object, region, layer)` triple via
+the same idiom it would use for `SupportPlanIR` lookup in `Layer::Support`.
+
+**Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
+`paint-region-layer-view` resource method) and
+`crates/slicer-schema/wit/deps/world-layer/world-layer.wit` (package
+`slicer:world-layer@2.2.0`). The contract is frozen at packet 137 close;
+any change to the signature in 138/139 is a WIT version bump, not a
+silent change.
+
+```wit
+resource paint-region-layer-view {
+    // ... existing get-regions / get-custom-regions / layer-index /
+    //     support-plan-segments methods ...
+    lightning-tree-segments: func(object-id: object-id, region-id: region-id)
+        -> list<list<point3-with-width>>;
+}
+```
+
+**Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
+the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
+stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
+— the per-layer `Layer::Infill` module (packet 140) falls back to its
+non-lightning path. Non-lightning prints therefore see a zero-cost, no-op
+view; the wedge byte-identity canary (`wedge_per_region_config_delivery_byte_identical`)
+pins the default-config slice through the new stage.
+
+**SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
+in `crates/slicer-sdk/src/traits.rs` returns the same
+`Vec<[slicer_ir::Point2; 2]>` shape as the IR's `tree_edge_segments` field
+(2-point integer-unit compact storage per ADR-0029's memory note).
 
 ---
 

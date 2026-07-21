@@ -301,6 +301,14 @@ pub struct PaintRegionLayerData {
     /// Empty when no `SupportPlanIR` is committed on the blackboard.
     pub support_plan_segments:
         HashMap<(String, String), Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>>,
+    /// Pre-planned lightning tree-edge segments indexed by
+    /// `(object_id, region_id)`, projected from `LightningTreeIR.entries`
+    /// filtered to this layer index. Empty when no `LightningTreeIR` is
+    /// committed on the blackboard (skip-when-no-lightning-holder per
+    /// ADR-0029). The 137 contract returns empty segments for the
+    /// empty-but-valid IR; 138/139 populate the real entries.
+    pub lightning_tree_segments:
+        HashMap<(String, String), Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>>,
 }
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
@@ -1985,6 +1993,7 @@ pub fn paint_region_ir_to_layer_data(_ir: &(), layer_index: u32) -> PaintRegionL
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        lightning_tree_segments: HashMap::new(),
     }
 }
 
@@ -3165,6 +3174,20 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         let data = self.table.get(&self_)?;
         Ok(data
             .support_plan_segments
+            .get(&(object_id, region_id))
+            .cloned()
+            .unwrap_or_default())
+    }
+    fn lightning_tree_segments(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>> {
+        self.runtime_reads.push(String::from("LightningTreeIR"));
+        let data = self.table.get(&self_)?;
+        Ok(data
+            .lightning_tree_segments
             .get(&(object_id, region_id))
             .cloned()
             .unwrap_or_default())

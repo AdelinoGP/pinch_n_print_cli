@@ -108,7 +108,7 @@
   - "FACT: how is the executor test binary aggregated
     (`tests/executor/main.rs` mod list); list current mod declarations" — Wave C driver
     (S7 wiring check).
-  - "Run `cargo test -p slicer-runtime --test executor -- lightning_prepass_skip_and_commit …`; FACT" —
+  - "Run `cargo test -p slicer-runtime --test executor -- lightning_prepass …`; FACT" —
     AC-3.
 - Context cost: `M`
 - Authoritative docs: ADR-0029 (skip promise).

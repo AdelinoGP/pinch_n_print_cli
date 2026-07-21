@@ -203,6 +203,9 @@ struct LayerParams<'a> {
     paint_ir: Option<&'a ()>,
     seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
     support_plan_ir: Option<&'a slicer_ir::SupportPlanIR>,
+    /// Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
+    /// `None` when no region's `sparse_fill_holder` is `lightning-infill`.
+    lightning_tree_ir: Option<&'a slicer_ir::LightningTreeIR>,
     _arena_placeholder: std::marker::PhantomData<&'a ()>,
 }
 
@@ -271,6 +274,9 @@ impl WasmRuntimeDispatcher {
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
         region_map: Option<&slicer_ir::RegionMapIR>,
         infill_ir: Option<&slicer_ir::InfillIR>,
+        // Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
+        // `None` when no region's `sparse_fill_holder` is `lightning-infill`.
+        #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).ok_or_else(|| DispatchError {
@@ -375,6 +381,7 @@ impl WasmRuntimeDispatcher {
                 paint_ir: None,
                 seam_plan_ir,
                 support_plan_ir,
+                lightning_tree_ir,
                 _arena_placeholder: std::marker::PhantomData,
             },
             slice_ir,
@@ -586,6 +593,7 @@ impl WasmRuntimeDispatcher {
                     params.paint_ir,
                     params.layer_index,
                     params.support_plan_ir,
+                    params.lightning_tree_ir,
                 );
                 let paint = config
                     .store
@@ -1319,21 +1327,23 @@ impl WasmRuntimeDispatcher {
 /// Paint annotations now live in SliceIR segment_annotations (AC-16);
 /// this always returns empty-but-valid data.
 fn build_paint_layer_data(_paint_ir: Option<&()>, layer_index: u32) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(_paint_ir, layer_index, None)
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None)
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
-/// `SupportPlanIR` for this layer.
+/// `SupportPlanIR` and `LightningTreeIR` for this layer.
 fn build_paint_layer_data_with_plan(
     _paint_ir: Option<&()>,
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
+    lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
 ) -> PaintRegionLayerData {
     let mut data = PaintRegionLayerData {
         layer_index,
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        lightning_tree_segments: HashMap::new(),
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
@@ -1353,6 +1363,37 @@ fn build_paint_layer_data_with_plan(
                         width: p.width,
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
+                    })
+                    .collect();
+                bucket.push(pts);
+            }
+        }
+    }
+    if let Some(ir) = lightning_tree_ir {
+        for entry in &ir.entries {
+            if entry.global_layer_index != layer_index as i32 {
+                continue;
+            }
+            // 139 refines per-region keying: `LightningTreeEntry` has no
+            // `region_id` field at packet 137, so every per-layer entry is
+            // bucketed under the wildcard region. The SDK accessor mirrors
+            // this by ignoring its `_region_id` argument. When 139/140
+            // populate real segments, this HashMap must key on the
+            // per-region value (mirrors `support-plan_segments` above at
+            // `dispatch.rs:1353`); tracked under DEVIATION D-137.
+            let wildcard_region = String::from("*");
+            let key = (entry.object_id.clone(), wildcard_region);
+            let bucket = data.lightning_tree_segments.entry(key).or_default();
+            for segment in &entry.tree_edge_segments {
+                let pts: Vec<_> = segment
+                    .iter()
+                    .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
+                        x: p.x as f32,
+                        y: p.y as f32,
+                        z: 0.0,
+                        width: 0.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
                     })
                     .collect();
                 bucket.push(pts);
@@ -2015,6 +2056,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.surface_classification,
             input.region_map.as_deref(),
             input.infill,
+            input.lightning_tree_ir.as_deref(),
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
