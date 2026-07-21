@@ -145,6 +145,17 @@ max     = 5.0
 display = "Support Top Z Distance"
 group   = "Support"
 
+# Packet 123: when true, contacts whose XY lies inside the object's
+# projected footprint at the contact's layer (to_buildplate = false)
+# are rejected at creation time. Default false keeps the planner's
+# prior behavior of admitting both build-plate-bound and to-model
+# branches.
+[config.schema.support_on_build_plate_only]
+type    = "bool"
+default = false
+display = "Support On Build Plate Only"
+group   = "Support"
+
 [config.overridable-per-region]
 keys = []
 

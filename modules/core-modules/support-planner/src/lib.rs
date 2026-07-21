@@ -92,6 +92,12 @@ pub struct SupportPlanner {
     support_interface_top_layers: i32,
     /// Line spacing for interface layer dense fill in mm.
     tree_support_interface_spacing_mm: f32,
+    /// When true, contacts whose XY lies inside the object's projected
+    /// footprint at the contact's layer (`to_buildplate = false`) are
+    /// rejected at creation time — only build-plate-bound branches are
+    /// emitted. Default `false`: to-model contacts are admitted and
+    /// propagated like before. Packet 123.
+    support_on_build_plate_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +107,16 @@ struct PlannedSupportNode {
     /// Number of layers from this node to the top of its support column.
     /// Drives radius tapering — nodes farther from the top are wider.
     dist_to_top: u32,
+    /// Whether this node must reach the build plate (true) or may rest
+    /// on the model (false). Set at contact creation from
+    /// `!point_in_any_expoly(collision_polys_at_contact_layer, x, y)`
+    /// (true iff the contact's XY lies OUTSIDE the object's projected
+    /// footprint at the contact's layer — OrcaSlicer's
+    /// `generate_contact_points` initial assignment, per packet 123).
+    /// Propagated unchanged through move-pass; merged with AND in
+    /// multi-neighbour aggregation (any contributor that is `false`
+    /// demotes the merged node to `false`).
+    to_buildplate: bool,
 }
 
 /// Holds collision and avoidance polygons for a single support layer.
@@ -193,6 +209,14 @@ impl PrepassModule for SupportPlanner {
                 Some(ConfigValue::Int(w)) => *w as f32,
                 _ => 0.4,
             };
+        // Packet 123: `support_on_build_plate_only` config — when true,
+        // contacts whose `to_buildplate` would be `false` are rejected
+        // at creation time (no to-model branches). Default `false` to
+        // preserve the current planner behavior.
+        let support_on_build_plate_only = match config.get("support_on_build_plate_only") {
+            Some(ConfigValue::Bool(b)) => *b,
+            _ => false,
+        };
         Ok(Self {
             enabled,
             branch_angle_deg,
@@ -209,6 +233,7 @@ impl PrepassModule for SupportPlanner {
             interface_raft_layers,
             support_interface_top_layers,
             tree_support_interface_spacing_mm,
+            support_on_build_plate_only,
         })
     }
 
@@ -420,6 +445,22 @@ impl SupportPlanner {
                 .iter()
                 .position(|l| l.z >= centroid[2])
                 .unwrap_or(layer_plan.layers.len() - 1);
+            // Packet 123: `to_buildplate = !point_in_any_expoly(collision_polys, x, y)`
+            // — the contact is build-plate-bound iff its XY lies OUTSIDE
+            // the object's projected footprint at the contact's layer.
+            let global_li = layer_plan.layers[layer_idx].global_layer_index as usize;
+            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
+                collision_cache[global_li].collision_polys.as_slice()
+            } else {
+                &[]
+            };
+            let to_buildplate =
+                !point_in_any_expoly(contact_collision_polys, centroid[0], centroid[1]);
+            // Honor `support_on_build_plate_only = true`: reject to-model contacts
+            // (to_buildplate = false) at creation time. Default false → no effect.
+            if self.support_on_build_plate_only && !to_buildplate {
+                continue;
+            }
             if contacts_by_layer[layer_idx].len() >= self.max_branches_per_layer {
                 let global_li = layer_plan.layers[layer_idx].global_layer_index;
                 *dropped_by_layer.entry(global_li).or_insert(0) += 1;
@@ -429,12 +470,24 @@ impl SupportPlanner {
                 x: centroid[0],
                 y: centroid[1],
                 dist_to_top: 0,
+                to_buildplate,
             });
         }
 
         for (layer_idx, x, y) in &enforcer_contacts {
             let li = (*layer_idx as usize).min(num_layers as usize - 1);
             if point_in_any_polygon(&blocker_polys, *x, *y) {
+                continue;
+            }
+            // Packet 123: same `to_buildplate` rule for enforcer contacts.
+            let global_li = layer_plan.layers[li].global_layer_index as usize;
+            let contact_collision_polys: &[ExPolygon] = if global_li < collision_cache.len() {
+                collision_cache[global_li].collision_polys.as_slice()
+            } else {
+                &[]
+            };
+            let to_buildplate = !point_in_any_expoly(contact_collision_polys, *x, *y);
+            if self.support_on_build_plate_only && !to_buildplate {
                 continue;
             }
             if contacts_by_layer[li].len() >= self.max_branches_per_layer {
@@ -446,6 +499,7 @@ impl SupportPlanner {
                 x: *x,
                 y: *y,
                 dist_to_top: 0,
+                to_buildplate,
             });
         }
 
@@ -709,6 +763,7 @@ impl SupportPlanner {
                         x: node.x,
                         y: node.y,
                         dist_to_top: node.dist_to_top.saturating_add(1),
+                        to_buildplate: node.to_buildplate,
                     }
                 } else {
                     // Build the parallel slices for the aggregate helper.
@@ -741,6 +796,12 @@ impl SupportPlanner {
 
                     // Drop nodes whose target lies inside collision_polys
                     // (AC-N3: code 1002 node-clamped-out typed diagnostic).
+                    // Packet 123: the existing drop is the additive prune
+                    // trigger for `to_buildplate = true` nodes (same
+                    // condition — drop when target in collision_polys).
+                    // `to_buildplate = false` nodes still follow the same
+                    // drop; the new rule is a tightening for the
+                    // `to_buildplate = true` subset, not a relaxation.
                     if point_in_any_expoly(collision_polys, cx, cy) {
                         let _ = output.push_diagnostic(Diagnostic {
                             severity: DiagnosticSeverity::Warn,
@@ -748,8 +809,8 @@ impl SupportPlanner {
                             layer: Some(current_global_layer_index as i32),
                             object_id: Some(obj.object_id.clone()),
                             message: format!(
-                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3})",
-                                current_global_layer_index, obj.object_id, cx, cy
+                                "node-clamped-out: layer={} obj={} pos=({:.3},{:.3}) to_buildplate={}",
+                                current_global_layer_index, obj.object_id, cx, cy, node.to_buildplate
                             ),
                         });
                         continue;
@@ -760,6 +821,7 @@ impl SupportPlanner {
                         y: cy,
                         // dist_to_top increments as we move down
                         dist_to_top: node.dist_to_top.saturating_add(1),
+                        to_buildplate: node.to_buildplate,
                     }
                 };
                 next_nodes.push(moved);
@@ -1397,6 +1459,7 @@ mod tests {
             interface_raft_layers: 0,
             support_interface_top_layers: 2,
             tree_support_interface_spacing_mm: 0.4,
+            support_on_build_plate_only: false,
         }
     }
 
@@ -1685,11 +1748,13 @@ mod tests {
                 x: 0.0,
                 y: 0.0,
                 dist_to_top: 0,
+                to_buildplate: true,
             },
             PlannedSupportNode {
                 x: 3.0,
                 y: 4.0,
                 dist_to_top: 0,
+                to_buildplate: true,
             },
         ];
         let edges = prim_mst(&nodes);

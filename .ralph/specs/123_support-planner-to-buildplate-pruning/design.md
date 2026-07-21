@@ -5,7 +5,7 @@
 - Primary code paths:
   - `modules/core-modules/support-planner/src/lib.rs::PlannedSupportNode` (line 92) — add `to_buildplate: bool` field.
   - Contact creation block in `plan_for_object` (lines 380-416) — set `to_buildplate` based on the contact XY's relationship to `LayerCollisionCache.collision_polys[L]` for the object at that layer.
-  - Propagation pruning block (lines 711-723, the `point_in_any_expoly(collision_polys, cx, cy)` branch) — extend with: when `to_buildplate = true` AND clamped target is inside `collision_polys`, drop the node. The existing collision-prune for ALL nodes is preserved; this is an additional prune trigger.
+  - Per-layer propagation loop containing the `point_in_any_expoly(collision_polys, cx, cy)` drop (currently around line 805 in the post-Step-3 source) — extend with: when `to_buildplate = true` AND clamped target is inside `collision_polys`, drop the node. The existing collision-prune for ALL nodes is preserved; this is an additional prune trigger.
   - `on_print_start` (line 114) — read `support_on_build_plate_only` config (default `false`), store on `SupportPlanner` struct as a new field.
   - The reject-at-creation block honoring `support_on_build_plate_only = true` (added to the contact-creation loop, lines 380-416).
 - Neighboring tests/fixtures:

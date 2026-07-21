@@ -672,3 +672,140 @@ fn merge_geometry_symmetric_for_n_branches() {
     // we only assert the ratio is bounded.
     let _ = merge_points_checked; // suppress unused warning when zero
 }
+
+/// Packet 123 invariant: with `support_on_build_plate_only = true`, every
+/// emitted branch endpoint must lie OUTSIDE the object's per-layer collision
+/// outline (no origin-contact exemption is allowed). This is a tightening of
+/// invariant 2 (`branch_endpoints_are_outside_support_collision_outlines`),
+/// which exempts endpoints whose `dist_to_top_mm <= 1e-6` (the contact tip
+/// may sit on the model face). With `support_on_build_plate_only = true`,
+/// the planner rejects every `to_model` contact at creation time, so a
+/// surviving contact is classified `to_buildplate = true` and must have a
+/// collision-free path — the exemption no longer applies. Endpoints at the
+/// build plate (`z <= 1e-3 mm`) and contact tips at the overhang origin
+/// layer (a fresh contact whose `dist_to_top_mm == 0`) are accepted; all
+/// other endpoints must clear the model outline. The tolerance matches the
+/// existing `branch_points_match_entry_layer_z` float convention
+/// (`Point3WithWidth.z` is f32 millimeters, NOT the IR's 100 nm scaled
+/// integer units).
+#[test]
+fn build_plate_only_emits_no_to_model_branches() {
+    let ctx = support_wedge::prepare_wedge_context_with_overrides(
+        true,
+        &[("support_on_build_plate_only", ConfigValue::Bool(true))],
+    );
+    let entries = plan_entries(&ctx);
+    let geom = support_geometry(&ctx);
+    let layers = global_layers(&ctx);
+    const BUILD_PLATE_TOLERANCE_MM: f32 = 1e-3;
+    const ORIGIN_CONTACT_TOLERANCE_MM: f32 = 1e-6;
+
+    let mut endpoints_checked = 0usize;
+    let mut at_build_plate = 0usize;
+    let mut origin_contact_exempt = 0usize;
+    let mut cleared_outline = 0usize;
+    let mut skipped_missing_geometry = 0usize;
+
+    for entry in entries {
+        let layer_idx = entry.global_layer_index;
+        if layer_idx < 0 {
+            // Raft prefix layers: skip — `support_on_build_plate_only` does
+            // not constrain the raft pipeline.
+            continue;
+        }
+        let matching_key = geom.entries.keys().find(|k| {
+            k.global_support_layer_index != u32::MAX
+                && k.global_support_layer_index == layer_idx as u32
+                && k.object_id == entry.object_id
+                && k.region_id == entry.region_id
+        });
+        let outlines = match matching_key.and_then(|k| geom.entries.get(k)) {
+            Some(outlines) => outlines,
+            None => {
+                for seg in &entry.branch_segments {
+                    skipped_missing_geometry += seg.points.len();
+                }
+                continue;
+            }
+        };
+        // Identify the overhang origin layer for this column: the topmost
+        // (largest global_layer_index) entry's layer. A fresh contact tip on
+        // that layer is allowed to sit on the model outline (the overhang
+        // face) — that's the only origin-contact exemption under
+        // `support_on_build_plate_only = true`.
+        let overhang_origin_layer = entries
+            .iter()
+            .filter(|e| {
+                e.global_layer_index >= 0
+                    && e.object_id == entry.object_id
+                    && e.region_id == entry.region_id
+            })
+            .map(|e| e.global_layer_index)
+            .max()
+            .unwrap_or(layer_idx);
+        let is_overhang_origin_layer = layer_idx == overhang_origin_layer;
+
+        for seg in &entry.branch_segments {
+            for endpoint in [seg.points.first(), seg.points.last()]
+                .into_iter()
+                .flatten()
+            {
+                endpoints_checked += 1;
+                let at_plate = endpoint.z <= BUILD_PLATE_TOLERANCE_MM;
+                if at_plate {
+                    at_build_plate += 1;
+                }
+                // Origin-contact exemption: only valid on the overhang origin
+                // layer (the contact tip is the overhang face itself), AND
+                // the tip must be a fresh contact (dist_to_top_mm == 0).
+                let is_fresh_contact_tip = endpoint.dist_to_top_mm.is_finite()
+                    && endpoint.dist_to_top_mm >= 0.0
+                    && endpoint.dist_to_top_mm <= ORIGIN_CONTACT_TOLERANCE_MM;
+                let origin_exempt = is_overhang_origin_layer && is_fresh_contact_tip && !at_plate;
+                if origin_exempt {
+                    origin_contact_exempt += 1;
+                    continue;
+                }
+                // Every other endpoint must clear the layer's collision outline.
+                let px = endpoint.x as f64;
+                let py = endpoint.y as f64;
+                let inside_outer = outlines.iter().any(|poly| {
+                    point_in_polygon_winding(poly, px, py, 0.0)
+                        && !poly
+                            .holes
+                            .iter()
+                            .any(|h| point_in_contour_winding(h, px, py, 0.0))
+                });
+                assert!(
+                    !inside_outer,
+                    "with support_on_build_plate_only=true, branch endpoint ({}, {}, {}) at layer {} (z={}, is_overhang_origin_layer={}) must lie outside the collision outline (no origin-contact exemption for build-plate-only mode except the overhang-tip contact itself); at_build_plate={}, origin_contact_exempt={}, cleared_outline={}, skipped_missing_geometry={}, endpoints_checked={}",
+                    endpoint.x,
+                    endpoint.y,
+                    endpoint.z,
+                    layer_idx,
+                    layers.iter().find(|gl| gl.index == layer_idx as u32).map(|gl| gl.z).unwrap_or(f32::NAN),
+                    is_overhang_origin_layer,
+                    at_build_plate,
+                    origin_contact_exempt,
+                    cleared_outline,
+                    skipped_missing_geometry,
+                    endpoints_checked,
+                );
+                cleared_outline += 1;
+            }
+        }
+    }
+
+    eprintln!(
+        "build_plate_only_emits_no_to_model_branches: endpoints_checked={}, at_build_plate={}, origin_contact_exempt={}, cleared_outline={}, skipped_missing_geometry={}",
+        endpoints_checked, at_build_plate, origin_contact_exempt, cleared_outline, skipped_missing_geometry
+    );
+    assert!(
+        endpoints_checked > 0,
+        "build-plate-only invariant checked no branch endpoints; at_build_plate={}, origin_contact_exempt={}, cleared_outline={}, skipped_missing_geometry={}",
+        at_build_plate,
+        origin_contact_exempt,
+        cleared_outline,
+        skipped_missing_geometry
+    );
+}

@@ -458,6 +458,7 @@ run against `resources/regression_wedge.stl` with default config and
    reconstruction mirrors the smoother's 5 mm sub-chain break to
    ignore inter-tree gaps.
 10. **Multi-neighbour merge symmetry** (`merge_geometry_symmetric_for_n_branches` in `support_invariants_wedge_tdd`). For every node with ≥ 3 incoming MST edges (equivalently, every `SupportPlanEntry.branch_segments` endpoint shared by three or more segments in the same entry), the standard deviation of distances from the merge point to its contributing endpoint XYs is at most 30% of the mean distance. Gates the packet 122 reciprocal-distance-squared aggregate (`support-planner::aggregate_neighbour_targets`, port of OrcaSlicer's `TreeSupport::drop_nodes`) against regressions of the old single-neighbour asymmetric lookup.
+11. **Build-plate-only tightening** (`build_plate_only_emits_no_to_model_branches` in `support_invariants_wedge_tdd`). With `support_on_build_plate_only = true` forced on, every emitted branch endpoint must lie outside the object's per-layer collision outline, with the only exemption being a fresh contact tip (`dist_to_top_mm <= 1e-6`) on the column's overhang origin layer. Endpoints at the build plate (`z <= 1e-3 mm`) and at the overhang-tip are accepted; all other endpoints must clear the model outline. Gates the packet 123 `to_buildplate` reject-at-creation path (`support-planner::plan_for_object` contact creation) against regressions that re-introduce endpoints on the model body for `support_on_build_plate_only = true` builds.
 
 The list is documented as "v1, expected to grow." C4 adds a
 multi-neighbour-symmetry invariant; C5 adds a build-plate-only
@@ -553,7 +554,7 @@ Proposed new TASK rows for `docs/07_implementation_status.md` (renumber as appro
 | TASK-261 | C2 | Migrate `support_paint_policy` to `SlicedRegion.segment_annotations`. |
 | TASK-262 | C3 | `smooth_nodes` Laplacian smoothing port. |
 | TASK-263 | C4 | Multi-neighbour MST propagation. |
-| TASK-264 | C5 | `to_buildplate` tracking + unsupported-branch pruning + `support_on_build_plate_only`. |
+| TASK-288 | C5 | `to_buildplate` tracking + unsupported-branch pruning + `support_on_build_plate_only`. |
 | TASK-265 | C6 | `SupportPlanIR.raft_plan` field + `ExtrusionRole::RaftInfill` + `claim:raft-fill` mapping. |
 | TASK-266 | C7 | `traditional-support` ↔ `SupportPlanIR` contract documented as "does not consume." |
 | TASK-270 | follow-up | `rectilinear-infill` / `traditional-support` scan-line duplication — separate design conversation, depends on WIT-pattern-services architecture. |

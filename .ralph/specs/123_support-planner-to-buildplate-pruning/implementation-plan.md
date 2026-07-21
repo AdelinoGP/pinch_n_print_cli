@@ -17,7 +17,7 @@
 - Sub-agent dispatches:
   - "Summarize OrcaSlicer `TreeSupport::drop_nodes` `unsupported_branch_leaves` flow; return SUMMARY ≤ 200 words. Confirm pruning semantics + `to_buildplate` interactions."
   - "Summarize OrcaSlicer `generate_contact_points` `to_buildplate` initialization rule; return SUMMARY ≤ 200 words. Confirm whether the test polygon is per-layer outline or cumulative-below."
-  - "Locate `PlannedSupportNode` struct (line 92), the `contacts_by_layer.push` calls (lines 380-416), and the post-`clamp_to_avoidance` propagation block (lines 711-723) in `support-planner/src/lib.rs`; return LOCATIONS file:line."
+  - "Locate `PlannedSupportNode` struct (line 92), the `contacts_by_layer.push` calls (lines 380-416), and the post-`clamp_to_avoidance` propagation block (the `point_in_any_expoly(collision_polys, cx, cy)` drop) in `support-planner/src/lib.rs`; return LOCATIONS file:line."
   - "Find every `PlannedSupportNode {` struct-literal site in `support-planner/src/lib.rs`; return LOCATIONS ≤ 10 entries. Each is a blast-radius site for the new `to_buildplate: bool` field addition."
 - Files allowed to edit: none.
 - Context cost: `S`
