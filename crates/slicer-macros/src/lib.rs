@@ -698,6 +698,8 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     }
                     ExtrusionRole::Custom(s) => ::slicer_sdk::ir::ExtrusionRole::Custom(s.clone()),
                     ExtrusionRole::GapFill => ::slicer_sdk::ir::ExtrusionRole::GapFill,
+                    ExtrusionRole::RaftInfill => ::slicer_sdk::ir::ExtrusionRole::RaftInfill,
+                    // Forward-compat fallback for future `#[non_exhaustive]` variants.
                     _ => ::slicer_sdk::ir::ExtrusionRole::OuterWall,
                 }
             }
@@ -731,6 +733,8 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                         ))
                     }
                     ::slicer_sdk::ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
+                    ::slicer_sdk::ir::ExtrusionRole::RaftInfill => ExtrusionRole::RaftInfill,
+                    // Forward-compat fallback for future `#[non_exhaustive]` variants.
                     _ => ExtrusionRole::OuterWall,
                 }
             }
@@ -936,6 +940,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     }
                     ExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
                     ExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
+                    ExtrusionRole::RaftInfill => ::slicer_ir::ExtrusionRole::RaftInfill,
+                    // Forward-compat fallback for future `#[non_exhaustive]` variants.
+                    _ => ::slicer_ir::ExtrusionRole::OuterWall,
                 }
             }
 
@@ -968,6 +975,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     }
                     ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
                     ::slicer_ir::ExtrusionRole::GapFill => ExtrusionRole::GapFill,
+                    ::slicer_ir::ExtrusionRole::RaftInfill => ExtrusionRole::RaftInfill,
+                    // Forward-compat fallback for future `#[non_exhaustive]` variants.
                     _ => ExtrusionRole::OuterWall,
                 }
             }
@@ -2081,6 +2090,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     }
                     WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s.clone()),
                     WitExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
+                    WitExtrusionRole::RaftInfill => ::slicer_ir::ExtrusionRole::RaftInfill,
                 }
             }
             fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
@@ -2462,6 +2472,8 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         ))
                     }
                     ::slicer_ir::ExtrusionRole::GapFill => WitExtrusionRole::GapFill,
+                    ::slicer_ir::ExtrusionRole::RaftInfill => WitExtrusionRole::RaftInfill,
+                    // Forward-compat fallback for future `#[non_exhaustive]` variants.
                     _ => WitExtrusionRole::OuterWall,
                 }
             }

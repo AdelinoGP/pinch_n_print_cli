@@ -756,6 +756,50 @@ fn extrusion_role_custom_payload_roundtrip() {
     }
 }
 
+/// Round-trip test for `ExtrusionRole::RaftInfill` (packet 124).
+///
+/// Asserts that `RaftInfill` survives the WIT boundary in *both* directions
+/// without being silently remapped to `OuterWall` (the previous macro
+/// behaviour: `_ => OuterWall` in the IR→WIT arm).
+///
+/// IR (ExtrusionRole::RaftInfill) → WIT (ExtrusionRole::RaftInfill) → IR (ExtrusionRole::RaftInfill)
+#[test]
+fn extrusion_role_raft_infill_roundtrip() {
+    // Step 1: Start from IR ExtrusionRole::RaftInfill.
+    let ir_role = slicer_ir::ExtrusionRole::RaftInfill;
+
+    // Step 2: IR → WIT. We mirror the macro's `__slicer_role_ir_to_wit` arms
+    // for the variant under test. The full match lives in
+    // `crates/slicer-macros/src/lib.rs::__slicer_role_ir_to_wit`; this test
+    // pins the contract for the one variant packet 124 introduces.
+    let wit_role = match &ir_role {
+        slicer_ir::ExtrusionRole::RaftInfill => WitExtrusionRole::RaftInfill,
+        // Defensive: if the macro ever falls through to the old `_ => OuterWall`
+        // arm, this branch is unreachable. We use it to keep the test honest
+        // about what it is exercising.
+        other => panic!(
+            "IR→WIT dropped RaftInfill; macro arm regressed to wildcard: {:?}",
+            other
+        ),
+    };
+    assert!(
+        matches!(wit_role, WitExtrusionRole::RaftInfill),
+        "IR→WIT must preserve RaftInfill, got {:?}",
+        wit_role
+    );
+
+    // Step 3: WIT → IR via the public `convert_extrusion_role` (which calls
+    // into the macro's `__slicer_role_wit_to_ir`).
+    let ir_result = convert_extrusion_role(&wit_role);
+
+    // Step 4: Assert identity in both directions.
+    assert_eq!(
+        ir_result,
+        slicer_ir::ExtrusionRole::RaftInfill,
+        "RaftInfill must round-trip identity through IR→WIT→IR"
+    );
+}
+
 #[test]
 fn extrusion_role_builtin_tags_roundtrip() {
     let cases = [

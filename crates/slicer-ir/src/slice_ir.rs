@@ -246,11 +246,11 @@ pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Bumped to 1.2.0 by packet 119 — additive
-/// `Point3WithWidth.dist_to_top_mm` and optional `RaftPlan` fields.
+/// Schema version for `SupportPlanIR`. Bumped to 1.3.0 by packet 124 (additive
+/// `ExtrusionRole::RaftInfill` per ADR-0009).
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 2,
+    minor: 3,
     patch: 0,
 };
 
@@ -1673,6 +1673,8 @@ pub enum ExtrusionRole {
     InternalSolidInfill,
     /// Sparse infill
     SparseInfill,
+    /// Raft infill (ADR-0009: rendered by whichever `Layer::Infill` module declares `claim:raft-fill`).
+    RaftInfill,
     /// Support material
     SupportMaterial,
     /// Support interface
@@ -1703,6 +1705,14 @@ impl ExtrusionRole {
     /// Values mirror the canonical producer-emit order used by Packet 40's
     /// stable-sort merge: lower = printed first, gaps ≥ 100 guarantee
     /// unambiguous slot insertion for finalization-pushed entities.
+    ///
+    /// The function exposes a `0..200` bed-adhesion sub-band reserved for
+    /// `Skirt` (0), `RaftInfill` (50, ADR-0009) and `Brim` (110); walls and
+    /// infill start at 1000. Modules that finalize raft layers after the
+    /// host-side default may push a `RaftInfill` with a finer-grained
+    /// priority in `[1, 49]` to interleave within the skirt, or in
+    /// `[51, 109]` to interleave between raft and brim — see
+    /// `docs/adr/0009-raft-as-layer-infill-role.md` for the slot policy.
     pub const fn default_priority(&self) -> u32 {
         match self {
             Self::Skirt => 0,
@@ -1722,6 +1732,14 @@ impl ExtrusionRole {
             Self::PrimeTower => 8500,
             Self::Custom(_) => 9000,
             Self::GapFill => 2000,
+            // Bed-adhesion sub-band: emitted *before* the wall/infill stack so the
+            // raft layers land on the bed first, after `Skirt` (0) and before
+            // `Brim` (110) — `Brim` is conventionally an outer-wall-extension
+            // adhesion aid, while `RaftInfill` is the underside of a multi-layer
+            // raft base; `raft-default-module` may re-order this with a
+            // finalized priority if the visual-debug bundle proves the order wrong.
+            // ADR-0009 §Decision; packet 124.
+            Self::RaftInfill => 50,
         }
     }
 

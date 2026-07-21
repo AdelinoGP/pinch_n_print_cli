@@ -392,6 +392,7 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
         ExtrusionRole::GapFill => slicer_ir::ExtrusionRole::GapFill,
+        ExtrusionRole::RaftInfill => slicer_ir::ExtrusionRole::RaftInfill,
     }
 }
 

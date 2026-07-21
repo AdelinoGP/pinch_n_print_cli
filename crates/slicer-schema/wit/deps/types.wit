@@ -14,7 +14,7 @@ interface geometry {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,
         support-material, support-interface,
-        ironing, bridge-infill, wipe-tower, gap-fill, custom(string),
+        ironing, bridge-infill, wipe-tower, gap-fill, raft-infill, custom(string),
     }
     record semver { major: u32, minor: u32, patch: u32 }
     record point2-with-width { x: f32, y: f32, width: f32 }

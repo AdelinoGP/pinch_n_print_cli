@@ -175,6 +175,8 @@ impl DefaultGCodeEmitter {
                 _ => self.feedrate_config.outer_wall_speed,
             },
             ExtrusionRole::GapFill => self.feedrate_config.gap_infill_speed,
+            ExtrusionRole::RaftInfill => self.feedrate_config.outer_wall_speed,
+            // Forward-compat fallback for future `#[non_exhaustive]` variants.
             _ => self.feedrate_config.outer_wall_speed,
         };
 
@@ -241,6 +243,8 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::Ironing => ";TYPE:Ironing",
         ExtrusionRole::Custom(_) => ";TYPE:Custom",
         ExtrusionRole::GapFill => ";TYPE:Gap infill",
+        ExtrusionRole::RaftInfill => ";TYPE:Raft",
+        // Forward-compat fallback for future `#[non_exhaustive]` variants.
         _ => ";TYPE:Custom",
     }
 }
