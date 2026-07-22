@@ -103,6 +103,10 @@ corresponding module is loaded; the rest always run.
 9. PrePass::SupportGeometry      (host-built-in always runs; guest optional)
 ```
 
+**Note (packet 178):** `PrePass::SeamPlanning` now requires `SliceIR` and
+`RegionMap` as prerequisites; the scheduler still routes it before `Layer::*`
+dispatch but may execute it after `PrePass::RegionMapping` and `PrePass::Slice`.
+
 The executed sequence above is the `run_builtin_stage` call chain in
 `slicer_runtime::prepass`. The declared stage list — `STAGE_ORDER` in
 `slicer_scheduler::execution_plan`, which the scheduler's validation passes use
@@ -120,6 +124,9 @@ sequence.
 Stages 1–2 are the classic mesh-analysis and layer-planning pipeline.
 `PrePass::SeamPlanning` (stage 3) is a guest stage claimed by
 `seam-planner-default`. `PrePass::RegionMapping` (stage 4) performs
+
+`PrePass::SeamPlanning` reads per-region `SliceIR` polygons via `SeamPlanningView` to compute the active-region `SeamPlanIR`.
+
 cross-product expansion: each `(layer, object, active_region)` is split into one
 `RegionPlan` per canonical **variant chain** (see §"Variant-Chain Region
 Splitting" below). `PrePass::Slice` (stage 5) then produces `SliceIR`.

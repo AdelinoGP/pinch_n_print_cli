@@ -459,6 +459,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         },
         global_layer_index: 0,
         regions: vec![slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: "test-object".to_string(),
             region_id: 0,
             walls: vec![slicer_ir::WallLoop {
@@ -965,6 +966,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     let perimeter_ir = PerimeterIR {
         global_layer_index: layer_index,
         regions: vec![PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: object_id.clone(),
             region_id,
             walls: vec![WallLoop {

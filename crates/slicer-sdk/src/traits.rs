@@ -21,7 +21,7 @@ use crate::prepass_builders::{
 };
 use crate::prepass_types::{
     LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
-    SupportGeometryView,
+    SeamPlanningView, SupportGeometryView,
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
@@ -312,6 +312,7 @@ pub trait LayerModule: Sized {
     ///     regions: list<slice-region-view>,
     ///     output: infill-output-builder,
     ///     config: config-view,
+    ///     region-input: seam-planning-view,
     /// ) -> result<_, module-error>;
     /// ```
     fn run_infill(
@@ -592,6 +593,7 @@ pub trait PrepassModule: Sized {
     ///     layer-plan: layer-plan-view,
     ///     output: seam-planning-output,
     ///     config: config-view,
+    ///     region-input: seam-planning-view,
     /// ) -> result<_, module-error>;
     /// ```
     fn run_seam_planning(
@@ -600,6 +602,7 @@ pub trait PrepassModule: Sized {
         _layer_plan: &LayerPlanView,
         _output: &mut SeamPlanningOutput,
         _config: &ConfigView,
+        _region_input: &SeamPlanningView,
     ) -> Result<(), ModuleError> {
         Ok(())
     }

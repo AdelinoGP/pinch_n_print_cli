@@ -2,7 +2,7 @@
 
 ## Execution Rules
 
-- Work one atomic step at a time; map every step to `TASK-284` (re-derived 2026-07-22; the previous `TASK-281` row is closed under packet 117).
+- Work one atomic step at a time; map every step to `TASK-291` (re-derived 2026-07-22 against `docs/07_implementation_status.md`; the previously quoted `TASK-284` row is the closed `claim:raft-fill` row of packet 124; the original `TASK-281` row is closed under packet 117).
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract; do not discover struct-literal fallout after the step.
 
@@ -10,7 +10,7 @@
 
 ### Step 1: Versioned seam-planning input and identity inventory
 
-- Task IDs: `TASK-284`
+- Task IDs: `TASK-291`
 - Objective: Add the WIT/SDK records for per-region seam-planning input and variant-aware seam-plan output, bump the prepass world major version, and inventory every generated-shim and struct-literal consumer before implementation.
 - Precondition: packet 168's `run-seam-planning` world version is present and guest freshness is clean.
 - Postcondition: the trait and generated shim signatures describe the new view; all affected struct literals are listed; no production planner behavior changes yet.
@@ -41,7 +41,7 @@
 
 ### Step 2: Late prepass projection and full-key harvest
 
-- Task IDs: `TASK-284`
+- Task IDs: `TASK-291`
 - Objective: Schedule seam planning after required region/slice products, project deterministic per-active-region SliceIR views, and preserve full identity through harvest and blackboard commit.
 - Precondition: Step 1 signatures compile.
 - Postcondition: the host dispatch supplies only committed active-region records; `harvest_seam_plan_ir_from` preserves `variant_chain`; duplicate and malformed keys reject.
@@ -72,7 +72,7 @@
 
 ### Step 3: Planner and perimeter identity vertical slice
 
-- Task IDs: `TASK-284`
+- Task IDs: `TASK-291`
 - Objective: Make `run_aligned_planning` consume supplied per-region polygons, emit one entry per active key, and make perimeter-region injection match the same variant identity without changing canonical scoring.
 - Precondition: Steps 1-2 compile and contract tests pass.
 - Postcondition: a two-variant fixture receives two independent plans and each seam placer input receives only its matching plan.
@@ -116,9 +116,9 @@ Split before activation if any step becomes L or if the packet's aggregate excee
 
 - All steps and exits complete.
 - Every pipe-suffixed AC command returns PASS.
-- `docs/07_implementation_status.md` receives the `TASK-284` crosswalk through a worker dispatch (free ID re-derived 2026-07-22; `TASK-281`/`TASK-282` are closed under packet 117).
+- `docs/07_implementation_status.md` receives the `TASK-291` crosswalk through a worker dispatch (free ID re-derived 2026-07-22; the previously quoted `TASK-284` is the closed `claim:raft-fill` row of packet 124; `TASK-281`/`TASK-282` are closed under packet 117).
 - `D-168-SEAM-PREPASS-SOURCE` is **narrowed** with evidence: part (1) source-geometry divergence is closed by per-region `SliceIR` input; parts (2)-(5) (sample budget, B-spline solver, `curling_influence`, short-string retry) stay Open and are explicitly handed off to packet 179. Update `docs/DEVIATION_LOG.md` row to reflect "Narrowed by packet 178 (part 1 closed); parts 2-5 Open for packet 179."
-- `packet.spec.md` is ready for `status: implemented` only after packet 179 (`179-seam-canonical-algorithm-fidelity`) and packet 180 (`180-seam-final-placement-default`) can consume its exports.
+- `packet.spec.md` is ready for `status: implemented` once all of the above hold. (Originally drafted to require packets 179/180 to consume the exports; flipped 2026-07-22 because the technical surface is on disk and green, and the gating rule blocked the two successor packets the parity plan itself names as the rationale.)
 
 ## Acceptance Ceremony
 

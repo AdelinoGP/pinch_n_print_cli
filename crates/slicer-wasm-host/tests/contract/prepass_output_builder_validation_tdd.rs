@@ -34,6 +34,7 @@ fn make_point3_with_width(x: f32, y: f32, z: f32) -> SeamPoint3WithWidth {
 
 fn valid_seam_entry() -> SeamPlanEntry {
     SeamPlanEntry {
+        variant_chain: Vec::new(),
         global_layer_index: 0,
         object_id: "obj-a".to_string(),
         region_id: "region-1".to_string(),

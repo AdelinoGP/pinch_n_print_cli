@@ -70,6 +70,7 @@ fn make_perimeter_ir(obj: &str, rid: RegionId, infill_areas: Vec<ExPolygon>) -> 
         },
         global_layer_index: 0,
         regions: vec![PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: ObjectId::from(obj),
             region_id: rid,
             walls: Vec::new(),

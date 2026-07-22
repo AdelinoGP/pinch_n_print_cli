@@ -2,10 +2,10 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-284` (re-derived 2026-07-22; the original `TASK-281` row is closed under packet 117, see `docs/07_implementation_status.md:241`)
+- Grouped task IDs: `TASK-291` (re-derived 2026-07-22 against `docs/07_implementation_status.md`; the previously quoted `TASK-284` row is the closed `claim:raft-fill` row of packet 124, see `docs/07_implementation_status.md:243`; the original `TASK-281` row is closed under packet 117, see `docs/07_implementation_status.md:241`)
 - Supersedes: `.ralph/specs/168-seam-aligned-modes/packet.spec.md`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `active`
 - Aggregate context cost: `M`
 
 ## Problem Statement

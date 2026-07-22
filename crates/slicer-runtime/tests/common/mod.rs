@@ -412,6 +412,7 @@ pub fn prepass_input(blackboard: &Blackboard) -> PrepassStageInput<'_> {
     PrepassStageInput {
         mesh: blackboard.mesh().clone(),
         layer_plan: blackboard.layer_plan().cloned(),
+        slice_ir: blackboard.slice_ir().cloned(),
         region_map: blackboard.region_map().cloned(),
         support_geometry: blackboard.support_geometry().cloned(),
         _phantom: PhantomData,

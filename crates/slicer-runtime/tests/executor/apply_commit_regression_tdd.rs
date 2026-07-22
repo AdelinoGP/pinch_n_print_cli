@@ -152,6 +152,7 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
     // emits walls but never bakes the seam — it arrives via the seam plan).
     let mut ir = empty_perimeter_ir();
     ir.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],

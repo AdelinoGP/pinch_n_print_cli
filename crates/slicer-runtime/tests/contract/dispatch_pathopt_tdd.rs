@@ -898,6 +898,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     let perim = slicer_ir::PerimeterIR {
         global_layer_index: 7,
         regions: vec![slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: "obj".into(),
             region_id: 0,
             walls: vec![wall],

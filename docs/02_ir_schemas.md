@@ -1467,7 +1467,10 @@ change fatal-error behaviour.
 **Consumers:** `Layer::PerimetersPostProcess` modules holding the
 `seam-placer` claim. Advisory — may fall back to per-layer scoring.
 
-**schema_version: 1.0.0** (`CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION`; no bumps).
+**schema_version: 1.1.0** (`CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION`; packet 178
+added additive `variant_chain` propagation through harvest (the field already
+exists on `RegionKey`) and bumped the minor version per the schema versioning
+policy in `docs/11`.)
 
 ```rust
 pub struct SeamPlanIR {
@@ -1476,6 +1479,9 @@ pub struct SeamPlanIR {
     /// `RegionKey`. **Duplicate key contract:** two entries with identical
     /// `RegionKey` are a fatal IR validation error; rejected at commit time.
     pub entries: Vec<SeamPlanEntry>,
+
+/// Each `SeamPlanEntry` carries the full `variant_chain` as part of `SeamPlanIR` `RegionKey` identity, enabling per-variant seam planning. `PerimeterRegion` also carries `variant_chain` for injection lookup during per-layer seam placement.
+/// `variant_chain` for injection lookup during per-layer seam placement.
 }
 
 pub struct SeamPlanEntry {

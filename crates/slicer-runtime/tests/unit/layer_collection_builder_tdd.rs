@@ -538,6 +538,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
 fn make_three_region_perimeter(layer_index: u32) -> PerimeterIR {
     let regions = (0..3u32)
         .map(|i| PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: format!("obj{}", i),
             region_id: i as u64,
             walls: vec![make_wall_loop_at(i, i as f32 * 10.0)],

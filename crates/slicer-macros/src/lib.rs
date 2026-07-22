@@ -1337,6 +1337,73 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 }).collect(),
             }
         }
+
+        fn __slicer_paint_semantic_from_wit(
+            semantic: PaintSemantic,
+        ) -> ::slicer_ir::PaintSemantic {
+            match semantic {
+                PaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
+                PaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
+                PaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
+                PaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
+                PaintSemantic::Custom(value) => ::slicer_ir::PaintSemantic::Custom(value),
+            }
+        }
+
+        fn __slicer_paint_value_from_ir_wit(
+            value: PaintValue,
+        ) -> ::slicer_ir::PaintValue {
+            match value {
+                PaintValue::Flag(value) => ::slicer_ir::PaintValue::Flag(value),
+                PaintValue::Scalar(value) => ::slicer_ir::PaintValue::Scalar(value),
+                PaintValue::ToolIndex(value) => ::slicer_ir::PaintValue::ToolIndex(value),
+            }
+        }
+
+        fn __slicer_seam_planning_region_from_wit(
+            region: SeamPlanningRegionInput,
+        ) -> ::slicer_sdk::prepass_types::SeamPlanningRegionInput {
+            ::slicer_sdk::prepass_types::SeamPlanningRegionInput {
+                global_layer_index: region.global_layer_index,
+                object_id: region.object_id,
+                region_id: region.region_id,
+                variant_chain: region
+                    .variant_chain
+                    .into_iter()
+                    .map(|(semantic, value)| {
+                        (semantic, __slicer_paint_value_from_ir_wit(value))
+                    })
+                    .collect(),
+                z: region.z,
+                height: region.height,
+                ex_polygons: region
+                    .ex_polygons
+                    .into_iter()
+                    .map(__slicer_expolygon_from_wit)
+                    .collect(),
+                segment_annotations: region
+                    .segment_annotations
+                    .into_iter()
+                    .map(|entry| {
+                        (
+                            __slicer_paint_semantic_from_wit(entry.semantic),
+                            entry
+                                .polygons
+                                .into_iter()
+                                .map(|polygon| {
+                                    polygon
+                                        .values
+                                        .into_iter()
+                                        .map(|value| value.map(__slicer_paint_value_from_ir_wit))
+                                        .collect()
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                scoring_width: region.scoring_width,
+            }
+        }
     };
 
     let (mesh_arm, layer_arm, seam_arm, support_arm) = match detected_stage {
@@ -1473,7 +1540,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // support_arm (unused)
         ),
         "PrePass::SeamPlanning" => (
-            // SeamPlanning: the seam planner reads MeshIR + SurfaceClassificationIR
+            // SeamPlanning: the seam planner reads SliceIR region boundaries
             // via host services and emits SeamPlanEntry records. Forward real
             // objects list, call run_seam_planning, drain SDK output back through
             // the WIT seam-planning-output resource.
@@ -1489,17 +1556,25 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     .into_iter()
                     .map(__slicer_mesh_object_from_wit)
                     .collect();
-                let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
+                 let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
                     layers: _layer_plan.layers.iter().map(|e| ::slicer_sdk::prepass_types::LayerPlanViewEntry {
                         global_layer_index: e.global_layer_index,
                         z: e.z,
                         effective_layer_height: e.effective_layer_height,
-                    }).collect(),
-                };
-                let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
-                    &module, &sdk_objects, &sdk_layer_plan, &mut sdk_output, &ir_config,
-                );
+                     }).collect(),
+                 };
+                 let sdk_region_input = ::slicer_sdk::prepass_types::SeamPlanningView {
+                     regions: _region_input
+                         .regions()
+                         .into_iter()
+                         .map(__slicer_seam_planning_region_from_wit)
+                         .collect(),
+                 };
+                 let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
+                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
+                     &module, &sdk_objects, &sdk_layer_plan, &mut sdk_output, &ir_config,
+                     &sdk_region_input,
+                 );
                 for __slicer_entry in sdk_output.entries() {
                     // Construct the seam-specific wit-bindgen record inline.
                     // `__slicer_point3_with_width_from_sdk` returns the SDK
@@ -1522,10 +1597,27 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                             reason: SeamReason { tag: sc.reason.tag.clone() },
                         })
                         .collect();
+                    let __slicer_variant_chain = match __slicer_entry.variant_chain.iter().map(|(semantic, value)| {
+                        let value = match value {
+                            ::slicer_ir::PaintValue::Flag(v) => PaintValue::Flag(*v),
+                            ::slicer_ir::PaintValue::Scalar(v) => PaintValue::Scalar(*v),
+                            ::slicer_ir::PaintValue::ToolIndex(v) => PaintValue::ToolIndex(*v),
+                            ::slicer_ir::PaintValue::Custom(_) => {
+                                return Err(::std::string::String::from(
+                                    "custom paint values cannot cross the WIT boundary as variant-chain identity",
+                                ));
+                            }
+                        };
+                        Ok((semantic.clone(), value))
+                    }).collect::<::std::result::Result<::std::vec::Vec<_>, ::std::string::String>>() {
+                        Ok(chain) => chain,
+                        Err(message) => return Err(ModuleError { code: 12, message, fatal: true }),
+                    };
                     let __slicer_wit_entry = SeamPlanEntry {
                         global_layer_index: __slicer_entry.global_layer_index,
                         object_id: __slicer_entry.object_id.clone(),
                         region_id: __slicer_entry.region_id.clone(),
+                        variant_chain: __slicer_variant_chain,
                         chosen_position: SeamPoint3WithWidth {
                             x: __slicer_entry.chosen_position.x,
                             y: __slicer_entry.chosen_position.y,
@@ -1720,6 +1812,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     _layer_plan: LayerPlanView,
                     _output: SeamPlanningOutput,
                     config: ConfigView,
+                    _region_input: SeamPlanningView,
                 ) -> Result<(), ModuleError> {
                     #seam_arm
                 }
@@ -2564,12 +2657,24 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     boundary_type: __slicer_ir_boundarytype_to_wit(&w.boundary_type),
                 }
             }
-            fn __slicer_ir_region_key_to_wit(k: &::slicer_ir::RegionKey) -> WitRegionKey {
-                WitRegionKey {
+            fn __slicer_ir_region_key_to_wit(k: &::slicer_ir::RegionKey) -> Option<WitRegionKey> {
+                // WIT `paint-value` has no custom variant; silently skip this key
+                // until the boundary is extended rather than panicking.
+                let variant_chain = k.variant_chain.iter().map(|(semantic, value)| {
+                    let value = match value {
+                        ::slicer_ir::PaintValue::Flag(v) => WitPaintValue::Flag(*v),
+                        ::slicer_ir::PaintValue::Scalar(v) => WitPaintValue::Scalar(*v),
+                        ::slicer_ir::PaintValue::ToolIndex(v) => WitPaintValue::ToolIndex(*v),
+                        ::slicer_ir::PaintValue::Custom(_) => return None,
+                    };
+                    Some((semantic.clone(), value))
+                }).collect::<Option<Vec<_>>>()?;
+                Some(WitRegionKey {
+                    variant_chain,
                     layer_index: k.global_layer_index as i32,
                     object_id: k.object_id.clone(),
                     region_id: k.region_id.to_string(),
-                }
+                })
             }
 
             // ── Drain-back helpers ─────────────────────────────────────
@@ -2712,13 +2817,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 for (key, polys) in sdk.polygon_updates() {
                     let wit_polys: ::std::vec::Vec<WitExPolygon> =
                         polys.iter().map(__slicer_ir_expolygon_to_wit).collect();
-                    let _ = wit.set_polygons(&__slicer_ir_region_key_to_wit(key), &wit_polys);
+                    if let Some(wit_key) = __slicer_ir_region_key_to_wit(key) {
+                        let _ = wit.set_polygons(&wit_key, &wit_polys);
+                    }
                 }
                 for (key, path_idx, vertex_idx, z) in sdk.path_z_updates() {
-                    let _ = wit.set_path_z(
-                        &__slicer_ir_region_key_to_wit(key),
-                        *path_idx, *vertex_idx, *z,
-                    );
+                    if let Some(wit_key) = __slicer_ir_region_key_to_wit(key) {
+                        let _ = wit.set_path_z(&wit_key, *path_idx, *vertex_idx, *z);
+                    }
                 }
                 // `segment_annotations_updates` has no corresponding WIT method on
                 // `slice-postprocess-builder` (docs/03 wit/world-layer.wit);

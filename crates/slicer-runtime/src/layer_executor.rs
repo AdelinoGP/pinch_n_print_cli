@@ -1866,6 +1866,7 @@ fn backfill_resolved_seam(
             e.region_key.global_layer_index == layer_index
                 && e.region_key.object_id == region.object_id
                 && e.region_key.region_id == region.region_id
+                && e.region_key.variant_chain == region.variant_chain
         }) {
             region.resolved_seam = Some(entry.chosen_candidate.clone());
         }
@@ -2284,6 +2285,7 @@ mod tests {
             schema_version,
             global_layer_index: 0,
             regions: vec![PerimeterRegion {
+                variant_chain: Vec::new(),
                 object_id: "obj".to_string(),
                 region_id: IDENTITY, // the dangerous identity
                 walls: vec![wall],

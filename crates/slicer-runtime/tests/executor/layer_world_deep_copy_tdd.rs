@@ -162,6 +162,7 @@ fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)]) -> Perimete
         .iter()
         .enumerate()
         .map(|(index, (object_id, region_id))| PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: (*object_id).to_string(),
             region_id: *region_id,
             walls: vec![make_wall_loop(

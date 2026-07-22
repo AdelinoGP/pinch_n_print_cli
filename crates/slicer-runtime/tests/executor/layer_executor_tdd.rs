@@ -780,6 +780,7 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
         global_layer_index: 0,
         regions: vec![
             slicer_ir::PerimeterRegion {
+                variant_chain: Vec::new(),
                 object_id: "obj-A".into(),
                 region_id: 1,
                 walls: vec![slicer_ir::WallLoop {
@@ -795,6 +796,7 @@ fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
                 resolved_seam: None,
             },
             slicer_ir::PerimeterRegion {
+                variant_chain: Vec::new(),
                 object_id: "obj-B".into(),
                 region_id: 2,
                 walls: vec![slicer_ir::WallLoop {
@@ -1263,6 +1265,7 @@ fn perim_ir_single_region(object_id: &str, region_id: u64) -> slicer_ir::Perimet
         schema_version: semver(1, 0, 0),
         global_layer_index: 0,
         regions: vec![slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: object_id.into(),
             region_id,
             walls: vec![slicer_ir::WallLoop {

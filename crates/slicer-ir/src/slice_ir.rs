@@ -242,7 +242,7 @@ pub const CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1081,8 +1081,30 @@ pub struct SeamPlanEntry {
 pub struct SeamPlanIR {
     /// Schema version of this IR.
     pub schema_version: SemVer,
-    /// One entry per active `(layer, object, region)` triple.
+    /// One entry per active `(layer, object, region, variant_chain)` key.
+    /// `RegionKey` (which includes `variant_chain`) is the full identity,
+    /// so two entries sharing the same `(layer, object, region_id)` but
+    /// different `variant_chain` are distinct; two entries sharing all
+    /// four fields are duplicates and the `validate_unique_entries` method
+    /// rejects them at commit time.
     pub entries: Vec<SeamPlanEntry>,
+}
+
+impl SeamPlanIR {
+    /// Returns the first duplicate `RegionKey` (if any) within `entries`,
+    /// preserving the order they appear in `entries`. Used by
+    /// `Blackboard::commit_seam_plan` to reject malformed inputs that would
+    /// otherwise silently shadow a region's plan (packet 178 AC-N1).
+    pub fn duplicate_region_key(&self) -> Option<RegionKey> {
+        use std::collections::HashSet;
+        let mut seen: HashSet<&RegionKey> = HashSet::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            if !seen.insert(&entry.region_key) {
+                return Some(entry.region_key.clone());
+            }
+        }
+        None
+    }
 }
 
 impl Default for SeamPlanIR {
@@ -1969,6 +1991,9 @@ pub struct PerimeterRegion {
     pub object_id: ObjectId,
     /// Region ID
     pub region_id: RegionId,
+    /// Ordered paint-variant identity for this region.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Wall loops in this region
     pub walls: Vec<WallLoop>,
     /// Remaining area after wall insets

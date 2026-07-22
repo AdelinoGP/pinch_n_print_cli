@@ -395,7 +395,7 @@ PathOptimization output contract restricts builder usage to this resource and th
 ## `world-prepass.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`
-(package `slicer:world-prepass@1.0.0`). The `prepass-module` world imports
+(package `slicer:world-prepass@3.0.0`). The `prepass-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the shared `module-error` from `slicer:common/module-errors`.
 
@@ -403,7 +403,7 @@ It has exactly **four** stage exports:
 
 - `run-mesh-analysis` — facet classification and surface-group proposals.
 - `run-layer-planning` — per-layer Z and active-region proposals.
-- `run-seam-planning` — scored seam candidates per `(layer, object, region)`.
+ - `run-seam-planning` 2014 scored seam candidates per `(layer, object, region, variant_chain)` (WIT field `variant-chain`). Receives `SeamPlanningView` with per-region `SliceIR` polygons.
 - `run-support-geometry` — multi-layer organic tree-support branch geometry,
   consumed by `Layer::Support` modules that declare `SupportPlanIR` as a read.
 

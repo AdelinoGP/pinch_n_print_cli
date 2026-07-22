@@ -638,6 +638,7 @@ fn perimeter_capture_with_seam(seam_xy: (f32, f32)) -> StageCapture {
         wall_index: 0,
     };
     let region = PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: "obj".to_string(),
         region_id: 1,
         walls: Vec::new(),

@@ -1,10 +1,11 @@
-package slicer:world-prepass@2.0.0;
+package slicer:world-prepass@3.0.0;
 
 world prepass-module {
     import slicer:common/host-services;
     import slicer:config/config-types;
 
     use slicer:config/config-types.{config-view};
+    use slicer:ir-handles/ir-handles.{paint-semantic, paint-value, segment-annotations-entry};
     use slicer:types/geometry.{ex-polygon, point3, point3-with-width, seam-point3-with-width};
     use slicer:common/module-errors.{module-error};
 
@@ -83,6 +84,7 @@ world prepass-module {
         global-layer-index: u32,
         object-id: object-id,
         region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
         chosen-position: seam-point3-with-width,
         chosen-wall-index: u32,
         scored-candidates: list<scored-seam-candidate>,
@@ -92,11 +94,28 @@ world prepass-module {
         push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
     }
 
+    record seam-planning-region-input {
+        global-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
+        z: f32,
+        height: f32,
+        ex-polygons: list<ex-polygon>,
+        segment-annotations: list<segment-annotations-entry>,
+        scoring-width: f32,
+    }
+
+    resource seam-planning-view {
+        regions: func() -> list<seam-planning-region-input>;
+    }
+
     export run-seam-planning: func(
         objects: list<mesh-object-view>,
         layer-plan: layer-plan-view,
         output: seam-planning-output,
         config: config-view,
+        region-input: seam-planning-view,
     ) -> result<_, module-error>;
 
     // SupportGeometry stage. global-layer-index is signed because

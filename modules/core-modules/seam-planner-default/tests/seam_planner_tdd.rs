@@ -45,6 +45,32 @@ fn unit_cube() -> MeshObjectView {
     }
 }
 
+fn cube_region_input() -> SeamPlanningView {
+    SeamPlanningView {
+        regions: vec![SeamPlanningRegionInput {
+            global_layer_index: 0,
+            object_id: "cube".to_string(),
+            region_id: "0".to_string(),
+            variant_chain: Vec::new(),
+            z: 0.2,
+            height: 0.2,
+            ex_polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2::from_mm(0.0, 0.0),
+                        Point2::from_mm(1.0, 0.0),
+                        Point2::from_mm(1.0, 1.0),
+                        Point2::from_mm(0.0, 1.0),
+                    ],
+                },
+                holes: Vec::new(),
+            }],
+            segment_annotations: Vec::new(),
+            scoring_width: 0.4,
+        }],
+    }
+}
+
 #[test]
 fn no_objects_emits_nothing() {
     let mut output = SeamPlanningOutput::new();
@@ -53,6 +79,7 @@ fn no_objects_emits_nothing() {
         &LayerPlanView { layers: vec![] },
         &mut output,
         &ConfigView::default(),
+        &SeamPlanningView::default(),
     );
     assert!(result.is_ok());
     assert!(output.entries().is_empty());
@@ -73,6 +100,7 @@ fn object_with_no_triangles_is_skipped() {
             &LayerPlanView { layers: vec![] },
             &mut output,
             &ConfigView::default(),
+            &SeamPlanningView::default(),
         )
         .expect("run_seam_planning must succeed");
     assert!(
@@ -89,6 +117,7 @@ fn cube_generates_corner_candidates() {
         &LayerPlanView { layers: vec![] },
         &mut output,
         &ConfigView::default(),
+        &cube_region_input(),
     );
     assert!(result.is_ok(), "seam planning should succeed");
     let entries = output.entries();
@@ -117,6 +146,7 @@ fn seam_planning_is_deterministic_across_runs() {
                 &LayerPlanView { layers: vec![] },
                 &mut output,
                 &ConfigView::default(),
+                &cube_region_input(),
             )
             .unwrap();
         output
