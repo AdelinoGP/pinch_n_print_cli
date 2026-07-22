@@ -12,7 +12,13 @@ use slicer_ir::LightningTreeIR;
 
 use crate::algos::lightning::error::LightningTreeError;
 
+/// Discrete support-distance field used by the Lightning tree generator.
+pub mod distance_field;
 pub mod error;
+/// Parent/child graph primitive used by the Lightning tree generator.
+pub mod tree_node;
+
+pub use distance_field::DistanceField;
 
 /// Generate the per-object, per-layer `LightningTreeIR` for one print.
 ///

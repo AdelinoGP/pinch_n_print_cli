@@ -5,11 +5,9 @@
 - Primary code path: new `crates/slicer-core/src/algos/lightning/distance_field.rs` and
   `tree_node.rs`, exported from the packet-137 `crates/slicer-core/src/algos/lightning/mod.rs`
   (which stays a skeleton — no orchestration here).
-- Neighboring tests or fixtures: unit tests co-located (`#[cfg(test)]`) — match the
-  neighboring lightning-free algo's convention; the slice is the standard pattern (e.g.
-  `crates/slicer-core/src/algos/mesh_analysis.rs` co-located tests). If the implementation
-  step finds a different convention in use, the test home is decided by FACT and recorded
-  in the implementation plan.
+- Neighboring tests or fixtures: `crates/slicer-core/tests/algo_lightning_tdd.rs` is the
+  separate integration-test home, registered in `crates/slicer-core/Cargo.toml` under
+  `[[test]]` with `required-features = ["host-algos"]`.
 - OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations
   (delegate; never load).
 
@@ -28,10 +26,7 @@
 
 - Selected approach: faithful 1:1 port of both primitives, structure-preserving (same
   function decomposition as the C++ where Rust allows), with `NodeSPtr`-style shared
-  ownership mapped to `Rc<RefCell<…>>` or index-based arenas — pick whichever the FIRST
-  sectioned read shows is loop-carried; an index arena is preferred if cycles/back-edges
-  appear (cleaner `Drop`, deterministic iteration). Both are pre-authorized (Step 2
-  resolves via the back-edge FACT).
+  ownership mapped to `Rc<RefCell<Node>>`. The graph has no arena and no back-edges.
 - Exact changes: two new files + `mod.rs` exports + tests; nothing else.
 - Rejected alternatives: (a) re-deriving a "cleaner" lightning algorithm — rejected:
   parity is the goal; (b) porting TreeNode with raw pointers/unsafe — rejected: arena
@@ -45,15 +40,14 @@
 - `crates/slicer-core/src/algos/lightning/tree_node.rs` (new).
 - `crates/slicer-core/src/algos/lightning/mod.rs` (exports only; the 137 skeleton
   untouched).
-- Test home: co-located `#[cfg(test)] mod tests` blocks inside each new file, matching
-  the convention in `crates/slicer-core/src/algos/mesh_analysis.rs` (FACT-confirmed at
-  Step 1).
+- Test home: `crates/slicer-core/tests/algo_lightning_tdd.rs`, a separate integration test
+  registered in `crates/slicer-core/Cargo.toml` with `required-features = ["host-algos"]`.
 
 ## Read-Only Context
 
 - `crates/slicer-core/src/algos/mod.rs` — module registration idiom (`pub mod <name>;`).
-- `crates/slicer-core/src/algos/mesh_analysis.rs` — co-located `#[cfg(test)]` test
-  convention (ranged; this is the FACT source for "test home").
+- `crates/slicer-core/Cargo.toml` — `algo_lightning_tdd` integration-test registration and
+  `required-features = ["host-algos"]`.
 - `crates/slicer-ir/src/slice_ir.rs` — `Point2` + `mm_to_units()` accessors (used in
   the port at every mm↔unit boundary).
 
@@ -78,7 +72,7 @@
   — Step 2 drivers.
 - "FACT with file:line: the supporting radius, smoothing magnitude, and prune length
   constants (values + units)" — constants table (÷100 applied in code, cited in tests).
-- "Run `cargo test -p slicer-core -- lightning …`; FACT + counts; SNIPPETS ≤ 20 on
+- "Run `cargo test -p slicer-core --features host-algos --all-targets -- lightning …`; FACT + counts; SNIPPETS ≤ 20 on
   failure".
 
 ## Data and Contract Notes
@@ -87,28 +81,34 @@
 - Public API freeze at packet close: `DistanceField::{new, unsupported_point/next, update}`,
   and the `tree_node` graph operations used by 139 — signature changes after close are
   139-recorded deviations with 138 tests co-updated in the same step.
-- Resolution constants: if the Orca primitives take grid resolution as a constructor
-  parameter, 138 declares it; if Orca derives it from density, 138 takes a parameter and
-  139 supplies it from the resolved config (FACT at Step 2).
+- Resolution: `DistanceField` takes `supporting_radius` as a constructor parameter;
+  `m_cell_size = supporting_radius / 6` is derived internally from Orca's
+  `radius_per_cell_size = 6`. There is no density-derived resolution in 138.
+
+## Deviations
+
+- 138 ships `propagate_to_next_layer` with the realign step stubbed. The `next_outlines` and
+  `outline_locator_resolution` parameters are accepted for API stability but unused; 139's
+  `Layer` will fill in the real outline-snap. AC-2 tests the prune+straighten path only; the
+  realign path is not exercised until 139.
 
 ## Locked Assumptions and Invariants
 
 - Faithful port: behavioral divergence from the Orca primitives requires a
   `DEVIATION_LOG` entry — there is no "improvement" license here (NaN guards and safety
   checks excepted, following the gyroid precedent).
-- All distance constants ÷ 100, cited by Orca file:line in test comments.
+- All distance constants ÷ 100, cited by canonical Orca function name in test comments.
 - Deterministic iteration everywhere (no HashMap/HashSet in any hot loop).
 
 ## Risks and Tradeoffs
 
-- TreeNode ownership mapping is the port's hardest translation; the arena fallback is
-  pre-authorized (see Selected approach) to prevent a mid-port redesign stall.
+- TreeNode ownership mapping is the port's hardest translation; `Rc<RefCell<Node>>` is the
+  selected mapping because the graph has no back-edges.
 - Hand-computed test cases can encode a misreading of the C++ — mitigation: each
   behavioral test cites the section dispatch (date + section) its expectation came from,
   making the chain auditable.
-- Grid-resolution constants may be config-coupled in Orca (density-dependent); if so,
-  the primitives take them as parameters and 139 supplies them — record the
-  parameterization in the design notes.
+- Grid resolution is derived internally from the `supporting_radius` constructor parameter;
+  138 does not add density-derived resolution.
 
 ## Context Cost Estimate
 
@@ -117,11 +117,10 @@
 - Highest-risk dispatch: the `TreeNode.cpp` section series — five bounded dispatches,
   never a whole-file dump.
 
-## Open Questions
+## Resolved Questions
 
-- `[FWD]` Ownership mapping (Rc vs index arena) — decided by the back-edge FACT at
-  Step 2 start; both are pre-authorized.
-- `[FWD]` Test home (co-located `#[cfg(test)]` vs separate `algo_lightning_tdd.rs`) —
-  match crate convention found at Step 1.
-- `[FWD]` Resolution constant parameterization (Orca derives vs accepts) — resolved by
-  the constants FACT at Step 2.
+- Ownership mapping: `Rc<RefCell<Node>>`; no arena and no back-edges.
+- Test home: `crates/slicer-core/tests/algo_lightning_tdd.rs`, registered in
+  `crates/slicer-core/Cargo.toml` with `required-features = ["host-algos"]`.
+- Resolution parameterization: `DistanceField` accepts `supporting_radius` and derives
+  `m_cell_size = supporting_radius / 6`; 138 has no density-derived resolution.

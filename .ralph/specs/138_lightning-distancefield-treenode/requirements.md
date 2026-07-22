@@ -43,8 +43,9 @@ whole-file dump.
 - WIT/IR/module changes.
 - Performance tuning beyond the port's own structure (grid resolution constants are
   ported, not re-derived).
-- The "density-coupled resolution" parameterization decision (deferred to 139's
-  `build_generator` FACT; 138 takes resolution as a constructor parameter when needed).
+- Density-derived resolution; 138 takes `supporting_radius` as the `DistanceField` constructor
+  parameter and derives `m_cell_size = supporting_radius / 6` internally. 139 supplies the
+  resolved supporting radius.
 
 ## Authoritative Docs
 
@@ -78,8 +79,8 @@ Files to inspect for this packet:
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-core -- lightning 2>&1 \| tee target/test-output.log \| grep "^test result"` | full primitive suite | FACT + counts |
-| `cargo clippy -p slicer-core --all-targets -- -D warnings` | lint gate | FACT |
+| `cargo test -p slicer-core --features host-algos --all-targets -- lightning 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | full primitive suite | FACT + counts |
+| `cargo clippy -p slicer-core --all-targets --features host-algos -- -D warnings` | lint gate | FACT |
 | `cargo xtask build-guests --check` (rebuild if STALE) | workspace habit | FACT |
 | the AC-5 attribution rg | headers present | FACT |
 | the AC-N1 empty-input rg | no-panic totality | FACT |

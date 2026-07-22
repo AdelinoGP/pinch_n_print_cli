@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 138_lightning-distancefield-treenode
 task_ids:
   - TASK-263
@@ -29,15 +29,13 @@ can build on it without surprise.
 
 ## Prerequisites and Blockers
 
-- **FORWARD-DEP on draft `137_lightning-prepass-contract`** — packet 138 depends on
-  137's `crates/slicer-core/src/algos/lightning/mod.rs` skeleton
+- **Forward dependency satisfied: `137_lightning-prepass-contract` is implemented** — packet
+  138 depends on 137's `crates/slicer-core/src/algos/lightning/mod.rs` skeleton
   (`generate_lightning_trees(...)` with the `// 139 wiring point` marker). 137 is
-  currently `status: draft`; the forward-dep is satisfied when 137 is `status:
-  implemented` (which lands `mod.rs` + `lightning_tree_producer.rs` + `LightningTreeIR`
-  + the WIT read-view). If 137's plan changes the `mod.rs` skeleton signature,
-  138's "exports from `mod.rs`" surface must be re-evaluated.
+  `status: implemented`, so the forward-dep is satisfied. If 137's plan changes the
+  `mod.rs` skeleton signature, 138's "exports from `mod.rs`" surface must be re-evaluated.
 - Unblocks: `139_lightning-layer-generator`.
-- Activation blockers: 137 must be `status: implemented` (forward-dep above).
+- Activation blockers: none; the packet-137 forward dependency is satisfied.
 
 ## Acceptance Criteria
 
@@ -45,17 +43,17 @@ can build on it without surprise.
   **when** queried for an unsupported point, **then** it yields a point inside the
   overhang; **when** updated with a support point inside the supporting radius, **then**
   all cells within the ported supporting radius are consumed (unsupported count decreases
-  by the hand-computed cell count). | `cargo test -p slicer-core -- lightning_distance_field 2>&1 | tee target/test-output.log | grep "^test result"`
+  by the hand-computed cell count). | `cargo test -p slicer-core --features host-algos -- lightning_distance_field 2>&1 | tee target/test-output.log | grep "^test result: ok"`
 - **AC-2. Given** a `TreeNode` root with one child at distance `d` on layer `N`, **when**
   `propagate_to_next_layer` runs with per-layer move distance `m < d`, **then** the
   resulting layer-`N-1` node positions moved toward their targets by at most `m` (ported
-  move-bound semantics), and parent/child attachment is preserved. | `cargo test -p slicer-core -- lightning_tree_node_propagate 2>&1 | tee target/test-output.log | grep "^test result"`
+  move-bound semantics), and parent/child attachment is preserved. | `cargo test -p slicer-core --features host-algos -- lightning_tree_node_propagate 2>&1 | tee target/test-output.log | grep "^test result: ok"`
 - **AC-3. Given** a 3-node dog-leg branch, **when** straightening runs with the ported
   smoothing magnitude, **then** the middle node moves toward the chord (total path length
-  strictly decreases; endpoints fixed). | `cargo test -p slicer-core -- lightning_tree_node_straighten 2>&1 | tee target/test-output.log | grep "^test result"`
+  strictly decreases; endpoints fixed). | `cargo test -p slicer-core --features host-algos -- lightning_tree_node_straighten 2>&1 | tee target/test-output.log | grep "^test result: ok"`
 - **AC-4. Given** a tree with one leaf branch shorter than the ported prune length and one
   longer, **when** pruning runs, **then** the short branch is removed and the long one
-  survives. | `cargo test -p slicer-core -- lightning_tree_node_prune 2>&1 | tee target/test-output.log | grep "^test result"`
+  survives. | `cargo test -p slicer-core --features host-algos -- lightning_tree_node_prune 2>&1 | tee target/test-output.log | grep "^test result: ok"`
 - **AC-5. Given** the two new files, **when** grepped for the attribution header, **then**
   both files contain a comment block matching the `docs/ORCASLICER_ATTRIBUTION.md` header
   pattern (verified by `rg` on the attribution anchor string). | `rg -l 'OrcaSlicer' crates/slicer-core/src/algos/lightning/distance_field.rs crates/slicer-core/src/algos/lightning/tree_node.rs | wc -l | grep -q '^2$' && echo ATTR-OK`
@@ -64,12 +62,12 @@ can build on it without surprise.
 
 - **AC-N1. Given** empty outlines / an empty tree, **when** any primitive operation runs
   (query, update, propagate, straighten, prune), **then** it returns empty results without
-  panicking. | `cargo test -p slicer-core -- lightning_empty_inputs_no_panic 2>&1 | tee target/test-output.log | grep "^test result"`
+  panicking. | `cargo test -p slicer-core --features host-algos -- lightning_empty_inputs_no_panic 2>&1 | tee target/test-output.log | grep "^test result: ok"`
 
 ## Verification
 
-- `cargo test -p slicer-core -- lightning 2>&1 | tee target/test-output.log | grep "^test result"`
-- `cargo clippy -p slicer-core --all-targets -- -D warnings`
+- `cargo test -p slicer-core --features host-algos -- lightning 2>&1 | tee target/test-output.log | grep "^test result: ok"`
+- `cargo clippy -p slicer-core --all-targets --features host-algos -- -D warnings`
 - `cargo xtask build-guests --check` (the new files do not feed guests, but the
   freshness gate is the workspace habit)
 

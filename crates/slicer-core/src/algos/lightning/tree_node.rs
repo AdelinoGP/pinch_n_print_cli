@@ -1,0 +1,387 @@
+// -----------------------------------------------------------------------------
+// Portions of this file are derived from OrcaSlicer, Bambu Studio, PrusaSlicer,
+// and Slic3r, which are licensed under the GNU Affero General Public License,
+// version 3 (AGPLv3).
+//
+// Original C++ source path: OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/TreeNode.{hpp,cpp}
+//
+// This file is an LLM-generated Rust port of the original C++ implementation,
+// adapted for the Pinch 'n Print architecture.
+// -----------------------------------------------------------------------------
+
+//! Parent/child graph primitive for Lightning sparse infill.
+
+use std::cell::{Cell, RefCell};
+use std::rc::{Rc, Weak};
+
+use slicer_ir::Point2;
+
+// Orca ref: Node::straighten and close_enough (TreeNode.cpp); PnP lengths divide by 100.
+const CLOSE_ENOUGH_PNP_UNITS: f64 = 0.1;
+const WEIGHT_PNP_UNITS: i64 = 10;
+
+/// Shared ownership handle for a [`Node`].
+pub type NodeRef = Rc<RefCell<Node>>;
+
+/// A location in a Lightning tree and its child branches.
+pub struct Node {
+    location: Cell<Point2>,
+    parent: RefCell<Weak<RefCell<Node>>>,
+    children: RefCell<Vec<NodeRef>>,
+    is_root: Cell<bool>,
+    self_ref: RefCell<Weak<RefCell<Node>>>,
+}
+
+impl Node {
+    /// Construct a root node at `loc`.
+    pub fn new(loc: Point2) -> NodeRef {
+        Rc::new_cyclic(|self_ref| {
+            RefCell::new(Self {
+                location: Cell::new(loc),
+                parent: RefCell::new(Weak::new()),
+                children: RefCell::new(Vec::new()),
+                is_root: Cell::new(true),
+                self_ref: RefCell::new(self_ref.clone()),
+            })
+        })
+    }
+
+    /// Return this node's location.
+    pub fn location(&self) -> Point2 {
+        self.location.get()
+    }
+
+    /// Update this node's location.
+    pub fn set_location(&self, loc: Point2) {
+        self.location.set(loc);
+    }
+
+    /// Return whether this node has no parent.
+    pub fn is_root(&self) -> bool {
+        self.is_root.get()
+    }
+
+    /// Return a snapshot of this node's direct children.
+    pub fn children(&self) -> Vec<NodeRef> {
+        self.children.borrow().clone()
+    }
+
+    /// Construct and attach a child at `child_loc`.
+    pub fn add_child(&self, child_loc: Point2) -> NodeRef {
+        self.add_child_node(Self::new(child_loc))
+    }
+
+    /// Attach an existing node as a child and return it.
+    pub fn add_child_node(&self, child: NodeRef) -> NodeRef {
+        self.children.borrow_mut().push(Rc::clone(&child));
+        *child.borrow().parent.borrow_mut() = self.self_ref.borrow().clone();
+        child.borrow().is_root.set(false);
+        child
+    }
+
+    /// Copy this node and its complete descendant tree.
+    pub fn deep_copy(&self) -> NodeRef {
+        let copy = Self::new(self.location());
+        copy.borrow().is_root.set(self.is_root());
+        for child in self.children() {
+            let child_copy = child.borrow().deep_copy();
+            copy.borrow().add_child_node(child_copy);
+        }
+        copy
+    }
+
+    /// Copy, prune, and straighten this tree for the next layer.
+    ///
+    /// The outline arguments are retained as the packet-138 seam. Full outline
+    /// realignment is intentionally deferred to the layer orchestration in
+    /// packet 139.
+    pub fn propagate_to_next_layer(
+        &self,
+        next_outlines: &[Point2],
+        outline_locator_resolution: i64,
+        prune_distance: i64,
+        smooth_magnitude: i64,
+        max_remove_colinear_dist: i64,
+    ) -> Option<NodeRef> {
+        let _ = (next_outlines, outline_locator_resolution);
+        let copy = self.deep_copy();
+        let had_children = !copy.borrow().children().is_empty();
+        let distance_pruned = copy.borrow().prune(prune_distance);
+        if prune_distance > 0 && had_children && distance_pruned < prune_distance {
+            return None;
+        }
+        copy.borrow()
+            .straighten(smooth_magnitude, max_remove_colinear_dist);
+        Some(copy)
+    }
+
+    /// Reverse parent-child edges up to the root and optionally attach this
+    /// node to `new_parent` during the recursive unwind.
+    pub fn reroot(&self, new_parent: Option<NodeRef>) {
+        let self_rc = self
+            .self_ref
+            .borrow()
+            .upgrade()
+            .expect("node self reference");
+        if !self.is_root() {
+            if let Some(old_parent) = self.parent.borrow().upgrade() {
+                old_parent.borrow().reroot(Some(Rc::clone(&self_rc)));
+                self.children.borrow_mut().push(old_parent);
+            }
+        }
+
+        if let Some(new_parent) = new_parent {
+            self.children
+                .borrow_mut()
+                .retain(|child| !Rc::ptr_eq(child, &new_parent));
+            new_parent
+                .borrow()
+                .children
+                .borrow_mut()
+                .push(Rc::clone(&self_rc));
+            self.is_root.set(false);
+            *self.parent.borrow_mut() = Rc::downgrade(&new_parent);
+        } else {
+            self.is_root.set(true);
+            *self.parent.borrow_mut() = Weak::new();
+        }
+    }
+
+    /// Prune leaf paths by `distance` and return the greatest consumed length.
+    pub fn prune(&self, distance: i64) -> i64 {
+        if distance <= 0 {
+            return 0;
+        }
+
+        let mut max_distance_pruned = 0;
+        let mut child_index = 0;
+        while child_index < self.children.borrow().len() {
+            let child = Rc::clone(&self.children.borrow()[child_index]);
+            let distance_pruned_child = child.borrow().prune(distance);
+
+            if distance_pruned_child >= distance {
+                max_distance_pruned = max_distance_pruned.max(distance_pruned_child);
+                child_index += 1;
+                continue;
+            }
+
+            let parent_location = self.location();
+            let child_location = child.borrow().location();
+            let edge_length = distance_between(parent_location, child_location);
+            if distance_pruned_child + edge_length <= distance {
+                max_distance_pruned =
+                    max_distance_pruned.max(distance_pruned_child.saturating_add(edge_length));
+                self.children.borrow_mut().remove(child_index);
+            } else {
+                let remaining = distance - distance_pruned_child;
+                let dx = (parent_location.x - child_location.x) as f64;
+                let dy = (parent_location.y - child_location.y) as f64;
+                let length = dx.hypot(dy);
+                child.borrow().set_location(Point2 {
+                    x: (child_location.x as f64 + dx / length * remaining as f64) as i64,
+                    y: (child_location.y as f64 + dy / length * remaining as f64) as i64,
+                });
+                max_distance_pruned = max_distance_pruned.max(distance);
+                child_index += 1;
+            }
+        }
+
+        max_distance_pruned
+    }
+
+    /// Move nodes toward straight paths without exceeding `magnitude` per move.
+    pub fn straighten(&self, magnitude: i64, max_remove_colinear_dist: i64) {
+        let max_remove_colinear_dist2 = i128::from(max_remove_colinear_dist)
+            .saturating_mul(i128::from(max_remove_colinear_dist));
+        self.straighten_recursive(magnitude, self.location(), 0, max_remove_colinear_dist2);
+    }
+
+    fn straighten_recursive(
+        &self,
+        magnitude: i64,
+        junction_above: Point2,
+        accumulated_dist: i64,
+        max_remove_colinear_dist2: i128,
+    ) -> RectilinearJunction {
+        // Orca ref: Node::straighten and junction_magnitude_factor (TreeNode.cpp).
+        const JUNCTION_MAGNITUDE_NUMERATOR: i64 = 3;
+        const JUNCTION_MAGNITUDE_DENOMINATOR: i64 = 4;
+
+        let children = self.children();
+        if children.len() == 1 {
+            let child = &children[0];
+            let child_dist = distance_between(self.location(), child.borrow().location());
+            let junction_below = child.borrow().straighten_recursive(
+                magnitude,
+                junction_above,
+                accumulated_dist.saturating_add(child_dist),
+                max_remove_colinear_dist2,
+            );
+            let total_dist_to_junction_below = junction_below.total_recti_dist;
+            let a = junction_above;
+            let b = junction_below.junction_loc;
+            if a != b {
+                let denominator = total_dist_to_junction_below.max(1);
+                let destination = interpolate(a, b, accumulated_dist, denominator);
+                self.set_location(move_toward(self.location(), destination, magnitude));
+            }
+
+            if let Some(child) = self.children().first().cloned() {
+                if let Some(parent) = self.parent.borrow().upgrade() {
+                    let parent_location = parent.borrow().location();
+                    let child_location = child.borrow().location();
+                    if squared_distance(child_location, parent_location) < max_remove_colinear_dist2
+                        && distance_to_line_squared(
+                            self.location(),
+                            parent_location,
+                            child_location,
+                        ) <= CLOSE_ENOUGH_PNP_UNITS * CLOSE_ENOUGH_PNP_UNITS
+                    {
+                        *child.borrow().parent.borrow_mut() = Rc::downgrade(&parent);
+                        let self_rc = self.self_ref.borrow().upgrade();
+                        if let Some(self_rc) = self_rc {
+                            let parent_node = parent.borrow();
+                            let mut siblings = parent_node.children.borrow_mut();
+                            if let Some(sibling) = siblings
+                                .iter_mut()
+                                .find(|sibling| Rc::ptr_eq(sibling, &self_rc))
+                            {
+                                *sibling = child;
+                            }
+                        }
+                    }
+                }
+            }
+
+            junction_below
+        } else {
+            let mut junction_moving_dir =
+                normalized_scaled_difference(self.location(), junction_above, WEIGHT_PNP_UNITS);
+            let mut prevent_junction_moving = false;
+            for child in children {
+                let child_dist = distance_between(self.location(), child.borrow().location());
+                let below = child.borrow().straighten_recursive(
+                    magnitude,
+                    self.location(),
+                    child_dist,
+                    max_remove_colinear_dist2,
+                );
+                let child_direction = normalized_scaled_difference(
+                    self.location(),
+                    below.junction_loc,
+                    WEIGHT_PNP_UNITS,
+                );
+                junction_moving_dir.x = junction_moving_dir.x.saturating_add(child_direction.x);
+                junction_moving_dir.y = junction_moving_dir.y.saturating_add(child_direction.y);
+                if below.total_recti_dist < magnitude {
+                    prevent_junction_moving = true;
+                }
+            }
+
+            let junction_magnitude = magnitude.saturating_mul(JUNCTION_MAGNITUDE_NUMERATOR)
+                / JUNCTION_MAGNITUDE_DENOMINATOR;
+            if junction_moving_dir != Point2::default()
+                && !self.children.borrow().is_empty()
+                && !self.is_root()
+                && !prevent_junction_moving
+            {
+                let direction_length = distance_between(Point2::default(), junction_moving_dir);
+                if direction_length > junction_magnitude && direction_length > 0 {
+                    junction_moving_dir.x =
+                        junction_moving_dir.x * junction_magnitude / direction_length;
+                    junction_moving_dir.y =
+                        junction_moving_dir.y * junction_magnitude / direction_length;
+                }
+                let location = self.location();
+                self.set_location(Point2 {
+                    x: location.x.saturating_add(junction_moving_dir.x),
+                    y: location.y.saturating_add(junction_moving_dir.y),
+                });
+            }
+            RectilinearJunction {
+                total_recti_dist: accumulated_dist,
+                junction_loc: self.location(),
+            }
+        }
+    }
+}
+
+struct RectilinearJunction {
+    total_recti_dist: i64,
+    junction_loc: Point2,
+}
+
+fn distance_between(first: Point2, second: Point2) -> i64 {
+    let dx = (first.x - second.x) as f64;
+    let dy = (first.y - second.y) as f64;
+    dx.hypot(dy) as i64
+}
+
+fn squared_distance(first: Point2, second: Point2) -> i128 {
+    let dx = i128::from(first.x) - i128::from(second.x);
+    let dy = i128::from(first.y) - i128::from(second.y);
+    dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))
+}
+
+fn interpolate(start: Point2, end: Point2, numerator: i64, denominator: i64) -> Point2 {
+    let numerator = i128::from(numerator);
+    let denominator = i128::from(denominator);
+    let x = i128::from(start.x).saturating_add(
+        (i128::from(end.x) - i128::from(start.x)).saturating_mul(numerator) / denominator,
+    );
+    let y = i128::from(start.y).saturating_add(
+        (i128::from(end.y) - i128::from(start.y)).saturating_mul(numerator) / denominator,
+    );
+    Point2 {
+        x: x as i64,
+        y: y as i64,
+    }
+}
+
+fn move_toward(current: Point2, destination: Point2, magnitude: i64) -> Point2 {
+    let dx = i128::from(destination.x) - i128::from(current.x);
+    let dy = i128::from(destination.y) - i128::from(current.y);
+    let distance2 = dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy));
+    let magnitude2 = i128::from(magnitude).saturating_mul(i128::from(magnitude));
+    if distance2 <= magnitude2 || magnitude <= 0 {
+        return if distance2 <= magnitude2 {
+            destination
+        } else {
+            current
+        };
+    }
+
+    let distance = (distance2 as f64).sqrt();
+    Point2 {
+        x: (current.x as f64 + dx as f64 / distance * magnitude as f64) as i64,
+        y: (current.y as f64 + dy as f64 / distance * magnitude as f64) as i64,
+    }
+}
+
+fn normalized_scaled_difference(start: Point2, end: Point2, magnitude: i64) -> Point2 {
+    let dx = (end.x - start.x) as f64;
+    let dy = (end.y - start.y) as f64;
+    let length = dx.hypot(dy);
+    if length == 0.0 {
+        Point2::default()
+    } else {
+        Point2 {
+            x: (dx / length * magnitude as f64) as i64,
+            y: (dy / length * magnitude as f64) as i64,
+        }
+    }
+}
+
+fn distance_to_line_squared(point: Point2, start: Point2, end: Point2) -> f64 {
+    let line_x = (end.x - start.x) as f64;
+    let line_y = (end.y - start.y) as f64;
+    let point_x = (point.x - start.x) as f64;
+    let point_y = (point.y - start.y) as f64;
+    let line_length2 = line_x * line_x + line_y * line_y;
+    if line_length2 == 0.0 {
+        point_x * point_x + point_y * point_y
+    } else {
+        let cross = point_x * line_y - point_y * line_x;
+        cross * cross / line_length2
+    }
+}

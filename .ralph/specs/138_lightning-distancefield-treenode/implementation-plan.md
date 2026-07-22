@@ -14,8 +14,8 @@
 ### Step 1: `DistanceField` port (RED→GREEN)
 
 - Task IDs: `TASK-263`
-- Objective: resolve the test-home `[FWD]` (FACT on the convention used by
-  `mesh_analysis.rs`); author AC-1 + AC-N1(distance-field half) tests from hand-computed
+- Objective: use the separate `algo_lightning_tdd.rs` integration-test home; author AC-1 +
+  AC-N1(distance-field half) tests from hand-computed
   4×4-cell cases (RED); port `DistanceField` (attribution header; constants ÷ 100, cited)
   to GREEN; determinism sub-test included.
 - Precondition: packet 137 closed; clean tree; the `algos/lightning/mod.rs` skeleton
@@ -42,7 +42,7 @@
   - the DistanceField SUMMARY + SNIPPETS dispatches (design §Expected Sub-Agent
     Dispatches)
   - the constants FACT (supporting radius, value + units + Orca file:line)
-  - "Run `cargo test -p slicer-core -- lightning_distance_field …`; FACT + counts"
+   - "Run `cargo test -p slicer-core --features host-algos --all-targets -- lightning_distance_field …`; FACT + counts"
 - Context cost: `M`
 - Authoritative docs: `docs/08_coordinate_system.md` (delegate).
 - OrcaSlicer refs: `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/DistanceField.{hpp,cpp}`
@@ -54,8 +54,8 @@
 ### Step 2: `TreeNode` port (RED→GREEN)
 
 - Task IDs: `TASK-263`
-- Objective: resolve the ownership `[FWD]` (back-edge FACT → Rc vs arena); author
-  AC-2/3/4 + AC-N1(tree half) tests (RED); port `TreeNode` section-by-section
+- Objective: use `Rc<RefCell<Node>>` ownership with no back-edges; author AC-2/3/4 + AC-N1
+  (tree half) tests (RED); port `TreeNode` section-by-section
   (attachment → propagate → straighten → reroot → prune) to GREEN; constants FACT first
   (smoothing magnitude, prune length, propagate move bound).
 - Precondition: Step 1 exit condition.
@@ -73,7 +73,7 @@
   - the ownership FACT (back-edge presence/absence) + the five `TreeNode.cpp` section
     dispatches
   - the constants FACT (smoothing magnitude, prune length, move bound)
-  - "Run `cargo test -p slicer-core -- lightning_tree_node …`; FACT + counts;
+   - "Run `cargo test -p slicer-core --features host-algos --all-targets -- lightning_tree_node …`; FACT + counts;
     SNIPPETS ≤ 20 on failure"
 - Context cost: `M`
 - Authoritative docs: none new.
@@ -100,15 +100,15 @@
 - Files allowed to edit (at most 3): the test home file.
 - Files explicitly out-of-bounds for this step: everything else.
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-core -- lightning …`; FACT + counts"
-  - "Run `cargo clippy -p slicer-core --all-targets -- -D warnings` + `cargo xtask
+   - "Run `cargo test -p slicer-core --features host-algos --all-targets -- lightning …`; FACT + counts"
+   - "Run `cargo clippy -p slicer-core --all-targets --features host-algos -- -D warnings` + `cargo xtask
     build-guests --check`; FACT each"
 - Context cost: `S`
 - Authoritative docs: none new.
 - OrcaSlicer refs: none.
 - Verification:
   - AC-N1 + AC-5 pipe commands — FACT each
-  - the `cargo test -p slicer-core -- lightning` pipe — FACT
+   - the `cargo test -p slicer-core --features host-algos --all-targets -- lightning` pipe — FACT
 - Exit condition: all packet ACs green; API frozen.
 
 ## Per-Step Budget Roll-Up
