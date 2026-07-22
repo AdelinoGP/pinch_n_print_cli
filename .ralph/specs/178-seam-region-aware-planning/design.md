@@ -62,8 +62,8 @@
 
 ## Data and Contract Notes
 
-- IR/manifest contracts: `SeamPlanIR` already owns full `RegionKey` in Rust but current WIT harvest reconstructs an empty `variant_chain`; this packet closes that loss. Perimeter regions must expose the same identity before host injection can be exact.
-- WIT boundary: adding required fields/parameters to `slicer:world-prepass` and shared `ir-handles` is a major world change and rebuilds all prepass guests.
+- IR/manifest contracts: `SeamPlanIR` already owns full `RegionKey` in Rust but current WIT harvest reconstructs an empty `variant_chain`; this packet closes that loss. Perimeter regions must expose the same identity before host injection can be exact. The `SeamPlanEntry` adds a `variant_chain` field; the additive minor bump of `CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION` 1.0.0 → 1.1.0 must be made in the same step that touches `SeamPlanEntry` (no AC hardcodes the literal — the field-addition is the assertion, the version follows per `docs/11` policy).
+- WIT boundary: adding required fields/parameters to `slicer:world-prepass` and shared `ir-handles` is a major world change and rebuilds all prepass guests. The `seam-plan-entry` WIT record gains a `variant-chain: list<tuple<string, paint-value>>` field and a new per-region input record/resource is added. World version bumps 2.0.0 → 3.0.0 (AC-1 pins the literal).
 - Determinism/scheduler constraints: projection ordering is ascending `(layer, object, region, variant_chain)`; phase routing must ensure SliceIR and region data exist before dispatch; no map iteration may choose plan order.
 
 ## Locked Assumptions and Invariants

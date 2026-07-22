@@ -2,7 +2,8 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-281`
+- Grouped task IDs: `TASK-284` (re-derived 2026-07-22; the original `TASK-281` row is closed under packet 117, see `docs/07_implementation_status.md:241`)
+- Supersedes: `.ralph/specs/168-seam-aligned-modes/packet.spec.md`
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -27,8 +28,8 @@ parallel per-layer module or a host builtin.
 
 ## Out of Scope
 
-- Canonical comparator, visibility, overhang, alternative-start retry, or B-spline solver changes; packet 2 owns those.
-- Continuous final-wall projection, path-point insertion, flag/width rotation changes, default-mode changes, and degraded fallback diagnostics; packet 3 owns those.
+- Canonical comparator, visibility, overhang, alternative-start retry, or B-spline solver changes; packet 179 (`179-seam-canonical-algorithm-fidelity`) owns those.
+- Continuous final-wall projection, path-point insertion, flag/width rotation changes, default-mode changes, and degraded fallback diagnostics; packet 180 (`180-seam-final-placement-default`) owns those.
 - Changes to OrcaSlicer source or direct final-perimeter generation.
 - Host-native alignment policy or a second cross-layer state channel.
 
@@ -46,7 +47,7 @@ Files to inspect for this packet:
 
 - Positive: `AC-1` through `AC-5` prove the versioned input contract, full active-region identity, region-bound candidates, non-broadcast injection, and inactive-region omission.
 - Negative: `AC-N1` through `AC-N2` prove duplicate and malformed identity rejection.
-- Cross-packet impact: packet 2 consumes the new region view and full identity; packet 3 consumes variant-aware resolved seams and the new wall identity.
+- Cross-packet impact: packet 179 consumes the new region view and full identity; packet 180 consumes variant-aware resolved seams and the new wall identity.
 
 ## Verification Commands
 

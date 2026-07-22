@@ -1,8 +1,9 @@
 ---
-status: draft
+status: active
 packet: 178-seam-region-aware-planning
 task_ids:
-  - TASK-281
+  - TASK-284
+supersedes: ../168-seam-aligned-modes/packet.spec.md
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -15,13 +16,13 @@ Make `PrePass::SeamPlanning` consume real per-active-region `SliceIR` geometry a
 
 ## Scope Boundaries
 
-This packet corrects the contour-ordinal identity and mesh-contour source introduced by packet 168. It extends the prepass input and perimeter-region identity contracts so aligned planning can run after region and paint preparation while remaining a guest module. It does not change Orca scoring, visibility, seam-string retry, spline fitting, or continuous final-wall projection; those belong to packets 2 and 3.
+This packet narrows the `D-168-SEAM-PREPASS-SOURCE` deviation by closing part (1) only: it replaces the contour-ordinal `region_id` and mesh-contour source introduced by packet 168 with the full active-region `RegionKey` and per-region `SliceIR` polygons, preserving `variant_chain` through WIT, harvest, blackboard injection, and per-layer seam placement. It extends the prepass input and perimeter-region identity contracts so aligned planning can run after region and paint preparation while remaining a guest module. It does not change Orca scoring, visibility, seam-string retry, spline fitting, or continuous final-wall projection; those belong to packets 179 (parts 2-5 of D-168) and 180.
 
 ## Prerequisites and Blockers
 
-- Depends on: implemented `.ralph/specs/168-seam-aligned-modes/` and `TASK-274`.
-- Unblocks: `TASK-282` and the canonical algorithm packet.
-- Activation blockers: none known; packet remains draft until preflight and guest freshness gates pass.
+- Depends on: implemented `.ralph/specs/168-seam-aligned-modes/` (status `implemented`, closes `TASK-274`). Reads predecessor `packet.spec.md` first per `supersedes:` row.
+- Unblocks: the canonical algorithm packet at `.ralph/specs/179-seam-canonical-algorithm-fidelity/` and the final-placement packet at `.ralph/specs/180-seam-final-placement-default/`; their `task_ids` are unassigned and must be re-derived by each packet against `docs/07_implementation_status.md` at refine time (the parent parity plan's `TASK-282`/`TASK-283` row IDs are stale; `TASK-285` is also closed under packet 120).
+- Activation blockers: none remaining; the parent plan `docs/specs/seam-canonical-parity-plan.md` has been reconciled 2026-07-22 (queue re-derived against `docs/07_implementation_status.md`: row 1 → `TASK-284`, row 2 → `TASK-277`, row 3 → `TASK-283`; false PREFLIGHT PASS withdrawn). Packets 179 and 180 stay `status: draft` and each must be re-derived at its own refine time.
 
 ## Acceptance Criteria
 
@@ -56,11 +57,11 @@ This packet corrects the contour-ordinal identity and mesh-contour source introd
 
 ## Doc Impact Statement (Required)
 
-- `docs/01_system_architecture.md` PrePass stage order and seam-planning source - `rg -q 'per-region.*SliceIR|SeamPlanning' docs/01_system_architecture.md`
-- `docs/02_ir_schemas.md` `RegionKey`, `PerimeterRegion`, and `SeamPlanIR` sections - `rg -q 'variant_chain.*SeamPlanIR|PerimeterRegion' docs/02_ir_schemas.md`
-- `docs/03_wit_and_manifest.md` world-prepass signature and claim contract - `rg -q 'run-seam-planning.*variant-chain' docs/03_wit_and_manifest.md`
-- `docs/15_config_keys_reference.md` aligned default and seam mode values - `rg -q 'aligned.*default|seam_mode' docs/15_config_keys_reference.md`
-- `docs/DEVIATION_LOG.md` supersession/correction of `D-168-SEAM-PREPASS-SOURCE` - `rg -q 'D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
+- `docs/01_system_architecture.md` PrePass stage order and seam-planning source — must add a sentence tying `SeamPlanning` to per-region `SliceIR` input, not mesh contours. | `rg -q 'SeamPlanning.*per-region.*SliceIR|per-region.*SliceIR.*SeamPlanning' docs/01_system_architecture.md`
+- `docs/02_ir_schemas.md` `RegionKey`, `PerimeterRegion`, and `SeamPlanIR` sections — `SeamPlanIR.entries[*]` must carry the full `variant_chain`. | `rg -q 'variant_chain.*SeamPlanIR|SeamPlanIR.*variant_chain' docs/02_ir_schemas.md`
+- `docs/03_wit_and_manifest.md` world-prepass signature and claim contract — must reference the new per-region input view, not the prior `layer-plan` only. | `rg -q 'run-seam-planning.*variant-chain|seam-planning.*variant-chain' docs/03_wit_and_manifest.md`
+- `docs/15_config_keys_reference.md` aligned default and seam mode values — keeps `seam_mode` listed; the `aligned` default change belongs to packet 180, not this one. | `rg -q 'aligned.*default|seam_mode' docs/15_config_keys_reference.md`
+- `docs/DEVIATION_LOG.md` narrow `D-168-SEAM-PREPASS-SOURCE` (close part 1 only; parts 2-5 stay Open for packet 179) — must add a "Narrowed by packet 178" note. | `rg -q 'D-168-SEAM-PREPASS-SOURCE.*Narrowed|Narrowed.*D-168-SEAM-PREPASS-SOURCE' docs/DEVIATION_LOG.md`
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
