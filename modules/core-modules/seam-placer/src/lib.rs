@@ -473,7 +473,7 @@ impl LayerModule for SeamPlacer {
             // A region with an empty `seam_candidates` list AND no
             // `resolved_seam` has no usable seam information — most commonly a
             // `seam_blocker` paint region excluded every corner candidate at
-            // perimeter-generation time (D-109-SEAM-FATAL-CORRECTED, superseding
+            // perimeter-generation time (D-109B-SEAM-FATAL-CORRECTED, superseding
             // packet 108's D-108-SEAM-CONSUMED fatal-on-empty). This is NOT
             // fatal: the upstream sharpest-vertex fallback in `slicer_core`
             // normally guarantees a candidate exists, and OrcaSlicer degrades

@@ -833,7 +833,7 @@ legitimately produce zero candidates, and non-planar-shell regions
 candidates by design. The audit found no bug in that general path; it stays
 a no-op. Packet 108 (AC-N2) originally made this a hard error
 (`Err(ModuleError::fatal(6, ..))`) when a `seam_blocker` paint region excluded
-every corner candidate. **P109 corrected that (D-109-SEAM-FATAL-CORRECTED,
+every corner candidate. **P109 corrected that (D-109B-SEAM-FATAL-CORRECTED,
 superseding D-108-SEAM-CONSUMED's fatal-on-empty):** for a region with
 **standard** (non non-planar-shell) wall loops, an empty `seam_candidates` list
 **and** no `resolved_seam`, seam-placer now degrades **gracefully** — it emits
