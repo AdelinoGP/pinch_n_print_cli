@@ -25,6 +25,7 @@ static ALLOC: slicer_runtime::report::AccountingAllocator<std::alloc::System> =
     slicer_runtime::report::AccountingAllocator::new(std::alloc::System);
 
 mod helpers_cmd;
+mod support_preview;
 mod visual_debug;
 
 use std::path::PathBuf;
@@ -90,6 +91,24 @@ enum Cmd {
         /// Cancel the slice when stdin is closed (EOF). The process exits with code 130.
         #[arg(long = "cancel-on-stdin-eof")]
         cancel_on_stdin_eof: bool,
+    },
+    /// Generate a support-geometry preview JSON document.
+    SupportPreview {
+        /// Path to the input 3D model (STL, OBJ, or 3MF).
+        #[arg(long)]
+        input: PathBuf,
+        /// Path to the output support preview JSON file.
+        #[arg(long)]
+        output: PathBuf,
+        /// Path to a JSON configuration file.
+        #[arg(long)]
+        config: Option<PathBuf>,
+        /// Directory to search for additional modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
     },
     /// Generate a versioned visual-debug bundle.
     VisualDebug {
@@ -490,6 +509,30 @@ fn main() {
                     eprintln!("error: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+
+        Cmd::SupportPreview {
+            input,
+            output,
+            config,
+            module_dir,
+            no_default_module_paths,
+        } => {
+            if support_preview::run_support_preview(
+                &input,
+                &output,
+                config.as_deref(),
+                &module_dir,
+                no_default_module_paths,
+            )
+            .map_err(|e| {
+                eprintln!("support-preview failed: {e}");
+                e
+            })
+            .is_err()
+            {
+                std::process::exit(1);
             }
         }
 
