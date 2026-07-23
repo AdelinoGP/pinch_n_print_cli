@@ -13,7 +13,7 @@ The fork-gaps handoff item 8 claimed `seam-placer` ignored live seam candidates;
 
 ## In Scope
 
-- New regression test file `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` covering: 3-wall single-region rotation (AC-1), multi-region count/pairing preservation (AC-2), aligned-mode sibling survival (AC-3, using the `select_seam_candidate` path since `seam_candidates` is non-empty), and the tolerance-miss pristine path with no committed seam (AC-N1, in `nearest` mode to isolate from 180's continuous projection). Fixtures built with the existing `slicer_sdk::test_prelude` builders (`PerimeterRegionViewBuilder`, `seam_candidate`) as used by `tests/seam_placer_dispatch_tdd.rs` and the new packet-180 tests (`seam_continuous_projection_tdd.rs`, `seam_degraded_fallback_tdd.rs`).
+- New regression test file `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` covering: 3-wall single-region rotation (AC-1), multi-region count/pairing preservation (AC-2), aligned-mode sibling survival (AC-3, exercising the `aligned_seam_target` production branch because `seam_candidates` is non-empty and the host has injected a `resolved_seam`; the `project_onto_wall_segment` path is not reached), and the tolerance-miss pristine path with no committed seam (AC-N1, in `nearest` mode to isolate from 180's continuous projection). Fixtures built with the existing `slicer_sdk::test_prelude` builders (`PerimeterRegionViewBuilder`, `seam_candidate`) as used by `tests/seam_placer_dispatch_tdd.rs` and the new packet-180 tests (`seam_continuous_projection_tdd.rs`, `seam_degraded_fallback_tdd.rs`).
 - A fix in `modules/core-modules/seam-placer/src/lib.rs::run_wall_postprocess` only if a fixture falsifies the invariant (expected outcome: already correct; the fix step is conditional).
 - TASK-120c reconciliation in `docs/07_implementation_status.md`: update the existing reopened `[~]` row — whose reopened-gap text lists the already-fixed candidate-preference gap alongside the sibling-erasure risk this packet audits — to `[x]` closed with the audit finding, or `[ ]` re-scoped with the exact residual defect, referencing packet `170-seam-livepath-audit` (AC-4).
 
@@ -32,9 +32,9 @@ The fork-gaps handoff item 8 claimed `seam-placer` ignored live seam candidates;
 
 ## Acceptance Summary
 
-- Positive: `AC-1` through `AC-4`. Refinement: "point-for-point identical" in AC-1/AC-3 means equal `path.points`, equal `feature_flags`, and equal `width_profile.widths` vectors, and preserved closing-repeat convention (`path.is_closed()` unchanged).
+- Positive: `AC-1` through `AC-4`. Refinement: "point-for-point identical" in AC-1/AC-3 means equal `path.points`, equal `feature_flags`, and equal `width_profile.widths` vectors, and preserved closing-repeat convention (last point equals first point).
 - Negative: `AC-N1` (restricted to `nearest` mode to isolate from 180's continuous-projection behavior).
-- Cross-packet impact: runs after packets 178/179/180; AC-3 exercises the aligned consumption branch in its post-180 form, so a regression here also guards 180's landing. The audit does not modify any of those packets' code. No other packets touch this crate.
+- Cross-packet impact: runs after packets 178/179/180; AC-3 exercises the `aligned_seam_target` branch in its post-180 form, so a regression here also guards aligned seam consumption without coupling this audit to the empty-candidate projection fallback. The audit does not modify any of those packets' code. No other packets touch this crate.
 
 ## Verification Commands
 

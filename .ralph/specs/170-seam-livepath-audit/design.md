@@ -53,19 +53,19 @@
 
 - IR/manifest contracts: none change. Output assertions go through the same builder-view API the existing dispatch tests use.
 - WIT boundary: untouched.
-- Determinism/scheduler constraints: fixtures pick `nearest` mode (deterministic min-by) and `aligned` (deterministic snap via `select_seam_candidate`; deterministic continuous projection via `project_onto_wall_segment`); avoid `random` mode in count fixtures to keep failures reproducible.
+- Determinism/scheduler constraints: fixtures pick `nearest` mode (deterministic min-by) and `aligned` (deterministic `aligned_seam_target` selection via its `min_by` over non-empty candidates); the empty-candidate `project_onto_wall_segment` fallback remains covered by packet 180 tests. Avoid `random` mode in count fixtures to keep failures reproducible.
 - "Point-for-point identical" comparison must include `feature_flags` and `width_profile.widths` (the parallel arrays `rotate_wall_loop` maintains) so a partial-rotation bug cannot pass on points alone. The `rotate_wall_loop` debug-assert that parallelism holds during rotation is the in-module safety net this audit pins externally.
 
 ## Locked Assumptions and Invariants
 
-- Wall-preservation invariant: every region entering `run_wall_postprocess` with N wall loops exits with exactly N, in every mode (`nearest`, `rear`, `random`, `aligned`, `aligned_back`) and on every seam-resolution branch (hit, miss, none — including the post-180 aligned continuous-projection path). This packet's tests become its permanent guard.
-- Packet 180's `aligned` mode continuous projection and the host-injection of `resolved_seam` exist before AC-3 is written; the aligned branch is the post-180 form, not the pre-180 vertex-snap form.
+- Wall-preservation invariant: every region entering `run_wall_postprocess` with N wall loops exits with exactly N, in the `nearest` and `aligned` modes covered by the regression fixtures, on every seam-resolution branch (hit, miss, none). This packet's tests become its permanent guard; the existing dispatch tests cover `rear`, `random`, and `aligned_back` at the single-wall level.
+- Packet 180's `aligned` mode continuous projection and the host-injection of `resolved_seam` exist before AC-3 is written; the aligned branch is the post-180 form, not the pre-180 vertex-snap form. AC-3 specifically uses non-empty candidates, so it exercises `aligned_seam_target`; the empty-candidate `project_onto_wall_segment` fallback is outside this fixture.
 - The historical `D-109B-SEAM-FATAL-CORRECTED` / `D-108-SEAM-CONSUMED` / `D-98-SEAM-NO-CONSUMER` triad (registered retroactively in `docs/DEVIATION_LOG.md` on 2026-07-23) records the P108→P109 seam-placer correctness arc. The historical claim is that P109 corrected P108's "fatal on empty seam-candidates" carve-out (T-082) to graceful wall preservation; the audit's wall-preservation invariant is the codified form of that correction. `D-109-SEAM-FATAL-CORRECTED` (the pre-rename ID, before the slot was recognised as already taken by `D-109-SELF-CAPTURED-FIXTURES`) is the citation carried by `docs/05_module_sdk.md` and the in-module comment; the canonical log row is `D-109B-SEAM-FATAL-CORRECTED` to match the `D-105B/C/D/E` sub-row convention.
 
 ## Risks and Tradeoffs
 
 - Expected-green audit: all fixtures may pass immediately, making the tests look vacuous. Mitigation: each test must be demonstrated RED-capable once by temporarily inverting its assertion locally (not committed) or by construction review in the exit condition; the packet report states which outcome occurred.
-- AC-3 couples this packet to the post-180 aligned semantics; if a future packet changes the continuous-projection behavior, AC-3's fixture (0.3 mm offset with a non-empty `seam_candidates` list, exercising `select_seam_candidate`) is the one to re-derive. The fixture was chosen so the `select_seam_candidate` path (rather than the `project_onto_wall_segment` path) is exercised, decoupling the audit from any future projection-behavior change.
+- AC-3 couples this packet to the post-180 aligned semantics; if a future packet changes the aligned target behavior, AC-3's fixture (0.3 mm offset with a non-empty `seam_candidates` list, exercising `aligned_seam_target`) is the one to re-derive. The fixture was chosen so the `aligned_seam_target` path (rather than the `project_onto_wall_segment` path) is exercised, decoupling the audit from any future projection-behavior change.
 
 ## Context Cost Estimate
 

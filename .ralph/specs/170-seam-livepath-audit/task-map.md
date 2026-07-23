@@ -4,7 +4,7 @@ Single-task packet, but the crosswalk is emitted because it reconciles prior wor
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `TASK-120c` | `Step 1` | none (builder FACTs go to `crates/slicer-sdk/src/builders.rs`) | `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` | none | S | Fixtures are the audit instrument proving the wall-preservation half of TASK-120c. AC-3 exercises `select_seam_candidate` (not `project_onto_wall_segment`); AC-N1 restricted to `nearest` mode. Mirror helper shape from packet 180's `seam_continuous_projection_tdd.rs` / `seam_degraded_fallback_tdd.rs`. |
+| `TASK-120c` | `Step 1` | none (builder FACTs go to `crates/slicer-sdk/src/builders.rs`) | `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` | none | S | Fixtures are the audit instrument proving the wall-preservation half of TASK-120c. AC-3 exercises `aligned_seam_target` (not `project_onto_wall_segment`); AC-N1 restricted to `nearest` mode. Mirror helper shape from packet 180's `seam_continuous_projection_tdd.rs` / `seam_degraded_fallback_tdd.rs`. |
 | `TASK-120c` | `Step 2` (conditional) | none | `modules/core-modules/seam-placer/src/lib.rs` | none | S | Fix only on falsification; skip-record otherwise |
 | `TASK-120c` | `Step 3` | `docs/07_implementation_status.md` | docs only | none | S | Reconciles the reopened TASK-120c row: closes or re-scopes the task. Anchor is the literal `[~] TASK-120c` row text; no line-number pin. |
 
