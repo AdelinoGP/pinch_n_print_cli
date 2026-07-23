@@ -1488,10 +1488,8 @@ tree-edge segments in integer coordinate units (compact storage per ADR-0029's
 memory note; no full topology).
 
 **Consumers:** `Layer::Infill` modules that declare `LightningTreeIR` as a read
-in their manifest (the 137 contract provides the read-view; the 140 module
-rewrite consumes it). Until 140 lands, the existing `lightning-infill` module
-ignores the view and continues to use its single-layer approximation (the
-DEV-081 transitional state).
+in their manifest. The packet 140 `lightning-infill` module consumes this view
+and emits one raw path per committed tree segment.
 
 ```rust
 pub struct LightningTreeIR {
@@ -1511,9 +1509,7 @@ pub struct LightningTreeEntry {
     /// layers; non-negative values refer to model layers.
     pub global_layer_index: i32,
     /// 2-point tree-edge segments in integer coordinate units. Each pair
-    /// `[a, b]` is a straight segment the consumer renders directly. The
-    /// 137 producer skeleton returns an empty `Vec`; 138/139 populate it
-    /// with the real generator output.
+    /// `[a, b]` is rendered directly as one raw path.
     pub tree_edge_segments: Vec<[Point2; 2]>,
 }
 ```
@@ -1523,12 +1519,14 @@ pub struct LightningTreeEntry {
 The host exposes the IR to a `Layer::Infill` guest via the
 `lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
 (`crates/slicer-schema/wit/deps/ir-types.wit:206`; canonical package
-`slicer:world-layer@2.2.0`). The guest looks up the per-layer
+`slicer:world-layer@2.3.0`). The `run-infill` export receives a
+`paint: paint-region-layer-view` argument, and the guest looks up the per-layer
 `tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
 `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
 accessor (`crates/slicer-sdk/src/traits.rs:196-212`). When no `LightningTreeIR` is
 committed (skip-when-no-lightning-holder), the accessor returns an empty
-`Vec` and the module falls back to its non-lightning path.
+`Vec` and the module emits no paths for that layer; there is no non-lightning
+fallback.
 
 **Determinism:** Identical PrePass inputs must produce byte-identical
 `LightningTreeIR`. The `entries` Vec order is producer-defined and must be

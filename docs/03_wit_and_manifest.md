@@ -340,7 +340,7 @@ from region top/bottom metadata**:
 ## `world-layer.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
-(package `slicer:world-layer@2.2.0` — packet 137 bump for the
+(package `slicer:world-layer@2.3.0` — packet 140 bump for the
 `lightning-tree-segments` read-view). The `layer-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
@@ -354,6 +354,8 @@ stage:
 - `run-slice-postprocess`, `run-perimeters`, `run-wall-postprocess`,
   `run-infill`, `run-infill-postprocess`, `run-support`,
   `run-support-postprocess`, `run-path-optimization`.
+- `run-infill` receives `paint: paint-region-layer-view`, allowing an infill
+  guest to read committed lightning tree segments for its object and region.
 
 Read the on-disk file for each export's exact parameter list and return type.
 Notable 2.0.0 (packet 130) change: `run-infill-postprocess` gains a read-only
@@ -406,7 +408,9 @@ read-view.
 **Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
 `paint-region-layer-view` resource method) and
 `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` (package
-`slicer:world-layer@2.2.0`). The contract is frozen at packet 137 close;
+`slicer:world-layer@2.3.0`). Packet 140 extends `run-infill` with the paint
+view required by the lightning module; read the WIT source for the exact
+signature.
 any change to the signature in 138/139 is a WIT version bump, not a
 silent change.
 
