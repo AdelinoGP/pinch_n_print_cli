@@ -57,8 +57,8 @@ The three production/config files are the primary change surface; the three list
 
 - `OrcaSlicerDocumented/...` - delegate; never load directly.
 - `target/`, `Cargo.lock`, generated code, and vendored dependencies - never load.
-- WIT/IR identity and host scheduling - packet 1.
-- Canonical scoring, visibility, overhang, retry, and spline - packet 2.
+- WIT/IR identity and host scheduling - packet 178.
+- Canonical scoring, visibility, overhang, retry, and spline - packet 179.
 - `crates/slicer-wasm-host/**` - delegate symbol lookups only; do not browse.
 
 ## Expected Sub-Agent Dispatches
@@ -69,7 +69,7 @@ The three production/config files are the primary change surface; the three list
 ## Data and Contract Notes
 
 - IR/manifest contracts: `SeamPosition.point` is f32 mm; wall loop `path.points` are f32 mm. `feature_flags` and `width_profile.widths` must stay parallel to `path.points` after insertion. The inserted point's flag and width are interpolated from the segment's endpoints.
-- WIT boundary: no WIT changes in this packet. `ModuleError::non_fatal` carries `fatal: false` through WIT `module-error` as defined in packet 1.
+- WIT boundary: no WIT changes in this packet. `ModuleError::non_fatal` carries `fatal: false` through WIT `module-error` as defined in packet 178.
 - Determinism/scheduler constraints: continuous projection is deterministic given the planner's target and wall geometry. No RNG or sampling is involved.
 
 ## Locked Assumptions and Invariants
@@ -80,6 +80,14 @@ The three production/config files are the primary change surface; the three list
 - The 0.05 mm final seam tolerance in AC-4 is a hard bound; the projected point must be within this distance of the planner's target.
 - `ModuleError::non_fatal` is the only channel for degraded reporting; no silent pristine-wall emission is permitted.
 - The default change to `aligned` amends ADR-0046's normative clause "the default remains `nearest`" (`docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` L50) and the closing clause "nearest mode is untouched end-to-end; aligned / aligned_back are opt-in via seam_mode" (L97–98). This is recorded as deviation `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`. The amendment is justified by the algorithmic canonical parity target: OrcaSlicer's default `seam_position` is `spAligned` (`docs/specs/fork-gaps-wave1-plan.md` L31), and the deviation row quotes both the contested clause and the canonical default to make the change auditable.
+
+## Closure Reconciliation
+
+- At packet 180 close, append a new row `D-283-ADR-0046-AMENDED` to `docs/DEVIATION_LOG.md` using the table's 8-column + 2-empty structure (10 pipe-delimited segments per row). Date: 2026-07-22. Affected Section: `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` (L50, L97-98) + `docs/DEVIATION_LOG.md` (`D-168-SEAM-PREPASS-SOURCE` part 6). Risk: Medium. Rationale: OrcaSlicer's canonical default `seam_position` is `spAligned`; changing the default to `aligned` matches canonical behavior. Mitigation Owner: seam-placer + seam-planner-default maintainer. Target Close: Closed at packet 180 closure. Status: Open - to be set to Closed at packet 180 closure.
+- At packet 180 close, update the existing `D-168-SEAM-PREPASS-SOURCE` row in `docs/DEVIATION_LOG.md`'s Target Close column and set it to "Closed in full"; the source-geometry part is closed by the continuous-projection work in `seam-placer/src/lib.rs::run_wall_postprocess`.
+- At packet 180 close, file a new `TASK-293` row in `docs/07_implementation_status.md` (next-free ID) summarizing the packet's deliverables, in the style of the existing `TASK-292` row.
+- At packet 180 close, amend `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` L50 and L97-98 to reflect the new default; append a one-paragraph rationale at the end of the ADR documenting the amendment (date, decision, citation of `D-283-ADR-0046-AMENDED`).
+- At packet 180 close, regenerate `docs/15_config_keys_reference.md` via `cargo xtask gen-config-docs` so the two `seam_mode` rows show `default = "aligned"`.
 
 ## Risks and Tradeoffs
 
