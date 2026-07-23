@@ -11,18 +11,20 @@
 ### Step 1: Author the sibling-wall regression fixtures
 
 - Task IDs: `TASK-120c`
-- Objective: Create `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` with four tests — `siblings_survive_rotation` (AC-1), `multi_region_wall_counts_preserved` (AC-2), `aligned_snap_preserves_siblings` (AC-3), `tolerance_miss_emits_all_walls_pristine` (AC-N1) — plus a concentric-square multi-loop region helper (closed loops with explicit closing repeat; distinct point sets per loop; parallel `feature_flags` / `width_profile.widths` arrays).
-- Precondition: packet `168-seam-aligned-modes` is `implemented` (AC-3 needs `seam_mode = "aligned"` and its snap semantics).
+- Objective: Create `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` with four tests — `siblings_survive_rotation` (AC-1), `multi_region_wall_counts_preserved` (AC-2), `aligned_snap_preserves_siblings` (AC-3, exercising the `select_seam_candidate` path because the fixture has a non-empty `seam_candidates` list; the `project_onto_wall_segment` path is exercised by packet 180's own tests and is not under audit here), `tolerance_miss_emits_all_walls_pristine` (AC-N1, restricted to `nearest` mode to isolate from the post-180 continuous-projection behavior) — plus a concentric-square multi-loop region helper (closed loops with explicit closing repeat; distinct point sets per loop; parallel `feature_flags` / `width_profile.widths` arrays). Mirror the helper shape and assertion idioms of `seam_continuous_projection_tdd.rs` / `seam_degraded_fallback_tdd.rs`.
+- Precondition: packets 178, 179, and 180 are `status: implemented` (verified). AC-3's `aligned` mode exists in its post-180 form (host-injected `resolved_seam` + `project_onto_wall_segment` fallback).
 - Postcondition: the file compiles and all four tests run to a verdict; each test's identity-comparison covers `path.points`, `feature_flags`, `width_profile.widths`, and `path.is_closed()`.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/seam-placer/tests/seam_placer_dispatch_tdd.rs`
+  - `modules/core-modules/seam-placer/tests/seam_continuous_projection_tdd.rs`
+  - `modules/core-modules/seam-placer/tests/seam_degraded_fallback_tdd.rs`
   - `modules/core-modules/seam-placer/src/lib.rs`
 - Files allowed to edit (at most 3):
   - `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` (new)
 - Files explicitly out of bounds:
   - `modules/core-modules/seam-placer/src/lib.rs` (read-only in this step), host crates, `modules/core-modules/seam-planner-default/**`
 - Expected sub-agent dispatches:
-  - Question: output-inspection API used by `seam_placer_dispatch_tdd.rs` to read emitted loops/regions back from `PerimeterOutputBuilder` (`begin_region` `builders.rs:266`, `push_reordered_wall_loop` `builders.rs:337`); scope: that test file + `crates/slicer-sdk/src/builders.rs`; return: `FACT` (only if not evident from the test file)
+  - Question: output-inspection API used by `seam_placer_dispatch_tdd.rs` to read emitted loops/regions back from `PerimeterOutputBuilder` (signatures at `begin_region:266` and `push_reordered_wall_loop:337` in `crates/slicer-sdk/src/builders.rs`); scope: that test file + `crates/slicer-sdk/src/builders.rs`; return: `FACT` (only if not evident from the test file)
 - Context cost: `S`
 - Authoritative docs:
   - none (builder semantics resolved via the `crates/slicer-sdk/src/builders.rs` FACT dispatch above)
@@ -35,7 +37,7 @@
 ### Step 2 (conditional): Fix `run_wall_postprocess` if falsified
 
 - Task IDs: `TASK-120c`
-- Objective: If any Step 1 test fails, apply the minimal fix in `run_wall_postprocess` (emission loop `lib.rs:260-275` or its `seam_target` interplay) so all four tests pass without changing seam-selection behavior pinned by the existing suites. If all Step 1 tests passed, skip this step explicitly and record "invariant verified, no fix needed" in the packet report.
+- Objective: If any Step 1 test fails, apply the minimal fix in `run_wall_postprocess` (the emission loop or its `seam_target` interplay) so all four tests pass without changing seam-selection behavior pinned by the existing suites. If all Step 1 tests passed, skip this step explicitly and record "invariant verified, no fix needed" in the packet report.
 - Precondition: Step 1 verdicts recorded.
 - Postcondition: `cargo test -p seam-placer` fully green; guest rebuilt if `src/lib.rs` changed.
 - Files allowed to read, with ranges when over 300 lines:
@@ -59,7 +61,7 @@
 ### Step 3: TASK-120c disposition in docs/07
 
 - Task IDs: `TASK-120c`
-- Objective: Reconcile the existing reopened `- [~] TASK-120c` row at `docs/07_implementation_status.md:92` per the audit outcome — flip to `- [x]` (closed: name the invariant, the new test file, and packet `170-seam-livepath-audit`) or `- [ ]` (re-scoped: name the exact residual defect found), replacing the stale reopened-gap text (candidate preference is already fixed per `lib.rs:242-252`) — via a worker dispatch with the exact anchor and replacement row text.
+- Objective: Reconcile the existing reopened `- [~] TASK-120c` row in `docs/07_implementation_status.md` per the audit outcome — flip to `- [x]` (closed: name the invariant, the new test file, and packet `170-seam-livepath-audit`) or `- [ ]` (re-scoped: name the exact residual defect found), replacing the stale reopened-gap text (candidate preference is already fixed in the per-mode dispatch) — via a worker dispatch with the exact anchor and replacement row text. Anchor text is the literal `- [~] TASK-120c Restore seam placement on real wall-loop seam candidates` row (no line-number pin).
 - Precondition: Steps 1-2 resolved with a recorded outcome.
 - Postcondition: AC-4 grep passes.
 - Files allowed to read, with ranges when over 300 lines:
@@ -69,7 +71,7 @@
 - Files explicitly out of bounds:
   - full read of `docs/07_implementation_status.md`
 - Expected sub-agent dispatches:
-  - Question: replace the reopened TASK-120c row (anchor: `- [~] TASK-120c Restore seam placement on real wall-loop seam candidates`, line 92) with the supplied reconciled row; scope: `docs/07_implementation_status.md`; return: `FACT` (grep confirmation of the updated row)
+  - Question: replace the reopened TASK-120c row (anchor: `- [~] TASK-120c Restore seam placement on real wall-loop seam candidates`) with the supplied reconciled row; scope: `docs/07_implementation_status.md`; return: `FACT` (grep confirmation of the updated row)
 - Context cost: `S`
 - Authoritative docs:
   - `docs/07_implementation_status.md` - dispatch only
