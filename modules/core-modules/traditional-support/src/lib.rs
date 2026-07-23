@@ -8,11 +8,12 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Traditional rectilinear support fill generator module.
+//! Per-layer rectilinear scan-line filler for Layer::Support
 //!
 //! Implements `LayerModule::run_support` for the `Layer::Support` stage.
 //! Generates parallel scan-line fill patterns for support material areas
 //! with per-layer 90-degree angle alternation.
+//! Depends entirely on upstream SliceRegionView::needs_support().
 //!
 //! # Per-layer scan-line nature
 //!
@@ -24,6 +25,13 @@
 //! planner-consuming tier is limited to `tree-support`, whose organic
 //! branches require multi-layer top-down propagation; see packet
 //! `28_tree-support-multi-layer-propagation` and docs/01 §Layer::Support.
+//!
+//! # Speed normalization
+//!
+//! All extrusion speeds are normalized relative to a base speed:
+//! `speed_factor = configured_speed / BASE_SPEED` where `BASE_SPEED = 50.0`.
+//! The configured speed is read from the `support_speed` config key at
+//! `on_print_start` and stored as `self.support_speed`.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -247,6 +255,7 @@ impl TraditionalSupport {
                     width: self.line_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
                 let end = Point3WithWidth {
                     x: slicer_ir::units_to_mm(end_x),
@@ -255,6 +264,7 @@ impl TraditionalSupport {
                     width: self.line_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 };
 
                 paths.push(ExtrusionPath3D {
@@ -298,6 +308,7 @@ impl TraditionalSupport {
                             width: self.line_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         Point3WithWidth {
                             x: slicer_ir::units_to_mm(end_x),
@@ -306,6 +317,7 @@ impl TraditionalSupport {
                             width: self.line_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                     ],
                     role: ExtrusionRole::SupportMaterial,

@@ -33,6 +33,7 @@ fn path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPa
                 width: width_mm,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: x_end_mm,
@@ -41,6 +42,7 @@ fn path(x_start_mm: f32, x_end_mm: f32, y_mm: f32, width_mm: f32) -> ExtrusionPa
                 width: width_mm,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ],
         role: ExtrusionRole::SparseInfill,

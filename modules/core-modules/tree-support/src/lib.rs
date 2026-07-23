@@ -8,17 +8,26 @@
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
-//! Tree-style branching support generator module.
+//! Per-layer 2-D grid-MST infill with optional SupportPlanIR consumption
 //!
 //! Implements `LayerModule::run_support` for the `Layer::Support` stage.
 //! Generates branching polyline structures instead of traditional grid fills.
 //! Branches converge toward fewer build-plate contact points, using less material.
+//! This module is **not a port of OrcaSlicer's TreeSupport** — it is a
+//! from-scratch grid-MST design adapted for the Pinch 'n Print architecture.
 //!
 //! Algorithm (single-layer simplified tree support):
 //! 1. Sample support polygon interior points on a grid (spacing from density)
 //! 2. Build a nearest-neighbor tree connecting sample points from centroid
 //! 3. Generate branch paths from tree edges
 //! 4. Convert to ExtrusionPath3D with SupportMaterial role
+//!
+//! # Speed normalization
+//!
+//! All extrusion speeds are normalized relative to a base speed:
+//! `speed_factor = configured_speed / BASE_SPEED` where `BASE_SPEED = 50.0`.
+//! The configured speed is read from the `support_speed` config key at
+//! `on_print_start` and stored as `self.support_speed`.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -273,6 +282,7 @@ impl TreeSupport {
                         width: self.line_width,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     Point3WithWidth {
                         x: bx as f32,
@@ -281,6 +291,7 @@ impl TreeSupport {
                         width: self.line_width,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                 ],
                 role: ExtrusionRole::SupportMaterial,
@@ -324,6 +335,7 @@ impl TreeSupport {
                             width: self.line_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         Point3WithWidth {
                             x: cx_pt as f32,
@@ -332,6 +344,7 @@ impl TreeSupport {
                             width: self.line_width,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                     ],
                     role: ExtrusionRole::SupportMaterial,

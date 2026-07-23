@@ -443,6 +443,7 @@ fn invalid_nan_output_rejected_with_diagnostic() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,

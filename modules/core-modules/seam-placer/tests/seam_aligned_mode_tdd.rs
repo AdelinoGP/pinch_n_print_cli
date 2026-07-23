@@ -61,6 +61,7 @@ fn ir_point(x: f32, y: f32, z: f32) -> Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     }
 }
 
@@ -172,10 +173,9 @@ fn aligned_back_snaps_to_nearest_candidate() {
     assert_aligned_snaps("aligned_back");
 }
 
-/// Empty-candidates fallback: the injected point snaps to the nearest
-/// wall-loop vertex instead.
+/// Empty-candidates fallback: the injected point is continuously projected onto the nearest wall segment (insertion at t∈(0,1)).
 #[test]
-fn aligned_empty_candidates_snaps_to_nearest_wall_vertex() {
+fn aligned_empty_candidates_projects_onto_segment_interior() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
     let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
@@ -192,23 +192,46 @@ fn aligned_empty_candidates_snaps_to_nearest_wall_vertex() {
 
     let seam = output
         .resolved_seam()
-        .expect("empty candidates must fall back to nearest wall vertex");
+        .expect("empty candidates must fall back to continuous wall projection");
     assert!(
-        (seam.point.x - 1.0).abs() < 0.001,
-        "seam must snap to nearest wall vertex (1.0, 0.0), got x={}",
+        (seam.point.x - 1.3).abs() < 0.001,
+        "seam must project onto the segment interior at x=1.3, got x={}",
         seam.point.x
     );
-    let first = output.rotated_wall_loops()[0].2.path.points[0];
     assert!(
-        (first.x - 1.0).abs() < 0.001,
-        "rotated loop must start at snapped wall vertex, got x={}",
+        seam.point.y.abs() < 0.001,
+        "projected seam must remain on y=0.0, got y={}",
+        seam.point.y
+    );
+    let rotated = output.rotated_wall_loops();
+    let points = &rotated[0].2.path.points;
+    assert_eq!(
+        points.len(),
+        5,
+        "projected point must be inserted into the closed loop"
+    );
+    let first = points[0];
+    assert!(
+        (first.x - 1.3).abs() < 0.001,
+        "rotated loop must start at the projected point, got x={}",
         first.x
+    );
+    assert!(
+        (points[3].x - 1.0).abs() < 0.001
+            && points[3].y.abs() < 0.001
+            && (points[0].x - 1.3).abs() < 0.001
+            && points[0].y.abs() < 0.001
+            && (points[0].z - 0.2).abs() < 0.001
+            && (points[1].x - 2.0).abs() < 0.001
+            && points[1].y.abs() < 0.001,
+        "rotated loop must place the projected point between vertices 1.0 and 2.0, got {:?}",
+        points
     );
 }
 
-/// No injected resolved seam in aligned mode: walls emit pristine.
+/// Missing SeamPlanIR entry in aligned mode: degraded fallback applies local candidate selection and emits a non-fatal error; walls are still preserved and the wall is rotated to start at the local candidate's position.
 #[test]
-fn aligned_without_resolved_seam_emits_pristine_walls() {
+fn aligned_without_resolved_seam_degrades_to_local_candidate() {
     let config = config_with_mode("aligned");
     let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
     let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
@@ -220,22 +243,45 @@ fn aligned_without_resolved_seam_emits_pristine_walls() {
     )];
     let mut output = PerimeterOutputBuilder::new();
 
-    module
+    let err = module
         .run_wall_postprocess(0, &regions, &mut output, &config)
-        .expect("wall postprocess must succeed");
-
+        .expect_err("missing plan must return a non-fatal ModuleError");
+    assert_eq!(err.code, 6, "missing-plan code must be 6, got {}", err.code);
+    assert!(!err.fatal, "degraded fallback must be non-fatal");
     assert!(
-        output.resolved_seam().is_none(),
-        "no injected seam → no resolved seam committed"
+        err.message.contains("missing seam plan entry"),
+        "error must identify the missing-plan condition, got: {}",
+        err.message
+    );
+    assert!(
+        err.message.contains("object=obj-a"),
+        "error must include object_id, got: {}",
+        err.message
+    );
+    assert!(
+        err.message.contains("region_id=0"),
+        "error must include region_id, got: {}",
+        err.message
+    );
+    assert!(
+        err.message.contains("layer=0"),
+        "error must include layer index, got: {}",
+        err.message
     );
     let rotated = output.rotated_wall_loops();
-    assert_eq!(rotated.len(), 1, "wall must be preserved pristine");
-    let emitted_xy: Vec<(f32, f32)> = rotated[0]
-        .2
-        .path
-        .points
-        .iter()
-        .map(|p| (p.x, p.y))
-        .collect();
-    assert_eq!(emitted_xy, wall_points.to_vec(), "wall must be un-rotated");
+    assert_eq!(
+        rotated.len(),
+        1,
+        "wall must be preserved in the output builder even when the function returns Err"
+    );
+    let first = rotated[0].2.path.points[0];
+    assert!(
+        (first.x - 1.0).abs() < 0.001,
+        "degraded fallback must rotate the wall to the local candidate at (1.0, 0.0), got x={}",
+        first.x
+    );
+    assert!(
+        output.resolved_seam().is_some(),
+        "degraded fallback must commit a resolved seam from the local candidate selection"
+    );
 }

@@ -357,6 +357,7 @@ pub fn convert_perimeter_output(
                         width: 0.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     score: *score,
                     reason: slicer_ir::SeamReason::Aligned,
@@ -377,6 +378,7 @@ pub fn convert_perimeter_output(
                     z: pos.z,
                     width: 0.0,
                     flow_factor: 1.0,
+                    dist_to_top_mm: 0.0,
                     overhang_quartile: None,
                 },
                 wall_index: *wall_index,
@@ -389,6 +391,7 @@ pub fn convert_perimeter_output(
 
     fn mint_perimeter_region(o: &OriginId) -> slicer_ir::PerimeterRegion {
         slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: o.object_id.clone(),
             region_id: o.region_id,
             walls: Vec::new(),

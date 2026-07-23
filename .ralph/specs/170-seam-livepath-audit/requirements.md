@@ -2,38 +2,39 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-120c` (existing; standalone reopened row `- [~] TASK-120c` at `docs/07_implementation_status.md:92`, also referenced by the TASK-120/TASK-151/TASK-159 rows at lines 87/99/100 — this packet reconciles that reopened row)
+- Grouped task IDs: `TASK-120c` (existing; standalone reopened row `- [~] TASK-120c Restore seam placement on real wall-loop seam candidates` in `docs/07_implementation_status.md` — also referenced by the TASK-120 / TASK-151 / TASK-159 rows; this packet reconciles that reopened row)
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft` (depends on packet `168-seam-aligned-modes`)
+- Packet status: `draft` (depends on packets 178, 179, 180 — all `status: implemented`)
 - Aggregate context cost: `S`
 
 ## Problem Statement
 
-The fork-gaps handoff item 8 claimed `seam-placer` ignored live seam candidates; grounding for the approved plan (`docs/specs/fork-gaps-wave1-plan.md`, Packet 8) corrected this: `run_wall_postprocess` already prefers `region.seam_candidates()` with `resolved_seam` fallback (`modules/core-modules/seam-placer/src/lib.rs:242-252`, contract comment at `lib.rs:208-218`). The remaining TASK-120c risk is narrower: when the seam-target wall loop is rotated and re-emitted, sibling wall loops in the same region could be erased unless the full region wall set is re-emitted every time. The current loop at `lib.rs:260-275` appears to emit every wall (`push_reordered_wall_loop` per index, rotation only on the target index), and the HIGH-2 wall-preservation invariant is documented in-module — but no regression test pins it for multi-wall regions, multi-region calls, the tolerance-miss pristine path, or packet 168's new aligned snap branch. This packet is a correctness audit: reproduce with fixtures, fix if falsified, and give TASK-120c an explicit disposition.
+The fork-gaps handoff item 8 claimed `seam-placer` ignored live seam candidates; grounding for the approved plan (`docs/specs/fork-gaps-wave1-plan.md`, Packet 8) corrected this: `run_wall_postprocess` already prefers `region.seam_candidates()` with `resolved_seam` fallback in the per-mode dispatch (in `modules/core-modules/seam-placer/src/lib.rs::run_wall_postprocess`, contract comment near the `seam_target` computation). The remaining TASK-120c risk is narrower: when the seam-target wall loop is rotated and re-emitted, sibling wall loops in the same region could be erased unless the full region wall set is re-emitted every time. The current emission loop pushes every wall (`push_reordered_wall_loop` per index, rotation only on the target index), and the wall-preservation invariant is documented in-module — but no regression test pins it for multi-wall regions, multi-region calls, the tolerance-miss pristine path, or the post-180 aligned branch (which now includes `project_onto_wall_segment` continuous projection on top of the legacy vertex-snap path). This packet is a correctness audit: reproduce with fixtures, fix if falsified, and give TASK-120c an explicit disposition.
 
 ## In Scope
 
-- New regression test file `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` covering: 3-wall single-region rotation (AC-1), multi-region count/pairing preservation (AC-2), aligned-mode snap branch sibling survival (AC-3), and the tolerance-miss pristine path with no committed seam (AC-N1). Fixtures built with the existing `slicer_sdk::test_prelude` builders (`PerimeterRegionViewBuilder`, `seam_candidate`) as used by `tests/seam_placer_dispatch_tdd.rs`.
+- New regression test file `modules/core-modules/seam-placer/tests/seam_sibling_walls_tdd.rs` covering: 3-wall single-region rotation (AC-1), multi-region count/pairing preservation (AC-2), aligned-mode sibling survival (AC-3, exercising the `aligned_seam_target` production branch because `seam_candidates` is non-empty and the host has injected a `resolved_seam`; the `project_onto_wall_segment` path is not reached), and the tolerance-miss pristine path with no committed seam (AC-N1, in `nearest` mode to isolate from 180's continuous projection). Fixtures built with the existing `slicer_sdk::test_prelude` builders (`PerimeterRegionViewBuilder`, `seam_candidate`) as used by `tests/seam_placer_dispatch_tdd.rs` and the new packet-180 tests (`seam_continuous_projection_tdd.rs`, `seam_degraded_fallback_tdd.rs`).
 - A fix in `modules/core-modules/seam-placer/src/lib.rs::run_wall_postprocess` only if a fixture falsifies the invariant (expected outcome: already correct; the fix step is conditional).
-- TASK-120c reconciliation in `docs/07_implementation_status.md`: update the existing reopened `[~]` row at line 92 — whose reopened-gap text lists the already-fixed candidate-preference gap alongside the sibling-erasure risk this packet audits — to `[x]` closed with the audit finding, or `[ ]` re-scoped with the exact residual defect, referencing packet `170-seam-livepath-audit` (AC-4).
+- TASK-120c reconciliation in `docs/07_implementation_status.md`: update the existing reopened `[~]` row — whose reopened-gap text lists the already-fixed candidate-preference gap alongside the sibling-erasure risk this packet audits — to `[x]` closed with the audit finding, or `[ ]` re-scoped with the exact residual defect, referencing packet `170-seam-livepath-audit` (AC-4).
 
 ## Out of Scope
 
-- The candidates-vs-`resolved_seam` preference order (already correct; verified).
-- The known planner mesh-corner vs inset-boundary coordinate gap itself (`lib.rs:210-214`) — packet 168 addresses it for aligned modes; the nearest/rear/random exact-match tolerance stays as-is here (AC-N1 only pins its graceful degradation).
+- The candidates-vs-`resolved_seam` preference order (already correct; verified against the per-mode dispatch in `run_wall_postprocess`).
+- The known planner mesh-corner vs inset-boundary coordinate gap — packet 168 introduced the aligned-aligned compensation, packet 178 superseded 168, and packet 180's continuous projection closed the source-geometry half of `D-168-SEAM-PREPASS-SOURCE` in the deviation log (now `Closed — 2026-07-22`). The nearest/rear/random exact-match tolerance stays as-is here; AC-N1 only pins its graceful degradation in `nearest` mode.
 - seam-planner-default, host injection/backfill paths (`crates/slicer-wasm-host/src/dispatch.rs`, `crates/slicer-runtime/src/layer_executor.rs`), WIT, manifests, config keys.
-- Any behavior change for regions with empty wall lists (existing `continue` at `lib.rs:222-224` unchanged).
+- Any behavior change for regions with empty wall lists (existing `continue` early in the per-region loop unchanged).
+- Packet 180's continuous projection, degraded fallback, or default-mode change — already implemented and tested; this audit piggybacks on its fixture idioms but does not modify the projection logic.
 
 ## Authoritative Docs
 
-- `docs/07_implementation_status.md` — large; delegate; only the reopened TASK-120c row (line 92) plus its referencing rows (lines 87/99/100).
-- `crates/slicer-sdk/src/builders.rs` — delegate FACT lookups of `begin_region` (`builders.rs:266`) / `push_reordered_wall_loop` (`builders.rs:337`) semantics if needed.
+- `docs/07_implementation_status.md` — large; delegate; only the reopened TASK-120c row plus its referencing TASK-120 / TASK-151 / TASK-159 rows.
+- `crates/slicer-sdk/src/builders.rs` — delegate FACT lookups of `begin_region` and `push_reordered_wall_loop` semantics if needed.
 
 ## Acceptance Summary
 
-- Positive: `AC-1` through `AC-4`. Refinement: "point-for-point identical" in AC-1/AC-3 means equal `path.points`, equal `feature_flags`, and equal `width_profile.widths` vectors, and preserved closing-repeat convention (`path.is_closed()` unchanged).
-- Negative: `AC-N1`.
-- Cross-packet impact: runs after packet 168 in the same module; AC-3 exercises 168's snap branch, so a regression here also guards 168's landing. No other packets touch this crate.
+- Positive: `AC-1` through `AC-4`. Refinement: "point-for-point identical" in AC-1/AC-3 means equal `path.points`, equal `feature_flags`, and equal `width_profile.widths` vectors, and preserved closing-repeat convention (last point equals first point).
+- Negative: `AC-N1` (restricted to `nearest` mode to isolate from 180's continuous-projection behavior).
+- Cross-packet impact: runs after packets 178/179/180; AC-3 exercises the `aligned_seam_target` branch in its post-180 form, so a regression here also guards aligned seam consumption without coupling this audit to the empty-candidate projection fallback. The audit does not modify any of those packets' code. No other packets touch this crate.
 
 ## Verification Commands
 
@@ -57,3 +58,4 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 
 - `docs/07_implementation_status.md` is never read in full — the disposition edit goes through a worker dispatch with exact anchor text.
 - Reuse `tests/seam_placer_dispatch_tdd.rs` builder idioms by reading that file once; do not explore `crates/slicer-sdk` broadly for builder internals — delegate a FACT if a builder signature is unclear.
+- Mirror the per-test structure used by the packet-180 fixtures (`seam_continuous_projection_tdd.rs`, `seam_degraded_fallback_tdd.rs`) to stay consistent with the recent seam-placer test style: same `ir_point` / `ir_wall` / `aligned_region` helper shape, same `expect_err` / `assert_eq!` / `assert!` style.

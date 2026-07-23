@@ -14,6 +14,7 @@ mod lightning_dispatch_per_region_keying_tdd;
 mod lightning_infill_guest_calls_lightning_tree_segments_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod prepass_output_builder_validation_tdd;
+mod seam_plan_harvest_custom_paint_value_tdd;
 mod set_current_origin_routes_to_correct_bucket_tdd;
 mod surface_group_resolution_tdd;
 mod typed_config_boundary_tdd;

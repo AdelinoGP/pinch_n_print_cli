@@ -22,6 +22,7 @@ fn sample_junction(x: f32, width: f32, perimeter_index: u32) -> ExtrusionJunctio
             width,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         perimeter_index,
     }

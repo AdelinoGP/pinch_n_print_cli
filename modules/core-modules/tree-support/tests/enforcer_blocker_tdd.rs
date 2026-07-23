@@ -19,7 +19,7 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::test_prelude::*;
-use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView, SupportPaintPolicy};
 use slicer_sdk::views::SliceRegionView;
 
 use tree_support::TreeSupport;
@@ -282,5 +282,79 @@ fn blocker_overrides_needs_support_true() {
         output.support_paths().len(),
         0,
         "SupportBlocker must override needs_support=true (D14 precedence)"
+    );
+}
+
+// ── L-shape regression for the polygon-intersection helper ──────────────────
+//
+// Regression test for the centroid-probe → polygon-intersection migration
+// (packet 120 Step 3, wired into `PaintRegionLayerView::paint_policy_for`).
+// The L-shape's vertex-mean centroid lies in the notch (outside the polygon
+// AND outside the painted enforcer arm). The OLD centroid-based helper
+// would have returned `DefaultEligible`; the NEW polygon-intersection
+// helper must return `Enforced` because the enforcer annotation covers
+// the L's vertical arm with non-trivial area.
+
+/// L-shaped 10×10 mm ExPolygon with a 6×6 mm notch in the top-right corner.
+///
+/// Vertices CCW (mm):
+///   (0,0) → (10,0) → (10,4) → (4,4) → (4,10) → (0,10) → close
+///
+/// Centroid of L-shape contour: (28/6, 28/6) ≈ (4.667, 4.667) mm; lies in
+/// the notch (x >= 4, y >= 4), outside the L's polygon AND outside the
+/// painted enforcer arm. The new polygon-intersection helper must return
+/// `Enforced`; the OLD centroid-based helper would have returned
+/// `DefaultEligible` because the centroid lies outside the painted area.
+fn l_shape_expoly() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(10.0, 4.0),
+                Point2::from_mm(4.0, 4.0),
+                Point2::from_mm(4.0, 10.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+/// Build a `SlicedRegion` whose polygon is the L-shape (so the
+/// polygon-intersection helper sees the L-shape as the painted area).
+fn l_shape_region_with_annotations(semantics: &[PaintSemantic]) -> SlicedRegion {
+    region_with_annotations(vec![l_shape_expoly()], semantics)
+}
+
+fn l_shape_paint_view(z: f32, semantics: &[PaintSemantic]) -> PaintRegionLayerView {
+    let slice = SliceIR {
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        global_layer_index: 0,
+        z,
+        regions: vec![l_shape_region_with_annotations(semantics)],
+    };
+    PaintRegionLayerView::new(0).with_slice_ir(Arc::new(slice))
+}
+
+#[test]
+fn enforcer_works_when_centroid_outside_paint_region() {
+    // Centroid of L-shape contour: (4.667, 4.667) mm; lies in the notch
+    // (x >= 4, y >= 4), outside the L's polygon AND outside the painted
+    // enforcer arm. The new polygon-intersection helper must return
+    // Enforced; the OLD centroid-based helper would have returned
+    // DefaultEligible because the centroid lies outside the painted area.
+    let l_expoly = l_shape_expoly();
+    let paint = l_shape_paint_view(0.3, &[PaintSemantic::SupportEnforcer]);
+
+    // Direct call: the L-shape's centroid is in the notch (outside the
+    // painted enforcer arm) so a centroid-based probe would return
+    // DefaultEligible. The polygon-intersection helper must return Enforced.
+    assert_eq!(
+        paint.paint_policy_for(&l_expoly),
+        SupportPaintPolicy::Enforced,
+        "polygon-intersection helper must classify L-shape with enforcer \
+         annotation on the vertical arm as Enforced, even though the \
+         vertex-mean centroid lies in the notch (outside the polygon)"
     );
 }

@@ -24,3 +24,4 @@ Keywords: docs, architecture, IR schemas, WIT, scheduler, coordinate system, glo
 - `docs/16_slicer_report.md` — HTML slicer report format, allocator contract, known v1 limitations.
 - `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.
 - `docs/19_visual_debug.md` — agent-facing visual-debug bundle guide for stage/layer PNG evidence. Pairs independently with `debug-pipeline`; design: `docs/specs/visual-pipeline-debug.md`.
+| `docs/20_support_preview.md` | Fork-facing JSON contract for the `support-preview` prepass verb. |

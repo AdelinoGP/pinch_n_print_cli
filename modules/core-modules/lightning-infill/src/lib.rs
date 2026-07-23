@@ -104,6 +104,7 @@ impl LayerModule for LightningInfill {
                         width: self.line_width,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     })
                     .collect();
 

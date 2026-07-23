@@ -32,6 +32,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: x_end,
@@ -40,6 +41,7 @@ fn sparse_segment(x_start: f32, x_end: f32) -> ExtrusionPath3D {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ],
         role: ExtrusionRole::SparseInfill,
@@ -116,6 +118,7 @@ fn perimeter_ir() -> PerimeterIR {
             infill_areas: vec![square()],
             seam_candidates: Vec::new(),
             resolved_seam: None,
+            variant_chain: Vec::new(),
         }],
     }
 }

@@ -202,10 +202,16 @@ The `geometry` interface defines the shared geometric primitives: `point2`
 `polygon`, `ex-polygon`, `extrusion-path3d`, the `extrusion-role` variant, and
 `semver`.
 
-`point3-with-width` carries an `overhang-quartile: option<u8>` field (1..=4 for
-wall-family roles only; `none` otherwise), added in packet 57. The bindgen
-`with:` remap also accepts the legacy 5-field shape so older host builds still
-load.
+The current `point3-with-width` record has seven fields: `x`, `y`, `z`,
+`width`, `flow-factor`, `overhang-quartile`, and `dist-to-top-mm`. The first
+five are millimeter `f32` geometry/flow values; `overhang-quartile` is the
+optional wall-family classification; and `dist-to-top-mm` is the per-point
+support-planner distance from the point to the top of its support column.
+
+Seam candidates intentionally use the separate six-field
+`seam-point3-with-width` record (`x`, `y`, `z`, `width`, `flow-factor`, and
+`overhang-quartile`). It does not carry `dist-to-top-mm`; keeping this ABI
+shape separate avoids widening the seam record when the support point changes.
 
 The WIT `extrusion-role` variant is **narrower than the Rust `ExtrusionRole`
 enum** (`02_ir_schemas.md`). Roles with no dedicated WIT case round-trip
@@ -441,7 +447,7 @@ in `crates/slicer-sdk/src/traits.rs` returns the same
 ## `world-prepass.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`
-(package `slicer:world-prepass@1.0.0`). The `prepass-module` world imports
+(package `slicer:world-prepass@3.0.0`). The `prepass-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the shared `module-error` from `slicer:common/module-errors`.
 
@@ -449,7 +455,7 @@ It has exactly **four** stage exports:
 
 - `run-mesh-analysis` — facet classification and surface-group proposals.
 - `run-layer-planning` — per-layer Z and active-region proposals.
-- `run-seam-planning` — scored seam candidates per `(layer, object, region)`.
+ - `run-seam-planning` 2014 scored seam candidates per `(layer, object, region, variant_chain)` (WIT field `variant-chain`). Receives `SeamPlanningView` with per-region `SliceIR` polygons.
 - `run-support-geometry` — multi-layer organic tree-support branch geometry,
   consumed by `Layer::Support` modules that declare `SupportPlanIR` as a read.
 
@@ -458,6 +464,86 @@ There is **no `run-paint-segmentation` export.** Paint segmentation runs as the
 `01_system_architecture.md`), not as a module-implementable WIT stage. Read the
 on-disk file for each export's parameters, the view records they consume, and
 the output-builder resources they write through.
+
+### Support-plan output seam (Normative — Packet 119)
+
+The support-geometry world carries branch entries and one optional
+configuration-only raft plan through the same output resource:
+
+```wit
+record support-plan-entry {
+    global-layer-index: s32,
+    object-id: object-id,
+    region-id: region-id,
+    branch-segments: list<list<point3-with-width>>,
+}
+
+record raft-plan {
+    raft-layers: u32,
+    raft-first-layer-density: f32,
+    base-raft-layers: u32,
+    interface-raft-layers: u32,
+}
+
+resource support-geometry-output {
+    push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+    push-raft-plan: func(plan: raft-plan) -> result<_, string>;
+    push-diagnostic: func(d: diagnostic) -> result<_, string>;
+}
+```
+
+`push-raft-plan` may be called at most once per support-geometry invocation.
+The host harvests it into `SupportPlanIR.raft_plan: Option<RaftPlan>`; no call
+produces `None`. The current support planner calls it only when
+`support_raft_layers > 0`, and the record carries configuration rather than
+raft polygons or generated raft layers.
+
+### `support-geometry-output.push-diagnostic` (Normative — Packet 118)
+
+`support-geometry-output` exposes a typed diagnostic method in addition to
+`push-support-plan-entry` and `push-raft-plan`:
+
+```wit
+push-diagnostic: func(d: diagnostic) -> result<_, string>;
+```
+
+The `diagnostic` record carries a typed severity, a module-allocated numeric
+code, optional layer/object scoping, and a free-form human-readable message:
+
+```wit
+record diagnostic {
+    severity: severity-level,
+    code: u32,
+    layer: option<s32>,
+    object-id: option<string>,
+    message: string,
+}
+
+enum severity-level {
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+}
+```
+
+Field and variant notes (match the on-disk file in
+`crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`):
+
+- Field names are kebab-case in WIT (`object-id`), converted to snake_case
+  (`object_id`) in the Rust SDK and IR.
+- Field order in the record is `severity, code, layer, object-id, message` —
+  bindgen-generated structs follow this order; do not reorder.
+- The `severity-level` enum has exactly five variants; the WIT order is
+  `trace, debug, info, warn, error` (lowest verbosity first).
+- `layer: option<s32>` is signed so negative raft prefix layer indices can be
+  expressed; `None` for prepass-global diagnostics.
+- `code: u32` is module-allocated. The support-planner reserves
+  `1000..=1999`; the host does not enforce a range (out-of-range codes pass
+  through unchanged).
+- `push-diagnostic` is the only new method on `support-geometry-output`;
+  no other prepass output builder gains a diagnostic method in Packet 118.
 
 ---
 
@@ -1018,6 +1104,32 @@ type    = "int"
 default = 0
 min     = 0
 display = "Support raft layers"
+group   = "Support"
+
+# `support_raft_layers > 0` emits the optional raft-plan seam. These three
+# fields are mirrored into the configuration-only `RaftPlan` record.
+[config.schema.raft_first_layer_density]
+type    = "float"
+default = 0.4
+min     = 0.0
+max     = 1.0
+display = "Raft First Layer Density"
+group   = "Support"
+
+[config.schema.base_raft_layers]
+type    = "int"
+default = 1
+min     = 0
+max     = 20
+display = "Base Raft Layers"
+group   = "Support"
+
+[config.schema.interface_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+max     = 20
+display = "Interface Raft Layers"
 group   = "Support"
 
 [config.schema.support_interface_top_layers]

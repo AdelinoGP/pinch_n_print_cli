@@ -79,6 +79,7 @@ fn perimeter_region(
     infill_areas: Vec<ExPolygon>,
 ) -> PerimeterRegion {
     PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from(object_id),
         region_id,
         walls: Vec::new(),

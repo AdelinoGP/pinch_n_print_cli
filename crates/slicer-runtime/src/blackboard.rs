@@ -181,7 +181,18 @@ impl Blackboard {
     }
 
     /// Commit `SeamPlanIR` exactly once.
+    ///
+    /// Rejects any IR that contains duplicate full `RegionKey` entries
+    /// (i.e. two entries with the same `(global_layer_index, object_id,
+    /// region_id, variant_chain)`). Such duplicates would silently shadow
+    /// one plan during harvest/lookup; the error preserves the offending
+    /// key. See packet 178 AC-N1.
     pub fn commit_seam_plan(&mut self, ir: Arc<SeamPlanIR>) -> Result<(), BlackboardError> {
+        if let Some(duplicate) = ir.duplicate_region_key() {
+            return Err(BlackboardError::DuplicateSeamPlanEntry {
+                region_key: duplicate,
+            });
+        }
         commit_prepass(&mut self.seam_plan, ir, BlackboardPrepassSlot::SeamPlan)
     }
 

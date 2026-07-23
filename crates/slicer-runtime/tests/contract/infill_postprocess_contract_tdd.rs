@@ -117,6 +117,7 @@ fn path(role: ExtrusionRole, pts: &[(f32, f32, f32)]) -> ExtrusionPath3D {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             })
             .collect(),
         role,

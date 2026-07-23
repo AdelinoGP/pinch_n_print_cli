@@ -29,6 +29,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     }
 }
 
@@ -151,6 +152,7 @@ fn apply_perimeters_backfills_resolved_seam_from_seam_plan() {
     // emits walls but never bakes the seam — it arrives via the seam plan).
     let mut ir = empty_perimeter_ir();
     ir.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],

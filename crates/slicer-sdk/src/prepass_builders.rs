@@ -3,7 +3,9 @@
 //! These builders correspond to the WIT resources in docs/03_wit_and_manifest.md (world-prepass.wit).
 //! They are used by PrepassModule implementations to emit mesh analysis and layer planning output.
 
-use crate::prepass_types::{FacetAnnotation, LayerProposal, ObjectId, SurfaceGroupProposal};
+use crate::prepass_types::{
+    Diagnostic, FacetAnnotation, LayerProposal, ObjectId, RaftPlan, SurfaceGroupProposal,
+};
 
 /// Output builder for mesh analysis stage.
 ///
@@ -294,6 +296,8 @@ impl std::fmt::Debug for SeamPlanningOutput {
 /// Collects support plan entries produced by `PrepassModule::run_support_geometry`.
 pub struct SupportGeometryOutput {
     entries: Vec<super::prepass_types::SupportPlanEntry>,
+    raft_plan: Option<RaftPlan>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl SupportGeometryOutput {
@@ -301,6 +305,8 @@ impl SupportGeometryOutput {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            raft_plan: None,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -313,10 +319,44 @@ impl SupportGeometryOutput {
         Ok(())
     }
 
+    /// Push the single optional raft plan for this support-geometry call.
+    pub fn push_raft_plan(&mut self, plan: RaftPlan) -> Result<(), String> {
+        if self.raft_plan.is_some() {
+            return Err(String::from(
+                "support-geometry-output: raft-plan may only be pushed once",
+            ));
+        }
+        self.raft_plan = Some(plan);
+        Ok(())
+    }
+
+    /// Push a diagnostic record.
+    ///
+    /// Per docs/adr/0010-typed-diagnostic-channel.md:
+    /// ```wit
+    /// push-diagnostic: func(d: diagnostic) -> result<_, string>;
+    /// ```
+    pub fn push_diagnostic(&mut self, d: Diagnostic) -> Result<(), String> {
+        self.diagnostics.push(d);
+        Ok(())
+    }
+
     /// Get all entries (for testing).
     #[doc(hidden)]
     pub fn entries(&self) -> &[super::prepass_types::SupportPlanEntry] {
         &self.entries
+    }
+
+    /// Get the optional raft plan (for testing and WIT forwarding).
+    #[doc(hidden)]
+    pub fn raft_plan(&self) -> Option<&RaftPlan> {
+        self.raft_plan.as_ref()
+    }
+
+    /// Get all diagnostics in insertion order (for testing).
+    #[doc(hidden)]
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
     }
 }
 
@@ -330,6 +370,8 @@ impl std::fmt::Debug for SupportGeometryOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SupportGeometryOutput")
             .field("entries", &self.entries.len())
+            .field("raft_plan", &self.raft_plan.is_some())
+            .field("diagnostics", &self.diagnostics.len())
             .finish()
     }
 }

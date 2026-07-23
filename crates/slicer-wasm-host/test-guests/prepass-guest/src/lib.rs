@@ -7,13 +7,27 @@ wit_bindgen::generate!({
 struct Component;
 
 impl Guest for Component {
-    fn run_mesh_analysis(_objects: Vec<ObjectId>, _output: MeshAnalysisOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_mesh_analysis(
+        _objects: Vec<ObjectId>,
+        _output: MeshAnalysisOutput,
+        _config: ConfigView,
+    ) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_layer_planning(
+        _objects: Vec<ObjectId>,
+        _output: LayerPlanOutput,
+        _config: ConfigView,
+    ) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_seam_planning(_objects: Vec<MeshObjectView>, _layer_plan: LayerPlanView, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_seam_planning(
+        _objects: Vec<MeshObjectView>,
+        _layer_plan: LayerPlanView,
+        _output: SeamPlanningOutput,
+        _config: ConfigView,
+        _region_input: SeamPlanningView,
+    ) -> Result<(), ModuleError> {
         Ok(())
     }
     fn run_support_geometry(

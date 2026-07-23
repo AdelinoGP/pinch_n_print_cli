@@ -32,6 +32,7 @@ impl Guest for Component {
             let obj = r.object_id();
             let rid = r.region_id();
             let key = slicer::ir_handles::ir_handles::RegionKey {
+                variant_chain: Vec::new(),
                 layer_index,
                 object_id: obj,
                 region_id: rid,
@@ -92,6 +93,7 @@ impl Guest for Component {
                         width: 0.4,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     }],
                     role: slicer::types::geometry::ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
@@ -159,6 +161,7 @@ impl Guest for Component {
                     width: total_polys,
                     flow_factor: region_count,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 slicer::types::geometry::Point3WithWidth {
                     x: spacing as f32 * 10.0,
@@ -167,6 +170,7 @@ impl Guest for Component {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: slicer::types::geometry::ExtrusionRole::SparseInfill,
@@ -182,6 +186,7 @@ impl Guest for Component {
                     width: 137.0,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 }],
                 role: slicer::types::geometry::ExtrusionRole::SparseInfill,
                 speed_factor: 1.0,
@@ -219,6 +224,7 @@ impl Guest for Component {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 }],
                 role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                 speed_factor: 1.0,
@@ -259,6 +265,7 @@ impl Guest for Component {
                 width: 0.4,
                 flow_factor: paint_layer_idx as f32,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: slicer::types::geometry::ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
@@ -290,6 +297,7 @@ impl Guest for Component {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 }],
                 role: slicer::types::geometry::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,

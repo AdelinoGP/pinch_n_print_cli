@@ -21,7 +21,7 @@ use crate::prepass_builders::{
 };
 use crate::prepass_types::{
     LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
-    SupportGeometryView,
+    SeamPlanningView, SupportGeometryView,
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
@@ -36,18 +36,11 @@ use slicer_ir::{
 /// `tree-support` and `traditional-support` modules to honour SupportEnforcer
 /// (force-on) and SupportBlocker (force-off) paint annotations, with
 /// blocker > enforcer precedence (docs/10 §"Scenario Trace 2").
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SupportPaintPolicy {
-    /// At least one SupportBlocker annotation covers this region — skip support
-    /// regardless of overhang-angle or `needs_support`.
-    Blocked,
-    /// At least one SupportEnforcer annotation covers this region (and no
-    /// blocker) — generate support regardless of overhang-angle or
-    /// `needs_support`.
-    Enforced,
-    /// No paint policy override — defer to overhang-angle / `needs_support`.
-    DefaultEligible,
-}
+///
+/// The canonical declaration lives in `slicer_ir::paint_policy`. Re-exported
+/// here so the `slicer_sdk::traits::SupportPaintPolicy` path that the
+/// consumer modules match on continues to resolve without source edits.
+pub use slicer_ir::paint_policy::SupportPaintPolicy;
 
 /// Paint region layer view.
 ///
@@ -214,37 +207,45 @@ impl PaintRegionLayerView {
 
     /// Compute the support paint policy for `expoly` at this layer.
     ///
-    /// D14 contract: walks `SliceIR.regions[*]`; for any region whose polygon
-    /// covers `expoly`'s centroid, checks `segment_annotations[SupportBlocker]`
-    /// and `segment_annotations[SupportEnforcer]` for any `Some(value)` entry.
-    /// Blocker wins over enforcer (docs/10 §"Scenario Trace 2").
+    /// D14 contract: walks `SliceIR.regions[*]`; for any region whose
+    /// polygon contains at least one vertex of the caller's `expoly`,
+    /// classifies the region's `segment_annotations` via
+    /// `slicer_core::paint_policy::support_eligibility`. Blocker wins
+    /// over enforcer (docs/10 §"Scenario Trace 2").
     ///
-    /// Returns `DefaultEligible` when no SliceIR is attached, when no region
-    /// covers `expoly`, or when no enforcer/blocker annotations are present.
+    /// The per-region filter here is the **region-ownership** check
+    /// ("which `SliceIR` cell does the caller's `expoly` belong to?")
+    /// and is distinct from the paint-classification check inside
+    /// `support_eligibility`. The filter uses the *caller's expoly
+    /// contour vertices* as probes (NOT a single centroid of the
+    /// caller's expoly) so that non-convex call-side expolies (e.g. an
+    /// L-shape passed in as the caller's expoly) still match their
+    /// owning region even when the expoly's vertex-mean centroid lies
+    /// outside both the expoly and the region. The centroid probe was
+    /// rejected for the region filter for the same reason it was
+    /// rejected for paint classification in the packet body: it fails
+    /// for non-convex expolies.
+    ///
+    /// Returns `DefaultEligible` when no SliceIR is attached, when no
+    /// region covers `expoly`, or when no enforcer/blocker annotations
+    /// are present.
     pub fn paint_policy_for(&self, expoly: &ExPolygon) -> SupportPaintPolicy {
         let Some(slice) = self.slice_ir.as_ref() else {
             return SupportPaintPolicy::DefaultEligible;
         };
-        let probe = expolygon_centroid(expoly);
         let mut blocked = false;
         let mut enforced = false;
         for region in &slice.regions {
-            if !regions_cover_point(&region.polygons, probe) {
+            if !region_covers_expoly(&region.polygons, expoly) {
                 continue;
             }
-            if annotations_have_some(
-                region
-                    .segment_annotations
-                    .get(&PaintSemantic::SupportBlocker),
+            match slicer_core::paint_policy::support_eligibility(
+                &region.polygons,
+                &region.segment_annotations,
             ) {
-                blocked = true;
-            }
-            if annotations_have_some(
-                region
-                    .segment_annotations
-                    .get(&PaintSemantic::SupportEnforcer),
-            ) {
-                enforced = true;
+                SupportPaintPolicy::Blocked => blocked = true,
+                SupportPaintPolicy::Enforced => enforced = true,
+                SupportPaintPolicy::DefaultEligible => {}
             }
         }
         if blocked {
@@ -257,54 +258,45 @@ impl PaintRegionLayerView {
     }
 }
 
-#[inline]
-fn annotations_have_some(entries: Option<&Vec<Vec<Option<slicer_ir::PaintValue>>>>) -> bool {
-    let Some(entries) = entries else { return false };
-    entries
-        .iter()
-        .any(|perim| perim.iter().any(|v| v.is_some()))
-}
-
-/// Average of the outer contour points in integer coordinate space.  Sufficient
-/// as a point-in-polygon probe for the convex / near-convex paint regions
-/// produced by `cells_to_expolygons_by_color`; modifier-volume polygons are also
-/// near-convex by construction (slices of axis-aligned solids).
-fn expolygon_centroid(expoly: &ExPolygon) -> slicer_ir::Point2 {
-    let pts = &expoly.contour.points;
-    if pts.is_empty() {
-        return slicer_ir::Point2 { x: 0, y: 0 };
-    }
-    let mut sx: i64 = 0;
-    let mut sy: i64 = 0;
-    for p in pts {
-        sx += p.x;
-        sy += p.y;
-    }
-    let n = pts.len() as i64;
-    slicer_ir::Point2 {
-        x: sx / n,
-        y: sy / n,
-    }
-}
-
-fn regions_cover_point(polygons: &[ExPolygon], pt: slicer_ir::Point2) -> bool {
-    polygons.iter().any(|p| point_in_expolygon(pt, p))
-}
-
-/// Ray-cast point-in-polygon (with hole subtraction).
-fn point_in_expolygon(pt: slicer_ir::Point2, ep: &ExPolygon) -> bool {
-    if !point_in_polygon(pt, &ep.contour.points) {
+/// True if any vertex of `caller_expoly`'s contour lies inside one of
+/// `region_polys`. The region-ownership predicate for
+/// `paint_policy_for`. Tested against the caller's expoly contour
+/// vertices (not its centroid) so that a non-convex call-side expoly
+/// (e.g. an L-shape whose vertex-mean centroid lies in its own notch)
+/// still matches the owning region.
+///
+/// Holes subtract from the region polygons; the caller expoly is treated
+/// as a single closed contour (the consumer modules pass per-region
+/// expolies that are cells of the slice, not expolies with holes).
+fn region_covers_expoly(region_polys: &[ExPolygon], caller_expoly: &ExPolygon) -> bool {
+    if region_polys.is_empty() {
         return false;
     }
-    for hole in &ep.holes {
-        if point_in_polygon(pt, &hole.points) {
-            return false;
+    for vertex in &caller_expoly.contour.points {
+        for ep in region_polys {
+            if point_in_polygon_ring(&ep.contour.points, *vertex) {
+                let mut in_hole = false;
+                for hole in &ep.holes {
+                    if point_in_polygon_ring(&hole.points, *vertex) {
+                        in_hole = true;
+                        break;
+                    }
+                }
+                if !in_hole {
+                    return true;
+                }
+            }
         }
     }
-    true
+    false
 }
 
-fn point_in_polygon(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> bool {
+/// Ray-cast point-in-polygon for a single closed ring. Boundary points
+/// are treated as inside (consistent with the upstream point-in-polygon
+/// helpers in `slicer-ir::polygon_predicate`). Used by
+/// `region_covers_expoly` to disambiguate which `SliceIR` cell the
+/// caller's `expoly` belongs to.
+fn point_in_polygon_ring(ring: &[slicer_ir::Point2], pt: slicer_ir::Point2) -> bool {
     if ring.len() < 3 {
         return false;
     }
@@ -313,14 +305,19 @@ fn point_in_polygon(pt: slicer_ir::Point2, ring: &[slicer_ir::Point2]) -> bool {
     for i in 0..ring.len() {
         let pi = &ring[i];
         let pj = &ring[j];
-        // The `(pi.y > pt.y) != (pj.y > pt.y)` precondition guarantees
-        // `pj.y - pi.y != 0`, so the division below is safe.
         let pi_above = pi.y > pt.y;
         let pj_above = pj.y > pt.y;
         if pi_above != pj_above {
-            let cross = (pj.x as i128 - pi.x as i128) * (pt.y as i128 - pi.y as i128)
-                / (pj.y as i128 - pi.y as i128)
-                + pi.x as i128;
+            let pj_x = pj.x as i128;
+            let pi_x = pi.x as i128;
+            let pt_y = pt.y as i128;
+            let pi_y = pi.y as i128;
+            let pj_y = pj.y as i128;
+            let dy = pj_y - pi_y;
+            if dy == 0 {
+                continue;
+            }
+            let cross = (pj_x - pi_x) * (pt_y - pi_y) / dy + pi_x;
             if (pt.x as i128) < cross {
                 inside = !inside;
             }
@@ -368,6 +365,7 @@ pub trait LayerModule: Sized {
     ///     paint: paint-region-layer-view,
     ///     output: infill-output-builder,
     ///     config: config-view,
+    ///     region-input: seam-planning-view,
     /// ) -> result<_, module-error>;
     /// ```
     fn run_infill(
@@ -649,6 +647,7 @@ pub trait PrepassModule: Sized {
     ///     layer-plan: layer-plan-view,
     ///     output: seam-planning-output,
     ///     config: config-view,
+    ///     region-input: seam-planning-view,
     /// ) -> result<_, module-error>;
     /// ```
     fn run_seam_planning(
@@ -657,6 +656,7 @@ pub trait PrepassModule: Sized {
         _layer_plan: &LayerPlanView,
         _output: &mut SeamPlanningOutput,
         _config: &ConfigView,
+        _region_input: &SeamPlanningView,
     ) -> Result<(), ModuleError> {
         Ok(())
     }

@@ -95,6 +95,105 @@ pub fn project_layer_plan_view(
     host::prepass::LayerPlanView { layers: entries }
 }
 
+/// Project active SliceIR regions into the seam planner's whole-print input.
+///
+/// Only regions with a non-empty supplied boundary are forwarded. The exact
+/// RegionMap key, including its variant chain, is used when a map is present
+/// so inactive or identity-mismatched regions cannot fabricate a seam plan.
+pub fn project_seam_planning_view(
+    slices: &[slicer_ir::SliceIR],
+    layer_plan: Option<&slicer_ir::LayerPlanIR>,
+    region_map: Option<&slicer_ir::RegionMapIR>,
+    config_view: &slicer_ir::ConfigView,
+) -> host::SeamPlanningViewData {
+    let scoring_width = match config_view.get("seam_scoring_width") {
+        Some(slicer_ir::ConfigValue::Float(value)) => *value as f32,
+        Some(slicer_ir::ConfigValue::Int(value)) => *value as f32,
+        _ => 0.4,
+    };
+    let scoring_width = if scoring_width.is_finite() && scoring_width > 0.0 {
+        scoring_width
+    } else {
+        0.4
+    };
+
+    let mut ordered_slices: Vec<&slicer_ir::SliceIR> = slices.iter().collect();
+    ordered_slices.sort_by_key(|slice| slice.global_layer_index);
+
+    let mut regions = Vec::new();
+    for slice in ordered_slices {
+        if layer_plan.is_some_and(|plan| {
+            !plan
+                .global_layers
+                .iter()
+                .any(|layer| layer.index == slice.global_layer_index)
+        }) {
+            continue;
+        }
+
+        let mut sliced_regions: Vec<&slicer_ir::SlicedRegion> = slice.regions.iter().collect();
+        sliced_regions.sort_by(|left, right| {
+            left.object_id
+                .cmp(&right.object_id)
+                .then(left.region_id.cmp(&right.region_id))
+                .then(left.variant_chain.cmp(&right.variant_chain))
+        });
+
+        for region in sliced_regions {
+            if region.object_id.is_empty() || region.polygons.is_empty() {
+                continue;
+            }
+            if let Some(map) = region_map {
+                let active_key = slicer_ir::RegionKey {
+                    global_layer_index: slice.global_layer_index,
+                    object_id: region.object_id.clone(),
+                    region_id: region.region_id,
+                    variant_chain: region.variant_chain.clone(),
+                };
+                if !map.entries.contains_key(&active_key) {
+                    continue;
+                }
+            }
+
+            let mut segment_annotations: Vec<_> = region.segment_annotations.iter().collect();
+            segment_annotations.sort_by(|left, right| left.0.cmp(right.0));
+            let segment_annotations = segment_annotations
+                .into_iter()
+                .map(|(semantic, polygons)| host::SegmentAnnotationsEntry {
+                    semantic: ir_to_wit_paint_semantic(semantic),
+                    polygons: polygons
+                        .iter()
+                        .map(|values| host::SegmentAnnotationsPolygon {
+                            values: values
+                                .iter()
+                                .map(|value| value.as_ref().map(ir_to_wit_paint_value))
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect();
+
+            regions.push(host::prepass::SeamPlanningRegionInput {
+                global_layer_index: slice.global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id.to_string(),
+                variant_chain: region
+                    .variant_chain
+                    .iter()
+                    .map(|(semantic, value)| (semantic.clone(), ir_to_wit_paint_value(value)))
+                    .collect(),
+                z: slice.z,
+                height: region.effective_layer_height,
+                ex_polygons: ir_to_wit_expolygons(&region.polygons),
+                segment_annotations,
+                scoring_width,
+            });
+        }
+    }
+
+    host::SeamPlanningViewData { regions }
+}
+
 /// Project `RegionMapIR` into a deterministic WIT `RegionSegmentationView`.
 ///
 /// Entries are sorted by `(global_layer_index ASC, object_id ASC)` with each
@@ -488,8 +587,31 @@ pub(crate) fn harvest_layer_plan_ir_from(
     })
 }
 
+#[allow(unreachable_patterns)]
+fn convert_variant_chain(
+    wit: &[(String, host::prepass::PaintValue)],
+) -> Result<Vec<(String, slicer_ir::PaintValue)>, String> {
+    wit.iter()
+        .map(|(name, value)| {
+            let value = match value {
+                host::prepass::PaintValue::Flag(value) => slicer_ir::PaintValue::Flag(*value),
+                host::prepass::PaintValue::Scalar(value) => slicer_ir::PaintValue::Scalar(*value),
+                host::prepass::PaintValue::ToolIndex(value) => {
+                    slicer_ir::PaintValue::ToolIndex(*value)
+                }
+                _ => {
+                    return Err(format!(
+                        "unsupported variant-chain paint value for '{name}'"
+                    ))
+                }
+            };
+            Ok((name.clone(), value))
+        })
+        .collect()
+}
+
 /// Pure core of `harvest_seam_plan_ir`: WIT `SeamPlanEntry`s → `SeamPlanIR`.
-pub(crate) fn harvest_seam_plan_ir_from(
+pub fn harvest_seam_plan_ir_from(
     seam_plan_entries: Vec<host::prepass::SeamPlanEntry>,
 ) -> Result<slicer_ir::SeamPlanIR, String> {
     use slicer_ir::SeamPosition;
@@ -502,7 +624,14 @@ pub(crate) fn harvest_seam_plan_ir_from(
     for entry in seam_plan_entries.into_iter() {
         let region_id = host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
             format!(
-                "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
+                "seam-planning-output: region '{}'/'{}' has invalid identity: invalid region-id: {reason}",
+                entry.object_id, entry.region_id
+            )
+        })?;
+
+        let variant_chain = convert_variant_chain(&entry.variant_chain).map_err(|reason| {
+            format!(
+                "seam-planning-output: region '{}'/'{}' has invalid identity: {reason}",
                 entry.object_id, entry.region_id
             )
         })?;
@@ -511,7 +640,7 @@ pub(crate) fn harvest_seam_plan_ir_from(
             global_layer_index: entry.global_layer_index,
             object_id: entry.object_id.clone(),
             region_id,
-            variant_chain: Vec::new(),
+            variant_chain,
         };
 
         let is_duplicate = seen.contains_key(&region_key);
@@ -531,6 +660,7 @@ pub(crate) fn harvest_seam_plan_ir_from(
                     width: sc.position.width,
                     flow_factor: sc.position.flow_factor,
                     overhang_quartile: sc.position.overhang_quartile,
+                    dist_to_top_mm: 0.0,
                 },
                 score: sc.score,
                 reason: match sc.reason.tag.as_str() {
@@ -550,6 +680,7 @@ pub(crate) fn harvest_seam_plan_ir_from(
                 width: entry.chosen_position.width,
                 flow_factor: entry.chosen_position.flow_factor,
                 overhang_quartile: entry.chosen_position.overhang_quartile,
+                dist_to_top_mm: 0.0,
             },
             wall_index: entry.chosen_wall_index,
         };
@@ -570,9 +701,10 @@ pub(crate) fn harvest_seam_plan_ir_from(
 /// Pure core of `harvest_support_plan_ir`: WIT `SupportPlanEntry`s → `SupportPlanIR`.
 pub(crate) fn harvest_support_plan_ir_from(
     support_plan_entries: Vec<host::prepass::SupportPlanEntry>,
+    raft_plan: Option<host::prepass::RaftPlan>,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
     use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SupportPlanEntry, SupportPlanIR,
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RaftPlan, SupportPlanEntry, SupportPlanIR,
     };
 
     let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
@@ -597,6 +729,7 @@ pub(crate) fn harvest_support_plan_ir_from(
                     width: p.width,
                     flow_factor: p.flow_factor,
                     overhang_quartile: p.overhang_quartile,
+                    dist_to_top_mm: p.dist_to_top_mm,
                 })
                 .collect();
             branch_segments.push(ExtrusionPath3D {
@@ -616,6 +749,12 @@ pub(crate) fn harvest_support_plan_ir_from(
 
     Ok(SupportPlanIR {
         entries,
+        raft_plan: raft_plan.map(|plan| RaftPlan {
+            raft_layers: plan.raft_layers,
+            raft_first_layer_density: plan.raft_first_layer_density,
+            base_raft_layers: plan.base_raft_layers,
+            interface_raft_layers: plan.interface_raft_layers,
+        }),
         ..Default::default()
     })
 }

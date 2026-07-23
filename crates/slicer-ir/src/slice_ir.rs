@@ -242,15 +242,15 @@ pub const CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
 /// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`. Initial 1.0.0 — no bumps recorded in
-/// `docs/02_ir_schemas.md` as of TASK-200b.
+/// Schema version for `SupportPlanIR`. Bumped to 1.3.0 by packet 124 (additive
+/// `ExtrusionRole::RaftInfill` per ADR-0009).
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
-    minor: 0,
+    minor: 3,
     patch: 0,
 };
 
@@ -1089,8 +1089,30 @@ pub struct SeamPlanEntry {
 pub struct SeamPlanIR {
     /// Schema version of this IR.
     pub schema_version: SemVer,
-    /// One entry per active `(layer, object, region)` triple.
+    /// One entry per active `(layer, object, region, variant_chain)` key.
+    /// `RegionKey` (which includes `variant_chain`) is the full identity,
+    /// so two entries sharing the same `(layer, object, region_id)` but
+    /// different `variant_chain` are distinct; two entries sharing all
+    /// four fields are duplicates and the `validate_unique_entries` method
+    /// rejects them at commit time.
     pub entries: Vec<SeamPlanEntry>,
+}
+
+impl SeamPlanIR {
+    /// Returns the first duplicate `RegionKey` (if any) within `entries`,
+    /// preserving the order they appear in `entries`. Used by
+    /// `Blackboard::commit_seam_plan` to reject malformed inputs that would
+    /// otherwise silently shadow a region's plan (packet 178 AC-N1).
+    pub fn duplicate_region_key(&self) -> Option<RegionKey> {
+        use std::collections::HashSet;
+        let mut seen: HashSet<&RegionKey> = HashSet::with_capacity(self.entries.len());
+        for entry in &self.entries {
+            if !seen.insert(&entry.region_key) {
+                return Some(entry.region_key.clone());
+            }
+        }
+        None
+    }
 }
 
 impl Default for SeamPlanIR {
@@ -1133,6 +1155,22 @@ pub struct SupportPlanEntry {
     pub branch_segments: Vec<ExtrusionPath3D>,
 }
 
+/// Configuration-only raft plan emitted during support planning.
+///
+/// This record intentionally carries no raft geometry. Packet 124 owns
+/// generating the geometry from this plan.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RaftPlan {
+    /// Number of raft layers below the model.
+    pub raft_layers: u32,
+    /// Density of the first raft layer.
+    pub raft_first_layer_density: f32,
+    /// Number of base raft layers.
+    pub base_raft_layers: u32,
+    /// Number of interface raft layers.
+    pub interface_raft_layers: u32,
+}
+
 /// Support plan IR — committed once to the blackboard by
 /// `PrePass::SupportGeometry`.
 ///
@@ -1150,6 +1188,9 @@ pub struct SupportPlanIR {
     /// planned branches. Multiple entries may share `(layer, object)` when
     /// a single object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
+    /// Optional raft configuration. Geometry is emitted by a later packet.
+    #[serde(default)]
+    pub raft_plan: Option<RaftPlan>,
 }
 
 impl Default for SupportPlanIR {
@@ -1157,6 +1198,7 @@ impl Default for SupportPlanIR {
         Self {
             schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
             entries: Vec::new(),
+            raft_plan: None,
         }
     }
 }
@@ -1682,6 +1724,8 @@ pub struct Point3WithWidth {
     /// Overhang severity quartile (0-3), None if not classified
     #[serde(default)]
     pub overhang_quartile: Option<u8>,
+    /// Distance from this point to the top of its support column in mm
+    pub dist_to_top_mm: f32,
 }
 
 /// Extrusion role
@@ -1704,6 +1748,8 @@ pub enum ExtrusionRole {
     InternalSolidInfill,
     /// Sparse infill
     SparseInfill,
+    /// Raft infill (ADR-0009: rendered by whichever `Layer::Infill` module declares `claim:raft-fill`).
+    RaftInfill,
     /// Support material
     SupportMaterial,
     /// Support interface
@@ -1734,6 +1780,14 @@ impl ExtrusionRole {
     /// Values mirror the canonical producer-emit order used by Packet 40's
     /// stable-sort merge: lower = printed first, gaps ≥ 100 guarantee
     /// unambiguous slot insertion for finalization-pushed entities.
+    ///
+    /// The function exposes a `0..200` bed-adhesion sub-band reserved for
+    /// `Skirt` (0), `RaftInfill` (50, ADR-0009) and `Brim` (110); walls and
+    /// infill start at 1000. Modules that finalize raft layers after the
+    /// host-side default may push a `RaftInfill` with a finer-grained
+    /// priority in `[1, 49]` to interleave within the skirt, or in
+    /// `[51, 109]` to interleave between raft and brim — see
+    /// `docs/adr/0009-raft-as-layer-infill-role.md` for the slot policy.
     pub const fn default_priority(&self) -> u32 {
         match self {
             Self::Skirt => 0,
@@ -1753,6 +1807,14 @@ impl ExtrusionRole {
             Self::PrimeTower => 8500,
             Self::Custom(_) => 9000,
             Self::GapFill => 2000,
+            // Bed-adhesion sub-band: emitted *before* the wall/infill stack so the
+            // raft layers land on the bed first, after `Skirt` (0) and before
+            // `Brim` (110) — `Brim` is conventionally an outer-wall-extension
+            // adhesion aid, while `RaftInfill` is the underside of a multi-layer
+            // raft base; `raft-default-module` may re-order this with a
+            // finalized priority if the visual-debug bundle proves the order wrong.
+            // ADR-0009 §Decision; packet 124.
+            Self::RaftInfill => 50,
         }
     }
 
@@ -1819,6 +1881,7 @@ pub fn variable_width(thick: &ThickPolyline, role: ExtrusionRole) -> ExtrusionPa
                 width: p.width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             })
             .collect(),
         role,
@@ -1981,6 +2044,9 @@ pub struct PerimeterRegion {
     pub object_id: ObjectId,
     /// Region ID
     pub region_id: RegionId,
+    /// Ordered paint-variant identity for this region.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Wall loops in this region
     pub walls: Vec<WallLoop>,
     /// Remaining area after wall insets

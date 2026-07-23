@@ -90,6 +90,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -98,6 +99,7 @@ fn seeded_layer_collection(index: u32, z: f32) -> LayerCollectionIR {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::OuterWall,

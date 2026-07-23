@@ -230,6 +230,7 @@ fn simplify_distance_gated(
                         width: current.p.width,
                         flow_factor: current.p.flow_factor,
                         overhang_quartile: current.p.overhang_quartile,
+                        dist_to_top_mm: current.p.dist_to_top_mm,
                     },
                     perimeter_index: current.perimeter_index,
                 };

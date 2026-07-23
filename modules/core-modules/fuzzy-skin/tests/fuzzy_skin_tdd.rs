@@ -38,6 +38,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 10.0,
@@ -46,6 +47,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 10.0,
@@ -54,6 +56,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 0.0,
@@ -62,6 +65,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
     ];
     let feature_flags: Vec<WallFeatureFlags> = fuzzy_flags.iter().map(|f| flags(*f)).collect();
@@ -90,6 +94,7 @@ fn inner_wall(z: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 9.0,
@@ -98,6 +103,7 @@ fn inner_wall(z: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 9.0,
@@ -106,6 +112,7 @@ fn inner_wall(z: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: 1.0,
@@ -114,6 +121,7 @@ fn inner_wall(z: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
     ];
     WallLoop {

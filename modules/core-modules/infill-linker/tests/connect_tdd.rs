@@ -28,6 +28,7 @@ fn path(y_mm: f32, role: ExtrusionRole, speed_factor: f32) -> ExtrusionPath3D {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -36,6 +37,7 @@ fn path(y_mm: f32, role: ExtrusionRole, speed_factor: f32) -> ExtrusionPath3D {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
         ],
         role,

@@ -26,6 +26,7 @@ fn candidate(x: f32, score: f32, reason: SeamReason) -> SeamCandidate {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         score,
         reason,
@@ -42,6 +43,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate]) -> WallLoop {
             width: c.position.width,
             flow_factor: c.position.flow_factor,
             overhang_quartile: c.position.overhang_quartile,
+            dist_to_top_mm: 0.0,
         })
         .collect();
     let flags = vec![

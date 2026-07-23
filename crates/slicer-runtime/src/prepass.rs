@@ -235,6 +235,7 @@ pub fn execute_prepass_with_instrumentation(
             let input = PrepassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 layer_plan: blackboard.layer_plan().cloned(),
+                slice_ir: blackboard.slice_ir().cloned(),
                 region_map: blackboard.region_map().cloned(),
                 support_geometry: blackboard.support_geometry().cloned(),
                 _phantom: std::marker::PhantomData,
@@ -282,11 +283,13 @@ pub fn execute_prepass_with_instrumentation(
             // Always record the audit when there is a runtime_reads vector,
             // even if the output is None (read-performing modules that produce
             // no IR output still have their reads audited).
+            let diagnostics: Vec<slicer_ir::Diagnostic> = runner.last_diagnostics();
             if let Some(ir_path) = ir_path {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: vec![ir_path],
+                    diagnostics,
                 });
             } else if !runtime_reads.is_empty() {
                 // Module performed reads but produced no output — still record audit.
@@ -294,6 +297,7 @@ pub fn execute_prepass_with_instrumentation(
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: Vec::new(),
+                    diagnostics,
                 });
             }
         }
@@ -781,7 +785,11 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
         ],
-        "PrePass::SeamPlanning" => &[BlackboardPrepassSlot::LayerPlan],
+        "PrePass::SeamPlanning" => &[
+            BlackboardPrepassSlot::LayerPlan,
+            BlackboardPrepassSlot::SliceIR,
+            BlackboardPrepassSlot::RegionMap,
+        ],
         "PrePass::SupportGeometry" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,

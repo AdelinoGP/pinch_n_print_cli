@@ -293,6 +293,10 @@ pub struct ModuleAccessAudit {
     pub runtime_reads: Vec<String>,
     /// Runtime write paths committed by the module.
     pub runtime_writes: Vec<String>,
+    /// Typed diagnostics emitted by the module during prepass execution.
+    /// FIFO order, preserved from guest emission. Not compared by scheduler
+    /// validation — only runtime_reads and runtime_writes participate.
+    pub diagnostics: Vec<slicer_ir::Diagnostic>,
 }
 
 /// Startup validation input spanning all 14 documented passes.

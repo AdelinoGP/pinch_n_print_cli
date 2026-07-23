@@ -1,0 +1,7 @@
+# Task Map: 180-seam-final-placement-default
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-293` | `Step 1` | `docs/01_system_architecture.md` (986-998), `docs/02_ir_schemas.md` (1000-1075) | `modules/core-modules/seam-placer/src/lib.rs` (continuous projection), `modules/core-modules/seam-placer/tests/seam_continuous_projection_tdd.rs` (new) | `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer.cpp` (place_seam nearest-point projection) | M | Replaces vertex-only snap with segment-projection; inserts point, interpolates flags/widths, re-closes loop |
+| `TASK-293` | `Step 2` | `crates/slicer-sdk/src/error.rs` (1-40), `crates/slicer-runtime/src/progress_events.rs` (121-186) | `modules/core-modules/seam-placer/src/lib.rs` (degraded fallback path), `modules/core-modules/seam-placer/tests/seam_degraded_fallback_tdd.rs` (new) | None | M | Non-fatal ModuleError for missing plan; canonical local candidate fallback; walls preserved |
+| `TASK-293` | `Step 3` | `docs/15_config_keys_reference.md` (166-226) | `modules/core-modules/seam-placer/seam-placer.toml`, `modules/core-modules/seam-planner-default/seam-planner-default.toml`, `crates/slicer-runtime/tests/e2e/seam_aligned_default_e2e.rs` (new) | None | M | Default change to aligned in both manifests; multi-region e2e; regression check |

@@ -12,7 +12,12 @@ interface ir-handles {
     // `as i32` at the boundary to round-trip into u32-keyed IR types.
     type layer-idx = s32;
 
-    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
+    record region-key {
+        layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
+    }
 
     record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
     record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag>, boundary-type: wall-boundary-type }

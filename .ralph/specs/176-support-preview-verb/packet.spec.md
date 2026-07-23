@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 176-support-preview-verb
 task_ids:
   - TASK-280

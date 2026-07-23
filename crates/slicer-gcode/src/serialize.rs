@@ -46,7 +46,13 @@ pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
         ExtrusionRole::Custom(_) => 0.0,
         // Gap-fill uses perimeter tolerance (it's wall-adjacent).
         ExtrusionRole::GapFill => cfg.gcode_resolution,
-        _ => 0.0,
+        // Raft infill: bed-adhesion layer, print at perimeter resolution so
+        // D-P simplification doesn't round the contact surface.
+        ExtrusionRole::RaftInfill => cfg.gcode_resolution,
+        // Forward-compat fallback for future `#[non_exhaustive]` variants:
+        // perimeter resolution is the safe default (tighter than the typical
+        // infill, never looser than an existing role's intent).
+        _ => cfg.gcode_resolution,
     }
 }
 
@@ -213,15 +219,39 @@ fn filament_colour_csv(slot_count: usize) -> String {
 }
 
 /// Resolve the per-filament colour CSV (`#RRGGBB;#RRGGBB;…`): prefer the model's
-/// authored palette carried in `raw_config["filament_colour"]` (a semicolon-
-/// separated string seeded from the 3MF project settings), falling back to the
-/// hardcoded default palette sized to the tools in use.
+/// authored palette carried in `raw_config["filament_colour"]` (seeded from
+/// the 3MF project settings), falling back to the hardcoded default palette
+/// sized to the tools in use.
+///
+/// Accepts two shapes for the authored value:
+/// - `ConfigValue::String` — semicolon-joined `#RRGGBB` hex codes (the
+///   pre-packet-XXX convention used by `main.rs` before the generic 3MF
+///   extractor produced lists; still supported for `--config` users).
+/// - `ConfigValue::List` — a list of `ConfigValue::String` hex codes, the
+///   shape the generic 3MF project-settings extractor now produces
+///   (OrcaSlicer stores `filament_colour` as a JSON array in
+///   `project_settings.config`).
 fn resolve_filament_colour_csv(
     raw_config: &HashMap<String, ConfigValue>,
     slot_count: usize,
 ) -> String {
     match raw_config.get("filament_colour") {
         Some(ConfigValue::String(s)) if !s.trim().is_empty() => s.clone(),
+        Some(ConfigValue::List(items)) => {
+            let joined = items
+                .iter()
+                .filter_map(|v| match v {
+                    ConfigValue::String(s) if !s.is_empty() => Some(s.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(";");
+            if joined.is_empty() {
+                filament_colour_csv(slot_count)
+            } else {
+                joined
+            }
+        }
         _ => filament_colour_csv(slot_count),
     }
 }
@@ -378,6 +408,15 @@ fn serialize_config_block(
                     }
                 }
                 ConfigValue::List(items) => {
+                    // `coStrings` arrays (e.g. `filament_colour`) serialise
+                    // semicolon-separated in OrcaSlicer's CONFIG_BLOCK so the
+                    // viewer's `ConfigBase::load_from_gcode_file` can parse
+                    // them — this is the historic 3MF contract. `coFloats`
+                    // arrays would join with `,`, but those keys are not
+                    // currently produced as `List` by the generic 3MF
+                    // extractor (`coFloats` fields stay as scalar strings);
+                    // any future coFloats→List wiring should revisit this
+                    // joiner choice.
                     let parts: Vec<String> = items
                         .iter()
                         .map(|v| match v {
@@ -385,7 +424,7 @@ fn serialize_config_block(
                             _ => format!("{v:?}"),
                         })
                         .collect();
-                    parts.join(",")
+                    parts.join(";")
                 }
             };
             emit_config_kv(&mut out, &mut emitted, key, &value_str);
@@ -853,6 +892,55 @@ mod tests {
             resolve_filament_colour_csv(&cfg, 4),
             filament_colour_csv(4),
             "with no config palette, fall back to the default"
+        );
+    }
+
+    #[test]
+    fn resolve_filament_colour_csv_accepts_list_of_strings() {
+        // The generic 3MF `project_settings.config` extractor surfaces
+        // `filament_colour` as `ConfigValue::List` (OrcaSlicer stores it as
+        // a JSON array). The resolver must join it back into the
+        // semicolon-separated CSV the G-code header / CONFIG_BLOCK need.
+        let mut cfg: HashMap<String, ConfigValue> = HashMap::new();
+        cfg.insert(
+            "filament_colour".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::String("#FF9B00".to_string()),
+                ConfigValue::String("#02BF06".to_string()),
+                ConfigValue::String("#1800F2".to_string()),
+                ConfigValue::String("#EC0006".to_string()),
+            ]),
+        );
+        assert_eq!(
+            resolve_filament_colour_csv(&cfg, 4),
+            "#FF9B00;#02BF06;#1800F2;#EC0006",
+            "List shape must be joined with `;` to match the historic String shape"
+        );
+    }
+
+    #[test]
+    fn config_block_joins_list_values_with_semicolons() {
+        // Verify the CONFIG_BLOCK dumper renders a `List` value with `;`
+        // separators — OrcaSlicer's viewer reads the block with
+        // `ConfigOptionStrings` parsing (semicolon-separated) for keys like
+        // `filament_colour`. If we joined with `,` the viewer would fail
+        // to parse the palette.
+        let mut cfg: HashMap<String, ConfigValue> = HashMap::new();
+        cfg.insert(
+            "filament_colour".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::String("#FF9B00".to_string()),
+                ConfigValue::String("#02BF06".to_string()),
+            ]),
+        );
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
+        assert!(
+            block.contains("; filament_colour = #FF9B00;#02BF06"),
+            "List must be emitted as `;`-joined string in CONFIG_BLOCK; got:\n{block}"
+        );
+        assert!(
+            !block.contains("; filament_colour = #FF9B00,#02BF06"),
+            "List must NOT be `,`-joined (regression — that was the pre-fix behaviour)"
         );
     }
 }

@@ -432,6 +432,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             }],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -854,6 +855,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -862,6 +864,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
@@ -870,6 +873,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,
@@ -894,6 +898,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
     let perim = slicer_ir::PerimeterIR {
         global_layer_index: 7,
         regions: vec![slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: "obj".into(),
             region_id: 0,
             walls: vec![wall],

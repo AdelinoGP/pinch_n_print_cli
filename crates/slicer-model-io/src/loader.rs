@@ -11,7 +11,7 @@ use std::fmt;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
-use crate::sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
+use crate::sidecar::{parse_3mf_sidecar, ParsedSidecar, PartSubtype};
 
 use slicer_ir::{
     BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
@@ -591,7 +591,7 @@ fn resolve_object(
     incoming_transform: &[f64; 16],
     objects: &HashMap<u32, Parsed3mfObject>,
     visited: &mut Vec<u32>,
-    sidecar: &HashMap<u32, ObjectSidecarInfo>,
+    sidecar: &ParsedSidecar,
 ) -> Result<
     (
         IndexedTriangleSet,
@@ -643,6 +643,7 @@ fn resolve_object(
             // Check sidecar classification for this component part.
             // Sidecar layout: object_id -> parts map; part id = comp.objectid.
             let part_info = sidecar
+                .objects
                 .get(&object_id)
                 .and_then(|o| o.parts.get(&comp.objectid));
             let subtype = part_info
@@ -690,33 +691,29 @@ fn resolve_object(
                 );
 
                 if let Some(part) = part_info {
-                    if let Some(fuzzy) = part.metadata.get("fuzzy_skin") {
-                        config_fields
-                            .insert("fuzzy_skin".to_string(), ConfigValue::String(fuzzy.clone()));
-                    }
-                    if let Some(extruder_str) = part.metadata.get("extruder") {
-                        match extruder_str.parse::<i64>() {
-                            Ok(v) => {
-                                // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
-                                // Clamp at 0: raw `extruder=0` (OrcaSlicer "inherit"
-                                // sentinel on parts) stays as literal `Int(0)` for now.
-                                let rebased = if v >= 1 { v - 1 } else { 0 };
-                                config_fields
-                                    .insert("extruder".to_string(), ConfigValue::Int(rebased));
-                            }
-                            Err(_) => {
+                    // Generic per-part metadata extraction: every key on the
+                    // sidecar's `<part>` flows into the modifier's `config_delta`
+                    // via the same string-coercion heuristic used for
+                    // project/object-level keys. The historical narrow
+                    // allowlist (fuzzy_skin / extruder / matrix) is preserved
+                    // because the coercion helper produces the same typed
+                    // values those branches used to insert by hand.
+                    for (k, v) in &part.metadata {
+                        if k == "extruder" {
+                            if let Ok(parsed) = v.parse::<i64>() {
+                                let rebased = if parsed >= 1 { parsed - 1 } else { 0 };
+                                config_fields.insert(k.clone(), ConfigValue::Int(rebased));
+                            } else {
                                 log::warn!(
                                     target: "slicer_model_io::loader",
                                     "extruder value '{}' on part {} is not a valid integer, skipping",
-                                    extruder_str,
+                                    v,
                                     comp.objectid
                                 );
                             }
+                            continue;
                         }
-                    }
-                    if let Some(matrix) = part.metadata.get("matrix") {
-                        config_fields
-                            .insert("matrix".to_string(), ConfigValue::String(matrix.clone()));
+                        config_fields.insert(k.clone(), coerce_string_to_config_value(v));
                     }
                     if let Some(density_str) = part.metadata.get("sparse_infill_density") {
                         match parse_density_value(density_str) {
@@ -843,53 +840,44 @@ fn resolve_object(
     }
 }
 
-/// Load 3MF and return a list of (IndexedTriangleSet, optional paint data, modifier volumes) per build item.
-/// Convert allowlist object-level sidecar keys to typed `ConfigValue` entries.
+/// Convert every object-level sidecar key to a typed `ConfigValue` entry.
 ///
-/// Allowlist: `extruder` â†’ `Int(i64)`, `enable_support` â†’ `Bool` (parses
-/// `"1"`/`"0"`/`"true"`/`"false"`; warns and skips otherwise), `support_type`
-/// â†’ `String`. Other keys are silently ignored. Mirrors the part-level
-/// conversion discipline at the modifier-volume site.
+/// Replaces the prior narrow allowlist (`extruder` / `enable_support` /
+/// `support_type`) with a generic extraction: every key in `metadata` is
+/// emitted with string values coerced via
+/// [`coerce_string_to_config_value`], so PNP sees the same OrcaSlicer key
+/// the 3MF authored, regardless of whether the rest of the pipeline
+/// currently reads it. Keys PNP does not know about are still materialised
+/// in the per-object config (and later `apply_overlay`ed through
+/// `object_config:<id>:<key>` into the runtime's `config_source`).
+///
+/// `extruder` is special-cased: OrcaSlicer 3MF authors it 1-indexed, while
+/// the runtime expects 0-indexed; values ≥ 1 are rebased, raw `0` stays
+/// `Int(0)`. Non-numeric values are coerced normally (and would never be
+/// re-introspected for re-indexing). Mirrors the part-level conversion
+/// discipline at the modifier-volume site.
 fn object_metadata_to_config_data(
     metadata: &std::collections::BTreeMap<String, String>,
 ) -> HashMap<String, ConfigValue> {
     let mut out = HashMap::new();
-    if let Some(s) = metadata.get("extruder") {
-        match s.parse::<i64>() {
-            Ok(v) => {
-                // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
-                // Clamp at 0: raw `extruder=0` stays as literal `Int(0)`.
+    for (key, value) in metadata {
+        if key == "extruder" {
+            // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
+            // Clamp at 0: raw `extruder=0` (OrcaSlicer "inherit" sentinel) stays
+            // as literal `Int(0)`.
+            if let Ok(v) = value.parse::<i64>() {
                 let rebased = if v >= 1 { v - 1 } else { 0 };
-                out.insert("extruder".to_string(), ConfigValue::Int(rebased));
-            }
-            Err(_) => {
+                out.insert(key.clone(), ConfigValue::Int(rebased));
+            } else {
                 log::warn!(
                     target: "slicer_model_io::loader",
                     "object-level extruder value '{}' is not a valid integer, skipping",
-                    s
+                    value
                 );
             }
+            continue;
         }
-    }
-    if let Some(s) = metadata.get("enable_support") {
-        match s.as_str() {
-            "1" | "true" => {
-                out.insert("enable_support".to_string(), ConfigValue::Bool(true));
-            }
-            "0" | "false" => {
-                out.insert("enable_support".to_string(), ConfigValue::Bool(false));
-            }
-            other => {
-                log::warn!(
-                    target: "slicer_model_io::loader",
-                    "object-level enable_support value '{}' is not a valid bool, skipping",
-                    other
-                );
-            }
-        }
-    }
-    if let Some(s) = metadata.get("support_type") {
-        out.insert("support_type".to_string(), ConfigValue::String(s.clone()));
+        out.insert(key.clone(), coerce_string_to_config_value(value));
     }
     if let Some(s) = metadata.get("sparse_infill_density") {
         match parse_density_value(s) {
@@ -964,14 +952,20 @@ fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<Vec<ThreeMfPart>, ModelLo
     parse_3mf_model_xml(&xml_bytes, &sidecar, &sub_models)
 }
 
-/// Read the project-level per-filament colours from a 3MF's
+/// Read ALL project-level configuration from a 3MF's
 /// `Metadata/project_settings.config` (the BambuStudio/OrcaSlicer JSON sidecar).
 ///
-/// Returns the hex colour strings (e.g. `#FF9B00`) in filament order, or `None`
-/// when the file is not a readable 3MF or carries no `filament_colour` array.
-/// Used to emit the model's real palette in the G-code config block instead of a
-/// hardcoded default, so a multi-tool print previews with the authored colours.
-pub fn read_3mf_filament_colours(path: &Path) -> Option<Vec<String>> {
+/// OrcaSlicer stores every value in `project_settings.config` as a string,
+/// including numbers and booleans (e.g. `"4"`, `"0"`, `"normal(auto)"`).
+/// Returns a `HashMap<String, ConfigValue>` with all keys present in the file,
+/// with string values coerced to typed `ConfigValue`s via [`coerce_string_to_config_value`]:
+/// integers → `Int`, floats → `Float`, `0`/`1`/`true`/`false` → `Bool`, everything
+/// else → `String`. JSON arrays become `ConfigValue::List` with each element coerced.
+///
+/// Returns `None` when the file is not a readable 3MF, the sidecar is absent,
+/// or the JSON is malformed (logged at `warn`). When the sidecar is absent
+/// and the file is a valid 3MF, returns `Some(empty_map)`.
+pub fn read_3mf_project_settings(path: &Path) -> Option<HashMap<String, ConfigValue>> {
     let file = std::fs::File::open(path).ok()?;
     let mut archive = zip::ZipArchive::new(BufReader::new(file)).ok()?;
     let name = (0..archive.len()).find_map(|i| {
@@ -988,44 +982,110 @@ pub fn read_3mf_filament_colours(path: &Path) -> Option<Vec<String>> {
         .ok()?
         .read_to_string(&mut text)
         .ok()?;
-    extract_json_string_array(&text, "filament_colour")
+    Some(parse_project_settings_json(&text))
 }
 
-/// Extract a JSON array of strings for `key` from `text`, dependency-free.
+/// Parse `project_settings.config` JSON text into a `HashMap<String, ConfigValue>`.
 ///
-/// Tolerant of surrounding whitespace/newlines; assumes the array values are
-/// simple strings without escaped quotes (true for hex colour codes). The
-/// quoted key (`"key"`) is matched with both delimiters so it never collides
-/// with a longer key that contains it as a substring (e.g. `filament_colour`
-/// vs `default_filament_colour` / `filament_colour_type`).
-fn extract_json_string_array(text: &str, key: &str) -> Option<Vec<String>> {
-    let key_pat = format!("\"{key}\"");
-    let after_key = &text[text.find(&key_pat)? + key_pat.len()..];
-    let lb = after_key.find('[')?;
-    let rb = after_key[lb..].find(']')? + lb;
-    let inner = &after_key.as_bytes()[lb + 1..rb];
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < inner.len() {
-        if inner[i] == b'"' {
-            let s = i + 1;
-            let mut j = s;
-            while j < inner.len() && inner[j] != b'"' {
-                j += 1;
+/// Every JSON value is converted: string scalars use heuristic type coercion
+/// (see [`coerce_string_to_config_value`]); JSON arrays become
+/// `ConfigValue::List` with each element coerced. Malformed JSON returns an
+/// empty map with a `warn` log (consistent with the rest of the loader).
+pub(crate) fn parse_project_settings_json(text: &str) -> HashMap<String, ConfigValue> {
+    let value: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                target: "slicer_model_io::loader",
+                "project_settings.config JSON parse error: {e}; treating as empty"
+            );
+            return HashMap::new();
+        }
+    };
+    let object = match value {
+        serde_json::Value::Object(m) => m,
+        other => {
+            log::warn!(
+                target: "slicer_model_io::loader",
+                "project_settings.config top-level is {}, not an object; treating as empty",
+                json_type_name(&other)
+            );
+            return HashMap::new();
+        }
+    };
+    let mut out = HashMap::with_capacity(object.len());
+    for (key, raw) in object {
+        out.insert(key, json_to_config_value(&raw));
+    }
+    out
+}
+
+/// Convert a `serde_json::Value` to a `ConfigValue`, applying heuristic
+/// string-coercion to scalar string values (OrcaSlicer stores every scalar
+/// as a string in `project_settings.config`).
+fn json_to_config_value(raw: &serde_json::Value) -> ConfigValue {
+    match raw {
+        serde_json::Value::String(s) => coerce_string_to_config_value(s),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                ConfigValue::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                let f = if f.is_subnormal() { 0.0 } else { f };
+                ConfigValue::Float(f)
+            } else {
+                ConfigValue::String(n.to_string())
             }
-            if let Ok(val) = std::str::from_utf8(&inner[s..j]) {
-                out.push(val.to_string());
-            }
-            i = j + 1;
-        } else {
-            i += 1;
+        }
+        serde_json::Value::Bool(b) => ConfigValue::Bool(*b),
+        serde_json::Value::Array(items) => {
+            ConfigValue::List(items.iter().map(json_to_config_value).collect())
+        }
+        serde_json::Value::Null | serde_json::Value::Object(_) => {
+            // `project_settings.config` should never contain nested objects or
+            // nulls; fall back to an empty string so the key still lands in
+            // the map rather than being silently dropped.
+            ConfigValue::String(String::new())
         }
     }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
+}
+
+fn json_type_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
+}
+
+/// Heuristic coercion of a string to a typed `ConfigValue`.
+///
+/// OrcaSlicer serialises every value in `project_settings.config` as a JSON
+/// string — even numbers and booleans. Apply a try-int → try-float →
+/// try-bool → fallback-to-`String` chain so downstream consumers that read
+/// `filament_colour`, `enable_support`, `wall_loops`, `layer_height`, etc.
+/// see the typed value they expect.
+pub(crate) fn coerce_string_to_config_value(s: &str) -> ConfigValue {
+    // Booleans: OrcaSlicer uses "0"/"1" (and "true"/"false" in some keys).
+    if s == "0" || s.eq_ignore_ascii_case("false") {
+        return ConfigValue::Bool(false);
+    }
+    if s == "1" || s.eq_ignore_ascii_case("true") {
+        return ConfigValue::Bool(true);
+    }
+    // Integers (must come before floats — `"0.0"` parses as f64 but `s.parse::<f64>`
+    // rejects `"4"`-style integer strings only when no decimal point is present).
+    if let Ok(i) = s.parse::<i64>() {
+        return ConfigValue::Int(i);
+    }
+    // Floats.
+    if let Ok(f) = s.parse::<f64>() {
+        let f = if f.is_subnormal() { 0.0 } else { f };
+        return ConfigValue::Float(f);
+    }
+    ConfigValue::String(s.to_string())
 }
 
 /// Find the 3D model XML path inside a 3MF ZIP archive.
@@ -1532,7 +1592,7 @@ fn parse_sub_model_objects(
 /// `ModelLoadError::ThreeMfParse`.
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
-    sidecar: &HashMap<u32, ObjectSidecarInfo>,
+    sidecar: &ParsedSidecar,
     sub_models: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<ThreeMfPart>, ModelLoadError> {
     use quick_xml::events::Event;
@@ -2054,6 +2114,7 @@ fn parse_3mf_model_xml(
             sidecar,
         )?;
         let object_config_data = sidecar
+            .objects
             .get(&item.objectid)
             .map(|info| object_metadata_to_config_data(&info.object_metadata))
             .unwrap_or_default();
@@ -2738,24 +2799,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_json_string_array_basic_and_prefix_safe() {
-        // `filament_colour` must not be confused with `default_filament_colour`
-        // (different leading char) or `filament_colour_type` (different trailing).
+    fn parse_project_settings_json_extracts_filament_colour_as_list() {
+        // Regression: the `filament_colour` key (an OrcaSlicer JSON array of
+        // hex strings) must come through as `ConfigValue::List` of `String`s,
+        // not as a single semicolon-joined `String`. Downstream consumers
+        // (`serialize.rs::resolve_filament_colour_csv`,
+        // `visual_debug.rs::filament_tool_colors`) accept both shapes; the
+        // generic extractor picks the list form to preserve OrcaSlicer's
+        // typed-array semantics.
         let json = r##"{
             "default_filament_colour": ["", "", "", ""],
             "filament_colour": ["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
             "filament_colour_type": ["1","1","1","1"]
         }"##;
-        let colours = extract_json_string_array(json, "filament_colour").unwrap();
-        assert_eq!(colours, vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"]);
-        assert!(extract_json_string_array(json, "nope").is_none());
+        let parsed = parse_project_settings_json(json);
+        match parsed.get("filament_colour") {
+            Some(ConfigValue::List(items)) => {
+                let values: Vec<String> = items
+                    .iter()
+                    .map(|v| match v {
+                        ConfigValue::String(s) => s.clone(),
+                        other => panic!("expected String, got {other:?}"),
+                    })
+                    .collect();
+                assert_eq!(values, vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"]);
+            }
+            other => panic!("expected List, got {other:?}"),
+        }
     }
 
     #[test]
-    fn read_3mf_filament_colours_returns_authored_order() {
-        // Regression: the cube_4color fixture authors filament 1 = orange (the
-        // object's default extruder) and filament 4 = red. The G-code palette must
-        // preserve this order; the old hardcoded default emitted red first.
+    fn coerce_string_to_config_value_types() {
+        // OrcaSlicer serialises every value in `project_settings.config` as a
+        // string. Verify the heuristic coercion: int → Int, float → Float,
+        // 0/1/true/false → Bool, everything else → String.
+        assert_eq!(coerce_string_to_config_value("4"), ConfigValue::Int(4));
+        assert_eq!(coerce_string_to_config_value("0"), ConfigValue::Bool(false));
+        assert_eq!(coerce_string_to_config_value("1"), ConfigValue::Bool(true));
+        assert_eq!(
+            coerce_string_to_config_value("true"),
+            ConfigValue::Bool(true)
+        );
+        assert_eq!(
+            coerce_string_to_config_value("false"),
+            ConfigValue::Bool(false)
+        );
+        assert_eq!(
+            coerce_string_to_config_value("0.5"),
+            ConfigValue::Float(0.5)
+        );
+        assert_eq!(
+            coerce_string_to_config_value("normal(auto)"),
+            ConfigValue::String("normal(auto)".to_string())
+        );
+    }
+
+    #[test]
+    fn read_3mf_project_settings_returns_authored_palette() {
+        // Regression: the cube_4color fixture authors filament 1 = orange
+        // (the object's default extruder) and filament 4 = red. The G-code
+        // palette must preserve this order; the old hardcoded default
+        // emitted red first.
         let path = std::path::Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../resources/cube_4color.3mf"
@@ -2764,12 +2868,85 @@ mod tests {
             // Fixture path differs in some checkouts; skip rather than fail.
             return;
         }
-        let colours = read_3mf_filament_colours(path).expect("filament_colour present");
-        assert_eq!(
-            colours,
-            vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
-            "filament colours must be in the authored order (orange first, red last)"
+        let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
+        match sidecar.get("filament_colour") {
+            Some(ConfigValue::List(items)) => {
+                let values: Vec<String> = items
+                    .iter()
+                    .map(|v| match v {
+                        ConfigValue::String(s) => s.clone(),
+                        other => panic!("expected String, got {other:?}"),
+                    })
+                    .collect();
+                assert_eq!(
+                    values,
+                    vec!["#FF9B00", "#02BF06", "#1800F2", "#EC0006"],
+                    "filament colours must be in the authored order (orange first, red last)"
+                );
+            }
+            other => panic!("expected List, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn read_3mf_project_settings_extracts_thumbnails_key() {
+        // The `thumbnails` key from `project_settings.config` must surface as
+        // a `ConfigValue::String` so `pipeline.rs` can read it for
+        // `ThumbnailSpec` parsing — historically this key only reached
+        // `config_source` via `--config` JSON, not the 3MF.
+        let path = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../resources/cube_4color.3mf"
+        ));
+        if !path.exists() {
+            return;
+        }
+        let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
+        match sidecar.get("thumbnails") {
+            Some(ConfigValue::String(s)) => {
+                assert!(s.contains("x"), "thumbnails key should contain a WxH spec");
+            }
+            other => panic!("expected String, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn read_3mf_project_settings_extracts_extruder_colour_independently() {
+        // `extruder_colour` must be read from the 3MF rather than synthesised
+        // from `filament_colour`. The `cube_4color` fixture authors them
+        // with different values to verify the independent path.
+        let path = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../resources/cube_4color.3mf"
+        ));
+        if !path.exists() {
+            return;
+        }
+        let sidecar = read_3mf_project_settings(path).expect("project_settings.config present");
+        assert!(
+            sidecar.contains_key("extruder_colour"),
+            "extruder_colour should be read directly from the 3MF, not synthesised from filament_colour"
         );
+        assert!(
+            sidecar.contains_key("filament_colour"),
+            "filament_colour should also be present"
+        );
+        // The two should have different content for this fixture (filament
+        // has 4 entries, extruder has 1).
+        let fc = sidecar.get("filament_colour");
+        let ec = sidecar.get("extruder_colour");
+        assert!(fc.is_some() && ec.is_some());
+        // They should NOT be the same `ConfigValue` instance.
+        match (fc, ec) {
+            (Some(ConfigValue::List(fc_items)), Some(ConfigValue::List(ec_items))) => {
+                assert_ne!(
+                    fc_items.len(),
+                    ec_items.len(),
+                    "fixture should have different filament vs extruder entry counts"
+                );
+            }
+            _ => panic!("expected both to be List"),
+        }
     }
 
     #[test]

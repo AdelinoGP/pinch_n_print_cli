@@ -8,7 +8,7 @@
 //!
 //! AC-N2 (`blocker_exhausts_candidates_preserves_walls_no_seam`): when a
 //! blocker excludes the ONLY qualifying corner, `seam_candidates` is empty for
-//! that region. Per D-109-SEAM-FATAL-CORRECTED (superseding packet 108's
+//! that region. Per D-109B-SEAM-FATAL-CORRECTED (superseding packet 108's
 //! fatal-on-empty), `seam-placer` degrades GRACEFULLY — it preserves the
 //! region's walls in the output and leaves `resolved_seam` unset — rather than
 //! aborting the layer, honouring the HIGH-2 wall-preservation invariant and
@@ -73,6 +73,7 @@ fn quad_path(corners: [(f32, f32); 4], z: f32, width: f32) -> ExtrusionPath3D {
                 width,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             })
             .collect(),
         role: ExtrusionRole::OuterWall,
@@ -199,6 +200,7 @@ fn enforcer_bias_flips_seam_placer_selection() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             score: c.score,
             reason: SeamReason::Aligned,

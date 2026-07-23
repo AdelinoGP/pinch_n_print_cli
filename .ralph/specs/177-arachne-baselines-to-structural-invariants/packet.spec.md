@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 177-arachne-baselines-to-structural-invariants
 task_ids: []
 backlog_source: docs/DEVIATION_LOG.md D-112-SELFCAPTURED-BASELINES

@@ -119,6 +119,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: perimeter_index as f32 + 0.5,
@@ -127,6 +128,7 @@ fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
             width: 0.45,
             flow_factor: 0.9,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
     ];
     WallLoop {
@@ -160,6 +162,7 @@ fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)]) -> Perimete
         .iter()
         .enumerate()
         .map(|(index, (object_id, region_id))| PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: (*object_id).to_string(),
             region_id: *region_id,
             walls: vec![make_wall_loop(

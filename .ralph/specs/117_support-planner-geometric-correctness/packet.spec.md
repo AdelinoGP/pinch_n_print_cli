@@ -1,7 +1,7 @@
 ---
-status: draft
+status: implemented
 packet: 117
-task_ids: []
+task_ids: [281, 282]
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -14,7 +14,7 @@ Correct `support_planner::tapered_radius`'s tip geometry and route support-outli
 
 ## Scope Boundaries
 
-This packet changes `tapered_radius`, the support planner's avoidance-cache representation and SDK host-geometry call, focused unit tests, and the existing radius-parity test that asserts the obsolete floor behavior. It does not add a direct `slicer-core` dependency to the guest, change IR/WIT schemas, planner connectivity, Block C algorithms, or unrelated geometry helpers. The source-plan B5/B6 labels have no current canonical support rows, so this packet remains draft.
+This packet changes `tapered_radius`, the support planner's avoidance-cache representation and SDK host-geometry call, focused unit tests, and the existing radius-parity test that asserts the obsolete floor behavior. It does not add a direct `slicer-core` dependency to the guest, change IR/WIT schemas, planner connectivity, Block C algorithms, or unrelated geometry helpers. The packet owns TASK-281 (B5 — `tapered_radius` two-piece tip-cone formula) and TASK-282 (B6 — `run_support_geometry` offset replacement via `slicer_sdk::host::offset_polygons` with `ExPolygon` hole retention). Both rows were added to `docs/07_implementation_status.md` and closed 2026-07-19 alongside this packet.
 
 ## Prerequisites and Blockers
 
@@ -28,7 +28,7 @@ This packet changes `tapered_radius`, the support planner's avoidance-cache repr
 - **AC-2. Given** `tapered_radius(2.5, tan(5°), 12, 0.2)`, **when** it is called, **then** it returns `2.4` within `1e-6` because `mm_to_top = 2.4` remains inside the 45-degree tip cone. | `cargo test -p support-planner --all-targets -- tapered_radius_inside_cone_is_mm_to_top --nocapture 2>&1 | tee target/test-output.log`
 - **AC-3. Given** `tapered_radius(2.5, tan(5°), 50, 0.2)`, **when** it is called, **then** it returns `2.5 + (10.0 - 2.5) * tan(5°)` within `1e-6`. | `cargo test -p support-planner --all-targets -- tapered_radius_above_cone_is_linear --nocapture 2>&1 | tee target/test-output.log`
 - **AC-4. Given** `tapered_radius(2.5, tan(80°), 10_000, 0.5)`, **when** it is called, **then** it returns exactly `MAX_BRANCH_RADIUS_MM = 6.0` within `1e-6`. | `cargo test -p support-planner --all-targets -- tapered_radius_clamps_at_max --nocapture 2>&1 | tee target/test-output.log`
-- **AC-5. Given** `support-planner/src/lib.rs`, **when** it is searched, **then** no `inflate_polygon` definition or call remains, the planner calls the existing `slicer_sdk::host::offset_polygons` API, the replacement uses `OffsetJoinType::Miter`, and the support-planner manifest does not add `slicer-core`. | `! rg -q 'fn inflate_polygon|inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs && rg -q 'slicer_sdk::host::offset_polygons' modules/core-modules/support-planner/src/lib.rs && rg -q 'OffsetJoinType::Miter' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'slicer-core' modules/core-modules/support-planner/Cargo.toml`
+- **AC-5. Given** `support-planner/src/lib.rs`, **when** it is searched, **then** no `inflate_polygon` definition or call remains, the planner calls the existing `slicer_sdk::host::offset_polygons` API (via the `slicer_sdk::prelude` re-export of `host`, so the in-scope form is `host::offset_polygons` at the call site), the replacement uses `OffsetJoinType::Miter`, and the support-planner manifest does not add `slicer-core`. | `! rg -q 'fn inflate_polygon|inflate_polygon\(' modules/core-modules/support-planner/src/lib.rs && ( rg -q 'slicer_sdk::host::offset_polygons' modules/core-modules/support-planner/src/lib.rs || rg -q 'host::offset_polygons' modules/core-modules/support-planner/src/lib.rs ) && rg -q 'OffsetJoinType::Miter' modules/core-modules/support-planner/src/lib.rs && ! rg -q 'slicer-core' modules/core-modules/support-planner/Cargo.toml`
 - **AC-6. Given** a concave L-shaped `ExPolygon` built with `Point2::from_mm`, **when** the support planner's SDK offset operation inflates it by `0.5` mm, **then** the returned outer contour passes the test-local edge-intersection invariant and contains no self-intersection at the concave corner. | `cargo test -p support-planner --all-targets -- offset_concave_l_shape_no_self_intersection --nocapture 2>&1 | tee target/test-output.log`
 - **AC-7. Given** an `ExPolygon` with a single 10 mm square contour and a 4 mm square hole, **when** the support planner's offset operation inflates it by `0.5` mm, **then** one hole remains and its area is smaller than the original hole area. | `cargo test -p support-planner --all-targets -- offset_polygon_with_hole_preserves_hole --nocapture 2>&1 | tee target/test-output.log`
 - **AC-8. Given** the existing `radius_tapers_with_distance_to_top` test, **when** it runs after the tip-cone change, **then** its top-radius assertion expects `0.0` rather than the obsolete `branch_radius` floor and the test passes. | `cargo test -p support-planner --test orca_parity_tdd --all-targets -- radius_tapers_with_distance_to_top --nocapture 2>&1 | tee target/test-output.log`

@@ -82,6 +82,7 @@ fn perimeter_region(
     infill_areas: Vec<ExPolygon>,
 ) -> PerimeterRegion {
     PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from(object_id),
         region_id,
         walls: Vec::new(),
@@ -145,6 +146,7 @@ fn synthetic_wall() -> WallLoop {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: 1.0,
@@ -153,6 +155,7 @@ fn synthetic_wall() -> WallLoop {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -173,6 +176,7 @@ fn synthetic_seam_candidate() -> SeamCandidate {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         score: 0.5,
         reason: SeamReason::Aligned,
@@ -208,6 +212,7 @@ fn preserves_infill_areas_when_post_process_emits_empty() {
     // seam_candidates empty — the "fuzzy-skin / seam-placer wall-only emit".
     let mut ir_owned = empty_perimeter_ir();
     ir_owned.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],
@@ -298,6 +303,7 @@ fn pairs_regions_by_object_id_not_by_position() {
     // (10×10 = 100 mm²) onto B, and vice versa.
     let mut ir_owned = empty_perimeter_ir();
     ir_owned.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-2"),
         region_id: 0,
         walls: vec![synthetic_wall()],
@@ -306,6 +312,7 @@ fn pairs_regions_by_object_id_not_by_position() {
         resolved_seam: None,
     });
     ir_owned.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],
@@ -406,6 +413,7 @@ fn partition_re_fires_under_post_process_only_path() {
 
     let mut ir_owned = empty_perimeter_ir();
     ir_owned.regions.push(PerimeterRegion {
+        variant_chain: Vec::new(),
         object_id: ObjectId::from("obj-1"),
         region_id: 0,
         walls: vec![synthetic_wall()],

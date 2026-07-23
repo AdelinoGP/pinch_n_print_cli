@@ -420,6 +420,7 @@ fn execute_single_layer_inner(
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: writes,
+                    diagnostics: Vec::new(),
                 });
             }
         }
@@ -1528,7 +1529,8 @@ pub(crate) fn assemble_ordered_entities(
     // Spatial fallback: find the painted SlicedRegion whose polygons contain
     // the given (x, y) point (mm). Returns the painted variant's ToolIndex
     // if a containing region exists. Walls and infill paths emit in mm-space
-    // (`ExtrusionPath3D.points: Point3WithWidth { x: f32, y: f32, z: f32 }`).
+    // (`ExtrusionPath3D.points: Point3WithWidth { x: f32, y: f32, z: f32,
+    //  dist_to_top_mm: 0.0 }`).
     let lookup_tool_by_point_mm = |px_mm: f32, py_mm: f32| -> Option<u64> {
         if painted_regions.is_empty() {
             return None;
@@ -1915,6 +1917,7 @@ fn backfill_resolved_seam(
             e.region_key.global_layer_index == layer_index
                 && e.region_key.object_id == region.object_id
                 && e.region_key.region_id == region.region_id
+                && e.region_key.variant_chain == region.variant_chain
         }) {
             region.resolved_seam = Some(entry.chosen_candidate.clone());
         }
@@ -2304,6 +2307,7 @@ mod tests {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         };
         let wall_path = ExtrusionPath3D {
             points: vec![pt, pt],
@@ -2332,6 +2336,7 @@ mod tests {
             schema_version,
             global_layer_index: 0,
             regions: vec![PerimeterRegion {
+                variant_chain: Vec::new(),
                 object_id: "obj".to_string(),
                 region_id: IDENTITY, // the dangerous identity
                 walls: vec![wall],

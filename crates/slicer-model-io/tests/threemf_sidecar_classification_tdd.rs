@@ -34,7 +34,7 @@ fn parses_cube_cilindrical_modifier_sidecar() {
     let result = parse_3mf_sidecar(&mut archive);
 
     assert!(
-        !result.is_empty(),
+        !result.objects.is_empty(),
         "expected at least one object in sidecar"
     );
     // The sidecar has object id=3; part id=1 is normal_part (the Cube body) and
@@ -48,7 +48,10 @@ fn parses_cube_cilindrical_modifier_sidecar() {
     // (b) the presence of a per-part override metadata entry, matching the
     // structural class of metadata-carrying modifier parts the original test
     // covered.
-    let obj = result.get(&3).expect("object id 3 missing from sidecar");
+    let obj = result
+        .objects
+        .get(&3)
+        .expect("object id 3 missing from sidecar");
     assert!(!obj.parts.is_empty(), "expected at least one part");
 
     let part1 = obj.parts.get(&1).expect("part id 1 missing");
@@ -92,7 +95,10 @@ fn missing_sidecar_is_silent_default() {
     use slicer_model_io::sidecar::parse_3mf_sidecar;
     let mut archive = make_zip_without_sidecar();
     let result = parse_3mf_sidecar(&mut archive);
-    assert!(result.is_empty(), "missing sidecar should return empty map");
+    assert!(
+        result.objects.is_empty(),
+        "missing sidecar should return empty map"
+    );
     // No way to assert "no warning" programmatically without a log capture crate;
     // the implementation contract is verified by code review.
 }
@@ -105,7 +111,7 @@ fn malformed_sidecar_falls_back_to_normal_part() {
     let mut archive = make_zip_with_sidecar(bad_xml);
     let result = parse_3mf_sidecar(&mut archive);
     assert!(
-        result.is_empty(),
+        result.objects.is_empty(),
         "malformed sidecar should return empty map"
     );
 }
@@ -123,7 +129,7 @@ fn unknown_subtype_downgrades_to_normal_part() {
 </config>"#;
     let mut archive = make_zip_with_sidecar(xml);
     let result = parse_3mf_sidecar(&mut archive);
-    let obj = result.get(&1).expect("object 1 missing");
+    let obj = result.objects.get(&1).expect("object 1 missing");
     let part = obj.parts.get(&1).expect("part 1 missing");
     assert_eq!(
         part.subtype,
@@ -145,8 +151,11 @@ fn object_and_part_id_mapping_matches_bambu_convention() {
 </config>"#;
     let mut archive = make_zip_with_sidecar(xml);
     let result = parse_3mf_sidecar(&mut archive);
-    assert!(result.contains_key(&3), "outer key should be object id 3");
-    let obj = result.get(&3).unwrap();
+    assert!(
+        result.objects.contains_key(&3),
+        "outer key should be object id 3"
+    );
+    let obj = result.objects.get(&3).unwrap();
     let part = obj.parts.get(&2).expect("inner key should be part id 2");
     assert_eq!(part.subtype, PartSubtype::ModifierPart);
 }
@@ -162,7 +171,7 @@ fn empty_object_in_sidecar_returns_empty_parts() {
     let mut archive = make_zip_with_sidecar(xml);
     let result = parse_3mf_sidecar(&mut archive);
     // Object entry should exist but with no parts
-    let obj = result.get(&1).expect("object 1 should be present");
+    let obj = result.objects.get(&1).expect("object 1 should be present");
     assert!(obj.parts.is_empty(), "no parts should be present");
 }
 
@@ -190,7 +199,7 @@ fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
     let mut archive = zip::ZipArchive::new(file).expect("ZipArchive::new failed");
     let sidecar = parse_3mf_sidecar(&mut archive);
     assert!(
-        !sidecar.is_empty(),
+        !sidecar.objects.is_empty(),
         "parse_3mf_sidecar should return non-empty map for cube_cilindrical_modifier.3mf"
     );
     drop(archive);
@@ -231,6 +240,7 @@ fn sidecar_parser_extracts_object_metadata() {
         let mut archive = zip::ZipArchive::new(file).unwrap();
         let result = parse_3mf_sidecar(&mut archive);
         let obj = result
+            .objects
             .get(&expected_obj_id)
             .unwrap_or_else(|| panic!("{name}: object id {expected_obj_id} missing"));
         assert_eq!(
@@ -253,14 +263,14 @@ fn sidecar_parser_extracts_object_metadata() {
     let mut archive = zip::ZipArchive::new(file).unwrap();
     let result = parse_3mf_sidecar(&mut archive);
 
-    let obj4 = result.get(&4).expect("bridge: object 4 missing");
+    let obj4 = result.objects.get(&4).expect("bridge: object 4 missing");
     assert_eq!(
         obj4.object_metadata.get("extruder").map(String::as_str),
         Some("1"),
         "bridge obj4 must have extruder=1"
     );
 
-    let obj5 = result.get(&5).expect("bridge: object 5 missing");
+    let obj5 = result.objects.get(&5).expect("bridge: object 5 missing");
     assert_eq!(
         obj5.object_metadata.get("extruder").map(String::as_str),
         Some("1"),
@@ -277,5 +287,109 @@ fn sidecar_parser_extracts_object_metadata() {
         obj5.object_metadata.get("support_type").map(String::as_str),
         Some("tree(auto)"),
         "bridge obj5 must have support_type=tree(auto)"
+    );
+}
+
+// Plate metadata extraction (packet-XXX: generalise config ingestion).
+//
+// OrcaSlicer authors build-wide settings in `<plate>`'s `<metadata>` children
+// (e.g. `filament_map_mode`, `filament_maps`, thumbnail file references).
+// PNP must surface these as global config keys; the per-object path stays
+// scoped to `<object>` and `<part>` metadata.
+#[test]
+fn sidecar_parser_extracts_plate_metadata() {
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="1">
+    <metadata key="name" value="Cube"/>
+  </object>
+  <plate>
+    <metadata key="plater_id" value="1"/>
+    <metadata key="plater_name" value=""/>
+    <metadata key="filament_map_mode" value="Auto For Flush"/>
+    <metadata key="filament_maps" value="1 1 1 1"/>
+    <metadata key="thumbnail_file" value="Metadata/plate_1.png"/>
+  </plate>
+</config>"#;
+    let mut archive = make_zip_with_sidecar(xml);
+    let result = parse_3mf_sidecar(&mut archive);
+
+    assert_eq!(
+        result.plate_metadata.get("plater_id").map(String::as_str),
+        Some("1"),
+        "plate metadata must capture plater_id"
+    );
+    assert_eq!(
+        result
+            .plate_metadata
+            .get("filament_map_mode")
+            .map(String::as_str),
+        Some("Auto For Flush"),
+        "plate metadata must capture filament_map_mode"
+    );
+    assert_eq!(
+        result
+            .plate_metadata
+            .get("filament_maps")
+            .map(String::as_str),
+        Some("1 1 1 1"),
+        "plate metadata must capture filament_maps"
+    );
+    assert_eq!(
+        result
+            .plate_metadata
+            .get("thumbnail_file")
+            .map(String::as_str),
+        Some("Metadata/plate_1.png"),
+        "plate metadata must capture thumbnail_file"
+    );
+
+    // Plate metadata must NOT leak into per-object data.
+    let obj = result.objects.get(&1).expect("object 1 missing");
+    assert!(
+        !obj.object_metadata.contains_key("filament_map_mode"),
+        "plate metadata must not leak into object-level metadata"
+    );
+}
+
+#[test]
+fn sidecar_parser_extracts_plate_metadata_from_cube_4color_fixture() {
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/cube_4color.3mf");
+    if !path.exists() {
+        eprintln!("Skipping: cube_4color.3mf not found");
+        return;
+    }
+    let file = std::fs::File::open(&path).expect("cube_4color.3mf open failed");
+    let mut archive = zip::ZipArchive::new(file).expect("ZipArchive::new failed");
+    let result = parse_3mf_sidecar(&mut archive);
+
+    assert!(
+        result.plate_metadata.contains_key("plater_id"),
+        "cube_4color.3mf must carry plate metadata; got {:?}",
+        result.plate_metadata.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn sidecar_parser_handles_missing_plate_section() {
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
+    // A sidecar without any `<plate>` element is a valid OrcaSlicer artefact
+    // (older 3MFs, or 3MFs the fork produces); plate_metadata should simply
+    // be empty.
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="1">
+    <metadata key="name" value="Cube"/>
+  </object>
+</config>"#;
+    let mut archive = make_zip_with_sidecar(xml);
+    let result = parse_3mf_sidecar(&mut archive);
+    assert!(
+        result.plate_metadata.is_empty(),
+        "no <plate> element should leave plate_metadata empty; got {:?}",
+        result.plate_metadata
     );
 }

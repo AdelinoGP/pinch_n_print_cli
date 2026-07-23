@@ -47,6 +47,7 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
         overhang_quartile: None,
+        dist_to_top_mm: 0.0,
     }
 }
 
@@ -496,6 +497,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
         Point3WithWidth {
             x: x + 1.0,
@@ -504,6 +506,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         },
     ];
     WallLoop {
@@ -535,6 +538,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
 fn make_three_region_perimeter(layer_index: u32) -> PerimeterIR {
     let regions = (0..3u32)
         .map(|i| PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: format!("obj{}", i),
             region_id: i as u64,
             walls: vec![make_wall_loop_at(i, i as f32 * 10.0)],

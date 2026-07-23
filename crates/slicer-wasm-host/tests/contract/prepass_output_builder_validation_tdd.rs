@@ -15,15 +15,14 @@ use slicer_wasm_host::host::prepass::{
 };
 use slicer_wasm_host::host::{prepass, HostExecutionContextBuilder};
 
-// Point3WithWidth is used for SeamPlanEntry.chosen_position — it lives in the
-// prepass world's geometry module, which is generated separately from the layer
-// world's re-export.  Import via the prepass alias to avoid ambiguity.
-use slicer_wasm_host::host::prepass::slicer::types::geometry::Point3WithWidth as PrepassPoint3WithWidth;
+// SeamPlanEntry positions use the seam-specific public WIT record rather than
+// the support-facing Point3WithWidth record.
+use slicer_wasm_host::host::prepass::slicer::types::geometry::SeamPoint3WithWidth;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-fn make_point3_with_width(x: f32, y: f32, z: f32) -> PrepassPoint3WithWidth {
-    PrepassPoint3WithWidth {
+fn make_point3_with_width(x: f32, y: f32, z: f32) -> SeamPoint3WithWidth {
+    SeamPoint3WithWidth {
         x,
         y,
         z,
@@ -35,6 +34,7 @@ fn make_point3_with_width(x: f32, y: f32, z: f32) -> PrepassPoint3WithWidth {
 
 fn valid_seam_entry() -> SeamPlanEntry {
     SeamPlanEntry {
+        variant_chain: Vec::new(),
         global_layer_index: 0,
         object_id: "obj-a".to_string(),
         region_id: "region-1".to_string(),

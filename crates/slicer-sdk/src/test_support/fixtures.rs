@@ -538,6 +538,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
             width: width_mm,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         })
         .collect();
     ExtrusionPath3D {
@@ -874,6 +875,7 @@ impl PerimeterRegionViewBuilder {
 ///     width: 0.4,
 ///     flow_factor: 1.0,
 ///     overhang_quartile: None,
+///     dist_to_top_mm: 0.0,
 /// }];
 /// let entity = print_entity(
 ///     1,
@@ -957,6 +959,7 @@ pub fn tool_change(
 ///     width: 0.4,
 ///     flow_factor: 1.0,
 ///     overhang_quartile: None,
+///     dist_to_top_mm: 0.0,
 /// };
 /// let sc = seam_candidate(pos, 0.5, SeamReason::Sharp);
 /// assert!((sc.score - 0.5).abs() < f32::EPSILON);

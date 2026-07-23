@@ -28,6 +28,7 @@ fn slice_postprocess_merge_replaces_polygons_preserving_identity() {
         .at_z(0.2)
         .build();
     let target_key = RegionKey {
+        variant_chain: Vec::new(),
         layer_index: 5,
         object_id: existing.regions[1].object_id.clone(),
         region_id: existing.regions[1].region_id.to_string(),
@@ -313,6 +314,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
             width: 0.4,
             flow_factor: 1.0,
             overhang_quartile: None,
+            dist_to_top_mm: 0.0,
         }],
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
@@ -460,6 +462,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                     width: 0.4,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
@@ -512,6 +515,7 @@ fn slice_postprocess_rejects_nan_z_update() {
         .at_z(0.2)
         .build();
     let key = RegionKey {
+        variant_chain: Vec::new(),
         layer_index: 0,
         object_id: existing.regions[0].object_id.clone(),
         region_id: existing.regions[0].region_id.to_string(),
@@ -538,6 +542,7 @@ fn slice_postprocess_rejects_unknown_region_key() {
         .at_z(0.2)
         .build();
     let bogus = RegionKey {
+        variant_chain: Vec::new(),
         layer_index: 0,
         object_id: "does-not-exist".to_string(),
         region_id: "999".to_string(),

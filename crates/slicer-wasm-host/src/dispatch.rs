@@ -43,6 +43,13 @@ thread_local! {
     /// Read and cleared by `last_log_messages` on the runner traits.
     static LAST_MODULE_LOG_MESSAGES: std::cell::RefCell<Vec<(String, String)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding the diagnostics emitted by the most
+    /// recent prepass module invocation on this thread. Each entry is a
+    /// `slicer_ir::Diagnostic`. Read and cleared by `last_diagnostics` on
+    /// the `PrepassStageRunner` trait.
+    static LAST_PREPASS_DIAGNOSTICS: std::cell::RefCell<Vec<slicer_ir::Diagnostic>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -705,6 +712,7 @@ impl WasmRuntimeDispatcher {
         config_view: &slicer_ir::ConfigView,
         mesh_ir: Arc<slicer_ir::MeshIR>,
         layer_plan: Option<Arc<slicer_ir::LayerPlanIR>>,
+        slice_ir: Option<Arc<Vec<slicer_ir::SliceIR>>>,
         region_map: Option<Arc<slicer_ir::RegionMapIR>>,
         support_geometry: Option<Arc<slicer_ir::SupportGeometryIR>>,
     ) -> Result<host::HostExecutionContext, DispatchError> {
@@ -819,6 +827,16 @@ impl WasmRuntimeDispatcher {
                     .as_deref()
                     .map(|lp| host::project_layer_plan_view(lp))
                     .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
+                let region_input = crate::marshal::in_::project_seam_planning_view(
+                    slice_ir.as_deref().map_or(&[], Vec::as_slice),
+                    layer_plan.as_deref(),
+                    region_map.as_deref(),
+                    config_view,
+                );
+                let region_input = store
+                    .data_mut()
+                    .push_seam_planning_view(region_input)
+                    .map_err(mk_ctx_err)?;
                 let output = store
                     .data_mut()
                     .push_seam_planning_output()
@@ -830,6 +848,7 @@ impl WasmRuntimeDispatcher {
                         &layer_plan_view,
                         own(output),
                         own(config_handle),
+                        own(region_input),
                     )
                     .map_err(mk_call_err)
             }
@@ -890,6 +909,12 @@ impl WasmRuntimeDispatcher {
                 module_err.code, module_err.fatal, module_err.message
             ),
         })?;
+
+        // Drain diagnostics from the context into the thread-local stash
+        // before the store (and its HostExecutionContext) is consumed.
+        let diags: Vec<slicer_ir::Diagnostic> =
+            store.data_mut().diagnostics_mut().drain(..).collect();
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
         Ok(store.into_data())
     }
@@ -1375,6 +1400,7 @@ fn build_paint_layer_data_with_plan(
                         width: p.width,
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
+                        dist_to_top_mm: p.dist_to_top_mm,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1398,6 +1424,7 @@ fn build_paint_layer_data_with_plan(
                         width: 0.0,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1441,6 +1468,27 @@ fn push_slice_regions(
     Ok(handles)
 }
 
+/// Resolve the seam-plan entry belonging to one perimeter region.
+///
+/// Keeping the full region identity in this lookup prevents a painted variant
+/// from receiving the seam selected for its unpainted sibling.
+pub fn resolve_seam_for_perimeter_region(
+    region: &slicer_ir::PerimeterRegion,
+    seam_plan: &slicer_ir::SeamPlanIR,
+    layer_index: u32,
+) -> Option<slicer_ir::SeamPosition> {
+    seam_plan
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.region_key.global_layer_index == layer_index
+                && entry.region_key.object_id == region.object_id
+                && entry.region_key.region_id == region.region_id
+                && entry.region_key.variant_chain == region.variant_chain
+        })
+        .map(|entry| entry.chosen_candidate.clone())
+}
+
 /// Push `PerimeterRegionData` resources into the store from the provided `PerimeterIR`.
 ///
 /// Returns resource handles for each `PerimeterRegion`. Returns an empty vec
@@ -1460,18 +1508,14 @@ fn push_perimeter_regions(
     for region in &perimeter_ir.regions {
         let mut data = host::perimeter_region_to_data(region);
         if let Some(seam_ir) = seam_plan_ir {
-            if let Some(entry) = seam_ir.entries.iter().find(|e| {
-                e.region_key.global_layer_index == layer_index
-                    && e.region_key.object_id == region.object_id
-                    && e.region_key.region_id == region.region_id
-            }) {
+            if let Some(seam) = resolve_seam_for_perimeter_region(region, seam_ir, layer_index) {
                 data.resolved_seam = Some((
                     host::Point3 {
-                        x: entry.chosen_candidate.point.x,
-                        y: entry.chosen_candidate.point.y,
-                        z: entry.chosen_candidate.point.z,
+                        x: seam.point.x,
+                        y: seam.point.y,
+                        z: seam.point.z,
                     },
-                    entry.chosen_candidate.wall_index,
+                    seam.wall_index,
                 ));
             }
         }
@@ -1704,7 +1748,7 @@ fn harvest_support_plan_ir(
     _module_id: &str,
     ctx: host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
-    harvest_support_plan_ir_from(ctx.support_plan_entries)
+    harvest_support_plan_ir_from(ctx.support_plan_entries, ctx.raft_plan)
 }
 
 // Pure core of harvest_support_plan_ir moved to marshal/in_.rs (packet 113, Step 7 / ADR-0021).
@@ -1811,6 +1855,7 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             &module.config_view,
             input.mesh.clone(),
             input.layer_plan.clone(),
+            input.slice_ir.clone(),
             input.region_map.clone(),
             input.support_geometry.clone(),
         ) {
@@ -1886,6 +1931,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
+        LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().drain(..).collect())
     }
 }
 

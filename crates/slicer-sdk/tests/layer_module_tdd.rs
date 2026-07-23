@@ -977,6 +977,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             end_point: Point3WithWidth {
                 x: 1.0,
@@ -985,6 +986,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             point_count: 4,
         },
@@ -1005,6 +1007,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             end_point: Point3WithWidth {
                 x: 2.0,
@@ -1013,6 +1016,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             point_count: 6,
         },
@@ -1033,6 +1037,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             end_point: Point3WithWidth {
                 x: 3.0,
@@ -1041,6 +1046,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 width: 0.4,
                 flow_factor: 1.0,
                 overhang_quartile: None,
+                dist_to_top_mm: 0.0,
             },
             point_count: 8,
         },

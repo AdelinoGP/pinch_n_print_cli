@@ -396,6 +396,7 @@ fn seam_placer_narrow_manifest_write_validates() {
             "PerimeterIR.resolved-seam".into(),
             "PerimeterIR.regions.walls".into(),
         ],
+        diagnostics: Vec::new(),
     };
 
     let request = DagValidationRequest {
@@ -456,6 +457,7 @@ fn coarse_write_rejected_against_narrow_manifest() {
         module_id: "com.core.perimeter-gen".into(),
         runtime_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
         runtime_writes: vec!["PerimeterIR".into()], // coarse - not declared
+        diagnostics: Vec::new(),
     };
 
     let request = DagValidationRequest {
@@ -510,6 +512,7 @@ fn perimeter_narrow_write_audit() {
         module_id: "com.core.perimeter-gen".into(),
         runtime_reads: vec!["SliceIR".into()],
         runtime_writes: vec!["PerimeterIR.regions.walls".into()],
+        diagnostics: Vec::new(),
     };
 
     let request = DagValidationRequest {

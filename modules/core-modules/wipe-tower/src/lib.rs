@@ -293,6 +293,7 @@ impl WipeTower {
                     width: self.line_width,
                     flow_factor: 0.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: self.tower_x,
@@ -301,6 +302,7 @@ impl WipeTower {
                     width: self.line_width,
                     flow_factor: 0.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::WipeTower,
@@ -334,6 +336,7 @@ impl WipeTower {
                         width: self.line_width,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                     Point3WithWidth {
                         x: end_x,
@@ -342,6 +345,7 @@ impl WipeTower {
                         width: self.line_width,
                         flow_factor: 1.0,
                         overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     },
                 ],
                 role: ExtrusionRole::WipeTower,
@@ -376,6 +380,7 @@ impl WipeTower {
                     width: self.line_width,
                     flow_factor: 0.0, // first point: no extrusion
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
                 Point3WithWidth {
                     x: self.tower_x + prime_length,
@@ -384,6 +389,7 @@ impl WipeTower {
                     width: self.line_width,
                     flow_factor: 1.0,
                     overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
                 },
             ],
             role: ExtrusionRole::WipeTower,
@@ -602,6 +608,7 @@ mod tests {
                             width: 0.4,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                         Point3WithWidth {
                             x: 6.0,
@@ -610,6 +617,7 @@ mod tests {
                             width: 0.4,
                             flow_factor: 1.0,
                             overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
                         },
                     ],
                     role: ExtrusionRole::OuterWall,
