@@ -26,6 +26,15 @@
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 - ADR-0029 module-sampler contract: NO generation, NO clipping, NO chaining in the
   module — sample and emit raw; the linker (133) clips and connects.
+- **Generation-sampling boundary (revised):** 140 is "the lightning packet"
+  and owns both sides of the per-layer seam. The generation side
+  (`crates/slicer-core/src/algos/lightning/`) gets the full grounding
+  search (Step 0) so the sampling side samples higher-quality trees.
+  Cross-layer `Generator`, `DistanceField`, and the producer stay frozen
+  for this packet — only `Layer::generate_new_trees` (and the
+  `getBestGroundingLocation` helper it delegates to) and the
+  `Node`-level surface used by the grounding search are in scope.
+  Any change to other 138/139 surface is a recorded deviation.
 - Raw-emit uniformity (ADR-0025 + Amendment): this packet removes the roadmap's last
   self-linking exception; nothing may reintroduce path connection here.
 - WIT version-bump semantics: `slicer:world-layer@2.2.0` → `@2.3.0` follows the
@@ -108,6 +117,41 @@
     package version.
   - 33 guest artifacts re-stale (21 core-module + 12 test-guests); one
     `cargo xtask build-guests` rebuild is required.
+- **DEVIATION-CLOSURE additions (D-139-LAYER-GROUNDING-SEARCH-STUB) — Step 0:**
+  - Port the full `getBestGroundingLocation` (Orca
+    `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`)
+    into `crates/slicer-core/src/algos/lightning/layer.rs`. The Rust port
+    must include:
+    - The grid scan over the outline locator (sequential `for` loop
+      with `cancel: &dyn Fn()` per 139's convention — TBB/rayon is out
+      of scope for this port; record the parallelization as a future
+      deviation if needed).
+    - The tree-node locator: a `HashMap<(i32, i32), Vec<NodeRef>>` keyed
+      by `to_grid_point(location, bbox, locator_cell_size)` (locator
+      cell size = 4 in 100nm units, ported from Orca 400 nm).
+    - The `wall_supporting_radius` exclusion: outline-candidate points
+      within `wall_supporting_radius - tree_connecting_ignore_offset`
+      (1 in 100nm units, ported from Orca 100 nm) of a wall are
+      skipped.
+    - The `getWeightedDistance` ranking (already ported in 139 Step 2;
+      reused as-is).
+    - Attribution header from `docs/ORCASLICER_ATTRIBUTION.md`. Cite
+      by file + function name (NOT by line number) per
+      `CLAUDE.md` §OrcaSlicer Citation Style.
+  - Remove the 139 Step-2 stub comment from
+    `crates/slicer-core/src/algos/lightning/layer.rs:62` (the
+    `// 139 deviation: ...` line) once the full search is in place.
+  - Co-update the 139 test home
+    (`crates/slicer-core/tests/algo_lightning_tdd.rs`) with the new
+    `lightning_layer_wall_supporting_radius` test (AC-G1) AND a
+    re-assertion of the existing `lightning_generator_tree_continuity`
+    test (AC-G2 — must still pass; the grounding refinement must not
+    regress continuity).
+  - Coordinate system: 1 unit = 100 nm. Divide all OrcaSlicer nm
+    constants by 100. Use `slicer_ir::units_to_mm` /
+    `Point2::from_mm` / `mm_to_units()` per `docs/08_coordinate_system.md`.
+  - `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` row
+    → `Closed` (this step).
 - Rejected alternatives: (a) keeping the stub as a fallback when trees are empty —
   rejected: empty trees mean nothing to print (AC-N2); a silent stub fallback would
   mask producer bugs; (b) emitting per-tree connected polylines (walking the tree)
@@ -170,8 +214,21 @@
     after 140 lands; this file is in scope for re-baseline, the same
     shape as the existing infill_holder_resolution_painted_region_tdd.rs
     re-baseline done in packet 137).
-  - `docs/03_wit_and_manifest.md` §`world-layer.wit` — role: version + signature
-    doc update.
+- `docs/03_wit_and_manifest.md` §`world-layer.wit` — role: version + signature
+  doc update.
+- **Step 0 (D-139-LAYER-GROUNDING-SEARCH-STUB closure):**
+  - `crates/slicer-core/src/algos/lightning/layer.rs` — role: Step 0
+    port of `getBestGroundingLocation`; removes the 139 Step-2 stub
+    comment.
+  - `crates/slicer-core/src/algos/lightning/tree_node.rs` — role:
+    Step 0 may add a small `to_grid_point(...)` helper (or extend the
+    existing 138 surface) used by the tree-node locator; co-updated
+    138 tests if so.
+  - `crates/slicer-core/tests/algo_lightning_tdd.rs` — role: Step 0
+    new test `lightning_layer_wall_supporting_radius` (AC-G1) plus
+    continuity re-assertion (AC-G2).
+  - `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` row
+    status → `Closed` (this step).
 
 ## Read-Only Context
 
@@ -199,14 +256,21 @@
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/**` — one delegated SUMMARY only; never load.
-- `crates/slicer-core/src/algos/lightning/**` — 138/139's closed surface (defects
-  routed, not patched here).
 - `modules/core-modules/infill-linker/**` — triage boundary (requirements §Out of
   Scope).
 - `modules/core-modules/support-surface-ironing/**` — implements only
   `run_infill_postprocess`, not `run_infill`; the WIT signature change does
   not reach it.
 - `target/`, `Cargo.lock` — never load.
+- **Note (revised):** the prior design listed
+  `crates/slicer-core/src/algos/lightning/**` here as "138/139's closed
+  surface, defects routed, not patched here." That bullet is removed
+  per the boundary flip: 140 is the lightning packet. The
+  per-file in-scope list above names `layer.rs` and `tree_node.rs`
+  explicitly (Step 0 only). Other 138/139 surface (cross-layer
+  `Generator`, `DistanceField`, the producer) is still frozen for
+  this packet — if 140 needs a change to those, it's a recorded
+  deviation, not an in-scope edit.
 
 ## Expected Sub-Agent Dispatches
 
@@ -262,11 +326,13 @@
 
 ## Context Cost Estimate
 
-- Aggregate: `M`
+- Aggregate: `L` (justified unsplittable — generation + sampling + WIT closure
+  are tightly coupled at the per-layer seam; the swarm runs in extended band
+  per the escalation protocol).
 - Largest single step: `L` (Step 0 — the WIT + trait + macro + dispatch + four-
   module + test-guest + drift-re-baseline bundle is one atomic coupled change
   set; partial state breaks every infill guest's instantiation at runtime).
-  Step 2 (the rewrite) is `M`.
+  Step 1 (grounding search port) is `M`. Step 2 (the rewrite) is `M`.
 - Highest-risk dispatch: the workspace ceremony — summary-only contract.
 - Step 0's L rating: the WIT signature change forces the SDK trait extension,
   which forces the macro glue update, which forces the four `run_infill`-
@@ -275,6 +341,10 @@
   sub-steps leaves the workspace un-compiling (the macro-generated glue
   must match the WIT signature; the four modules must match the trait;
   the test-guest must match the dispatch). One atomic step.
+- Step 1 (grounding search) is a focused ~150-line port of
+  `getBestGroundingLocation` + the tree-node locator + the
+  `wall_supporting_radius` exclusion. M-rated, well-scoped, AC-G1 +
+  AC-G2 are direct assertions.
 
 ## Open Questions
 

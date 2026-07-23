@@ -1374,22 +1374,14 @@ fn build_paint_layer_data_with_plan(
             if entry.global_layer_index != layer_index as i32 {
                 continue;
             }
-            // 139 refines per-region keying: `LightningTreeEntry` has no
-            // `region_id` field at packet 137, so every per-layer entry is
-            // bucketed under the wildcard region. The SDK accessor mirrors
-            // this by ignoring its `_region_id` argument. When 139/140
-            // populate real segments, this HashMap must key on the
-            // per-region value (mirrors `support-plan_segments` above at
-            // `dispatch.rs:1353`); tracked under DEVIATION D-137.
-            let wildcard_region = String::from("*");
-            let key = (entry.object_id.clone(), wildcard_region);
+            let key = (entry.object_id.clone(), entry.region_id.to_string());
             let bucket = data.lightning_tree_segments.entry(key).or_default();
             for segment in &entry.tree_edge_segments {
                 let pts: Vec<_> = segment
                     .iter()
                     .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
-                        x: p.x as f32,
-                        y: p.y as f32,
+                        x: slicer_ir::units_to_mm(p.x),
+                        y: slicer_ir::units_to_mm(p.y),
                         z: 0.0,
                         width: 0.0,
                         flow_factor: 1.0,
@@ -2282,6 +2274,16 @@ pub fn forward_module_logs(module_id: &str, messages: &[(String, String)]) {
 #[doc(hidden)]
 pub fn last_log_messages_for_test() -> Vec<(String, String)> {
     LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+}
+
+/// Build paint-layer data for dispatch contract tests without exposing the
+/// private production builder or changing its dispatch signature.
+#[doc(hidden)]
+pub fn build_paint_layer_data_for_test(
+    layer_index: u32,
+    lightning_tree_ir: &slicer_ir::LightningTreeIR,
+) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir))
 }
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into

@@ -1208,7 +1208,7 @@ impl Default for SupportGeometryIR {
 // ============================================================================
 
 /// One 2-point tree-edge segment for a lightning sparse-infill tree on a
-/// single (object, layer). Compact 2-point integer-unit storage per ADR-0029
+/// single (object, region, layer). Compact 2-point integer-unit storage per ADR-0029
 /// (no full topology; the per-layer `Layer::Infill` module reads these as
 /// straight segments and does not need branch structure).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1217,6 +1217,8 @@ pub struct LightningTreeEntry {
     pub object_id: ObjectId,
     /// Global model layer index this entry applies to.
     pub global_layer_index: i32,
+    /// Region inside the object this entry belongs to.
+    pub region_id: RegionId,
     /// 2-point tree-edge segments in integer units. The consumer (packet
     /// 140's lightning-infill module) renders each pair as a straight
     /// segment. 139 is responsible for emitting the actual content; the
@@ -1224,16 +1226,16 @@ pub struct LightningTreeEntry {
     pub tree_edge_segments: Vec<[Point2; 2]>,
 }
 
-/// Lightning tree IR — per-object, per-layer tree-edge segments produced by
+/// Lightning tree IR — per-object, per-region, per-layer tree-edge segments produced by
 /// the `PrePass::LightningTreeGen` stage. Consumed by the per-layer
 /// `Layer::Infill` module via the `lightning-tree-segments` WIT view.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LightningTreeIR {
     /// Schema version of this IR.
     pub schema_version: SemVer,
-    /// One entry per active `(object, layer)` triple that received lightning
-    /// tree-edge segments. Multiple entries may share an `object_id` when
-    /// the object spans multiple layers.
+    /// One entry per active `(object, region, layer)` triple that received
+    /// lightning tree-edge segments. Multiple entries may share an
+    /// `(object_id, global_layer_index)` when an object has multiple regions.
     pub entries: Vec<LightningTreeEntry>,
 }
 

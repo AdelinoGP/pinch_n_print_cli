@@ -11,7 +11,120 @@
 
 ## Steps
 
-### Step 0: WIT extension bundle (RED→GREEN) — closes `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`
+### Step 0: Grounding search port (RED→GREEN) — closes `D-139-LAYER-GROUNDING-SEARCH-STUB`
+
+- Task IDs: `TASK-265`
+- Objective: port the full `getBestGroundingLocation` (Orca
+  `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`)
+  into `crates/slicer-core/src/algos/lightning/layer.rs` — the grid scan
+  over the outline locator + the tree-node locator (a
+  `HashMap<(i32, i32), Vec<NodeRef>>` keyed by `to_grid_point(loc,
+  bbox, locator_cell_size)`) + the `wall_supporting_radius` exclusion
+  (candidates within `wall_supporting_radius - tree_connecting_ignore_offset`
+  of a wall are skipped) + the `getWeightedDistance` ranking (already
+  ported in 139 Step 2; reused as-is). Remove the 139 Step-2 stub
+  comment from `layer.rs:62`. Co-update the 139 test home
+  (`crates/slicer-core/tests/algo_lightning_tdd.rs`) with the new
+  `lightning_layer_wall_supporting_radius` test (AC-G1) AND a
+  re-assertion of the existing `lightning_generator_tree_continuity`
+  test (AC-G2 — must still pass; the grounding refinement must not
+  regress continuity). Flip `D-139-LAYER-GROUNDING-SEARCH-STUB` to
+  `Closed` in `docs/DEVIATION_LOG.md`. This step runs FIRST so the
+  sampling side (Step 3) samples higher-quality trees.
+- Precondition: packet 139 status `implemented` (the 138 + 139
+  surface is the foundation — `getWeightedDistance` is reused as-is,
+  the 139 per-layer `Layer` methods are used as-is).
+- Postcondition: AC-G1 + AC-G2 green; 139 tests still green; 138
+  tests still green; `cargo check --workspace --all-targets` clean;
+  `D-139-LAYER-GROUNDING-SEARCH-STUB` flipped to `Closed`.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-core/src/algos/lightning/layer.rs` (full; small —
+    ~210 lines after 139).
+  - `crates/slicer-core/src/algos/lightning/tree_node.rs` (ranged:
+    lines 1-200 for the `Node` surface + `to_grid_point` if present).
+  - `crates/slicer-core/src/algos/lightning/distance_field.rs`
+    (ranged: the `update` + `try_get_next_point` API).
+  - `crates/slicer-core/src/algos/lightning/generator.rs` (ranged:
+    how `Layer::generate_new_trees` is called from
+    `Generator::generate_trees`).
+  - `crates/slicer-core/tests/algo_lightning_tdd.rs` (ranged: the
+    existing `lightning_layer_*` tests + the `distance` helper at
+    the bottom of the file).
+  - `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp`
+    (sectioned, via worker dispatch — `getBestGroundingLocation`
+    is ~80 lines).
+- Files allowed to edit (at most 3):
+  - `crates/slicer-core/src/algos/lightning/layer.rs` (add
+    `get_best_grounding_location` helper + a `tree_node_locator`
+    field if not present; remove the 139 Step-2 stub comment).
+  - `crates/slicer-core/src/algos/lightning/tree_node.rs` (add a
+    small `to_grid_point(...)` helper if not present, OR co-locate
+    it in `layer.rs` — pick whichever keeps the new code smallest).
+  - `crates/slicer-core/tests/algo_lightning_tdd.rs` (add
+    `lightning_layer_wall_supporting_radius` test; re-assert
+    `lightning_generator_tree_continuity` is still green).
+  - `docs/DEVIATION_LOG.md` (one line: `D-139-LAYER-GROUNDING-SEARCH-STUB`
+    status → `Closed`).
+- Blast-radius discipline:
+  - **`Node::getWeightedDistance` is reused as-is from 139 Step 2.**
+    Do NOT modify it; the grounding search calls it for ranking
+    candidates. The 139 tests for it must stay green.
+  - **`Node::get_last_grounding_location`, `has_offspring`,
+    `closest_node`, `convert_to_polylines`, `visit_nodes` (139
+    Step 2 surface) are NOT touched.** The grounding search only
+    needs `getWeightedDistance` + a tree-node-locator; it does not
+    need the per-tree-grappling methods.
+  - **`crates/slicer-core/src/algos/lightning/{distance_field,
+    generator, mod}.rs` are NOT touched** (per the
+    boundary-flip constraint: other 138/139 surface stays frozen).
+    If you find a need to touch them, record as a deviation rather
+    than patching.
+- Files explicitly out-of-bounds for this step:
+  `OrcaSlicerDocumented/**` (delegate only);
+  `crates/slicer-core/src/algos/lightning/{distance_field,generator,mod}.rs`
+  (frozen for this packet);
+  `crates/slicer-wasm-host/**` (out of scope here);
+  WIT files (Step 1 territory);
+  `modules/core-modules/lightning-infill/**` (Step 3 territory).
+- Expected sub-agent dispatches:
+  - "Sectioned SUMMARY + SNIPPETS (≤ 30 lines each) of
+    `Layer.cpp::getBestGroundingLocation` — the grid scan loop +
+    the tree-node locator insert + the `wall_supporting_radius`
+    exclusion + the `getWeightedDistance` ranking call" — the
+    Orca reference.
+  - "FACT with file:line: the 139 Step-2 stub comment location
+    in `layer.rs`; the existing `Node::getWeightedDistance`
+    signature in `tree_node.rs`; the `lightning_layer_wall_supporting_radius`
+    test name in `algo_lightning_tdd.rs` (it should NOT exist
+    yet — Step 0 creates it)".
+  - "Run `cargo test -p slicer-core --features host-algos --test
+    algo_lightning_tdd -- lightning 2>&1 | tee target/test-output.log
+    | grep '^test result'`; FACT + counts; SNIPPETS ≤ 20 on failure".
+  - "Run `cargo test -p slicer-core --features host-algos --test
+    algo_lightning_tdd -- lightning_layer_wall_supporting_radius
+    2>&1 | tee target/test-output.log | grep '^test result'`;
+    FACT".
+  - "Run `cargo test -p slicer-core --features host-algos --test
+    algo_lightning_tdd -- lightning_generator_tree_continuity
+    2>&1 | tee target/test-output.log | grep '^test result'`;
+    FACT (AC-G2 — no regression)".
+- Context cost: `M` (focused ~150-line port; well-scoped; the
+  test surface is small).
+- Authoritative docs: `docs/08_coordinate_system.md` (constants
+  ÷100); `docs/ORCASLICER_ATTRIBUTION.md` (header template); the
+  139 Step-2 deviation row in `docs/DEVIATION_LOG.md` (the row
+  this step closes).
+- OrcaSlicer refs: `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`
+  (delegate; sectioned).
+- Verification:
+  - AC-G1 pipe command — FACT
+  - AC-G2 pipe command — FACT
+  - Full lightning suite — FACT (138 + 139 tests still green)
+- Exit condition: AC-G1 + AC-G2 green; 138 + 139 tests still
+  green; 139 Step-2 stub comment removed;
+  `D-139-LAYER-GROUNDING-SEARCH-STUB` flipped to `Closed`.
+
+### Step 1: WIT extension bundle (RED→GREEN) — closes `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW`
 
 - Task IDs: `TASK-265`
 - Objective: extend the WIT `run-infill` signature at
@@ -158,7 +271,7 @@
   drift + 33-guest-rebuild green; per-module `run_infill` signature
   survey done.
 
-### Step 1: Orca sampling-side FACT + RED suite
+### Step 2: Orca sampling-side FACT + RED suite
 
 - Task IDs: `TASK-265`
 - Objective: settle the `[FWD]` (delegated `Filler::_fill_surface_single` SUMMARY);
@@ -206,7 +319,7 @@
 - Exit condition: `[FWD]`s resolved; new tests RED; classification recorded in the
   test-file header.
 
-### Step 2: GREEN — the sampler rewrite
+### Step 3: GREEN — the sampler rewrite
 
 - Task IDs: `TASK-265`
 - Objective: replace the stub body with the sampler (view →
@@ -252,7 +365,7 @@
 - Exit condition: module green; stub grep-gone; real test-guest traversing
   the WIT seam.
 
-### Step 3: Pipeline uniformity + byte-identity guard
+### Step 4: Pipeline uniformity + byte-identity guard
 
 - Task IDs: `TASK-265`
 - Objective: add `lightning_pipeline_linked` (AC-3: lightning-configured slice →
@@ -287,7 +400,7 @@
   - AC-3, AC-N1 pipe commands — FACT each
 - Exit condition: uniformity + identity green.
 
-### Step 4: Closure — DEV-081, D-137, contained bless, roadmap ceremony
+### Step 5: Closure — DEV-081, D-137, contained bless, roadmap ceremony
 
 - Task IDs: `TASK-265`
 - Objective: resolve the `[FWD]` (FACT on the live DEV-081 row's status field —
@@ -338,11 +451,12 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 0 | L (justified) | WIT + trait + macro + dispatch + 4-module + test-guest + drift-re-baseline + 33-guest rebuild — atomic coupled bundle that closes D-137-WIT-RUN-INFILL-NO-PAINT-VIEW |
-| Step 1 | M | Orca FACT + classification + RED |
-| Step 2 | M | the rewrite |
-| Step 3 | S | pipeline + guard |
-| Step 4 | S | closure (delegated) |
+| Step 0 | M | Grounding search port (`getBestGroundingLocation` + tree-node locator + `wall_supporting_radius` exclusion) — closes `D-139-LAYER-GROUNDING-SEARCH-STUB`; focused ~150-line port |
+| Step 1 | L (justified) | WIT + trait + macro + dispatch + 4-module + test-guest + drift-re-baseline + 33-guest rebuild — atomic coupled bundle that closes D-137-WIT-RUN-INFILL-NO-PAINT-VIEW |
+| Step 2 | M | Orca FACT + classification + RED |
+| Step 3 | M | the rewrite |
+| Step 4 | S | pipeline + guard |
+| Step 5 | S | closure (delegated) |
 
 ## Packet Completion Gate
 

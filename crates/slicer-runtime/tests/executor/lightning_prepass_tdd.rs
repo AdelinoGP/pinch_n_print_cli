@@ -11,14 +11,15 @@ use std::sync::Arc;
 
 use slicer_ir::SliceIR;
 use slicer_ir::{
-    BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh,
-    Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SurfaceClassificationIR,
-    Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
+    ObjectLayerRef, ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
+    ResolvedConfig, SlicedRegion, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
-    execute_prepass_with_builtins_configured, Blackboard, ExecutionPlan, PrepassStageInput,
-    PrepassStageOutput, PrepassStageRunner,
+    commit_lightning_tree_ir_builtin, execute_prepass_with_builtins_configured, Blackboard,
+    ExecutionPlan, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
+use slicer_sdk::PaintRegionLayerView;
 
 fn minimal_mesh() -> MeshIR {
     MeshIR {
@@ -148,6 +149,129 @@ fn empty_plan() -> ExecutionPlan {
         module_region_index: HashMap::new(),
         aggregated_region_split: BTreeMap::new(),
     }
+}
+
+fn square(size_mm: f32, origin_x_mm: f32) -> ExPolygon {
+    let size = slicer_ir::mm_to_units(size_mm);
+    let origin_x = slicer_ir::mm_to_units(origin_x_mm);
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2 { x: origin_x, y: 0 },
+                Point2 {
+                    x: origin_x + size,
+                    y: 0,
+                },
+                Point2 {
+                    x: origin_x + size,
+                    y: size,
+                },
+                Point2 {
+                    x: origin_x,
+                    y: size,
+                },
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
+fn lightning_slice_ir_with_two_regions() -> Vec<SliceIR> {
+    let region = |region_id, size_mm| SlicedRegion {
+        object_id: String::from("cube"),
+        region_id,
+        polygons: vec![square(size_mm, if region_id == 1 { 0.0 } else { 30.0 })],
+        effective_layer_height: 0.2,
+        ..SlicedRegion::default()
+    };
+    vec![
+        SliceIR {
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![region(1, 10.0), region(2, 10.0)],
+            ..SliceIR::default()
+        },
+        SliceIR {
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![region(1, 12.0), region(2, 12.0)],
+            ..SliceIR::default()
+        },
+    ]
+}
+
+#[test]
+fn lightning_producer_per_region_keying() {
+    let mut blackboard = Blackboard::new(Arc::new(minimal_mesh()), 0);
+    blackboard
+        .commit_slice_ir(Arc::new(lightning_slice_ir_with_two_regions()))
+        .expect("commit_slice_ir must succeed");
+    let mut lightning_config = ResolvedConfig {
+        sparse_fill_holder: String::from("lightning-infill"),
+        ..ResolvedConfig::default()
+    };
+    let active_region = |region_id| {
+        let mut resolved_config = lightning_config.clone();
+        if region_id == 2 {
+            resolved_config.line_width = 0.5;
+        }
+        ActiveRegion {
+            object_id: String::from("cube"),
+            region_id,
+            resolved_config,
+            effective_layer_height: 0.2,
+            ..ActiveRegion::default()
+        }
+    };
+    blackboard
+        .commit_layer_plan(Arc::new(LayerPlanIR {
+            global_layers: (0..2)
+                .map(|index| GlobalLayer {
+                    index,
+                    z: (index + 1) as f32 * 0.2,
+                    active_regions: vec![active_region(1), active_region(2)],
+                    ..GlobalLayer::default()
+                })
+                .collect(),
+            ..LayerPlanIR::default()
+        }))
+        .expect("commit_layer_plan must succeed");
+
+    commit_lightning_tree_ir_builtin(&mut blackboard, &lightning_config)
+        .expect("lightning producer must commit");
+    let ir = blackboard
+        .lightning_tree_ir()
+        .expect("lightning tree IR must be committed");
+    assert_eq!(ir.entries.len(), 2);
+    let region_ids: std::collections::BTreeSet<_> =
+        ir.entries.iter().map(|entry| entry.region_id).collect();
+    assert_eq!(region_ids, [1, 2].into_iter().collect());
+    assert!(ir.entries.iter().all(|entry| entry.object_id == "cube"));
+    assert!(ir.entries.iter().all(|entry| entry.global_layer_index == 1));
+
+    let view = PaintRegionLayerView::new(1).with_lightning_tree_ir(Arc::clone(ir));
+    let region_one = view.lightning_tree_segments_for("cube", 1);
+    let region_two = view.lightning_tree_segments_for("cube", 2);
+    assert!(!region_one.is_empty());
+    assert!(!region_two.is_empty());
+    assert!(region_one
+        .iter()
+        .flatten()
+        .all(|point| point.x < slicer_ir::mm_to_units(20.0)));
+    assert!(region_two
+        .iter()
+        .flatten()
+        .all(|point| point.x >= slicer_ir::mm_to_units(30.0)));
+    lightning_config.sparse_fill_holder = String::from("rectilinear-infill");
+    assert_eq!(
+        slicer_core::algos::lightning::generate_lightning_trees(
+            &lightning_slice_ir_with_two_regions(),
+            &lightning_config,
+        )
+        .expect("skip path must not fail")
+        .entries,
+        Vec::new()
+    );
 }
 
 #[test]

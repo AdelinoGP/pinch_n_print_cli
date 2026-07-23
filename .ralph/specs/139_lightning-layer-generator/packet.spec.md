@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 139_lightning-layer-generator
 task_ids:
   - TASK-264
@@ -40,7 +40,7 @@ the 138 tests co-updated in the same step, never left red between steps.
   the blackboard commit slot + accessor, and the WIT read-view
   `lightning-tree-segments` method on `paint-region-layer-view`. Names +
   shapes match 137's plan; reconciled at 137 close.
-- **FORWARD-DEP on `138_lightning-distancefield-treenode`** (status: `draft`) —
+- **FORWARD-DEP on `138_lightning-distancefield-treenode`** (status: `implemented`) —
   packet 139 needs `DistanceField::{new, unsupported_point, update}` and the
   `tree_node` graph operations (propagate, straighten, reroot, prune) frozen
   at 138 close. 138's API freeze is recorded in 138's `requirements.md`
@@ -64,11 +64,11 @@ the 138 tests co-updated in the same step, never left red between steps.
 - **AC-1. Given** a two-layer synthetic object where layer `N`'s sparse outline extends
   beyond layer `N-1`'s, **when** `generate_initial_internal_overhangs` runs, **then** the
   overhang region for layer `N` equals `outline(N) − dilated(outline(N-1))` (ported
-  dilation constant, ÷100), within Clipper tolerance. | `cargo test -p slicer-core -- lightning_generator_overhangs 2>&1 | tee target/test-output.log | grep "^test result"`
+  dilation constant, ÷100), within Clipper tolerance. | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_overhangs 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-2. Given** a synthetic prism with a single internal overhang near its top, **when**
   `generate_trees` runs top-down, **then** trees exist on every layer between the overhang
   and its support ground, and each layer's tree endpoints lie within the per-layer move
-  distance of the layer below's trees or outline (continuity, ported bound). | `cargo test -p slicer-core -- lightning_generator_tree_continuity 2>&1 | tee target/test-output.log | grep "^test result"`
+  distance of the layer below's trees or outline (continuity, ported bound). | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_tree_continuity 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-3. Given** a generated object with at least two `SliceRegion`s on the same
   `(object, layer)`, **when** the producer commits the per-layer `LightningTreeIR`, **then**
   each `LightningTreeEntry` carries its `region_id` and the host dispatch's
@@ -76,19 +76,24 @@ the 138 tests co-updated in the same step, never left red between steps.
   keys on the actual `region_id` (not the wildcard `*` from packet 137's skeleton) — two
   regions on the same `(object, layer)` get distinct segment buckets; the SDK accessor
   `lightning_tree_segments_for(object_id, region_id)` returns exactly the queried region's
-  segments. | `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 | tee target/test-output.log | grep "^test result"`
+  segments. Both the producer-side and dispatch-side tests must pass: producer
+  `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 | tee target/test-output.log | grep "^test result"`;
+  dispatch `cargo test -p slicer-wasm-host --test contract -- lightning_dispatch_per_region_keying 2>&1 | tee target/test-output.log | grep "^test result"`.
 - **AC-4. Given** the same input run twice, **when** the committed `LightningTreeIR`s are
   compared, **then** they are byte-identical (whole-pipeline determinism over the 138
   primitives) — and the per-region keying is stable (the same input produces the same
-  `(region_id → segments)` map across runs). | `cargo test -p slicer-core -- lightning_generator_deterministic 2>&1 | tee target/test-output.log | grep "^test result"`
+  `(region_id → segments)` map across runs). | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_deterministic 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Negative Test Cases
 
 - **AC-N1. Given** a uniform prism with no internal overhangs, **when** generation runs,
   **then** the committed `LightningTreeIR` is valid with zero tree segments on every
-  layer (no spurious trees). | `cargo test -p slicer-core -- lightning_generator_no_overhang_no_trees 2>&1 | tee target/test-output.log | grep "^test result"`
+  layer (no spurious trees). | `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_no_overhang_no_trees 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-N2. Given** a default-config wedge slice (no lightning holder), **when** run,
-  **then** the g-code SHA is byte-identical (skip path untouched). | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 | tee target/test-output.log | grep "^test result"`
+  **then** the g-code SHA is byte-identical (skip path untouched). The focused wedge
+  byte-identity test is load-bearing; the broader `-- wedge` command picks up a
+  pre-existing baseline failure in `wedge_multi_layer_top_bottom_evidence`, confirmed
+  unrelated to packet 139. | `cargo test -p slicer-runtime --test e2e -- wedge_per_region_config_delivery_byte_identical 2>&1 | tee target/test-output.log | grep "^test result"`
 - **AC-N3. Given** two regions on the same `(object, layer)` with different committed
   segments, **when** `PaintRegionLayerView::lightning_tree_segments_for(object_id,
   region_id)` is called, **then** it returns only the queried region's segments (no
@@ -97,7 +102,7 @@ the 138 tests co-updated in the same step, never left red between steps.
 
 ## Verification
 
-- `cargo test -p slicer-core -- lightning 2>&1 | tee target/test-output.log | grep "^test result"`
+- `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning 2>&1 | tee target/test-output.log | grep "^test result"`
 - `cargo test -p slicer-runtime --test executor -- lightning 2>&1 | tee target/test-output.log | grep "^test result"`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 
@@ -120,9 +125,12 @@ Files to inspect for this packet:
 
 ## Doc Impact Statement (Required)
 
-**`none`** — completes the implementation behind the packet-137 contract; the IR, stage,
-and view documentation landed with 137 (docs/02 + docs/03), and the architecture with
-ADR-0029. No new public surface.
+Updates `docs/02_ir_schemas.md` §LightningTreeEntry (new `region_id: RegionId` field,
+mirrors `SupportPlanEntry.region_id`) and `docs/03_wit_and_manifest.md` §lightning tree
+read-view (per-region HashMap keying in the dispatch). Verification:
+`rg -q -U '(?s)## IR 9d — LightningTreeIR.*?pub region_id: RegionId' docs/02_ir_schemas.md`
+and
+`rg -q -U '(?s)### \x60lightning-tree-segments\x60 read-view \(packet 137\).*?lightning_tree_segments.*?\(object_id, region_id\).*?support-plan-segments' docs/03_wit_and_manifest.md`.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

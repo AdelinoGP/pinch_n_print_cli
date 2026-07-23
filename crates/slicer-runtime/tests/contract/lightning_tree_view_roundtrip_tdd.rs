@@ -16,12 +16,14 @@ use slicer_sdk::PaintRegionLayerView;
 fn fixture_entry(
     object_id: &str,
     layer_index: i32,
+    region_id: u64,
     pts: &[(Point2, Point2)],
 ) -> LightningTreeEntry {
     let segments = pts.iter().map(|(a, b)| [*a, *b]).collect::<Vec<_>>();
     LightningTreeEntry {
         object_id: object_id.to_string(),
         global_layer_index: layer_index,
+        region_id,
         tree_edge_segments: segments,
     }
 }
@@ -37,10 +39,11 @@ fn sdk_accessor_returns_host_committed_segments_count_and_endpoints() {
 
     let ir = Arc::new(LightningTreeIR {
         entries: vec![
-            fixture_entry("cube", 7, &[(p00, p11), (p11, p22)]),
-            fixture_entry("cube", 7, &[(p33, p44)]),
-            fixture_entry("cube", 8, &[(p00, p55)]),
-            fixture_entry("other", 7, &[(p22, p33)]),
+            fixture_entry("cube", 7, 0, &[(p00, p11), (p11, p22)]),
+            fixture_entry("cube", 7, 0, &[(p33, p44)]),
+            fixture_entry("cube", 8, 0, &[(p00, p55)]),
+            fixture_entry("other", 7, 0, &[(p22, p33)]),
+            fixture_entry("cube", 7, 1, &[(p44, p55)]),
         ],
         ..LightningTreeIR::default()
     });
@@ -52,6 +55,9 @@ fn sdk_accessor_returns_host_committed_segments_count_and_endpoints() {
     assert_eq!(segs[0], [p00, p11]);
     assert_eq!(segs[1], [p11, p22]);
     assert_eq!(segs[2], [p33, p44]);
+
+    let region_one = view.lightning_tree_segments_for("cube", 1);
+    assert_eq!(region_one, vec![[p44, p55]]);
 
     let segs_other = view.lightning_tree_segments_for("other", 0);
     assert_eq!(segs_other.len(), 1);
@@ -72,8 +78,18 @@ fn sdk_accessor_returns_empty_when_no_ir_attached() {
 fn sdk_accessor_filters_by_layer_index() {
     let ir = Arc::new(LightningTreeIR {
         entries: vec![
-            fixture_entry("cube", 5, &[(Point2 { x: 1, y: 1 }, Point2 { x: 2, y: 2 })]),
-            fixture_entry("cube", 6, &[(Point2 { x: 3, y: 3 }, Point2 { x: 4, y: 4 })]),
+            fixture_entry(
+                "cube",
+                5,
+                0,
+                &[(Point2 { x: 1, y: 1 }, Point2 { x: 2, y: 2 })],
+            ),
+            fixture_entry(
+                "cube",
+                6,
+                0,
+                &[(Point2 { x: 3, y: 3 }, Point2 { x: 4, y: 4 })],
+            ),
         ],
         ..LightningTreeIR::default()
     });

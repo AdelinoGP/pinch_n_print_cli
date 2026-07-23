@@ -679,8 +679,11 @@ pub fn execute_prepass_with_builtins_configured_instr(
                 && default_resolved_config.sparse_fill_holder == "lightning-infill"
         },
         |bb| {
-            crate::builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin(bb)
-                .map_err(|source| PrepassExecutionError::LightningTree { source })
+            crate::builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin(
+                bb,
+                default_resolved_config,
+            )
+            .map_err(|source| PrepassExecutionError::LightningTree { source })
         },
     )?;
     // Phase-2: late stages that require RegionMap.

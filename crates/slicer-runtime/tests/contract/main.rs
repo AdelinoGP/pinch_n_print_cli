@@ -22,6 +22,7 @@ mod guest_fixture_freshness_tdd;
 mod infill_postprocess_contract_tdd;
 mod inner_wall_boundary_type_tdd;
 mod layer_stage_commit_stages_tdd;
+mod lightning_tree_per_region_roundtrip_tdd;
 mod lightning_tree_view_roundtrip_tdd;
 mod macro_all_worlds_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;

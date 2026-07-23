@@ -1483,7 +1483,7 @@ the real cross-layer distance-field + tree-node generator.
 `crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`. The producer is
 **skipped** (no commit, slot stays `None`) when no region's
 `sparse_fill_holder` is `lightning-infill` — the zero-cost skip promise from
-ADR-0029. When committed, the IR carries per-object, per-layer 2-point
+ADR-0029. When committed, the IR carries per-object, per-region, per-layer 2-point
 tree-edge segments in integer coordinate units (compact storage per ADR-0029's
 memory note; no full topology).
 
@@ -1496,14 +1496,17 @@ DEV-081 transitional state).
 ```rust
 pub struct LightningTreeIR {
     pub schema_version: SemVer,
-    /// One entry per active `(global_layer_index, object_id)` triple that
-    /// received tree-edge segments. Multiple entries may share `object_id`
-    /// when the object spans multiple layers.
+    /// One entry per active `(global_layer_index, object_id, region_id)` triple
+    /// that received tree-edge segments. Multiple entries may share an
+    /// `(object_id, global_layer_index)` when an object has multiple regions.
     pub entries: Vec<LightningTreeEntry>,
 }
 
 pub struct LightningTreeEntry {
     pub object_id: ObjectId,
+    /// Region inside the object; this follows the per-region precedent of
+    /// `SupportPlanEntry.region_id: RegionId`.
+    pub region_id: RegionId,
     /// Signed: negative values (`-1`, `-2`, ...) are reserved for raft prefix
     /// layers; non-negative values refer to model layers.
     pub global_layer_index: i32,
@@ -1521,9 +1524,9 @@ The host exposes the IR to a `Layer::Infill` guest via the
 `lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
 (`crates/slicer-schema/wit/deps/ir-types.wit:206`; canonical package
 `slicer:world-layer@2.2.0`). The guest looks up the per-layer
-`tree_edge_segments` matching `(object_id, layer_index)` via the SDK's
+`tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
 `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
-accessor (`crates/slicer-sdk/src/traits.rs:144`). When no `LightningTreeIR` is
+accessor (`crates/slicer-sdk/src/traits.rs:196-212`). When no `LightningTreeIR` is
 committed (skip-when-no-lightning-holder), the accessor returns an empty
 `Vec` and the module falls back to its non-lightning path.
 

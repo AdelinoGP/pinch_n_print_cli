@@ -398,6 +398,11 @@ parameters) so a `Layer::Infill` module reaches the committed
 `LightningTreeIR` for the dispatching `(object, region, layer)` triple via
 the same idiom it would use for `SupportPlanIR` lookup in `Layer::Support`.
 
+**Per-region dispatch keying:** The host dispatch stores `lightning_tree_segments`
+in a `HashMap` keyed by `(object_id, region_id)`, not `(object_id, "*")`. This
+follows the per-region keying precedent established by the `support-plan-segments`
+read-view.
+
 **Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
 `paint-region-layer-view` resource method) and
 `crates/slicer-schema/wit/deps/world-layer/world-layer.wit` (package

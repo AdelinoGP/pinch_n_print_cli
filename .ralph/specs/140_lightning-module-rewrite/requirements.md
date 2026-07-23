@@ -4,8 +4,10 @@
 
 - Grouped task IDs: `TASK-265`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
-- Aggregate context cost: `M`
+- Packet status: `active`
+- Aggregate context cost: `L` (justified unsplittable — generation + sampling +
+  WIT closure are tightly coupled at the per-layer seam; swarm runs in extended
+  band)
 
 ## Problem Statement
 
@@ -99,13 +101,41 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   - 33 guest artifacts re-stale (21 core-module + 12 test-guests); a single
     `cargo xtask build-guests` rebuild is required after the WIT + macro
     changes.
+- **DEVIATION CLOSURE (D-139-LAYER-GROUNDING-SEARCH-STUB) — Step 0 of 140:**
+  - Port the full `getBestGroundingLocation` (Orca
+    `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp::getBestGroundingLocation`)
+    into `crates/slicer-core/src/algos/lightning/layer.rs`. The port must
+    include:
+    - The TBB-style parallel grid scan over the outline locator (or its
+      sequential Rust equivalent using `rayon` if already a workspace
+      dependency, or a simple `for` loop with `cancel: &dyn Fn()` per
+      packet 139's convention).
+    - The tree-node locator (`SparseNodeGrid` equivalent — a
+      `HashMap<(i32, i32), Vec<NodeRef>>` keyed by `to_grid_point(...)` at
+      `locator_cell_size` resolution).
+    - The `wall_supporting_radius` exclusion: candidates within
+      `wall_supporting_radius - tree_connecting_ignore_offset` of a wall
+      are skipped.
+    - The `getWeightedDistance` ranking (already ported in 139 Step 2;
+      reused here).
+    - Attribution header from `docs/ORCASLICER_ATTRIBUTION.md` (the
+      standard header). Cite by file + function name (NOT by line number).
+  - Remove the 139 Step-2 stub comment from
+    `crates/slicer-core/src/algos/lightning/layer.rs:62` (the
+    `// 139 deviation: ...` line).
+  - Co-update the 139 test home
+    (`crates/slicer-core/tests/algo_lightning_tdd.rs`) with the new
+    `lightning_layer_wall_supporting_radius` (AC-G1) and a re-assertion of
+    `lightning_generator_tree_continuity` (AC-G2) in the same step. The
+    139 tests stay green; the 138 primitive tests stay green.
+  - Coordinate system: 1 unit = 100 nm. Divide all OrcaSlicer nm constants
+    by 100 at every port boundary. Use `slicer_ir::units_to_mm` /
+    `Point2::from_mm` / `mm_to_units()` per `docs/08_coordinate_system.md`.
 - DEV-081 closure edit; TASK-262…265 docs/07 closure sweep; contained lightning
   re-bless (AC-5) + the roadmap-close workspace ceremony.
 
 ## Out of Scope
 
-- Any change to the generator/primitives (137–139 closed; defects found here are
-  recorded and routed per the ≤ 20-line deviation fence, else packetized).
 - Claims/manifest changes (stays `["claim:sparse-fill"]` — lightning solid shells are
   not a thing in Orca or PnP).
 - Linker changes — if linked lightning output looks wrong, the fault is triaged to
@@ -118,6 +148,13 @@ completing both the lightning-parity sub-roadmap and Architecture A's uniformity
   print-wide per 139's `[FWD-resolved]` (the per-region predicate was the
   unrecoverable half of `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`; 139 closes that
   deviation at the IR + dispatch + SDK layer, not the predicate layer).
+- **Out-of-bounds note (revised):** the prior design put
+  `crates/slicer-core/src/algos/lightning/**` entirely out-of-bounds. Per
+  the boundary flip, 140 is the lightning packet and the in-scope list
+  here names `layer.rs` and `tree_node.rs` explicitly (Step 0 only).
+  Other 138/139 surface (cross-layer `Generator`, `DistanceField`, the
+  producer) stays frozen for this packet; if 140 needs a change to
+  those, it's a recorded deviation, not an in-scope edit.
 
 ## Authoritative Docs
 
@@ -185,6 +222,10 @@ Files to inspect for this packet:
 | `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N1 | FACT |
 | `rg -q 'DEV-081.*[Cc]losed' docs/DEVIATION_LOG.md && echo OK` | AC-4 | FACT |
 | `rg -q 'D-137-WIT-RUN-INFILL-NO-PAINT-VIEW.*[Cc]losed' docs/DEVIATION_LOG.md && echo OK` | DEV-137-WIT closure | FACT |
+| `rg -q 'D-139-LAYER-GROUNDING-SEARCH-STUB.*[Cc]losed.*140' docs/DEVIATION_LOG.md && echo OK` | D-139 grounding closure (Step 0) | FACT |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_layer_wall_supporting_radius 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G1 grounding exclusion | FACT |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_tree_continuity 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-G2 grounding continuity (no regression) | FACT |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning 2>&1 \| tee target/test-output.log \| grep "^test result"` | Step 0 full lightning suite (Step 0 exit gate) | FACT + counts |
 | `cargo xtask build-guests --check` (rebuild if STALE) | WIT + macro changes | FACT |
 | `cargo xtask test --workspace --summary` (sub-agent) | roadmap-close ceremony | FACT verdict + failing names only |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT |

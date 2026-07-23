@@ -1,8 +1,8 @@
 //! BuiltinProducer wrapper for lightning tree generation.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
-use slicer_ir::SemVer;
+use slicer_ir::{ResolvedConfig, SemVer};
 
 use crate::blackboard::Blackboard;
 use crate::dag::BuiltinProducer;
@@ -42,15 +42,18 @@ pub static LIGHTNING_TREE_PRODUCER: BuiltinProducer = BuiltinProducer {
 
 /// Commit `LightningTreeIR` to the blackboard.
 ///
-/// The 137 contract returns the empty-but-valid `LightningTreeIR` produced
-/// by the algorithm skeleton (`generate_lightning_trees` in
-/// `crates/slicer-core/src/algos/lightning/mod.rs`); 139 wires the real
-/// generator. The skip-when-no-lightning-holder guard is enforced upstream
-/// in the prepass wiring; this fn assumes the predicate already passed.
+/// The skip-when-no-lightning-holder guard is enforced upstream in the prepass
+/// wiring; this fn assumes the predicate already passed.
 pub fn commit_lightning_tree_ir_builtin(
     blackboard: &mut Blackboard,
+    resolved_config: &ResolvedConfig,
 ) -> Result<(), BlackboardError> {
-    let ir = slicer_core::algos::lightning::generate_lightning_trees()
-        .unwrap_or_else(|_| Arc::new(slicer_ir::LightningTreeIR::default()));
+    let slice_ir = blackboard
+        .slice_ir()
+        .map_or(&[][..], |slice_ir| slice_ir.as_slice());
+    let ir = slicer_core::algos::lightning::generate_lightning_trees(slice_ir, resolved_config)
+        .map_err(|error| BlackboardError::LightningTreeGeneration {
+            message: error.to_string(),
+        })?;
     blackboard.commit_lightning_tree_ir(ir)
 }

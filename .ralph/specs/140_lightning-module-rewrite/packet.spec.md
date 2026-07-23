@@ -1,10 +1,10 @@
 ---
-status: draft
+status: active
 packet: 140_lightning-module-rewrite
 task_ids:
   - TASK-265
 backlog_source: docs/07_implementation_status.md
-context_cost_estimate: M
+context_cost_estimate: L
 ---
 
 # Packet Contract: 140_lightning-module-rewrite
@@ -18,36 +18,45 @@ region_id)`, which 139 upgrades to per-region keying), emit them as raw
 `ExtrusionPath3D` polylines with `ExtrusionRole::SparseInfill` and the config-derived
 `speed_factor`, delete the single-layer stub (the `build_branches` function at
 `lib.rs:234` and the inline grid-sampling machinery in `run_infill`/`fill_expolygon`),
-close DEV-081, run the contained lightning re-bless + roadmap-close workspace
-ceremony, and **close the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW deviation** by extending
-the WIT `run-infill` signature with a `paint: paint-region-layer-view` argument,
-bumping `slicer:world-layer@2.2.0` → `@2.3.0`, threading the paint view through the
-SDK trait + macro glue + host dispatch + the four `run_infill`-implementing core
-modules, and adding a real `Layer::Infill` test-guest that calls
-`lightning-tree-segments` through the WIT boundary.
+**port the full `getBestGroundingLocation` grounding search into
+`crates/slicer-core/src/algos/lightning/layer.rs` (closing the 139 Step-2
+`D-139-LAYER-GROUNDING-SEARCH-STUB` stub — `wall_supporting_radius` becomes a
+load-bearing parameter)**, close DEV-081, run the contained lightning re-bless +
+roadmap-close workspace ceremony, and **close the D-137-WIT-RUN-INFILL-NO-PAINT-VIEW
+deviation** by extending the WIT `run-infill` signature with a
+`paint: paint-region-layer-view` argument, bumping `slicer:world-layer@2.2.0` →
+`@2.3.0`, threading the paint view through the SDK trait + macro glue + host
+dispatch + the four `run_infill`-implementing core modules, and adding a real
+`Layer::Infill` test-guest that calls `lightning-tree-segments` through the WIT
+boundary.
 
 ## Scope Boundaries
 
-One module rewrite plus roadmap closure plus the WIT-extension bundle that closes
-D-137-WIT-RUN-INFILL-NO-PAINT-VIEW: the module becomes ~sample-and-emit (the
-generation intelligence lives host-side per ADR-0029), lightning output flows through
-the 133 linker like every other infill, DEV-081 flips to Closed, and lightning-affected
-expectations are re-blessed in one justified event. The 138/139 producer surface is
-the **read-only input** here — defects found are recorded deviations routed back to
-those packets, not patched in this packet. Manifest claims stay
-`["claim:sparse-fill"]`; the WIT `run-infill` signature is extended (one additive
-argument) but no other WIT change is in scope. The four `run_infill`-implementing
-core modules (rectilinear/gyroid/lightning/top-surface-ironing) are updated to take
-the new paint-view arg (only `lightning-infill` calls it; the other three take
-`_paint` and ignore it). `support-surface-ironing` implements only
-`run_infill_postprocess` and is NOT in scope.
+140 is **the lightning packet** — module rewrite + WIT closure + grounding-search
+refinement in `slicer-core`. The boundary between generation (host-side, lives in
+`slicer-core/src/algos/lightning/`) and sampling (module-side, lives in
+`modules/core-modules/lightning-infill/`) stays the ADR-0029 seam, but 140 owns
+both sides: the generation side gets the full grounding search (Step 0) so that the
+sampling side samples higher-quality trees. The 138/139 producer surface is no
+longer "defects routed, not patched" — 140 patches `crates/slicer-core/src/algos/lightning/{layer,tree_node}.rs`
+specifically for the grounding search and records any further 138/139 surface
+changes as deviations. Manifest claims stay `["claim:sparse-fill"]`; the WIT
+`run-infill` signature is extended (one additive argument) but no other WIT
+change is in scope. The four `run_infill`-implementing core modules
+(rectilinear/gyroid/lightning/top-surface-ironing) are updated to take the new
+paint-view arg (only `lightning-infill` calls it; the other three take `_paint` and
+ignore it). `support-surface-ironing` implements only `run_infill_postprocess` and
+is NOT in scope. DEV-081 flips to Closed, `D-139-LAYER-GROUNDING-SEARCH-STUB` flips
+to Closed, `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` flips to Closed, and
+lightning-affected expectations are re-blessed in one justified event.
 
 ## Prerequisites and Blockers
 
 - Depends on: `137_lightning-prepass-contract` (view, `LightningTreeIR` —
-  `status: implemented`), `138_lightning-distancefield-treenode` (primitives),
-  `139_lightning-layer-generator` (real trees committed, per-region keying),
-  `133_infill-linker-module` (the linker connects the emission).
+  `status: implemented`), `138_lightning-distancefield-treenode` (primitives —
+  `status: implemented`), `139_lightning-layer-generator` (real trees committed,
+  per-region keying — `status: implemented`), `133_infill-linker-module` (the
+  linker connects the emission — `status: implemented`).
 - **DEVIATION-CLOSURE DEP on packet 137's review** — this packet must extend
   the WIT `run-infill` signature with `paint: paint-region-layer-view`,
   bump `slicer:world-layer@2.2.0` → `@2.3.0`, extend the SDK trait
@@ -63,9 +72,19 @@ the new paint-view arg (only `lightning-infill` calls it; the other three take
   the WIT seam, and re-baseline the `wit_drift_detection_tdd` test that
   pins the `run-infill` signature string. Closes
   `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` in `docs/DEVIATION_LOG.md`.
+- **DEVIATION-CLOSURE DEP on packet 139** — this packet must port the full
+  `getBestGroundingLocation` (Orca `Layer.cpp::getBestGroundingLocation`, the
+  TBB-style parallel grid scan + tree-node locator + `wall_supporting_radius`
+  exclusion) into `crates/slicer-core/src/algos/lightning/layer.rs`,
+  remove the 139 Step-2 stub comment from `Layer::generate_new_trees`, and
+  co-update the 139 test home (`crates/slicer-core/tests/algo_lightning_tdd.rs`)
+  with the new AC-G1 + AC-G2 tests in the same step. Closes
+  `D-139-LAYER-GROUNDING-SEARCH-STUB` in `docs/DEVIATION_LOG.md`.
 - Unblocks: — (roadmap end).
 - Activation blockers: 137 and 139 must both be `status: implemented`
-  (forward-deps above).
+  (forward-deps above). Packet cost is L (justified unsplittable — generation
+  + sampling + WIT closure are tightly coupled at the per-layer seam; the
+  swarm will run in extended band per the escalation protocol).
 
 ## Acceptance Criteria
 
@@ -112,6 +131,16 @@ the new paint-view arg (only `lightning-infill` calls it; the other three take
   **then** each re-bless carries a closure-log justification and was captured from two
   consecutive identical runs (contained lightning bless — the roadmap's second and final
   bless event). | `cargo test -p lightning-infill 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-G1. Given** a synthetic overhang point at exactly `wall_supporting_radius` distance
+  from a wall, **when** `Layer::get_best_grounding_location` runs, **then** the chosen
+  grounding location is NOT that wall (the radius is an exclusionary distance — walls
+  within `wall_supporting_radius` are skipped to avoid spurious reattachment, per Orca
+  `Layer.cpp::getBestGroundingLocation` semantics). | `cargo test -p slicer-core -- lightning_layer_wall_supporting_radius 2>&1 | tee target/test-output.log | grep "^test result"`
+- **AC-G2. Given** the 139 Step-3 prism with a single internal overhang (AC-2 fixture),
+  **when** the full grounding search replaces the 139 Step-2 stub, **then** the per-layer
+  continuity invariant still holds — every layer's tree endpoints lie within
+  `prune_length` of the layer below's trees or outline (no continuity regression from the
+  grounding refinement). | `cargo test -p slicer-core -- lightning_generator_tree_continuity 2>&1 | tee target/test-output.log | grep "^test result"`
 
 ## Negative Test Cases
 
@@ -135,7 +164,8 @@ the new paint-view arg (only `lightning-infill` calls it; the other three take
 - `docs/specs/lightning-infill-parity.md` §Phase L4 — full read (short).
 - `docs/adr/0029-lightning-prepass-tree-generator.md` — module-sampler contract;
   delegate SUMMARY.
-- `docs/DEVIATION_LOG.md` — DEV-081 row (the closure target).
+- `docs/DEVIATION_LOG.md` — DEV-081 row (the closure target) AND
+  `D-139-LAYER-GROUNDING-SEARCH-STUB` row (also closed by this packet).
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations
@@ -153,6 +183,9 @@ Files to inspect for this packet:
 - `docs/DEVIATION_LOG.md` — `D-137-WIT-RUN-INFILL-NO-PAINT-VIEW` status →
   `Closed` (packet 140) —
   `rg -q 'D-137-WIT-RUN-INFILL-NO-PAINT-VIEW.*[Cc]losed' docs/DEVIATION_LOG.md`
+- `docs/DEVIATION_LOG.md` — `D-139-LAYER-GROUNDING-SEARCH-STUB` status →
+  `Closed` (packet 140 Step 0 — full `getBestGroundingLocation` ported) —
+  `rg -q 'D-139-LAYER-GROUNDING-SEARCH-STUB.*[Cc]losed.*140' docs/DEVIATION_LOG.md`
 - `docs/07_implementation_status.md` — TASK-262…TASK-265 closure sweep —
   `rg -q 'TASK-265.*[Cc]losed' docs/07_implementation_status.md`
 - `docs/03_wit_and_manifest.md` §`world-layer.wit` — update the package version

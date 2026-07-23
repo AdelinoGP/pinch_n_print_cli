@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-264`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -88,9 +88,13 @@ Files to inspect for this packet:
   distance per layer is un-printable); AC-3 pins seam-fills-seam (generator output ==
   IR content) **at per-region granularity** (the 137 placeholder was per-object
   only; 139 adds `region_id` so two regions on the same `(object, layer)` get
-  distinct segment buckets); AC-4 extends 138's determinism to the whole pipeline
+  distinct segment buckets); AC-3 evidence includes both the producer-side
+  `lightning_producer_per_region_keying` test and the dispatch-side
+  `lightning_dispatch_per_region_keying` test; AC-4 extends 138's determinism to the whole pipeline
   (now includes the per-region keying dimension).
-- Negative cases: `AC-N1` (no overhang → no trees), `AC-N2` (wedge byte-identity),
+- Negative cases: `AC-N1` (no overhang → no trees), `AC-N2` (wedge byte-identity; the
+  broader `-- wedge` command includes the pre-existing baseline failure
+  `wedge_multi_layer_top_bottom_evidence`, so the focused byte-identity test is used),
   `AC-N3` (per-region accessor isolation — the `D-137-LIGHTNING-PER-OBJECT-COLLAPSE`
   closure proof).
 - Cross-packet impact: 140 samples exactly what this packet commits, keyed by
@@ -107,10 +111,14 @@ Files to inspect for this packet:
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-core -- lightning_generator 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-1/2/4/N1 | FACT + counts |
-| `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 per-region wiring | FACT |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_overhangs 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-1 | FACT + counts |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_tree_continuity 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-2 | FACT + counts |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_deterministic 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-4 | FACT + counts |
+| `cargo test -p slicer-core --features host-algos --test algo_lightning_tdd -- lightning_generator_no_overhang_no_trees 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N1 | FACT + counts |
+| `cargo test -p slicer-runtime --test executor -- lightning_producer_per_region_keying 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 producer-side per-region wiring | FACT |
+| `cargo test -p slicer-wasm-host --test contract -- lightning_dispatch_per_region_keying 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-3 dispatch-side per-region wiring | FACT |
 | `cargo test -p slicer-runtime --test contract -- lightning_tree_per_region_roundtrip 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N3 per-region SDK isolation | FACT |
-| `cargo test -p slicer-runtime --test e2e -- wedge 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N2 | FACT |
+| `cargo test -p slicer-runtime --test e2e -- wedge_per_region_config_delivery_byte_identical 2>&1 \| tee target/test-output.log \| grep "^test result"` | AC-N2 focused wedge byte-identity guard | FACT |
 | `cargo clippy --workspace --all-targets -- -D warnings` + `cargo check --workspace --all-targets` | gates | FACT each |
 | `cargo xtask build-guests --check` | workspace habit | FACT |
 

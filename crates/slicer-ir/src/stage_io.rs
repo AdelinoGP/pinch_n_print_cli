@@ -299,6 +299,11 @@ impl fmt::Display for BlackboardPrepassSlot {
 /// Structured blackboard contract failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlackboardError {
+    /// Lightning tree generation failed before its output could be committed.
+    LightningTreeGeneration {
+        /// Human-readable generation failure detail.
+        message: String,
+    },
     /// A prepass output was committed more than once.
     DuplicatePrepassCommit {
         /// The duplicated prepass slot.
@@ -333,6 +338,9 @@ pub enum BlackboardError {
 impl fmt::Display for BlackboardError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::LightningTreeGeneration { message } => {
+                write!(f, "lightning tree generation failed: {message}")
+            }
             Self::DuplicatePrepassCommit { slot } => {
                 write!(f, "prepass output already committed for {slot}")
             }

@@ -185,9 +185,10 @@ impl PaintRegionLayerView {
         self.lightning_tree_ir.as_ref()
     }
 
-    /// Returns the 2-point tree-edge segments for the `(layer, object_id)`
-    /// pair matching this view's `layer_index`. Returns an empty vector if
-    /// no tree IR is committed (skip-when-no-lightning) or no entry matches.
+    /// Returns the 2-point tree-edge segments for the `(layer, object_id,
+    /// region_id)` triple matching this view's `layer_index`. Returns an empty
+    /// vector if no tree IR is committed (skip-when-no-lightning) or no entry
+    /// matches.
     ///
     /// The 137 contract returns empty segments for the empty-but-valid IR
     /// committed by the skeleton producer; the real algorithm (138/139)
@@ -195,7 +196,7 @@ impl PaintRegionLayerView {
     pub fn lightning_tree_segments_for(
         &self,
         object_id: &str,
-        _region_id: u64,
+        region_id: u64,
     ) -> Vec<[slicer_ir::Point2; 2]> {
         let Some(ir) = self.lightning_tree_ir.as_ref() else {
             return Vec::new();
@@ -203,7 +204,9 @@ impl PaintRegionLayerView {
         ir.entries
             .iter()
             .filter(|entry| {
-                entry.global_layer_index == self.layer_index as i32 && entry.object_id == object_id
+                entry.global_layer_index == self.layer_index as i32
+                    && entry.object_id == object_id
+                    && entry.region_id == region_id
             })
             .flat_map(|entry| entry.tree_edge_segments.iter().copied())
             .collect()

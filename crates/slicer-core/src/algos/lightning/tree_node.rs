@@ -29,18 +29,28 @@ pub struct Node {
     parent: RefCell<Weak<RefCell<Node>>>,
     children: RefCell<Vec<NodeRef>>,
     is_root: Cell<bool>,
+    m_last_grounding_location: Option<Point2>,
     self_ref: RefCell<Weak<RefCell<Node>>>,
 }
 
 impl Node {
     /// Construct a root node at `loc`.
     pub fn new(loc: Point2) -> NodeRef {
+        Self::new_with_grounding_location(loc, None)
+    }
+
+    /// Construct a root node and retain the location where it was grounded.
+    pub fn new_with_grounding_location(
+        loc: Point2,
+        last_grounding_location: Option<Point2>,
+    ) -> NodeRef {
         Rc::new_cyclic(|self_ref| {
             RefCell::new(Self {
                 location: Cell::new(loc),
                 parent: RefCell::new(Weak::new()),
                 children: RefCell::new(Vec::new()),
                 is_root: Cell::new(true),
+                m_last_grounding_location: last_grounding_location,
                 self_ref: RefCell::new(self_ref.clone()),
             })
         })
@@ -66,6 +76,121 @@ impl Node {
         self.children.borrow().clone()
     }
 
+    // 139 DEVIATION: extends 138 surface for per-layer Layer operations; tests co-updated in 139 Step 2.
+
+    /// Return the most recent location at which this root was grounded.
+    pub fn get_last_grounding_location(&self) -> Option<Point2> {
+        self.m_last_grounding_location
+    }
+
+    /// Set the location at which this root was grounded.
+    pub fn set_last_grounding_location(&mut self, location: Option<Point2>) {
+        self.m_last_grounding_location = location;
+    }
+
+    /// Return whether `candidate` is this node or a descendant of this node.
+    pub fn has_offspring(&self, candidate: NodeRef) -> bool {
+        let self_rc = self
+            .self_ref
+            .borrow()
+            .upgrade()
+            .expect("node self reference");
+        if Rc::ptr_eq(&self_rc, &candidate) {
+            return true;
+        }
+
+        self.children()
+            .into_iter()
+            .any(|child| child.borrow().has_offspring(Rc::clone(&candidate)))
+    }
+
+    /// Return the nearest node in this subtree, preserving depth-first ties.
+    pub fn closest_node(&self, target: Point2) -> NodeRef {
+        let mut closest = self
+            .self_ref
+            .borrow()
+            .upgrade()
+            .expect("node self reference");
+        let mut closest_distance = squared_distance(self.location(), target);
+
+        for child in self.children() {
+            let candidate = child.borrow().closest_node(target);
+            let candidate_distance = squared_distance(candidate.borrow().location(), target);
+            if candidate_distance < closest_distance {
+                closest = candidate;
+                closest_distance = candidate_distance;
+            }
+        }
+
+        closest
+    }
+
+    /// Return the distance to an unsupported location, with a valence bonus.
+    pub fn get_weighted_distance(&self, unsupported: Point2, supporting_radius: i64) -> i64 {
+        // Orca ref: Node::getWeightedDistance (TreeNode.cpp).
+        const MIN_VALENCE_FOR_BOOST: usize = 0;
+        const MAX_VALENCE_FOR_BOOST: usize = 4;
+        const VALENCE_BOOST_MULTIPLIER: i64 = 4;
+
+        let valence = usize::from(!self.is_root()) + self.children.borrow().len();
+        let valence_boost = if MIN_VALENCE_FOR_BOOST < valence && valence < MAX_VALENCE_FOR_BOOST {
+            VALENCE_BOOST_MULTIPLIER.saturating_mul(supporting_radius)
+        } else {
+            0
+        };
+        distance_between(self.location(), unsupported).saturating_sub(valence_boost)
+    }
+
+    /// Append this tree's branch polylines in deterministic depth-first order.
+    pub fn convert_to_polylines(&self, out: &mut Vec<Vec<Point2>>, line_overlap: i64) {
+        // Orca ref: Node::convertToPolylines and removeJunctionOverlap (TreeNode.cpp).
+        let mut result = vec![Vec::new()];
+        self.convert_to_polylines_recursive(0, &mut result);
+        for polyline in &mut result {
+            remove_junction_overlap(polyline, line_overlap);
+        }
+        out.extend(result.into_iter().filter(|polyline| polyline.len() > 1));
+    }
+
+    /// Visit this node and all descendants in depth-first order.
+    pub fn visit_nodes(&self, mut visitor: impl FnMut(NodeRef)) {
+        self.visit_nodes_recursive(&mut visitor);
+    }
+
+    fn visit_nodes_recursive(&self, visitor: &mut impl FnMut(NodeRef)) {
+        let self_rc = self
+            .self_ref
+            .borrow()
+            .upgrade()
+            .expect("node self reference");
+        visitor(self_rc);
+        for child in self.children() {
+            child.borrow().visit_nodes_recursive(visitor);
+        }
+    }
+
+    fn convert_to_polylines_recursive(&self, long_line_idx: usize, output: &mut Vec<Vec<Point2>>) {
+        let children = self.children();
+        if children.is_empty() {
+            output[long_line_idx].push(self.location());
+            return;
+        }
+
+        children[0]
+            .borrow()
+            .convert_to_polylines_recursive(long_line_idx, output);
+        output[long_line_idx].push(self.location());
+
+        for child in children.into_iter().skip(1) {
+            output.push(Vec::new());
+            let child_line_idx = output.len() - 1;
+            child
+                .borrow()
+                .convert_to_polylines_recursive(child_line_idx, output);
+            output[child_line_idx].push(self.location());
+        }
+    }
+
     /// Construct and attach a child at `child_loc`.
     pub fn add_child(&self, child_loc: Point2) -> NodeRef {
         self.add_child_node(Self::new(child_loc))
@@ -81,7 +206,8 @@ impl Node {
 
     /// Copy this node and its complete descendant tree.
     pub fn deep_copy(&self) -> NodeRef {
-        let copy = Self::new(self.location());
+        let copy =
+            Self::new_with_grounding_location(self.location(), self.get_last_grounding_location());
         copy.borrow().is_root.set(self.is_root());
         for child in self.children() {
             let child_copy = child.borrow().deep_copy();
@@ -321,6 +447,39 @@ fn squared_distance(first: Point2, second: Point2) -> i128 {
     let dx = i128::from(first.x) - i128::from(second.x);
     let dy = i128::from(first.y) - i128::from(second.y);
     dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))
+}
+
+fn remove_junction_overlap(polyline: &mut Vec<Point2>, line_overlap: i64) {
+    if line_overlap <= 0 || polyline.len() <= 1 {
+        return;
+    }
+
+    let mut to_be_reduced = line_overlap as f64;
+    let mut a = *polyline.last().expect("polyline has a point");
+    let mut point_index = polyline.len() - 2;
+    loop {
+        let b = polyline[point_index];
+        let dx = (b.x - a.x) as f64;
+        let dy = (b.y - a.y) as f64;
+        let segment_length = dx.hypot(dy);
+        if segment_length >= to_be_reduced {
+            let ratio = to_be_reduced / segment_length;
+            let last_index = polyline.len() - 1;
+            polyline[last_index] = Point2 {
+                x: (a.x as f64 + dx * ratio) as i64,
+                y: (a.y as f64 + dy * ratio) as i64,
+            };
+            return;
+        }
+
+        to_be_reduced -= segment_length;
+        polyline.pop();
+        if polyline.len() <= 1 {
+            return;
+        }
+        a = b;
+        point_index -= 1;
+    }
 }
 
 fn interpolate(start: Point2, end: Point2, numerator: i64, denominator: i64) -> Point2 {
