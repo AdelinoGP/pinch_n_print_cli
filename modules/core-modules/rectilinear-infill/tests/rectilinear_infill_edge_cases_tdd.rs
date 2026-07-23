@@ -11,6 +11,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 fn config(density: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
@@ -66,7 +70,7 @@ fn non_convex_polygon_emits_finite_sparse_paths_without_panic() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &cfg)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
         .expect("run_infill must not error on a non-convex polygon");
 
     let paths = output.sparse_paths();
@@ -96,7 +100,7 @@ fn very_small_polygon_emits_no_paths_without_panic() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &cfg)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
         .expect("run_infill must not panic on a sub-spacing polygon");
 
     assert!(

@@ -40,7 +40,7 @@ use slicer_ir::{
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::LayerModule;
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 use std::f64::consts::{FRAC_PI_2, PI};
@@ -139,6 +139,7 @@ impl LayerModule for GyroidInfill {
         &self,
         _layer_index: u32,
         regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

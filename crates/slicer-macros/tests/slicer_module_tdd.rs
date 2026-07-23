@@ -191,6 +191,7 @@ pub trait LayerModule: Sized {
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -363,6 +364,7 @@ impl LayerModule for InfillModule {
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -795,9 +797,10 @@ fn test_19_stage_method_callable() {
     let config = ConfigView::new();
     let module = InfillModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
+    let paint = PaintRegionLayerView;
     let mut output = InfillOutputBuilder::new();
 
-    let result = module.run_infill(0, &regions, &mut output, &config);
+    let result = module.run_infill(0, &regions, &paint, &mut output, &config);
     assert!(result.is_ok());
     assert_eq!(output.paths().len(), 1);
 }

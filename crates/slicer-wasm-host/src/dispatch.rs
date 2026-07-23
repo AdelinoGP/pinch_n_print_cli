@@ -447,6 +447,17 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                 )
                 .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data_with_plan(
+                    params.paint_ir,
+                    params.layer_index,
+                    params.support_plan_ir,
+                    params.lightning_tree_ir,
+                );
+                let paint = config
+                    .store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
                 let output = config
                     .store
                     .data_mut()
@@ -458,6 +469,7 @@ impl WasmRuntimeDispatcher {
                         config.store,
                         params.layer_index as i32,
                         &region_handles,
+                        own(paint),
                         own(output),
                         own(config.config_handle),
                     )

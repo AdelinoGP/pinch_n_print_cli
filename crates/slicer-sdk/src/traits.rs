@@ -365,6 +365,7 @@ pub trait LayerModule: Sized {
     /// export run-infill: func(
     ///     layer-index: layer-idx,
     ///     regions: list<slice-region-view>,
+    ///     paint: paint-region-layer-view,
     ///     output: infill-output-builder,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
@@ -373,6 +374,7 @@ pub trait LayerModule: Sized {
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

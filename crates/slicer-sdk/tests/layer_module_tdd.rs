@@ -106,6 +106,7 @@ impl LayerModule for InfillTestModule {
         &self,
         layer_index: u32,
         regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -125,7 +126,13 @@ fn test_06_run_infill_signature_matches_wit() {
     let regions: Vec<SliceRegionView> = vec![];
     let mut output = InfillOutputBuilder::new();
 
-    let result = module.run_infill(0, &regions, &mut output, &config);
+    let result = module.run_infill(
+        0,
+        &regions,
+        &PaintRegionLayerView::new(0),
+        &mut output,
+        &config,
+    );
     assert!(result.is_ok());
 }
 
@@ -666,6 +673,7 @@ impl LayerModule for CustomModule {
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -849,7 +857,13 @@ fn test_35_layer_module_defaults_do_not_panic() {
 
     // All default methods should return Ok(()) without panicking
     assert!(module
-        .run_infill(0, &slice_regions, &mut InfillOutputBuilder::new(), &config)
+        .run_infill(
+            0,
+            &slice_regions,
+            &paint,
+            &mut InfillOutputBuilder::new(),
+            &config
+        )
         .is_ok());
     assert!(module
         .run_perimeters(

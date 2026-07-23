@@ -29,7 +29,7 @@ use slicer_ir::{
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::LayerModule;
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
@@ -95,6 +95,7 @@ impl LayerModule for RectilinearInfill {
         &self,
         layer_index: u32,
         regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

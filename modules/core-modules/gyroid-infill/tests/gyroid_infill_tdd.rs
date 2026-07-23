@@ -23,6 +23,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use gyroid_infill::GyroidInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
@@ -78,7 +82,7 @@ fn square_region_produces_paths() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(
@@ -97,7 +101,7 @@ fn paths_have_sparse_infill_role() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -120,7 +124,7 @@ fn zero_density_no_paths() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -149,7 +153,7 @@ fn empty_regions_no_output() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -170,7 +174,7 @@ fn paths_at_correct_z() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -199,10 +203,10 @@ fn wave_pattern_varies_by_layer() {
     let mut output2 = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region1], &mut output1, &config)
+        .run_infill(0, &[region1], &empty_paint_view(), &mut output1, &config)
         .unwrap();
     module
-        .run_infill(0, &[region2], &mut output2, &config)
+        .run_infill(0, &[region2], &empty_paint_view(), &mut output2, &config)
         .unwrap();
 
     let paths1 = output1.sparse_paths();
@@ -238,10 +242,22 @@ fn density_affects_spacing() {
     let mut output_high = InfillOutputBuilder::new();
 
     module_low
-        .run_infill(0, &[region_low], &mut output_low, &config_low)
+        .run_infill(
+            0,
+            &[region_low],
+            &empty_paint_view(),
+            &mut output_low,
+            &config_low,
+        )
         .unwrap();
     module_high
-        .run_infill(0, &[region_high], &mut output_high, &config_high)
+        .run_infill(
+            0,
+            &[region_high],
+            &empty_paint_view(),
+            &mut output_high,
+            &config_high,
+        )
         .unwrap();
 
     let count_low = output_low.sparse_paths().len();
@@ -266,7 +282,7 @@ fn width_matches_config() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -300,7 +316,7 @@ fn asin_nan_protection() {
         let mut output = InfillOutputBuilder::new();
 
         module
-            .run_infill(0, &[region], &mut output, &config)
+            .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
             .unwrap();
 
         for path in output.sparse_paths() {
@@ -322,7 +338,7 @@ fn square_10mm_z_0p2_emits_raw_waves() {
     let region = make_square_region(10.0, 0.2);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
     let paths = output.sparse_paths();
     assert!(!paths.is_empty(), "should produce paths");
@@ -399,10 +415,22 @@ fn rotated_square_45_matches_unrotated_after_inverse() {
     let mut output_0 = InfillOutputBuilder::new();
     let mut output_45 = InfillOutputBuilder::new();
     module_0
-        .run_infill(0, &[region_0], &mut output_0, &config_0)
+        .run_infill(
+            0,
+            &[region_0],
+            &empty_paint_view(),
+            &mut output_0,
+            &config_0,
+        )
         .unwrap();
     module_45
-        .run_infill(0, &[region_45], &mut output_45, &config_45)
+        .run_infill(
+            0,
+            &[region_45],
+            &empty_paint_view(),
+            &mut output_45,
+            &config_45,
+        )
         .unwrap();
     let paths_0 = output_0.sparse_paths();
     let paths_45 = output_45.sparse_paths();
@@ -502,10 +530,22 @@ fn rotated_square_45_per_point_correspondence_within_2mm() {
     let mut output_0 = InfillOutputBuilder::new();
     let mut output_45 = InfillOutputBuilder::new();
     module_0
-        .run_infill(0, &[region_0], &mut output_0, &config_0)
+        .run_infill(
+            0,
+            &[region_0],
+            &empty_paint_view(),
+            &mut output_0,
+            &config_0,
+        )
         .unwrap();
     module_45
-        .run_infill(0, &[region_45], &mut output_45, &config_45)
+        .run_infill(
+            0,
+            &[region_45],
+            &empty_paint_view(),
+            &mut output_45,
+            &config_45,
+        )
         .unwrap();
     let paths_0 = output_0.sparse_paths();
     let paths_45 = output_45.sparse_paths();
@@ -635,7 +675,7 @@ fn expand_factor_is_10x_spacing() {
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
     let paths = output.sparse_paths();
     assert!(!paths.is_empty(), "should produce paths");
@@ -714,7 +754,7 @@ fn default_holders_gyroid_sparse_only() {
     region.set_held_claims(vec!["claim:sparse-fill".into()]);
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
     // Only sparse-fill should be emitted (opt-in guard)
     assert!(
@@ -741,10 +781,22 @@ fn adjacent_layers_have_phase_coherent_bbox() {
     let mut output_z1 = InfillOutputBuilder::new();
     let mut output_z2 = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region_z1], &mut output_z1, &config)
+        .run_infill(
+            0,
+            &[region_z1],
+            &empty_paint_view(),
+            &mut output_z1,
+            &config,
+        )
         .unwrap();
     module
-        .run_infill(0, &[region_z2], &mut output_z2, &config)
+        .run_infill(
+            0,
+            &[region_z2],
+            &empty_paint_view(),
+            &mut output_z2,
+            &config,
+        )
         .unwrap();
     let paths_z1 = output_z1.sparse_paths();
     let paths_z2 = output_z2.sparse_paths();
@@ -795,7 +847,13 @@ fn per_region_density_overrides_module_global() {
     let region_a = make_square_region(10.0, 0.2);
     let mut output_a = InfillOutputBuilder::new();
     module
-        .run_infill(0, std::slice::from_ref(&region_a), &mut output_a, &config)
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_a),
+            &empty_paint_view(),
+            &mut output_a,
+            &config,
+        )
         .unwrap();
     let paths_a = output_a.sparse_paths();
     assert!(!paths_a.is_empty(), "region A (no override) should emit");
@@ -816,7 +874,13 @@ fn per_region_density_overrides_module_global() {
 
     let mut output_b = InfillOutputBuilder::new();
     module
-        .run_infill(0, std::slice::from_ref(&region_b), &mut output_b, &config)
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_b),
+            &empty_paint_view(),
+            &mut output_b,
+            &config,
+        )
         .unwrap();
     let paths_b = output_b.sparse_paths();
     assert!(!paths_b.is_empty(), "region B (override=0.8) should emit");

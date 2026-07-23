@@ -29,6 +29,7 @@ impl LayerModule for SdkLayerInfillModule {
         &self,
         layer_index: u32,
         regions: &[SliceRegionView],
+        _paint: &slicer_sdk::PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -52,11 +53,13 @@ impl LayerModule for SdkLayerInfillModule {
         // once in the witness crate (see witness/src/lib.rs).
         let (first_z, first_lh, first_infill_n) = regions
             .first()
-            .map(|r| (
-                r.z(),
-                r.effective_layer_height(),
-                r.infill_areas().len() as f32,
-            ))
+            .map(|r| {
+                (
+                    r.z(),
+                    r.effective_layer_height(),
+                    r.infill_areas().len() as f32,
+                )
+            })
             .unwrap_or((0.0, 0.0, 0.0));
 
         let w = SdkInfillWitness {

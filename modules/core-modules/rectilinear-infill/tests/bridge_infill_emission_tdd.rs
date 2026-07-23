@@ -15,6 +15,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 /// Create a region with bridge areas and orientation set.
 fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
     let s = square_polygon(5.0, 5.0, 10.0);
@@ -122,7 +126,13 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -186,7 +196,13 @@ fn straddling_expoly_partitioned_via_set_difference() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -268,7 +284,13 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let mut output = InfillOutputBuilder::new();
     // layer_index=1 → sparse alternation would be 90°
     module
-        .run_infill(1, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            1,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -327,7 +349,13 @@ fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output

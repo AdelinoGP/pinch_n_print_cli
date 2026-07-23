@@ -113,6 +113,7 @@ impl Guest for Component {
     fn run_infill(
         layer_index: LayerIdx,
         regions: Vec<SliceRegionView>,
+        paint: PaintRegionLayerView,
         output: InfillOutputBuilder,
         config: ConfigView,
     ) -> Result<(), ModuleError> {
@@ -137,6 +138,17 @@ impl Guest for Component {
         };
         let region_count = regions.len() as f32;
         let total_polys: f32 = regions.iter().map(|r| r.polygons().len() as f32).sum();
+        let lightning_segment_count: usize = regions
+            .iter()
+            .map(|region| {
+                paint
+                    .lightning_tree_segments(
+                        region.object_id().as_str(),
+                        region.region_id().as_str(),
+                    )
+                    .len()
+            })
+            .sum();
         // 4. Push output
         let path = slicer::types::geometry::ExtrusionPath3d {
             points: vec![
@@ -161,6 +173,23 @@ impl Guest for Component {
             speed_factor: 1.0,
         };
         output.push_sparse_path(&path).expect("push failed");
+        if lightning_segment_count > 0 {
+            let witness = slicer::types::geometry::ExtrusionPath3d {
+                points: vec![slicer::types::geometry::Point3WithWidth {
+                    x: lightning_segment_count as f32,
+                    y: 0.0,
+                    z,
+                    width: 137.0,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                }],
+                role: slicer::types::geometry::ExtrusionRole::SparseInfill,
+                speed_factor: 1.0,
+            };
+            output
+                .push_sparse_path(&witness)
+                .expect("push lightning witness failed");
+        }
         Ok(())
     }
     fn run_infill_postprocess(

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use slicer_wasm_host::host::{
     ConfigValueStorage, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder,
-    LayerModule, SliceRegionData,
+    LayerModule, PaintRegionLayerData, SliceRegionData,
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1};
 
@@ -86,6 +86,15 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
+    let paint_handle = ctx
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            regions_by_semantic: HashMap::new(),
+            custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
+            lightning_tree_segments: HashMap::new(),
+        })
+        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).expect("instantiate");
@@ -95,6 +104,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         &mut store,
         0, // layer_index
         &[resource_to_own(region_handle)],
+        resource_to_own(paint_handle),
         resource_to_own(output_handle),
         resource_to_own(config_handle),
     );
@@ -184,6 +194,15 @@ fn guest_reads_region_z_from_ir_view() {
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
+    let paint_handle = ctx
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 42,
+            regions_by_semantic: HashMap::new(),
+            custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
+            lightning_tree_segments: HashMap::new(),
+        })
+        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -193,6 +212,7 @@ fn guest_reads_region_z_from_ir_view() {
             &mut store,
             42,
             &[resource_to_own(region_handle)],
+            resource_to_own(paint_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -260,6 +280,15 @@ fn guest_emits_output_via_infill_builder() {
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
+    let paint_handle = ctx
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            regions_by_semantic: HashMap::new(),
+            custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
+            lightning_tree_segments: HashMap::new(),
+        })
+        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -269,6 +298,7 @@ fn guest_emits_output_via_infill_builder() {
             &mut store,
             0,
             &[resource_to_own(region_handle)],
+            resource_to_own(paint_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -344,6 +374,15 @@ fn guest_logs_via_host_services() {
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
+    let paint_handle = ctx
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 7,
+            regions_by_semantic: HashMap::new(),
+            custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
+            lightning_tree_segments: HashMap::new(),
+        })
+        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -353,6 +392,7 @@ fn guest_logs_via_host_services() {
             &mut store,
             7,
             &[resource_to_own(region_handle)],
+            resource_to_own(paint_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )
@@ -425,6 +465,15 @@ fn repeated_calls_produce_independent_outputs() {
             })
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
+        let paint_handle = ctx
+            .push_paint_region_layer_view(PaintRegionLayerData {
+                layer_index: i,
+                regions_by_semantic: HashMap::new(),
+                custom_regions: HashMap::new(),
+                support_plan_segments: HashMap::new(),
+                lightning_tree_segments: HashMap::new(),
+            })
+            .unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
         let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -432,8 +481,9 @@ fn repeated_calls_produce_independent_outputs() {
         bindings
             .call_run_infill(
                 &mut store,
-                i,
+                i as i32,
                 &[resource_to_own(region_handle)],
+                resource_to_own(paint_handle),
                 resource_to_own(output_handle),
                 resource_to_own(config_handle),
             )
@@ -488,6 +538,15 @@ fn empty_region_list_handled_gracefully() {
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
+    let paint_handle = ctx
+        .push_paint_region_layer_view(PaintRegionLayerData {
+            layer_index: 0,
+            regions_by_semantic: HashMap::new(),
+            custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
+            lightning_tree_segments: HashMap::new(),
+        })
+        .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
@@ -498,6 +557,7 @@ fn empty_region_list_handled_gracefully() {
             &mut store,
             0,
             &[], // no regions
+            resource_to_own(paint_handle),
             resource_to_own(output_handle),
             resource_to_own(config_handle),
         )

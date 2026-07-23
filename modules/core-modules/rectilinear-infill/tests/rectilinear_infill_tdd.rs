@@ -10,6 +10,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 #[rustfmt::skip]
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new().float("infill_density", density).float("infill_angle", angle).float("infill_speed", speed).float("line_width", line_width).build()
@@ -44,7 +48,7 @@ fn single_square_sparse_fill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -79,10 +83,22 @@ fn density_affects_line_count() {
     let mut output_high = InfillOutputBuilder::new();
 
     module_low
-        .run_infill(0, &[region_low], &mut output_low, &config_low)
+        .run_infill(
+            0,
+            &[region_low],
+            &empty_paint_view(),
+            &mut output_low,
+            &config_low,
+        )
         .unwrap();
     module_high
-        .run_infill(0, &[region_high], &mut output_high, &config_high)
+        .run_infill(
+            0,
+            &[region_high],
+            &empty_paint_view(),
+            &mut output_high,
+            &config_high,
+        )
         .unwrap();
 
     let count_low = output_low.sparse_paths().len();
@@ -106,7 +122,7 @@ fn angle_rotation_45() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -143,10 +159,10 @@ fn layer_alternation() {
     let mut output1 = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region0], &mut output0, &config)
+        .run_infill(0, &[region0], &empty_paint_view(), &mut output0, &config)
         .unwrap();
     module
-        .run_infill(1, &[region1], &mut output1, &config)
+        .run_infill(1, &[region1], &empty_paint_view(), &mut output1, &config)
         .unwrap();
 
     let paths0 = output0.sparse_paths();
@@ -201,7 +217,7 @@ fn empty_infill_areas() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -221,7 +237,7 @@ fn zero_density_no_output() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -241,7 +257,7 @@ fn extrusion_role_is_sparse() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -264,7 +280,7 @@ fn speed_factor_from_config() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -293,7 +309,13 @@ fn per_region_density_overrides_module_global() {
     let region_a = make_square_region(10.0, 0.3);
     let mut output_a = InfillOutputBuilder::new();
     module
-        .run_infill(0, std::slice::from_ref(&region_a), &mut output_a, &config)
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_a),
+            &empty_paint_view(),
+            &mut output_a,
+            &config,
+        )
         .unwrap();
     let count_a = output_a.sparse_paths().len();
     assert!(
@@ -310,7 +332,13 @@ fn per_region_density_overrides_module_global() {
 
     let mut output_b = InfillOutputBuilder::new();
     module
-        .run_infill(0, std::slice::from_ref(&region_b), &mut output_b, &config)
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_b),
+            &empty_paint_view(),
+            &mut output_b,
+            &config,
+        )
         .unwrap();
     let count_b = output_b.sparse_paths().len();
     assert!(

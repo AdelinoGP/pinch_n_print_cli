@@ -102,6 +102,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
         .float("infill_density", density)
@@ -169,7 +173,7 @@ fn square_10mm_density_20_emits_n_raw_segments() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -295,7 +299,7 @@ fn polygon_with_hole_segments_split_around_hole() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -367,7 +371,7 @@ fn two_disjoint_expolygons_independent_scan_conversion() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -422,7 +426,7 @@ fn angle_45_rotated_output_matches_unrotated_after_inverse() {
     let region0 = make_sparse_region(sq.clone(), 0.3);
     let mut output0 = InfillOutputBuilder::new();
     module0
-        .run_infill(0, &[region0], &mut output0, &config0)
+        .run_infill(0, &[region0], &empty_paint_view(), &mut output0, &config0)
         .unwrap();
 
     // Run with angle=45.
@@ -431,7 +435,13 @@ fn angle_45_rotated_output_matches_unrotated_after_inverse() {
     let region45 = make_sparse_region(sq, 0.3);
     let mut output45 = InfillOutputBuilder::new();
     module45
-        .run_infill(0, &[region45], &mut output45, &config45)
+        .run_infill(
+            0,
+            &[region45],
+            &empty_paint_view(),
+            &mut output45,
+            &config45,
+        )
         .unwrap();
 
     let paths0 = output0.sparse_paths();
@@ -540,7 +550,7 @@ fn solid_spacing_adjusted_for_solid_role() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let solid = output.solid_paths();
@@ -604,14 +614,14 @@ fn pattern_shift_interleaves_layers() {
     let region0 = make_sparse_region(sq.clone(), 0.3);
     let mut output0 = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region0], &mut output0, &config)
+        .run_infill(0, &[region0], &empty_paint_view(), &mut output0, &config)
         .unwrap();
 
     // Layer 1
     let region1 = make_sparse_region(sq, 0.5);
     let mut output1 = InfillOutputBuilder::new();
     module
-        .run_infill(1, &[region1], &mut output1, &config)
+        .run_infill(1, &[region1], &empty_paint_view(), &mut output1, &config)
         .unwrap();
 
     let paths0 = output0.sparse_paths();
@@ -698,7 +708,13 @@ fn pattern_shift_interleaves_layers() {
     let region_shift = make_sparse_region(square_polygon(5.0, 5.0, 10.0), 0.3);
     let mut output_shift = InfillOutputBuilder::new();
     module_shift
-        .run_infill(0, &[region_shift], &mut output_shift, &config_shift)
+        .run_infill(
+            0,
+            &[region_shift],
+            &empty_paint_view(),
+            &mut output_shift,
+            &config_shift,
+        )
         .unwrap();
     let paths_shift = output_shift.sparse_paths();
     assert!(
@@ -714,6 +730,7 @@ fn pattern_shift_interleaves_layers() {
         .run_infill(
             0,
             &[region_no_shift],
+            &empty_paint_view(),
             &mut output_no_shift,
             &config_no_shift,
         )
@@ -796,7 +813,7 @@ fn half_open_vertex_test_no_double_count() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
