@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+use std::collections::HashMap;
+
 use slicer_ir::{ConfigView, ExtrusionRole};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::*;
@@ -7,6 +9,10 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
+
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
 
 #[rustfmt::skip]
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
@@ -42,14 +48,14 @@ fn single_square_sparse_fill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
-    // spacing=2mm over 10mm range -> expect 4 lines
+    // spacing=2mm over 10mm range -> expect 6 lines
     assert!(
-        paths.len() >= 3 && paths.len() <= 5,
-        "expected 3-5 lines, got {}",
+        paths.len() >= 5 && paths.len() <= 7,
+        "expected 5-7 lines, got {}",
         paths.len()
     );
 
@@ -77,10 +83,22 @@ fn density_affects_line_count() {
     let mut output_high = InfillOutputBuilder::new();
 
     module_low
-        .run_infill(0, &[region_low], &mut output_low, &config_low)
+        .run_infill(
+            0,
+            &[region_low],
+            &empty_paint_view(),
+            &mut output_low,
+            &config_low,
+        )
         .unwrap();
     module_high
-        .run_infill(0, &[region_high], &mut output_high, &config_high)
+        .run_infill(
+            0,
+            &[region_high],
+            &empty_paint_view(),
+            &mut output_high,
+            &config_high,
+        )
         .unwrap();
 
     let count_low = output_low.sparse_paths().len();
@@ -104,7 +122,7 @@ fn angle_rotation_45() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
@@ -141,10 +159,10 @@ fn layer_alternation() {
     let mut output1 = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region0], &mut output0, &config)
+        .run_infill(0, &[region0], &empty_paint_view(), &mut output0, &config)
         .unwrap();
     module
-        .run_infill(1, &[region1], &mut output1, &config)
+        .run_infill(1, &[region1], &empty_paint_view(), &mut output1, &config)
         .unwrap();
 
     let paths0 = output0.sparse_paths();
@@ -199,7 +217,7 @@ fn empty_infill_areas() {
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -219,7 +237,7 @@ fn zero_density_no_output() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert_eq!(
@@ -239,7 +257,7 @@ fn extrusion_role_is_sparse() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -262,7 +280,7 @@ fn speed_factor_from_config() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
     assert!(!output.sparse_paths().is_empty());
@@ -273,4 +291,71 @@ fn speed_factor_from_config() {
             path.speed_factor
         );
     }
+}
+
+/// Test 9: per-region `infill_density` override (packet 131 / TASK-256) is
+/// read through `slicer_sdk::config_resolution` and overrides the
+/// module-global default set in `on_print_start`.
+///
+/// Module-global density 0.2 (line_width=0.4 → spacing 2mm → ~5 lines on a
+/// 10mm square). Per-region density 0.4 doubles the density → spacing 1mm →
+/// ~10 lines on the same square. The line count is the direct observable.
+#[test]
+fn per_region_density_overrides_module_global() {
+    let config = make_config(0.2, 0.0, 50.0, 0.4);
+    let module = RectilinearInfill::on_print_start(&config).unwrap();
+
+    // Region A: no per-region config. Module-global density 0.2 → spacing 2mm.
+    let region_a = make_square_region(10.0, 0.3);
+    let mut output_a = InfillOutputBuilder::new();
+    module
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_a),
+            &empty_paint_view(),
+            &mut output_a,
+            &config,
+        )
+        .unwrap();
+    let count_a = output_a.sparse_paths().len();
+    assert!(
+        (5..=7).contains(&count_a),
+        "density 0.2, line_width 0.4 → spacing 2mm → expect 5-7 lines on a 10mm square, got {}",
+        count_a
+    );
+
+    // Region B: per-region infill_density = 0.4. Spacing = 0.4/0.4 = 1mm.
+    let mut region_b = make_square_region(10.0, 0.3);
+    let mut fields = HashMap::new();
+    fields.insert("infill_density".into(), slicer_ir::ConfigValue::Float(0.4));
+    region_b.set_config(ConfigView::from_map(fields));
+
+    let mut output_b = InfillOutputBuilder::new();
+    module
+        .run_infill(
+            0,
+            std::slice::from_ref(&region_b),
+            &empty_paint_view(),
+            &mut output_b,
+            &config,
+        )
+        .unwrap();
+    let count_b = output_b.sparse_paths().len();
+    assert!(
+        (10..=12).contains(&count_b),
+        "per-region density 0.4 → spacing 1mm → expect 10-12 lines on a 10mm square, got {}",
+        count_b
+    );
+
+    // The per-region override produces ~2× the line count of the
+    // module-global default.
+    let ratio = count_b as f64 / count_a as f64;
+    assert!(
+        ratio > 1.5 && ratio < 2.5,
+        "per-region density 0.4 should produce ~2× the line count of density 0.2; \
+         got count_a={} count_b={} ratio={}",
+        count_a,
+        count_b,
+        ratio
+    );
 }

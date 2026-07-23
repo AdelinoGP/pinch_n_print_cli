@@ -22,6 +22,14 @@
   is a hard fence; reviewers reject any linking/overlap/filter code here.
 - `infill_direction` stays module-local (ADR-0026 trade-off note: it is infill-specific; do
   not promote to slicer-core).
+- WIT contract is already in place (TASK-255 closed 2026-07-17): the four partition fields
+  (`sparse_infill_area`, `top_solid_fill`, `bottom_solid_fill`, `bridge_areas`) live on
+  `PerimeterRegionView` at `crates/slicer-sdk/src/views.rs:103-108`. The module reads them
+  through the existing accessor pattern (`lib.rs:108-109, 120, 139, 158, 178-179`). Do NOT
+  re-add WIT/scheduler work — the host partition contract is realized.
+- `clip_polylines` is available in `slicer-core::polygon_ops` (TASK-254 closed 2026-07-16).
+  The module does not call it (raw emit, linker's job), but the linker (packet 133,
+  currently OPEN) will.
 
 ## Code Change Surface
 
@@ -44,26 +52,38 @@
 ## Files in Scope (read + edit)
 
 - `modules/core-modules/rectilinear-infill/src/lib.rs` — role: the rewrite; expected change:
-  geometry core replaced (~250 lines), role loop preserved.
-- `modules/core-modules/rectilinear-infill/tests/` (existing file(s) + additions) — role:
-  TDD; expected change: 8 new tests, stale-geometry tests rewritten.
+  geometry core replaced (~250 lines), role loop preserved, `lib.rs:231-237` global-edge-merge
+  removed.
+- `modules/core-modules/rectilinear-infill/tests/` — `rectilinear_infill_tdd.rs`,
+  `rectilinear_infill_edge_cases_tdd.rs`, `top_bottom_fill_tdd.rs`,
+  `bridge_infill_emission_tdd.rs` — role: TDD; expected change: 7 new tests
+  (AC-1, AC-2, AC-3, AC-4, AC-5, AC-7, AC-N1) in a new `rectilinear_raw_emit_tdd.rs` (or
+  appended to the existing edge-cases file); stale-geometry tests in
+  `rectilinear_infill_tdd.rs` rewritten with header comments naming each encoded bug. The
+  four-role and bridge-angle tests stay green.
 - `modules/core-modules/rectilinear-infill/Cargo.toml` — role: only if a dev-dep is needed
   for test fixtures; expected change: minimal or none.
 
 ## Read-Only Context
 
-- `crates/slicer-sdk/src/views.rs` — the region-view config accessor (131) + partitioned
-  polygon accessors — ranged.
-- `crates/slicer-sdk/src/builders.rs` — lines 21-141 (`InfillOutputBuilder`).
-- `crates/slicer-ir/src/resolved_config.rs` — lines 577-649 (infill config keys) — key names
-  only.
+- `crates/slicer-sdk/src/views.rs` — the four `perimeter-region-view` partition fields
+  (`views.rs:103-108`); the SDK region-view config accessor (131, TASK-256 closed). Ranged
+  reads only.
+- `crates/slicer-sdk/src/builders.rs` — `InfillOutputBuilder` (`push_sparse_path` /
+  `push_solid_path`).
+- `crates/slicer-ir/src/resolved_config.rs` — the infill config keys
+  (`infill_density`, `infill_angle`, `infill_speed`, `line_width`).
+- `.ralph/specs/131_per-region-config-delivery/carve-list.md` — the carve worklist this
+  packet appends to at Step 4 (already lists 5 cube_4color_* files as `carved: infill-parity
+  D6`).
 
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/**` — delegate; never load.
 - `modules/core-modules/{gyroid,lightning}-infill/**`, `modules/core-modules/infill-linker/**`
   — other packets' surfaces.
-- Host crates — nothing to change; delegate any dispatch-behavior FACT.
+- Host crates (`slicer-wasm-host`, `slicer-runtime`, `slicer-schema/wit/`) — nothing to
+  change; the WIT contract is already realized. Delegate any dispatch-behavior FACT.
 - `target/`, `Cargo.lock` — never load.
 
 ## Expected Sub-Agent Dispatches
@@ -78,6 +98,8 @@
 - "Run `cargo test -p rectilinear-infill 2>&1 | tee target/test-output.log | grep '^test
   result'`; FACT + counts; SNIPPETS ≤20 on failure" — every gate.
 - "Run `cargo xtask build-guests --check`; FACT; rebuild if STALE".
+- "FACT: from `crates/slicer-sdk/src/views.rs`, the exact accessor method names for the
+  four partition fields and the per-region config accessor (≤ 8 lines)" — Step 1 driver.
 
 ## Data and Contract Notes
 
@@ -90,24 +112,33 @@
 ## Locked Assumptions and Invariants
 
 - The four-role emission structure, `solid_fill_role` mapping, `should_emit` gating, and the
-  manifest are preserved verbatim (spec "stays" list).
+  manifest are preserved verbatim (spec "stays" list). The
+  `top_bottom_fill_tdd.rs` and `bridge_infill_emission_tdd.rs` test suites are the
+  pre-commit canary.
 - Raw 2-point segments only; endpoints on the un-offset wall-inset boundary; no two emitted
   segments share endpoints.
 - `pattern_shift` is module-side (grilling decision; spec open question 4 RESOLVED) — the
   linker connects whatever it receives.
 - Rotation rounding ≤ 50 nm is acceptable (below the 100 nm unit floor;
   `docs/08_coordinate_system.md`).
+- The linker (packet 133, currently OPEN) is NOT a code-blocker. Output degrades to raw
+  segments until 133 lands; the roadmap's degraded-not-failed trade-off (ADR-0025) is
+  documented in the implementation plan and exercised by packet 136's AC-N1.
 
 ## Risks and Tradeoffs
 
 - Existing module tests pinning the old (wrong) geometry will go red — rewriting them is in
   scope and each rewrite states WHICH bug the old expectation encoded (no silent re-pinning).
+  The Step-1 survey must enumerate them by name in a header comment.
 - The bridge-angle source (`bridge_orientation_deg` from mesh analysis vs config) must be
   read from the same place the current bridge emission reads — verify with a FACT dispatch,
   don't assume.
 - Segment-count formula edge cases (scan line exactly on the bbox edge) — AC-1's `+1` is
   validated against the ported loop bounds, adjusted with a recorded deviation if Orca's
   bound differs.
+- The packet is shippable with TASK-258 open, but the user-visible print is degraded until
+  133 lands. Document this in the implementation-plan pre-condition and in any closure
+  log; the integration packet (136) AC-N1 pins the trade-off at the e2e level.
 
 ## Context Cost Estimate
 

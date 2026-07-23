@@ -103,6 +103,7 @@ pub use slicer_wasm_host::pool as instance_pool;
 // HostExecutionContext and HostExecutionContextBuilder are internal to slicer-wasm-host
 // (not part of the public API surface); they are NOT re-exported here.
 
+pub use builtins::lightning_tree_producer::commit_lightning_tree_ir_builtin;
 pub use builtins::overhang_annotation_producer::{
     commit_overhang_annotation_builtin, OverhangAnnotationBuiltinError,
 };

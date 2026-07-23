@@ -57,9 +57,18 @@
 //! `tests/executor/` for the regression.
 
 use slicer_core::polygon_ops::{difference, intersection, union};
-use slicer_ir::{LayerStageError, StageId};
+use slicer_ir::{LayerStageError, SlicedRegion, StageId};
 
 use crate::LayerArena;
+
+/// Reserved `region_id` flagging a `SlicedRegion` as a modifier footprint staged
+/// for `sync_perimeter_infill_areas_into_slice` to consume (packet 132).
+pub const MODIFIER_FOOTPRINT_REGION_ID: u64 = u64::MAX;
+
+/// Modifier `region_id` namespace stride (next prime above paint's 1_000_000).
+/// A minted modifier sub-region id is `base_region_id * STRIDE + hash`
+/// (`hash != 0`), so integer division by `STRIDE` inverts to the base id.
+pub const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
 
 /// Reconcile the four canonical fill polygons on every `SliceIR` region
 /// against the just-committed `PerimeterIR.infill_areas`. See module docs
@@ -196,9 +205,154 @@ pub fn sync_perimeter_infill_areas_into_slice(
         slice_region.sparse_infill_area = sparse;
     }
 
+    // Modifier region split (packet 132): consume any MODIFIER_FOOTPRINT_REGION_ID
+    // footprints staged on this layer, minting a sub-region in the modifier
+    // `region_id` namespace whose geometry is the intersection of the footprint
+    // with the base region's four partitioned fill polygons. The base region's
+    // polygons are reduced to the difference. Runs AFTER the existing partition
+    // so it composes on already-partitioned polygons.
+    split_modifier_footprints(&mut slice);
+
     arena
         .set_slice(slice)
         .map_err(|source| LayerStageError::ArenaCommit { source })?;
 
     Ok(())
+}
+
+/// Derive a stable modifier sub-region id (`base_region_id * STRIDE + hash`,
+/// `hash != 0`) from the base region id and the modifier footprint geometry.
+/// Hashing the footprint polygon points keeps the id stable for a given
+/// modifier cross-section and distinct across modifiers within the same base.
+fn modifier_sub_region_id(
+    base_region_id: u64,
+    object_id: &str,
+    footprint_geo: &[slicer_ir::ExPolygon],
+) -> u64 {
+    // FNV-1a over object_id bytes + footprint contour points.
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut mix = |b: u8| {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    };
+    for b in object_id.as_bytes() {
+        mix(*b);
+    }
+    for ep in footprint_geo {
+        for p in &ep.contour.points {
+            for byte in (p.x as u64).to_le_bytes() {
+                mix(byte);
+            }
+            for byte in (p.y as u64).to_le_bytes() {
+                mix(byte);
+            }
+        }
+    }
+    let hash = (h % (MODIFIER_VARIANT_REGION_ID_STRIDE - 1)) + 1;
+    base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + hash
+}
+
+// INVARIANT: modifier footprint regions MUST appear AFTER their corresponding
+// base regions in the input `SliceIR.regions` vec. `split_modifier_footprints`
+// resolves each footprint to its base via `out.iter().position(...)`, which only
+// scans regions already emitted into `out` (the base regions appended earlier in
+// this same pass). If a footprint preceded its base, `position()` returns `None`
+// and the footprint is silently consumed without minting a sub-region.
+//
+// Loader-side guarantee: `crates/slicer-model-io/src/loader.rs` (lines 547-628,
+// the `ModifierVolume` shape) loads `ObjectMesh.modifier_volumes` into `MeshIR`
+// AFTER the base mesh, preserving doc-order so modifier footprints are staged
+// after base regions.
+//
+// Runtime call site that maintains the invariant:
+// `crates/slicer-runtime/src/layer_executor.rs::stage_modifier_footprints`
+// appends modifier footprints after the base regions.
+
+/// Packet 132 modifier region split.
+///
+/// For every `SlicedRegion` flagged with `MODIFIER_FOOTPRINT_REGION_ID`, find
+/// the matching base region (same `object_id`, non-footprint), intersect the
+/// footprint geometry with the base region's four partitioned fill polygons,
+/// and mint a sub-region carrying those intersections. The base region's four
+/// polygons are reduced to the difference (base ∖ footprint). A footprint whose
+/// intersection with the base is empty (degenerate / out-of-layer) mints no
+/// sub-region. The footprint region is always consumed (removed) and the
+/// sub-region carries no own `PerimeterIR` entry — it borrows the base walls.
+fn split_modifier_footprints(slice: &mut slicer_ir::SliceIR) {
+    let has_footprint = slice
+        .regions
+        .iter()
+        .any(|r| r.region_id == MODIFIER_FOOTPRINT_REGION_ID);
+    if !has_footprint {
+        return;
+    }
+
+    let regions = std::mem::take(&mut slice.regions);
+    let mut out: Vec<SlicedRegion> = Vec::with_capacity(regions.len());
+    let mut minted: Vec<SlicedRegion> = Vec::new();
+
+    for r in regions {
+        if r.region_id == MODIFIER_FOOTPRINT_REGION_ID {
+            let obj = r.object_id.clone();
+            // Locate the matching base region (same object_id, not a footprint).
+            if let Some(bi) = out
+                .iter()
+                .position(|x| x.object_id == obj && x.region_id != MODIFIER_FOOTPRINT_REGION_ID)
+            {
+                let base_region_id = out[bi].region_id;
+                let eff = out[bi].effective_layer_height;
+                let fp_geo = r.polygons.clone();
+
+                let sub_bridge = intersection(&out[bi].bridge_areas, &fp_geo);
+                let sub_bottom = intersection(&out[bi].bottom_solid_fill, &fp_geo);
+                let sub_top = intersection(&out[bi].top_solid_fill, &fp_geo);
+                let sub_sparse = intersection(&out[bi].sparse_infill_area, &fp_geo);
+
+                let has_geo = !sub_bridge.is_empty()
+                    || !sub_bottom.is_empty()
+                    || !sub_top.is_empty()
+                    || !sub_sparse.is_empty();
+
+                if has_geo {
+                    out[bi].bridge_areas = difference(&out[bi].bridge_areas, &fp_geo);
+                    out[bi].bottom_solid_fill = difference(&out[bi].bottom_solid_fill, &fp_geo);
+                    out[bi].top_solid_fill = difference(&out[bi].top_solid_fill, &fp_geo);
+                    out[bi].sparse_infill_area = difference(&out[bi].sparse_infill_area, &fp_geo);
+
+                    let sub_polygons = intersection(&out[bi].polygons, &fp_geo);
+                    let sub_id = modifier_sub_region_id(base_region_id, &obj, &r.polygons);
+                    minted.push(SlicedRegion {
+                        object_id: obj.clone(),
+                        region_id: sub_id,
+                        polygons: sub_polygons,
+                        infill_areas: sub_sparse.clone(),
+                        effective_layer_height: eff,
+                        variant_chain: Vec::new(),
+                        bridge_areas: sub_bridge,
+                        bottom_solid_fill: sub_bottom,
+                        top_solid_fill: sub_top,
+                        sparse_infill_area: sub_sparse,
+                        // Inherit the base region's shell-classification fields.
+                        // The sub-region's polygons are subsets of the base's by
+                        // construction (sub_top ⊆ base.top_solid_fill, sub_bridge
+                        // ⊆ base.bridge_areas), so depth/orientation are
+                        // geometrically identical. Precedent: paint segmentation's
+                        // Phase 6/7 fix at
+                        // crates/slicer-core/src/algos/paint_segmentation/mod.rs:920-942.
+                        top_shell_index: out[bi].top_shell_index,
+                        bottom_shell_index: out[bi].bottom_shell_index,
+                        is_bridge: out[bi].is_bridge,
+                        bridge_orientation_deg: out[bi].bridge_orientation_deg,
+                        ..Default::default()
+                    });
+                }
+            }
+            // Footprint region is consumed (removed); never re-pushed.
+        } else {
+            out.push(r);
+        }
+    }
+
+    out.extend(minted);
+    slice.regions = out;
 }

@@ -1,0 +1,7 @@
+# Task Map: 139_lightning-layer-generator
+
+Single-task packet; this crosswalk maps the one task ID to its step + cost.
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-264` | `Step 0` (per-region IR + dispatch + SDK projection) + `Step 1` (overhang) + `Step 2` (Layer port) + `Step 3` (Generator two-pass) + `Step 4` (producer wiring) | `docs/specs/lightning-infill-parity.md` §L3; `docs/adr/0029-lightning-prepass-tree-generator.md` (SUMMARY) | `crates/slicer-core/src/algos/lightning/{layer,generator,mod}.rs` (new) + `crates/slicer-ir/src/slice_ir.rs` (`region_id` field) + `crates/slicer-wasm-host/src/dispatch.rs` (per-region keying) + `crates/slicer-sdk/src/traits.rs` (SDK accessor) + tests in the 138 lightning test home + `crates/slicer-runtime/tests/executor/lightning_prepass_tdd.rs` + `crates/slicer-runtime/tests/contract/lightning_tree_per_region_roundtrip_tdd.rs` (new) | `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.{hpp,cpp}`; `OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.{hpp,cpp}`; `OrcaSlicerDocumented/src/libslic3r/Fill/FillLightning.cpp` | Step 0 = L (justified: atomic coupled bundle); Steps 1-4 = M, M, M, M | Closes `D-137-LIGHTNING-PER-OBJECT-COLLAPSE` (Step 0); forwards a per-region keying contract that 140's `run-infill` paint-view extension depends on. |

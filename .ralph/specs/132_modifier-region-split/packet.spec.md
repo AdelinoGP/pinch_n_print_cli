@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 132_modifier-region-split
 task_ids:
   - TASK-257

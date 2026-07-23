@@ -18,6 +18,10 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 use top_surface_ironing::TopSurfaceIroning;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
@@ -117,7 +121,13 @@ fn topmost_layer_with_top_solid_fill_emits_ironing_paths() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     let paths = output.ironing_paths();
@@ -135,7 +145,13 @@ fn missing_top_shell_index_emits_no_ironing() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     assert!(
@@ -153,7 +169,13 @@ fn interior_top_shell_layers_emit_no_ironing() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     assert!(
@@ -182,7 +204,9 @@ fn absent_ironing_enabled_defaults_to_disabled() {
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
-    module.run_infill(0, &[region], &mut output, &cfg).unwrap();
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
+        .unwrap();
 
     assert!(
         output.ironing_paths().is_empty(),
@@ -206,7 +230,9 @@ fn disabled_config_emits_no_ironing() {
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
-    module.run_infill(0, &[region], &mut output, &cfg).unwrap();
+    module
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &cfg)
+        .unwrap();
 
     assert!(output.ironing_paths().is_empty());
 }
@@ -221,7 +247,13 @@ fn spacing_governs_stroke_count_lower_bound() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     let total_points: usize = output.ironing_paths().iter().map(|p| p.points.len()).sum();
@@ -240,7 +272,13 @@ fn bottom_only_region_emits_no_ironing() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     assert!(output.ironing_paths().is_empty());
@@ -299,7 +337,13 @@ fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     let paths = output.ironing_paths();
@@ -337,7 +381,13 @@ fn u_shape_top_fill_produces_disjoint_segments_per_row() {
 
     let start = std::time::Instant::now();
     module
-        .run_infill(0, &[region], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
     let elapsed = start.elapsed();
     assert!(
@@ -388,7 +438,13 @@ fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region_a, region_b], &mut output, &default_config())
+        .run_infill(
+            0,
+            &[region_a, region_b],
+            &empty_paint_view(),
+            &mut output,
+            &default_config(),
+        )
         .unwrap();
 
     // The output is region-agnostic at this layer, but the stroke count must
@@ -397,7 +453,13 @@ fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
     let mut a_only_output = InfillOutputBuilder::new();
     let region_a_only = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     module
-        .run_infill(0, &[region_a_only], &mut a_only_output, &default_config())
+        .run_infill(
+            0,
+            &[region_a_only],
+            &empty_paint_view(),
+            &mut a_only_output,
+            &default_config(),
+        )
         .unwrap();
     let expected: usize = a_only_output
         .ironing_paths()

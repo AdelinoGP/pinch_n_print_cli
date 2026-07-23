@@ -136,6 +136,7 @@ fn run_infill_stage(
         paint_regions: None,
         seam_plan: None,
         support_plan: None,
+        lightning_tree_ir: None,
         region_map: Some(Arc::new(region_map.clone())),
         slice: Some(slice_ir),
         perimeter: None,

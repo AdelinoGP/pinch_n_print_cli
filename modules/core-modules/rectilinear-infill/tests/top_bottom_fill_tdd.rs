@@ -14,6 +14,10 @@ use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
+fn empty_paint_view() -> slicer_sdk::traits::PaintRegionLayerView {
+    slicer_sdk::traits::PaintRegionLayerView::new(0)
+}
+
 /// Create a minimal rectangular ExPolygon: 10mm x 10mm square from (0,0) to (10,10).
 /// Using mm_to_units ensures scan-line intersections occur.
 fn make_square_expolygon() -> ExPolygon {
@@ -95,7 +99,13 @@ fn top_surface_region_emits_top_solid_infill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -122,7 +132,13 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -162,7 +178,13 @@ fn bridge_surface_region_emits_bridge_infill_role() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -218,7 +240,13 @@ fn bottom_wins_over_top_on_overlap() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -279,7 +307,13 @@ fn deep_top_shell_emits_internal_solid_infill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -308,7 +342,13 @@ fn deep_bottom_shell_emits_internal_solid_infill() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output
@@ -340,7 +380,13 @@ fn sparse_only_region_does_not_fabricate_surface_fill_roles() {
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .run_infill(
+            0,
+            &[region],
+            &empty_paint_view(),
+            &mut output,
+            &ConfigView::new(),
+        )
         .unwrap();
 
     let all_paths: Vec<_> = output

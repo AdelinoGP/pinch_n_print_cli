@@ -389,8 +389,10 @@ Layer::Infill
 Layer::InfillPostProcess
   Input:  InfillIR
   Output: InfillIR (modified)
+  Modules: `com.core.infill-linker` (holds `claim:infill-link`).
   Purpose: Non-planar sine-wave infill modulation.
            Infill-wall interlocking.
+           Infill-linker connects raw sparse segments into linked polylines.
 
 Layer::Support
   Input:  SliceIR
@@ -620,7 +622,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `Layer::Perimeters`                      | `SliceIR`, `PaintRegionLayerView`                                  | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
 | `Layer::PerimetersPostProcess`           | `PerimeterIR`                                                      | `PerimeterIR` (seam/geometry refinements)                           |
 | `Layer::Infill`                          | `SliceIR` (infill areas and context)                               | `InfillIR`                                                          |
-| `Layer::InfillPostProcess`               | `InfillIR`                                                         | `InfillIR`                                                          |
+| `Layer::InfillPostProcess`               | `InfillIR`                                                         | `InfillIR` (linked sparse polylines from `com.core.infill-linker`)   |
 | `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionLayerView`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
 | `Layer::SupportPostProcess`              | `SupportIR`                                                        | `SupportIR`                                                         |
 | `Layer::PathOptimization`                | `PerimeterIR`, `InfillIR`, `SupportIR`                             | `LayerCollectionIR`                                                 |

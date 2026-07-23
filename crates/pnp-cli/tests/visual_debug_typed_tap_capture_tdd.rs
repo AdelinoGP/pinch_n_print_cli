@@ -508,18 +508,17 @@ fn unavailable_tap_source_fails_without_partial_success() {
     let config = write_bounded_config(tmp.path());
     let output = tmp.path().join("bundle");
 
-    // "Layer::InfillPostProcess" is a documented, supported tap
-    // (SUPPORTED_TAP_STAGE_IDS), but no module in modules/core-modules
-    // binds to that stage — its source IR is unavailable at its
-    // documented commit boundary regardless of config.
-    let req = model_request(vec!["Layer::InfillPostProcess"], vec![0], config);
+    // All supported arena stages are bound in the current core-module set.
+    // With support_enabled=false (the bounded fixture's default), Layer::Support
+    // has no committed SupportIR, so its source remains unavailable.
+    let req = model_request(vec!["Layer::Support"], vec![0], config);
 
     let err = run_visual_debug(req, &output, false)
         .expect_err("a tap whose source is never committed must not succeed");
     match err {
         VisualDebugError::CaptureFailed(message) => {
             assert!(
-                message.contains("Layer::InfillPostProcess"),
+                message.contains("Layer::Support"),
                 "error must identify the unavailable tap; got: {message}"
             );
             assert!(

@@ -210,6 +210,9 @@ struct LayerParams<'a> {
     paint_ir: Option<&'a ()>,
     seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
     support_plan_ir: Option<&'a slicer_ir::SupportPlanIR>,
+    /// Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
+    /// `None` when no region's `sparse_fill_holder` is `lightning-infill`.
+    lightning_tree_ir: Option<&'a slicer_ir::LightningTreeIR>,
     _arena_placeholder: std::marker::PhantomData<&'a ()>,
 }
 
@@ -263,6 +266,10 @@ impl WasmRuntimeDispatcher {
         mesh_ir: Arc<slicer_ir::MeshIR>,
         held_claims_map: std::collections::HashMap<(String, String), Vec<String>>,
         effective_config_view: slicer_ir::ConfigView,
+        config_fields_per_region: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, host::ConfigValueStorage>,
+        >,
         layer_index: u32,
         layer_z: f32,
         _paint_ir: Option<&()>,
@@ -274,6 +281,9 @@ impl WasmRuntimeDispatcher {
         surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
         region_map: Option<&slicer_ir::RegionMapIR>,
         infill_ir: Option<&slicer_ir::InfillIR>,
+        // Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
+        // `None` when no region's `sparse_fill_holder` is `lightning-infill`.
+        #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).ok_or_else(|| DispatchError {
@@ -324,6 +334,19 @@ impl WasmRuntimeDispatcher {
 
         store.data_mut().set_held_claims_per_region(held_claims_map);
 
+        // Per-region effective config (packet 131, Step 3): stash the
+        // pre-derived per-region config-field maps and the object-level
+        // fallback so the region-view `config()` WIT accessor resolves the
+        // correct per-region overrides (falling back to the object-level
+        // config for regions without a pool entry — AC-N1/AC-N2).
+        let default_config_fields = host::config_view_to_data(&effective_config_view).fields;
+        store
+            .data_mut()
+            .set_config_fields_per_region(config_fields_per_region);
+        store
+            .data_mut()
+            .set_default_config_fields(default_config_fields);
+
         let config_handle = store
             .data_mut()
             .push_config_view(host::config_view_to_data(&effective_config_view))
@@ -365,6 +388,7 @@ impl WasmRuntimeDispatcher {
                 paint_ir: None,
                 seam_plan_ir,
                 support_plan_ir,
+                lightning_tree_ir,
                 _arena_placeholder: std::marker::PhantomData,
             },
             slice_ir,
@@ -430,6 +454,17 @@ impl WasmRuntimeDispatcher {
                     surface_classification,
                 )
                 .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data_with_plan(
+                    params.paint_ir,
+                    params.layer_index,
+                    params.support_plan_ir,
+                    params.lightning_tree_ir,
+                );
+                let paint = config
+                    .store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
                 let output = config
                     .store
                     .data_mut()
@@ -441,6 +476,7 @@ impl WasmRuntimeDispatcher {
                         config.store,
                         params.layer_index as i32,
                         &region_handles,
+                        own(paint),
                         own(output),
                         own(config.config_handle),
                     )
@@ -576,6 +612,7 @@ impl WasmRuntimeDispatcher {
                     params.paint_ir,
                     params.layer_index,
                     params.support_plan_ir,
+                    params.lightning_tree_ir,
                 );
                 let paint = config
                     .store
@@ -1327,21 +1364,23 @@ impl WasmRuntimeDispatcher {
 /// Paint annotations now live in SliceIR segment_annotations (AC-16);
 /// this always returns empty-but-valid data.
 fn build_paint_layer_data(_paint_ir: Option<&()>, layer_index: u32) -> PaintRegionLayerData {
-    build_paint_layer_data_with_plan(_paint_ir, layer_index, None)
+    build_paint_layer_data_with_plan(_paint_ir, layer_index, None, None)
 }
 
 /// Variant of [`build_paint_layer_data`] that also indexes a committed
-/// `SupportPlanIR` for this layer.
+/// `SupportPlanIR` and `LightningTreeIR` for this layer.
 fn build_paint_layer_data_with_plan(
     _paint_ir: Option<&()>,
     layer_index: u32,
     support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
+    lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
 ) -> PaintRegionLayerData {
     let mut data = PaintRegionLayerData {
         layer_index,
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
         support_plan_segments: HashMap::new(),
+        lightning_tree_segments: HashMap::new(),
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
@@ -1362,6 +1401,30 @@ fn build_paint_layer_data_with_plan(
                         flow_factor: p.flow_factor,
                         overhang_quartile: p.overhang_quartile,
                         dist_to_top_mm: p.dist_to_top_mm,
+                    })
+                    .collect();
+                bucket.push(pts);
+            }
+        }
+    }
+    if let Some(ir) = lightning_tree_ir {
+        for entry in &ir.entries {
+            if entry.global_layer_index != layer_index as i32 {
+                continue;
+            }
+            let key = (entry.object_id.clone(), entry.region_id.to_string());
+            let bucket = data.lightning_tree_segments.entry(key).or_default();
+            for segment in &entry.tree_edge_segments {
+                let pts: Vec<_> = segment
+                    .iter()
+                    .map(|p| host::layer::slicer::types::geometry::Point3WithWidth {
+                        x: slicer_ir::units_to_mm(p.x),
+                        y: slicer_ir::units_to_mm(p.y),
+                        z: 0.0,
+                        width: 0.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
                     })
                     .collect();
                 bucket.push(pts);
@@ -1479,20 +1542,50 @@ pub fn perimeter_region_index(
         .collect()
 }
 
+/// Modifier `region_id` namespace stride (packet 132), matching
+/// `slicer_runtime::region_partition::MODIFIER_VARIANT_REGION_ID_STRIDE`.
+const MODIFIER_VARIANT_REGION_ID_STRIDE: u64 = 1_000_003;
+
+/// ADR-0030: identifies ids in the modifier namespace.
+///
+/// Modifier sub-region ids are `base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`
+/// with `hash != 0` (see `slicer_runtime::region_partition`). This predicate is
+/// disjoint from paint's namespace (`PAINT_VARIANT_REGION_ID_STRIDE = 1_000_000`)
+/// and from base regions (`id == 0`, or a small base id that owns its own walls
+/// via `has_own_perimeter_entry`). The `!is_multiple_of` term enforces
+/// `hash != 0`; `id != 0` excludes the base region itself.
+pub(crate) fn is_modifier_namespace_id(id: u64) -> bool {
+    id != 0 && !id.is_multiple_of(MODIFIER_VARIANT_REGION_ID_STRIDE)
+}
+
 /// ADR-0028 §Amendment wall-source predicate.
 ///
-/// Returns `Some(base_region_id)` iff `region` is a virtual paint-variant
-/// region (non-empty `variant_chain`) WITHOUT its own per-variant
-/// `PerimeterIR` entry — such a region shares the base region's walls. The
-/// base id inverts `paint_segmentation::paint_variant_region_id`
-/// (`base * STRIDE + hash`) by integer division. Returns `None` when the
-/// region has its own `PerimeterIR` entry (it owns its walls) or is a base
-/// region.
+/// Returns `Some(base_region_id)` iff `region` borrows another region's walls:
+///   * a paint-variant region (non-empty `variant_chain`) WITHOUT its own
+///     `PerimeterIR` entry — inverts `paint_segmentation::paint_variant_region_id`
+///     (`base * STRIDE + hash`) by integer division; or
+///   * a modifier sub-region (packet 132): id in the modifier namespace
+///     (`base * MODIFIER_VARIANT_REGION_ID_STRIDE + hash`, `hash != 0`) with an
+///     empty `variant_chain` and no own `PerimeterIR` entry — inverts by integer
+///     division to the base id.
+///
+/// Returns `None` when the region has its own `PerimeterIR` entry (it owns its
+/// walls) or is a base region.
 pub fn wall_source_region_id(
     has_own_perimeter_entry: bool,
     region: &slicer_ir::SlicedRegion,
 ) -> Option<slicer_ir::RegionId> {
-    if has_own_perimeter_entry || region.variant_chain.is_empty() {
+    if has_own_perimeter_entry {
+        return None;
+    }
+    // Modifier sub-region (packet 132): empty variant_chain, id in the modifier
+    // namespace (`base * STRIDE + hash`, `hash != 0`), no own PerimeterIR entry.
+    if region.variant_chain.is_empty() && is_modifier_namespace_id(region.region_id) {
+        return Some(region.region_id / MODIFIER_VARIANT_REGION_ID_STRIDE);
+    }
+    // Paint-variant arm (ADR-0028 §Amendment): non-empty variant_chain, no own
+    // perimeter entry → shares the base region's walls.
+    if region.variant_chain.is_empty() {
         return None;
     }
     Some(region.region_id / slicer_core::algos::paint_segmentation::PAINT_VARIANT_REGION_ID_STRIDE)
@@ -1857,25 +1950,67 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let (envelope_floor, envelope_height) =
             derive_layer_output_envelope_from_input(layer, input.slice);
 
-        // Build the effective config from the region-map overlay (mirrors the original
-        // dispatch.rs `blackboard.region_map()` overlay logic).
-        let effective_config_view: slicer_ir::ConfigView = input
-            .region_map
-            .as_deref()
-            .and_then(|map| {
-                map.entries
-                    .keys()
-                    .find(|key| key.global_layer_index == layer.index)
-                    .map(|key| {
-                        let region_map = resolved_config_to_map(map.config_for(key));
-                        let declared_keys = module.config_view.keys();
-                        slicer_ir::ConfigView::from_declared(
-                            &region_map,
-                            declared_keys.iter().map(String::as_str),
-                        )
-                    })
-            })
-            .unwrap_or_else(|| module.config_view.as_ref().clone());
+        // Per-region effective-config resolution (packet 131, Step 3, TASK-256).
+        //
+        // Replaces the legacy first-match `region_map.entries.keys().find(...)`
+        // derivation (which picked ONE region's config for the whole layer) with
+        // a `RegionKey`-matched, per-region resolution via
+        // `RegionMapIR::config_for(&RegionKey)`. Each region's config is derived
+        // once here (memoized per dispatch) and stashed on the host context,
+        // keyed by `(object_id, region_id)`, so the region-view `config()` WIT
+        // accessor resolves the correct per-region overrides.
+        //
+        // The object-level `effective_config_view` remains the module-level
+        // config and is also the fallback for regions without a pool entry —
+        // this preserves single-region output byte-for-byte (AC-N1/AC-N2).
+        let effective_config_view: slicer_ir::ConfigView = module.config_view.as_ref().clone();
+
+        let declared_keys = module.config_view.keys();
+        let config_fields_per_region: HashMap<
+            (String, String),
+            HashMap<String, host::ConfigValueStorage>,
+        > = match (input.slice, input.region_map.as_deref()) {
+            (Some(slice_ir), Some(map)) => {
+                // Memoize per interned ResolvedConfig identity so N regions
+                // sharing a config only derive the ConfigView once.
+                let mut by_config: HashMap<
+                    slicer_ir::ConfigId,
+                    HashMap<String, host::ConfigValueStorage>,
+                > = HashMap::new();
+                let mut out = HashMap::new();
+                for region in &slice_ir.regions {
+                    let key = slicer_ir::RegionKey {
+                        global_layer_index: layer.index,
+                        object_id: region.object_id.clone(),
+                        region_id: region.region_id,
+                        variant_chain: region.variant_chain.clone(),
+                    };
+                    // Object-level fallback: regions without a pool entry are
+                    // left absent here so the accessor falls back to the
+                    // object-level config (AC-N1/AC-N2 invariant).
+                    let Some(plan) = map.entries.get(&key) else {
+                        continue;
+                    };
+                    let fields = by_config
+                        .entry(plan.config)
+                        .or_insert_with(|| {
+                            let region_config_map = resolved_config_to_map(map.config_for(&key));
+                            let view = slicer_ir::ConfigView::from_declared(
+                                &region_config_map,
+                                declared_keys.iter().map(String::as_str),
+                            );
+                            host::config_view_to_data(&view).fields
+                        })
+                        .clone();
+                    out.insert(
+                        (region.object_id.clone(), region.region_id.to_string()),
+                        fields,
+                    );
+                }
+                out
+            }
+            _ => HashMap::new(),
+        };
 
         // Build the held-claims map from the slice IR + region-map config.
         // Inlines the `resolve_held_claims` logic from slicer-runtime::validation
@@ -1962,6 +2097,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.mesh.clone(),
             held_claims_map,
             effective_config_view,
+            config_fields_per_region,
             layer.index,
             layer.z,
             None,
@@ -1973,6 +2109,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             input.surface_classification,
             input.region_map.as_deref(),
             input.infill,
+            input.lightning_tree_ir.as_deref(),
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
@@ -2198,6 +2335,16 @@ pub fn forward_module_logs(module_id: &str, messages: &[(String, String)]) {
 #[doc(hidden)]
 pub fn last_log_messages_for_test() -> Vec<(String, String)> {
     LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+}
+
+/// Build paint-layer data for dispatch contract tests without exposing the
+/// private production builder or changing its dispatch signature.
+#[doc(hidden)]
+pub fn build_paint_layer_data_for_test(
+    layer_index: u32,
+    lightning_tree_ir: &slicer_ir::LightningTreeIR,
+) -> PaintRegionLayerData {
+    build_paint_layer_data_with_plan(None, layer_index, None, Some(lightning_tree_ir))
 }
 
 /// Deconstruct a `HostExecutionContext` returned from `dispatch_layer_call` into

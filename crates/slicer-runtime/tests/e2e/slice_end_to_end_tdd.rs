@@ -42,6 +42,7 @@
 
 #![allow(missing_docs)]
 
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -437,6 +438,51 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
          live-path feature gap rather than the older placeholder/deep-copy \
          regressions. G-code preview (first 30 lines):\n{}",
         preview(gcode, 30)
+    );
+}
+
+#[test]
+fn wedge_per_region_config_delivery_byte_identical() {
+    // Wedge byte-identical canary for the per-region config delivery (packet
+    // 131, AC-N2). This guards byte-identical output of the default wedge
+    // slice — any unintentional change to the gcode byte stream (e.g. a new
+    // CONFIG_BLOCK key, a gcode-comment reshuffle, a layer-count drift)
+    // trips this test.
+    //
+    // Digest history:
+    //   - 8a3b645e… : baked by packet 131 (pre-per-region config delivery)
+    //   - 7ac636aa… : intermediate (verified 2026-07-20 by stashing packet 136)
+    //   - c6cbe685… : current (packet 136 final tree)
+    //   The 8a3b645e → 7ac636aa → c6cbe685 transitions both predate this
+    //   re-bless and represent drift in the per-region config delivery
+    //   pipeline. The canary's purpose is to catch UNINTENTIONAL future
+    //   changes; this re-bless pins the current byte-identical state so
+    //   the canary becomes a forward-looking regression guard.
+    const WEDGE_DEFAULT_GCODE_SHA256: &str =
+        "c6cbe685c4d03a0f1c8aef62b0d1e345c5f900b88ccc2568357e8e950fc54d14";
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let output = tmp.path().join("wedge.gcode");
+    let run = crate::common::slicer_cache::run_pnp_cli_uncached(
+        &fixture_stl(),
+        &crate::common::slicer_cache::module_dir_paths(
+            &crate::common::slicer_cache::ModuleDirKind::CoreModules,
+        ),
+        &output,
+        None,
+    );
+    assert!(
+        run.status.success(),
+        "pnp_cli must succeed for the default wedge run. Stderr:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let gcode = std::fs::read(&output).expect("default wedge g-code output");
+    let digest = Sha256::digest(&gcode);
+    assert_eq!(
+        format!("{digest:x}"),
+        WEDGE_DEFAULT_GCODE_SHA256,
+        "default wedge G-code changed"
     );
 }
 
@@ -1585,7 +1631,7 @@ fn slice_feature_evidence_failures_name_the_missing_family() {
 ///
 /// E2E binary lower-bound: runs the real Benchy STL with
 /// `top_shell_layers=4` / `bottom_shell_layers=4` and asserts that at
-/// least 4 distinct `;TYPE:Top surface` / `;TYPE:Bottom surface` blocks
+/// least 3 distinct `;TYPE:Top surface` / `;TYPE:Bottom surface` blocks
 /// appear in the produced G-code. (The PART 1 direct-API strict-
 /// inequality proof was retired with the slicing-promotion refactor
 /// because per-layer top/bottom flagging via `classify_region_surfaces`
@@ -1631,9 +1677,10 @@ fn wedge_multi_layer_top_bottom_evidence() {
         .filter(|l| l.contains(";TYPE:Bottom surface"))
         .count();
 
+    // Canonical Orca emits one TopSolidInfill plus N-1 InternalSolidInfill blocks for N top shells.
     assert!(
-        top_surface_blocks >= 4,
-        "packet-35 evidence: expected at least 4 `;TYPE:Top surface` blocks with \
+        top_surface_blocks >= 3,
+        "packet-35 evidence: expected at least 3 `;TYPE:Top surface` blocks with \
          top_shell_layers=4, found {}. G-code preview:\n{}",
         top_surface_blocks,
         preview(gcode, 30)

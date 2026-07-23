@@ -10,6 +10,8 @@ mod effective_perimeter_origin_integration_tdd;
 mod finalization_role_round_trip_tdd;
 mod host_services_tdd;
 mod infill_holder_resolution_painted_region_tdd;
+mod lightning_dispatch_per_region_keying_tdd;
+mod lightning_infill_guest_calls_lightning_tree_segments_tdd;
 mod perimeter_infill_per_origin_route_tdd;
 mod prepass_output_builder_validation_tdd;
 mod seam_plan_harvest_custom_paint_value_tdd;

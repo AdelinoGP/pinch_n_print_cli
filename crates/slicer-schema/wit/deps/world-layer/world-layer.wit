@@ -1,4 +1,4 @@
-package slicer:world-layer@2.0.0;
+package slicer:world-layer@2.3.0;
 
 world layer-module {
     import slicer:common/host-services;
@@ -22,7 +22,7 @@ world layer-module {
     export run-slice-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: slice-postprocess-builder, config: config-view) -> result<_, module-error>;
     export run-perimeters: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
     export run-wall-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
-    export run-infill: func(layer-index: layer-idx, regions: list<slice-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
+    export run-infill: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: infill-output-builder, config: config-view) -> result<_, module-error>;
     export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, prior-infill: list<prior-infill-region>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
     export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
     export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;

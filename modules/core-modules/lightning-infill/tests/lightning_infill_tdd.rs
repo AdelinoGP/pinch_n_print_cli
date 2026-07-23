@@ -1,14 +1,45 @@
 //! TDD tests for the lightning-infill module.
+//!
+// Step 3 (packet 140) - classification:
+// KEEP:   on_print_start_defaults - default config values are stable.
+// KEEP:   on_print_start_custom - configured module values are read.
+// KEEP:   paths_have_sparse_infill_role - emitted paths retain SparseInfill role tagging.
+// KEEP:   empty_regions_no_output - an empty region emits no paths.
+// KEEP:   paths_at_correct_z - emitted points retain the region's layer height.
+// KEEP:   width_matches_config - emitted points retain the configured line width.
+// ADAPT:  square_region_produces_paths - assert committed tree-segment emission.
+// DELETE: zero_density_no_paths - encoded the deleted stub's density gate.
+// DELETE: branching_pattern_present - encoded deleted branch construction.
+// DELETE: density_affects_coverage - encoded deleted grid sampling.
+// DELETE: interior_first_growth - encoded deleted interior sampling.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use slicer_ir::{ConfigView, ExtrusionRole};
+use slicer_ir::{ConfigView, ExtrusionRole, LightningTreeEntry, LightningTreeIR, Point2};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_prelude::*;
-use slicer_sdk::traits::LayerModule;
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 use lightning_infill::LightningInfill;
+
+fn empty_paint_view() -> PaintRegionLayerView {
+    PaintRegionLayerView::new(0)
+}
+
+fn paint_view_with_segments(segments: Vec<[Point2; 2]>) -> PaintRegionLayerView {
+    let ir = LightningTreeIR {
+        entries: vec![LightningTreeEntry {
+            object_id: "obj1".to_string(),
+            global_layer_index: 0,
+            region_id: 1,
+            tree_edge_segments: segments,
+        }],
+        ..LightningTreeIR::default()
+    };
+    PaintRegionLayerView::new(0).with_lightning_tree_ir(Arc::new(ir))
+}
 
 fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
@@ -36,6 +67,10 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
     region
 }
 
+fn sample_segments() -> Vec<[Point2; 2]> {
+    vec![[Point2::from_mm(1.0, 2.0), Point2::from_mm(3.0, 4.0)]]
+}
+
 /// Test 1: Default config values when no fields provided.
 #[test]
 fn on_print_start_defaults() {
@@ -54,23 +89,25 @@ fn on_print_start_custom() {
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
 
-/// Test 3: 10mm square at density=0.2 produces non-empty sparse paths.
+/// Test 3: committed tree segments become sparse paths.
 #[test]
 fn square_region_produces_paths() {
     let config = make_config(0.2, 50.0, 0.4);
     let module = LightningInfill::on_print_start(&config).unwrap();
-
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(
+            0,
+            &[region],
+            &paint_view_with_segments(sample_segments()),
+            &mut output,
+            &config,
+        )
         .unwrap();
 
-    assert!(
-        !output.sparse_paths().is_empty(),
-        "lightning should produce sparse infill paths for a 10mm square"
-    );
+    assert_eq!(output.sparse_paths().len(), 1);
 }
 
 /// Test 4: All paths have SparseInfill extrusion role.
@@ -78,45 +115,24 @@ fn square_region_produces_paths() {
 fn paths_have_sparse_infill_role() {
     let config = make_config(0.2, 50.0, 0.4);
     let module = LightningInfill::on_print_start(&config).unwrap();
-
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(
+            0,
+            &[region],
+            &paint_view_with_segments(sample_segments()),
+            &mut output,
+            &config,
+        )
         .unwrap();
 
-    assert!(!output.sparse_paths().is_empty());
-    for path in output.sparse_paths() {
-        assert_eq!(
-            path.role,
-            ExtrusionRole::SparseInfill,
-            "all lightning paths must have SparseInfill role"
-        );
-    }
+    assert_eq!(output.sparse_paths().len(), 1);
+    assert_eq!(output.sparse_paths()[0].role, ExtrusionRole::SparseInfill);
 }
 
-/// Test 5: Zero density produces no paths.
-#[test]
-fn zero_density_no_paths() {
-    let config = make_config(0.0, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
-
-    let region = make_square_region(10.0, 0.3);
-    let mut output = InfillOutputBuilder::new();
-
-    module
-        .run_infill(0, &[region], &mut output, &config)
-        .unwrap();
-
-    assert_eq!(
-        output.sparse_paths().len(),
-        0,
-        "zero density should produce no paths"
-    );
-}
-
-/// Test 6: Empty regions produce no output.
+/// Test 5: Empty regions produce no output.
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(0.2, 50.0, 0.4);
@@ -127,197 +143,111 @@ fn empty_regions_no_output() {
     region.set_region_id(1);
     region.set_polygons(vec![]);
     region.set_infill_areas(vec![]);
-    // empty infill_areas
-
     region.set_effective_layer_height(0.2);
     region.set_z(0.3);
     region.set_has_nonplanar(false);
 
     let mut output = InfillOutputBuilder::new();
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &empty_paint_view(), &mut output, &config)
         .unwrap();
 
-    assert_eq!(
-        output.sparse_paths().len(),
-        0,
-        "empty infill areas should produce no paths"
-    );
+    assert_eq!(output.sparse_paths().len(), 0);
 }
 
-/// Test 7: All output points have the correct z value.
+/// Test 6: All output points have the correct z value.
 #[test]
 fn paths_at_correct_z() {
     let config = make_config(0.2, 50.0, 0.4);
     let module = LightningInfill::on_print_start(&config).unwrap();
-
     let z = 1.5;
     let region = make_square_region(10.0, z);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(
+            0,
+            &[region],
+            &paint_view_with_segments(sample_segments()),
+            &mut output,
+            &config,
+        )
         .unwrap();
 
-    assert!(!output.sparse_paths().is_empty());
-    for path in output.sparse_paths() {
-        for pt in &path.points {
-            assert!(
-                (pt.z - z).abs() < 0.001,
-                "all points should have z={}, got z={}",
-                z,
-                pt.z
-            );
-        }
+    assert_eq!(output.sparse_paths().len(), 1);
+    for point in &output.sparse_paths()[0].points {
+        assert!((point.z - z).abs() < 0.001);
     }
 }
 
-/// Test 8: Branches have non-parallel geometry (unlike rectilinear scan lines).
-/// Lightning infill should produce paths that connect to different boundary
-/// points, not all parallel.
-#[test]
-fn branching_pattern_present() {
-    let config = make_config(0.3, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
-
-    let region = make_square_region(20.0, 0.3);
-    let mut output = InfillOutputBuilder::new();
-
-    module
-        .run_infill(0, &[region], &mut output, &config)
-        .unwrap();
-
-    let paths = output.sparse_paths();
-    assert!(
-        paths.len() >= 3,
-        "large region at 0.3 density should produce multiple branches, got {}",
-        paths.len()
-    );
-
-    // Verify branches have different directions (not all parallel)
-    // by checking that endpoint directions vary
-    let mut angles: Vec<f64> = Vec::new();
-    for path in paths {
-        if path.points.len() >= 2 {
-            let p0 = &path.points[0];
-            let p1 = &path.points[path.points.len() - 1];
-            let dx = (p1.x - p0.x) as f64;
-            let dy = (p1.y - p0.y) as f64;
-            let angle = dy.atan2(dx);
-            angles.push(angle);
-        }
-    }
-
-    // At least some branches should point in different directions
-    if angles.len() >= 2 {
-        let mut has_different = false;
-        for i in 1..angles.len() {
-            if (angles[i] - angles[0]).abs() > 0.1 {
-                has_different = true;
-                break;
-            }
-        }
-        assert!(
-            has_different,
-            "lightning branches should have varying directions, not all parallel"
-        );
-    }
-}
-
-/// Test 9: Higher density produces more/denser paths than lower density.
-#[test]
-fn density_affects_coverage() {
-    let config_low = make_config(0.1, 50.0, 0.4);
-    let config_high = make_config(0.5, 50.0, 0.4);
-
-    let module_low = LightningInfill::on_print_start(&config_low).unwrap();
-    let module_high = LightningInfill::on_print_start(&config_high).unwrap();
-
-    let region_low = make_square_region(10.0, 0.3);
-    let region_high = make_square_region(10.0, 0.3);
-
-    let mut output_low = InfillOutputBuilder::new();
-    let mut output_high = InfillOutputBuilder::new();
-
-    module_low
-        .run_infill(0, &[region_low], &mut output_low, &config_low)
-        .unwrap();
-    module_high
-        .run_infill(0, &[region_high], &mut output_high, &config_high)
-        .unwrap();
-
-    let count_low = output_low.sparse_paths().len();
-    let count_high = output_high.sparse_paths().len();
-
-    assert!(
-        count_high > count_low,
-        "higher density should produce more paths: low={}, high={}",
-        count_low,
-        count_high
-    );
-}
-
-/// Test 10: All point widths match configured line_width.
+/// Test 7: All point widths match configured line_width.
 #[test]
 fn width_matches_config() {
-    let lw = 0.6;
-    let config = make_config(0.2, 50.0, lw);
+    let line_width = 0.6;
+    let config = make_config(0.2, 50.0, line_width);
     let module = LightningInfill::on_print_start(&config).unwrap();
-
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(
+            0,
+            &[region],
+            &paint_view_with_segments(sample_segments()),
+            &mut output,
+            &config,
+        )
         .unwrap();
 
-    assert!(!output.sparse_paths().is_empty());
-    for path in output.sparse_paths() {
-        for pt in &path.points {
-            assert!(
-                (pt.width - lw as f32).abs() < 0.001,
-                "all point widths should be {}, got {}",
-                lw,
-                pt.width
-            );
-        }
+    assert_eq!(output.sparse_paths().len(), 1);
+    for point in &output.sparse_paths()[0].points {
+        assert!((point.width - line_width as f32).abs() < 0.001);
     }
 }
 
-/// Test 11: Branches reach interior points (not just boundary-adjacent).
+/// AC-1: emit each committed lightning tree segment as one raw SparseInfill path.
 #[test]
-fn interior_first_growth() {
-    let config = make_config(0.2, 50.0, 0.4);
+fn samples_tree_ir_raw_emit() {
+    let config = make_config(0.2, 80.0, 0.4);
     let module = LightningInfill::on_print_start(&config).unwrap();
-
-    let region = make_square_region(20.0, 0.3);
+    let region = make_square_region(10.0, 0.3);
+    let expected = vec![
+        [Point2::from_mm(1.0, 2.0), Point2::from_mm(3.0, 4.0)],
+        [Point2::from_mm(-2.0, 1.5), Point2::from_mm(0.0, 5.0)],
+    ];
+    let paint = paint_view_with_segments(expected.clone());
     let mut output = InfillOutputBuilder::new();
 
     module
-        .run_infill(0, &[region], &mut output, &config)
+        .run_infill(0, &[region], &paint, &mut output, &config)
         .unwrap();
 
     let paths = output.sparse_paths();
-    assert!(!paths.is_empty());
-
-    // Check that some path start points are in the interior
-    // (distance from center > 2mm, i.e., not right at the boundary)
-    let mut has_interior_start = false;
-    for path in paths {
-        if !path.points.is_empty() {
-            let p = &path.points[0];
-            let dist_from_center = ((p.x * p.x) + (p.y * p.y)).sqrt();
-            // Interior means far from boundary (closer to center for a centered square)
-            // For a 20mm square centered at origin, boundary is at 10mm
-            if dist_from_center < 8.0 {
-                has_interior_start = true;
-                break;
-            }
-        }
+    assert_eq!(paths.len(), expected.len());
+    for (path, segment) in paths.iter().zip(expected.iter()) {
+        assert_eq!(path.points.len(), 2);
+        let start = &path.points[0];
+        let end = &path.points[1];
+        assert!((start.x - slicer_ir::units_to_mm(segment[0].x)).abs() < 0.001);
+        assert!((start.y - slicer_ir::units_to_mm(segment[0].y)).abs() < 0.001);
+        assert!((end.x - slicer_ir::units_to_mm(segment[1].x)).abs() < 0.001);
+        assert!((end.y - slicer_ir::units_to_mm(segment[1].y)).abs() < 0.001);
+        assert_eq!(path.role, ExtrusionRole::SparseInfill);
+        assert!((path.speed_factor - 1.6).abs() < 0.001);
     }
+}
 
-    assert!(
-        has_interior_start,
-        "some branches should start from interior points (not just near boundary)"
-    );
+/// AC-N2: an empty tree entry is a successful no-op.
+#[test]
+fn empty_trees_emit_nothing() {
+    let config = make_config(0.2, 80.0, 0.4);
+    let module = LightningInfill::on_print_start(&config).unwrap();
+    let region = make_square_region(10.0, 0.3);
+    let paint = paint_view_with_segments(Vec::new());
+    let mut output = InfillOutputBuilder::new();
+
+    let result = module.run_infill(0, &[region], &paint, &mut output, &config);
+
+    assert!(result.is_ok());
+    assert_eq!(output.sparse_paths().len(), 0);
 }

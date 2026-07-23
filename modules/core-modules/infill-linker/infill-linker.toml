@@ -1,0 +1,44 @@
+[module]
+id           = "com.core.infill-linker"
+version      = "0.1.0"
+display-name = "Infill Linker"
+description  = "Links raw infill segments into polylines per (region, role) with OrcaSlicer overlap semantics, with optional cross-region linking for wall-less sub-regions (ADR-0025/0026)."
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-layer"
+
+[stage]
+id = "Layer::InfillPostProcess"
+
+[ir-access]
+reads  = ["SliceIR", "InfillIR"]
+writes = ["InfillIR"]
+
+[claims]
+holds    = ["claim:infill-link"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "3.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.schema.infill_overlap]
+type    = "float"
+default = 0.45
+min     = 0.0
+max     = 1.0
+display = "Infill Overlap (×spacing)"
+group   = "InfillLinker"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 30
+layer-parallel-safe    = true

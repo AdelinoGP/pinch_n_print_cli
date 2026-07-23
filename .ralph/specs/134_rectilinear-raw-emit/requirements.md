@@ -19,6 +19,11 @@ bridge > per-layer > base priority. Under Architecture A its raw 2-point emissio
 already right — what's wrong is the geometry inside. Every default print inherits these bugs
 for all four roles.
 
+Note: the plan's Phase 0 (`clip_polylines` in `slicer-core::polygon_ops`) and Phase 1 (WIT
+contract: `run-infill-postprocess` with `prior-infill`; four new `perimeter-region-view`
+fields) are both realized in the tree (TASK-254 closed 2026-07-16, TASK-255 closed
+2026-07-17). This packet implements Phase 2 only.
+
 ## In Scope
 
 - Rewrite of the scan-line core in `modules/core-modules/rectilinear-infill/src/lib.rs`:
@@ -28,8 +33,13 @@ for all four roles.
   `pattern_shift` applied to the scan-line start x (grilling decision: module-side).
 - Per-region config reads through the packet-131 region accessor inside the region loop
   (density/line_width/angle keys; modifier sub-regions get their own density for free).
-- Deletion of `fill_expolygon_multi` and `collect_edges` (the global-edge-merge path).
-- TDD suite per AC-1…AC-7, AC-N1 in `modules/core-modules/rectilinear-infill/tests/`.
+- Deletion of `fill_expolygon_multi` and `collect_edges` (the global-edge-merge path; the
+  structural grep in `packet.spec.md` §Verification is the contract).
+- TDD suite per AC-1…AC-7, AC-N1 in `modules/core-modules/rectilinear-infill/tests/`. The
+  existing four-role, bridge-angle, and edge-case tests stay green; the eight
+  `rectilinear_infill_tdd.rs` tests are surveyed in Step 1 and any pinning old (wrong)
+  geometry is rewritten alongside (each rewrite names the bug it encoded in a header
+  comment).
 - OrcaSlicer attribution header on the rewritten file(s).
 
 ## Out of Scope
@@ -88,13 +98,20 @@ Files to inspect for this packet:
 
 - Cross-step invariant: the "stays" list (four-role emission structure, `solid_fill_role`
   mapping, `should_emit` gating, manifest) must survive every step — a diff touching the
-  manifest or the role structure is a scope violation, not a refactor.
+  manifest or the role structure is a scope violation, not a refactor. The
+  `top_bottom_fill_tdd.rs` and `bridge_infill_emission_tdd.rs` test suites are the
+  pre-commit canary: if any of them goes red, the rewrite has leaked into the stays
+  surface.
+- TDD discipline: the `rg` AC at the end of `implementation-plan.md` Step 4
+  (`fill_expolygon_multi`, `collect_edges` both have zero definitions) is the structural
+  exit condition. It is a one-line grep, not a behaviour test — keep it as a guard against
+  accidental re-introduction.
 
 ## Context Discipline Notes
 
 - Large files in the read-only path that MUST be ranged or delegated: the module's own
-  `lib.rs` (361 lines — full read allowed once); ALL OrcaSlicer refs delegated (the two
-  FillRectilinear ranges total ~500 lines — dispatch sectioned).
+  `lib.rs` (361 lines — full read allowed once at Step 1); ALL OrcaSlicer refs delegated
+  (the two FillRectilinear ranges total ~500 lines — dispatch sectioned).
 - Likely temptation reads: `modules/core-modules/gyroid-infill/**` (packet 135's surface) and
   the linker module — skip both; the raw-emit boundary is specified, not discovered.
 - Sub-agent return-format hints: Orca dispatches return SUMMARY + per-section SNIPPETS ≤30

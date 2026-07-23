@@ -9,19 +9,38 @@
 
 ## Steps
 
-### Step 1: Survey + RED — author the 8-test suite
+### Step 0: Pre-activation dependency check
+
+- Task IDs: none (verification only).
+- Objective: confirm the precondition for activation. Two FACT dispatches, no code changes.
+  - `rg -q 'TASK-256.*\[[xX]\]' docs/07_implementation_status.md` (TASK-256 closed —
+    per-region config delivery is in).
+  - `rg -c 'sparse_infill_area|top_solid_fill|bottom_solid_fill|bridge_areas' crates/slicer-sdk/src/views.rs` returns ≥ 1 (partition fields present in views).
+  - `rg -c 'fn (fill_expolygon_multi|collect_edges)' modules/core-modules/rectilinear-infill/src/lib.rs` returns 2 today (the functions to delete).
+- Precondition: clean tree.
+- Postcondition: a one-line PASS/FAIL note recorded in the implementer's notes.
+- Files allowed to edit: none (read-only verification step).
+- Context cost: `S`.
+- Exit condition: PASS. If FAIL, file a deviation or refuse activation.
+
+### Step 1: Survey + RED — author the 7-test suite
 
 - Task IDs:
   - `TASK-259`
-- Objective: survey the existing module tests (which pin the old wrong geometry — enumerate,
-  with the bug each encodes); author the 8 AC tests
+- Objective: survey the existing module tests in `rectilinear_infill_tdd.rs` and
+  `rectilinear_infill_edge_cases_tdd.rs` (which pin the old wrong geometry — enumerate, with
+  the bug each encodes); author the 7 new AC tests
   (`square_10mm_density_20_emits_n_raw_segments`,
   `polygon_with_hole_segments_split_around_hole`,
   `two_disjoint_expolygons_independent_scan_conversion`,
   `angle_45_rotated_output_matches_unrotated_after_inverse`,
-  `solid_spacing_adjusted_for_solid_role`, `bridge_angle_overrides_layer_rotation`,
-  `pattern_shift_interleaves_layers`, `half_open_vertex_test_no_double_count`); confirm RED.
-- Precondition: packet 133 closed; clean tree.
+  `solid_spacing_adjusted_for_solid_role`, `pattern_shift_interleaves_layers`,
+  `half_open_vertex_test_no_double_count`); confirm RED.
+  - AC-6 (bridge-angle) is a re-assert of existing
+    `bridge_paths_use_bridge_orientation_not_sparse_alternation` /
+    `bridge_areas_emit_bridge_infill_at_oriented_angle` — no new test needed; Step 4
+    confirms those stay green.
+- Precondition: packet 131 closed (verified Step 0).
 - Postcondition: suite compiles; new tests RED against the stub; stale-geometry test list
   recorded in the test file header comment.
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -31,6 +50,8 @@
   - `modules/core-modules/rectilinear-infill/tests/rectilinear_raw_emit_tdd.rs` (new)
 - Files explicitly out-of-bounds for this step: production source (RED first).
 - Expected sub-agent dispatches:
+  - "FACT: from `crates/slicer-sdk/src/views.rs`, the exact accessor method names for the
+    four partition fields and the per-region config accessor (≤ 8 lines)" — Step 1 driver
   - "Run `cargo test -p rectilinear-infill 2>&1 | tee target/test-output.log | grep -E
     '^test |^test result'`; FACT per-test" — RED confirmation
 - Context cost: `M`
@@ -38,7 +59,7 @@
 - OrcaSlicer refs: none this step.
 - Verification:
   - the dispatch above — FACT (new tests RED)
-- Exit condition: 8 tests RED; stale-test inventory recorded.
+- Exit condition: 7 new tests RED; stale-test inventory recorded.
 
 ### Step 2: GREEN — infill_direction + per-ExPolygon scan conversion
 
@@ -47,10 +68,12 @@
 - Objective: port `infill_direction` (FillBase.cpp:352-391: bridge > per-layer > base, +π/2,
   bbox-center ref) and the single-level per-ExPolygon scan conversion
   (FillRectilinear.cpp:842-1154 discipline: integer y-intersections, half-open vertex test,
-  sort + pair); delete `fill_expolygon_multi` + `collect_edges`; attribution header; AC-1,
-  AC-2, AC-3, AC-4, AC-6, AC-N1 green.
+  sort + pair); delete `fill_expolygon_multi` + `collect_edges` (the structural-grep AC in
+  `packet.spec.md` §Verification is the contract); attribution header; AC-1, AC-2, AC-3,
+  AC-4, AC-6 (re-assert via existing tests), AC-N1 green.
 - Precondition: Step 1 RED state.
-- Postcondition: six of eight tests green; four-role structure untouched (diff review).
+- Postcondition: six of seven new tests green; the four-role structure untouched (diff
+  review; `top_bottom_fill_tdd.rs` + `bridge_infill_emission_tdd.rs` stay green).
 - Files allowed to read (with line-range hints when > 300 lines):
   - own module only
 - Files allowed to edit (≤ 3):
@@ -68,7 +91,8 @@
 - OrcaSlicer refs: FillRectilinear.cpp:842-1154, FillBase.cpp:352-391 — delegate.
 - Verification:
   - `cargo test -p rectilinear-infill 2>&1 | tee target/test-output.log | grep "^test result"` — FACT
-- Exit condition: AC-1/2/3/4/6/N1 green.
+  - `rg -c 'fn (fill_expolygon_multi|collect_edges)' modules/core-modules/rectilinear-infill/src/lib.rs | grep -q '^0$' && echo DELETED-OK` — FACT
+- Exit condition: AC-1/2/3/4/6/N1 green; structural deletion grep clean.
 
 ### Step 3: GREEN — adjust_solid_spacing + pattern_shift
 
@@ -78,7 +102,8 @@
   apply `pattern_shift` (FillRectilinear.cpp:3023-3024 semantics) to the scan-line origin x;
   AC-5, AC-7 green.
 - Precondition: Step 2 exit condition.
-- Postcondition: all 8 tests green.
+- Postcondition: all 7 new tests green; the 4 bridge-angle tests stay green (AC-6
+  re-asserted by their existence).
 - Files allowed to read: own module.
 - Files allowed to edit (≤ 3):
   - `modules/core-modules/rectilinear-infill/src/lib.rs`
@@ -100,14 +125,20 @@
   - `TASK-259`
 - Objective: rewrite the Step-1-enumerated stale-geometry tests (each rewrite comments which
   bug the old expectation encoded); rebuild guests; run module + workspace gates; append any
-  newly-affected goldens to the 131 carve list (recorded deviation).
+  newly-affected goldens to the 131 carve list (recorded deviation). The current
+  `carved: infill-parity D6` markers (5 files under
+  `crates/slicer-runtime/tests/executor/cube_4color_*`) are NOT touched here — those are
+  packet 136's restore-and-bless scope; this packet only appends to the carve list if the
+  rewrite breaks a non-infill test.
 - Precondition: Step 3 exit condition.
-- Postcondition: full module suite green; guests fresh; gates green; carve delta recorded.
+- Postcondition: full module suite green; guests fresh; gates green; carve delta recorded
+  (likely empty for this packet — the cube_4color_* carvings are 136's).
 - Files allowed to read: own module tests; carve list.
 - Files allowed to edit (≤ 3):
-  - the existing module test file(s)
+  - the existing module test file(s) (`rectilinear_infill_tdd.rs`,
+    `rectilinear_infill_edge_cases_tdd.rs` if applicable)
   - `.ralph/specs/131_per-region-config-delivery/carve-list.md` (append-only, if needed)
-- Files explicitly out-of-bounds for this step: everything else.
+- Files explicitly out-of-bounds for this step: every other packet's surface.
 - Expected sub-agent dispatches:
   - "Run `cargo xtask build-guests --check`; FACT; rebuild if STALE"
   - "Run `cargo test -p rectilinear-infill …`; FACT + counts"
@@ -119,16 +150,17 @@
 - OrcaSlicer refs: none.
 - Verification:
   - the §Verification gates from `packet.spec.md` — FACT each
-- Exit condition: all packet ACs green; carve delta recorded.
+- Exit condition: all packet ACs green; carve delta recorded (likely empty).
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | M | survey + 8 tests |
-| Step 2 | M | direction + scan-conversion port |
+| Step 0 | S | pre-activation FACT (dependency + structural) |
+| Step 1 | M | survey + 7 new tests |
+| Step 2 | M | direction + scan-conversion port + structural deletion grep |
 | Step 3 | S | solid spacing + pattern shift |
-| Step 4 | M | reconciliation + gates + carve delta |
+| Step 4 | M | reconciliation + gates + carve delta (likely empty) |
 
 ## Packet Completion Gate
 

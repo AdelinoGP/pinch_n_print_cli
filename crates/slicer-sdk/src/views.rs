@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::{
-    ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth, RegionId,
-    RegionKey, SeamCandidate, SeamPosition, SurfaceGroup, WallLoop,
+    ConfigView, ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth,
+    RegionId, RegionKey, SeamCandidate, SeamPosition, SurfaceGroup, WallLoop,
 };
 
 /// Read-only view of a slice region.
@@ -76,6 +76,9 @@ pub struct SliceRegionView {
     /// Surface group resolved from `SurfaceClassificationIR` for this region's
     /// `nonplanar_surface` ID. `None` when no surface group applies.
     surface_group: Option<SurfaceGroup>,
+    /// Per-region config view (packet 131). Host-populated at dispatch time
+    /// (Step 3); `None` when no per-region config was derived.
+    config: Option<ConfigView>,
 }
 
 impl Default for SliceRegionView {
@@ -107,6 +110,7 @@ impl Default for SliceRegionView {
             overhang_areas: Vec::new(),
             overhang_quartile_polygons: Vec::new(),
             surface_group: None,
+            config: None,
         }
     }
 }
@@ -478,6 +482,18 @@ impl SliceRegionView {
         self.surface_group.as_ref()
     }
 
+    /// Returns the per-region config view for this region, if the host
+    /// derived one at dispatch time (packet 131, Step 3). `None` otherwise.
+    pub fn config(&self) -> Option<&ConfigView> {
+        self.config.as_ref()
+    }
+
+    /// Override the per-region config view (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_config(&mut self, config: ConfigView) {
+        self.config = Some(config);
+    }
+
     /// Returns true if this module is allowed to emit `role` for this region.
     ///
     /// Mapping:
@@ -544,6 +560,9 @@ pub struct PerimeterRegionView {
     /// `None` = this region owns its walls; `Some(base)` = this region shares
     /// the base region's walls (ADR-0028 §Amendment 2026-07-01).
     wall_source_region_id: Option<RegionId>,
+    /// Per-region config view (packet 131). Host-populated at dispatch time
+    /// (Step 3); `None` when no per-region config was derived.
+    config: Option<ConfigView>,
 }
 
 impl PerimeterRegionView {
@@ -680,6 +699,18 @@ impl PerimeterRegionView {
     /// walls; `Some(base)` = this region shares the base region's walls.
     pub fn wall_source_region_id(&self) -> Option<&RegionId> {
         self.wall_source_region_id.as_ref()
+    }
+
+    /// Returns the per-region config view for this region, if the host
+    /// derived one at dispatch time (packet 131, Step 3). `None` otherwise.
+    pub fn config(&self) -> Option<&ConfigView> {
+        self.config.as_ref()
+    }
+
+    /// Override the per-region config view (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_config(&mut self, config: ConfigView) {
+        self.config = Some(config);
     }
 }
 

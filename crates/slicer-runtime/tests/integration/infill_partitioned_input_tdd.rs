@@ -27,7 +27,7 @@ use slicer_ir::{
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
-use slicer_sdk::traits::LayerModule;
+use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
@@ -204,10 +204,11 @@ impl FillModule {
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) {
+        let paint = PaintRegionLayerView::new(layer_index);
         let result = match self {
-            Self::Rectilinear(m) => m.run_infill(layer_index, regions, output, config),
-            Self::Gyroid(m) => m.run_infill(layer_index, regions, output, config),
-            Self::Lightning(m) => m.run_infill(layer_index, regions, output, config),
+            Self::Rectilinear(m) => m.run_infill(layer_index, regions, &paint, output, config),
+            Self::Gyroid(m) => m.run_infill(layer_index, regions, &paint, output, config),
+            Self::Lightning(m) => m.run_infill(layer_index, regions, &paint, output, config),
         };
         result.unwrap_or_else(|e| panic!("[{}] run_infill failed: {e:?}", self.name()));
     }

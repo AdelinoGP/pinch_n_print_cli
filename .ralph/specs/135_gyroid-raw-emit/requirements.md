@@ -11,38 +11,53 @@
 ## Problem Statement
 
 The gyroid module's wave math is correct, but three things around it are not. (1) It rotates
-wave points around the UNROTATED polygon's bbox center instead of rotating the polygon first
-(gap analysis §2.4) — rotated-infill prints get geometrically wrong waves. (2) It clips its
-own waves with per-vertex ray-casting (`clip_polyline_to_expolygon`, lib.rs:611-636) that
-misses boundary crossings between samples — and under Architecture A it should not clip at
-all (the 133 linker re-clips correctly via `clip_polylines`). (3) Its multi-role emission
-code (lib.rs:180-210) is dead: the manifest declares only `claim:sparse-fill`, so
-`should_emit` gates Top/Bottom/Bridge off even when a user configures gyroid as their holder —
-the contradiction ADR-0027 resolved by making multi-role a real opt-in.
+wave points around the UNROTATED polygon's bbox center (rotation block at `lib.rs:344`)
+instead of rotating the polygon first — rotated-infill prints get geometrically wrong
+waves. (2) It clips its own waves with per-vertex ray-casting
+(`clip_polyline_to_expolygon` at `lib.rs:611`, with helpers `point_in_expolygon` at
+`lib.rs:570` and `point_in_polygon` at `lib.rs:585`) that misses boundary crossings between
+samples — and under Architecture A it should not clip at all (the 133 linker re-clips
+correctly via `clip_polylines`). (3) Its multi-role emission code is dead: the manifest
+declares only `claim:sparse-fill`, so the dispatch only routes the sparse role to gyroid
+even when a user configures gyroid as the holder for other roles — the contradiction
+ADR-0027 resolved by making multi-role a real opt-in. The DEV-082 row tracks this exact
+divergence as Open since 2026-07-03; this packet is the realization.
+
+Note: the plan's Phase 0 (`clip_polylines`) and Phase 1 (WIT contract) are already realized
+(TASK-254 + TASK-255 closed). This packet implements Phase 3 only.
 
 ## In Scope
 
 - Rotation-order fix: rotate the ExPolygon by −(base_angle + CorrectionAngle) first, compute
   the ROTATED bbox, generate axis-aligned waves there, rotate points back to world space,
-  emit raw (FillGyroid.cpp:300-376 ordering).
-- Delete `clip_polyline_to_expolygon`, `point_in_expolygon`, `point_in_polygon`,
-  `polygon_bbox_mm`, the rotation-around-bbox-center block (lib.rs:344-352), any short-segment
-  filter and chaining in the module.
-- `align_to_grid`: snap `bb.min` to a multiple of `2π × scale_factor` (FillGyroid.cpp:322).
-- Expand factor 4.0 → 10.0 × spacing_mm (FillGyroid.cpp:326).
-- Manifest: `claims.holds` gains `claim:top-fill`, `claim:bottom-fill`, `claim:bridge-fill`
-  (ADR-0027; DEV-082).
+  emit raw (FillGyroid.cpp:300-376 ordering). The current rotation block is at
+  `lib.rs:344`; the comment "Apply rotation around bbox center" is the marker for the
+  replacement.
+- Delete `clip_polyline_to_expolygon` (lib.rs:611), `point_in_expolygon` (lib.rs:570),
+  `point_in_polygon` (lib.rs:585), and `polygon_bbox_mm` (lib.rs:551). The structural-grep
+  AC-6 in `packet.spec.md` §Verification is the contract.
+- `align_to_grid` (new helper, ~10 lines): snap `bb.min` to a multiple of
+  `2π × scale_factor` (FillGyroid.cpp:322).
+- Expand factor 4.0 → 10.0 × spacing_mm at `lib.rs:259` (FillGyroid.cpp:326).
+- Manifest: `claims.holds` gains `claim:top-fill`, `claim:bottom-fill`,
+  `claim:bridge-fill` (ADR-0027; DEV-082).
 - Per-region density via the packet-131 accessor in the region loop.
-- TDD per AC-1…AC-6, AC-N1; point-in-polygon tests deleted with their functions; wave-core
-  tests kept.
+- TDD per AC-1…AC-6, AC-N1. There are no point-in-polygon tests in the test file
+  (verified by FACT I 2026-07-19), so the spec's "delete point-in-polygon tests" is moot —
+  only the four function deletions in lib.rs. The 11 existing test functions stay
+  (with the rotation-block ones rewritten as needed); wave-core tests
+  (`asin_nan_protection`, `square_region_produces_paths`, `paths_at_correct_z`,
+  `wave_pattern_varies_by_layer`) stay green.
 
 ## Out of Scope
 
-- Any change to `gyroid_f`, `make_one_period`, `make_wave`, the orientation choice, or the
-  constants `DENSITY_ADJUST = 2.44`, `CORRECTION_ANGLE_DEG = -45.0`, `PATTERN_TOLERANCE =
-  0.2` (verified correct; spec "stays" list).
-- Default fill-holder changes — solid roles stay on rectilinear (ADR-0027 Future-Reviewer
-  note).
+- Any change to `gyroid_f` (lib.rs:394), `make_one_period` (lib.rs:430), `make_wave`
+  (lib.rs:491), the orientation choice, or the constants `DENSITY_ADJUST = 2.44`,
+  `CORRECTION_ANGLE_DEG = -45.0`, `PATTERN_TOLERANCE = 0.2` (verified correct; spec "stays"
+  list).
+- Default fill-holder changes — `gyroid` is not referenced in
+  `crates/slicer-ir/src/resolved_config.rs` defaults; the four fill-holder keys resolve
+  to `rectilinear-infill` (DEV-082 opt-in promise).
 - `multiline` support (spec P3 — deferred).
 - Golden restore (136); changed-output goldens append to the 131 carve list.
 
@@ -68,10 +83,13 @@ Files to inspect for this packet:
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1`–`AC-6` in `packet.spec.md`. Refinements: AC-1's "no clipping"
+- Positive cases: `AC-1`–`AC-9` in `packet.spec.md`. Refinements: AC-1's "no clipping"
   assertion is the Architecture-A pin (points may exceed the polygon; the linker clips);
-  AC-2 is the rotation-fix regression pin; AC-5/AC-6 are structural greps making the
-  claims + deletions mechanically checkable.
+  AC-2 is the rotation-fix regression pin (bbox) and AC-8 is its per-point counterpart
+  (strict); AC-5/AC-6 are structural greps making the claims + deletions mechanically
+  checkable; AC-7/AC-9 are the per-region density assertions (131 accessor wired into
+  both `gyroid-infill` and `rectilinear-infill`, reading through
+  `slicer_sdk::config_resolution::resolve_float`).
 - Negative cases: `AC-N1` — the DEV-082 opt-in guard: default config must produce
   sparse-only gyroid (held-claims gating), keeping default behavior at OrcaSlicer parity.
 - Cross-packet impact: output changes (correct rotation + linker-clipped wave extents) —

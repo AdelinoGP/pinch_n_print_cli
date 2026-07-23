@@ -76,6 +76,10 @@ impl ResolvedConfig {
             ConfigValue::Float(f64::from(self.infill_density)),
         );
         m.insert(
+            "infill_overlap".into(),
+            ConfigValue::Float(f64::from(self.infill_overlap)),
+        );
+        m.insert(
             "infill_angle".into(),
             ConfigValue::Float(f64::from(self.infill_angle)),
         );
@@ -695,6 +699,11 @@ declare_resolved_config! {
     cli "gcode_resolution"       gcode_resolution: f32 = 0.0125 => extract_float;
     /// Infill path resolution in mm (OrcaSlicer: infill_anchor_max).
     cli "infill_resolution"      infill_resolution: f32 = 0.04 => extract_float;
+    /// Infill overlap with perimeters in mm (OrcaSlicer: infill_overlap). The
+    /// infill path extends past the perimeter boundary by this much so the
+    /// linker's boundary anchoring can re-attach. The linker reads this key
+    /// from the per-region resolved config.
+    cli "infill_overlap"         infill_overlap: f32 = 0.45 => extract_float;
     /// Support path resolution in mm (OrcaSlicer: support_resolution).
     cli "support_resolution"     support_resolution: f32 = 0.0375 => extract_float;
     /// Minimum segment length in mm (OrcaSlicer: min_length_factor).
@@ -817,6 +826,7 @@ impl PartialEq for ResolvedConfig {
                 == other.arachne_min_feature_size.map(|f| f.to_bits())
             && self.infill_type == other.infill_type
             && self.infill_density.to_bits() == other.infill_density.to_bits()
+            && self.infill_overlap.to_bits() == other.infill_overlap.to_bits()
             && self.infill_angle.to_bits() == other.infill_angle.to_bits()
             && self.infill_speed.to_bits() == other.infill_speed.to_bits()
             && self.solid_infill_speed.to_bits() == other.solid_infill_speed.to_bits()
@@ -908,6 +918,7 @@ impl std::hash::Hash for ResolvedConfig {
             .hash(state);
         self.infill_type.hash(state);
         self.infill_density.to_bits().hash(state);
+        self.infill_overlap.to_bits().hash(state);
         self.infill_angle.to_bits().hash(state);
         self.infill_speed.to_bits().hash(state);
         self.solid_infill_speed.to_bits().hash(state);

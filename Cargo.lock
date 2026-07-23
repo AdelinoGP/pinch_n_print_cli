@@ -1566,6 +1566,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "infill-linker"
+version = "0.1.0"
+dependencies = [
+ "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wit-bindgen 0.57.1",
+]
+
+[[package]]
 name = "interpol"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3134,6 +3145,7 @@ dependencies = [
  "slicer-ir",
  "slicer-macros",
  "slicer-schema",
+ "slicer-sdk",
  "wit-bindgen 0.57.1",
 ]
 

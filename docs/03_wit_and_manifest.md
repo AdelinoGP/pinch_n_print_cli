@@ -42,7 +42,7 @@ crates/slicer-schema/wit/
     config.wit         # package slicer:config      — interface config-types
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
-    world-layer/world-layer.wit           # package slicer:world-layer@2.0.0
+    world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
     world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
     world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
@@ -266,6 +266,10 @@ Notable records/methods worth surfacing (not obvious from the resource names):
   fields `id`, `facet-indices`, `z-min`, `z-max`, `area-mm2`, `printable`,
   `shell-count`) — distinct from the smaller write-side `surface-group-proposal`
   (PrePass). Added packet 104.
+- `slice-region-view` and `perimeter-region-view` expose
+  `config: func() -> config-view`, providing a per-region config accessor for
+  resolved settings inside each region loop. Packet 131 bumps `world-layer`
+  from 2.0.0 to 2.1.0 for this additive contract change.
 - `perimeter-output-builder` and `infill-output-builder` both carry
   `set-current-origin: func(object-id: string, region-id: string) -> result<_, string>`,
   which tags the region currently being iterated so buffered per-region pushes are
@@ -342,7 +346,8 @@ from region top/bottom metadata**:
 ## `world-layer.wit`
 
 **Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
-(package `slicer:world-layer@2.0.0`). The `layer-module` world imports
+(package `slicer:world-layer@2.3.0` — packet 140 bump for the
+`lightning-tree-segments` read-view). The `layer-module` world imports
 `slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
 the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
 shared `module-error` from `slicer:common/module-errors`.
@@ -355,6 +360,8 @@ stage:
 - `run-slice-postprocess`, `run-perimeters`, `run-wall-postprocess`,
   `run-infill`, `run-infill-postprocess`, `run-support`,
   `run-support-postprocess`, `run-path-optimization`.
+- `run-infill` receives `paint: paint-region-layer-view`, allowing an infill
+  guest to read committed lightning tree segments for its object and region.
 
 Read the on-disk file for each export's exact parameter list and return type.
 Notable 2.0.0 (packet 130) change: `run-infill-postprocess` gains a read-only
@@ -389,6 +396,51 @@ region_id↔tool split. The `path-optimization` guest reads it (via SDK
 `set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
 
 PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
+
+### `lightning-tree-segments` read-view (packet 137)
+
+Available to `Layer::Infill` modules on the `paint-region-layer-view` resource.
+Mirrors the `support-plan-segments` read-view shape (same
+`list<list<point3-with-width>>` return type, same `object-id`/`region-id`
+parameters) so a `Layer::Infill` module reaches the committed
+`LightningTreeIR` for the dispatching `(object, region, layer)` triple via
+the same idiom it would use for `SupportPlanIR` lookup in `Layer::Support`.
+
+**Per-region dispatch keying:** The host dispatch stores `lightning_tree_segments`
+in a `HashMap` keyed by `(object_id, region_id)`, not `(object_id, "*")`. This
+follows the per-region keying precedent established by the `support-plan-segments`
+read-view.
+
+**Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
+`paint-region-layer-view` resource method) and
+`crates/slicer-schema/wit/deps/world-layer/world-layer.wit` (package
+`slicer:world-layer@2.3.0`). Packet 140 extends `run-infill` with the paint
+view required by the lightning module; read the WIT source for the exact
+signature.
+any change to the signature in 138/139 is a WIT version bump, not a
+silent change.
+
+```wit
+resource paint-region-layer-view {
+    // ... existing get-regions / get-custom-regions / layer-index /
+    //     support-plan-segments methods ...
+    lightning-tree-segments: func(object-id: object-id, region-id: region-id)
+        -> list<list<point3-with-width>>;
+}
+```
+
+**Skip promise (ADR-0029):** The host commits a `LightningTreeIR` only when
+the print's `sparse_fill_holder` is `lightning-infill`. Otherwise the slot
+stays `None` and the method returns an empty `Vec<list<point3-with-width>>`
+— the per-layer `Layer::Infill` module (packet 140) falls back to its
+non-lightning path. Non-lightning prints therefore see a zero-cost, no-op
+view; the wedge byte-identity canary (`wedge_per_region_config_delivery_byte_identical`)
+pins the default-config slice through the new stage.
+
+**SDK accessor:** `PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
+in `crates/slicer-sdk/src/traits.rs` returns the same
+`Vec<[slicer_ir::Point2; 2]>` shape as the IR's `tree_edge_segments` field
+(2-point integer-unit compact storage per ADR-0029's memory note).
 
 ---
 
@@ -650,6 +702,10 @@ requires = []                     # claim slots that MUST be held by another mod
 | `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
 | `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
 | `claim:ironing`           | Held by the module producing `Ironing` extrusions (`top-surface-ironing`). |
+
+| Claim ID                 | Kind     | Dedup          | Owner                                                                    |
+|--------------------------|----------|----------------|--------------------------------------------------------------------------|
+| `claim:infill-link`      | non-fill | first-winner   | `infill-linker` (`Layer::InfillPostProcess`, packet 130; ADR-0025)       |
 
 The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 

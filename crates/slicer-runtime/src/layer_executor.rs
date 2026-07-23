@@ -328,6 +328,7 @@ fn execute_single_layer_inner(
                 paint_regions: None,
                 seam_plan: blackboard.seam_plan().cloned(),
                 support_plan: blackboard.support_plan().cloned(),
+                lightning_tree_ir: blackboard.lightning_tree_ir().cloned(),
                 region_map: blackboard.region_map().cloned(),
                 slice: arena.slice(),
                 perimeter: arena.perimeter(),
@@ -546,7 +547,7 @@ fn hydrate_slice_arena(
             module_id: "host:slice".to_string(),
             message: "blackboard slice_ir empty when Tier 2 started".to_string(),
         })?;
-    let slice = slice_vec
+    let mut slice = slice_vec
         .get(layer.index as usize)
         .cloned()
         .ok_or_else(|| LayerExecutionError::FatalLayer {
@@ -555,6 +556,13 @@ fn hydrate_slice_arena(
             module_id: "host:slice".to_string(),
             message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
         })?;
+    // Packet 132 (follow-up 1): stage a modifier-footprint `SlicedRegion` per
+    // non-support modifier volume whose mesh has a non-empty cross-section at
+    // this layer's Z. `sync_perimeter_infill_areas_into_slice` (invoked at
+    // `Layer::Perimeters`) consumes these footprints and mints the modifier
+    // sub-region. Support subtypes are routed through the support path instead.
+    // No-op for objects without `modifier_volumes` (preserves AC-N1).
+    stage_modifier_footprints(&mut slice, blackboard, layer);
     arena
         .set_slice(slice)
         .map_err(|_| LayerExecutionError::FatalLayer {
@@ -563,6 +571,48 @@ fn hydrate_slice_arena(
             module_id: "host:slice".to_string(),
             message: "slice arena slot already occupied".to_string(),
         })
+}
+
+/// Stage a modifier-footprint `SlicedRegion` for each non-support modifier
+/// volume whose mesh cross-section at this layer's Z is non-empty (packet 132
+/// follow-up 1). The footprint carries `region_id ==
+/// MODIFIER_FOOTPRINT_REGION_ID`; `sync_perimeter_infill_areas_into_slice`
+/// consumes it and mints the modifier sub-region. Support subtypes
+/// (`support_enforcer` / `support_blocker`) are skipped — they flow through the
+/// support path (`slice_modifier_volumes` / paint segmentation). This is a
+/// no-op for objects without `modifier_volumes`.
+fn stage_modifier_footprints(slice: &mut SliceIR, blackboard: &Blackboard, layer: &GlobalLayer) {
+    let mesh = blackboard.mesh();
+    let zs = [layer.z];
+    for object in &mesh.objects {
+        for mv in &object.modifier_volumes {
+            // Skip support_* modifiers: those go through the existing support path.
+            if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
+                match s.as_str() {
+                    "support_enforcer" | "support_blocker" => continue,
+                    _ => {}
+                }
+            }
+            if mv.mesh.vertices.is_empty() || mv.mesh.indices.is_empty() {
+                continue;
+            }
+            // Reuse the existing `slice_mesh_ex` path at the single layer Z.
+            let polygons = match slicer_core::slice_mesh_ex(&mv.mesh, &zs).into_iter().next() {
+                Some(polys) => polys,
+                None => continue,
+            };
+            // Empty cross-section ⇒ no footprint on that layer.
+            if polygons.is_empty() {
+                continue;
+            }
+            slice.regions.push(slicer_ir::SlicedRegion {
+                object_id: object.id.clone(),
+                region_id: crate::region_partition::MODIFIER_FOOTPRINT_REGION_ID,
+                polygons,
+                ..Default::default()
+            });
+        }
+    }
 }
 
 /// Immediately before `Layer::PathOptimization` runs, freeze the assembled
@@ -1041,6 +1091,7 @@ pub fn execute_captured_stages(
                     paint_regions: None,
                     seam_plan: blackboard.seam_plan().cloned(),
                     support_plan: blackboard.support_plan().cloned(),
+                    lightning_tree_ir: blackboard.lightning_tree_ir().cloned(),
                     region_map: blackboard.region_map().cloned(),
                     slice: arena.slice(),
                     perimeter: arena.perimeter(),

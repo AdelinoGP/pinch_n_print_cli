@@ -1,3 +1,5 @@
+/// Lightning tree generator skeleton (packet 137 contract; algorithm ships in 138/139).
+pub mod lightning;
 /// Mesh analysis utilities.
 pub mod mesh_analysis;
 /// Single-Z-plane cross-section helper (wraps `slice_mesh_ex`).

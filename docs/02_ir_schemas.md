@@ -941,6 +941,40 @@ pub struct SlicedRegion {
 /// `claim:bottom-fill`, `claim:bridge-fill`; see `docs/03_wit_and_manifest.md`)
 /// emits over exactly one of these polygons with zero polygon math.
 
+### Modifier sub-regions
+
+A *modifier sub-region* is a wall-less region spawned by a modifier volume. A
+modifier volume (e.g. a density / speed override) does **not** carve its own
+walls. Packet 132 (`132_modifier-region-split`, binding per ADR-0030 —
+*Modifier splits fill, not perimeters*) instead spawns **wall-less sub-regions**
+that share the base region's walls: a sub-region carries
+`wall_source_region_id = Some(base)` so the perimeter stage traces walls once on
+the base region and the sub-region's infill is emitted against that shared wall
+geometry (no duplicate outer wall). ADR-0030 is the governing decision; the
+binding implementation and tests live in packet 132.
+
+**Per-sub-region config binding.** Each sub-region is bound to its own resolved
+config via the `stamp_modifier_sub_region_configs` map keyed by `region_id`
+(see `crates/slicer-core/src/algos/region_mapping.rs:335`: it overlays the
+modifier volumes' config deltas onto the base `ResolvedConfig`, skipping
+`support_enforcer` / `support_blocker` subtypes, and returns a
+`BTreeMap<region_id, ResolvedConfig>` stamped per sub-region).
+
+**Sub-region `region_id` namespace.** Sub-region IDs are derived from the base
+region ID with a dedicated coprime stride so they never collide with paint's
+`1_000_000`-stride namespace:
+
+```
+sub_region_id = base_region_id * MODIFIER_VARIANT_REGION_ID_STRIDE + modifier_hash(footprint_geo)
+```
+
+where `MODIFIER_VARIANT_REGION_ID_STRIDE = 1_000_003` (the next prime above
+paint's `1_000_000`, hence coprime — see
+`crates/slicer-runtime/src/region_partition.rs:71`). `modifier_hash` folds the
+footprint geometry into a non-zero value `< stride` (so the low-order band is
+reserved for `base_region_id * stride` itself), giving a stable, collision-free
+sub-region id that round-trips through `RegionMapIR` and dispatch.
+
 /// Polygon with holes. Contour is CCW; holes are CW.
 pub struct ExPolygon {
     pub contour: Polygon,
@@ -1516,6 +1550,73 @@ pub struct ScoredSeamCandidate {
 `SeamPlanEntry.chosen_candidate` is consumed via
 `PerimeterRegionView.resolved_seam` so the apply-stage module (seam-placer)
 operates on a pre-resolved seam without rescoring.
+
+---
+
+## IR 9d — LightningTreeIR
+
+**Stage:** Output of `PrePass::LightningTreeGen` (optional; only committed when
+the print's `sparse_fill_holder` resolves to `lightning-infill` per ADR-0029).
+Positioned after `PrePass::SupportGeometry`, before `Layer::PaintRegionAnnotation`.
+
+**Current schema_version: 1.0.0** (authoritative source:
+`CURRENT_LIGHTNING_TREE_IR_SCHEMA_VERSION` in `crates/slicer-ir/src/slice_ir.rs`).
+Packet 137 lands the contract; packets 138/139 fill the producer skeleton with
+the real cross-layer distance-field + tree-node generator.
+
+**Producer:** A host built-in committed via
+`crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`. The producer is
+**skipped** (no commit, slot stays `None`) when no region's
+`sparse_fill_holder` is `lightning-infill` — the zero-cost skip promise from
+ADR-0029. When committed, the IR carries per-object, per-region, per-layer 2-point
+tree-edge segments in integer coordinate units (compact storage per ADR-0029's
+memory note; no full topology).
+
+**Consumers:** `Layer::Infill` modules that declare `LightningTreeIR` as a read
+in their manifest. The packet 140 `lightning-infill` module consumes this view
+and emits one raw path per committed tree segment.
+
+```rust
+pub struct LightningTreeIR {
+    pub schema_version: SemVer,
+    /// One entry per active `(global_layer_index, object_id, region_id)` triple
+    /// that received tree-edge segments. Multiple entries may share an
+    /// `(object_id, global_layer_index)` when an object has multiple regions.
+    pub entries: Vec<LightningTreeEntry>,
+}
+
+pub struct LightningTreeEntry {
+    pub object_id: ObjectId,
+    /// Region inside the object; this follows the per-region precedent of
+    /// `SupportPlanEntry.region_id: RegionId`.
+    pub region_id: RegionId,
+    /// Signed: negative values (`-1`, `-2`, ...) are reserved for raft prefix
+    /// layers; non-negative values refer to model layers.
+    pub global_layer_index: i32,
+    /// 2-point tree-edge segments in integer coordinate units. Each pair
+    /// `[a, b]` is rendered directly as one raw path.
+    pub tree_edge_segments: Vec<[Point2; 2]>,
+}
+```
+
+**Consumption pattern — read-view via `lightning-tree-segments`:**
+
+The host exposes the IR to a `Layer::Infill` guest via the
+`lightning-tree-segments` method on the `paint-region-layer-view` WIT resource
+(`crates/slicer-schema/wit/deps/ir-types.wit:206`; canonical package
+`slicer:world-layer@2.3.0`). The `run-infill` export receives a
+`paint: paint-region-layer-view` argument, and the guest looks up the per-layer
+`tree_edge_segments` matching `(object_id, region_id, layer_index)` via the SDK's
+`PaintRegionLayerView::lightning_tree_segments_for(object_id, region_id)`
+accessor (`crates/slicer-sdk/src/traits.rs:196-212`). When no `LightningTreeIR` is
+committed (skip-when-no-lightning-holder), the accessor returns an empty
+`Vec` and the module emits no paths for that layer; there is no non-lightning
+fallback.
+
+**Determinism:** Identical PrePass inputs must produce byte-identical
+`LightningTreeIR`. The `entries` Vec order is producer-defined and must be
+stable (no hash containers); per-layer segment ordering is the producer's
+responsibility. 138/139 inherit this contract.
 
 ---
 

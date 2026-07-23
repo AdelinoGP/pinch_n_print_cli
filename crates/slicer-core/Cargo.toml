@@ -32,6 +32,10 @@ name = "algo_mesh_analysis_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "algo_lightning_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "algo_prepass_slice_tdd"
 required-features = ["host-algos"]
 

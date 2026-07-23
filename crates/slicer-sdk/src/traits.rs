@@ -26,7 +26,8 @@ use crate::prepass_types::{
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, ExPolygon, ExtrusionPath3D, InfillRegion, LayerAnnotation, LayerAnnotationKind,
-    LayerCollectionIR, PaintSemantic, PrintEntity, RegionKey, SliceIR, SupportPlanIR,
+    LayerCollectionIR, LightningTreeIR, PaintSemantic, PrintEntity, RegionKey, SliceIR,
+    SupportPlanIR,
 };
 
 /// Support-paint policy for a per-region eligibility decision.
@@ -52,6 +53,7 @@ pub struct PaintRegionLayerView {
     layer_index: u32,
     support_plan: Option<Arc<SupportPlanIR>>,
     slice_ir: Option<Arc<SliceIR>>,
+    lightning_tree_ir: Option<Arc<LightningTreeIR>>,
 }
 
 impl PaintRegionLayerView {
@@ -62,6 +64,7 @@ impl PaintRegionLayerView {
             layer_index,
             support_plan: None,
             slice_ir: None,
+            lightning_tree_ir: None,
         }
     }
 
@@ -73,6 +76,7 @@ impl PaintRegionLayerView {
             layer_index,
             support_plan: None,
             slice_ir: None,
+            lightning_tree_ir: None,
         }
     }
 
@@ -88,6 +92,17 @@ impl PaintRegionLayerView {
     #[doc(hidden)]
     pub fn with_slice_ir(mut self, slice_ir: Arc<SliceIR>) -> Self {
         self.slice_ir = Some(slice_ir);
+        self
+    }
+
+    /// Attach a committed `LightningTreeIR` to this layer view (host-only).
+    ///
+    /// The 137 contract returns `None` from `lightning_tree_ir_segments_for`
+    /// when the host did not commit a tree IR (skip-when-no-lightning-holder
+    /// per ADR-0029).
+    #[doc(hidden)]
+    pub fn with_lightning_tree_ir(mut self, ir: Arc<LightningTreeIR>) -> Self {
+        self.lightning_tree_ir = Some(ir);
         self
     }
 
@@ -150,6 +165,43 @@ impl PaintRegionLayerView {
                     && entry.region_id == region_id
             })
             .flat_map(|entry| entry.branch_segments.iter())
+            .collect()
+    }
+
+    /// Returns the attached `LightningTreeIR`, if any.
+    ///
+    /// Per ADR-0029, the host commits this only when the print's
+    /// `sparse_fill_holder` is `lightning-infill`; otherwise the slot stays
+    /// `None` (skip promise) and the per-layer `Layer::Infill` module
+    /// (packet 140) falls back to its non-lightning path.
+    pub fn lightning_tree_ir(&self) -> Option<&Arc<LightningTreeIR>> {
+        self.lightning_tree_ir.as_ref()
+    }
+
+    /// Returns the 2-point tree-edge segments for the `(layer, object_id,
+    /// region_id)` triple matching this view's `layer_index`. Returns an empty
+    /// vector if no tree IR is committed (skip-when-no-lightning) or no entry
+    /// matches.
+    ///
+    /// The 137 contract returns empty segments for the empty-but-valid IR
+    /// committed by the skeleton producer; the real algorithm (138/139)
+    /// populates `tree_edge_segments` per layer.
+    pub fn lightning_tree_segments_for(
+        &self,
+        object_id: &str,
+        region_id: u64,
+    ) -> Vec<[slicer_ir::Point2; 2]> {
+        let Some(ir) = self.lightning_tree_ir.as_ref() else {
+            return Vec::new();
+        };
+        ir.entries
+            .iter()
+            .filter(|entry| {
+                entry.global_layer_index == self.layer_index as i32
+                    && entry.object_id == object_id
+                    && entry.region_id == region_id
+            })
+            .flat_map(|entry| entry.tree_edge_segments.iter().copied())
             .collect()
     }
 
@@ -310,6 +362,7 @@ pub trait LayerModule: Sized {
     /// export run-infill: func(
     ///     layer-index: layer-idx,
     ///     regions: list<slice-region-view>,
+    ///     paint: paint-region-layer-view,
     ///     output: infill-output-builder,
     ///     config: config-view,
     ///     region-input: seam-planning-view,
@@ -319,6 +372,7 @@ pub trait LayerModule: Sized {
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {

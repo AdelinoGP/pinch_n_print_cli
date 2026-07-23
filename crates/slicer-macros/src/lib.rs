@@ -1858,7 +1858,19 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             __slicer_adapt_perimeter_regions(&regions);
     };
     let adapt_paint = quote! {
-        let sdk_paint = __slicer_adapt_paint_layer(&paint);
+        let __slicer_paint_keys: ::std::vec::Vec<(
+            ::std::string::String,
+            ::slicer_ir::RegionId,
+        )> = regions
+            .iter()
+            .map(|r| {
+                (
+                    r.object_id().to_string(),
+                    r.region_id().parse().unwrap_or(0),
+                )
+            })
+            .collect();
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &__slicer_paint_keys);
     };
 
     let slice_postprocess_arm = if detected_stage == "Layer::SlicePostProcess" {
@@ -1932,9 +1944,10 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 Err(e) => return Err(__slicer_error_out(e)),
             };
             #adapt_slice
+            #adapt_paint
             let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
             let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill(
-                &module, layer_index, &sdk_regions, &mut sdk_output, &ir_config,
+                &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
             );
             __slicer_drain_infill(&sdk_output, &output);
             match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
@@ -2465,20 +2478,64 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
             fn __slicer_adapt_paint_layer(
                 paint: &PaintRegionLayerView,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId)],
             ) -> ::slicer_sdk::traits::PaintRegionLayerView {
-                // Packet 95 D14: the SDK PaintRegionLayerView is now a slim
-                // wrapper that the caller-side support_arm enriches by
-                // attaching a synthesized SliceIR (via `with_slice_ir`) and
-                // the support plan (via `with_support_plan`).  The WIT
-                // PaintRegionLayerView resource itself only carries the
-                // layer index + the legacy regions_by_semantic map
-                // (currently empty after D8 — segment_annotations travels on
-                // each SliceRegionView instead).  When future stages adopt
-                // a richer WIT surface (e.g. a host-populated SliceIR
-                // accessor on the WIT resource), this adapter is the seam
-                // that swaps the synthesis for a direct query.
                 let layer_idx = paint.layer_index() as u32;
-                ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx)
+                let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx);
+                match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
+                    Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
+                    None => sdk_paint,
+                }
+            }
+
+            /// Rebuild the committed lightning tree edges exposed by the WIT
+            /// paint view so the SDK module sees the same integer-unit IR as
+            /// the host-side producer.
+            fn __slicer_lightning_tree_from_view(
+                wit_paint: &PaintRegionLayerView,
+                layer_idx: u32,
+                keys: &[(::std::string::String, ::slicer_ir::RegionId)],
+            ) -> ::std::option::Option<::std::sync::Arc<::slicer_ir::LightningTreeIR>> {
+                let mut entries: ::std::vec::Vec<::slicer_ir::LightningTreeEntry> =
+                    ::std::vec::Vec::new();
+                for (object_id, region_id) in keys.iter() {
+                    let region_id_str = region_id.to_string();
+                    let segments = wit_paint.lightning_tree_segments(object_id, &region_id_str);
+                    let tree_edge_segments: ::std::vec::Vec<[::slicer_ir::Point2; 2]> = segments
+                        .into_iter()
+                        .filter_map(|seg| {
+                            let start = seg.first()?;
+                            let end = seg.get(1)?;
+                            Some([
+                                ::slicer_ir::Point2 {
+                                    x: ::slicer_ir::mm_to_units(start.x),
+                                    y: ::slicer_ir::mm_to_units(start.y),
+                                },
+                                ::slicer_ir::Point2 {
+                                    x: ::slicer_ir::mm_to_units(end.x),
+                                    y: ::slicer_ir::mm_to_units(end.y),
+                                },
+                            ])
+                        })
+                        .collect();
+                    if tree_edge_segments.is_empty() {
+                        continue;
+                    }
+                    entries.push(::slicer_ir::LightningTreeEntry {
+                        object_id: object_id.clone(),
+                        global_layer_index: layer_idx as i32,
+                        region_id: *region_id,
+                        tree_edge_segments,
+                    });
+                }
+                if entries.is_empty() {
+                    None
+                } else {
+                    Some(::std::sync::Arc::new(::slicer_ir::LightningTreeIR {
+                        entries,
+                        ..::core::default::Default::default()
+                    }))
+                }
             }
 
             /// Build a `SupportPlanIR` Arc from the WIT
@@ -2973,6 +3030,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 fn run_infill(
                     layer_index: i32,
                     regions: Vec<SliceRegionView>,
+                    paint: PaintRegionLayerView,
                     output: InfillOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #infill_arm }
