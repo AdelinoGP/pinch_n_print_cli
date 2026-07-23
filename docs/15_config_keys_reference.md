@@ -135,7 +135,6 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `lightning-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `lightning-infill` |
 | `bed_temperature_initial_layer_single` | int | `60` | [0.0, 120.0] | `machine-gcode-emit` |
-| `disable_m73` | bool | `false` | — | `machine-gcode-emit` |
 | `machine_end_gcode` | string | `"PRINT_END"` | — | `machine-gcode-emit` |
 | `machine_start_gcode` | string | `"M190 S[bed_temperature_initial_layer_single]\nM…"` | — | `machine-gcode-emit` |
 | `nozzle_temperature_initial_layer` | int | `215` | [0.0, 300.0] | `machine-gcode-emit` |
@@ -163,18 +162,22 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"nearest"` | `nearest` / `rear` / `random` / `aligned` / `aligned_back` | `seam-placer` |
-| `seam_mode` | enum | `"nearest"` | `nearest` / `rear` / `random` / `aligned` / `aligned_back` | `seam-planner-default` |
+| `seam_mode` | enum | `"nearest"` | — | `seam-placer` |
+| `seam_mode` | enum | `"nearest"` | — | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |
 | `skirt_distance` | float | `3.0` | [0.0, 20.0] | `skirt-brim` |
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
+| `base_raft_layers` | int | `1` | [0.0, 20.0] | `support-planner` |
+| `interface_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
+| `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `support-planner` |
 | `support_enabled` | bool | `true` | — | `support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `support-planner` |
+| `support_on_build_plate_only` | bool | `false` | — | `support-planner` |
 | `support_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
 | `support_top_z_distance_mm` | float | `0.0` | [0.0, 5.0] | `support-planner` |
 | `tree_support_branch_angle` | float | `45.0` | [0.0, 75.0] | `support-planner` |
@@ -241,32 +244,32 @@ in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting Convention").
 <!-- BEGIN GENERATED: host-speeds (cargo xtask gen-config-docs) -->
 | Key | Type | Default | Range | Source |
 |---|---|---|---|---|
-| `bottom_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `bridge_speed` | float | `25.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | `feedrate.rs::FeedrateConfig` |
-| `gap_infill_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_infill_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `initial_layer_travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `inner_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `internal_bridge_speed` | float | `37.5` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `ironing_speed` | float | `20.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `outer_wall_speed` | float | `60.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `feedrate.rs::FeedrateConfig` |
-| `prime_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `skirt_speed` | float | `50.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `sparse_infill_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `support_interface_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `support_speed` | float | `80.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `thin_wall_speed` | float | `30.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `top_surface_speed` | float | `100.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `travel_speed` | float | `120.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `feedrate.rs::FeedrateConfig` |
-| `wipe_speed` | float | `96.0` | > 0 | `feedrate.rs::FeedrateConfig` |
-| `wipe_tower_speed` | float | `90.0` | > 0 | `feedrate.rs::FeedrateConfig` |
+| `bottom_surface_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `bridge_speed` | float | `25.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `filament_ironing_speed` | float | `0.0` | >= 0 (0 = use ironing_speed) | `gcode_emit.rs::FeedrateConfig` |
+| `gap_infill_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `initial_layer_infill_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `initial_layer_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `initial_layer_travel_speed` | float | `120.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `inner_wall_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `internal_bridge_speed` | float | `37.5` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `ironing_speed` | float | `20.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `outer_wall_speed` | float | `60.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `overhang_1_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
+| `overhang_2_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
+| `overhang_3_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
+| `overhang_4_4_speed` | float | `0.0` | >= 0 (0 = no override (packet 57)) | `gcode_emit.rs::FeedrateConfig` |
+| `prime_tower_speed` | float | `90.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `skirt_speed` | float | `50.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `sparse_infill_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `support_interface_speed` | float | `80.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `support_speed` | float | `80.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `thin_wall_speed` | float | `30.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `top_surface_speed` | float | `100.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `travel_speed` | float | `120.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `travel_speed_z` | float | `0.0` | >= 0 (0 = use travel_speed for Z) | `gcode_emit.rs::FeedrateConfig` |
+| `wipe_speed` | float | `96.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
+| `wipe_tower_speed` | float | `90.0` | > 0 | `gcode_emit.rs::FeedrateConfig` |
 | `bottom_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bottom-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |
 | `bottom_shell_layers` | int | `3` | [1, 10] | `resolved_config.rs::ResolvedConfig` |
 | `bridge_fill_holder` | string | `"rectilinear-infill"` | — (holder of claim:bridge-fill (packet 37)) | `resolved_config.rs::ResolvedConfig` |

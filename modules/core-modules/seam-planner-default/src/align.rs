@@ -18,21 +18,15 @@
 //! **radians** — matching canonical `SeamPlacer`'s unscaled-mm domain, NOT the
 //! integer 100 nm system used elsewhere (see `docs/08_coordinate_system.md`).
 //!
-//! Numerical deviation from canonical: the per-dimension least-squares solve
-//! uses normal equations (AᵀA c = Aᵀb) with Gaussian elimination and partial
-//! pivoting instead of Eigen's `fullPivHouseholderQr`. The parameter count is
-//! tiny, so conditioning is acceptable; results may differ from canonical in
-//! the last bits.
+//! The per-dimension least-squares solve uses faer's full-pivot Householder QR
+//! equivalent matching canonical `fullPivHouseholderQr` rank handling.
 //!
-//! Behavioral deviation from canonical: `SeamCandidate` here carries no
-//! per-layer `layer_angle`, so the curling-influence branch (canonical
-//! `align_seam_points`: `-0.8` when the layer angle dominates) always uses
-//! `1.0`.
-
 use crate::comparator::{
     compute_angle_penalty, EnforcedBlockedSeamPoint, Perimeter, SeamCandidate, SeamComparator,
     SeamSetup,
 };
+use faer::linalg::solvers::{ColPivQr, SolveLstsqCore};
+use faer::Mat;
 
 /// Search radius factor: multiplied by flow width (mm) to get the next-layer
 /// search radius in mm.
@@ -156,7 +150,8 @@ pub(crate) fn find_next_seam_in_layer(
 /// Build a vertical string of chained seams through `start`.
 /// Canonical `find_seam_string` (`SeamPlacer.cpp`): walk up from
 /// `start.layer + 1`, then reverse from `start` and walk down to layer 0,
-/// stopping at the first failed step in each direction.
+/// stopping at the first failed active-layer step in each direction. Empty
+/// layers are skipped as a Pinch 'n Print continuity extension.
 pub(crate) fn find_seam_string(
     layers: &[LayerCandidates],
     start: SeamRef,
@@ -167,6 +162,12 @@ pub(crate) fn find_seam_string(
     // Walk up.
     let mut last = start;
     for layer_idx in (start.layer + 1)..layers.len() {
+        if layers[layer_idx].perimeters.is_empty() {
+            // PnP extension to canonical gap handling: inactive layers emit no
+            // seam entry, while the last real seam remains the bounded search
+            // anchor for the next active layer.
+            continue;
+        }
         match find_next_seam_in_layer(layers, candidate_of(layers, &last), layer_idx, comparator) {
             Some(next) => {
                 string.push(next);
@@ -179,6 +180,12 @@ pub(crate) fn find_seam_string(
     // Walk down from the start.
     let mut last = start;
     for layer_idx in (0..start.layer).rev() {
+        if layers[layer_idx].perimeters.is_empty() {
+            // Keep the real seam as the continuity anchor across inactive
+            // layers; `find_next_seam_in_layer` applies the canonical bounded
+            // radius when the next active layer is reached.
+            continue;
+        }
         match find_next_seam_in_layer(layers, candidate_of(layers, &last), layer_idx, comparator) {
             Some(next) => {
                 string.push(next);
@@ -193,9 +200,9 @@ pub(crate) fn find_seam_string(
 
 /// Align seams vertically across layers by fitting weighted cubic B-splines
 /// to strings of chained seams. Canonical `align_seam_points`
-/// (`SeamPlacer.cpp`), simple-retry variant: strings shorter than
-/// `SEAM_ALIGN_MINIMUM_STRING_SEAMS` are skipped (their perimeters stay
-/// unfinalized) rather than retried from alternative starts.
+/// (`SeamPlacer.cpp`): a short initial string is retried from deterministic
+/// alternative layer starts, and only a string meeting
+/// `SEAM_ALIGN_MINIMUM_STRING_SEAMS` is finalized.
 pub(crate) fn align_seam_points(layers: &mut [LayerCandidates], comparator: &SeamComparator) {
     // Gather one seam ref per perimeter across all layers.
     let mut refs: Vec<SeamRef> = Vec::new();
@@ -223,14 +230,39 @@ pub(crate) fn align_seam_points(layers: &mut [LayerCandidates], comparator: &Sea
         }
     });
 
-    for start in refs {
+    for start in refs.iter().copied() {
         if layers[start.layer].perimeters[start.perimeter].finalized {
             continue;
         }
         let mut string = find_seam_string(layers, start, comparator);
         if string.len() < SEAM_ALIGN_MINIMUM_STRING_SEAMS {
-            // Too short to be worth aligning; leave perimeters unfinalized.
-            continue;
+            // Canonical `align_seam_points` (`SeamPlacer.cpp`) retries a short
+            // string from alternative starts spaced by 1 + size / 20 layers,
+            // considering roughly size / 3 alternatives. Keep the longest
+            // candidate string before deciding whether this perimeter can be
+            // finalized.
+            let size = layers.len();
+            if size > 0 {
+                let step = 1 + size / 20;
+                let max_retries = (size / 3).max(1);
+                let mut alternative_layer = (start.layer + step) % size;
+                for _ in 0..max_retries {
+                    if let Some(alternative_start) =
+                        alternative_start_in_layer(layers, start, alternative_layer)
+                    {
+                        let alternative_string =
+                            find_seam_string(layers, alternative_start, comparator);
+                        if alternative_string.len() > string.len() {
+                            string = alternative_string;
+                        }
+                    }
+                    alternative_layer = (alternative_layer + step) % size;
+                }
+            }
+            if string.len() < SEAM_ALIGN_MINIMUM_STRING_SEAMS {
+                // Too short to be worth aligning; leave perimeters unfinalized.
+                continue;
+            }
         }
         string.sort_by_key(|r| r.layer);
 
@@ -251,10 +283,11 @@ pub(crate) fn align_seam_points(layers: &mut [LayerCandidates], comparator: &Sea
                 weight += 3.0;
                 1.0
             } else {
-                // Canonical: -0.8 when `layer_angle > 2*|local_ccw_angle|`;
-                // our candidates carry no layer_angle, so always 1.0
-                // (documented deviation, see module docs).
-                1.0
+                if c.layer_angle > 2.0 * c.local_ccw_angle.abs() {
+                    -0.8
+                } else {
+                    1.0
+                }
             };
             weights.push(weight);
             if let Some(prev) = last_position {
@@ -293,6 +326,29 @@ pub(crate) fn align_seam_points(layers: &mut [LayerCandidates], comparator: &Sea
             perimeter.finalized = true;
         }
     }
+}
+
+/// Choose the corresponding unfinalized perimeter at an alternative layer.
+/// The fallback keeps retries useful when a region has a different perimeter
+/// count on another active layer, while preserving deterministic ordering.
+fn alternative_start_in_layer(
+    layers: &[LayerCandidates],
+    original: SeamRef,
+    layer_idx: usize,
+) -> Option<SeamRef> {
+    let layer = &layers[layer_idx];
+    let perimeter = if original.perimeter < layer.perimeters.len()
+        && !layer.perimeters[original.perimeter].finalized
+    {
+        original.perimeter
+    } else {
+        layer.perimeters.iter().position(|p| !p.finalized)?
+    };
+    Some(SeamRef {
+        layer: layer_idx,
+        perimeter,
+        candidate: layer.perimeters[perimeter].seam_index,
+    })
 }
 
 /// Partition-of-unity cubic B-spline kernel.
@@ -348,8 +404,8 @@ impl CubicBSplineFit {
 /// `observation_points` must be sorted ascending (z in mm); `observations`
 /// are the xy values (mm); `weights` are dimensionless.
 ///
-/// Numerical deviation: solved via normal equations + Gaussian elimination
-/// with partial pivoting instead of canonical `fullPivHouseholderQr`.
+/// Full-pivot Householder QR matches canonical `fullPivHouseholderQr` rank
+/// handling.
 pub(crate) fn fit_cubic_bspline(
     observation_points: &[f32],
     observations: &[[f32; 2]],
@@ -364,9 +420,13 @@ pub(crate) fn fit_cubic_bspline(
 
     if valid_length <= 0.0 {
         // Degenerate parameter span: constant fit at the weighted mean.
-        let wsum: f32 = weights.iter().sum();
+        let mut wsum = 0.0f32;
         let mut mean = [0.0f32; 2];
         for (obs, w) in observations.iter().zip(weights) {
+            if !w.is_finite() || *w <= 0.0 || !obs[0].is_finite() || !obs[1].is_finite() {
+                continue;
+            }
+            wsum += *w;
             mean[0] += obs[0] * w;
             mean[1] += obs[1] * w;
         }
@@ -400,26 +460,10 @@ pub(crate) fn fit_cubic_bspline(
         data[i][1] = observations[i][1] as f64 * sqrt_w;
     }
 
-    // Normal equations: AtA c = Atb, per dimension.
-    let p = parameters_count;
-    let mut ata = vec![vec![0.0f64; p]; p];
-    let mut atb = vec![[0.0f64; 2]; p];
-    for i in 0..n {
-        for j in 0..p {
-            let dij = design[i][j];
-            if dij == 0.0 {
-                continue;
-            }
-            for k in 0..p {
-                ata[j][k] += dij * design[i][k];
-            }
-            atb[j][0] += dij * data[i][0];
-            atb[j][1] += dij * data[i][1];
-        }
-    }
-
-    let cx = solve_gaussian(&ata, &atb.iter().map(|b| b[0]).collect::<Vec<_>>());
-    let cy = solve_gaussian(&ata, &atb.iter().map(|b| b[1]).collect::<Vec<_>>());
+    let data_x: Vec<f64> = data.iter().map(|value| value[0]).collect();
+    let data_y: Vec<f64> = data.iter().map(|value| value[1]).collect();
+    let cx = solve_full_pivot_qr(&design, &data_x);
+    let cy = solve_full_pivot_qr(&design, &data_y);
 
     CubicBSplineFit {
         start,
@@ -432,57 +476,83 @@ pub(crate) fn fit_cubic_bspline(
     }
 }
 
-/// Solve `a * x = b` by Gaussian elimination with partial pivoting.
-/// Near-singular pivots (rank deficiency from unconstrained control points)
-/// leave the corresponding solution component at 0.
-fn solve_gaussian(a: &[Vec<f64>], b: &[f64]) -> Vec<f64> {
-    let n = b.len();
-    let mut m: Vec<Vec<f64>> = a.to_vec();
-    let mut rhs = b.to_vec();
+/// Solve a rectangular least-squares system with full-pivot Householder QR.
+///
+/// Backed by `faer::linalg::solvers::ColPivQr`; canonical
+/// `fullPivHouseholderQr` equivalent. AC-N1 contract enforced on the way out
+/// via pivot-threshold zeroing.
+fn solve_full_pivot_qr(design: &[Vec<f64>], rhs: &[f64]) -> Vec<f64> {
+    let n = design.len();
+    let p = design.first().map_or(0, Vec::len);
+    let mut result = vec![0.0_f64; p];
+    if n == 0 || p == 0 {
+        return result;
+    }
 
-    for col in 0..n {
-        // Partial pivot.
-        let mut pivot_row = col;
-        for row in (col + 1)..n {
-            if m[row][col].abs() > m[pivot_row][col].abs() {
-                pivot_row = row;
-            }
+    let mat = Mat::from_fn(n, p, |i, j| {
+        let value = design[i].get(j).copied().unwrap_or(0.0);
+        if value.is_finite() {
+            value
+        } else {
+            0.0
         }
-        if pivot_row != col {
-            m.swap(col, pivot_row);
-            rhs.swap(col, pivot_row);
+    });
+    let mut rhs_mat = Mat::from_fn(rhs.len(), 1, |i, _| {
+        let value = rhs[i];
+        if value.is_finite() {
+            value
+        } else {
+            0.0
         }
-        let pivot = m[col][col];
-        if pivot.abs() < 1e-12 {
-            continue; // rank-deficient column; solution component stays 0
-        }
-        for row in (col + 1)..n {
-            let factor = m[row][col] / pivot;
-            if factor == 0.0 {
-                continue;
+    });
+    let qr = ColPivQr::new(mat.as_ref());
+    qr.solve_lstsq_in_place_with_conj(faer::Conj::No, rhs_mat.as_mut());
+
+    for j in 0..p {
+        result[j] = rhs_mat[(j, 0)];
+    }
+
+    let r = qr.R();
+    let steps = n.min(p);
+    let largest_pivot = (0..steps)
+        .map(|k| r[(k, k)].abs())
+        .filter(|pivot| pivot.is_finite())
+        .fold(0.0_f64, f64::max);
+    if largest_pivot > 0.0 {
+        let tolerance = 1e-9 * largest_pivot;
+        let permuted = qr.P().inverse();
+        let (_forward, inverse) = permuted.arrays();
+        for factor_column in 0..steps {
+            let pivot = r[(factor_column, factor_column)];
+            if !pivot.is_finite() || pivot.abs() < tolerance {
+                result[inverse[factor_column]] = 0.0;
             }
-            for k in col..n {
-                m[row][k] -= factor * m[col][k];
-            }
-            rhs[row] -= factor * rhs[col];
         }
     }
 
-    // Back substitution.
-    let mut x = vec![0.0f64; n];
-    for col in (0..n).rev() {
-        let pivot = m[col][col];
-        if pivot.abs() < 1e-12 {
-            x[col] = 0.0;
-            continue;
+    for value in &mut result {
+        if !value.is_finite() {
+            *value = 0.0;
         }
-        let mut sum = rhs[col];
-        for k in (col + 1)..n {
-            sum -= m[col][k] * x[k];
-        }
-        x[col] = sum / pivot;
     }
-    x
+    result
+}
+
+#[cfg(test)]
+pub(crate) fn test_solve_full_pivot_qr(design: &[Vec<f64>], rhs: &[f64]) -> Vec<f64> {
+    solve_full_pivot_qr(design, rhs)
+}
+
+#[cfg(test)]
+pub(crate) fn test_fit_cubic_bspline_value(
+    observation_points: &[f32],
+    observations: &[[f32; 2]],
+    weights: &[f32],
+    segments: usize,
+    parameter: f32,
+) -> [f32; 2] {
+    fit_cubic_bspline(observation_points, observations, weights, segments)
+        .get_fitted_value(parameter)
 }
 
 #[cfg(test)]
@@ -492,6 +562,7 @@ mod tests {
 
     fn candidate(position: [f32; 3], visibility: f32) -> SeamCandidate {
         SeamCandidate {
+            layer_angle: 0.0,
             position,
             visibility,
             overhang: 0.0,

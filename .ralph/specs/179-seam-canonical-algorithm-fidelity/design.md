@@ -9,7 +9,7 @@
 ## Architecture Constraints
 
 - All canonical scoring constants must be ported with exact values and units; no reduced substitutes are permitted under the algorithmic parity target.
-- The `faer` dependency is preferred for guest-side matrix infrastructure; if it cannot compile for `wasm32-unknown-unknown` or cannot expose full-pivot Householder QR, the implementer must fall back to a local full-pivot Householder QR implementation, never to `ColPivQR`, `FullPivLU`, or normal equations.
+- The production solver is `faer::linalg::solvers::ColPivQr`, the canonical `fullPivHouseholderQr` equivalent. No local fallback, `FullPivLU`, or normal-equation substitute is permitted.
 - Determinism is mandatory: visibility sampling must use a stable per-object seed derived from object identity, not OrcaSlicer's process-wide RNG; two consecutive runs on the same input must produce bit-identical results.
 - `layer_angle` must be added to the internal `SeamCandidate` struct so canonical `curling_influence` can be computed; the existing fixed `1.0` substitution is removed.
 - Seam paint annotations (enforcer/blocker) must participate before cross-layer chaining, matching canonical `EnforcedBlockedSeamPoint` priority.
@@ -21,18 +21,18 @@
 
 ## Code Change Surface
 
-- Selected approach: replace packet 168's reduced algorithm substitutes in `comparator.rs`, `visibility.rs`, and `align.rs` with faithful canonical ports. Add `layer_angle` to the internal `SeamCandidate` struct. Add a `faer`-backed or local full-pivot Householder QR solver. Consume seam paint annotations from packet 1's per-region input. Port `align_seam_points` alternative-start retry. Add bounded continuity anchor for active-region gaps.
+- Selected approach: replace packet 168's reduced algorithm substitutes in `comparator.rs`, `visibility.rs`, and `align.rs` with faithful canonical ports. Add `layer_angle` to the internal `SeamCandidate` struct. Use `faer::linalg::solvers::ColPivQr` as the production full-pivot Householder QR solver. Consume seam paint annotations from packet 178's per-region input. Port `align_seam_points` alternative-start retry. Add bounded continuity anchor for active-region gaps.
 - Exact functions, traits, manifests, tests, and fixtures:
   - `comparator.rs`: port `SeamComparator::is_first_better`, `is_first_not_much_worse`, `compute_angle_penalty`, `gauss`, `pick_seam_point`, `pick_nearest_seam_point_index`, `pick_random_seam_point`, `position_hash_rand`; add `layer_angle` field to `SeamCandidate`; port `EnforcedBlockedSeamPoint` semantics.
   - `visibility.rs`: port `raycast_visibility` with 30000×25 canonical budget and seeded canonical sampling; port `calculate_candidates_visibility`/`calculate_point_visibility`; port `calculate_overhangs_and_layer_embedding` with `layer_angle`; consume seam enforcer/blocker annotations; use resolved flow width.
-  - `align.rs`: port `find_next_seam_in_layer`, `find_seam_string`, `align_seam_points` with alternative-start retry; add bounded continuity anchor; replace `solve_gaussian` with `faer`-backed or local full-pivot Householder QR; port `CubicBSplineKernel` and `fit_cubic_bspline` faithfully.
-  - `lib.rs`: wire `run_aligned_planning` to consume packet 1's per-region input and pass resolved flow width + annotations through.
+  - `align.rs`: port `find_next_seam_in_layer`, `find_seam_string`, `align_seam_points` with alternative-start retry; add bounded continuity anchor; replace `solve_gaussian` with `faer::linalg::solvers::ColPivQr`; port `CubicBSplineKernel` and `fit_cubic_bspline` faithfully.
+  - `lib.rs`: wire `run_aligned_planning` to consume packet 178's per-region input and pass resolved flow width + annotations through.
   - New test files: `seam_canonical_comparator_tdd.rs`, `seam_canonical_visibility_tdd.rs`, `seam_canonical_alignment_tdd.rs`, `seam_canonical_spline_tdd.rs`.
-  - `modules/core-modules/seam-planner-default/Cargo.toml`: add `faer` dependency (or local solver fallback).
+  - `modules/core-modules/seam-planner-default/Cargo.toml`: add `faer` as a regular production dependency.
 - Rejected alternatives and reasons:
   - Keep reduced visibility budget: violates algorithmic parity target.
   - Keep normal-equation solver: violates algorithmic parity target; numerically unstable for rank-deficient design matrices.
-  - Use `ColPivQR` or `FullPivLU` from nalgebra: not full-pivot Householder QR; documented numerical deviation.
+  - Use a non-`faer` solver: unnecessary after the `ColPivQr` production decision and its verified guest build.
   - Skip alternative-start retry: loses canonical longer-string selection for short initial strings.
   - Fixed `curling_influence = 1.0`: ignores canonical `layer_angle` influence on seam-string weight.
   - Hardcoded `0.4 mm` flow width: non-canonical for non-default nozzle configs.
@@ -47,14 +47,14 @@
 
 - `modules/core-modules/seam-planner-default/src/lib.rs` - lines 68-199 only - aligned driver wire-up.
 - `modules/core-modules/seam-planner-default/tests/seam_aligned_planning_tdd.rs` - full file - regression fixture idioms.
-- `crates/slicer-sdk/src/prepass_types.rs` - lines 240-304 - packet 1's new input view types (consumed, not edited).
+- `crates/slicer-sdk/src/prepass_types.rs` - lines 240-304 - packet 178's new input view types (consumed, not edited).
 
 ## Out-of-Bounds Files
 
 - `OrcaSlicerDocumented/...` - delegate; never load directly.
 - `target/`, `Cargo.lock`, generated code, and vendored dependencies - never load.
-- WIT/IR identity and host scheduling - packet 1.
-- Continuous wall projection and default-mode changes - packet 3.
+- WIT/IR identity and host scheduling - packet 178.
+- Continuous wall projection and default-mode changes - packet 180.
 - `crates/slicer-runtime/**`, `crates/slicer-wasm-host/**` - delegate symbol lookups only; do not browse.
 
 ## Expected Sub-Agent Dispatches
@@ -68,21 +68,21 @@
 ## Data and Contract Notes
 
 - IR/manifest contracts: the internal `SeamCandidate` struct in `comparator.rs` gains a `layer_angle: f32` field; this is module-local and does not cross WIT or IR boundaries.
-- WIT boundary: no WIT changes in this packet; packet 1's input view is consumed as-is.
+- WIT boundary: no WIT changes in this packet; packet 178's input view is consumed as-is.
 - Determinism/scheduler constraints: visibility sampling must be deterministic across runs; the seed is derived from a stable object identifier, not from process memory or thread timing.
 
 ## Locked Assumptions and Invariants
 
 - Canonical visibility constants are 30000 samples × 25 rays per sample; no reduced budget is acceptable.
-- The solver is full-pivot Householder QR (via `faer` or local); no `ColPivQR`, `FullPivLU`, or normal-equation substitute is acceptable.
+- The solver is `faer::linalg::solvers::ColPivQr`, the canonical full-pivot Householder QR equivalent; no local fallback, `FullPivLU`, or normal-equation substitute is acceptable.
 - Alternative-start retry is mandatory for strings shorter than `SEAM_ALIGN_MINIMUM_STRING_SEAMS`.
 - Bounded continuity anchor is a PNP extension to canonical gap handling; it is documented as such, not claimed as canonical.
 - Seam paint annotations participate before chaining, matching canonical `EnforcedBlockedSeamPoint` priority.
-- Flow width comes from packet 1's resolved per-active-region scoring width, not a hardcoded default.
+- Flow width comes from packet 178's resolved per-active-region scoring width, not a hardcoded default.
 
 ## Risks and Tradeoffs
 
-- `faer` guest compatibility is unproven; the packet must spike it before committing and fall back to a local implementation if it fails.
+- `faer` 0.24.4 guest compatibility is settled by the workspace guest-build verification; the production path is unconditional.
 - 30000×25 visibility sampling is computationally expensive in WASM; a BVH or AABB tree may be needed for large meshes, but the sample/ray counts must not be reduced.
 - Adding `layer_angle` to the internal struct changes the module's test fixtures; all existing `seam_planner_tdd.rs` and `seam_aligned_planning_tdd.rs` assertions must be updated in the same step.
 - The alternative-start retry loop changes alignment output for fixtures that previously produced unfinalized short strings; existing regression tests may need updated expected values.
@@ -91,7 +91,7 @@
 
 - Aggregate: `M`
 - Largest step: `M`
-- Highest-risk dispatch and required return format: `faer` guest build spike, `FACT`.
+- Highest-risk closure evidence: `cargo xtask build-guests --check` confirms the settled `faer` production dependency.
 
 ## Open Questions
 

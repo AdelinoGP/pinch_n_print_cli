@@ -62,6 +62,7 @@ pub(crate) enum EnforcedBlockedSeamPoint {
 
 /// Per-loop perimeter bookkeeping for seam picking.
 /// Canonical `Perimeter` (`SeamPlacer.hpp`).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct Perimeter {
     /// Index of the first candidate of this loop in the layer candidate list.
@@ -102,6 +103,8 @@ pub(crate) struct SeamCandidate {
     /// Local counter-clockwise angle at this point; negative = concave.
     /// Units: radians.
     pub local_ccw_angle: f32,
+    /// Per-layer global angle (rad) used to compute canonical curling_influence. Units: radians.
+    pub layer_angle: f32,
     /// True for points inside the central region of an enforcer blob.
     pub central_enforcer: bool,
     /// User enforcement classification.
@@ -451,6 +454,7 @@ mod tests {
             unsupported_dist: 0.0,
             embedded_distance: 0.0,
             local_ccw_angle: 0.0,
+            layer_angle: 0.0,
             central_enforcer: false,
             point_type: EnforcedBlockedSeamPoint::Neutral,
             flow_width: 0.4, // mm
