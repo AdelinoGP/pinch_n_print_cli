@@ -162,8 +162,8 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `rectilinear-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `rectilinear-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `rectilinear-infill` |
-| `seam_mode` | enum | `"nearest"` | — | `seam-placer` |
-| `seam_mode` | enum | `"nearest"` | — | `seam-planner-default` |
+| `seam_mode` | enum | `"aligned"` | — | `seam-placer` |
+| `seam_mode` | enum | `"aligned"` | — | `seam-planner-default` |
 | `brim_width` | float | `8.0` | [0.0, 30.0] | `skirt-brim` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `skirt-brim` |
 | `skirt_brim_enabled` | bool | `true` | — | `skirt-brim` |

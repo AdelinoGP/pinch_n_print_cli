@@ -999,3 +999,33 @@ layer-parallel-safe = false   # enforced — the host emits a warning if true is
 ```
 
 The host instantiates exactly one WASM instance for finalization modules regardless of CPU count. These modules are never pooled.
+
+---
+
+## Seam-First Aligned Default and Continuous Wall Projection (packet 180)
+
+`seam-placer` (stage `Layer::PerimetersPostProcess`) consumes the host-injected
+`SeamPlanIR` produced by the `PrePass::SeamPlanning` stage (`seam-planner-default`)
+and projects each planner target onto the final wall geometry. The default
+`seam_mode` for both modules is **`aligned`**, matching OrcaSlicer's canonical
+`spAligned` default (see `docs/adr/0046-aligned-seam-in-seam-planning-prepass.md`
+amendment recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`).
+
+The `aligned` mode performs **continuous projection** rather than vertex-only
+snap: when the planner's target does not coincide with an existing wall-loop
+vertex, `seam-placer::project_onto_wall_segment` projects it onto the nearest
+point of the final wall segment, inserts a new point at parameter `t ∈ (0, 1)`,
+interpolates `feature_flags` and `width_profile.widths` linearly from the
+segment endpoints, and re-closes the loop. The parallel cardinality invariant
+(`feature_flags.len() == path.points.len() == width_profile.widths.len()`) is
+preserved after insertion.
+
+When no `SeamPlanIR` entry matches an active region in aligned mode,
+`seam-placer` emits `ModuleError::non_fatal(code: 6, message: "missing seam
+plan entry (layer, object, region_id, variant_chain=[])")` and applies the
+canonical local-candidate selection as a degraded fallback while preserving
+all wall loops. Degenerate empty wall loops (no points) emit
+`ModuleError::non_fatal(code: 7, ...)` without panicking and the empty loop
+is preserved. The slice continues with degraded status. Wall preservation is
+unconditional: every region's walls reach the output regardless of seam
+state, missing plan, or degenerate geometry.

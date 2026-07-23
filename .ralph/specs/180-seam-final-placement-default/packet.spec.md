@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 180-seam-final-placement-default
 task_ids:
   - TASK-293

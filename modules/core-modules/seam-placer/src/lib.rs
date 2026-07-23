@@ -122,15 +122,198 @@ fn dist2_xy(a: &slicer_ir::Point3WithWidth, b: &slicer_ir::Point3WithWidth) -> f
 ///
 /// The seam planner has already chosen the aligned position per layer; the
 /// host injects it into `region.resolved_seam()` (ADR-0020 channel) before
-/// this module runs. This function snaps that injected point to the nearest
-/// `seam_candidates()` position by 2D XY distance so the seam lands on an
-/// actual wall vertex. The snap radius is deliberately unlimited (packet
-/// 168 [FWD] note): a far snap is still better than dropping the seam, and
+/// this module runs. With candidates, this function keeps the candidate snap
+/// path. Without candidates, it projects the injected point onto the nearest
+/// wall segment. The search radius is deliberately unlimited (packet 168
+/// [FWD] note): a far projection is still better than dropping the seam, and
 /// the planner's alignment guarantees keep the distance small in practice.
 ///
-/// Fallback when the candidate list is empty: nearest wall-loop vertex.
-/// Returns `None` (→ pristine wall emission) when there is no injected
-/// resolved seam or no wall vertex exists.
+/// Returns `None` when there is no injected resolved seam or no wall geometry.
+#[derive(Debug, Clone, Copy)]
+struct WallSegmentProjection {
+    point: slicer_ir::Point3WithWidth,
+    wall_index: usize,
+    segment_start: usize,
+    t: f32,
+}
+
+fn interpolate_point(
+    start: &slicer_ir::Point3WithWidth,
+    end: &slicer_ir::Point3WithWidth,
+    t: f32,
+) -> slicer_ir::Point3WithWidth {
+    let lerp = |a: f32, b: f32| a + (b - a) * t;
+    slicer_ir::Point3WithWidth {
+        x: lerp(start.x, end.x),
+        y: lerp(start.y, end.y),
+        z: lerp(start.z, end.z),
+        width: lerp(start.width, end.width),
+        flow_factor: lerp(start.flow_factor, end.flow_factor),
+        overhang_quartile: if t <= 0.5 {
+            start.overhang_quartile
+        } else {
+            end.overhang_quartile
+        },
+        dist_to_top_mm: lerp(start.dist_to_top_mm, end.dist_to_top_mm),
+    }
+}
+
+fn project_onto_wall_segment(
+    target: &slicer_ir::Point3WithWidth,
+    wall_loops: &[slicer_sdk::prelude::WallLoop],
+) -> Option<WallSegmentProjection> {
+    const VERTEX_TOLERANCE: f32 = 0.00001;
+    let mut best: Option<(f32, WallSegmentProjection)> = None;
+
+    for (wall_index, loop_) in wall_loops.iter().enumerate() {
+        let points = &loop_.path.points;
+        if points.is_empty() {
+            continue;
+        }
+        let is_closed = points.len() > 1 && points.first() == points.last();
+        let effective_len = if is_closed {
+            points.len() - 1
+        } else {
+            points.len()
+        };
+        if effective_len == 0 {
+            continue;
+        }
+
+        for segment_start in 0..effective_len {
+            let end_index = if segment_start + 1 < effective_len {
+                segment_start + 1
+            } else {
+                0
+            };
+            let start = points[segment_start];
+            let end = points[end_index];
+            let dx = end.x - start.x;
+            let dy = end.y - start.y;
+            let length2 = dx * dx + dy * dy;
+            let t = if length2 > 0.0 {
+                ((target.x - start.x) * dx + (target.y - start.y) * dy) / length2
+            } else {
+                0.0
+            };
+            let t = t.clamp(0.0, 1.0);
+            let normalized_t = if t.abs() <= VERTEX_TOLERANCE {
+                0.0
+            } else if (1.0 - t).abs() <= VERTEX_TOLERANCE {
+                1.0
+            } else {
+                t
+            };
+            let point = match normalized_t {
+                0.0 => start,
+                1.0 => end,
+                _ => interpolate_point(&start, &end, normalized_t),
+            };
+            let distance2 = dist2_xy(&point, target);
+            let projection = WallSegmentProjection {
+                point,
+                wall_index,
+                segment_start,
+                t: normalized_t,
+            };
+            let should_replace = best
+                .as_ref()
+                .is_none_or(|(best_distance2, best_projection)| {
+                    distance2
+                        .total_cmp(best_distance2)
+                        .then_with(|| projection.wall_index.cmp(&best_projection.wall_index))
+                        .then_with(|| projection.segment_start.cmp(&best_projection.segment_start))
+                        .is_lt()
+                });
+            if should_replace {
+                best = Some((distance2, projection));
+            }
+        }
+    }
+
+    best.map(|(_, projection)| projection)
+}
+
+fn default_wall_feature_flags() -> slicer_ir::WallFeatureFlags {
+    slicer_ir::WallFeatureFlags {
+        tool_index: None,
+        fuzzy_skin: false,
+        is_bridge: false,
+        is_thin_wall: false,
+        skip_ironing: false,
+        custom: std::collections::HashMap::new(),
+    }
+}
+
+fn insert_projected_point(
+    loop_: &slicer_sdk::prelude::WallLoop,
+    projection: WallSegmentProjection,
+) -> slicer_sdk::prelude::WallLoop {
+    let points = &loop_.path.points;
+    let is_closed = points.len() > 1 && points.first() == points.last();
+    let effective_len = if is_closed {
+        points.len() - 1
+    } else {
+        points.len()
+    };
+    if effective_len == 0 {
+        return loop_.clone();
+    }
+
+    let insert_at = projection.segment_start + 1;
+    let mut effective_points = points[..effective_len].to_vec();
+    effective_points.insert(insert_at, projection.point);
+
+    let width_at = |index: usize| {
+        loop_
+            .width_profile
+            .widths
+            .get(index)
+            .copied()
+            .unwrap_or(points[index].width)
+    };
+    let start_width = width_at(projection.segment_start);
+    let end_index = if projection.segment_start + 1 < effective_len {
+        projection.segment_start + 1
+    } else {
+        0
+    };
+    let end_width = width_at(end_index);
+    let inserted_width = start_width + (end_width - start_width) * projection.t;
+    let mut effective_widths: Vec<f32> = (0..effective_len).map(width_at).collect();
+    effective_widths.insert(insert_at, inserted_width);
+
+    let flag_at = |index: usize| {
+        loop_
+            .feature_flags
+            .get(index)
+            .cloned()
+            .or_else(|| loop_.feature_flags.last().cloned())
+            .unwrap_or_else(default_wall_feature_flags)
+    };
+    let mut effective_flags: Vec<_> = (0..effective_len).map(flag_at).collect();
+    let inserted_flag = if projection.t <= 0.5 {
+        effective_flags[projection.segment_start].clone()
+    } else {
+        effective_flags[end_index].clone()
+    };
+    effective_flags.insert(insert_at, inserted_flag);
+    if is_closed {
+        if let Some(first_flag) = effective_flags.first().cloned() {
+            effective_flags.push(first_flag);
+        }
+    }
+
+    effective_points.push(effective_points[0]);
+    effective_widths.push(effective_widths[0]);
+
+    let mut inserted_loop = loop_.clone();
+    inserted_loop.path.points = effective_points;
+    inserted_loop.width_profile.widths = effective_widths;
+    inserted_loop.feature_flags = effective_flags;
+    inserted_loop
+}
+
 fn aligned_seam_target(
     region: &PerimeterRegionView,
     wall_loops: &[slicer_sdk::prelude::WallLoop],
@@ -146,19 +329,7 @@ fn aligned_seam_target(
                 .then_with(|| left.y.total_cmp(&right.y))
                 .then_with(|| left.x.total_cmp(&right.x))
         });
-    snapped.or_else(|| {
-        // Empty candidate list → snap directly to the nearest wall vertex.
-        wall_loops
-            .iter()
-            .flat_map(|loop_| loop_.path.points.iter())
-            .min_by(|left, right| {
-                dist2_xy(left, &injected)
-                    .total_cmp(&dist2_xy(right, &injected))
-                    .then_with(|| left.y.total_cmp(&right.y))
-                    .then_with(|| left.x.total_cmp(&right.x))
-            })
-            .copied()
-    })
+    snapped.or_else(|| project_onto_wall_segment(&injected, wall_loops).map(|p| p.point))
 }
 
 fn find_seam_location(
@@ -192,13 +363,10 @@ fn rotate_wall_loop(
         "width_profile.widths must have the same length as path.points"
     );
 
-    // Closure-aware rotation: wall loops carry an explicit closing repeat
-    // (OrcaSlicer `ExtrusionPath::is_closed()` convention; see
-    // `crates/slicer-ir/src/slice_ir.rs::ExtrusionPath3D::is_closed`). A naïve
-    // modular rotation over the full N+1 points produces an invalid loop
-    // (start point appears twice in the middle). Rotate the N effective
-    // points, then re-append the new first as the closing repeat. Parallel
-    // arrays (feature_flags, width_profile.widths) follow the same shape.
+    // Closure-aware rotation: wall loops carry an explicit closing repeat.
+    // Rotate the N effective points, then re-append the new first as the
+    // closing repeat. Parallel arrays (feature_flags, width_profile.widths)
+    // follow the same shape with closing repeats.
     let total = loop_.path.points.len();
     let is_closed = loop_.path.is_closed();
     let effective = if is_closed { total - 1 } else { total };
@@ -224,7 +392,6 @@ fn rotate_wall_loop(
             rotated_flags.push(first_flag);
         }
     }
-
     let mut rotated_widths = Vec::with_capacity(loop_.width_profile.widths.len());
     for i in 0..effective {
         rotated_widths.push(loop_.width_profile.widths[(start_idx + i) % effective]);
@@ -280,9 +447,25 @@ impl LayerModule for SeamPlacer {
         // `convert_perimeter_output` (no bucket → no PerimeterRegion entry)
         // and corrupt the `(object_id, region_id)` pairing in
         // `layer_executor::commit_layer_outputs` for multi-region prints.
+        let mut degraded_error = None;
+        let mut empty_wall_loop_error = None;
         for region in regions {
             output.begin_region(region.object_id(), *region.region_id());
-            let wall_loops = region.wall_loops();
+            if matches!(self.mode, SeamMode::Aligned | SeamMode::AlignedBack)
+                && region.resolved_seam().is_none()
+                && degraded_error.is_none()
+            {
+                degraded_error = Some(ModuleError::non_fatal(
+                    6,
+                    format!(
+                        "missing seam plan entry (layer={}, object={}, region_id={}, variant_chain=[])",
+                        layer_index,
+                        region.object_id(),
+                        region.region_id(),
+                    ),
+                ));
+            }
+            let mut wall_loops = region.wall_loops().to_vec();
             if wall_loops.is_empty() {
                 continue;
             }
@@ -309,7 +492,34 @@ impl LayerModule for SeamPlacer {
                     // resolved seam and snap it onto real geometry; they do
                     // NOT score candidates. See `aligned_seam_target`.
                     SeamMode::Aligned | SeamMode::AlignedBack => {
-                        aligned_seam_target(region, wall_loops)?
+                        if region.resolved_seam().is_none() {
+                            select_seam_candidate(
+                                SeamMode::Nearest,
+                                layer_index,
+                                region.seam_candidates(),
+                            )?
+                            .position
+                        } else {
+                            let point = aligned_seam_target(region, &wall_loops)?;
+                            if region.seam_candidates().is_empty() {
+                                if let Some(injected) =
+                                    region.resolved_seam().map(|seam| seam.point)
+                                {
+                                    if let Some(projection) =
+                                        project_onto_wall_segment(&injected, &wall_loops)
+                                    {
+                                        if projection.t > 0.0 && projection.t < 1.0 {
+                                            wall_loops[projection.wall_index] =
+                                                insert_projected_point(
+                                                    &wall_loops[projection.wall_index],
+                                                    projection,
+                                                );
+                                        }
+                                    }
+                                }
+                            }
+                            point
+                        }
                     }
                     // Nearest/rear/random keep the candidate-preference path.
                     SeamMode::Nearest | SeamMode::Rear | SeamMode::Random => {
@@ -322,7 +532,7 @@ impl LayerModule for SeamPlacer {
                         }
                     }
                 };
-                let (wall_idx, start_idx) = find_seam_location(wall_loops, &point)?;
+                let (wall_idx, start_idx) = find_seam_location(&wall_loops, &point)?;
                 Some((point, wall_idx, start_idx))
             })();
 
@@ -340,9 +550,29 @@ impl LayerModule for SeamPlacer {
                     _ => loop_.clone(),
                 };
 
-                let emitted_point = emitted_loop.path.points.first().copied().ok_or_else(|| {
-                    ModuleError::fatal(4, "wall loop must contain at least one point")
-                })?;
+                if emitted_loop.path.points.is_empty() && empty_wall_loop_error.is_none() {
+                    empty_wall_loop_error = Some(ModuleError::non_fatal(
+                        7,
+                        format!(
+                            "degenerate empty wall loop (no points) at wall_index={wall_index}"
+                        ),
+                    ));
+                }
+                let emitted_point = emitted_loop
+                    .path
+                    .points
+                    .first()
+                    .copied()
+                    .or_else(|| region.resolved_seam().map(|seam| seam.point))
+                    .unwrap_or(slicer_ir::Point3WithWidth {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                        width: 0.0,
+                        flow_factor: 0.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                    });
 
                 output
                     .push_reordered_wall_loop(emitted_point, wall_index as u32, emitted_loop)
@@ -350,7 +580,7 @@ impl LayerModule for SeamPlacer {
             }
         }
 
-        Ok(())
+        empty_wall_loop_error.or(degraded_error).map_or(Ok(()), Err)
     }
 }
 

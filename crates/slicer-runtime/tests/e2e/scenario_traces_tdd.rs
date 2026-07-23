@@ -389,3 +389,89 @@ fn surface_group_id_round_trips_through_active_region_serde() {
     let back: ActiveRegion = serde_json::from_str(&json).expect("ActiveRegion round-trips");
     assert_eq!(back, r);
 }
+
+#[test]
+fn seam_aligned_default_e2e() {
+    use slicer_sdk::traits::LayerModule;
+
+    let config = slicer_ir::ConfigView::from_map(std::collections::HashMap::from([(
+        slicer_ir::ConfigKey::from("seam_mode"),
+        slicer_ir::ConfigValue::String("aligned".to_string()),
+    )]));
+    let placer = seam_placer::SeamPlacer::on_print_start(&config).expect("start seam placer");
+    let point = |x: f32, y: f32| slicer_ir::Point3WithWidth {
+        x,
+        y,
+        z: 0.0,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+        dist_to_top_mm: 0.0,
+    };
+    let make_region = |object_id: &str, region_id: u64, x0: f32, seam_x: Option<f32>| {
+        let mut region = slicer_sdk::views::PerimeterRegionView::default();
+        region.set_object_id(object_id);
+        region.set_region_id(region_id);
+        region.set_wall_loops(vec![slicer_ir::WallLoop {
+            perimeter_index: 0,
+            loop_type: slicer_ir::LoopType::Outer,
+            path: slicer_ir::ExtrusionPath3D {
+                points: vec![
+                    point(x0, 0.0),
+                    point(x0 + 1.0, 0.0),
+                    point(x0 + 1.0, 1.0),
+                    point(x0, 1.0),
+                ],
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                speed_factor: 1.0,
+            },
+            width_profile: slicer_ir::WidthProfile { widths: vec![] },
+            feature_flags: Default::default(),
+            boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+        }]);
+        if let Some(x) = seam_x {
+            region.set_resolved_seam(Some(slicer_ir::SeamPosition {
+                point: point(x, 0.0),
+                wall_index: 0,
+            }));
+        }
+        region
+    };
+    let regions = vec![
+        make_region("object-1", 1, 0.0, Some(0.5)),
+        make_region("object-2", 2, 2.0, Some(2.5)),
+        make_region("object-3", 3, 4.0, Some(4.5)),
+    ];
+    let mut output = slicer_sdk::builders::PerimeterOutputBuilder::new();
+    placer
+        .run_wall_postprocess(0, &regions, &mut output, &config)
+        .expect("aligned seam placement");
+    let rotated = output.rotated_wall_loops();
+    assert_eq!(rotated.len(), 3, "every region must preserve its wall loop");
+    for (wall, target_x) in rotated.iter().zip([0.5, 2.5, 4.5]) {
+        let first_point = wall.2.path.points[0];
+        assert!((first_point.x - target_x).abs() <= 0.05);
+        assert!(first_point.y.abs() <= 0.05);
+        assert!(
+            (first_point.x - (target_x - 0.5)).abs() > 0.05 || first_point.y.abs() > 0.05,
+            "aligned mode must not emit a pristine wall start"
+        );
+    }
+
+    let missing_regions = vec![
+        make_region("object-1", 1, 0.0, None),
+        make_region("object-2", 2, 2.0, None),
+        make_region("object-3", 3, 4.0, Some(4.5)),
+    ];
+    let mut degraded_output = slicer_sdk::builders::PerimeterOutputBuilder::new();
+    let error = placer
+        .run_wall_postprocess(0, &missing_regions, &mut degraded_output, &config)
+        .expect_err("missing plans must use degraded fallback");
+    assert_eq!(error.code, 6);
+    assert!(!error.fatal);
+    let degraded_walls = degraded_output.rotated_wall_loops();
+    assert_eq!(degraded_walls.len(), 3);
+    let third_first_point = degraded_walls[2].2.path.points[0];
+    assert!((third_first_point.x - 4.5).abs() <= 0.05);
+    assert!(third_first_point.y.abs() <= 0.05);
+}
