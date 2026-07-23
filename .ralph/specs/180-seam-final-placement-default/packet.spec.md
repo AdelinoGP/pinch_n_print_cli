@@ -1,8 +1,8 @@
 ---
-status: draft
+status: implemented
 packet: 180-seam-final-placement-default
 task_ids:
-  - TASK-283
+  - TASK-293
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -15,11 +15,11 @@ Project canonical aligned seam targets onto continuous final wall geometry, pres
 
 ## Scope Boundaries
 
-This packet consumes packets 1 and 2's variant-aware canonical seam target and implements the final wall projection, degraded fallback diagnostics, and default-mode change. It does not change the prepass WIT input, the active-region identity contract, or the canonical scoring/visibility/spline algorithm. It modifies `seam-placer` wall mutation, both module manifests' default config, and the SDK view plumbing for continuous projection.
+This packet consumes packets 178 and 179's variant-aware canonical seam target and implements the final wall projection, degraded fallback diagnostics, and default-mode change. It does not change the prepass WIT input, the active-region identity contract, or the canonical scoring/visibility/spline algorithm. It modifies `seam-placer` wall mutation, both module manifests' default config, and the SDK view plumbing for continuous projection.
 
 ## Prerequisites and Blockers
 
-- Depends on: `TASK-281` (packet 1) and `TASK-282` (packet 2).
+- Depends on: `TASK-291` (packet 178) and `TASK-292` (packet 179).
 - Unblocks: none (terminal packet in this batch).
 - Activation blockers: none known; packet remains draft until preflight and guest freshness gates pass.
 

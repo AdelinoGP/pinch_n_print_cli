@@ -226,6 +226,7 @@ pub fn execute_prepass_with_instrumentation(
             let input = PrepassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 layer_plan: blackboard.layer_plan().cloned(),
+                slice_ir: blackboard.slice_ir().cloned(),
                 region_map: blackboard.region_map().cloned(),
                 support_geometry: blackboard.support_geometry().cloned(),
                 _phantom: std::marker::PhantomData,
@@ -752,7 +753,11 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
         ],
-        "PrePass::SeamPlanning" => &[BlackboardPrepassSlot::LayerPlan],
+        "PrePass::SeamPlanning" => &[
+            BlackboardPrepassSlot::LayerPlan,
+            BlackboardPrepassSlot::SliceIR,
+            BlackboardPrepassSlot::RegionMap,
+        ],
         "PrePass::SupportGeometry" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,

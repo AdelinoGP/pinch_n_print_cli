@@ -21,18 +21,136 @@
 
 use crate::comparator::{EnforcedBlockedSeamPoint, SeamCandidate};
 use crate::contours::{signed_distance_to_contours, Contour};
+use slicer_ir::{PaintSemantic, PaintValue};
+
+fn paint_marker(text: &str) -> Option<EnforcedBlockedSeamPoint> {
+    let text = text.to_ascii_lowercase();
+    if text.contains("blocked") || text.contains("blocker") {
+        Some(EnforcedBlockedSeamPoint::Blocked)
+    } else if text.contains("enforced") || text.contains("enforcer") {
+        Some(EnforcedBlockedSeamPoint::Enforced)
+    } else {
+        None
+    }
+}
+
+fn paint_annotation_type(
+    semantic: &PaintSemantic,
+    value: &PaintValue,
+) -> Option<EnforcedBlockedSeamPoint> {
+    let semantic_type = match semantic {
+        PaintSemantic::SupportBlocker => Some(EnforcedBlockedSeamPoint::Blocked),
+        PaintSemantic::SupportEnforcer => Some(EnforcedBlockedSeamPoint::Enforced),
+        PaintSemantic::Custom(name) => paint_marker(name),
+        _ => None,
+    };
+    let value_type = match value {
+        PaintValue::Custom(name) => paint_marker(name),
+        _ => None,
+    };
+
+    match (semantic_type, value_type) {
+        (Some(EnforcedBlockedSeamPoint::Blocked), _)
+        | (_, Some(EnforcedBlockedSeamPoint::Blocked)) => Some(EnforcedBlockedSeamPoint::Blocked),
+        (Some(EnforcedBlockedSeamPoint::Enforced), _)
+        | (_, Some(EnforcedBlockedSeamPoint::Enforced)) => Some(EnforcedBlockedSeamPoint::Enforced),
+        _ => None,
+    }
+}
+
+fn annotation_at<'a>(
+    paint_annotations: &'a [(PaintSemantic, &[Vec<Option<PaintValue>>])],
+    contour_idx: usize,
+    vertex_idx: usize,
+) -> impl Iterator<Item = (&'a PaintSemantic, &'a PaintValue)> {
+    paint_annotations
+        .iter()
+        .filter_map(move |(semantic, contours)| {
+            contours
+                .get(contour_idx)
+                .and_then(|vertices| vertices.get(vertex_idx))
+                .and_then(Option::as_ref)
+                .map(|value| (semantic, value))
+        })
+}
+
+fn has_enforced_annotation(
+    paint_annotations: &[(PaintSemantic, &[Vec<Option<PaintValue>>])],
+    contour_idx: usize,
+    vertex_idx: usize,
+) -> bool {
+    annotation_at(paint_annotations, contour_idx, vertex_idx).any(|(semantic, value)| {
+        paint_annotation_type(semantic, value) == Some(EnforcedBlockedSeamPoint::Enforced)
+    })
+}
+
+fn is_central_enforcer_vertex(
+    paint_annotations: &[(PaintSemantic, &[Vec<Option<PaintValue>>])],
+    contour_idx: usize,
+    vertex_idx: usize,
+) -> bool {
+    let Some(contour_annotations) = paint_annotations
+        .iter()
+        .find_map(|(_, contours)| contours.get(contour_idx))
+    else {
+        return false;
+    };
+    if !has_enforced_annotation(paint_annotations, contour_idx, vertex_idx) {
+        return false;
+    }
+
+    let mut segment_start = vertex_idx;
+    while segment_start > 0
+        && has_enforced_annotation(paint_annotations, contour_idx, segment_start - 1)
+    {
+        segment_start -= 1;
+    }
+    let mut segment_end = vertex_idx + 1;
+    while segment_end < contour_annotations.len()
+        && has_enforced_annotation(paint_annotations, contour_idx, segment_end)
+    {
+        segment_end += 1;
+    }
+
+    // Annotation geometry has no explicit segment boundaries. Treat the first
+    // third of each contiguous enforced run as its central region.
+    vertex_idx - segment_start < (segment_end - segment_start).div_ceil(3).max(1)
+}
+
+fn candidate_paint_classification(
+    paint_annotations: Option<&[(PaintSemantic, &[Vec<Option<PaintValue>>])]>,
+    contour_idx: usize,
+    vertex_idx: usize,
+) -> (EnforcedBlockedSeamPoint, bool) {
+    let Some(paint_annotations) = paint_annotations else {
+        return (EnforcedBlockedSeamPoint::Neutral, false);
+    };
+
+    let mut point_type = EnforcedBlockedSeamPoint::Neutral;
+    for (semantic, value) in annotation_at(paint_annotations, contour_idx, vertex_idx) {
+        match paint_annotation_type(semantic, value) {
+            Some(EnforcedBlockedSeamPoint::Blocked) => {
+                return (EnforcedBlockedSeamPoint::Blocked, false);
+            }
+            Some(EnforcedBlockedSeamPoint::Enforced) => {
+                point_type = EnforcedBlockedSeamPoint::Enforced;
+            }
+            _ => {}
+        }
+    }
+
+    let central = point_type == EnforcedBlockedSeamPoint::Enforced
+        && is_central_enforcer_vertex(paint_annotations, contour_idx, vertex_idx);
+    (point_type, central)
+}
 
 /// Number of uniform surface samples for global visibility raycasting.
-/// Canonical `SeamPlacer::raycasting_visibility_samples_count` is 30000;
-/// reduced here to a deterministic WASM budget. Deviation
-/// D-168-SEAM-PREPASS-SOURCE material. Units: count.
-const VISIBILITY_SAMPLES_COUNT: usize = 2000;
+/// Canonical `SeamPlacer::raycasting_visibility_samples_count`. Units: count.
+pub(crate) const VISIBILITY_SAMPLES_COUNT: usize = 30000;
 
 /// Stratified hemisphere rays per side; total rays = side^2.
-/// Canonical `SeamPlacer::sqr_rays_per_sample_point` is 5 (25 rays);
-/// reduced to 3 (9 rays) for the WASM budget. Deviation
-/// D-168-SEAM-PREPASS-SOURCE material. Units: count.
-const RAYS_PER_SIDE: usize = 3;
+/// Canonical `SeamPlacer::sqr_rays_per_sample_point`. Units: count.
+pub(crate) const RAYS_PER_SIDE: usize = 5;
 
 /// Total hemisphere rays per sample (`RAYS_PER_SIDE`^2; canonical 25).
 const RAYS_PER_SAMPLE: usize = RAYS_PER_SIDE * RAYS_PER_SIDE;
@@ -68,7 +186,7 @@ const OVERHANG_ANGLE_TAN: f32 = 1.0;
 
 /// One precomputed surface visibility sample.
 /// Canonical stores these in a KD-tree; a linear scan suffices at the
-/// reduced sample budget.
+/// canonical sample budget for this implementation.
 #[derive(Debug, Clone)]
 pub(crate) struct VisibilitySample {
     /// Sample position on the mesh surface. Units: mm.
@@ -120,17 +238,32 @@ fn normalize(a: [f32; 3]) -> [f32; 3] {
     }
 }
 
-/// Radical-inverse low-discrepancy sequence (deterministic; replaces the
-/// canonical RNG for sample placement — no RNG anywhere in this module).
-fn radical_inverse(mut i: u32, base: u32) -> f32 {
-    let mut f = 1.0f32;
-    let mut r = 0.0f32;
-    while i > 0 {
-        f /= base as f32;
-        r += f * (i % base) as f32;
-        i /= base;
+/// Stable seeded PRNG for canonical visibility sampling.
+///
+/// SplitMix64 is used explicitly rather than a platform RNG so identical
+/// object seeds produce identical f32 samples on every supported target.
+struct StableRng {
+    state: u64,
+}
+
+impl StableRng {
+    fn new(seed: u64) -> Self {
+        Self { state: seed }
     }
-    r
+
+    fn next_u64(&mut self) -> u64 {
+        self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut value = self.state;
+        value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        value ^ (value >> 31)
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        // Keep exactly 24 random bits so the conversion is deterministic and
+        // the result is always in [0, 1).
+        (self.next_u64() >> 40) as f32 / 16_777_216.0
+    }
 }
 
 /// Moeller-Trumbore ray/triangle intersection; returns the hit parameter t
@@ -194,23 +327,25 @@ fn ray_hits_aabb(origin: [f32; 3], dir: [f32; 3], lo: [f32; 3], hi: [f32; 3]) ->
     true
 }
 
-/// Compute global surface visibility by deterministic low-discrepancy
-/// surface sampling and stratified hemisphere raycasting.
+/// Compute global surface visibility by seeded uniform surface sampling and
+/// stratified hemisphere raycasting.
 ///
 /// Port of canonical `raycast_visibility` (`SeamPlacer.cpp`): each sample's
 /// visibility starts at 1.0 and every occluded ray subtracts
-/// `1 / RAYS_PER_SAMPLE` (canonical 1/25, here 1/9). With `aligned_back`,
+/// `1 / RAYS_PER_SAMPLE` (canonical 1/25). With `aligned_back`,
 /// the canonical AlignedBack front bias
 /// `clamp((normal . (0,-1,0) + 1.2) * 0.5, 0, 1)` is added per sample.
 ///
 /// Cost note: occlusion is a linear O(rays x triangles) scan with a per-
-/// triangle AABB slab reject (no BVH); at the reduced budget this is
-/// 2000 x 9 = 18000 rays. For large meshes this is the dominant cost of the
-/// seam prepass.
+/// triangle AABB slab reject (no BVH); at the canonical budget this is
+/// 30000 x 25 = 750000 rays. For large meshes this is the dominant cost of
+/// the seam prepass.
 pub(crate) fn compute_global_visibility(
     vertices: &[[f32; 3]],
     triangles: &[[u32; 3]],
     aligned_back: bool,
+    seed: u64,
+    sample_count_override: Option<usize>,
 ) -> GlobalVisibility {
     // Per-triangle area, normal and AABB.
     let mut cumulative_area: Vec<f32> = Vec::with_capacity(triangles.len()); // mm^2
@@ -261,10 +396,13 @@ pub(crate) fn compute_global_visibility(
         false
     };
 
-    let mut samples: Vec<VisibilitySample> = Vec::with_capacity(VISIBILITY_SAMPLES_COUNT);
-    for i in 0..VISIBILITY_SAMPLES_COUNT {
-        // Deterministic area-uniform triangle pick (stratified by index).
-        let target = (i as f32 + 0.5) / VISIBILITY_SAMPLES_COUNT as f32 * total_area; // mm^2
+    let sample_count = sample_count_override.unwrap_or(VISIBILITY_SAMPLES_COUNT);
+    let mut rng = StableRng::new(seed);
+    let mut samples: Vec<VisibilitySample> = Vec::with_capacity(sample_count);
+    for _ in 0..sample_count {
+        // Area-uniform triangle pick, followed by uniform barycentric
+        // placement inside the selected triangle.
+        let target = rng.next_f32() * total_area; // mm^2
         let ti = cumulative_area
             .partition_point(|&acc| acc < target)
             .min(triangles.len() - 1);
@@ -273,9 +411,8 @@ pub(crate) fn compute_global_visibility(
         let b = vertices[tri[1] as usize];
         let c = vertices[tri[2] as usize];
 
-        // Low-discrepancy barycentric placement (Halton bases 2 and 3).
-        let mut u = radical_inverse(i as u32 + 1, 2);
-        let mut v = radical_inverse(i as u32 + 1, 3);
+        let mut u = rng.next_f32();
+        let mut v = rng.next_f32();
         if u + v > 1.0 {
             u = 1.0 - u;
             v = 1.0 - v;
@@ -303,7 +440,7 @@ pub(crate) fn compute_global_visibility(
         ]; // mm
 
         // Stratified uniform-hemisphere rays oriented to the normal.
-        let mut visibility = 1.0f32;
+        let mut occluded_count = 0usize;
         for ra in 0..RAYS_PER_SIDE {
             for rb in 0..RAYS_PER_SIDE {
                 let su = (ra as f32 + 0.5) / RAYS_PER_SIDE as f32;
@@ -319,10 +456,12 @@ pub(crate) fn compute_global_visibility(
                     tangent[2] * lx + bitangent[2] * ly + normal[2] * lz,
                 ]);
                 if occluded(origin, dir) {
-                    visibility -= 1.0 / RAYS_PER_SAMPLE as f32;
+                    occluded_count += 1;
                 }
             }
         }
+
+        let mut visibility = 1.0 - occluded_count as f32 / RAYS_PER_SAMPLE as f32;
 
         if aligned_back {
             // Canonical AlignedBack front bias: normal . (0,-1,0).
@@ -388,6 +527,8 @@ pub(crate) struct LayerInfo {
     pub z: f32,
     /// Layer height. Units: mm.
     pub height: f32,
+    /// Per-layer global angle used by canonical `curling_influence`. Units: radians.
+    pub layer_angle: f32,
 }
 
 /// Build seam candidates for every contour vertex of every layer.
@@ -402,6 +543,9 @@ pub(crate) struct LayerInfo {
 /// - `embedded_distance = curr_dist + 0.65*flow_width`
 /// - Layer 0 is fully supported by the bed: overhang = 0, unsupported = 0.
 ///
+/// AC-7: `flow_width` is the resolved per-active-region outer-wall scoring
+/// width from packet 178, not a hardcoded default.
+///
 /// Returns one `Vec<SeamCandidate>` per layer, candidates ordered contour by
 /// contour, vertex by vertex (deterministic given deterministic contours).
 pub(crate) fn build_seam_candidates(
@@ -411,9 +555,44 @@ pub(crate) fn build_seam_candidates(
     contours_per_layer: &[Vec<Contour>],
     aligned_back: bool,
     flow_width: f32,
+    paint_annotations: Option<&[(PaintSemantic, &[Vec<Option<PaintValue>>])]>,
+    seed: u64,
+) -> Vec<Vec<SeamCandidate>> {
+    build_seam_candidates_with_sample_count(
+        vertices,
+        triangles,
+        layers,
+        contours_per_layer,
+        aligned_back,
+        flow_width,
+        paint_annotations,
+        seed,
+        None,
+    )
+}
+
+/// Test-support variant of [`build_seam_candidates`] with a bounded visibility
+/// sample budget. Production callers must use [`build_seam_candidates`] so the
+/// canonical 30000-sample budget remains the default.
+pub(crate) fn build_seam_candidates_with_sample_count(
+    vertices: &[[f32; 3]],
+    triangles: &[[u32; 3]],
+    layers: &[LayerInfo],
+    contours_per_layer: &[Vec<Contour>],
+    aligned_back: bool,
+    flow_width: f32,
+    paint_annotations: Option<&[(PaintSemantic, &[Vec<Option<PaintValue>>])]>,
+    seed: u64,
+    sample_count_override: Option<usize>,
 ) -> Vec<Vec<SeamCandidate>> {
     debug_assert_eq!(layers.len(), contours_per_layer.len());
-    let global = compute_global_visibility(vertices, triangles, aligned_back);
+    let global = compute_global_visibility(
+        vertices,
+        triangles,
+        aligned_back,
+        seed,
+        sample_count_override,
+    );
 
     let mut result: Vec<Vec<SeamCandidate>> = Vec::with_capacity(layers.len());
     for (layer_idx, (layer, contours)) in layers.iter().zip(contours_per_layer.iter()).enumerate() {
@@ -423,10 +602,12 @@ pub(crate) fn build_seam_candidates(
             None
         };
         let mut layer_candidates: Vec<SeamCandidate> = Vec::new();
-        for contour in contours {
+        for (contour_idx, contour) in contours.iter().enumerate() {
             for (vi, p2d) in contour.points.iter().enumerate() {
                 let position = [p2d[0], p2d[1], layer.z]; // mm
                 let visibility = calculate_point_visibility(&global, position);
+                let (point_type, central_enforcer) =
+                    candidate_paint_classification(paint_annotations, contour_idx, vi);
 
                 let (overhang, unsupported_dist) = match prev_contours {
                     Some(prev) => {
@@ -451,8 +632,9 @@ pub(crate) fn build_seam_candidates(
                     unsupported_dist,
                     embedded_distance,
                     local_ccw_angle: contour.local_ccw_angles[vi], // rad
-                    central_enforcer: false,
-                    point_type: EnforcedBlockedSeamPoint::Neutral,
+                    layer_angle: layer.layer_angle,
+                    central_enforcer,
+                    point_type,
                     flow_width,
                 });
             }
@@ -480,6 +662,7 @@ mod tests {
             .map(|i| LayerInfo {
                 z: 0.1 + i as f32 * 0.2, // mm
                 height: 0.2,             // mm
+                layer_angle: 0.0,        // rad
             })
             .collect();
         let contours: Vec<Vec<Contour>> = layers
@@ -497,8 +680,17 @@ mod tests {
             assert_eq!(layer_contours.len(), 1);
             assert_eq!(layer_contours[0].points.len(), 4);
         }
-        let candidates =
-            build_seam_candidates(&vertices, &triangles, &layers, &contours, false, 0.4);
+        let candidates = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            false,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
         assert_eq!(candidates.len(), 20);
         for layer in &candidates {
             assert_eq!(layer.len(), 4);
@@ -524,8 +716,17 @@ mod tests {
     #[test]
     fn visibility_aligned_back_bias_stays_in_extended_range() {
         let (vertices, triangles, layers, contours) = prism_setup();
-        let candidates =
-            build_seam_candidates(&vertices, &triangles, &layers, &contours, true, 0.4);
+        let candidates = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            true,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
         for layer in &candidates {
             for c in layer {
                 // Bias adds at most 1.0 per canonical clamp.
@@ -541,8 +742,17 @@ mod tests {
     #[test]
     fn visibility_layer_zero_is_fully_supported() {
         let (vertices, triangles, layers, contours) = prism_setup();
-        let candidates =
-            build_seam_candidates(&vertices, &triangles, &layers, &contours, false, 0.4);
+        let candidates = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            false,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
         for c in &candidates[0] {
             assert_eq!(c.overhang, 0.0);
             assert_eq!(c.unsupported_dist, 0.0);
@@ -560,10 +770,20 @@ mod tests {
         let layers = [LayerInfo {
             z: 0.5,
             height: 0.2,
+            layer_angle: 0.0,
         }];
         let contours = vec![extract_layer_contours(&vertices, &triangles, 0.5)];
-        let candidates =
-            build_seam_candidates(&vertices, &triangles, &layers, &contours, false, 0.4);
+        let candidates = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            false,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
         let notch = candidates[0]
             .iter()
             .find(|c| (c.position[0] - 4.0).abs() < 1e-3 && (c.position[1] - 4.0).abs() < 1e-3)
@@ -578,8 +798,28 @@ mod tests {
     #[test]
     fn visibility_pipeline_is_deterministic() {
         let (vertices, triangles, layers, contours) = prism_setup();
-        let a = build_seam_candidates(&vertices, &triangles, &layers, &contours, true, 0.4);
-        let b = build_seam_candidates(&vertices, &triangles, &layers, &contours, true, 0.4);
+        let a = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            true,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
+        let b = build_seam_candidates_with_sample_count(
+            &vertices,
+            &triangles,
+            &layers,
+            &contours,
+            true,
+            0.4,
+            None,
+            0,
+            Some(100),
+        );
         // SeamCandidate has no PartialEq (comparator.rs is out of bounds for
         // this step); Debug formatting captures every field bit-for-bit at
         // f32 print precision plus exact equality below.
@@ -593,6 +833,7 @@ mod tests {
                 assert_eq!(ca.unsupported_dist, cb.unsupported_dist);
                 assert_eq!(ca.embedded_distance, cb.embedded_distance);
                 assert_eq!(ca.local_ccw_angle, cb.local_ccw_angle);
+                assert_eq!(ca.layer_angle, cb.layer_angle);
             }
         }
     }

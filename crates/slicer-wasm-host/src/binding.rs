@@ -99,6 +99,8 @@ pub struct PrepassStageInput<'a> {
     pub mesh: Arc<MeshIR>,
     /// Arc-cloned from `blackboard.layer_plan()` at the call site.
     pub layer_plan: Option<Arc<LayerPlanIR>>,
+    /// Arc-cloned from the committed whole-print SliceIR slot.
+    pub slice_ir: Option<Arc<Vec<SliceIR>>>,
     /// Arc-cloned from `blackboard.region_map()` at the call site.
     pub region_map: Option<Arc<RegionMapIR>>,
     /// Arc-cloned from `blackboard.support_geometry()` at the call site.

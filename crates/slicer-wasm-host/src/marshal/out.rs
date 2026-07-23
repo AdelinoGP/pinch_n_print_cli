@@ -391,6 +391,7 @@ pub fn convert_perimeter_output(
 
     fn mint_perimeter_region(o: &OriginId) -> slicer_ir::PerimeterRegion {
         slicer_ir::PerimeterRegion {
+            variant_chain: Vec::new(),
             object_id: o.object_id.clone(),
             region_id: o.region_id,
             walls: Vec::new(),

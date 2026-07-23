@@ -10,8 +10,9 @@ pub use accumulators::{
     SlicePostprocessCollected, SupportOutputCollected,
 };
 pub use in_::{
-    object_mesh_to_wit_mesh_object_view, perimeter_region_to_data, project_layer_plan_view,
-    project_region_segmentation_view, project_support_geometry_view, sliced_region_to_data,
+    harvest_seam_plan_ir_from, object_mesh_to_wit_mesh_object_view, perimeter_region_to_data,
+    project_layer_plan_view, project_region_segmentation_view, project_support_geometry_view,
+    sliced_region_to_data,
 };
 pub use leaf::{
     convert_extrusion_path, convert_extrusion_role, convert_layer_retract_mode,

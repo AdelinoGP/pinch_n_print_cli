@@ -766,13 +766,61 @@ always use index-based lookup" guarantee).
 
 **Orca-parity note.** OrcaSlicer treats enforcer/blocker as a hard
 top-priority discriminator (`Enforced > Neutral > Blocked`, checked before
-all geometric scoring) with a `central_enforcer` anchor preference; there is
-no soft bias. This port keeps `seam_blocker` as a hard filter (matching
+all geometric scoring) with a `central_enforcer` anchor preference; there
+is no soft bias. This port keeps `seam_blocker` as a hard filter (matching
 Orca) but implements `seam_enforcer` as a `0.1x` soft score bias rather than
 a hard top-priority override — a deliberate, narrower deviation from Orca's
 "always wins" enforcer semantics, chosen so an enforcer region competes with
 (rather than unconditionally overrides) other geometric candidates on the
 same wall loop.
+
+### Continuous wall projection and degraded fallback (packet 180)
+
+`seam-placer`'s `run_wall_postprocess` applies two orthogonal protections
+on top of the seam-candidate convention above:
+
+**Continuous projection** — when the planner's projected target does not
+coincide with an existing wall-loop vertex, `seam-placer` projects the
+target onto the nearest point of the final wall segment via
+`project_onto_wall_segment` (in
+`modules/core-modules/seam-placer/src/lib.rs`), inserts a new point at
+parameter `t ∈ (0, 1)`, interpolates `feature_flags` and
+`width_profile.widths` linearly from the segment endpoints, and re-closes
+the loop. The parallel cardinality invariant
+(`feature_flags.len() == path.points.len() == width_profile.widths.len()`)
+is preserved after insertion. This applies to the `aligned` mode only;
+`nearest` / `rear` / `random` modes keep their existing vertex-based
+selection and are not modified.
+
+**Degraded fallback via non-fatal `ModuleError`** — when no `SeamPlanIR`
+entry matches an active region in aligned mode, the module returns
+`Err(ModuleError::non_fatal(6, "missing seam plan entry (layer, object,
+region_id, variant_chain=[])"))`, applies the canonical local-candidate
+selection as a fallback, preserves all wall loops, and the slice continues
+with degraded status. The `variant_chain=[]` literal is rendered as such
+because `PerimeterRegionView` does not currently expose the
+`SliceRegionView::variant_chain` accessor — packet 178 owns that surface.
+A degenerate empty wall loop (no points) emits
+`Err(ModuleError::non_fatal(7, "degenerate empty wall loop (no points) at
+wall_index=N"))` without panicking, and the empty loop is preserved in the
+output. The contract is enforced by:
+
+- `modules/core-modules/seam-placer/tests/seam_continuous_projection_tdd.rs`
+  (continuous projection, vertex-target, empty-loop, no-walls cases)
+- `modules/core-modules/seam-placer/tests/seam_degraded_fallback_tdd.rs`
+  (missing plan, non-fatal channel, walls preserved, local-candidate
+  fallback)
+- `crates/slicer-runtime/tests/e2e/scenario_traces_tdd.rs::seam_aligned_default_e2e`
+  (multi-region aligned default + 0.05 mm final-placement tolerance)
+
+**Wall-preservation invariant.** Every region's walls must reach the
+output regardless of seam state, missing plan, or degenerate geometry. No
+path in this contract may drop, skip, or fail to emit a region's wall
+loop. The default `seam_mode` is `"aligned"` in both `seam-placer.toml`
+and `seam-planner-default.toml` (matching OrcaSlicer's `spAligned`); see
+`docs/adr/0046-aligned-seam-in-seam-planning-prepass.md` amendment
+recorded as `D-283-ADR-0046-AMENDED` in `docs/DEVIATION_LOG.md`. The
+default applies to both manifests simultaneously; a mismatch is a bug.
 
 **T-082 audit — seam-placer's tolerance for sparse/empty candidate lists.**
 `seam-placer`'s `run_wall_postprocess` was already robust to a region with

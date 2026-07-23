@@ -1,8 +1,8 @@
 ---
-status: draft
+status: implemented
 packet: 179-seam-canonical-algorithm-fidelity
 task_ids:
-  - TASK-282
+  - TASK-292
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -11,16 +11,16 @@ context_cost_estimate: M
 
 ## Goal
 
-Restore canonical OrcaSlicer seam comparator, seeded visibility sampling, seam-string retry with bounded gap anchoring, painted seam enforcer/blocker priority, prepass scoring width, and full-pivot B-spline fitting inside `seam-planner-default`, preferring `faer` with a local exact fallback.
+Restore canonical OrcaSlicer seam comparator, seeded visibility sampling, seam-string retry with bounded gap anchoring, painted seam enforcer/blocker priority, prepass scoring width, and full-pivot B-spline fitting inside `seam-planner-default`, using `faer::linalg::solvers::ColPivQr` unconditionally.
 
 ## Scope Boundaries
 
-This packet consumes packet 1's per-region seam-planning view and variant-aware identity to replace packet 168's reduced algorithm substitutes with canonical behavior. It does not change the WIT input contract, the host scheduling, the perimeter-region identity, or the final wall projection; those belong to packets 1 and 3. It adds `faer` as a guest dependency or falls back to a local full-pivot Householder QR.
+This packet consumes packet 178's per-region seam-planning view and variant-aware identity to replace packet 168's reduced algorithm substitutes with canonical behavior. It does not change the WIT input contract, the host scheduling, the perimeter-region identity, or the final wall projection; those belong to packets 178 and 180. It uses `faer::linalg::solvers::ColPivQr` as the production full-pivot Householder QR implementation.
 
 ## Prerequisites and Blockers
 
-- Depends on: `TASK-281` (packet 1) generating the per-region seam-planning view and variant-aware `SeamPlanEntry`.
-- Unblocks: `TASK-283` and the final placement/default packet.
+- Depends on: `TASK-291` (packet 178) generating the per-region seam-planning view and variant-aware `SeamPlanEntry`.
+- Unblocks: `TASK-293` and the final placement/default packet.
 - Activation blockers: none known; packet remains draft until preflight and guest freshness gates pass.
 
 ## Acceptance Criteria
@@ -30,8 +30,8 @@ This packet consumes packet 1's per-region seam-planning view and variant-aware 
 - **AC-3. Given** a seam string shorter than `SEAM_ALIGN_MINIMUM_STRING_SEAMS` (6) from the initial start, **when** `align_seam_points` runs, **then** it retries from alternative starts spaced `1 + size/20` apart, keeps the longest string, and only finalizes perimeters whose final string length meets the minimum. | `cargo test -p seam-planner-default --test seam_canonical_alignment_tdd -- alternative_start_retry_finds_longer_string 2>&1 | tee target/test-output.log | grep '^test result'`
 - **AC-4. Given** an active region that disappears for one or more layers and reappears, **when** alignment chains across the gap, **then** no `SeamPlanEntry` is emitted for inactive layers, the last real seam is retained as a continuity anchor, the next layer's search uses canonical `seam_align_tolerable_dist_factor * flow_width` radius, and a new string starts when no candidate qualifies. | `cargo test -p seam-planner-default --test seam_canonical_alignment_tdd -- bounded_continuity_anchor_bridges_gap 2>&1 | tee target/test-output.log | grep '^test result'`
 - **AC-5. Given** seam enforcer and blocker segment annotations on a region's contour, **when** candidates are built, **then** blocked candidates are excluded, enforced candidates carry `Enforced` type and `central_enforcer` is set for the central region, and both participate in `SeamComparator` before angle/visibility scoring. | `cargo test -p seam-planner-default --test seam_canonical_comparator_tdd -- painted_seam_priority_before_chaining 2>&1 | tee target/test-output.log | grep '^test result'`
-- **AC-6. Given** a weighted least-squares B-spline fit over real observations, **when** the design matrix is solved, **then** the solver uses `faer` Householder QR with full pivoting or, if `faer` is unavailable in the guest, falls back to a local full-pivot Householder QR implementation, never to `ColPivQR`, `FullPivLU`, or normal equations. | `cargo test -p seam-planner-default --test seam_canonical_spline_tdd 2>&1 | tee target/test-output.log | grep '^test result'`
-- **AC-7. Given** a non-0.4-mm nozzle config, **when** `build_seam_candidates` scores overhang and embedding, **then** the `flow_width` used is the resolved per-active-region outer-wall scoring width from packet 1's input, not a hardcoded `0.4`. | `cargo test -p seam-planner-default --test seam_canonical_visibility_tdd -- flow_width_from_resolved_config 2>&1 | tee target/test-output.log | grep '^test result'`
+- **AC-6. Given** a weighted least-squares B-spline fit over real observations, **when** the design matrix is solved, **then** the solver uses `faer::linalg::solvers::ColPivQr` as the canonical full-pivot Householder QR equivalent, with AC-N1 pivot-threshold zeroing and non-finite-result sanitization enforced on the way out, never normal equations. | `cargo test -p seam-planner-default --test seam_canonical_spline_tdd 2>&1 | tee target/test-output.log | grep '^test result'`
+- **AC-7. Given** a non-0.4-mm nozzle config, **when** `build_seam_candidates` scores overhang and embedding, **then** the `flow_width` used is the resolved per-active-region outer-wall scoring width from packet 178's input, not a hardcoded `0.4`. | `cargo test -p seam-planner-default --test seam_canonical_visibility_tdd -- flow_width_from_resolved_config 2>&1 | tee target/test-output.log | grep '^test result'`
 - **AC-8. Given** the `SeamPlannerDefault` module, **when** grepped, **then** the file begins with the standard OrcaSlicer attribution header including `Original C++ source path:`. | `grep -q 'Original C++ source path' modules/core-modules/seam-planner-default/src/comparator.rs && grep -q 'Original C++ source path' modules/core-modules/seam-planner-default/src/visibility.rs && grep -q 'Original C++ source path' modules/core-modules/seam-planner-default/src/align.rs && echo PASS`
 
 ## Negative Test Cases

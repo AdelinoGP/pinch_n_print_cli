@@ -32,6 +32,7 @@ impl Guest for Component {
             let obj = r.object_id();
             let rid = r.region_id();
             let key = slicer::ir_handles::ir_handles::RegionKey {
+                variant_chain: Vec::new(),
                 layer_index,
                 object_id: obj,
                 region_id: rid,

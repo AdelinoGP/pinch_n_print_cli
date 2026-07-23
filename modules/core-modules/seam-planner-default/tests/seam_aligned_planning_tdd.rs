@@ -64,6 +64,34 @@ fn layer_plan() -> LayerPlanView {
     }
 }
 
+fn region_input() -> SeamPlanningView {
+    SeamPlanningView {
+        regions: (0..20)
+            .map(|i| SeamPlanningRegionInput {
+                global_layer_index: i,
+                object_id: "prism".to_string(),
+                region_id: "0".to_string(),
+                variant_chain: Vec::new(),
+                z: (i + 1) as f32 * 0.2,
+                height: 0.2,
+                ex_polygons: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2::from_mm(0.0, 0.0),
+                            Point2::from_mm(10.0, 0.0),
+                            Point2::from_mm(10.0, 10.0),
+                            Point2::from_mm(0.0, 10.0),
+                        ],
+                    },
+                    holes: Vec::new(),
+                }],
+                segment_annotations: Vec::new(),
+                scoring_width: 0.4,
+            })
+            .collect(),
+    }
+}
+
 fn run(seam_mode: &str) -> Vec<SeamPlanEntry> {
     let config = ConfigViewBuilder::new()
         .string("seam_mode", seam_mode)
@@ -71,7 +99,13 @@ fn run(seam_mode: &str) -> Vec<SeamPlanEntry> {
     let planner = SeamPlannerDefault::on_print_start(&config).expect("on_print_start must succeed");
     let mut output = SeamPlanningOutput::new();
     planner
-        .run_seam_planning(&[square_prism()], &layer_plan(), &mut output, &config)
+        .run_seam_planning(
+            &[square_prism()],
+            &layer_plan(),
+            &mut output,
+            &config,
+            &region_input(),
+        )
         .expect("run_seam_planning must succeed");
     output.entries().to_vec()
 }

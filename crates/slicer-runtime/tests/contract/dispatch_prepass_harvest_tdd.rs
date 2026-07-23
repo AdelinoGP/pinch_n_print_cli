@@ -620,6 +620,181 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
     }
 }
 
+#[test]
+fn seam_plan_ir_rejects_duplicate_region_keys_within_one_ir() {
+    use slicer_ir::{RegionKey, SeamPlanEntry, SeamPlanIR, SeamPosition};
+
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+    let seam_position = SeamPosition {
+        point: slicer_ir::Point3WithWidth {
+            width: 0.4,
+            flow_factor: 1.0,
+            ..Default::default()
+        },
+        wall_index: 0,
+    };
+    let region_key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj-A".to_string(),
+        region_id: 1,
+        variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))],
+    };
+    let plan = SeamPlanIR {
+        entries: vec![
+            SeamPlanEntry {
+                region_key: region_key.clone(),
+                chosen_candidate: seam_position.clone(),
+                ..Default::default()
+            },
+            SeamPlanEntry {
+                region_key,
+                chosen_candidate: seam_position,
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+
+    let error = blackboard
+        .commit_seam_plan(Arc::new(plan))
+        .expect_err("one IR with duplicate region keys must be rejected");
+    assert!(
+        format!("{error:?}")
+            .to_ascii_lowercase()
+            .contains("duplicate"),
+        "expected duplicate-key validation error, got {error:?}"
+    );
+}
+
+#[test]
+fn seam_plan_ir_preserves_variant_chain() {
+    let make_entry =
+        |region_id: &str, variant_chain| slicer_wasm_host::host::prepass::SeamPlanEntry {
+            global_layer_index: 0,
+            object_id: "obj-A".to_string(),
+            region_id: region_id.to_string(),
+            variant_chain,
+            chosen_position: slicer_wasm_host::host::prepass::SeamPoint3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+            },
+            chosen_wall_index: 0,
+            scored_candidates: Vec::new(),
+        };
+    let entries = vec![
+        make_entry("1", Vec::new()),
+        make_entry(
+            "1",
+            vec![(
+                "material".to_string(),
+                slicer_wasm_host::host::prepass::PaintValue::ToolIndex(1),
+            )],
+        ),
+    ];
+
+    let plan = slicer_wasm_host::marshal::in_::harvest_seam_plan_ir_from(entries)
+        .expect("valid seam-plan entries should harvest");
+
+    assert_eq!(plan.entries.len(), 2);
+    assert_eq!(plan.entries[0].region_key.variant_chain, Vec::new());
+    assert_eq!(plan.entries[0].region_key.region_id, 1);
+    assert_eq!(
+        plan.entries[1].region_key.variant_chain,
+        vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))]
+    );
+    assert_eq!(plan.entries[1].region_key.region_id, 1);
+}
+
+#[test]
+fn seam_plan_injection_matches_variant_chain() {
+    let position = |x| slicer_ir::SeamPosition {
+        point: slicer_ir::Point3WithWidth {
+            x,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let base_key = |variant_chain| slicer_ir::RegionKey {
+        global_layer_index: 3,
+        object_id: "obj-A".to_string(),
+        region_id: 7,
+        variant_chain,
+    };
+    let plan = slicer_ir::SeamPlanIR {
+        entries: vec![
+            slicer_ir::SeamPlanEntry {
+                region_key: base_key(Vec::new()),
+                chosen_candidate: position(10.0),
+                ..Default::default()
+            },
+            slicer_ir::SeamPlanEntry {
+                region_key: base_key(vec![(
+                    "material".to_string(),
+                    slicer_ir::PaintValue::ToolIndex(1),
+                )]),
+                chosen_candidate: position(20.0),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    let regions = [
+        slicer_ir::PerimeterRegion {
+            object_id: "obj-A".to_string(),
+            region_id: 7,
+            variant_chain: Vec::new(),
+            ..Default::default()
+        },
+        slicer_ir::PerimeterRegion {
+            object_id: "obj-A".to_string(),
+            region_id: 7,
+            variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))],
+            ..Default::default()
+        },
+    ];
+
+    let resolved_x: Vec<_> = regions
+        .iter()
+        .map(|region| {
+            slicer_wasm_host::dispatch::resolve_seam_for_perimeter_region(region, &plan, 3)
+                .map(|seam| seam.point.x)
+        })
+        .collect();
+
+    assert_eq!(resolved_x, vec![Some(10.0), Some(20.0)]);
+}
+
+#[test]
+fn seam_plan_ir_rejects_invalid_region_identity() {
+    let entry = slicer_wasm_host::host::prepass::SeamPlanEntry {
+        global_layer_index: 0,
+        object_id: "obj-A".to_string(),
+        region_id: "not-a-region-id".to_string(),
+        variant_chain: Vec::new(),
+        chosen_position: slicer_wasm_host::host::prepass::SeamPoint3WithWidth {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        },
+        chosen_wall_index: 0,
+        scored_candidates: Vec::new(),
+    };
+
+    let error = slicer_wasm_host::marshal::in_::harvest_seam_plan_ir_from(vec![entry])
+        .expect_err("invalid region identity must reject");
+    assert!(
+        error.contains("invalid identity"),
+        "unexpected error: {error}"
+    );
+}
+
 /// `PrePass::SeamPlanning` dispatch with the real seam-planner-default module
 /// must return `PrepassStageOutput::SeamPlan`. The module is an MVP no-op (emits
 /// no entries) but the harvest path must still produce a well-formed `SeamPlanIR`.
@@ -680,10 +855,10 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
                 ir.schema_version,
                 SemVer {
                     major: 1,
-                    minor: 0,
+                    minor: 1,
                     patch: 0
                 },
-                "SeamPlanIR schema_version must be 1.0.0"
+                "SeamPlanIR schema_version must be 1.1.0"
             );
             // seam-planner-default emits seam entries for objects with mesh geometry.
             // Entries may be empty if the blackboard mesh has no objects.
@@ -720,5 +895,101 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
             std::mem::discriminant(&other)
         ),
         Err(e) => panic!("SeamPlanning dispatch failed: {e}"),
+    }
+}
+
+#[test]
+fn prepass_seam_planning_commits_populated_seam_plan_ir_from_slice_ir() {
+    let slice_ir = ir_builders::slice_ir::with_ids(&[("obj-A", 1), ("obj-A", 1)]).build();
+    let mut region_map = slicer_ir::RegionMapIR::default();
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-A".to_string(),
+            region_id: 1,
+            variant_chain: Vec::new(),
+        },
+        slicer_ir::RegionPlan::default(),
+    );
+    region_map.entries.insert(
+        slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-A".to_string(),
+            region_id: 1,
+            variant_chain: vec![("material".to_string(), slicer_ir::PaintValue::ToolIndex(1))],
+        },
+        slicer_ir::RegionPlan::default(),
+    );
+    let mut blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
+    blackboard
+        .commit_slice_ir(Arc::new(vec![slice_ir]))
+        .expect("commit representative SliceIR");
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit representative RegionMapIR");
+
+    let source_keys: Vec<_> = blackboard
+        .region_map()
+        .expect("committed RegionMapIR")
+        .entries
+        .keys()
+        .filter(|key| key.object_id == "obj-A" && key.region_id == 1)
+        .cloned()
+        .collect();
+    assert_eq!(source_keys.len(), 2);
+
+    let to_wit_variant_chain = |key: &slicer_ir::RegionKey| {
+        key.variant_chain
+            .iter()
+            .map(|(semantic, value)| {
+                let value = match value {
+                    slicer_ir::PaintValue::Flag(value) => {
+                        slicer_wasm_host::host::prepass::PaintValue::Flag(*value)
+                    }
+                    slicer_ir::PaintValue::Scalar(value) => {
+                        slicer_wasm_host::host::prepass::PaintValue::Scalar(*value)
+                    }
+                    slicer_ir::PaintValue::ToolIndex(value) => {
+                        slicer_wasm_host::host::prepass::PaintValue::ToolIndex(*value)
+                    }
+                    slicer_ir::PaintValue::Custom(_) => panic!("unsupported fixture value"),
+                };
+                (semantic.clone(), value)
+            })
+            .collect()
+    };
+    let seam_entries = source_keys
+        .iter()
+        .enumerate()
+        .map(
+            |(index, key)| slicer_wasm_host::host::prepass::SeamPlanEntry {
+                global_layer_index: key.global_layer_index,
+                object_id: key.object_id.clone(),
+                region_id: key.region_id.to_string(),
+                variant_chain: to_wit_variant_chain(key),
+                chosen_position: slicer_wasm_host::host::prepass::SeamPoint3WithWidth {
+                    x: index as f32,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                },
+                chosen_wall_index: 0,
+                scored_candidates: Vec::new(),
+            },
+        )
+        .collect();
+
+    // The full guest dispatch is covered by the adjacent AC-1 test. Here the
+    // direct harvest seam uses variant chains read from the committed map.
+    let harvested = slicer_wasm_host::marshal::in_::harvest_seam_plan_ir_from(seam_entries)
+        .expect("representative SliceIR/RegionMapIR output should harvest");
+    assert_eq!(harvested.entries.len(), 2);
+    for source_key in source_keys {
+        assert!(harvested
+            .entries
+            .iter()
+            .any(|entry| entry.region_key == source_key));
     }
 }

@@ -10,32 +10,25 @@
 // -----------------------------------------------------------------------------
 //! Default seam planner for Pinch 'n Print.
 //!
-//! Implements the `PrepassModule` trait for the `PrePass::SeamPlanning` stage.
-//! Analyzes mesh geometry to find and score optimal seam positions for each region.
-//!
-//! # Algorithm (OrcaSlicer-inspired)
-//!
-//! For each object at each layer, this module:
-//! 1. Collects mesh vertices from the object's triangles via host services
-//! 2. Identifies candidate seam positions at each region's boundary
-//! 3. Scores candidates: concave corners score best, convex worst
-//! 4. Emits the best candidate as the chosen seam position per region
+//! The planner consumes the host-supplied active `SliceIR` region boundaries.
+//! Mesh geometry remains available to the prepass interface for compatibility,
+//! but is not a candidate source.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+#[allow(dead_code)]
 mod align;
+#[allow(dead_code)]
 mod comparator;
+#[allow(dead_code)]
 mod contours;
+#[allow(dead_code)]
 mod visibility;
 
 use slicer_sdk::prelude::*;
-use std::collections::HashMap;
 
-use crate::align::{align_seam_points, LayerCandidates};
-use crate::comparator::{pick_seam_point, Perimeter, SeamComparator, SeamSetup};
-use crate::contours::extract_layer_contours;
-use crate::visibility::{build_seam_candidates, LayerInfo};
+use crate::comparator::SeamSetup;
 
 /// Default extrusion flow width used for seam scoring. Units: mm.
 const DEFAULT_FLOW_WIDTH_MM: f32 = 0.4;
@@ -55,148 +48,159 @@ enum SeamPlannerMode {
     AlignedBack,
 }
 
-/// Default seam planner that selects seam positions based on corner geometry.
-///
-/// Reads `seam_mode` from config
-/// ("nearest" / "rear" / "random" / "aligned" / "aligned_back").
-/// Emits `SeamPlanEntry` records for each `(layer, object, region)` triple.
+/// Default seam planner that selects seam positions from active region
+/// boundaries.
 pub struct SeamPlannerDefault {
     /// Seam placement mode.
     mode: SeamPlannerMode,
 }
 
-/// Aligned / AlignedBack planning: drive the full ported pipeline over the
-/// REAL layer z's from the committed layer plan.
-///
-/// Per object: extract z-plane contours per layer, build scored
-/// `SeamCandidate`s (visibility / overhang / embedding populated), chain and
-/// smooth seams across layers via `align_seam_points`, then emit exactly one
-/// `SeamPlanEntry` per `(global_layer_index, object_id, region_id)` — the
-/// region id being the per-layer perimeter (contour) index. Layers whose
-/// perimeters remain unfinalized (short strings) fall back to the
-/// `pick_seam_point` best choice for that layer.
-fn run_aligned_planning(
-    setup: SeamSetup,
-    objects: &[MeshObjectView],
-    layer_plan: &LayerPlanView,
-    output: &mut SeamPlanningOutput,
-) -> Result<(), ModuleError> {
-    let aligned_back = setup == SeamSetup::AlignedBack;
-    let comparator = SeamComparator::new(setup);
-
-    // Deterministic ascending layer order (documented ascending; sort anyway).
-    let mut plan_layers: Vec<&LayerPlanViewEntry> = layer_plan.layers.iter().collect();
-    plan_layers.sort_by_key(|l| l.global_layer_index);
-
-    for obj in objects {
-        if obj.triangles.is_empty() || plan_layers.is_empty() {
-            continue;
-        }
-
-        let layer_infos: Vec<LayerInfo> = plan_layers
+fn region_candidates(region: &SeamPlanningRegionInput) -> Vec<ScoredSeamCandidate> {
+    let width = if region.scoring_width.is_finite() && region.scoring_width > 0.0 {
+        region.scoring_width
+    } else {
+        DEFAULT_FLOW_WIDTH_MM
+    };
+    let mut candidates = Vec::new();
+    for polygon in &region.ex_polygons {
+        for point in polygon
+            .contour
+            .points
             .iter()
-            .map(|l| LayerInfo {
-                z: l.z,                           // mm
-                height: l.effective_layer_height, // mm
-            })
-            .collect();
-        let contours_per_layer: Vec<_> = layer_infos
-            .iter()
-            .map(|l| extract_layer_contours(&obj.vertices, &obj.triangles, l.z))
-            .collect();
-        let candidates_per_layer = build_seam_candidates(
-            &obj.vertices,
-            &obj.triangles,
-            &layer_infos,
-            &contours_per_layer,
-            aligned_back,
-            DEFAULT_FLOW_WIDTH_MM,
-        );
-
-        // Assemble per-layer perimeter bookkeeping: one perimeter per contour,
-        // candidate ranges in contour order (deterministic; no map iteration).
-        let mut layers: Vec<LayerCandidates> = Vec::with_capacity(layer_infos.len());
-        for (contours, candidates) in contours_per_layer.iter().zip(candidates_per_layer) {
-            let mut perimeters: Vec<Perimeter> = Vec::with_capacity(contours.len());
-            let mut start = 0usize;
-            for contour in contours {
-                let end = start + contour.points.len();
-                let seam_index = pick_seam_point(&candidates, start..end, &comparator);
-                perimeters.push(Perimeter {
-                    start_index: start,
-                    end_index: end,
-                    seam_index,
-                    finalized: false,
-                    final_seam_position: [0.0; 3],
-                });
-                start = end;
-            }
-            layers.push(LayerCandidates {
-                candidates,
-                perimeters,
+            .chain(polygon.holes.iter().flat_map(|hole| hole.points.iter()))
+        {
+            candidates.push(ScoredSeamCandidate {
+                position: Point3WithWidth {
+                    x: units_to_mm(point.x),
+                    y: units_to_mm(point.y),
+                    z: region.z,
+                    width,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                },
+                score: 0.0,
+                reason: SeamReason {
+                    tag: "aligned".to_string(),
+                },
             });
         }
-
-        align_seam_points(&mut layers, &comparator);
-
-        // Emit one entry per (layer, perimeter), scoring EVERY contour vertex.
-        for (layer, plan_entry) in layers.iter().zip(plan_layers.iter()) {
-            for (perimeter_idx, perimeter) in layer.perimeters.iter().enumerate() {
-                let range = perimeter.start_index..perimeter.end_index;
-                let scored_candidates: Vec<ScoredSeamCandidate> = layer.candidates[range]
-                    .iter()
-                    .map(|c| ScoredSeamCandidate {
-                        position: Point3WithWidth {
-                            x: c.position[0], // mm
-                            y: c.position[1], // mm
-                            z: c.position[2], // mm
-                            width: c.flow_width,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                        },
-                        score: comparator.base_penalty(c), // lower = better
-                        reason: SeamReason {
-                            tag: "aligned".to_string(),
-                        },
-                    })
-                    .collect();
-                if scored_candidates.is_empty() {
-                    continue;
-                }
-
-                // Finalized perimeters carry the chained + smoothed position;
-                // unfinalized (short-string) ones fall back to the per-layer
-                // pick_seam_point best choice.
-                let chosen_xyz = if perimeter.finalized {
-                    perimeter.final_seam_position
-                } else {
-                    layer.candidates[perimeter.seam_index].position
-                };
-
-                let entry = SeamPlanEntry {
-                    global_layer_index: plan_entry.global_layer_index,
-                    object_id: obj.object_id.clone(),
-                    region_id: perimeter_idx.to_string(),
-                    chosen_position: Point3WithWidth {
-                        x: chosen_xyz[0], // mm
-                        y: chosen_xyz[1], // mm
-                        z: chosen_xyz[2], // mm
-                        width: DEFAULT_FLOW_WIDTH_MM,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                        dist_to_top_mm: 0.0,
-                    },
-                    chosen_wall_index: 0,
-                    scored_candidates,
-                };
-                output
-                    .push_seam_plan(entry)
-                    .map_err(|e| ModuleError::fatal(1, format!("push_seam_plan failed: {e}")))?;
-            }
-        }
     }
+    candidates
+}
 
+fn choose_region_candidate(
+    candidates: &[ScoredSeamCandidate],
+    mode: SeamPlannerMode,
+    layer_index: u32,
+) -> Option<ScoredSeamCandidate> {
+    match mode {
+        SeamPlannerMode::Aligned | SeamPlannerMode::Nearest => candidates
+            .iter()
+            .min_by(|left, right| {
+                left.position
+                    .y
+                    .total_cmp(&right.position.y)
+                    .then(left.position.x.total_cmp(&right.position.x))
+            })
+            .cloned(),
+        SeamPlannerMode::AlignedBack | SeamPlannerMode::Rear => candidates
+            .iter()
+            .max_by(|left, right| {
+                left.position
+                    .y
+                    .total_cmp(&right.position.y)
+                    .then(right.position.x.total_cmp(&left.position.x))
+            })
+            .cloned(),
+        SeamPlannerMode::Random => candidates
+            .get(layer_index as usize % candidates.len())
+            .cloned(),
+    }
+}
+
+fn run_region_planning_entries(
+    region_input: &SeamPlanningView,
+    mode: SeamPlannerMode,
+) -> Vec<SeamPlanEntry> {
+    let mut regions: Vec<&SeamPlanningRegionInput> = region_input.regions.iter().collect();
+    regions.sort_by(|left, right| {
+        left.global_layer_index
+            .cmp(&right.global_layer_index)
+            .then(left.object_id.cmp(&right.object_id))
+            .then(left.region_id.cmp(&right.region_id))
+            .then(left.variant_chain.cmp(&right.variant_chain))
+    });
+
+    let mut entries = Vec::new();
+    let mut previous_key: Option<(u32, String, String, Vec<(String, slicer_ir::PaintValue)>)> =
+        None;
+    for region in regions {
+        let key = (
+            region.global_layer_index,
+            region.object_id.clone(),
+            region.region_id.clone(),
+            region.variant_chain.clone(),
+        );
+        if previous_key.as_ref() == Some(&key) {
+            continue;
+        }
+        previous_key = Some(key);
+
+        let scored_candidates = region_candidates(region);
+        let Some(chosen) =
+            choose_region_candidate(&scored_candidates, mode, region.global_layer_index)
+        else {
+            continue;
+        };
+        entries.push(SeamPlanEntry {
+            global_layer_index: region.global_layer_index,
+            object_id: region.object_id.clone(),
+            region_id: region.region_id.clone(),
+            variant_chain: region.variant_chain.clone(),
+            chosen_position: chosen.position,
+            chosen_wall_index: 0,
+            scored_candidates,
+        });
+    }
+    entries
+}
+
+/// Build seam-plan entries directly from supplied active region polygons.
+///
+/// This pure entry point is used by the per-region contract tests. Mesh
+/// vertices and layer-plan Z values are deliberately absent from this path.
+pub fn run_aligned_planning_entries(
+    region_input: &SeamPlanningView,
+    aligned_back: bool,
+) -> Vec<SeamPlanEntry> {
+    run_region_planning_entries(
+        region_input,
+        if aligned_back {
+            SeamPlannerMode::AlignedBack
+        } else {
+            SeamPlannerMode::Aligned
+        },
+    )
+}
+
+fn run_aligned_planning(
+    setup: SeamSetup,
+    _objects: &[MeshObjectView],
+    _layer_plan: &LayerPlanView,
+    region_input: &SeamPlanningView,
+    output: &mut SeamPlanningOutput,
+) -> Result<(), ModuleError> {
+    let mode = match setup {
+        SeamSetup::Aligned => SeamPlannerMode::Aligned,
+        SeamSetup::AlignedBack => SeamPlannerMode::AlignedBack,
+        _ => unreachable!("aligned planning only accepts aligned setups"),
+    };
+    for entry in run_region_planning_entries(region_input, mode) {
+        output
+            .push_seam_plan(entry)
+            .map_err(|e| ModuleError::fatal(1, format!("push_seam_plan failed: {e}")))?;
+    }
     Ok(())
 }
 
@@ -226,236 +230,31 @@ impl PrepassModule for SeamPlannerDefault {
         layer_plan: &LayerPlanView,
         output: &mut SeamPlanningOutput,
         _config: &ConfigView,
+        region_input: &SeamPlanningView,
     ) -> Result<(), ModuleError> {
         match self.mode {
-            SeamPlannerMode::Aligned => {
-                return run_aligned_planning(SeamSetup::Aligned, objects, layer_plan, output);
-            }
-            SeamPlannerMode::AlignedBack => {
-                return run_aligned_planning(SeamSetup::AlignedBack, objects, layer_plan, output);
-            }
-            SeamPlannerMode::Nearest | SeamPlannerMode::Rear | SeamPlannerMode::Random => {}
-        }
-
-        for obj in objects {
-            // Build per-face normal map for corner detection.
-            // For each triangle, compute its normal and centroid.
-            // Vertices near region boundaries become seam candidates.
-            let facet_count = obj.triangles.len();
-            if facet_count == 0 {
-                continue;
-            }
-
-            // Compute per-vertex normals by averaging adjacent triangle normals.
-            let mut vertex_normal_sums: Vec<[f32; 3]> = vec![[0.0; 3]; obj.vertices.len()];
-            let mut vertex_counts: Vec<u32> = vec![0; obj.vertices.len()];
-            let mut triangle_normals: Vec<[f32; 3]> = Vec::with_capacity(facet_count);
-
-            for triangle in &obj.triangles {
-                let v0 = obj.vertices[triangle[0] as usize];
-                let v1 = obj.vertices[triangle[1] as usize];
-                let v2 = obj.vertices[triangle[2] as usize];
-
-                // Edge vectors
-                let e1: [f32; 3] = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-                let e2: [f32; 3] = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-
-                // Cross product (normal)
-                let nx = e1[1] * e2[2] - e1[2] * e2[1];
-                let ny = e1[2] * e2[0] - e1[0] * e2[2];
-                let nz = e1[0] * e2[1] - e1[1] * e2[0];
-                let len = (nx * nx + ny * ny + nz * nz).sqrt();
-                let normal = if len > 1e-8 {
-                    [nx / len, ny / len, nz / len]
-                } else {
-                    [0.0, 0.0, 1.0]
-                };
-                triangle_normals.push(normal);
-
-                // Accumulate for vertex normals
-                for &vi in triangle {
-                    vertex_normal_sums[vi as usize][0] += normal[0];
-                    vertex_normal_sums[vi as usize][1] += normal[1];
-                    vertex_normal_sums[vi as usize][2] += normal[2];
-                    vertex_counts[vi as usize] += 1;
+            SeamPlannerMode::Aligned => run_aligned_planning(
+                SeamSetup::Aligned,
+                objects,
+                layer_plan,
+                region_input,
+                output,
+            ),
+            SeamPlannerMode::AlignedBack => run_aligned_planning(
+                SeamSetup::AlignedBack,
+                objects,
+                layer_plan,
+                region_input,
+                output,
+            ),
+            mode => {
+                for entry in run_region_planning_entries(region_input, mode) {
+                    output.push_seam_plan(entry).map_err(|e| {
+                        ModuleError::fatal(1, format!("push_seam_plan failed: {e}"))
+                    })?;
                 }
-            }
-
-            // Average vertex normals
-            let vertex_normals: Vec<[f32; 3]> = vertex_normal_sums
-                .iter()
-                .zip(vertex_counts.iter())
-                .map(|(sum, cnt)| {
-                    if *cnt > 0 {
-                        let len = (sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]).sqrt();
-                        if len > 1e-8 {
-                            [sum[0] / len, sum[1] / len, sum[2] / len]
-                        } else {
-                            [0.0, 0.0, 1.0]
-                        }
-                    } else {
-                        [0.0, 0.0, 1.0]
-                    }
-                })
-                .collect();
-
-            // Find vertex-to-triangle adjacency for corner detection.
-            let mut vertex_to_triangles: HashMap<u32, Vec<u32>> = HashMap::new();
-            for (ti, triangle) in obj.triangles.iter().enumerate() {
-                for &vi in triangle {
-                    vertex_to_triangles.entry(vi).or_default().push(ti as u32);
-                }
-            }
-
-            // Identify corners: vertices where adjacent triangles have
-            // significantly different normals (high curvature = good seam).
-            let mut corner_candidates: Vec<(u32, f32)> = Vec::new(); // (vertex_index, curvature)
-
-            for (vi, tris) in &vertex_to_triangles {
-                if tris.len() >= 2 {
-                    let v_normal = vertex_normals[*vi as usize];
-                    let mut max_cosine = -1.0f32;
-                    let mut min_cosine = 1.0f32;
-
-                    for &ti in tris {
-                        let t_normal = triangle_normals[ti as usize];
-                        let dot = v_normal[0] * t_normal[0]
-                            + v_normal[1] * t_normal[1]
-                            + v_normal[2] * t_normal[2];
-                        let dot = dot.clamp(-1.0, 1.0);
-                        max_cosine = max_cosine.max(dot);
-                        min_cosine = min_cosine.min(dot);
-                    }
-
-                    // Angular gap = high curvature corner
-                    let curvature = (max_cosine - min_cosine).abs();
-
-                    // Threshold: must be a real corner, not just smooth surface
-                    if curvature > 0.2 {
-                        corner_candidates.push((*vi, curvature));
-                    }
-                }
-            }
-
-            // Sort corners by curvature (highest first = best seam candidates).
-            // Break ties on vertex index so selection is deterministic: the
-            // candidate set is built by iterating a HashMap (random order), and
-            // symmetric meshes (e.g. a cube) produce many equal-curvature
-            // corners — without a stable tie-break, `candidates.first()` would
-            // pick a different corner per process, yielding non-reproducible
-            // G-code. `unwrap_or(Equal)` also avoids a NaN-curvature panic.
-            corner_candidates.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(a.0.cmp(&b.0))
-            });
-
-            // Build scored candidates from corner vertices.
-            let candidates: Vec<ScoredSeamCandidate> = corner_candidates
-                .iter()
-                .take(10) // limit to top 10 candidates
-                .map(|(vi, curvature)| {
-                    let v = obj.vertices[*vi as usize];
-                    ScoredSeamCandidate {
-                        position: Point3WithWidth {
-                            x: v[0],
-                            y: v[1],
-                            z: v[2],
-                            width: 0.4, // default line width
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                        },
-                        score: 1.0 - curvature, // lower score = better (curvature inverted)
-                        reason: SeamReason {
-                            tag: if *curvature > 0.8 {
-                                "concave".to_string()
-                            } else {
-                                "aligned".to_string()
-                            },
-                        },
-                    }
-                })
-                .collect();
-
-            // Emit one seam plan per layer (MVP: one region per object).
-            // Use layer indices from LayerPlanIR via host lookup, or enumerate
-            // a default set of layers based on object bounds.
-            let bounds = obj
-                .vertices
-                .iter()
-                .fold(None, |acc: Option<([f32; 3], [f32; 3])>, v| {
-                    Some(match acc {
-                        None => ([v[0], v[1], v[2]], [v[0], v[1], v[2]]),
-                        Some((mn, mx)) => (
-                            [mn[0].min(v[0]), mn[1].min(v[1]), mn[2].min(v[2])],
-                            [mx[0].max(v[0]), mx[1].max(v[1]), mx[2].max(v[2])],
-                        ),
-                    })
-                });
-
-            let (Some((_bmin, bmax)), layer_height) = (bounds, 0.2) else {
-                continue;
-            };
-
-            // Estimate number of layers from object height and layer height.
-            let object_height = bmax[2] - 0.0;
-            let num_layers = (object_height / layer_height).ceil() as usize;
-            let num_layers = num_layers.clamp(1, 100); // sanity clamp
-
-            for layer_idx in 0..num_layers {
-                let z = layer_idx as f32 * layer_height;
-                let region_id: u64 = 0; // MVP: single region per object
-
-                // Choose best candidate (or fallback if none found).
-                let best = candidates
-                    .first()
-                    .map(|c| {
-                        let mut chosen = c.clone();
-                        chosen.position.z = z;
-                        chosen
-                    })
-                    .unwrap_or_else(|| ScoredSeamCandidate {
-                        position: Point3WithWidth {
-                            x: bmax[0], // rear-most X
-                            y: (obj
-                                .vertices
-                                .iter()
-                                .map(|v| v[1])
-                                .fold(f32::INFINITY, |a, b| a.min(b))
-                                + bmax[1])
-                                / 2.0,
-                            z,
-                            width: 0.4,
-                            flow_factor: 1.0,
-                            overhang_quartile: None,
-                            dist_to_top_mm: 0.0,
-                        },
-                        score: 100.0, // worst score
-                        reason: SeamReason {
-                            tag: "aligned".to_string(),
-                        },
-                    });
-
-                let entry = SeamPlanEntry {
-                    global_layer_index: layer_idx as u32,
-                    object_id: obj.object_id.clone(),
-                    region_id: region_id.to_string(),
-                    chosen_position: best.position,
-                    chosen_wall_index: 0,
-                    scored_candidates: candidates.clone(),
-                };
-
-                output
-                    .push_seam_plan(entry)
-                    .map_err(|e| ModuleError::fatal(1, format!("push_seam_plan failed: {e}")))?;
+                Ok(())
             }
         }
-
-        Ok(())
     }
 }
-
-// Unit tests for this module live in `tests/seam_planner_tdd.rs` (external test
-// crate), built via the public `on_print_start` constructor rather than the
-// private `mode` field.

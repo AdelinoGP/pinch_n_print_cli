@@ -298,6 +298,14 @@ pub enum BlackboardError {
         /// The duplicated prepass slot.
         slot: BlackboardPrepassSlot,
     },
+    /// A `SeamPlanIR` was committed with two entries sharing the same
+    /// full `RegionKey` (including `variant_chain`). Rejected at commit
+    /// time (packet 178 AC-N1) so the host never silently shadows a
+    /// region's plan during per-layer injection.
+    DuplicateSeamPlanEntry {
+        /// The first duplicate `RegionKey` encountered, in entry order.
+        region_key: crate::slice_ir::RegionKey,
+    },
     /// A requested prepass output has not been committed yet.
     MissingRequiredPrepass {
         /// The missing prepass slot.
@@ -329,6 +337,13 @@ impl fmt::Display for BlackboardError {
         match self {
             Self::DuplicatePrepassCommit { slot } => {
                 write!(f, "prepass output already committed for {slot}")
+            }
+            Self::DuplicateSeamPlanEntry { region_key } => {
+                write!(
+                    f,
+                    "SeamPlanIR contains duplicate entries for RegionKey (layer={}, object='{}', region={}, variant_chain={:?})",
+                    region_key.global_layer_index, region_key.object_id, region_key.region_id, region_key.variant_chain
+                )
             }
             Self::MissingRequiredPrepass { slot } => {
                 write!(f, "required prepass output missing for {slot}")

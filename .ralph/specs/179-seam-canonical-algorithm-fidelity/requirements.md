@@ -2,9 +2,9 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-282`
+- Grouped task IDs: `TASK-292`
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -16,7 +16,7 @@ vs Eigen `fullPivHouseholderQr`, fixed `curling_influence = 1.0` (no
 `layer_angle` field), no alternative-start retry for short strings, and a
 hardcoded `0.4 mm` flow width. These reductions are recorded in
 `D-168-SEAM-PREPASS-SOURCE`. This packet closes those algorithm reductions by
-restoring canonical behavior, using packet 1's per-region input view to supply
+restoring canonical behavior, using packet 178's per-region input view to supply
 real flow width, seam paint annotations, and per-region polygon candidates.
 
 ## In Scope
@@ -29,15 +29,15 @@ real flow width, seam paint annotations, and per-region polygon candidates.
 - Consume seam enforcer/blocker segment annotations before candidate construction; set `point_type` and `central_enforcer` per canonical `EnforcedBlockedSeamPoint` semantics.
 - Port canonical `align_seam_points` alternative-start retry loop (step size `1 + size/20`, keep longest string).
 - Add bounded continuity anchor for active-region gaps: no inactive-layer entries, last real seam retained, canonical `seam_align_tolerable_dist_factor * flow_width` resume search, new string when no candidate qualifies.
-- Replace normal-equation Gaussian elimination with `faer` Householder QR plus custom full pivoting, or fall back to a local full-pivot Householder QR; never use `ColPivQR`, `FullPivLU`, or normal equations.
-- Use the resolved per-active-region outer-wall scoring width from packet 1 instead of the hardcoded `0.4 mm` default.
+- Replace normal-equation Gaussian elimination with `faer::linalg::solvers::ColPivQr` (the canonical full-pivot Householder QR equivalent), with AC-N1 pivot-threshold zeroing and non-finite-result sanitization enforced on the way out; no local fallback or normal equations.
+- Use the resolved per-active-region outer-wall scoring width from packet 178 instead of the hardcoded `0.4 mm` default.
 - Port `pick_seam_point`, `pick_nearest_seam_point_index`, `pick_random_seam_point` canonical selection logic.
 - Add unit tests proving canonical ordering for every comparator gate, deterministic visibility, retry behavior, gap-anchor behavior, painted priority, solver rank handling, and flow-width sourcing.
 
 ## Out of Scope
 
-- WIT input contract changes, host scheduling, and perimeter-region identity; packet 1 owns those.
-- Continuous final-wall projection, path-point insertion, default-mode change, and degraded fallback diagnostics; packet 3 owns those.
+- WIT input contract changes, host scheduling, and perimeter-region identity; packet 178 owns those.
+- Continuous final-wall projection, path-point insertion, default-mode change, and degraded fallback diagnostics; packet 180 owns those.
 - Changes to OrcaSlicer source.
 - Host-native alignment policy.
 
@@ -57,7 +57,7 @@ Files to inspect for this packet:
 
 - Positive: `AC-1` through `AC-8` prove canonical comparator ordering, canonical visibility constants, alternative-start retry, bounded gap anchor, painted seam priority, full-pivot solver, resolved flow width, and attribution headers.
 - Negative: `AC-N1` through `AC-N2` prove rank-deficient solver handling and determinism.
-- Cross-packet impact: packet 3 consumes the canonical seam target and fallback semantics; packet 1's per-region view supplies the inputs.
+- Cross-packet impact: packet 180 consumes the canonical seam target and fallback semantics; packet 178's per-region view supplies the inputs.
 
 ## Verification Commands
 
@@ -82,5 +82,5 @@ compatibility shortcut.
 
 OrcaSlicer source reads must be delegated; the implementer must never load
 `SeamPlacer.cpp`, `SeamPlacer.hpp`, `Curves.hpp`, or `Bicubic.hpp` directly. The
-`faer` dependency spike must be delegated to a subagent that returns a FACT on
-guest build compatibility before committing to the production path.
+`faer` 0.24.4 dependency decision is settled by the production guest-build gate;
+`cargo xtask build-guests --check` remains required after module edits.

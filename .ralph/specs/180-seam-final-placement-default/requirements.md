@@ -2,7 +2,7 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-283`
+- Grouped task IDs: `TASK-293`
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -20,8 +20,8 @@ Packet 168's seam-placer snaps the planner's fitted point to the nearest existin
 
 ## Out of Scope
 
-- WIT/IR identity changes, active-region key changes, or schema version bumps — packet 1 owns those.
-- Canonical comparator, visibility, overhang, alternative-start retry, or B-spline solver changes — packet 2 owns those.
+- WIT/IR identity changes, active-region key changes, or schema version bumps — packet 178 owns those.
+- Canonical comparator, visibility, overhang, alternative-start retry, or B-spline solver changes — packet 179 owns those.
 - Changes to OrcaSlicer source or direct final-perimeter generation.
 - Host-native alignment policy or a second cross-layer state channel.
 
@@ -50,7 +50,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (continuous projection), `AC-2` (degraded fallback), `AC-3` (default mode), `AC-4` (multi-region e2e), `AC-5` (no regression).
 - Negative: `AC-N1` (empty wall loop), `AC-N2` (unknown mode rejection).
-- **FORWARD-DEP**: `TASK-281` (`178-seam-region-aware-planning`) and `TASK-282` (`179-seam-canonical-algorithm-fidelity`) are both `status: draft` and must be implemented before this packet's end-to-end and multi-region e2e tests can pass. Unit tests for continuous projection and degraded fallback can be authored in isolation; the e2e test requires the full pipeline.
+- **FORWARD-DEP**: `TASK-291` (`178-seam-region-aware-planning`) and `TASK-292` (`179-seam-canonical-algorithm-fidelity`) are both `status: implemented`. Unit tests for continuous projection and degraded fallback can be authored in isolation; the e2e test requires the full pipeline that 178 + 179 deliver.
 
 ## Verification Commands
 

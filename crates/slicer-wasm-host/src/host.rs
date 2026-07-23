@@ -370,6 +370,11 @@ pub struct LayerPlanOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct SeamPlanningOutputData;
+/// Backing data for the prepass `seam-planning-view` resource.
+pub struct SeamPlanningViewData {
+    /// Active region inputs projected from the committed SliceIR.
+    pub regions: Vec<prepass::SeamPlanningRegionInput>,
+}
 /// Table-entry tag for the `support-geometry-output` builder resource.
 ///
 /// The `SupportGeometry` prepass stage now passes a `support-geometry-output`
@@ -1304,6 +1309,16 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::SeamPlanningOutput>> {
         let rep = self.table.push(SeamPlanningOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Push a seam-planning-view resource containing the committed active
+    /// SliceIR regions for the whole print.
+    pub fn push_seam_planning_view(
+        &mut self,
+        data: SeamPlanningViewData,
+    ) -> wasmtime::Result<Resource<prepass::SeamPlanningView>> {
+        let rep = self.table.push(data)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -2968,6 +2983,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                 original_index: v.original_index,
                 tool_index: v.tool_index,
                 region_key: ir::RegionKey {
+                    variant_chain: Vec::new(),
                     layer_index: v.region_key.global_layer_index as i32,
                     object_id: v.region_key.object_id.clone(),
                     region_id: v.region_key.region_id.to_string(),
@@ -3262,6 +3278,23 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::SeamPlanningOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SeamPlanningOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
+
+    impl pm::HostSeamPlanningView for HostExecutionContext {
+        fn regions(
+            &mut self,
+            self_: Resource<pm::SeamPlanningView>,
+        ) -> wasmtime::Result<Vec<pm::SeamPlanningRegionInput>> {
+            self.runtime_reads.push(String::from("SliceIR"));
+            let typed: Resource<SeamPlanningViewData> = Resource::new_own(self_.rep());
+            Ok(self.table.get(&typed)?.regions.clone())
+        }
+
+        fn drop(&mut self, rep: Resource<pm::SeamPlanningView>) -> wasmtime::Result<()> {
+            let typed: Resource<SeamPlanningViewData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }

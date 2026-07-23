@@ -4,7 +4,7 @@
 //! They are used by PrepassModule implementations for mesh analysis and layer planning stages.
 
 use serde::{Deserialize, Serialize};
-use slicer_ir::Point3WithWidth;
+use slicer_ir::{ExPolygon, PaintSemantic, PaintValue, Point3WithWidth};
 
 /// Type alias for object IDs (per ir-types.wit: `type object-id = string`).
 pub type ObjectId = String;
@@ -247,6 +247,8 @@ pub struct SeamPlanEntry {
     pub object_id: ObjectId,
     /// Region identifier within the object.
     pub region_id: RegionId,
+    /// Ordered paint-variant identity for the active region.
+    pub variant_chain: Vec<(String, slicer_ir::PaintValue)>,
     /// The chosen seam position for this region at this layer.
     pub chosen_position: Point3WithWidth,
     /// Wall index the chosen seam belongs to (0 = outermost).
@@ -300,6 +302,36 @@ pub struct LayerPlanViewEntry {
 pub struct LayerPlanView {
     /// Ordered list of layer entries (ascending by global_layer_index).
     pub layers: Vec<LayerPlanViewEntry>,
+}
+
+/// One active sliced region supplied to the seam planner.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SeamPlanningRegionInput {
+    /// Global layer index.
+    pub global_layer_index: u32,
+    /// Object this region belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// Ordered paint-variant identity for the region.
+    pub variant_chain: Vec<(String, PaintValue)>,
+    /// Slice-plane Z in millimetres.
+    pub z: f32,
+    /// Effective layer height in millimetres.
+    pub height: f32,
+    /// Supplied region boundary polygons in IR coordinates.
+    pub ex_polygons: Vec<ExPolygon>,
+    /// Per-segment paint annotations in deterministic semantic order.
+    pub segment_annotations: Vec<(PaintSemantic, Vec<Vec<Option<PaintValue>>>)>,
+    /// Flow width used while scoring candidates, in millimetres.
+    pub scoring_width: f32,
+}
+
+/// Read-only collection of active sliced regions for seam planning.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SeamPlanningView {
+    /// Active regions in the whole print.
+    pub regions: Vec<SeamPlanningRegionInput>,
 }
 
 /// Entry in the region segmentation view, listing regions for one (object, layer) pair.
