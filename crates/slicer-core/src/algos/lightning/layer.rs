@@ -3,7 +3,7 @@
 // and Slic3r, which are licensed under the GNU Affero General Public License,
 // version 3 (AGPLv3).
 //
-// Original C++ source path: OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.{hpp,cpp}
+// Original C++ source path: OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Layer.cpp
 //
 // This file is an LLM-generated Rust port of the original C++ implementation,
 // adapted for the Pinch 'n Print architecture.
@@ -11,6 +11,7 @@
 
 //! Per-layer tree seeding, reconnection, and line conversion for Lightning infill.
 
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use slicer_ir::{slice_ir::BoundingBox2, ExPolygon, Point2, Polygon};
@@ -19,11 +20,12 @@ use crate::geometry::closest_point_on_segment;
 use crate::polygon_ops::clip_polylines;
 
 use super::distance_field::DistanceField;
-use super::tree_node::{Node, NodeRef};
+use super::tree_node::{to_grid_point, Node, NodeRef};
 
 const TREE_CONNECTING_IGNORE_OFFSET: i64 = 1;
+const TREE_NODE_LOCATOR_CELL_SIZE: i64 = 4;
 
-enum GroundingLocation {
+pub(crate) enum GroundingLocation {
     Boundary(Point2),
     Tree(NodeRef),
 }
@@ -42,12 +44,16 @@ impl GroundingLocation {
 pub struct Layer {
     /// Roots of the trees owned by this layer.
     pub tree_roots: Vec<NodeRef>,
+    tree_node_locator: HashMap<(i32, i32), Vec<NodeRef>>,
 }
 
 impl Layer {
     /// Construct a layer from the roots propagated from the layer above.
     pub fn new(tree_roots: Vec<NodeRef>) -> Self {
-        Self { tree_roots }
+        Self {
+            tree_roots,
+            tree_node_locator: HashMap::new(),
+        }
     }
 
     /// Seed trees for the unsupported cells in this layer.
@@ -59,7 +65,6 @@ impl Layer {
         wall_supporting_radius: i64,
         cancel: &dyn Fn(),
     ) {
-        // 139 deviation: grounding search is a 'nearest outline' stub; full wall_supporting_radius-aware search deferred (D-139-LAYER-GROUNDING-SEARCH-STUB).
         let outlines_bbox = bounding_box(current_outlines);
         let mut distance_field = DistanceField::new(
             supporting_radius,
@@ -67,19 +72,108 @@ impl Layer {
             outlines_bbox,
             current_overhang,
         );
-        let _ = wall_supporting_radius;
+        self.rebuild_tree_node_locator(outlines_bbox);
         cancel();
 
         while let Some(unsupported_location) = distance_field.try_get_next_point() {
             cancel();
-            let grounding_location = closest_outline_point(unsupported_location, current_outlines)
-                .map(|(point, _)| point)
-                .unwrap_or(unsupported_location);
-            let grounding = GroundingLocation::Boundary(grounding_location);
+            let Some(grounding) = self.get_best_grounding_location(
+                unsupported_location,
+                current_outlines,
+                outlines_bbox,
+                supporting_radius,
+                wall_supporting_radius,
+                cancel,
+            ) else {
+                distance_field.update(unsupported_location, unsupported_location);
+                continue;
+            };
             let grounding_point = grounding.point();
             self.attach(unsupported_location, grounding);
             distance_field.update(grounding_point, unsupported_location);
         }
+    }
+
+    // Orca ref: Layer.cpp::getBestGroundingLocation.
+    pub(crate) fn get_best_grounding_location(
+        &self,
+        unsupported_location: Point2,
+        outline: &[Point2],
+        bbox: BoundingBox2,
+        supporting_radius: i64,
+        wall_supporting_radius: i64,
+        cancel: &dyn Fn(),
+    ) -> Option<GroundingLocation> {
+        let mut outline_locator = BTreeMap::<(i32, i32), Vec<Point2>>::new();
+        for point in outline {
+            outline_locator
+                .entry(to_grid_point(*point, bbox, TREE_NODE_LOCATOR_CELL_SIZE))
+                .or_default()
+                .push(*point);
+        }
+        if let Some((closest, _)) = closest_outline_point(unsupported_location, outline) {
+            outline_locator
+                .entry(to_grid_point(closest, bbox, TREE_NODE_LOCATOR_CELL_SIZE))
+                .or_default()
+                .push(closest);
+        }
+
+        let tree_connecting_ignore_width =
+            wall_supporting_radius.saturating_sub(TREE_CONNECTING_IGNORE_OFFSET);
+        let mut best_boundary: Option<(i64, GroundingLocation)> = None;
+        let mut excluded_boundary_found = false;
+        for candidates in outline_locator.values() {
+            cancel();
+            for candidate in candidates {
+                let candidate_distance = distance_between(unsupported_location, *candidate);
+                if candidate_distance <= tree_connecting_ignore_width {
+                    excluded_boundary_found = true;
+                    continue;
+                }
+                if best_boundary
+                    .as_ref()
+                    .is_none_or(|(distance, _)| candidate_distance < *distance)
+                {
+                    best_boundary =
+                        Some((candidate_distance, GroundingLocation::Boundary(*candidate)));
+                }
+            }
+        }
+
+        let mut best = (!excluded_boundary_found)
+            .then_some(best_boundary)
+            .flatten();
+        let mut tree_cells: Vec<_> = self.tree_node_locator.keys().copied().collect();
+        tree_cells.sort_unstable();
+        for cell in tree_cells {
+            cancel();
+            let Some(candidates) = self.tree_node_locator.get(&cell) else {
+                continue;
+            };
+            for candidate in candidates {
+                let location = candidate.borrow().location();
+                let Some((_, wall_distance)) = closest_outline_point(location, outline) else {
+                    continue;
+                };
+                if wall_distance <= tree_connecting_ignore_width {
+                    continue;
+                }
+                let candidate_distance = candidate
+                    .borrow()
+                    .get_weighted_distance(unsupported_location, supporting_radius);
+                if best
+                    .as_ref()
+                    .is_none_or(|(distance, _)| candidate_distance <= *distance)
+                {
+                    best = Some((
+                        candidate_distance,
+                        GroundingLocation::Tree(Rc::clone(candidate)),
+                    ));
+                }
+            }
+        }
+
+        best.map(|(_, grounding)| grounding)
     }
 
     /// Reconnect roots to the nearest outline or an existing compatible tree.
@@ -187,6 +281,26 @@ impl Layer {
                 tree_node.borrow().add_child(unsupported_location)
             }
         }
+    }
+
+    fn rebuild_tree_node_locator(&mut self, bbox: BoundingBox2) {
+        self.tree_node_locator.clear();
+        let roots = self.tree_roots.clone();
+        for root in roots {
+            root.borrow()
+                .visit_nodes(|node| self.index_tree_node(&node, bbox));
+        }
+    }
+
+    fn index_tree_node(&mut self, node: &NodeRef, bbox: BoundingBox2) {
+        self.tree_node_locator
+            .entry(to_grid_point(
+                node.borrow().location(),
+                bbox,
+                TREE_NODE_LOCATOR_CELL_SIZE,
+            ))
+            .or_default()
+            .push(Rc::clone(node));
     }
 
     fn closest_compatible_tree(

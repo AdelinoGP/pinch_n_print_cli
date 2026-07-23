@@ -426,6 +426,31 @@ fn lightning_layer_seed_inside_overhang() {
 }
 
 #[test]
+fn lightning_layer_wall_supporting_radius() {
+    let outline = vec![
+        Point2 { x: 0, y: 0 },
+        Point2 { x: 100, y: 0 },
+        Point2 { x: 100, y: 100 },
+        Point2 { x: 0, y: 100 },
+        Point2 { x: 0, y: 0 },
+    ];
+    let tree = Node::new(Point2 { x: 5, y: 50 });
+    let mut layer = Layer::new(vec![Rc::clone(&tree)]);
+    let overhang = vec![
+        Point2 { x: 5, y: 49 },
+        Point2 { x: 6, y: 49 },
+        Point2 { x: 6, y: 50 },
+        Point2 { x: 5, y: 50 },
+        Point2 { x: 5, y: 49 },
+    ];
+
+    layer.generate_new_trees(&overhang, &outline, 6, 1000, &|| {});
+
+    assert_eq!(layer.tree_roots.len(), 1);
+    assert!(tree.borrow().children().is_empty());
+}
+
+#[test]
 fn lightning_layer_reconnect_to_outline() {
     let outline = square(20.0);
     let root = Node::new(Point2::from_mm(10.0, 10.0));

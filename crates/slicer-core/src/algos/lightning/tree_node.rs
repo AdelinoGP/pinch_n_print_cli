@@ -14,7 +14,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use slicer_ir::Point2;
+use slicer_ir::{slice_ir::BoundingBox2, Point2};
 
 // Orca ref: Node::straighten and close_enough (TreeNode.cpp); PnP lengths divide by 100.
 const CLOSE_ENOUGH_PNP_UNITS: f64 = 0.1;
@@ -22,6 +22,14 @@ const WEIGHT_PNP_UNITS: i64 = 10;
 
 /// Shared ownership handle for a [`Node`].
 pub type NodeRef = Rc<RefCell<Node>>;
+
+pub(crate) fn to_grid_point(location: Point2, bbox: BoundingBox2, cell_size: i64) -> (i32, i32) {
+    let cell_size = cell_size.max(1);
+    (
+        location.x.saturating_sub(bbox.min.x).div_euclid(cell_size) as i32,
+        location.y.saturating_sub(bbox.min.y).div_euclid(cell_size) as i32,
+    )
+}
 
 /// A location in a Lightning tree and its child branches.
 pub struct Node {
