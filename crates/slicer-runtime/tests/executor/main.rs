@@ -85,6 +85,7 @@ mod layer_executor_tdd;
 mod layer_finalization_tdd;
 mod layer_slice_tdd;
 mod layer_world_deep_copy_tdd;
+mod lightning_pipeline_linked_tdd;
 mod lightning_prepass_tdd;
 mod live_layer_support_tdd;
 mod live_seam_path_tdd;
