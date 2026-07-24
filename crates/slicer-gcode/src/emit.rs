@@ -268,8 +268,20 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         // are skipped so the viewer's layer list stays gap-free.
         let mut emitted_layer_count: u32 = 0;
 
-        // Push ExtrusionMode as index-0 so postpass modules (Step 4) can prepend
-        // machine_start_gcode BEFORE it via commands.insert(0, Raw(...)).
+        // ExtrusionMode opens the stream, so machine_start_gcode can be
+        // prepended ahead of it at `PostPass::GCodePostProcess`.
+        //
+        // It is no longer literally index 0 of the returned `GCodeIR`:
+        // `inject_m73` (further down this function) prepends an
+        // `M73 P0 R<n>` / `M73 Q0 S<n>` pair to the head, so ExtrusionMode ends
+        // up at index 2 whenever M73 is enabled. That is harmless because
+        // `machine-gcode-emit` rebuilds the stream rather than splicing into
+        // it — `run_gcode_postprocess` emits the resolved start template first,
+        // then re-emits every input command in order — so the start block still
+        // precedes both the M73 pair and ExtrusionMode. The ordering is pinned
+        // by `machine_start_gcode_precedes_m73_and_extrusion_mode` in
+        // `modules/core-modules/machine-gcode-emit/tests/machine_gcode_emit_tdd.rs`;
+        // do not reintroduce an index-0 assumption here.
         let mut commands = vec![GCodeCommand::ExtrusionMode {
             absolute: !self.relative,
         }];

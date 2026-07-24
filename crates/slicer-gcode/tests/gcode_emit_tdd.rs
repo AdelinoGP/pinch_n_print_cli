@@ -103,6 +103,96 @@ fn gcode_ir_fixture(commands: Vec<GCodeCommand>) -> GCodeIR {
 }
 
 // ============================================================================
+// Structural helpers
+//
+// `emit_gcode` composes several passes: layer walking, then `inject_m73`
+// (which *prepends* an `M73 P0 R<n>` / `M73 Q0 S<n>` pair to the head of the
+// stream), then `filament_stats_comment_block` (which appends). Absolute
+// `commands[N]` indices therefore encode the current pass list rather than the
+// emission contract, and every one of them shifted by +2 the moment M73
+// injection landed. These helpers let the tests below assert the ordering and
+// content that actually constitute the contract.
+// ============================================================================
+
+/// The `Raw` text of a command, if it is one.
+fn raw_text(command: &GCodeCommand) -> Option<&str> {
+    match command {
+        GCodeCommand::Raw { text } => Some(text.as_str()),
+        _ => None,
+    }
+}
+
+/// Every `Move` in stream order.
+fn moves(gcode_ir: &GCodeIR) -> Vec<&GCodeCommand> {
+    gcode_ir
+        .commands
+        .iter()
+        .filter(|c| matches!(c, GCodeCommand::Move { .. }))
+        .collect()
+}
+
+/// Index of the first command satisfying `pred`.
+fn position_of(gcode_ir: &GCodeIR, pred: impl Fn(&GCodeCommand) -> bool) -> Option<usize> {
+    gcode_ir.commands.iter().position(|c| pred(c))
+}
+
+/// Indices of every command satisfying `pred`, in stream order.
+fn positions_of(gcode_ir: &GCodeIR, pred: impl Fn(&GCodeCommand) -> bool) -> Vec<usize> {
+    gcode_ir
+        .commands
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| pred(c))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+fn is_move(command: &GCodeCommand) -> bool {
+    matches!(command, GCodeCommand::Move { .. })
+}
+
+fn is_raw_eq(command: &GCodeCommand, expected: &str) -> bool {
+    raw_text(command) == Some(expected)
+}
+
+/// Assert that `labels` occur in the stream in the given relative order,
+/// each exactly once, reporting the whole stream on failure.
+fn assert_raw_sequence(gcode_ir: &GCodeIR, labels: &[&str]) {
+    let mut last = None::<usize>;
+    for label in labels {
+        let found = positions_of(gcode_ir, |c| is_raw_eq(c, label));
+        assert_eq!(
+            found.len(),
+            1,
+            "expected exactly one `{label}`, found {} in {:#?}",
+            found.len(),
+            gcode_ir.commands
+        );
+        let at = found[0];
+        if let Some(prev) = last {
+            assert!(
+                at > prev,
+                "`{label}` must follow the preceding header; got index {at} after {prev} in {:#?}",
+                gcode_ir.commands
+            );
+        }
+        last = Some(at);
+    }
+}
+
+/// Assert a `Move`'s coordinates.
+fn assert_move_at(command: &GCodeCommand, ex: f32, ey: f32, ez: f32) {
+    match command {
+        GCodeCommand::Move { x, y, z, .. } => {
+            assert_eq!(*x, Some(ex));
+            assert_eq!(*y, Some(ey));
+            assert_eq!(*z, Some(ez));
+        }
+        other => panic!("expected Move command, got {other:?}"),
+    }
+}
+
+// ============================================================================
 // Test 1: Empty layers emit minimal GCodeIR
 // ============================================================================
 
@@ -120,15 +210,24 @@ fn emit_empty_layers_produces_minimal_gcode_ir() {
     );
     let gcode_ir = result.unwrap();
 
-    // Empty layers should produce exactly one command: the head ExtrusionMode.
-    assert_eq!(
-        gcode_ir.commands.len(),
-        1,
-        "empty layers should produce exactly 1 command (head ExtrusionMode)"
+    // Structural invariant: with no layers there is nothing to print, so the
+    // stream carries no motion and no layer markers — only the mode
+    // declaration and whatever bookkeeping the surrounding passes append.
+    assert!(
+        moves(&gcode_ir).is_empty(),
+        "empty layers must produce no Move commands, got {:#?}",
+        gcode_ir.commands
     );
     assert!(
-        matches!(gcode_ir.commands[0], GCodeCommand::ExtrusionMode { .. }),
-        "index-0 command should be ExtrusionMode"
+        positions_of(&gcode_ir, |c| is_raw_eq(c, ";LAYER_CHANGE")).is_empty(),
+        "empty layers must produce no ;LAYER_CHANGE markers, got {:#?}",
+        gcode_ir.commands
+    );
+    assert_eq!(
+        positions_of(&gcode_ir, |c| matches!(c, GCodeCommand::ExtrusionMode { .. })).len(),
+        1,
+        "exactly one ExtrusionMode declaration must be emitted, got {:#?}",
+        gcode_ir.commands
     );
 
     // Metadata should have layer_count = 0
@@ -168,45 +267,35 @@ fn emit_single_layer_single_entity_produces_move_commands() {
     );
     let gcode_ir = result.unwrap();
 
-    // Should have 1 ExtrusionMode + 3 Move commands (one per point)
-    // Plus 4 header lines: ;LAYER_CHANGE, ;Z:0.2, ;HEIGHT:0.2, ;TYPE:Outer wall
-    // Total = 1 (ExtrusionMode) + 4 (headers) + 3 (moves) = 8
-    assert_eq!(
-        gcode_ir.commands.len(),
-        8,
-        "should produce 8 commands (1 ExtrusionMode + 4 headers + 3 moves) for a single-entity layer"
+    // The layer's four headers precede any motion, in canonical order.
+    assert_raw_sequence(
+        &gcode_ir,
+        &[";LAYER_CHANGE", ";Z:0.2", ";HEIGHT:0.2", ";TYPE:Outer wall"],
+    );
+    let first_move_at = position_of(&gcode_ir, is_move).expect("a Move must be emitted");
+    let type_label_at = position_of(&gcode_ir, |c| is_raw_eq(c, ";TYPE:Outer wall"))
+        .expect("role label must be emitted");
+    assert!(
+        type_label_at < first_move_at,
+        "layer headers must precede the first Move; got headers ending at {type_label_at}, \
+         first Move at {first_move_at} in {:#?}",
+        gcode_ir.commands
     );
 
-    // Index 0 is the head ExtrusionMode.
-    // Verify first move has correct coordinates (index 5 = first Move after ExtrusionMode + 3 header + 1 ;TYPE)
-    match &gcode_ir.commands[5] {
-        GCodeCommand::Move { x, y, z, role, .. } => {
-            assert_eq!(*x, Some(0.0));
-            assert_eq!(*y, Some(0.0));
-            assert_eq!(*z, Some(0.2));
-            assert_eq!(*role, ExtrusionRole::OuterWall);
-        }
-        other => panic!("expected Move command, got {:?}", other),
-    }
-
-    // Verify second move
-    match &gcode_ir.commands[6] {
-        GCodeCommand::Move { x, y, z, .. } => {
-            assert_eq!(*x, Some(10.0));
-            assert_eq!(*y, Some(0.0));
-            assert_eq!(*z, Some(0.2));
-        }
-        other => panic!("expected Move command, got {:?}", other),
-    }
-
-    // Verify third move
-    match &gcode_ir.commands[7] {
-        GCodeCommand::Move { x, y, z, .. } => {
-            assert_eq!(*x, Some(10.0));
-            assert_eq!(*y, Some(10.0));
-            assert_eq!(*z, Some(0.2));
-        }
-        other => panic!("expected Move command, got {:?}", other),
+    // One Move per path point, in path order, carrying the entity's role.
+    let moves = moves(&gcode_ir);
+    assert_eq!(
+        moves.len(),
+        3,
+        "one Move per path point expected, got {:#?}",
+        gcode_ir.commands
+    );
+    assert_move_at(moves[0], 0.0, 0.0, 0.2);
+    assert_move_at(moves[1], 10.0, 0.0, 0.2);
+    assert_move_at(moves[2], 10.0, 10.0, 0.2);
+    match moves[0] {
+        GCodeCommand::Move { role, .. } => assert_eq!(*role, ExtrusionRole::OuterWall),
+        other => panic!("expected Move command, got {other:?}"),
     }
 }
 
@@ -240,28 +329,45 @@ fn emit_multiple_layers_preserves_z_order() {
     );
     let gcode_ir = result.unwrap();
 
-    // Should have 2 Move commands
-    // Index 0: ExtrusionMode (head)
-    // Layer 1: 3 header Raw + 1 ;TYPE Raw + 1 Move = 5 commands
-    // Layer 2: 3 header Raw + 1 Move = 4 commands (no new ;TYPE - same role as prev layer)
-    // Total = 1 + 9 = 10 commands
-    assert_eq!(gcode_ir.commands.len(), 10);
+    // Two layers, one point each: two Moves, ascending in Z.
+    let moves = moves(&gcode_ir);
+    assert_eq!(
+        moves.len(),
+        2,
+        "one Move per layer expected, got {:#?}",
+        gcode_ir.commands
+    );
+    assert_move_at(moves[0], 0.0, 0.0, 0.2);
+    assert_move_at(moves[1], 0.0, 0.0, 0.4);
 
-    // First move is at index 5 (after ExtrusionMode + 3 header + 1 ;TYPE for layer 1)
-    match &gcode_ir.commands[5] {
-        GCodeCommand::Move { z, .. } => {
-            assert_eq!(*z, Some(0.2), "first command should be at z=0.2");
-        }
-        other => panic!("expected Move command, got {:?}", other),
-    }
+    // Each layer announces itself, and the second layer's marker separates the
+    // two Moves — the Z ordering is a property of the layer walk, not of where
+    // the commands happen to land in the vector.
+    let layer_changes = positions_of(&gcode_ir, |c| is_raw_eq(c, ";LAYER_CHANGE"));
+    assert_eq!(
+        layer_changes.len(),
+        2,
+        "one ;LAYER_CHANGE per emitting layer expected, got {:#?}",
+        gcode_ir.commands
+    );
+    let move_positions = positions_of(&gcode_ir, is_move);
+    assert!(
+        layer_changes[0] < move_positions[0]
+            && move_positions[0] < layer_changes[1]
+            && layer_changes[1] < move_positions[1],
+        "expected LAYER_CHANGE / Move / LAYER_CHANGE / Move interleaving; got \
+         layer changes at {layer_changes:?} and moves at {move_positions:?} in {:#?}",
+        gcode_ir.commands
+    );
 
-    // Second move is at index 9 (after ExtrusionMode + layer1(5) + 3 header for layer 2)
-    match &gcode_ir.commands[9] {
-        GCodeCommand::Move { z, .. } => {
-            assert_eq!(*z, Some(0.4), "second command should be at z=0.4");
-        }
-        other => panic!("expected Move command, got {:?}", other),
-    }
+    // The role label is emitted once: both layers print the same role, so the
+    // second layer must not re-announce it.
+    assert_eq!(
+        positions_of(&gcode_ir, |c| is_raw_eq(c, ";TYPE:Outer wall")).len(),
+        1,
+        "an unchanged role must not be re-announced across layers, got {:#?}",
+        gcode_ir.commands
+    );
 }
 
 // ============================================================================
@@ -304,36 +410,51 @@ fn emit_tool_change_at_correct_position() {
     );
     let gcode_ir = result.unwrap();
 
-    // The tool change resets the role label, so the post-change entity emits a
-    // second ;TYPE marker: 1 ExtrusionMode + 3 header + 1 ;TYPE + 2 Move +
-    // 1 ToolChange + 1 ;TYPE + 1 Move = 10 commands.
-    assert_eq!(gcode_ir.commands.len(), 10, "should produce 10 commands");
-
-    // Commands 5 and 6 should be Move (after ExtrusionMode + 3 header + 1 ;TYPE lines)
-    assert!(matches!(&gcode_ir.commands[5], GCodeCommand::Move { .. }));
-    assert!(matches!(&gcode_ir.commands[6], GCodeCommand::Move { .. }));
-
-    // Command 7 should be ToolChange
-    match &gcode_ir.commands[7] {
-        GCodeCommand::ToolChange {
-            after_entity_index: _,
-            from,
-            to,
-        } => {
+    // The contract is the *position* of the tool change within the entity
+    // stream: it lands after the second entity's Move (`after_entity_index: 1`)
+    // and before the third's, and it resets the role label so the post-change
+    // entity re-announces `;TYPE:` even though the role is unchanged.
+    let tool_change_at = position_of(&gcode_ir, |c| {
+        matches!(c, GCodeCommand::ToolChange { .. })
+    })
+    .expect("a ToolChange must be emitted");
+    match &gcode_ir.commands[tool_change_at] {
+        GCodeCommand::ToolChange { from, to, .. } => {
             assert_eq!(*from, 0);
             assert_eq!(*to, 1);
         }
-        other => panic!("expected ToolChange command at index 7, got {:?}", other),
+        other => panic!("expected ToolChange command, got {other:?}"),
     }
 
-    // Command 8 should re-emit the role label after the tool change.
-    assert!(matches!(
-        &gcode_ir.commands[8],
-        GCodeCommand::Raw { text } if text == ";TYPE:Outer wall"
-    ));
+    let move_positions = positions_of(&gcode_ir, is_move);
+    assert_eq!(
+        move_positions.len(),
+        3,
+        "one Move per entity expected, got {:#?}",
+        gcode_ir.commands
+    );
+    assert!(
+        move_positions[1] < tool_change_at && tool_change_at < move_positions[2],
+        "ToolChange with after_entity_index: 1 must fall between the second and \
+         third entity's Moves; got moves at {move_positions:?}, tool change at \
+         {tool_change_at} in {:#?}",
+        gcode_ir.commands
+    );
 
-    // Command 9 should be the final Move.
-    assert!(matches!(&gcode_ir.commands[9], GCodeCommand::Move { .. }));
+    let type_labels = positions_of(&gcode_ir, |c| is_raw_eq(c, ";TYPE:Outer wall"));
+    assert_eq!(
+        type_labels.len(),
+        2,
+        "a tool change must reset the role label, forcing a second ;TYPE, got {:#?}",
+        gcode_ir.commands
+    );
+    assert!(
+        tool_change_at < type_labels[1] && type_labels[1] < move_positions[2],
+        "the re-announced ;TYPE must sit between the ToolChange and the next \
+         Move; got tool change at {tool_change_at}, labels at {type_labels:?}, \
+         moves at {move_positions:?} in {:#?}",
+        gcode_ir.commands
+    );
 }
 
 // ============================================================================

@@ -576,8 +576,19 @@ fn empty_end_gcode_emits_no_block() {
         "PRINT_END must NOT appear when machine_end_gcode is empty"
     );
 
-    // Byte range between last G1 line's terminating \n and CONFIG_BLOCK_START
-    // must contain zero non-whitespace characters.
+    // The span between the last G1 and CONFIG_BLOCK_START must contain no
+    // *end-gcode block* — not that it is empty.
+    //
+    // This used to assert the span was whitespace-only, which has no canonical
+    // basis: `GCode::_do_export` always fills that region regardless of
+    // `end_gcode` — the final M73 progress pair, the filament statistics, and
+    // the estimated-time comment all land there. Demanding emptiness would
+    // require deleting the print summary to satisfy a test about end-gcode.
+    //
+    // So the invariant is stated in terms of what an end-gcode block actually
+    // looks like: executable G-code. Every line in the span must be blank, a
+    // comment, or an M73 progress report. Any command line — `PRINT_END`, `G28`,
+    // `M104 S0`, a user's custom epilogue — fails it.
     let config_start = gcode
         .find("; CONFIG_BLOCK_START")
         .expect("CONFIG_BLOCK_START must be present â€” not yet emitted (red)");
@@ -596,11 +607,29 @@ fn empty_end_gcode_emits_no_block() {
         .last()
         .unwrap_or(0);
 
-    let between = &gcode[last_g1_end..config_start];
+    // Guard: this port writes CONFIG_BLOCK at the file tail. Canonical writes it
+    // at the *head* for BBL printers, in which case the slice below would be
+    // inverted and panic with an opaque message.
     assert!(
-        between.chars().all(|c| c.is_whitespace()),
-        "region between last G1 and CONFIG_BLOCK_START must contain only whitespace \
-         when end gcode is empty; found: {between:?}"
+        last_g1_end <= config_start,
+        "CONFIG_BLOCK_START appears before the last G1 (offset {config_start} < {last_g1_end}). \
+         This test assumes the tail-emitted CONFIG_BLOCK; a head-emitted block (canonical's \
+         BBL-printer path) needs a different span."
+    );
+
+    let between = &gcode[last_g1_end..config_start];
+    let offending: Vec<&str> = between
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            !line.is_empty() && !line.starts_with(';') && !line.starts_with("M73 ")
+        })
+        .collect();
+    assert!(
+        offending.is_empty(),
+        "region between last G1 and CONFIG_BLOCK_START must contain no end-gcode \
+         commands when machine_end_gcode is empty; found: {offending:?}\n\
+         full span: {between:?}"
     );
 }
 

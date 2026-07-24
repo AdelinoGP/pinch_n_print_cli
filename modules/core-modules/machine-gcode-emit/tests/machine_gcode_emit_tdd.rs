@@ -244,3 +244,77 @@ fn all_command_variants_pass_through_in_order() {
         );
     }
 }
+
+/// Regression pin: `machine_start_gcode` must precede BOTH the M73 progress
+/// pair and the `ExtrusionMode` declaration.
+///
+/// `DefaultGCodeEmitter::emit_gcode` builds its stream with `ExtrusionMode`
+/// first and then calls `inject_m73`, which *prepends* an `M73 P0 R<n>` /
+/// `M73 Q0 S<n>` pair — so by the time this module sees the stream,
+/// `ExtrusionMode` sits at index 2, not index 0. `emit.rs` still documents an
+/// "ExtrusionMode at index 0 so the postpass can prepend machine_start_gcode
+/// before it" rationale; that index is now wrong even though the *ordering* it
+/// was protecting still holds, because this module rebuilds the stream (start
+/// template, then every input command in order) rather than splicing at an
+/// index.
+///
+/// The ordering holds by construction rather than by the index the comment
+/// named, which is exactly the kind of accident worth pinning: a future change
+/// that reintroduced an `insert(0, ..)` would put the start block *after* the
+/// M73 pair and emit progress reporting before the printer is homed.
+#[test]
+fn machine_start_gcode_precedes_m73_and_extrusion_mode() {
+    // Shaped like a real post-`inject_m73` emitter stream.
+    let commands = vec![
+        GCodeCommand::Raw {
+            text: "M73 P0 R10".into(),
+        },
+        GCodeCommand::Raw {
+            text: "M73 Q0 S10".into(),
+        },
+        GCodeCommand::ExtrusionMode { absolute: true },
+        GCodeCommand::Raw {
+            text: ";LAYER_CHANGE".into(),
+        },
+    ];
+
+    let output = run(
+        &[(
+            "machine_start_gcode",
+            ConfigValue::String("G28 ; home".into()),
+        )],
+        &commands,
+    );
+
+    let cmds = output.commands();
+    let position_of = |pred: &dyn Fn(&GcodeOutputCommand) -> bool| {
+        cmds.iter()
+            .position(|c| pred(c))
+            .unwrap_or_else(|| panic!("command not found in {cmds:#?}"))
+    };
+
+    let start_at = position_of(&|c| {
+        matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text == "G28 ; home")
+    });
+    let first_m73_at = position_of(&|c| {
+        matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text.starts_with("M73 "))
+    });
+    // The module lowers `ExtrusionMode` to its `M82`/`M83` raw form on
+    // re-emit, so accept either shape.
+    let extrusion_mode_at = position_of(&|c| match c {
+        GcodeOutputCommand::Command(GCodeCommand::ExtrusionMode { .. }) => true,
+        GcodeOutputCommand::Command(GCodeCommand::Raw { text }) => text == "M82" || text == "M83",
+        _ => false,
+    });
+
+    assert!(
+        start_at < first_m73_at,
+        "machine_start_gcode must precede the M73 progress pair; got start at \
+         {start_at}, first M73 at {first_m73_at} in {cmds:#?}"
+    );
+    assert!(
+        start_at < extrusion_mode_at,
+        "machine_start_gcode must precede the ExtrusionMode declaration; got \
+         start at {start_at}, ExtrusionMode at {extrusion_mode_at} in {cmds:#?}"
+    );
+}
