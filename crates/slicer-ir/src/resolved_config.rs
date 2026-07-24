@@ -173,11 +173,26 @@ impl ResolvedConfig {
             ("machine_max_jerk_y", self.machine_max_jerk_y),
             ("machine_max_jerk_z", self.machine_max_jerk_z),
             ("machine_max_jerk_e", self.machine_max_jerk_e),
-            ("filament_density", self.filament_density),
         ] {
             if let Some(v) = v {
                 m.insert(key.into(), ConfigValue::Float(f64::from(v)));
             }
+        }
+        // `filament_density` is Orca `coFloats` — one entry per filament — so
+        // the whole vector is emitted, matching what canonical's
+        // `append_full_config` writes. The gcode serializer renders a numeric
+        // list comma-separated (`ConfigOptionFloats::serialize`), unlike the
+        // semicolon form used for `coStrings` such as `filament_colour`.
+        if !self.filament_density.is_empty() {
+            m.insert(
+                "filament_density".into(),
+                ConfigValue::List(
+                    self.filament_density
+                        .iter()
+                        .map(|d| ConfigValue::Float(*d))
+                        .collect(),
+                ),
+            );
         }
         // mmu_segmented_region_{max_width,interlocking_depth,interlocking_beam} intentionally
         // omitted — P96 AC-8: emitting these keys would change g-code CONFIG_BLOCK bytes for all
@@ -187,6 +202,24 @@ impl ResolvedConfig {
             m.insert(k.clone(), v.clone());
         }
         m
+    }
+}
+
+impl ResolvedConfig {
+    /// Filament density in g/cm³ for `tool_index`, or `None` when unconfigured.
+    ///
+    /// Mirrors canonical `Extruder::filament_density`, which reads
+    /// `filament_density.get_at(m_id)` — the value is per filament, not global.
+    /// Canonical pads short lists (`GCodeProcessor::process_used_filament`
+    /// extends with `DEFAULT_FILAMENT_DENSITY`); this port falls back to the
+    /// first entry instead, so a single-filament config still prices every
+    /// tool rather than silently substituting a hard-coded constant.
+    #[must_use]
+    pub fn filament_density_for(&self, tool_index: u32) -> Option<f64> {
+        self.filament_density
+            .get(tool_index as usize)
+            .or_else(|| self.filament_density.first())
+            .copied()
     }
 }
 
@@ -297,17 +330,41 @@ fn variant_name(v: &ConfigValue) -> String {
     }
 }
 
+/// Coerce a `Bool` that originated as an untyped `"0"`/`"1"` string.
+///
+/// OrcaSlicer serialises *every* `project_settings.config` value as a string,
+/// so `"1"` is ambiguous between `enable_support` (a boolean) and `wall_loops`
+/// (an integer). The 3MF loader's `coerce_string_to_config_value` has no
+/// schema to disambiguate and guesses `Bool` for `"0"`/`"1"`, which meant any
+/// numeric key that happened to hold 0 or 1 aborted config resolution with a
+/// `TypeMismatch` — e.g. `mmu_segmented_region_interlocking_depth = "0"`,
+/// which crashed every slice of `resources/cube_4color.3mf`.
+///
+/// The ambiguity is irreducible at load time, so it is resolved at the point
+/// of consumption instead: the declaring field knows its own type, and treats
+/// a `"0"`/`"1"`-derived `Bool` as the number it stands for.
+fn bool_as_number(value: &ConfigValue) -> Option<i64> {
+    match value {
+        ConfigValue::Bool(b) => Some(i64::from(*b)),
+        _ => None,
+    }
+}
+
 /// Extract an `f32` from a `Float`/`Int` `ConfigValue`. Used by the
 /// [`declare_resolved_config!`] macro expansion.
+///
+/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
 #[doc(hidden)]
 pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
     match value {
         ConfigValue::Float(f) => Ok(*f as f32),
         ConfigValue::Int(i) => Ok(*i as f32),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Float",
-            actual: variant_name(other),
+        other => bool_as_number(other).map(|n| n as f32).ok_or_else(|| {
+            ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
+            }
         }),
     }
 }
@@ -326,36 +383,49 @@ pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolu
 /// only `f32` cast happens at the WIT `layer-proposal.z: f32` boundary,
 /// equivalent to OrcaSlicer's `float(print_z)` at `slice_facet`'s
 /// `slice_z` parameter (`TriangleMeshSlicer.cpp:158`).
+/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
 pub fn extract_f64(key: &str, value: &ConfigValue) -> Result<f64, ConfigResolutionError> {
     match value {
         ConfigValue::Float(f) => Ok(*f),
         ConfigValue::Int(i) => Ok(*i as f64),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Float",
-            actual: variant_name(other),
+        other => bool_as_number(other).map(|n| n as f64).ok_or_else(|| {
+            ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
+            }
         }),
     }
 }
 
 /// Extract a `u32` from an `Int` `ConfigValue`.
+///
+/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
 #[doc(hidden)]
 pub fn extract_int_as_u32(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
     match value {
         ConfigValue::Int(i) => Ok(*i as u32),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Int",
-            actual: variant_name(other),
+        other => bool_as_number(other).map(|n| n as u32).ok_or_else(|| {
+            ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Int",
+                actual: variant_name(other),
+            }
         }),
     }
 }
 
 /// Extract a `bool` from a `Bool` `ConfigValue`.
+///
+/// The mirror of [`bool_as_number`]: an `Int` 0/1 is accepted as a boolean, so
+/// a genuinely-boolean key still resolves if the loader's `"0"`/`"1"` guess
+/// ever changes, or if a hand-written JSON config spells the flag numerically.
 #[doc(hidden)]
 pub fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
     match value {
         ConfigValue::Bool(b) => Ok(*b),
+        ConfigValue::Int(0) => Ok(false),
+        ConfigValue::Int(1) => Ok(true),
         other => Err(ConfigResolutionError::TypeMismatch {
             key: key.to_string(),
             expected: "Bool",
@@ -387,25 +457,103 @@ pub fn extract_float_list(
     key: &str,
     value: &ConfigValue,
 ) -> Result<Vec<f64>, ConfigResolutionError> {
+    fn element(key: &str, v: &ConfigValue) -> Result<f64, ConfigResolutionError> {
+        match v {
+            ConfigValue::Float(f) => Ok(*f),
+            ConfigValue::Int(n) => Ok(*n as f64),
+            // Orca serialises list entries as strings (`["1.24","1.24"]`), and
+            // a `"0"`/`"1"` entry reaches us as `Bool` for the same reason
+            // `extract_float` tolerates one — see `bool_as_number`.
+            ConfigValue::String(s) => {
+                s.trim()
+                    .parse::<f64>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float",
+                        actual: "String".to_string(),
+                    })
+            }
+            other => bool_as_number(other).map(|n| n as f64).ok_or_else(|| {
+                ConfigResolutionError::TypeMismatch {
+                    key: key.to_string(),
+                    expected: "Float",
+                    actual: variant_name(other),
+                }
+            }),
+        }
+    }
+
     match value {
         ConfigValue::List(items) => items
             .iter()
             .enumerate()
-            .map(|(i, v)| match v {
-                ConfigValue::Float(f) => Ok(*f),
-                ConfigValue::Int(n) => Ok(*n as f64),
-                other => Err(ConfigResolutionError::TypeMismatch {
-                    key: format!("{key}[{i}]"),
-                    expected: "Float",
-                    actual: variant_name(other),
-                }),
-            })
+            .map(|(i, v)| element(&format!("{key}[{i}]"), v))
             .collect(),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "List",
-            actual: variant_name(other),
-        }),
+        // A bare scalar is accepted as a one-element list so hand-written
+        // CLI/JSON configs (and single-filament setups) keep working.
+        other => element(key, other).map(|v| vec![v]),
+    }
+}
+
+/// Extract a single `f32` from a scalar, or from the first entry of an Orca
+/// `coFloats` list.
+///
+/// Used by keys OrcaSlicer declares as `coFloats` but this port models as one
+/// scalar: the `machine_max_*` kinematic limits and `filament_diameter`.
+///
+/// OrcaSlicer types these options `coFloats`, and the entries are machine *time
+/// modes* — `[normal, stealth]` — not per-extruder values (see the `AxisDefault`
+/// table in canonical `PrintConfig::PrintConfig`, whose second entry is the
+/// silent variant). Every canonical consumer that wants one scalar reads index
+/// 0: `GCode::print_machine_envelope` and `Print`'s motion-ability check both
+/// take the front element, and `GCodeProcessor`'s limit getters index by
+/// `ETimeMode`, whose `Normal` discriminant is 0. We therefore take index 0 and
+/// ignore any trailing modes.
+///
+/// Values reach us as `List` because a real project's `project_settings.config`
+/// stores them as JSON arrays of *strings* (e.g. `["9","9"]`), so list elements
+/// are coerced from `Float`, `Int`, or a numeric `String`. A scalar is accepted
+/// unchanged so hand-written CLI/JSON configs keep working.
+///
+/// Unlike canonical — which silently substitutes `0.0` and then falls back to a
+/// built-in default — an unparseable or empty value is still a hard error here.
+/// The permissiveness is only about accepting the shape Orca actually writes,
+/// not about tolerating malformed input.
+#[doc(hidden)]
+pub fn extract_float_or_first(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+    fn scalar(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+        match value {
+            ConfigValue::Float(f) => Ok(*f as f32),
+            ConfigValue::Int(i) => Ok(*i as f32),
+            ConfigValue::String(s) => {
+                s.trim()
+                    .parse::<f32>()
+                    .map_err(|_| ConfigResolutionError::TypeMismatch {
+                        key: key.to_string(),
+                        expected: "Float",
+                        actual: "String".to_string(),
+                    })
+            }
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
+            }),
+        }
+    }
+
+    match value {
+        // Index 0 is canonical "normal" mode; trailing entries are stealth-mode
+        // variants this port does not model.
+        ConfigValue::List(items) => match items.first() {
+            Some(first) => scalar(&format!("{key}[0]"), first),
+            None => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "non-empty List",
+                actual: "empty List".to_string(),
+            }),
+        },
+        other => scalar(key, other),
     }
 }
 
@@ -653,7 +801,11 @@ declare_resolved_config! {
     cli "first_layer_line_width" first_layer_line_width: f32 = 0.4 => extract_float;
     /// Filament diameter in millimeters. Used by the G-code emitter to convert
     /// extruded volume (width × height × length) into filament length (E).
-    cli "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float;
+    /// Filament diameter in mm. Orca declares this `coFloats` (one entry per
+    /// filament); this is the default-config scalar, taken from entry 0.
+    /// Per-tool diameters reach the estimator through the per-tool config map
+    /// built in `slicer-gcode`'s emit path, not from this field.
+    cli "filament_diameter"      filament_diameter: f32 = 1.75 => extract_float_or_first;
 
     // Walls
     /// Number of walls (perimeters).
@@ -778,28 +930,31 @@ declare_resolved_config! {
 
     // Machine kinematic limits (time estimator; optional — absent keys stay None)
     /// Maximum acceleration while extruding, in mm/s² (optional).
-    cli_opt "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float;
+    cli_opt "machine_max_acceleration_extruding" machine_max_acceleration_extruding: Option<f32> = None => extract_float_or_first;
     /// Maximum acceleration for travel moves, in mm/s² (optional).
-    cli_opt "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float;
+    cli_opt "machine_max_acceleration_travel" machine_max_acceleration_travel: Option<f32> = None => extract_float_or_first;
     /// Maximum X-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float;
+    cli_opt "machine_max_speed_x" machine_max_speed_x: Option<f32> = None => extract_float_or_first;
     /// Maximum Y-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float;
+    cli_opt "machine_max_speed_y" machine_max_speed_y: Option<f32> = None => extract_float_or_first;
     /// Maximum Z-axis speed in mm/s (optional).
-    cli_opt "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float;
+    cli_opt "machine_max_speed_z" machine_max_speed_z: Option<f32> = None => extract_float_or_first;
     /// Maximum extruder (E-axis) speed in mm/s (optional).
-    cli_opt "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float;
+    cli_opt "machine_max_speed_e" machine_max_speed_e: Option<f32> = None => extract_float_or_first;
     /// Maximum X-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float;
+    cli_opt "machine_max_jerk_x" machine_max_jerk_x: Option<f32> = None => extract_float_or_first;
     /// Maximum Y-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float;
+    cli_opt "machine_max_jerk_y" machine_max_jerk_y: Option<f32> = None => extract_float_or_first;
     /// Maximum Z-axis jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float;
+    cli_opt "machine_max_jerk_z" machine_max_jerk_z: Option<f32> = None => extract_float_or_first;
     /// Maximum extruder (E-axis) jerk in mm/s (optional).
-    cli_opt "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float;
+    cli_opt "machine_max_jerk_e" machine_max_jerk_e: Option<f32> = None => extract_float_or_first;
 
     /// Filament density in g/cm³ (optional).
-    cli_opt "filament_density" filament_density: Option<f32> = None => extract_float;
+    /// Filament density in g/cm³, one entry per filament (Orca `coFloats`).
+    /// Indexed by extruder/tool id — see [`ResolvedConfig::filament_density_for`].
+    /// Empty means "not configured", which omits every weight output.
+    cli "filament_density" filament_density: Vec<f64> = Vec::new() => extract_float_list;
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future
@@ -890,7 +1045,11 @@ impl PartialEq for ResolvedConfig {
                 == other.machine_max_jerk_z.map(f32::to_bits)
             && self.machine_max_jerk_e.map(f32::to_bits)
                 == other.machine_max_jerk_e.map(f32::to_bits)
-            && self.filament_density.map(f32::to_bits) == other.filament_density.map(f32::to_bits)
+            && self
+                .filament_density
+                .iter()
+                .map(|d| d.to_bits())
+                .eq(other.filament_density.iter().map(|d| d.to_bits()))
             && self.extensions == other.extensions
     }
 }
@@ -974,7 +1133,9 @@ impl std::hash::Hash for ResolvedConfig {
         self.machine_max_jerk_y.map(f32::to_bits).hash(state);
         self.machine_max_jerk_z.map(f32::to_bits).hash(state);
         self.machine_max_jerk_e.map(f32::to_bits).hash(state);
-        self.filament_density.map(f32::to_bits).hash(state);
+        for density in &self.filament_density {
+            density.to_bits().hash(state);
+        }
         self.extensions.hash(state);
     }
 }
@@ -983,7 +1144,7 @@ impl std::hash::Hash for ResolvedConfig {
 mod machine_limit_config_tests {
     use super::*;
 
-    const KEYS: [&str; 11] = [
+    const KEYS: [&str; 10] = [
         "machine_max_acceleration_extruding",
         "machine_max_acceleration_travel",
         "machine_max_speed_x",
@@ -994,7 +1155,6 @@ mod machine_limit_config_tests {
         "machine_max_jerk_y",
         "machine_max_jerk_z",
         "machine_max_jerk_e",
-        "filament_density",
     ];
 
     fn field(cfg: &ResolvedConfig, key: &str) -> Option<f32> {
@@ -1009,7 +1169,6 @@ mod machine_limit_config_tests {
             "machine_max_jerk_y" => cfg.machine_max_jerk_y,
             "machine_max_jerk_z" => cfg.machine_max_jerk_z,
             "machine_max_jerk_e" => cfg.machine_max_jerk_e,
-            "filament_density" => cfg.filament_density,
             other => panic!("unknown key {other}"),
         }
     }
@@ -1044,5 +1203,73 @@ mod machine_limit_config_tests {
                 "{key} must round-trip through to_config_map"
             );
         }
+    }
+
+    /// Orca writes `machine_max_*` as `coFloats`, and a real project's
+    /// `project_settings.config` stores them as JSON arrays of strings — e.g.
+    /// `resources/cube_4color.3mf` carries `"machine_max_jerk_x": ["9","9"]`.
+    /// Before this was handled, every such slice aborted with `TypeMismatch`
+    /// (`expected Float value, got List`), which crashed all four painted /
+    /// modifier e2e fixtures. The two entries are machine *time modes*
+    /// (normal, stealth), so index 0 is the value canonical consumers use.
+    #[test]
+    fn machine_limit_accepts_orca_string_list_and_takes_normal_mode() {
+        let mut cfg = ResolvedConfig::default();
+        let applied = cfg
+            .apply_cli_key(
+                "machine_max_jerk_x",
+                &ConfigValue::List(vec![
+                    ConfigValue::String("9".to_string()),
+                    ConfigValue::String("5".to_string()),
+                ]),
+            )
+            .expect("Orca's list-of-strings form must be accepted");
+        assert!(applied, "machine_max_jerk_x must be a recognized field");
+        assert_eq!(
+            field(&cfg, "machine_max_jerk_x"),
+            Some(9.0),
+            "index 0 is normal mode; the stealth entry must be ignored"
+        );
+    }
+
+    #[test]
+    fn machine_limit_accepts_numeric_list_and_bare_scalar() {
+        let mut cfg = ResolvedConfig::default();
+        cfg.apply_cli_key(
+            "machine_max_speed_e",
+            &ConfigValue::List(vec![ConfigValue::Int(120), ConfigValue::Int(60)]),
+        )
+        .expect("numeric list must be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_e"), Some(120.0));
+
+        cfg.apply_cli_key("machine_max_speed_x", &ConfigValue::Float(500.0))
+            .expect("bare scalar must still be accepted");
+        assert_eq!(field(&cfg, "machine_max_speed_x"), Some(500.0));
+    }
+
+    /// Accepting Orca's list shape must not turn into accepting rubbish:
+    /// unlike canonical (which substitutes 0.0 then falls back to a default),
+    /// this port keeps malformed machine limits a hard error.
+    #[test]
+    fn machine_limit_rejects_unparseable_and_empty_values() {
+        let mut cfg = ResolvedConfig::default();
+        assert!(
+            cfg.apply_cli_key(
+                "machine_max_jerk_y",
+                &ConfigValue::List(vec![ConfigValue::String("fast".to_string())]),
+            )
+            .is_err(),
+            "a non-numeric string must not be silently accepted"
+        );
+        assert!(
+            cfg.apply_cli_key("machine_max_jerk_z", &ConfigValue::List(vec![]))
+                .is_err(),
+            "an empty list has no normal-mode entry to read"
+        );
+        assert!(
+            cfg.apply_cli_key("machine_max_jerk_e", &ConfigValue::Bool(true))
+                .is_err(),
+            "a bool is not a machine limit"
+        );
     }
 }

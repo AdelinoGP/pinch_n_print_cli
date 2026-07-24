@@ -756,7 +756,7 @@ pub fn run_slice_with_collector(
         .iter()
         .map(|(&tool, cfg)| (tool, cfg.filament_diameter))
         .collect();
-    let stats_filament_density = default_resolved_config.filament_density;
+    let stats_filament_density = default_resolved_config.filament_density.clone();
     let stats_first_layer_height_mm = default_resolved_config.first_layer_height as f32;
 
     let pipeline_config = PipelineConfig {
@@ -813,14 +813,31 @@ pub fn run_slice_with_collector(
     // estimator math is re-implemented here.
     let stats = crate::postpass::take_final_gcode_ir().map(|ir| {
         let estimate = estimate_print(&ir, &estimator_limits, &stats_tool_diameters);
-        let total_volume_mm3: f64 = estimate.extruded_volume_mm3.values().sum();
+        // Weight is summed per tool, each priced with its own filament's
+        // density (Orca `filament_density` is `coFloats`, one entry per
+        // filament — canonical reads it as `filament_density.get_at(m_id)` in
+        // `Extruder::filament_density`). A single-density config prices every
+        // tool identically, so single-material output is unchanged.
+        let weight_grams = (!stats_filament_density.is_empty()).then(|| {
+            estimate
+                .extruded_volume_mm3
+                .iter()
+                .map(|(tool, volume)| {
+                    let density = stats_filament_density
+                        .get(*tool as usize)
+                        .or_else(|| stats_filament_density.first())
+                        .copied()
+                        .unwrap_or_default();
+                    (volume / 1000.0) * density
+                })
+                .sum::<f64>()
+        });
         SliceStatsInputs {
             gcode_prediction_seconds: estimate.total_time_s.round() as u64,
             // Weight only when filament_density (g/cm³) is configured; the
             // event key is omitted otherwise (never 0, never null). The
             // serializer's header default density is deliberately not used.
-            gcode_weight_grams: stats_filament_density
-                .map(|density| (total_volume_mm3 / 1000.0) * f64::from(density)),
+            gcode_weight_grams: weight_grams,
             gcode_filament_length_mm: estimate.filament_length_mm.values().sum(),
             layer_count: ir.metadata.layer_count,
             first_layer_height_mm: stats_first_layer_height_mm,

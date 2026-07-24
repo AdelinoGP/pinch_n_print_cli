@@ -408,23 +408,29 @@ fn serialize_config_block(
                     }
                 }
                 ConfigValue::List(items) => {
-                    // `coStrings` arrays (e.g. `filament_colour`) serialise
-                    // semicolon-separated in OrcaSlicer's CONFIG_BLOCK so the
-                    // viewer's `ConfigBase::load_from_gcode_file` can parse
-                    // them — this is the historic 3MF contract. `coFloats`
-                    // arrays would join with `,`, but those keys are not
-                    // currently produced as `List` by the generic 3MF
-                    // extractor (`coFloats` fields stay as scalar strings);
-                    // any future coFloats→List wiring should revisit this
-                    // joiner choice.
+                    // OrcaSlicer serialises vector options with a separator
+                    // that depends on the element type: `coStrings` (e.g.
+                    // `filament_colour`) join with `;` so the viewer's
+                    // `ConfigBase::load_from_gcode_file` can parse them, while
+                    // `coFloats` (e.g. `filament_density`, `filament_diameter`)
+                    // join with `,`. The element type is the only signal we
+                    // have here, so numeric lists take the `coFloats` form and
+                    // everything else keeps the historic `coStrings` form.
+                    let all_numeric = !items.is_empty()
+                        && items
+                            .iter()
+                            .all(|v| matches!(v, ConfigValue::Float(_) | ConfigValue::Int(_)));
                     let parts: Vec<String> = items
                         .iter()
                         .map(|v| match v {
                             ConfigValue::String(s) => s.clone(),
-                            _ => format!("{v:?}"),
+                            ConfigValue::Float(f) => format!("{f}"),
+                            ConfigValue::Int(i) => format!("{i}"),
+                            ConfigValue::Bool(b) => i64::from(*b).to_string(),
+                            other => format!("{other:?}"),
                         })
                         .collect();
-                    parts.join(";")
+                    parts.join(if all_numeric { "," } else { ";" })
                 }
             };
             emit_config_kv(&mut out, &mut emitted, key, &value_str);
@@ -941,6 +947,33 @@ mod tests {
         assert!(
             !block.contains("; filament_colour = #FF9B00,#02BF06"),
             "List must NOT be `,`-joined (regression — that was the pre-fix behaviour)"
+        );
+    }
+
+    #[test]
+    fn config_block_joins_numeric_list_values_with_commas() {
+        // `coFloats` options (`filament_density`, `filament_diameter`, the
+        // `machine_max_*` family) serialise comma-separated in canonical
+        // `ConfigOptionFloatsTempl::serialize`, unlike the `;` used by
+        // `coStrings` via `escape_strings_cstyle`. A 4-filament project's
+        // canonical line is exactly `; filament_density = 1.24,1.24,1.24,1.24`.
+        let mut cfg: HashMap<String, ConfigValue> = HashMap::new();
+        cfg.insert(
+            "filament_density".to_string(),
+            ConfigValue::List(vec![
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.24),
+                ConfigValue::Float(1.27),
+            ]),
+        );
+        let block = serialize_config_block(&cfg, &filament_colour_csv(4), GcodeFlavor::Marlin);
+        assert!(
+            block.contains("; filament_density = 1.24,1.24,1.27"),
+            "numeric List must be `,`-joined and rendered as bare numbers; got:\n{block}"
+        );
+        assert!(
+            !block.contains("Float("),
+            "list elements must not be Debug-formatted; got:\n{block}"
         );
     }
 }

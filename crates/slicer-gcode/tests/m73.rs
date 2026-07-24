@@ -114,10 +114,40 @@ fn raw_texts(commands: &[GCodeCommand]) -> Vec<&str> {
         .collect()
 }
 
+/// `filament_density` is Orca `coFloats` — one entry per filament, read as
+/// `filament_density.get_at(m_id)` by canonical `Extruder::filament_density`.
+/// Each tool must therefore be priced with its own filament's density, not
+/// with a single global one.
+#[test]
+fn filament_stats_block_prices_each_tool_with_its_own_density() {
+    let estimate = two_tool_estimate();
+    // Tool 0 keeps 1.24 g/cm³; tool 1 uses a deliberately distinct 4.0 so a
+    // regression back to "first density for everything" is visible.
+    let commands = filament_stats_comment_block(&estimate, &[1.24, 4.0]);
+    let lines = raw_texts(&commands);
+    assert!(
+        lines.contains(&"; filament used [g] = 2.98, 4.81"),
+        "each tool must use its own density: {lines:?}"
+    );
+}
+
+/// A shorter list than the tool count falls back to the first entry, so a
+/// single-filament config still prices every tool instead of dropping it.
+#[test]
+fn filament_stats_block_falls_back_to_first_density_for_missing_tools() {
+    let estimate = two_tool_estimate();
+    let commands = filament_stats_comment_block(&estimate, &[1.24]);
+    let lines = raw_texts(&commands);
+    assert!(
+        lines.contains(&"; filament used [g] = 2.98, 1.49"),
+        "tool 1 must fall back to filament 0's density: {lines:?}"
+    );
+}
+
 #[test]
 fn filament_stats_block_two_tools_with_density() {
     let estimate = two_tool_estimate();
-    let commands = filament_stats_comment_block(&estimate, Some(1.24));
+    let commands = filament_stats_comment_block(&estimate, &[1.24]);
     let lines = raw_texts(&commands);
 
     assert_eq!(
@@ -134,7 +164,7 @@ fn filament_stats_block_two_tools_with_density() {
 #[test]
 fn filament_g_line_omitted_without_density() {
     let estimate = two_tool_estimate();
-    let commands = filament_stats_comment_block(&estimate, None);
+    let commands = filament_stats_comment_block(&estimate, &[]);
     let lines = raw_texts(&commands);
 
     assert_eq!(

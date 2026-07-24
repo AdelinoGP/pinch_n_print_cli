@@ -76,9 +76,13 @@ pub fn inject_m73(gcode_ir: &mut GCodeIR, elapsed_s: &[f64]) {
 }
 
 /// Builds the filament and estimated-time comment block for a print estimate.
+///
+/// `filament_densities` is the per-filament `filament_density` list (Orca
+/// `coFloats`), indexed by tool id like canonical `Extruder::filament_density`.
+/// Empty means unconfigured, which omits the `filament used [g]` line entirely.
 pub fn filament_stats_comment_block(
     estimate: &PrintEstimate,
-    filament_density: Option<f32>,
+    filament_densities: &[f64],
 ) -> Vec<GCodeCommand> {
     let lengths = estimate
         .filament_length_mm
@@ -102,11 +106,20 @@ pub fn filament_stats_comment_block(
         },
     ];
 
-    if let Some(density) = filament_density {
+    if !filament_densities.is_empty() {
+        // Each tool is priced with its own filament's density; a short list
+        // falls back to the first entry rather than dropping the tool.
         let grams = estimate
             .extruded_volume_mm3
-            .values()
-            .map(|value| format!("{:.2}", value / 1000.0 * f64::from(density)))
+            .iter()
+            .map(|(tool, value)| {
+                let density = filament_densities
+                    .get(*tool as usize)
+                    .or_else(|| filament_densities.first())
+                    .copied()
+                    .unwrap_or_default();
+                format!("{:.2}", value / 1000.0 * density)
+            })
             .collect::<Vec<_>>()
             .join(", ");
         lines.push(GCodeCommand::Raw {

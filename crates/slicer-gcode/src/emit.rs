@@ -767,7 +767,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             .commands
             .extend(crate::m73::filament_stats_comment_block(
                 &estimate,
-                self.resolved_config.filament_density,
+                &self.resolved_config.filament_density,
             ));
         gcode_ir.metadata.estimated_print_time_s = estimate.total_time_s.round() as u32;
         Ok(gcode_ir)
