@@ -1,0 +1,25 @@
+# Task Map: 181-dispatch-missing-component-handling
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-297` | `Step 1` | none required | none (read-only discovery) | none | `S` | Inventories the one blast radius: tests where an absent component reaches `WasmRuntimeDispatcher`. Explicitly excludes the empty-`wasm_handles` + bespoke-runner pattern, which this packet no longer disturbs. |
+| `TASK-297` | `Step 2` | none required | `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs` | none | `S` | RED: loader must reject an uncompilable component (AC-1) and an ≤8-byte stub (AC-2). RED gate requires `2 failed`, not the GREEN `\b0 passed` guard. |
+| `TASK-297` | `Step 3` | `docs/adr/0015-prepass-export-normalization.md` | `crates/slicer-wasm-host/src/execution_plan_live.rs`, `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs` | none | `M` | All three `None` branches become fatal, **including** the ≤8-byte stub branch; migrates the three loader tests that encode the old warn-and-continue contract. No signature change — both loader entry points already return `Result<_, Box<LiveModuleLoadError>>`. |
+| `TASK-297` | `Step 4` | none required | new `crates/slicer-runtime/tests/contract/dispatch_missing_component_tdd.rs`, `crates/slicer-runtime/tests/contract/main.rs` (mod registration) | none | `M` | RED: asserts the fatal at all five stages. Registration is mandatory — an unregistered file reports "0 tests run", a silent false pass. |
+| `TASK-297` | `Step 5` | `docs/adr/0015-prepass-export-normalization.md` | `crates/slicer-wasm-host/src/dispatch.rs` (5 arms) | none | `M` | GREEN: the core DEV-087 fix. Split from Step 4 so the central deliverable is genuinely test-first. |
+| `TASK-297` | `Step 6` | none required | `crates/slicer-runtime/tests/common/dispatch_fixture.rs`, `tests/contract/dispatch_protocol_tdd.rs`, `tests/contract/infill_postprocess_contract_tdd.rs` | none | `S` | Migrates the `.no_wasm()` fixture and its two consumers. |
+| `TASK-297` | `Step 7` | none required | `crates/slicer-runtime/tests/common/mod.rs`, `tests/executor/live_seam_path_tdd.rs` | none | `S` | Migrates the `run_layer_and_commit` helper and its one caller, which also builds an inline `None` construction. |
+| `TASK-297` | `Step 8` | none required | `crates/slicer-runtime/tests/unit/dag_validation_tdd.rs`, `tests/contract/postpass_gcode_empty_list_tdd.rs` | none | `S` | The last two inline-`None` sites. `dag_validation_tdd` discards its result with `let _ =`, so verify it is actually red before editing. |
+| `TASK-297` | `Step 9` | none required | `crates/slicer-runtime/tests/contract/postpass_gcode_boundary_tdd.rs` | none | `S` | De-vacuums the contract test that currently passes with zero WASM executed. |
+
+Backlog anchor: deviation `DEV-087` in `docs/DEVIATION_LOG.md` (also listed in the generated open-deviations block of `docs/07_implementation_status.md`, regenerated via `cargo xtask check-deviations` — never hand-edited).
+
+**Task-ID allocation note.** `TASK-297` was chosen after `TASK-294` — this packet's original allocation — was found already owned by packet `178-seam-region-aware-planning` (`docs/specs/seam-canonical-parity-plan.md`: "packet 178 seam-region-aware-planning owns `TASK-294`"). The collision was invisible to a `docs/07`-only grep. `TASK-295`/`TASK-296` are taken by sibling packets 182/183. **Re-derive the next free id from BOTH `docs/07_implementation_status.md` and `.ralph/specs/**` before trusting this note.**
+
+No OrcaSlicer parity refs: this is host-runtime error handling with no canonical analogue.
+
+**Ledger corrections carried by this packet.** (1) The `DEV-087` row states "four" laundering arms; the tree has **five** (it omits `LayerStageRunner::run_stage` → `Ok(None)`). (2) The row's Status still calls the reachability question untraced; it is traced — a real module reaches an absent component via the `fs::read` and `compile_component` failure branches — selecting the row's own resolution option (B), "make it fatal". Both land at the completion gate.
+
+**ADR amendment.** This packet contradicts `docs/adr/0020-layer-stage-commit-as-per-stage-enum.md` §Decision item 1 ("`None` is the empty/`MissingComponent` case"), so it files `D-181-ADR-0020-AMENDED` alongside the ADR edit, per the `D-161-ADR-0037-AMENDED` / `D-283-ADR-0046-AMENDED` convention. It **conforms** to ADR-0007: `WasmInstancePool::placeholder()` is not removed and all six **production** `wasm_handles` fallbacks in `crates/slicer-runtime/src/` are untouched. Steps 7-9 do swap placeholder pools for real ones at a few *test* call sites, which the ADR's own next sentence mandates.
+
+**Scope note.** An earlier draft also removed the six fallbacks. Measurement found 18 test files passing an empty/partial `wasm_handles` with a module-bearing stage list — 13 doing so deliberately via a bespoke runner, the pattern ADR-0007 protects — so that change was dropped as ~53 migrations for no DEV-087 benefit. The completion gate asserts the fallback count is still 6.
