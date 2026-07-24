@@ -130,7 +130,6 @@ pub use slice_ir::{
     // Slice types
     SliceIR,
     SlicedRegion,
-    MODIFIER_FOOTPRINT_REGION_ID,
     StageId,
     // Support types
     SupportGeometryIR,
@@ -161,6 +160,7 @@ pub use slice_ir::{
     ZHop,
     // Region map types
     DEFAULT_REGION_MAP_CAP,
+    MODIFIER_FOOTPRINT_REGION_ID,
 };
 
 pub use slice_ir::{

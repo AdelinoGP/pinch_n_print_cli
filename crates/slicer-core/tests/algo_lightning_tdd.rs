@@ -281,7 +281,9 @@ fn lightning_tree_node_propagate() {
         .borrow()
         .propagate_to_next_layer(&next_outline, 4, 0, 4, 0);
     assert_eq!(propagated_roots.len(), 1);
-    let propagated = propagated_roots.pop().expect("the unpruned tree propagates");
+    let propagated = propagated_roots
+        .pop()
+        .expect("the unpruned tree propagates");
     let propagated_children = propagated.borrow().children();
     let propagated_middle = propagated_children[0].clone();
     let propagated_leaf = propagated_middle.borrow().children()[0].clone();
@@ -319,7 +321,11 @@ fn lightning_tree_node_propagate_reroots_descendants_of_an_outside_node() {
     // inside/outside decision.
     let propagated = root.borrow().propagate_to_next_layer(&outline, 0, 0, 0, 0);
 
-    assert_eq!(propagated.len(), 1, "the outside root itself must not survive");
+    assert_eq!(
+        propagated.len(),
+        1,
+        "the outside root itself must not survive"
+    );
     let rerooted = &propagated[0];
     assert_eq!(rerooted.borrow().location(), Point2 { x: 500, y: 500 });
     assert!(rerooted.borrow().is_root());
@@ -356,7 +362,9 @@ fn lightning_tree_node_propagate_detaches_a_child_across_a_notch() {
 
     // Resolution 250 => crossing tolerance 500, which covers the nearest
     // notch wall at x = 400 (200 units from the parent).
-    let propagated = root.borrow().propagate_to_next_layer(&outline, 250, 0, 0, 0);
+    let propagated = root
+        .borrow()
+        .propagate_to_next_layer(&outline, 250, 0, 0, 0);
 
     assert_eq!(propagated.len(), 2);
     // Canonical appends rerooted parts before the main copy.

@@ -110,9 +110,9 @@ fn macro_other_world_package_names_are_canonical() {
             .find_map(|line| line.trim().strip_prefix("package "))
             .and_then(|rest| rest.trim().strip_suffix(';'))
             .unwrap_or_else(|| panic!("canonical {slug}.wit must declare a package"));
-        let (name, version) = declaration
-            .split_once('@')
-            .unwrap_or_else(|| panic!("canonical {slug}.wit package must be versioned: {declaration}"));
+        let (name, version) = declaration.split_once('@').unwrap_or_else(|| {
+            panic!("canonical {slug}.wit package must be versioned: {declaration}")
+        });
         assert_eq!(
             name, pkg,
             "canonical {slug}.wit must declare package name '{pkg}' (found '{name}')"

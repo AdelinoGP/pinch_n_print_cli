@@ -924,17 +924,7 @@ mod tests {
             ),
             ProgressEvent::cancelled(slice_id(), ts),
             ProgressEvent::slice_complete(slice_id(), ts, 1, ProgressStatus::Ok, false, 0, 0),
-            ProgressEvent::slice_stats(
-                slice_id(),
-                ts,
-                42,
-                None,
-                1.0,
-                3,
-                0.2,
-                BTreeMap::new(),
-                0,
-            ),
+            ProgressEvent::slice_stats(slice_id(), ts, 42, None, 1.0, 3, 0.2, BTreeMap::new(), 0),
         ];
         for event in &baseline {
             assert_eq!(

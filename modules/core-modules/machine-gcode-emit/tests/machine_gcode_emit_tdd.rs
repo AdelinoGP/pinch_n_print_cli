@@ -293,12 +293,12 @@ fn machine_start_gcode_precedes_m73_and_extrusion_mode() {
             .unwrap_or_else(|| panic!("command not found in {cmds:#?}"))
     };
 
-    let start_at = position_of(&|c| {
-        matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text == "G28 ; home")
-    });
-    let first_m73_at = position_of(&|c| {
-        matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text.starts_with("M73 "))
-    });
+    let start_at = position_of(
+        &|c| matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text == "G28 ; home"),
+    );
+    let first_m73_at = position_of(
+        &|c| matches!(c, GcodeOutputCommand::Command(GCodeCommand::Raw { text }) if text.starts_with("M73 ")),
+    );
     // The module lowers `ExtrusionMode` to its `M82`/`M83` raw form on
     // re-emit, so accept either shape.
     let extrusion_mode_at = position_of(&|c| match c {

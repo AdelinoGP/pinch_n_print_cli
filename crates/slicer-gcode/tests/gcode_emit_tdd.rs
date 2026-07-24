@@ -224,7 +224,11 @@ fn emit_empty_layers_produces_minimal_gcode_ir() {
         gcode_ir.commands
     );
     assert_eq!(
-        positions_of(&gcode_ir, |c| matches!(c, GCodeCommand::ExtrusionMode { .. })).len(),
+        positions_of(&gcode_ir, |c| matches!(
+            c,
+            GCodeCommand::ExtrusionMode { .. }
+        ))
+        .len(),
         1,
         "exactly one ExtrusionMode declaration must be emitted, got {:#?}",
         gcode_ir.commands
@@ -414,10 +418,8 @@ fn emit_tool_change_at_correct_position() {
     // stream: it lands after the second entity's Move (`after_entity_index: 1`)
     // and before the third's, and it resets the role label so the post-change
     // entity re-announces `;TYPE:` even though the role is unchanged.
-    let tool_change_at = position_of(&gcode_ir, |c| {
-        matches!(c, GCodeCommand::ToolChange { .. })
-    })
-    .expect("a ToolChange must be emitted");
+    let tool_change_at = position_of(&gcode_ir, |c| matches!(c, GCodeCommand::ToolChange { .. }))
+        .expect("a ToolChange must be emitted");
     match &gcode_ir.commands[tool_change_at] {
         GCodeCommand::ToolChange { from, to, .. } => {
             assert_eq!(*from, 0);

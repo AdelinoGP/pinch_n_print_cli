@@ -1,11 +1,12 @@
 //! Packet 136 — M3 modifier-infill e2e tests.
 //!
 //! AC-1 `modifier_infill_two_densities`: M3 fixture (cube + cylinder modifier,
-//! base 15% / modifier 40%) slices end-to-end, produces a CONSTANT wall-set
-//! count across layers (zero extra wall loops at the modifier boundary —
-//! the modifier doesn't trigger additional wall loops), and sparse infill
-//! runs through the per-region config delivery (≥ 1 sparse block per 2
-//! layers on average). The per-region density (0.15 base / 0.40 modifier)
+//! base 15% / modifier 40%) slices end-to-end with no layer carrying more wall
+//! loops per contour than a modifier-free control print does (zero extra wall
+//! loops at the modifier boundary — a modifier changes config, not wall
+//! count), and sparse infill runs through the per-region config delivery
+//! (≥ 1 sparse block per 2 layers on average). The per-region density
+//! (0.15 base / 0.40 modifier)
 //! is verified at the IR level by
 //! `crates/slicer-model-io/tests/mod_cilindrical_modifier_infill_density_tdd.rs`.
 //! The spec's "two distinct line spacings whose ratio matches 0.40/0.15" is
@@ -97,31 +98,76 @@ fn slice_gcode_path() -> PathBuf {
         .join("modifier_infill_slice.gcode")
 }
 
-/// Parse gcode and return (per_layer_wall_loops, per_sparse_infill_block_g1_count).
+fn control_gcode_path() -> PathBuf {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    PathBuf::from(manifest)
+        .join("target")
+        .join("modifier_infill_control_slice.gcode")
+}
+
+/// Per-layer wall-loop counts as `(outer_loops, inner_loops)`.
 ///
-/// `per_layer_wall_loops[i]` = number of `;TYPE:Outer wall` blocks in layer i (>= 0).
-/// `per_sparse_infill_block_g1_count[k]` = G1-with-extrusion move count inside the k-th
-/// `;TYPE:Sparse infill` block.
-fn parse_gcode(gcode: &str) -> (Vec<u32>, Vec<u32>) {
-    let mut wall_per_layer: Vec<u32> = Vec::new();
-    let mut sparse_moves: Vec<u32> = Vec::new();
-    let mut current_layer_walls: u32 = 0;
-    let mut in_sparse = false;
-    let mut current_sparse_moves: u32 = 0;
-    // Track the current layer as the most-recent ;LAYER_CHANGE marker.
-    let mut last_layer_seen: bool = false;
+/// A wall *loop* is emitted as a travel to its start point — a `G0`, or a `G1`
+/// carrying no `E` — followed by a run of consecutive extruding `G1`s. Counting
+/// maximal extruding runs within each `;TYPE:Outer wall` / `;TYPE:Inner wall`
+/// block therefore counts loops.
+///
+/// This deliberately does NOT count `;TYPE:Outer wall` *markers*. A marker is
+/// emitted on role *change*, so two wall contours printed back-to-back produce
+/// one marker while the same two separated by an inner-wall run produce two.
+/// The marker count is thus a path-ordering artifact: it moved between 3 and 4
+/// on adjacent layers of this fixture purely because nearest-neighbour ordering
+/// interleaved the contours differently, with no change in wall structure at
+/// all. Loops are the quantity the acceptance criterion is actually about.
+fn parse_wall_loops(gcode: &str) -> Vec<(u32, u32)> {
+    let mut per_layer: Vec<(u32, u32)> = Vec::new();
+    let mut current = (0u32, 0u32);
+    let mut role: Option<&str> = None;
+    let mut prev_extruding = false;
+    let mut seen_layer = false;
+
     for raw in gcode.lines() {
         let line = raw.trim();
         if line.starts_with(";LAYER_CHANGE") || line.starts_with(";LAYER:") {
-            if last_layer_seen {
-                wall_per_layer.push(current_layer_walls);
-            } else {
-                last_layer_seen = true;
+            if seen_layer {
+                per_layer.push(current);
             }
-            current_layer_walls = 0;
-        } else if line == ";TYPE:Outer wall" {
-            current_layer_walls += 1;
-        } else if line == ";TYPE:Sparse infill" {
+            seen_layer = true;
+            current = (0, 0);
+            role = None;
+            prev_extruding = false;
+        } else if let Some(rest) = line.strip_prefix(";TYPE:") {
+            role = Some(rest);
+            prev_extruding = false;
+        } else if line.starts_with("G0") || line.starts_with("G92") {
+            prev_extruding = false;
+        } else if line.starts_with("G1 ") {
+            let extruding = line.contains('E');
+            if extruding && !prev_extruding {
+                match role {
+                    Some("Outer wall") => current.0 += 1,
+                    Some("Inner wall") => current.1 += 1,
+                    _ => {}
+                }
+            }
+            prev_extruding = extruding;
+        }
+    }
+    if seen_layer {
+        per_layer.push(current);
+    }
+    per_layer
+}
+
+/// `per_sparse_infill_block_g1_count[k]` = extruding-`G1` count inside the k-th
+/// `;TYPE:Sparse infill` block.
+fn parse_sparse_blocks(gcode: &str) -> Vec<u32> {
+    let mut sparse_moves: Vec<u32> = Vec::new();
+    let mut in_sparse = false;
+    let mut current_sparse_moves: u32 = 0;
+    for raw in gcode.lines() {
+        let line = raw.trim();
+        if line == ";TYPE:Sparse infill" {
             if in_sparse {
                 sparse_moves.push(current_sparse_moves);
             }
@@ -140,10 +186,52 @@ fn parse_gcode(gcode: &str) -> (Vec<u32>, Vec<u32>) {
     if in_sparse {
         sparse_moves.push(current_sparse_moves);
     }
-    if last_layer_seen {
-        wall_per_layer.push(current_layer_walls);
-    }
-    (wall_per_layer, sparse_moves)
+    sparse_moves
+}
+
+/// Loops per wall contour, measured from a **modifier-free control print**
+/// sliced with the same module set and config.
+///
+/// Deriving this from a control rather than hardcoding it, or reading it back
+/// out of the fixture under test, is what keeps AC-1a falsifiable: the claim
+/// "a modifier does not add wall loops" is only meaningful against an
+/// independently-established per-contour loop count. Reading it from the
+/// fixture's own output would make the assertion self-fulfilling; hardcoding it
+/// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_count` key
+/// is not usable here — it reports 2 while the emitted geometry carries 3 loops
+/// per contour, a discrepancy tracked separately in
+/// `docs/07_implementation_status.md`.)
+fn control_loops_per_contour() -> u32 {
+    let model = repo_root().join("resources").join("20mm_cube.obj");
+    assert_path_exists(&model, "20mm_cube.obj");
+    let out = control_gcode_path();
+    let _ = std::fs::remove_file(&out);
+    let proc = run_slice_with_full_modules(&model, &out);
+    assert!(
+        proc.status.success(),
+        "control slice of 20mm_cube.obj must succeed. Stderr:\n{}",
+        String::from_utf8_lossy(&proc.stderr)
+    );
+    let gcode = std::fs::read_to_string(&out).expect("read control gcode");
+
+    let per_layer = parse_wall_loops(&gcode);
+    let ratios: Vec<u32> = per_layer
+        .iter()
+        .filter(|(outer, _)| *outer > 0)
+        .map(|(outer, inner)| 1 + inner / outer)
+        .collect();
+    assert!(
+        !ratios.is_empty(),
+        "control print produced no wall loops at all; the control is not \
+         establishing anything"
+    );
+    let first = ratios[0];
+    assert!(
+        ratios.iter().all(|r| *r == first),
+        "control print must have a single, uniform loops-per-contour count for \
+         this comparison to mean anything; got {ratios:?}"
+    );
+    first
 }
 
 fn assert_path_exists(p: &PathBuf, label: &str) {
@@ -179,27 +267,47 @@ fn modifier_infill_two_densities() {
     assert!(gcode_path.exists(), "gcode output not written");
     let gcode = std::fs::read_to_string(&gcode_path).expect("read gcode");
 
-    // (a) Wall-set count is constant across all layers (skipping the first
-    // two layers, which often have different first-layer behavior in the
-    // config): the modifier must not add extra wall loops at its boundary.
-    // The default config (wall_count=3) gives 3 wall sets per layer for both
-    // the base-cube region and the modifier-overlap region; the modifier's
-    // effect is on infill density, not on wall loop count. A layer that
-    // contains the modifier boundary must have the same wall-set count as
-    // any other layer that doesn't.
-    let (wall_per_layer, _sparse_moves) = parse_gcode(&gcode);
+    // (a) AC-1a: the modifier must not add wall loops at its boundary. A
+    // modifier changes config, not wall count.
+    //
+    // The quantity asserted is loops *per contour*, bounded above by what a
+    // modifier-free control print produces under the same config. `<=` rather
+    // than `==` is deliberate and is not a weakening: a contour too thin to
+    // hold its full loop set legitimately carries fewer, which canonical does
+    // too, and which this fixture exhibits — the modifier-overlap island starts
+    // ~2.1mm across and grows, so it carries 2 then 3 loops as it widens. An
+    // *extra* loop is the failure this guards, and it is what `<=` rejects.
+    //
+    // The previous form of this assertion counted `;TYPE:Outer wall` markers
+    // and demanded they be constant across layers. That could never pass: the
+    // marker count is a path-ordering artifact (see `parse_wall_loops`), the
+    // number of wall-bearing contours legitimately changes with Z as the
+    // modifier region appears, and the reference was taken from layer 2 — below
+    // the modifier — so it compared modifier-bearing layers against a
+    // modifier-free one and called the difference a defect.
+    let loops_per_contour = control_loops_per_contour();
+    let per_layer = parse_wall_loops(&gcode);
     assert!(
-        wall_per_layer.len() >= 3,
+        per_layer.len() >= 3,
         "M3 slice must produce at least 3 layers (got {})",
-        wall_per_layer.len()
+        per_layer.len()
     );
-    let reference = wall_per_layer[2];
-    for (i, n) in wall_per_layer.iter().enumerate().skip(2) {
-        assert_eq!(
-            *n, reference,
-            "layer {i} has {n} wall sets, expected {reference} (AC-1a: zero wall loops at modifier boundary); per-layer counts: {wall_per_layer:?}"
+    let max_inner_per_outer = loops_per_contour - 1;
+    for (i, (outer, inner)) in per_layer.iter().enumerate() {
+        assert!(
+            *inner <= max_inner_per_outer * *outer,
+            "AC-1a: layer {i} has {outer} outer and {inner} inner wall loops, \
+             more than {max_inner_per_outer} inner per outer — the modifier \
+             added wall loops at its boundary. A modifier-free control print \
+             carries {loops_per_contour} loops per contour. \
+             Per-layer (outer, inner): {per_layer:?}"
         );
     }
+    assert!(
+        per_layer.iter().any(|(outer, _)| *outer > 0),
+        "M3 slice produced no wall loops on any layer; \
+         per-layer (outer, inner): {per_layer:?}"
+    );
 
     // (b) The M3 fixture's per-region config flow is verified at the IR
     // level (the smoke test in
@@ -219,9 +327,9 @@ fn modifier_infill_two_densities() {
     // for this packet (would be a follow-up). The gcode-observable check is
     // that sparse infill actually ran: at least one `;TYPE:Sparse infill`
     // block per ~2 layers on average.
-    let (_, sparse_moves) = parse_gcode(&gcode);
+    let sparse_moves = parse_sparse_blocks(&gcode);
     let sparse_block_count = sparse_moves.len();
-    let layer_count = wall_per_layer.len();
+    let layer_count = per_layer.len();
     assert!(
         sparse_block_count * 2 >= layer_count,
         "M3 slice must produce sparse infill on at least half of its layers. \
@@ -252,7 +360,7 @@ fn modifier_infill_boundary_anchoring() {
     assert!(gcode_path.exists(), "gcode output not written");
     let gcode = std::fs::read_to_string(&gcode_path).expect("read gcode");
 
-    let (_wall_per_layer, sparse_moves) = parse_gcode(&gcode);
+    let sparse_moves = parse_sparse_blocks(&gcode);
     assert!(
         sparse_moves.len() >= 2,
         "M3 slice must produce at least 2 sparse-infill blocks (one per region); got {}",

@@ -621,9 +621,7 @@ fn empty_end_gcode_emits_no_block() {
     let offending: Vec<&str> = between
         .lines()
         .map(str::trim)
-        .filter(|line| {
-            !line.is_empty() && !line.starts_with(';') && !line.starts_with("M73 ")
-        })
+        .filter(|line| !line.is_empty() && !line.starts_with(';') && !line.starts_with("M73 "))
         .collect();
     assert!(
         offending.is_empty(),
