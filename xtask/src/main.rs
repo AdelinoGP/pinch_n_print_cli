@@ -4,6 +4,7 @@ mod compact_specs;
 mod dist;
 mod gen_config_docs;
 mod test;
+mod wit_verify;
 
 use std::env;
 use std::process::ExitCode;

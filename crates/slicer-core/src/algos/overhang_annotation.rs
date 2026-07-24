@@ -57,6 +57,7 @@
 
 use std::collections::HashMap;
 
+use rayon::prelude::*;
 use slicer_ir::slice_ir::QuartileBand;
 use slicer_ir::ExPolygon;
 
@@ -103,38 +104,48 @@ pub fn annotate_overhangs(
     layer_footprints: &[(u32, Vec<ExPolygon>)],
     line_width_mm: f32,
 ) -> HashMap<u32, Vec<QuartileBand>> {
-    let mut result = HashMap::new();
     if layer_footprints.len() < 2 {
-        return result;
+        return HashMap::new();
     }
 
     // One O(layers) sweep over already-computed cross-sections — the object's
     // slice footprints, supplied by the caller. Overhang is derived from the
     // slices (not a second mesh pass), matching OrcaSlicer's
-    // `detect_overhangs_for_lift` (`PrintObject.cpp:880-908`), which diffs
-    // consecutive `lslices`. Consecutive entries must be adjacent layers in
-    // increasing-Z order; each entry's `u32` is the layer index used to key
-    // the returned map.
-    for i in 1..layer_footprints.len() {
-        let (_, previous) = &layer_footprints[i - 1];
-        let (layer_index, current) = &layer_footprints[i];
+    // `detect_overhangs_for_lift`, which diffs consecutive `lslices`.
+    // Consecutive entries must be adjacent layers in increasing-Z order; each
+    // entry's `u32` is the layer index used to key the returned map.
+    //
+    // The sweep is parallel: iteration `i` reads only `layer_footprints[i - 1]`
+    // and `[i]` and contributes exactly one `(layer_index, bands)` entry, so
+    // there is no cross-iteration state. Because the result is a map keyed by
+    // `layer_index` — and each index is produced by exactly one iteration —
+    // the collected contents are identical regardless of completion order,
+    // which is what keeps the stage's output byte-stable. `difference_ex`,
+    // `intersection_ex` and `offset` are pure Clipper2 wrappers holding no
+    // shared mutable state, so they are safe to call concurrently.
+    (1..layer_footprints.len())
+        .into_par_iter()
+        .filter_map(|i| {
+            let (_, previous) = &layer_footprints[i - 1];
+            let (layer_index, current) = &layer_footprints[i];
 
-        if current.is_empty() {
-            continue;
-        }
+            if current.is_empty() {
+                return None;
+            }
 
-        let overhang_area = difference_ex(current, previous);
-        if overhang_area.is_empty() {
-            continue;
-        }
+            let overhang_area = difference_ex(current, previous);
+            if overhang_area.is_empty() {
+                return None;
+            }
 
-        let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
-        if !bands.is_empty() {
-            result.insert(*layer_index, bands);
-        }
-    }
+            let bands = partition_into_bands(current, previous, &overhang_area, line_width_mm);
+            if bands.is_empty() {
+                return None;
+            }
 
-    result
+            Some((*layer_index, bands))
+        })
+        .collect()
 }
 
 /// Partitions `overhang_area` (already `current \ previous`) into the 4

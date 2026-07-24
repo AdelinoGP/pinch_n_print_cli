@@ -310,6 +310,17 @@ pub enum BuildError {
         error: String,
     },
     WasmToolsNotFound,
+    /// The built component's embedded WIT world does not match the canonical
+    /// WIT, and a forced rebuild did not reconcile it. See `wit_verify`.
+    StaleEmbeddedWorld {
+        guest: String,
+        mismatches: Vec<crate::wit_verify::TypeMismatch>,
+    },
+    /// The embedded world could not be decoded for verification.
+    EmbeddedWorldUndecodable {
+        guest: String,
+        reason: String,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -347,6 +358,27 @@ impl fmt::Display for BuildError {
                     "wasm-tools not found on PATH; install with 'cargo install wasm-tools'"
                 )
             }
+            BuildError::StaleEmbeddedWorld { guest, mismatches } => {
+                writeln!(
+                    f,
+                    "guest '{guest}' embeds a WIT world that does not match the canonical \
+                     WIT, even after a forced rebuild.\n\
+                     This means the compiled `slicer-macros` in that guest's isolated \
+                     workspace is baking outdated WIT into the component. Try:\n  \
+                     rm -rf {guest}/wit-guest/target  (then re-run build-guests)\n\
+                     Mismatched types:"
+                )?;
+                for m in mismatches {
+                    writeln!(f, "  {m}")?;
+                }
+                Ok(())
+            }
+            BuildError::EmbeddedWorldUndecodable { guest, reason } => {
+                write!(
+                    f,
+                    "could not verify embedded WIT world for '{guest}': {reason}"
+                )
+            }
         }
     }
 }
@@ -372,7 +404,83 @@ pub fn ensure_wasm_tools_available() -> Result<(), BuildError> {
 // Build one guest
 // ---------------------------------------------------------------------------
 
+/// Build a guest, then verify the artifact it produced actually embeds the
+/// canonical WIT world.
+///
+/// Cargo's incremental state inside a guest's isolated workspace can decide
+/// nothing needs rebuilding even when the canonical WIT changed, because the
+/// WIT reaches the guest through a proc-macro binary rather than through a
+/// tracked source path (see `wit_verify`'s module docs). Componentizing that
+/// stale intermediate yields an artifact whose world silently disagrees with
+/// the host's. Verifying build *inputs* cannot detect this — only checking the
+/// produced artifact can — so on mismatch we bust the guest workspace's cached
+/// macro artifact, rebuild once, and re-verify before giving up.
 pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
+    build_one_inner(spec, ws_root)?;
+
+    let artifact = ws_root.join(&spec.artifact_path);
+    // The guest's own world shadows shared declarations — a name can denote
+    // different types in different packages (see `wit_verify`).
+    let world = spec.guest_dir.parent().and_then(|module_dir| {
+        module_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|name| crate::wit_verify::module_world(module_dir, name))
+    });
+    let canonical = crate::wit_verify::canonical_type_blocks(ws_root, world.as_deref());
+    if canonical.is_empty() {
+        // No canonical types readable — nothing to verify against.
+        return Ok(());
+    }
+
+    let mismatches =
+        crate::wit_verify::verify_embedded_world(&artifact, &canonical).map_err(|e| {
+            BuildError::EmbeddedWorldUndecodable {
+                guest: spec.crate_name.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+    if mismatches.is_empty() {
+        return Ok(());
+    }
+
+    eprintln!(
+        "warning: '{}' embedded a stale WIT world; forcing a rebuild",
+        spec.crate_name
+    );
+    force_rebuild_wit_bindings(spec);
+    build_one_inner(spec, ws_root)?;
+
+    let mismatches =
+        crate::wit_verify::verify_embedded_world(&artifact, &canonical).map_err(|e| {
+            BuildError::EmbeddedWorldUndecodable {
+                guest: spec.crate_name.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+    if mismatches.is_empty() {
+        return Ok(());
+    }
+
+    Err(BuildError::StaleEmbeddedWorld {
+        guest: spec.crate_name.clone(),
+        mismatches,
+    })
+}
+
+/// Discard the guest workspace's cached WIT-bearing proc-macro build so the
+/// next `cargo build` genuinely re-expands `#[slicer_module]` against the
+/// canonical WIT currently on disk.
+fn force_rebuild_wit_bindings(spec: &GuestSpec) {
+    for package in ["slicer-macros", "slicer-schema"] {
+        let _ = Command::new("cargo")
+            .current_dir(&spec.guest_dir)
+            .args(["clean", "-p", package])
+            .output();
+    }
+}
+
+fn build_one_inner(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     println!("building: {}", spec.crate_name);
 
     // Step A: cargo build

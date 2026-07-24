@@ -539,6 +539,30 @@ Manufactured deliberately rather than sampled from benchy directly, because
 simple/arbitrary fixtures do not reliably trigger the error class they are
 meant to guard against. See `docs/specs/arachne-parity-recovery.md`.
 
+### Threaded guest
+A prepass or postpass module component built with shared memory and atomics that
+spawns its own internal worker threads, divides work over immutable input
+snapshots, and returns one deterministically merged result to the host. Distinct
+from host-side layer fan-out, where the host runs many single-threaded guest
+instances in parallel across layers: a threaded guest is one host call that
+parallelizes *inside* the module, so the scheduler's serialized stage ordering is
+unchanged. Opt-in per module; the default guest target stays single-threaded.
+
+### Parallel-safe host service
+A host service a **threaded guest**'s worker threads may call concurrently,
+having been audited for concurrent re-entry. Ordinary host services are not
+parallel-safe: a guest reaching the host re-enters through the module instance's
+single execution context, which the runtime serializes. A service being a pure
+function of its arguments is necessary but not sufficient — the property is about
+the call path, not just the computation.
+
+### Deterministic merge
+The guest-side reduction that makes a **threaded guest**'s output invariant to
+worker count and scheduling order — results are combined by a stable key or
+order rather than by completion order. The correctness contract that lets guest
+parallelism coexist with byte-comparison baselines: without it, a threaded module
+produces run-to-run variation indistinguishable from a regression.
+
 ## Flagged ambiguities
 
 ### "region"
