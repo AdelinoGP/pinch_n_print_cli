@@ -1439,6 +1439,24 @@ pub struct ExPolygon {
     pub holes: Vec<Polygon>,
 }
 
+/// Reserved `SlicedRegion.region_id` marking a **modifier footprint** — the raw
+/// cross-section of a `modifier_part` volume, staged on `SliceIR` so the host
+/// can intersect it with the base region after `Layer::Perimeters` has
+/// partitioned the fill polygons.
+///
+/// A footprint is host-internal bookkeeping, NOT printable geometry. It is the
+/// unclipped modifier volume, which for a modifier that pokes out of the object
+/// extends beyond the object entirely. It must never be handed to a module:
+/// `push_slice_regions` (`crates/slicer-wasm-host/src/dispatch.rs`) filters it
+/// out of every guest view, and `sync_perimeter_infill_areas_into_slice`
+/// (`crates/slicer-runtime/src/region_partition.rs`) skips it before consuming
+/// it in `split_modifier_footprints`.
+///
+/// It lives in `slicer-ir` rather than `slicer-runtime` because the WIT
+/// dispatch layer is what enforces the invariant and cannot depend on the
+/// runtime crate.
+pub const MODIFIER_FOOTPRINT_REGION_ID: RegionId = RegionId::MAX;
+
 /// Sliced region
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SlicedRegion {

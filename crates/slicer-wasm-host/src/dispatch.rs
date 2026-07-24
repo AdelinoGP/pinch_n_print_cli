@@ -1451,6 +1451,17 @@ fn push_slice_regions(
 
     let mut handles = Vec::with_capacity(slice_ir.regions.len());
     for region in &slice_ir.regions {
+        // Modifier footprints are host-internal bookkeeping, not printable
+        // geometry — see `slicer_ir::MODIFIER_FOOTPRINT_REGION_ID`. Handing one
+        // to a module makes it a region like any other: a perimeter generator
+        // walls it, and since the footprint is the *unclipped* modifier volume,
+        // the resulting loops are printed wherever the modifier sticks out of
+        // the object. That is what `resources/cube_cilindrical_modifier.3mf`
+        // did — the cylinder was extruded at full diameter, half of it outside
+        // the cube.
+        if region.region_id == slicer_ir::MODIFIER_FOOTPRINT_REGION_ID {
+            continue;
+        }
         let held_claims = store
             .data()
             .held_claims_for(&region.object_id, &region.region_id.to_string())

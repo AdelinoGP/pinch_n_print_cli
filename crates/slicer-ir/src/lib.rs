@@ -130,6 +130,7 @@ pub use slice_ir::{
     // Slice types
     SliceIR,
     SlicedRegion,
+    MODIFIER_FOOTPRINT_REGION_ID,
     StageId,
     // Support types
     SupportGeometryIR,

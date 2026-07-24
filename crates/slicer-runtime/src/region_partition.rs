@@ -63,7 +63,11 @@ use crate::LayerArena;
 
 /// Reserved `region_id` flagging a `SlicedRegion` as a modifier footprint staged
 /// for `sync_perimeter_infill_areas_into_slice` to consume (packet 132).
-pub const MODIFIER_FOOTPRINT_REGION_ID: u64 = u64::MAX;
+///
+/// Re-exported from `slicer-ir`, which owns it so that `slicer-wasm-host`'s
+/// `push_slice_regions` can filter footprints out of guest views without
+/// depending on this crate.
+pub use slicer_ir::MODIFIER_FOOTPRINT_REGION_ID;
 
 /// Modifier `region_id` namespace stride (next prime above paint's 1_000_000).
 /// A minted modifier sub-region id is `base_region_id * STRIDE + hash`
@@ -127,6 +131,13 @@ pub fn sync_perimeter_infill_areas_into_slice(
     let perim_index = slicer_wasm_host::dispatch::perimeter_region_index(&perimeter);
 
     for slice_region in &mut slice.regions {
+        // A modifier footprint is never handed to a module, so it never has a
+        // perimeter entry. Skip it explicitly rather than let it fall into the
+        // virtual-variant branch below, which would log a warning per footprint
+        // per layer. `split_modifier_footprints` consumes it further down.
+        if slice_region.region_id == MODIFIER_FOOTPRINT_REGION_ID {
+            continue;
+        }
         let Some(perim) = perim_index
             .get(&(&slice_region.object_id, slice_region.region_id))
             .copied()
