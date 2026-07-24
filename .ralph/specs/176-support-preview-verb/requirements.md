@@ -2,9 +2,9 @@
 
 ## Packet Metadata
 
-- Grouped task IDs: `TASK-280`
-- Backlog source: `docs/07_implementation_status.md` (row minted at closure via `task-map.md`)
-- Packet status: `draft`
+- Grouped task IDs: `TASK-291`
+- Backlog source: `docs/07_implementation_status.md` (canonical support-preview row)
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 - Plan source: `docs/specs/fork-gaps-wave2-plan.md` (Packet 176 — fork handoff item 13)
 

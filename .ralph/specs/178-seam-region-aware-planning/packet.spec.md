@@ -2,7 +2,7 @@
 status: implemented
 packet: 178-seam-region-aware-planning
 task_ids:
-  - TASK-291
+  - TASK-294
 supersedes: ../168-seam-aligned-modes/packet.spec.md
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
@@ -22,7 +22,7 @@ This packet narrows the `D-168-SEAM-PREPASS-SOURCE` deviation by closing part (1
 
 - Depends on: implemented `.ralph/specs/168-seam-aligned-modes/` (status `implemented`, closes `TASK-274`). Reads predecessor `packet.spec.md` first per `supersedes:` row.
 - Unblocks: the canonical algorithm packet at `.ralph/specs/179-seam-canonical-algorithm-fidelity/` and the final-placement packet at `.ralph/specs/180-seam-final-placement-default/`; their `task_ids` are unassigned and must be re-derived by each packet against `docs/07_implementation_status.md` at refine time (the parent parity plan's `TASK-282`/`TASK-283` row IDs are stale; `TASK-285` is also closed under packet 120).
-- Activation blockers: none remaining; the parent plan `docs/specs/seam-canonical-parity-plan.md` has been reconciled 2026-07-22 (queue re-derived against `docs/07_implementation_status.md`: row 1 → `TASK-291`, row 2 → `TASK-292`, row 3 → `TASK-293`; `TASK-284` is the closed `claim:raft-fill` row of packet 124, `TASK-282`/`TASK-283` are closed under packet 117). Packets 179 and 180 stay `status= draft` and each must be re-derived at its own refine time.
+- Activation blockers: none remaining; the parent plan `docs/specs/seam-canonical-parity-plan.md` has been reconciled 2026-07-22 (queue re-derived against `docs/07_implementation_status.md`: row 1 → `TASK-294`, row 2 → `TASK-292`, row 3 → `TASK-293`; `TASK-284` is the closed `claim:raft-fill` row of packet 124, `TASK-282`/`TASK-283` are closed under packet 117). Packets 179 and 180 stay `status= draft` and each must be re-derived at its own refine time.
 
 ## Acceptance Criteria
 

@@ -55,7 +55,7 @@
 
 ## Expected Sub-Agent Dispatches
 
-- Question: does slicing `resources/bridge_support_enforcers.3mf` (or `bridge.obj` + `support_enabled=true`) through prepass commit a non-empty `SupportGeometryIR`? Which config keys are required (support_enabled, support type)?; scope: `cargo run --bin pnp_cli -- slice ...` probe or the support-geometry module's manifest under `modules/core-modules/`; return: `FACT` (fixture name + required keys); purpose: Step 1 fixture lock.
+- Question: does slicing `resources/bridge_support_enforcers.3mf` (or `bridge.obj` + `enable_support=true`) through prepass commit a non-empty `SupportGeometryIR`? Which config keys are required (enable_support, support type)?; scope: `cargo run --bin pnp_cli -- slice ...` probe or the support-geometry module's manifest under `modules/core-modules/`; return: `FACT` (fixture name + required keys); purpose: Step 1 fixture lock.
 - Question: SUMMARY of `docs/19_visual_debug.md`'s description of `prepare_prepass_context` reuse (precedent citation for docs/20); scope: `docs/19_visual_debug.md`; return: `SUMMARY`; purpose: Step 4 doc authoring.
 - Question: run `cargo xtask build-guests --check` before the first e2e test run; scope: workspace; return: `FACT`; purpose: Step 3 precondition.
 
