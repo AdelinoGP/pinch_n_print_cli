@@ -17,18 +17,30 @@
 //! regression guard. Each confinement check is paired with a positive
 //! "≥1 path emitted" assertion so a module that silently emits *nothing*
 //! cannot pass vacuously.
+//!
+//! **Which stage the containment checks target.** Under ADR-0025 a
+//! `Layer::Infill` module emits RAW, unlinked segments over the wall-inset
+//! polygon; applying the infill overlap and re-clipping to the per-role
+//! partitioned polygon is the `Layer::InfillPostProcess` linker's job. Per-role
+//! containment is therefore a property of the module **+ linker pair**, not of
+//! the module alone — `ac7*` accordingly drive `FillModule::run` followed by
+//! `infill-linker`'s `run_infill_postprocess` and assert on the linked output.
+//! The remaining tests here are about emission *gating* (held claims, empty
+//! polygons), which is a module-only property, so they still call the module
+//! directly.
 
 use gyroid_infill::GyroidInfill;
+use infill_linker::InfillLinker;
 use lightning_infill::LightningInfill;
 use rectilinear_infill::RectilinearInfill;
 use slicer_ir::{
     point_in_polygon_winding, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-    Point2, Polygon,
+    InfillRegion, LightningTreeEntry, LightningTreeIR, Point2, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
+use slicer_sdk::test_support::fixtures::{PerimeterRegionViewBuilder, SliceRegionViewBuilder};
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
-use slicer_sdk::views::SliceRegionView;
+use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 
 // ── fixture helpers ──────────────────────────────────────────────────────────
 
@@ -201,14 +213,14 @@ impl FillModule {
         &self,
         layer_index: u32,
         regions: &[SliceRegionView],
+        paint: &PaintRegionLayerView,
         output: &mut InfillOutputBuilder,
         config: &ConfigView,
     ) {
-        let paint = PaintRegionLayerView::new(layer_index);
         let result = match self {
-            Self::Rectilinear(m) => m.run_infill(layer_index, regions, &paint, output, config),
-            Self::Gyroid(m) => m.run_infill(layer_index, regions, &paint, output, config),
-            Self::Lightning(m) => m.run_infill(layer_index, regions, &paint, output, config),
+            Self::Rectilinear(m) => m.run_infill(layer_index, regions, paint, output, config),
+            Self::Gyroid(m) => m.run_infill(layer_index, regions, paint, output, config),
+            Self::Lightning(m) => m.run_infill(layer_index, regions, paint, output, config),
         };
         result.unwrap_or_else(|e| panic!("[{}] run_infill failed: {e:?}", self.name()));
     }
@@ -243,6 +255,95 @@ impl FillModule {
     }
 }
 
+/// A `PaintRegionLayerView` carrying lightning tree-edge segments for
+/// `(obj-1, region 0, layer 0)`.
+///
+/// `lightning-infill::run_infill` renders exclusively from
+/// `PaintRegionLayerView::lightning_tree_segments_for` — its geometry comes
+/// from the `PrePass::LightningTreeGen` product (ADR-0029), not from the region
+/// polygons. A tree-less paint view therefore makes lightning emit nothing, and
+/// a containment assertion over zero paths is vacuous. Supplying a tree is what
+/// makes the lightning arm of `ac7*` a real check.
+///
+/// The segments are given in mm and deliberately **overshoot** the role
+/// polygon: under ADR-0025 a `Layer::Infill` module emits raw geometry and
+/// confinement is the linker's job, so a fixture whose raw segments already fit
+/// would prove nothing about the re-clip.
+fn lightning_paint(segments: &[((f32, f32), (f32, f32))]) -> PaintRegionLayerView {
+    let ir = LightningTreeIR {
+        entries: vec![LightningTreeEntry {
+            object_id: "obj-1".to_string(),
+            global_layer_index: 0,
+            region_id: 0,
+            tree_edge_segments: segments
+                .iter()
+                .map(|(start, end)| {
+                    [
+                        Point2::from_mm(start.0, start.1),
+                        Point2::from_mm(end.0, end.1),
+                    ]
+                })
+                .collect(),
+        }],
+        ..Default::default()
+    };
+    PaintRegionLayerView::new(0).with_lightning_tree_ir(std::sync::Arc::new(ir))
+}
+
+/// The `Layer::InfillPostProcess` view of the same region: the host's four
+/// partitioned fill polygons plus the wall-inset union, mirrored off the
+/// `SliceRegionView` the fill module saw so the two cannot drift.
+fn perimeter_view_of(region: &SliceRegionView) -> PerimeterRegionView {
+    let mut view = PerimeterRegionViewBuilder::new()
+        .object_id(region.object_id().clone())
+        .region_id(*region.region_id())
+        .sparse_infill_area(region.sparse_infill_area().to_vec())
+        .top_solid_fill(region.top_solid_fill().to_vec())
+        .bottom_solid_fill(region.bottom_solid_fill().to_vec())
+        .bridge_areas(region.bridge_areas().to_vec())
+        .build();
+    // `infill_areas` is the wall-inset union the perimeters stage publishes.
+    // The linker must NOT confine a role to it — that is the ADR-0025 §2 hole
+    // this fixture guards.
+    view.set_infill_areas(region.polygons().to_vec());
+    view.set_config(min_density_config());
+    view
+}
+
+/// Runs the fill module, then the `Layer::InfillPostProcess` linker over its
+/// raw output, and returns the linked result.
+fn run_and_link(
+    module: &FillModule,
+    region: &SliceRegionView,
+    paint: &PaintRegionLayerView,
+) -> InfillOutputBuilder {
+    let mut raw = InfillOutputBuilder::new();
+    module.run(
+        0,
+        std::slice::from_ref(region),
+        paint,
+        &mut raw,
+        &min_density_config(),
+    );
+
+    let prior = vec![InfillRegion {
+        object_id: region.object_id().clone(),
+        region_id: *region.region_id(),
+        sparse_infill: raw.sparse_paths().to_vec(),
+        solid_infill: raw.solid_paths().to_vec(),
+        ironing: raw.ironing_paths().to_vec(),
+    }];
+    let views = vec![perimeter_view_of(region)];
+
+    let config = min_density_config();
+    let linker = InfillLinker::on_print_start(&config).expect("linker init");
+    let mut linked = InfillOutputBuilder::new();
+    linker
+        .run_infill_postprocess(0, &views, &prior, &mut linked, &config)
+        .unwrap_or_else(|e| panic!("[{}] infill-linker failed: {e:?}", module.name()));
+    linked
+}
+
 fn all_three_modules() -> Vec<FillModule> {
     let cfg = min_density_config();
     vec![
@@ -257,17 +358,18 @@ fn all_three_modules() -> Vec<FillModule> {
 #[test]
 fn ac7_each_role_confined_to_its_own_canonical_polygon_for_all_three_modules() {
     let region = region_with_disjoint_quadrants();
+    // Sparse is the bottom-left 5×5 quadrant; two of these three branches run
+    // straight out of it into the bottom-right and top-left quadrants.
+    let paint = lightning_paint(&[
+        ((1.0, 1.0), (9.0, 1.0)),
+        ((1.0, 1.0), (1.0, 9.0)),
+        ((1.0, 4.0), (4.0, 1.0)),
+    ]);
 
     for module in all_three_modules() {
-        let mut output = InfillOutputBuilder::new();
         let mut region_clone = region.clone();
         region_clone.set_held_claims(module.held_claims());
-        module.run(
-            0,
-            std::slice::from_ref(&region_clone),
-            &mut output,
-            &min_density_config(),
-        );
+        let output = run_and_link(&module, &region_clone, &paint);
         let all = collect_all_paths(&output);
         let expected = module.expected_roles();
 
@@ -335,6 +437,7 @@ fn empty_held_claims_suppresses_all_fill_emission() {
         module.run(
             0,
             std::slice::from_ref(&region),
+            &PaintRegionLayerView::new(0),
             &mut output,
             &min_density_config(),
         );
@@ -365,6 +468,7 @@ fn empty_held_claims_suppresses_sparse_even_when_polygon_populated() {
         module.run(
             0,
             std::slice::from_ref(&region),
+            &PaintRegionLayerView::new(0),
             &mut output,
             &min_density_config(),
         );
@@ -391,16 +495,17 @@ fn ac7b_concave_sparse_area_confined_via_winding_not_just_aabb() {
         .build();
 
     let containers = [area];
+    // Each branch crosses the notch: the diagonal cuts the reflex corner at
+    // (4,4), the other two run along y=8 / x=8 out of the L's arms.
+    let paint = lightning_paint(&[
+        ((1.0, 1.0), (9.0, 9.0)),
+        ((1.0, 8.0), (8.0, 8.0)),
+        ((8.0, 1.0), (8.0, 8.0)),
+    ]);
     for module in all_three_modules() {
-        let mut output = InfillOutputBuilder::new();
         let mut region_clone = region.clone();
         region_clone.set_held_claims(module.held_claims());
-        module.run(
-            0,
-            std::slice::from_ref(&region_clone),
-            &mut output,
-            &min_density_config(),
-        );
+        let output = run_and_link(&module, &region_clone, &paint);
         let sparse = paths_with_role(&collect_all_paths(&output), ExtrusionRole::SparseInfill);
         assert!(
             !sparse.is_empty(),
@@ -442,6 +547,7 @@ fn ac8_empty_sparse_infill_area_yields_zero_sparse_paths_even_with_top_flag_set(
         module.run(
             0,
             std::slice::from_ref(&region_clone),
+            &PaintRegionLayerView::new(0),
             &mut output,
             &min_density_config(),
         );
@@ -493,6 +599,7 @@ fn ac9_all_four_polygons_empty_yields_zero_paths_no_panic() {
         module.run(
             0,
             std::slice::from_ref(&region_clone),
+            &PaintRegionLayerView::new(0),
             &mut output,
             &min_density_config(),
         );
@@ -545,6 +652,7 @@ fn neg1_should_emit_gating_filters_top_role_by_held_claims() {
         module.run(
             0,
             std::slice::from_ref(&gated_out),
+            &PaintRegionLayerView::new(0),
             &mut out_a,
             &min_density_config(),
         );
@@ -560,6 +668,7 @@ fn neg1_should_emit_gating_filters_top_role_by_held_claims() {
         module.run(
             0,
             std::slice::from_ref(&gated_in),
+            &PaintRegionLayerView::new(0),
             &mut out_b,
             &min_density_config(),
         );

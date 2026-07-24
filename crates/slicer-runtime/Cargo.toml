@@ -63,6 +63,12 @@ path = "../../modules/core-modules/gyroid-infill"
 [dev-dependencies.lightning-infill]
 path = "../../modules/core-modules/lightning-infill"
 
+# ADR-0025: a `Layer::Infill` module's output is RAW segments, not valid infill.
+# Per-role containment is only a property of the module + `Layer::InfillPostProcess`
+# linker PAIR, so `infill_partitioned_input_tdd.rs` drives both.
+[dev-dependencies.infill-linker]
+path = "../../modules/core-modules/infill-linker"
+
 [dev-dependencies.classic-perimeters]
 path = "../../modules/core-modules/classic-perimeters"
 

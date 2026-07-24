@@ -34,6 +34,82 @@ struct RegionConfig {
     density: u32,
 }
 
+/// The host-partitioned fill polygons of one region, kept per role.
+///
+/// ADR-0025 §2 requires the linker to re-clip against "the partitioned fill
+/// polygons" — plural, one per role. Substituting their union (what
+/// `PerimeterRegionView::infill_areas` returns) is a containment hole: a sparse
+/// path re-clipped against the union is free to run across the top-solid or
+/// bridge polygon beside it. Canonical enforces the same separation three times
+/// over in `libslic3r/Fill/` — `group_fills` buckets surfaces by
+/// `SurfaceFillParams` keyed on `extrusion_role`, the mutual-clipping pass
+/// `diff_ex(polys, all_polygons, ApplySafetyOffset::Yes)` subtracts every other
+/// bucket, and `FillGyroid::_fill_surface_single` finishes with
+/// `intersection_pl(polylines, expolygon)`.
+#[derive(Debug, Clone, Default)]
+struct RoleBoundaries {
+    sparse: Vec<ExPolygon>,
+    top: Vec<ExPolygon>,
+    bottom: Vec<ExPolygon>,
+    bridge: Vec<ExPolygon>,
+    /// `infill_areas` — the union. Only used for views the host never
+    /// partitioned, and for roles that have no dedicated partition.
+    union: Vec<ExPolygon>,
+}
+
+impl RoleBoundaries {
+    fn from_view(view: &PerimeterRegionView) -> Self {
+        Self {
+            sparse: view.sparse_infill_area().to_vec(),
+            top: view.top_solid_fill().to_vec(),
+            bottom: view.bottom_solid_fill().to_vec(),
+            bridge: view.bridge_areas().to_vec(),
+            union: view.infill_areas().to_vec(),
+        }
+    }
+
+    fn is_partitioned(&self) -> bool {
+        !(self.sparse.is_empty()
+            && self.top.is_empty()
+            && self.bottom.is_empty()
+            && self.bridge.is_empty())
+    }
+
+    /// The boundary `role` must be confined to.
+    ///
+    /// `None` means no boundary is known — the caller passes those paths
+    /// through untouched, which is what the linker has always done for a region
+    /// whose boundary it cannot resolve. `Some(empty)` is a *different* answer:
+    /// the host partitioned this region and gave `role` no area at all, so the
+    /// role's paths have nowhere legal to go and clip away to nothing.
+    fn for_role(&self, role: &ExtrusionRole) -> Option<Vec<ExPolygon>> {
+        let partitioned = match role {
+            ExtrusionRole::SparseInfill => Some(self.sparse.clone()),
+            ExtrusionRole::TopSolidInfill => Some(self.top.clone()),
+            ExtrusionRole::BottomSolidInfill => Some(self.bottom.clone()),
+            ExtrusionRole::BridgeInfill => Some(self.bridge.clone()),
+            // `solid_role` in rectilinear-infill / gyroid-infill relabels a
+            // top or bottom shell at depth ≥ 1 as InternalSolidInfill, so its
+            // legal area is the union of the two solid-shell polygons.
+            ExtrusionRole::InternalSolidInfill => Some(union_ex(
+                &self
+                    .top
+                    .iter()
+                    .chain(self.bottom.iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )),
+            // Roles the host does not partition (raft, custom, …) keep the
+            // historical union boundary.
+            _ => None,
+        };
+        match partitioned {
+            Some(polygons) if self.is_partitioned() => Some(polygons),
+            _ => (!self.union.is_empty()).then(|| self.union.clone()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct RegionRecord {
     prior_index: usize,
@@ -41,7 +117,7 @@ struct RegionRecord {
     region_id: u64,
     tool_index: u32,
     wall_source_region_id: Option<u64>,
-    boundary: Vec<ExPolygon>,
+    boundaries: RoleBoundaries,
     config: RegionConfig,
     sparse_spacing_mm: f32,
     solid_spacing_mm: f32,
@@ -108,7 +184,7 @@ pub fn orchestrate_infill(
             region_id: region.region_id,
             tool_index: view.tool_index(),
             wall_source_region_id: view.wall_source_region_id().copied(),
-            boundary: region_boundary(view),
+            boundaries: RoleBoundaries::from_view(view),
             config: RegionConfig {
                 line_width: line_width.to_bits(),
                 density: density.to_bits(),
@@ -120,18 +196,8 @@ pub fn orchestrate_infill(
         });
     }
 
-    process_bucket(
-        &mut records,
-        PathBucket::Sparse,
-        infill_overlap,
-        &mut buckets,
-    );
-    process_bucket(
-        &mut records,
-        PathBucket::Solid,
-        infill_overlap,
-        &mut buckets,
-    );
+    process_bucket(&records, PathBucket::Sparse, infill_overlap, &mut buckets);
+    process_bucket(&records, PathBucket::Solid, infill_overlap, &mut buckets);
 
     for (index, region) in prior_infill.iter().enumerate() {
         output.begin_region(&region.object_id, region.region_id);
@@ -147,7 +213,7 @@ pub fn orchestrate_infill(
 }
 
 fn process_bucket(
-    records: &mut [RegionRecord],
+    records: &[RegionRecord],
     bucket: PathBucket,
     infill_overlap: f32,
     buckets: &mut [BucketPaths],
@@ -158,24 +224,28 @@ fn process_bucket(
 }
 
 fn process_bucket_role(
-    records: &mut [RegionRecord],
+    records: &[RegionRecord],
     bucket: PathBucket,
     role: &ExtrusionRole,
     infill_overlap: f32,
     buckets: &mut [BucketPaths],
 ) {
-    let active = records
+    // Per-role, per-region: `role`'s own partitioned polygon, never the union
+    // of all four (see `RoleBoundaries::for_role`).
+    let boundaries = records
         .iter()
-        .enumerate()
-        .filter(|(_, record)| {
-            !selected_paths(record, bucket, role).is_empty() && !record.boundary.is_empty()
-        })
-        .map(|(index, _)| index)
+        .map(|record| record.boundaries.for_role(role))
         .collect::<Vec<_>>();
 
-    for record in records.iter() {
+    let active = (0..records.len())
+        .filter(|&index| {
+            !selected_paths(&records[index], bucket, role).is_empty() && boundaries[index].is_some()
+        })
+        .collect::<Vec<_>>();
+
+    for (index, record) in records.iter().enumerate() {
         let selected = selected_paths(record, bucket, role);
-        if selected.is_empty() || record.boundary.is_empty() {
+        if selected.is_empty() || boundaries[index].is_none() {
             append_paths(
                 &mut buckets[record.prior_index],
                 bucket,
@@ -208,9 +278,25 @@ fn process_bucket_role(
         });
 
         if group.len() > 1 && same_config && compatible {
-            link_union_group(records, &group, bucket, role, infill_overlap, buckets);
+            link_union_group(
+                records,
+                &boundaries,
+                &group,
+                bucket,
+                role,
+                infill_overlap,
+                buckets,
+            );
         } else {
-            link_region_group(records, &group, bucket, role, infill_overlap, buckets);
+            link_region_group(
+                records,
+                &boundaries,
+                &group,
+                bucket,
+                role,
+                infill_overlap,
+                buckets,
+            );
         }
     }
 }
@@ -294,17 +380,30 @@ fn endpoint_widths_compatible(first: &ExtrusionPath3D, second: &ExtrusionPath3D)
         && (first_end.width - second_end.width).abs() <= WIDTH_EPSILON_MM
 }
 
+/// The resolved boundary for one record, or the empty slice.
+///
+/// Callers only reach this for records that passed the `is_some()` filter in
+/// `process_bucket_role`, so the fallback is unreachable in practice.
+fn boundary_for(boundaries: &[Option<Vec<ExPolygon>>], index: usize) -> &[ExPolygon] {
+    boundaries[index].as_deref().unwrap_or(&[])
+}
+
 fn link_union_group(
     records: &[RegionRecord],
+    boundaries: &[Option<Vec<ExPolygon>>],
     group: &[usize],
     bucket: PathBucket,
     role: &ExtrusionRole,
     infill_overlap: f32,
     buckets: &mut [BucketPaths],
 ) {
+    // Cross-region joining (ADR-0025 Amendment 2026-07-01) is an intentional
+    // PnP improvement over canonical and is preserved: the union is taken
+    // across sibling regions of the wall-sharing group, but only over *this
+    // role's* polygon in each of them.
     let source = group
         .iter()
-        .flat_map(|&index| records[index].boundary.iter().cloned())
+        .flat_map(|&index| boundary_for(boundaries, index).iter().cloned())
         .collect::<Vec<_>>();
     let boundary = union_ex(&source);
     let spacing = spacing(records, group[0], bucket);
@@ -326,6 +425,7 @@ fn link_union_group(
 
 fn link_region_group(
     records: &[RegionRecord],
+    boundaries: &[Option<Vec<ExPolygon>>],
     group: &[usize],
     bucket: PathBucket,
     role: &ExtrusionRole,
@@ -336,14 +436,14 @@ fn link_region_group(
         let spacing_mm = spacing(records, index, bucket);
         let boundary = if group.len() == 1 {
             ExPolygonWithOffset::for_infill_overlap(
-                &records[index].boundary,
+                boundary_for(boundaries, index),
                 infill_overlap,
                 spacing_mm,
             )
             .polygons_outer()
             .to_vec()
         } else {
-            mixed_boundary(records, group, index, infill_overlap, spacing_mm)
+            mixed_boundary(boundaries, group, index, infill_overlap, spacing_mm)
         };
         let tagged = selected_paths(&records[index], bucket, role)
             .into_iter()
@@ -356,18 +456,18 @@ fn link_region_group(
 }
 
 fn mixed_boundary(
-    records: &[RegionRecord],
+    boundaries: &[Option<Vec<ExPolygon>>],
     group: &[usize],
     index: usize,
     infill_overlap: f32,
     spacing_mm: f32,
 ) -> Vec<ExPolygon> {
     let offset = ExPolygonWithOffset::for_infill_overlap(
-        &records[index].boundary,
+        boundary_for(boundaries, index),
         infill_overlap,
         spacing_mm,
     );
-    let shared = shared_segments(&records[index].boundary, group, index, records);
+    let shared = shared_segments(boundary_for(boundaries, index), group, index, boundaries);
     if shared.is_empty() {
         return offset.polygons_outer().to_vec();
     }
@@ -382,12 +482,12 @@ fn shared_segments(
     source: &[ExPolygon],
     group: &[usize],
     source_index: usize,
-    records: &[RegionRecord],
+    boundaries: &[Option<Vec<ExPolygon>>],
 ) -> Vec<BoundarySegment> {
     let peers = group
         .iter()
         .filter(|&&index| index != source_index)
-        .flat_map(|&index| boundary_segments(&records[index].boundary))
+        .flat_map(|&index| boundary_segments(boundary_for(boundaries, index)))
         .collect::<Vec<_>>();
     boundary_segments(source)
         .into_iter()
@@ -664,22 +764,4 @@ fn config_float(config: Option<&slicer_ir::ConfigView>, key: &str) -> Option<f32
         Some(ConfigValue::Int(value)) => Some(*value as f32),
         _ => None,
     })
-}
-
-fn region_boundary(view: &PerimeterRegionView) -> Vec<ExPolygon> {
-    if !view.infill_areas().is_empty() {
-        view.infill_areas().to_vec()
-    } else if !view.sparse_infill_area().is_empty() {
-        view.sparse_infill_area().to_vec()
-    } else {
-        [
-            view.top_solid_fill(),
-            view.bottom_solid_fill(),
-            view.bridge_areas(),
-        ]
-        .into_iter()
-        .flatten()
-        .cloned()
-        .collect()
-    }
 }

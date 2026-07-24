@@ -3088,6 +3088,7 @@ dependencies = [
  "criterion",
  "directories",
  "gyroid-infill",
+ "infill-linker",
  "lightning-infill",
  "log",
  "png",

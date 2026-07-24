@@ -68,7 +68,12 @@ fn view(
     let mut view = PerimeterRegionViewBuilder::new()
         .object_id("object")
         .region_id(region_id)
-        .add_infill_area(area)
+        // Both the union (`infill_areas`) and the host's per-role partition are
+        // populated, so these cross-region tests exercise the per-role boundary
+        // lookup (`RoleBoundaries::for_role`) rather than the unpartitioned
+        // fallback. All fixture paths are `SparseInfill`.
+        .add_infill_area(area.clone())
+        .sparse_infill_area(vec![area])
         .wall_source_region_id(wall_source_region_id)
         .tool_index(tool_index)
         .build();

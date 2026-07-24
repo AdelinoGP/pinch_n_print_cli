@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed (lands with the infill-parity effort: rectilinear-infill + gyroid-infill parity rewrite + new `infill-linker` module).
+Accepted. Landed with the infill-parity effort: rectilinear-infill + gyroid-infill
+parity rewrite + the `infill-linker` module. See the 2026-07-24 amendment for the
+two containment defects found in the first implementation and closed since.
 
 ## Context
 
@@ -195,6 +197,122 @@ Two claims in this ADR were sharpened by the 2026-07-01 grilling against the cod
    carry no module identity (`ExtrusionPath3D` has no origin field), so the linker cannot
    reliably distinguish lightning's self-linked output from raw waves; the real fix is the
    raw-emit conversion, not pass-through detection.
+
+## Amendment 2026-07-24 — containment is part of the contract: per-role re-clip, and connectors route along the contour
+
+The first `infill-linker` implementation satisfied §2's *wording* while violating
+its *intent* in two independent places. Both are containment holes — geometry
+escaping the polygon it was supposed to stay inside — and both are now closed.
+This amendment records them so the contract cannot be re-read the loose way.
+
+**Canonical does enforce per-role containment, three times over.** It is not an
+emergent property of the fill patterns. In `libslic3r/Fill/`: `group_fills`
+buckets surfaces into `SurfaceFill`s keyed on a `SurfaceFillParams` that includes
+`extrusion_role`, so each role gets its own expolygon set; a mutual-clipping pass
+then subtracts every other bucket from each bucket via
+`diff_ex(polys, all_polygons, ApplySafetyOffset::Yes)`; and individual fills clip
+their own output again, e.g. `FillGyroid::_fill_surface_single`'s
+`intersection_pl(polylines, expolygon)`. PnP centralises linking (that is this
+ADR's whole point), so all three guards collapse into the linker — which makes
+the linker the *only* thing standing between a raw wave and a sparse stroke laid
+across a top-solid island.
+
+### Hole 1 — "the partitioned fill polygons" is plural, and the union is not a substitute
+
+§2 says the linker "re-clips against the partitioned fill polygons". The
+implementation's `region_boundary` (`modules/core-modules/infill-linker/src/orchestrate.rs`)
+returned `PerimeterRegionView::infill_areas()` — the **union of all four role
+polygons**, i.e. the wall inset. Re-clipping every role against the union is not
+a weaker version of per-role clipping; it is the absence of it. A `SparseInfill`
+stroke clipped to the union is free to run straight across the region's
+`top_solid_fill` or `bridge_areas`.
+
+This was invisible for `rectilinear-infill`, which is incidentally safe:
+`scan_expolygon` pairs scan-line crossings against the per-role expolygon's own
+edges, so its raw output never leaves the role polygon in the first place. It was
+live for the wave-shaped and tree-shaped fills, whose raw emit deliberately
+overshoots — gyroid's raw waves on the regression fixture start at x ≈ −8.6 mm on
+a polygon spanning 0–5 mm.
+
+**Contract, restated:** the linker resolves a boundary **per (region, role)**, from
+that role's own host-partitioned polygon —
+`sparse_infill_area` / `top_solid_fill` / `bottom_solid_fill` / `bridge_areas`.
+`InternalSolidInfill` (the deep-shell relabel that `solid_role` applies at shell
+index ≥ 1) maps to the union of the two solid-shell polygons. `infill_areas` is
+used only (a) for views the host never partitioned, and (b) for roles that have no
+dedicated partition. See `RoleBoundaries::for_role`.
+
+Two consequences worth stating explicitly, because they are easy to get backwards:
+
+- **Cross-region joining survives.** The wall-sharing-group union of the
+  2026-07-01 amendment is an intentional PnP improvement over canonical and is
+  preserved — but the union is now taken **per role across sibling regions**
+  (`link_union_group`), not across roles within a region.
+- **A known-empty role boundary is not an unknown one.** `for_role` returns
+  `Option`: `None` means no boundary could be resolved and the paths pass through
+  untouched (the historical behaviour); `Some(empty)` means the host partitioned
+  the region and gave this role no area, so the role's paths have nowhere legal to
+  go and clip away. Collapsing those two into "empty ⇒ pass through" would have
+  turned this fix into a *new* leak for roles with an empty polygon.
+
+### Hole 2 — a linking connector is extruded geometry, so it needs containment too
+
+`connect_infill` joined two polylines with `first.points.extend(second.points)` —
+a bare chord between the two endpoints, gated only on the arc distance between
+their boundary projections. Nothing tested whether the chord stayed inside the
+region. On any concave boundary it does not: two endpoints either side of a reflex
+corner are a short arc apart and an arbitrarily long way apart *through the
+notch*. Re-clipping the segments and then connecting them with an unclipped chord
+leaves the containment guarantee exactly as broken as before.
+
+Canonical never emits a bare chord. `Fill::connect_infill`
+(`src/libslic3r/Fill/FillBase.cpp`) re-parametrises the boundary with the infill
+endpoints spliced in as real ring vertices (`create_boundary_infill_graph`), then
+routes each connector **along the contour**: `take_ccw_full` / `take_cw_full` copy
+the run of ring vertices between two T-joints verbatim — no simplification, no arc
+fitting, no collinearity merge. Canonical needs no containment test on the result
+because the connector **is** exact boundary geometry. Containment is structural.
+
+**Contract, restated:** a connector emitted by the linker must lie on the
+boundary it was routed along. `contour_connector`
+(`modules/core-modules/infill-linker/src/graph.rs`) materialises every ring vertex
+strictly between the two joined endpoints, interpolating `z` and `width` across
+the walk; `BoundaryRing::directed_distance` supplies the missing piece the old
+distance helper discarded — *which way round* the ring the shorter walk goes.
+
+Also from canonical, and now explicit in the code: **connectors never cross
+rings.** `prev_on_contour` / `next_on_contour` are wired within one ring, and
+`take` / `take_limited` always receive a single ring's point array; there is no
+outer-contour-to-hole bridging connector. Endpoints that do not resolve to the
+same ring are therefore left **unconnected** — the polylines stay separate rather
+than being joined by a chord across the interior or across the gap between two
+disjoint islands.
+
+### Not yet ported from canonical
+
+The anchor-length rule is still outstanding. Canonical decides per candidate arc:
+if the arc between two adjacent T-joints is shorter than `anchor_length_max` it
+takes the whole arc and merges the two lines into one polyline; otherwise it takes
+only an `anchor_length`-long stub off each end (`take_limited`, which lerps the
+final partial segment so the stub is exactly the requested length) and leaves the
+lines separate. Canonical also sorts candidate arcs shortest-first and consumes
+them greedily. PnP currently has a single distance gate (10 × spacing) with no
+stub mode. This is a *quality* gap, not a containment gap — the connectors it
+emits are contour geometry either way.
+
+### Regression coverage
+
+- `connect_tdd.rs` — `connector_routes_through_the_reflex_corner_instead_of_chording_the_notch`,
+  `connector_walks_a_hole_ring_rather_than_cutting_across_it`,
+  `endpoints_on_different_rings_are_never_joined`.
+- `crates/slicer-runtime/tests/integration/infill_partitioned_input_tdd.rs` —
+  `ac7*` now drive the **module + linker pair**. They previously called
+  `run_infill` alone, which under this ADR cannot satisfy a containment assertion:
+  §Consequences already says a fill module's output is raw segments and "tests
+  that assert on connected polylines must target the linker's output". Note also
+  that `lightning-infill` renders exclusively from the
+  `PrePass::LightningTreeGen` product (ADR-0029), so its arm of those tests needs
+  a `LightningTreeIR` in the paint view or it emits nothing and asserts vacuously.
 
 ## Future-Reviewer Notes
 

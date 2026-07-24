@@ -11,7 +11,7 @@
 
 use std::cmp::Ordering;
 
-use crate::graph::{BoundaryInfillGraph, BoundaryRing};
+use crate::graph::{contour_connector, BoundaryInfillGraph, BoundaryRing};
 use slicer_ir::{mm_to_units, ExtrusionPath3D, Point2, Point3WithWidth};
 
 // OrcaSlicer `connect_infill`'s disabled candidate threshold is `1000. / density * spacing`; 1000 nm is 10 units here.
@@ -62,6 +62,23 @@ pub fn connect_infill(
             break;
         }
 
+        // Canonical `connect_infill` wires `prev_on_contour` / `next_on_contour`
+        // within a single ring, and `take` / `take_limited` always receive one
+        // ring's point array — there is no outer-contour-to-hole bridging
+        // connector. Endpoints that do not share a ring are therefore left
+        // unconnected rather than joined by a chord across the interior. The
+        // candidate filter already enforces this; the guard makes the invariant
+        // local to the splice that depends on it.
+        let Some(ring) = graph
+            .rings()
+            .get(candidate.first.position.ring_index)
+            .filter(|_| {
+                candidate.first.position.ring_index == candidate.second.position.ring_index
+            })
+        else {
+            break;
+        };
+
         let (first, second) = if first_index < second_index {
             let (left, right) = active.split_at_mut(second_index);
             (left[first_index].take(), right[0].take())
@@ -75,6 +92,20 @@ pub fn connect_infill(
 
         orient_for_join(&mut first, candidate.first.at_start, true);
         orient_for_join(&mut second, candidate.second.at_start, false);
+        // After orientation the join runs from `first`'s last point to
+        // `second`'s first point. Route it along the contour instead of
+        // extruding a bare chord between them.
+        if let (Some(start), Some(end)) =
+            (first.points.last().copied(), second.points.first().copied())
+        {
+            first.points.extend(contour_connector(
+                ring,
+                candidate.first.position.arc_position,
+                candidate.second.position.arc_position,
+                &start,
+                &end,
+            ));
+        }
         first.points.extend(second.points);
         active[first_index.min(second_index)] = Some(first);
     }
@@ -212,11 +243,10 @@ fn nearest_pair_candidate(
                     && other.position.ring_index == endpoint.position.ring_index
             })
             .filter_map(|other| {
-                let distance = boundary_distance(
-                    graph.rings().get(endpoint.position.ring_index)?,
-                    endpoint.position.arc_position,
-                    other.position.arc_position,
-                );
+                let (distance, _) = graph
+                    .rings()
+                    .get(endpoint.position.ring_index)?
+                    .directed_distance(endpoint.position.arc_position, other.position.arc_position);
                 (distance <= threshold).then_some((*other, distance))
             })
             .min_by(|(left, left_distance), (right, right_distance)| {
@@ -352,16 +382,6 @@ fn project_on_ring(ring: &BoundaryRing, point: Point2) -> Option<(f64, f64)> {
         segment_start += segment_len;
     }
     best
-}
-
-fn boundary_distance(ring: &BoundaryRing, from: f64, to: f64) -> f64 {
-    if ring.length == 0.0 {
-        return 0.0;
-    }
-    let from = (from - ring.pos_of_first_point).rem_euclid(ring.length);
-    let to = (to - ring.pos_of_first_point).rem_euclid(ring.length);
-    let forward = (to - from).rem_euclid(ring.length);
-    forward.min((from - to).rem_euclid(ring.length))
 }
 
 fn orient_for_join(path: &mut ExtrusionPath3D, at_start: bool, first: bool) {
