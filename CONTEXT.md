@@ -297,6 +297,24 @@ The configured three-state ordering policy for a region's walls: `InnerOuter`,
 preserved across execution boundaries; it is not reducible to an outer-first
 boolean.
 
+### Role partition
+The division of a region's fillable area into the four canonical
+**extrusion-role** polygons — sparse infill, top solid fill, bottom solid
+fill, and bridge — each of which is a distinct fill job with its own pattern,
+density, and boundary. Canonical OrcaSlicer establishes it by bucketing
+surfaces on `extrusion_role` in `group_fills` and keeps the buckets disjoint
+by mutual clipping. A role partition is not a single area: the union of the
+four polygons is a strictly weaker object, and substituting the union for the
+partition is what lets one role's extrusion cross another's territory.
+
+### Cross-region link
+A join between two infill polylines that belong to sibling regions of the same
+role, rather than to one region. It is a deliberate Pinch 'n Print improvement
+over canonical, which links only within a single fill surface, and it is what
+lets a region split — by paint, by **region modifier**, or by variant — stop
+costing a travel move at every seam. It is constrained by the **role
+partition**: siblings are joined per role, never across roles.
+
 ### SparsePointGrid
 A sparse spatial-hash utility used by Arachne region ordering to find nearby
 extrusion junctions without allocating a dense grid. Its cell size is the
@@ -464,11 +482,20 @@ The `dist_greater` predicate in `ExtrusionLine::simplify` (`Arachne/utils/Extrus
 
 ### Self-captured baseline
 A regression fixture recorded from PnP's own prior output, not from an
-independent OrcaSlicer reference (no OrcaSlicer binary is available in this
-build environment — see `docs/DEVIATION_LOG.md` D-109/D-112). Green means
-"unchanged from the snapshot," never "correct"; a **structural invariant**
-that never existed cannot be proven by a self-captured baseline alone. See
-ADR-0042.
+independent OrcaSlicer reference. Green means "unchanged from the snapshot,"
+never "correct"; a **structural invariant** that never existed cannot be
+proven by a self-captured baseline alone. See ADR-0042.
+
+What is unavailable is an OrcaSlicer *binary* — nothing in this build
+environment can be run to produce reference output for a given input, which is
+why these fixtures exist at all (see `docs/DEVIATION_LOG.md` D-109/D-112). That
+is narrower than "no OrcaSlicer reference exists". OrcaSlicer's C++ *source* is
+readable, and a developer who has a checkout can adjudicate canonical behaviour
+from it — several entries in `docs/DEVIATION_LOG.md` were settled that way. Any
+such checkout is local and gitignored, never vendored, so it is not available to
+every developer and must be cited by file and function name, never by line
+number (see `CLAUDE.md` §"OrcaSlicer Citation Style"). Reading the source
+settles what canonical *does*; it does not produce the numbers a golden needs.
 
 ### Structural invariant
 A unit-independent assertion of an Arachne correctness property — e.g.
