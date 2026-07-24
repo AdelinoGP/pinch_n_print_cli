@@ -42,7 +42,6 @@
 
 #![allow(missing_docs)]
 
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -599,7 +598,6 @@ fn wedge_per_region_config_delivery_structural_canary() {
         "wall structure drift: {outer} outer loops should carry          {INNER_LOOPS_PER_OUTER} inner loops each, got {inner}"
     );
 }
-
 
 /// MVP must progress through at least two distinct layer Z planes and
 /// emit them monotonically.

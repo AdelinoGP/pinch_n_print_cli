@@ -3099,7 +3099,6 @@ dependencies = [
  "seam-placer",
  "serde",
  "serde_json",
- "sha2",
  "slicer-core",
  "slicer-gcode",
  "slicer-helpers",
