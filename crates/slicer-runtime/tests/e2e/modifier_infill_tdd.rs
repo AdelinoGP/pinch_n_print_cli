@@ -17,15 +17,18 @@
 //! per-region gcode emission is a > 20-line emitter change and is out of
 //! scope for this packet (packetized follow-up).
 //!
-//! AC-2 `modifier_infill_boundary_anchoring`: same fixture slice, then
-//! per-bucket gcode-level proxy for IR-level linkage: EVERY
-//! `;TYPE:Sparse infill` block has ≥ 2 G1 extrusion moves, which is
-//! incompatible with raw 2-point output (a 2-point path is 1 G1 move).
-//! This is the gcode proxy for the IR-level `points_per_path > 2` check
-//! the packet calls for; the real IR assertion is verified in
+//! AC-2 `modifier_infill_boundary_anchoring`: same fixture slice, then a
+//! gcode-level proxy for IR-level linkage: sparse-infill G1 moves must
+//! outnumber sparse-infill *paths*, both per layer and within any block
+//! holding more than one path. That is incompatible with raw 2-point output,
+//! where every fill line is its own path and the two counts are equal. It is
+//! the gcode proxy for the IR-level `points_per_path > 2` check the packet
+//! calls for; the real IR assertion is verified in
 //! `wedge_linked_infill_report_tdd.rs` which uses the wedge (no modifier)
 //! and so avoids the modifier-region geometry burden while still proving
-//! the linker is wired.
+//! the linker is wired. The bucket is the layer rather than the `;TYPE:`
+//! block because the block partition follows path order — see the test's own
+//! doc comment.
 //!
 //! Authoritative pipe commands:
 //!   `cargo test -p slicer-runtime --test e2e -- modifier_infill_two_densities`
@@ -159,34 +162,95 @@ fn parse_wall_loops(gcode: &str) -> Vec<(u32, u32)> {
     per_layer
 }
 
-/// `per_sparse_infill_block_g1_count[k]` = extruding-`G1` count inside the k-th
-/// `;TYPE:Sparse infill` block.
-fn parse_sparse_blocks(gcode: &str) -> Vec<u32> {
-    let mut sparse_moves: Vec<u32> = Vec::new();
-    let mut in_sparse = false;
-    let mut current_sparse_moves: u32 = 0;
+/// One `;TYPE:Sparse infill` block, recorded as the G1-move count of each
+/// extruding **path** inside it.
+///
+/// A *path* is a maximal run of consecutive extruding G1 moves; any travel
+/// (a `G0`, or a `G1` that changes X/Y without `E`) ends one. A path is the
+/// unit the infill linker operates on: unlinked output emits every fill line
+/// as its own 2-point path (1 G1 move), and linking chains them, so
+/// moves-per-path is the quantity that distinguishes the two.
+///
+/// A *block* — the span between two `;TYPE:` markers — is NOT that unit. The
+/// emitter writes `;TYPE:` on role *change*, so a block is a maximal run of
+/// consecutive same-role entities in **path order**; whether two sparse paths
+/// share a block or not is decided by nearest-neighbour path optimisation.
+/// See `modifier_infill_boundary_anchoring` for what that cost.
+///
+/// `E`-only moves (`G1 E-0.8 F25`, retract/unretract) carry no geometry and are
+/// excluded: they are emitted inside the surrounding role block and would
+/// otherwise inflate every count by four.
+struct SparseBlock {
+    /// Number of `;LAYER_CHANGE` markers seen before this block. Used only to
+    /// bucket blocks by layer and to name a layer in a failure message.
+    layer: usize,
+    /// G1-move count of each extruding path in this block, in emission order.
+    moves_per_path: Vec<u32>,
+}
+
+impl SparseBlock {
+    fn total_moves(&self) -> u32 {
+        self.moves_per_path.iter().sum()
+    }
+}
+
+fn parse_sparse_blocks(gcode: &str) -> Vec<SparseBlock> {
+    fn axis(line: &str, axis: char) -> Option<f64> {
+        let rest = line.split(axis).nth(1)?;
+        let end = rest
+            .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+'))
+            .unwrap_or(rest.len());
+        rest[..end].parse().ok()
+    }
+
+    let mut blocks: Vec<SparseBlock> = Vec::new();
+    let mut current: Option<SparseBlock> = None;
+    let mut open_path: Option<u32> = None;
+    let mut layer: usize = 0;
+
+    // `open_path` closes on a travel; `current` closes on a role change or a
+    // layer change. Closing `current` also closes `open_path`.
+    macro_rules! close_path {
+        () => {
+            if let (Some(moves), Some(block)) = (open_path.take(), current.as_mut()) {
+                block.moves_per_path.push(moves);
+            }
+        };
+    }
+    macro_rules! close_block {
+        () => {
+            close_path!();
+            if let Some(block) = current.take() {
+                blocks.push(block);
+            }
+        };
+    }
+
     for raw in gcode.lines() {
         let line = raw.trim();
-        if line == ";TYPE:Sparse infill" {
-            if in_sparse {
-                sparse_moves.push(current_sparse_moves);
-            }
-            in_sparse = true;
-            current_sparse_moves = 0;
+        if line.starts_with(";LAYER_CHANGE") || line.starts_with(";LAYER:") {
+            close_block!();
+            layer += 1;
         } else if line.starts_with(";TYPE:") {
-            if in_sparse {
-                sparse_moves.push(current_sparse_moves);
+            close_block!();
+            if line == ";TYPE:Sparse infill" {
+                current = Some(SparseBlock {
+                    layer,
+                    moves_per_path: Vec::new(),
+                });
             }
-            in_sparse = false;
-            current_sparse_moves = 0;
-        } else if in_sparse && line.starts_with("G1 ") && line.contains('E') {
-            current_sparse_moves += 1;
+        } else if line.starts_with("G0") || line.starts_with("G1 ") {
+            let moved = axis(line, 'X').is_some() || axis(line, 'Y').is_some();
+            let extruding = line.starts_with("G1 ") && line.contains('E') && moved;
+            if extruding {
+                *open_path.get_or_insert(0) += 1;
+            } else if moved {
+                close_path!();
+            }
         }
     }
-    if in_sparse {
-        sparse_moves.push(current_sparse_moves);
-    }
-    sparse_moves
+    close_block!();
+    blocks
 }
 
 /// Loops per wall contour, measured from a **modifier-free control print**
@@ -327,8 +391,7 @@ fn modifier_infill_two_densities() {
     // for this packet (would be a follow-up). The gcode-observable check is
     // that sparse infill actually ran: at least one `;TYPE:Sparse infill`
     // block per ~2 layers on average.
-    let sparse_moves = parse_sparse_blocks(&gcode);
-    let sparse_block_count = sparse_moves.len();
+    let sparse_block_count = parse_sparse_blocks(&gcode).len();
     let layer_count = per_layer.len();
     assert!(
         sparse_block_count * 2 >= layer_count,
@@ -339,11 +402,49 @@ fn modifier_infill_two_densities() {
 
 // ── AC-2 ──────────────────────────────────────────────────────────────────
 
-/// AC-2: M3 slice, then assert the sparse-infill blocks are linked (gcode-level
-/// proxy: many G1 extrusion moves per block, incompatible with raw 2-point
-/// output). Without linking, a sparse-infill path is a line (2 points = 1 G1
+/// AC-2: M3 slice, then assert the sparse infill is linked (gcode-level proxy:
+/// many G1 extrusion moves per *path*, incompatible with raw 2-point output).
+/// Without linking, every sparse-infill path is a single line (2 points = 1 G1
 /// move); linked output chains segments into multi-point paths, so the
-/// per-block G1 count rises sharply.
+/// moves-per-path count rises sharply.
+///
+/// # Why this is measured per path and per layer, not per `;TYPE:` block
+///
+/// AC-2c previously demanded that every `;TYPE:Sparse infill` block carry ≥ 2
+/// G1 moves. Four blocks of ~128 carried exactly one, and the reason is not a
+/// linker gap:
+///
+/// - The lone move is the *complete* sparse fill of the corner-triangle region
+///   this fixture carries at (112.99, 92.70)–(121.11, 100.82). Its fill polygon
+///   is a right isoceles triangle with 4.30 mm legs (≈ 9.2 mm²), measured from
+///   the innermost wall loop inset by the observed 0.303 mm fill inset. At the
+///   2.25 mm effective line spacing this slice uses, 4.30 mm admits one or two
+///   lines; the module centres its lattice on the region, which yields exactly
+///   one, spanning the full available extent (2.15 mm, hypotenuse to base).
+///   Canonical `Fill::connect_infill` joins *pairs* of polyline endpoints — a
+///   lone polyline has no partner and is correctly left alone. There is
+///   nothing to link.
+///
+/// - The block boundary itself is a path-ordering artifact, which is why only
+///   4 of the ~63 layers carrying that region failed rather than all of them.
+///   On most layers the triangle's line is emitted adjacent to the main fill,
+///   so both share one block; on layers 5, 11, 17 and 19 the optimiser
+///   scheduled a Gap-infill entity between them, splitting one block into two.
+///   `parse_wall_loops` already documents the same trap for `;TYPE:Outer wall`
+///   markers — the block partition tracks path order, not fill structure.
+///
+/// So the assertion is restated over units that do not move with path order.
+/// It is the packet's own criterion — "every bucket's mean points-per-path is
+/// greater than 2", i.e. mean G1 moves per path greater than 1 — with the
+/// bucket redefined from the `;TYPE:` block to the layer, plus the per-block
+/// form the block partition can actually support: a block holding more than
+/// one path must have linked something.
+///
+/// Verified non-vacuous by re-slicing this fixture against a module set with
+/// `infill-linker` removed: sparse output drops from 284 paths carrying 5473
+/// G1 moves (mean 19.27) to 3305 paths carrying 3305 moves (mean exactly
+/// 1.00), which fails the per-layer form on all 125 layers and the per-block
+/// form on all 128 multi-path blocks.
 #[test]
 fn modifier_infill_boundary_anchoring() {
     let model = cube_cilindrical_modifier_3mf();
@@ -360,25 +461,70 @@ fn modifier_infill_boundary_anchoring() {
     assert!(gcode_path.exists(), "gcode output not written");
     let gcode = std::fs::read_to_string(&gcode_path).expect("read gcode");
 
-    let sparse_moves = parse_sparse_blocks(&gcode);
+    let blocks = parse_sparse_blocks(&gcode);
     assert!(
-        sparse_moves.len() >= 2,
+        blocks.len() >= 2,
         "M3 slice must produce at least 2 sparse-infill blocks (one per region); got {}",
-        sparse_moves.len()
+        blocks.len()
     );
-    // (c) Per-bucket linkage: every `;TYPE:Sparse infill` block has at
-    // least 2 G1 extrusion moves. A 2-point raw path is 1 G1 move; linked
-    // output chains segments, raising the count. This is the per-bucket
-    // form of the spec's "every bucket's mean points-per-path > 2" claim
-    // (the gcode proxy uses G1 moves per block, which is monotonic in
-    // path-point count: N points = N-1 G1 moves).
-    for (k, moves) in sparse_moves.iter().enumerate() {
+
+    // (c1) Per-layer linkage — the ordering-invariant form of the spec's
+    // "every bucket's mean points-per-path > 2". N points = N-1 G1 moves, so
+    // the claim is mean G1 moves per path > 1, i.e. a layer's sparse moves
+    // must outnumber its sparse paths. Raw 2-point output makes those two
+    // numbers equal on every layer.
+    //
+    // The `moves > 1` guard exempts a layer whose entire sparse infill is one
+    // line — there is no pair of polylines to link, so the mean is 1 by
+    // arithmetic and says nothing about the linker. No layer of this fixture
+    // is in that case (the worst observed layer mean is 9.0), so the guard is
+    // not load-bearing here; it is there so the invariant stays true of a
+    // fixture where it would be.
+    let layers: std::collections::BTreeSet<usize> = blocks.iter().map(|b| b.layer).collect();
+    for layer in layers {
+        let per_layer: Vec<&SparseBlock> = blocks.iter().filter(|b| b.layer == layer).collect();
+        let moves: u32 = per_layer.iter().map(|b| b.total_moves()).sum();
+        let paths: usize = per_layer.iter().map(|b| b.moves_per_path.len()).sum();
+        if moves <= 1 {
+            continue;
+        }
         assert!(
-            *moves >= 2,
-            "AC-2c: sparse-infill block {k} has only {moves} G1 moves; \
-             raw 2-point output would have 1. Block counts: {sparse_moves:?}"
+            moves as usize > paths,
+            "AC-2c: layer {layer} emitted {moves} sparse G1 moves across {paths} \
+             paths (mean {:.2} moves/path, i.e. {:.2} points/path). Linked infill \
+             chains fill lines into multi-point paths; raw 2-point output gives \
+             exactly 1 move per path. Paths this layer: {:?}",
+            moves as f64 / paths as f64,
+            1.0 + moves as f64 / paths as f64,
+            per_layer
+                .iter()
+                .map(|b| b.moves_per_path.clone())
+                .collect::<Vec<_>>()
         );
     }
+
+    // (c2) Per-block linkage, in the only form the block partition supports:
+    // a block that holds more than one path must have chained at least one
+    // pair, so its moves must outnumber its paths. A block holding exactly
+    // one path is not evidence either way — that is the case the old
+    // ≥ 2-moves-per-block assertion mis-read as a linker gap (see the doc
+    // comment above).
+    for (k, block) in blocks.iter().enumerate() {
+        if block.moves_per_path.len() < 2 {
+            continue;
+        }
+        assert!(
+            block.total_moves() as usize > block.moves_per_path.len(),
+            "AC-2c: sparse-infill block {k} (layer {}) holds {} paths totalling \
+             {} G1 moves — every path is a bare 2-point line, which is what \
+             unlinked output looks like. Per-path moves: {:?}",
+            block.layer,
+            block.moves_per_path.len(),
+            block.total_moves(),
+            block.moves_per_path
+        );
+    }
+
     // Spec (a) containment in sub-region polygon and (b) boundary anchoring
     // to wall-less shared arc within 0.5×spacing are NOT verified here:
     // both require IR-level inspection (`InfillIR.regions[].polygons` and
