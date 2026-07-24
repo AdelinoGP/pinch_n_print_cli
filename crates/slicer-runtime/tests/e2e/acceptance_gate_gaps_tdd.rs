@@ -72,6 +72,16 @@ fn dag_request(modules: Vec<LoadedModule>, audits: Vec<ModuleAccessAudit>) -> Da
 // â”€â”€ Coupling Control: host-boundary access enforcement parity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // docs/11 Â§3 row "Coupling Control"; docs/12 Â§Coupling Control.
 
+/// An undeclared READ is one whose IR **root** the module never declared.
+///
+/// Reads are validated at root granularity (`read_is_declared` in
+/// `crates/slicer-scheduler/src/validation.rs`), so the undeclared path here
+/// uses a different root than the declared one. A same-root path such as
+/// `A.undeclared.read` against a declared `A.declared` is *not* an undeclared
+/// read: declaring a root declares the root. That asymmetry with writes — which
+/// stay exact — is deliberate and is pinned by
+/// `reads_match_at_root_granularity_writes_do_not` in
+/// `crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs`.
 #[test]
 fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind() {
     let m = loaded_module(
@@ -82,7 +92,7 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
     );
     let audit = ModuleAccessAudit {
         module_id: m.id().to_string(),
-        runtime_reads: vec!["A.undeclared.read".to_string()],
+        runtime_reads: vec!["B.undeclared.read".to_string()],
         runtime_writes: vec![],
         diagnostics: Vec::new(),
     };
@@ -105,7 +115,7 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
         } => {
             assert_eq!(module, "com.test.r");
             assert!(matches!(access, AccessKind::Read));
-            assert_eq!(path, "A.undeclared.read");
+            assert_eq!(path, "B.undeclared.read");
         }
         other => panic!("unexpected detail: {other:?}"),
     }

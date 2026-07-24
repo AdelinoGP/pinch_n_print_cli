@@ -549,3 +549,126 @@ fn perimeter_narrow_write_audit() {
         undeclared_errors
     );
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Test 5 — reads match at root granularity, writes do not
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Pins the deliberate asymmetry between read and write validation.
+///
+/// Runtime read labels are field-qualified and emitted by the host accessors in
+/// `slicer-wasm-host`'s `host.rs`, not by the module body, and the generated
+/// shim `__slicer_adapt_perimeter_regions` (`crates/slicer-macros/src/lib.rs`)
+/// calls every accessor unconditionally when it materialises the SDK view. A
+/// module that touches only `infill_areas()` therefore records the whole
+/// `PerimeterIR.*` field set. Exact-string read matching is unsatisfiable by any
+/// honest manifest under those labels, so a declared root authorises the root.
+///
+/// Writes are the opposite: a module names the fields it commits, narrowing is
+/// achievable, and a narrow declaration must not authorise a coarse write.
+#[test]
+fn reads_match_at_root_granularity_writes_do_not() {
+    let module = LoadedModuleBuilder::new(
+        "com.test.granularity",
+        semver(0, 1, 0),
+        "Layer::PerimetersPostProcess",
+        slicer_schema::WORLD_LAYER,
+        PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
+    )
+    .ir_reads(vec!["PerimeterIR".into()])
+    .ir_writes(vec!["PerimeterIR.resolved-seam".into()])
+    .claims(vec!["seam-placer".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
+
+    let audit = ModuleAccessAudit {
+        module_id: "com.test.granularity".into(),
+        // Field-qualified reads under a declared root: authorised.
+        runtime_reads: vec![
+            "PerimeterIR.infill-areas".into(),
+            "PerimeterIR.wall-loops".into(),
+            "PerimeterIR.config".into(),
+        ],
+        // A coarse write against a narrow declaration: NOT authorised.
+        runtime_writes: vec!["PerimeterIR".into()],
+        diagnostics: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&DagValidationRequest {
+        modules: vec![module],
+        stage_dags: Vec::new(),
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders: Vec::new(),
+        access_audits: vec![audit],
+    });
+
+    let undeclared: Vec<(&slicer_scheduler::AccessKind, &String)> = report
+        .errors
+        .iter()
+        .filter_map(|d| match &d.detail {
+            slicer_scheduler::SchedulerError::UndeclaredAccess { access, path, .. } => {
+                Some((access, path))
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        undeclared.len(),
+        1,
+        "expected exactly the coarse write to be flagged; got {undeclared:?}"
+    );
+    assert_eq!(*undeclared[0].0, slicer_scheduler::AccessKind::Write);
+    assert_eq!(undeclared[0].1, "PerimeterIR");
+}
+
+/// A read whose IR root was never declared is still an error — root granularity
+/// widens what a declaration covers, it does not disable the check.
+#[test]
+fn read_of_an_undeclared_root_is_still_flagged() {
+    let module = LoadedModuleBuilder::new(
+        "com.test.foreign-root",
+        semver(0, 1, 0),
+        "Layer::PerimetersPostProcess",
+        slicer_schema::WORLD_LAYER,
+        PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
+    )
+    .ir_reads(vec!["PerimeterIR".into()])
+    .ir_writes(vec!["PerimeterIR.resolved-seam".into()])
+    .claims(vec!["seam-placer".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
+
+    let audit = ModuleAccessAudit {
+        module_id: "com.test.foreign-root".into(),
+        runtime_reads: vec!["GCodeIR.commands".into()],
+        runtime_writes: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&DagValidationRequest {
+        modules: vec![module],
+        stage_dags: Vec::new(),
+        host_ir_schema_version: semver(1, 0, 0),
+        host_version: semver(0, 1, 0),
+        claim_holders: Vec::new(),
+        access_audits: vec![audit],
+    });
+
+    assert!(
+        report.errors.iter().any(|d| matches!(
+            &d.detail,
+            slicer_scheduler::SchedulerError::UndeclaredAccess { access, path, .. }
+                if *access == slicer_scheduler::AccessKind::Read && path == "GCodeIR.commands"
+        )),
+        "a read under an undeclared root must be flagged; report: {:?}",
+        report.errors
+    );
+}
