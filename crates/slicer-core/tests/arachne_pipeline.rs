@@ -70,7 +70,7 @@ fn square_10mm() -> ExPolygon {
 /// optimal bead counts, so it has transition regions; a constant-width shape
 /// has none.
 fn tapered_wedge() -> ExPolygon {
-    let mm = |v: f64| (v * UNITS_PER_MM as f64) as i64;
+    let mm = |v: f64| (v * UNITS_PER_MM) as i64;
     expoly(vec![
         p(0, mm(-0.175)),
         p(mm(12.0), mm(-1.3)),
