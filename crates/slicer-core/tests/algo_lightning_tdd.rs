@@ -119,12 +119,12 @@ fn lightning_empty_inputs_no_panic() {
     assert!(tree.borrow().children().is_empty());
     assert_eq!(tree.borrow().prune(5), 0);
     tree.borrow().straighten(3, 0);
-    let propagated = tree
-        .borrow()
-        .propagate_to_next_layer(&[], 4, 0, 3, 0)
-        .expect("an empty tree remains a root node");
-    assert_eq!(propagated.borrow().location(), Point2::default());
-    assert!(propagated.borrow().children().is_empty());
+    // Canonical `Node::realign` returns false immediately when the next layer's
+    // outlines are empty, and `propagateToNextLayer` only emits the copy when
+    // realign accepted it. So an empty outline set propagates nothing; the
+    // intent under test is that this is a clean no-op rather than a panic.
+    let propagated = tree.borrow().propagate_to_next_layer(&[], 4, 0, 3, 0);
+    assert!(propagated.is_empty());
 }
 
 /// AC-1: the first layer has no predecessor and layer N is outline N minus the dilated outline N-1.
@@ -266,10 +266,22 @@ fn lightning_tree_node_propagate() {
     middle.borrow().add_child(Point2 { x: 10, y: 0 });
     let original_middle = middle.borrow().location();
 
-    let propagated = root
+    // The next layer's outline must actually contain the tree: canonical
+    // `Node::realign` drops any node that falls outside it. This box clears
+    // every node by a wide margin, so realign keeps the tree intact and the
+    // prune/straighten/structure behaviour is what the assertions below see.
+    let next_outline = vec![
+        Point2 { x: -1000, y: -1000 },
+        Point2 { x: 1000, y: -1000 },
+        Point2 { x: 1000, y: 1000 },
+        Point2 { x: -1000, y: 1000 },
+        Point2 { x: -1000, y: -1000 },
+    ];
+    let mut propagated_roots = root
         .borrow()
-        .propagate_to_next_layer(&[], 4, 0, 4, 0)
-        .expect("the unpruned tree propagates");
+        .propagate_to_next_layer(&next_outline, 4, 0, 4, 0);
+    assert_eq!(propagated_roots.len(), 1);
+    let propagated = propagated_roots.pop().expect("the unpruned tree propagates");
     let propagated_children = propagated.borrow().children();
     let propagated_middle = propagated_children[0].clone();
     let propagated_leaf = propagated_middle.borrow().children()[0].clone();
@@ -283,6 +295,83 @@ fn lightning_tree_node_propagate() {
     assert!(moved_x * moved_x + moved_y * moved_y <= 16);
     assert_eq!(propagated.borrow().location(), Point2 { x: 0, y: 0 });
     assert_eq!(propagated_leaf.borrow().location(), Point2 { x: 10, y: 0 });
+}
+
+// Orca ref: Node::realign (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/TreeNode.cpp)
+//
+// The "outside" branch: a node that falls outside the next layer's outline dies,
+// but each surviving descendant is lifted out as an independent root and takes
+// the *dead parent's* position as its grounding location.
+#[test]
+fn lightning_tree_node_propagate_reroots_descendants_of_an_outside_node() {
+    let outline = vec![
+        Point2 { x: 0, y: 0 },
+        Point2 { x: 1000, y: 0 },
+        Point2 { x: 1000, y: 1000 },
+        Point2 { x: 0, y: 1000 },
+        Point2 { x: 0, y: 0 },
+    ];
+    let dead_root_location = Point2 { x: 2000, y: 2000 };
+    let root = Node::new(dead_root_location);
+    root.borrow().add_child(Point2 { x: 500, y: 500 });
+
+    // Locator resolution 0 disables the boundary-crossing test, isolating the
+    // inside/outside decision.
+    let propagated = root.borrow().propagate_to_next_layer(&outline, 0, 0, 0, 0);
+
+    assert_eq!(propagated.len(), 1, "the outside root itself must not survive");
+    let rerooted = &propagated[0];
+    assert_eq!(rerooted.borrow().location(), Point2 { x: 500, y: 500 });
+    assert!(rerooted.borrow().is_root());
+    assert_eq!(
+        rerooted.borrow().get_last_grounding_location(),
+        Some(dead_root_location)
+    );
+}
+
+// Orca ref: Node::realign and lineSegmentPolygonsIntersection
+// (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/TreeNode.cpp)
+//
+// The "inside" branch: both nodes survive, but the edge between them leaves the
+// outline, so the child is detached into its own root and both ends have their
+// grounding location cleared.
+#[test]
+fn lightning_tree_node_propagate_detaches_a_child_across_a_notch() {
+    // A "U": the notch spans x in [400, 600] above y = 200.
+    let outline = vec![
+        Point2 { x: 0, y: 0 },
+        Point2 { x: 1000, y: 0 },
+        Point2 { x: 1000, y: 1000 },
+        Point2 { x: 600, y: 1000 },
+        Point2 { x: 600, y: 200 },
+        Point2 { x: 400, y: 200 },
+        Point2 { x: 400, y: 1000 },
+        Point2 { x: 0, y: 1000 },
+        Point2 { x: 0, y: 0 },
+    ];
+    let root_location = Point2 { x: 200, y: 600 };
+    let child_location = Point2 { x: 800, y: 600 };
+    let root = Node::new_with_grounding_location(root_location, Some(Point2 { x: 0, y: 600 }));
+    root.borrow().add_child(child_location);
+
+    // Resolution 250 => crossing tolerance 500, which covers the nearest
+    // notch wall at x = 400 (200 units from the parent).
+    let propagated = root.borrow().propagate_to_next_layer(&outline, 250, 0, 0, 0);
+
+    assert_eq!(propagated.len(), 2);
+    // Canonical appends rerooted parts before the main copy.
+    let detached = &propagated[0];
+    let kept = &propagated[1];
+    assert_eq!(detached.borrow().location(), child_location);
+    assert!(detached.borrow().is_root());
+    assert_eq!(detached.borrow().get_last_grounding_location(), None);
+    assert_eq!(kept.borrow().location(), root_location);
+    assert!(kept.borrow().children().is_empty());
+    assert_eq!(
+        kept.borrow().get_last_grounding_location(),
+        None,
+        "canonical clears the grounding location of a node that had to reground"
+    );
 }
 
 // Orca ref: Node::reroot (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/TreeNode.cpp)
@@ -555,43 +644,83 @@ fn distance_to_outline(point: Point2, outline: &[Point2]) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+// Orca ref: Generator::generateTrees and Node::realign
+// (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp; TreeNode.cpp)
+//
+// Structure of the `[10, 10, 10, 12]` prism fixture, once `Node::realign` is
+// ported (before the port, `propagate_to_next_layer` discarded `next_outlines`
+// entirely and every tree was copied down unconditionally):
+//
+//  * `generate_initial_internal_overhangs` gives layer N the area of layer N
+//    minus the *dilated outline of layer N-1*, so layers 0..=2 — three
+//    identical 10 mm squares — have an empty overhang and seed nothing.
+//  * Layer 3 (12 mm) has an overhang band that begins outside the 10 mm square
+//    dilated by `wall_supporting_radius`, so every node layer 3 seeds sits
+//    outside layer 2's outline.
+//  * Propagating layer 3 downward therefore takes canonical `realign`'s
+//    "outside" branch at the root and at every descendant, the whole tree is
+//    dropped, and layers 0..=2 stay empty. The trees that the pre-realign port
+//    left on those layers were floating outside their own layer's outline.
+//
+// The cross-layer continuity that this fixture used to claim is consequently
+// vacuous for it; what the fixture still pins precisely is grounding and
+// containment, both of which the pre-realign port violated.
 #[test]
 fn lightning_generator_tree_continuity() {
     let outlines = lightning_prism_outlines();
+    let top_layer = outlines.len() - 1;
     let mut generator = lightning_generator(outlines.clone());
     generator.generate_trees(&|| {});
 
-    for layer_id in 0..outlines.len() {
-        assert!(
+    let layers_with_trees: Vec<usize> = (0..outlines.len())
+        .filter(|layer_id| {
             !generator
-                .get_trees_for_layer(layer_id)
+                .get_trees_for_layer(*layer_id)
                 .tree_roots
-                .is_empty(),
-            "layer {layer_id} has no trees"
-        );
-    }
+                .is_empty()
+        })
+        .collect();
+    assert_eq!(
+        layers_with_trees,
+        vec![top_layer],
+        "only the layer whose outline exceeds the layer below has an overhang, \
+         and realign keeps its tree from propagating into the smaller layer"
+    );
 
-    let max_distance = generator.prune_length as f64;
-    for layer_id in 1..outlines.len() {
-        let below_nodes: Vec<Point2> = generator
-            .get_trees_for_layer(layer_id - 1)
-            .tree_roots
-            .iter()
-            .flat_map(tree_nodes)
-            .collect();
-        for root in &generator.get_trees_for_layer(layer_id).tree_roots {
-            for endpoint in tree_endpoints(root) {
-                let near_tree = below_nodes
-                    .iter()
-                    .any(|candidate| distance(endpoint, *candidate) <= max_distance);
-                let near_outline =
-                    distance_to_outline(endpoint, &outlines[layer_id - 1]) <= max_distance;
-                assert!(
-                    near_tree || near_outline,
-                    "layer {layer_id} endpoint {endpoint:?} is disconnected"
-                );
-            }
+    let below_outline_max = mm_to_units(10.0);
+    let own_outline_max = mm_to_units(12.0);
+    for root in &generator.get_trees_for_layer(top_layer).tree_roots {
+        assert!(root.borrow().is_root());
+        // Every tree is grounded on its own layer's wall: `attach` creates the
+        // root at the closest point of the current outline.
+        assert!(
+            distance_to_outline(root.borrow().location(), &outlines[top_layer]) < 1.0,
+            "root {:?} is not grounded on its own outline",
+            root.borrow().location()
+        );
+
+        for node in tree_nodes(root) {
+            // Containment: realign guarantees no node survives outside the
+            // outline of the layer that owns it.
+            assert!(
+                node.x >= 0 && node.x <= own_outline_max,
+                "node {node:?} escapes its own layer outline"
+            );
+            assert!(
+                node.y >= 0 && node.y <= own_outline_max,
+                "node {node:?} escapes its own layer outline"
+            );
+            // ...and every node is outside the layer below, which is exactly
+            // why nothing propagates down out of this fixture.
+            assert!(
+                node.x > below_outline_max || node.y > below_outline_max,
+                "node {node:?} is inside the layer below, so realign should have \
+                 propagated it downward"
+            );
         }
+
+        // A grounded root always carries at least one overhang node.
+        assert!(!tree_endpoints(root).is_empty());
     }
 }
 

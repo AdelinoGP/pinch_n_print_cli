@@ -242,6 +242,26 @@ fn lightning_producer_per_region_keying() {
     let ir = blackboard
         .lightning_tree_ir()
         .expect("lightning tree IR must be committed");
+    // Exactly one entry per region, both on layer 1 — two in total.
+    //
+    // The fixture is 2 global layers x 2 regions. Per region, layer 0 is a
+    // 10 mm square and layer 1 a 12 mm square, so:
+    //
+    //  * layer 0 has no predecessor, hence no internal overhang, hence no
+    //    seeded trees and no segments of its own;
+    //  * layer 1's overhang is the band between the dilated 10 mm square and
+    //    the 12 mm square, so layer 1 seeds trees grounded on its own outline;
+    //  * every node of those trees lies in that band, i.e. outside layer 0's
+    //    10 mm outline, so canonical `Node::realign` takes its "outside" branch
+    //    at every node and the propagated copy is discarded. Layer 0 therefore
+    //    stays empty and contributes no entry.
+    //
+    // The two regions are identical up to a 30 mm x-offset, so the result is
+    // symmetric. Before `realign` was ported, `propagate_to_next_layer` copied
+    // layer 1's trees down unconditionally and the IR carried 3 entries — only
+    // three of the four possible (layer, region) keys, so at least one spurious
+    // layer-0 entry and an asymmetry between two geometrically identical
+    // regions.
     assert_eq!(ir.entries.len(), 2);
     let region_ids: std::collections::BTreeSet<_> =
         ir.entries.iter().map(|entry| entry.region_id).collect();

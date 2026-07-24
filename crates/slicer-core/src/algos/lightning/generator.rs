@@ -9,13 +9,21 @@
 // adapted for the Pinch 'n Print architecture.
 // -----------------------------------------------------------------------------
 
-use std::rc::Rc;
-
 use slicer_ir::{units_to_mm, ExPolygon, Point2, Polygon};
 
 use crate::{difference, offset, OffsetJoinType};
 
 use super::layer::Layer;
+
+/// Cell size of the outline locator used while propagating trees downward.
+///
+/// Canonical `Generator::generateTrees` builds its `EdgeGrid::Grid` with
+/// `_locator_cell_size = scaled<coord_t>(4.)`, i.e. 4 mm. Pinch 'n Print units
+/// are 100 nm, so 4 mm is 40 000 units. Canonical derives two further lengths
+/// from it: the boundary-crossing tolerance in `Node::realign` is
+/// `resolution() * 2` (8 mm), and `propagateToNextLayer` receives
+/// `_locator_cell_size / 2` (2 mm) as `max_remove_colinear_dist`.
+const OUTLINE_LOCATOR_CELL_SIZE: i64 = 40_000;
 
 // [FWD] `lightning_overhang_angle` and `layer_height` feed the supporting radius; `sparse_infill_line_width` feeds infill resolution.
 
@@ -129,8 +137,16 @@ impl Generator {
         self.committed_segments_by_layer =
             self.per_layer_outlines.iter().map(|_| Vec::new()).collect();
 
+        // Canonical `Generator::generateTrees` interleaves seeding, reconnection
+        // and downward propagation inside ONE top-down loop, so the trees that
+        // layer N pushes down are already present in layer N-1 when layer N-1
+        // seeds its own trees and can therefore be grounded onto.
         for layer_id in (0..self.per_layer_outlines.len()).rev() {
             cancel();
+            // Snapshot BEFORE `generate_new_trees`, exactly as canonical does:
+            // the roots to reconnect are the ones propagated down from above,
+            // never the ones this layer is about to seed.
+            let to_be_reconnected = self.m_layers[layer_id].tree_roots.clone();
             self.m_layers[layer_id].generate_new_trees(
                 &self.m_overhang_per_layer[layer_id],
                 &self.per_layer_outlines[layer_id],
@@ -138,34 +154,29 @@ impl Generator {
                 self.wall_supporting_radius,
                 cancel,
             );
-        }
-
-        for layer_id in (1..self.per_layer_outlines.len()).rev() {
-            cancel();
-            let mut propagated_roots = Vec::new();
-            let upper_roots = self.m_layers[layer_id].tree_roots.clone();
-            for root in upper_roots {
-                cancel();
-                let Some(propagated_root) = root.borrow().propagate_to_next_layer(
-                    &self.per_layer_outlines[layer_id - 1],
-                    self.supporting_radius,
-                    self.prune_length,
-                    self.straightening_max_distance,
-                    self.straightening_max_distance,
-                ) else {
-                    continue;
-                };
-                self.m_layers[layer_id - 1]
-                    .tree_roots
-                    .push(Rc::clone(&propagated_root));
-                propagated_roots.push(propagated_root);
-            }
-            self.m_layers[layer_id - 1].reconnect_roots(
-                propagated_roots,
-                &self.per_layer_outlines[layer_id - 1],
+            self.m_layers[layer_id].reconnect_roots(
+                to_be_reconnected,
+                &self.per_layer_outlines[layer_id],
                 self.supporting_radius,
                 self.wall_supporting_radius,
             );
+
+            if layer_id == 0 {
+                continue;
+            }
+
+            let mut lower_trees = Vec::new();
+            for root in self.m_layers[layer_id].tree_roots.clone() {
+                cancel();
+                lower_trees.extend(root.borrow().propagate_to_next_layer(
+                    &self.per_layer_outlines[layer_id - 1],
+                    OUTLINE_LOCATOR_CELL_SIZE,
+                    self.prune_length,
+                    self.straightening_max_distance,
+                    OUTLINE_LOCATOR_CELL_SIZE / 2,
+                ));
+            }
+            self.m_layers[layer_id - 1].tree_roots.extend(lower_trees);
         }
 
         for (layer_id, layer) in self.m_layers.iter().enumerate() {

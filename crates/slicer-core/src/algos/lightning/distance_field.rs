@@ -65,16 +65,39 @@ impl DistanceField {
             }
         }
 
-        unsupported_points.sort_by(|first, second| {
-            let distance_delta =
-                (i128::from(second.dist_to_boundary) - i128::from(first.dist_to_boundary)).abs();
-            if distance_delta > i128::from(supporting_radius) {
-                first.dist_to_boundary.cmp(&second.dist_to_boundary)
-            } else {
-                point_hash(first.loc)
-                    .wrapping_rem(191)
-                    .cmp(&point_hash(second.loc).wrapping_rem(191))
-            }
+        // Seeding order: primarily by distance to the boundary, but deliberately
+        // scrambled among cells that are within one supporting radius of each
+        // other, so seeds do not march in scanline order.
+        //
+        // DIVERGENCE from canonical `DistanceField::DistanceField`, taken
+        // knowingly. Canonical expresses this as a pairwise comparator —
+        // `std::abs(b.dist - a.dist) > radius ? a.dist < b.dist
+        //  : hash(a.loc) % 191 < hash(b.loc) % 191` — fed to `std::stable_sort`.
+        // That comparator is not a strict weak ordering: "within one radius" is
+        // not transitive, so a, b, c can be pairwise-close while a and c are
+        // not, and the induced relation contradicts itself. C++ calls that
+        // undefined behaviour and merely gets away with it; Rust's `sort_by`
+        // detects it and panics with "user-provided comparison function does not
+        // correctly implement a total order", which it did here — a real crash
+        // on a real slice, not a test artifact.
+        //
+        // The repair quantises the distance into radius-wide bands and orders by
+        // `(band, hash % 191)`, which IS a total order and preserves the intent:
+        // bands ascend by distance, membership within a band is pseudo-random
+        // and deterministic. It differs from canonical only in where the
+        // "close enough" boundary falls (fixed band edges rather than a sliding
+        // pairwise window) — and canonical has no well-defined answer there to
+        // reproduce, because its ordering is not well-defined at all.
+        //
+        // `sort_by_key` is stable, so cells landing in the same band with the
+        // same hash residue keep their sampling order, matching canonical's
+        // choice of `stable_sort`.
+        let band_width = supporting_radius.max(1);
+        unsupported_points.sort_by_key(|cell| {
+            (
+                cell.dist_to_boundary.div_euclid(band_width),
+                point_hash(cell.loc).wrapping_rem(191),
+            )
         });
 
         let unsupported_points_erased = vec![false; unsupported_points.len()];
@@ -244,7 +267,12 @@ fn distance_to_segment(point: Point2, start: Point2, end: Point2) -> f64 {
     (point.x as f64 - nearest_x).hypot(point.y as f64 - nearest_y)
 }
 
-fn point_in_polygon(point: Point2, polygon: &[Point2]) -> bool {
+/// Even-odd point-in-ring test with an on-boundary point reported as inside.
+///
+/// This matches canonical `inside` (`libslic3r/Fill/Lightning/TreeNode.cpp`),
+/// which is `Slic3r::Polygon::contains` style even-odd across the polygon set
+/// with `on_boundary_is_inside = true`. Shared with `tree_node::Node::realign`.
+pub(super) fn point_in_polygon(point: Point2, polygon: &[Point2]) -> bool {
     let mut inside = false;
     for (start, end) in polygon
         .iter()
@@ -286,8 +314,22 @@ fn squared_distance(first: Point2, second: Point2) -> i128 {
     dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy))
 }
 
+/// Port of canonical `PointHash` (`libslic3r/Point.hpp`).
+///
+/// Canonical is `coord_t((89 * 31 + int64_t(pt.x())) * 31 + pt.y())` returned
+/// as `size_t`. `coord_t` is `int64_t` in the reference checkout — the 32-bit
+/// alternative in `libslic3r.h` sits behind a dead `#if 0` — so the outer cast
+/// is a no-op and there is no narrowing to reproduce. `Point2` is already i64,
+/// so the arithmetic maps across one-for-one, with the signed→unsigned
+/// reinterpretation at the end matching C++'s implicit conversion to `size_t`.
+///
+/// The `89 * 31` seed (an effective `+85529` on the final value) is load-bearing
+/// despite being constant: `DistanceField`'s tie-break takes the hash `% 191`,
+/// and adding a constant *before* the modulus shifts where the wrap falls, which
+/// permutes the seeding order. Dropping it silently diverges from canonical.
 fn point_hash(point: Point2) -> u64 {
-    (point.x as u64)
+    (89i64 * 31)
+        .wrapping_add(point.x)
         .wrapping_mul(31)
-        .wrapping_add(point.y as u64)
+        .wrapping_add(point.y) as u64
 }

@@ -16,6 +16,8 @@ use std::rc::{Rc, Weak};
 
 use slicer_ir::{slice_ir::BoundingBox2, Point2};
 
+use super::distance_field::point_in_polygon;
+
 // Orca ref: Node::straighten and close_enough (TreeNode.cpp); PnP lengths divide by 100.
 const CLOSE_ENOUGH_PNP_UNITS: f64 = 0.1;
 const WEIGHT_PNP_UNITS: i64 = 10;
@@ -37,7 +39,9 @@ pub struct Node {
     parent: RefCell<Weak<RefCell<Node>>>,
     children: RefCell<Vec<NodeRef>>,
     is_root: Cell<bool>,
-    m_last_grounding_location: Option<Point2>,
+    // `Cell` (not a plain field) because canonical `Node::realign` clears and
+    // rewrites this on nodes reached through a `const`-qualified traversal.
+    m_last_grounding_location: Cell<Option<Point2>>,
     self_ref: RefCell<Weak<RefCell<Node>>>,
 }
 
@@ -58,7 +62,7 @@ impl Node {
                 parent: RefCell::new(Weak::new()),
                 children: RefCell::new(Vec::new()),
                 is_root: Cell::new(true),
-                m_last_grounding_location: last_grounding_location,
+                m_last_grounding_location: Cell::new(last_grounding_location),
                 self_ref: RefCell::new(self_ref.clone()),
             })
         })
@@ -88,12 +92,12 @@ impl Node {
 
     /// Return the most recent location at which this root was grounded.
     pub fn get_last_grounding_location(&self) -> Option<Point2> {
-        self.m_last_grounding_location
+        self.m_last_grounding_location.get()
     }
 
     /// Set the location at which this root was grounded.
-    pub fn set_last_grounding_location(&mut self, location: Option<Point2>) {
-        self.m_last_grounding_location = location;
+    pub fn set_last_grounding_location(&self, location: Option<Point2>) {
+        self.m_last_grounding_location.set(location);
     }
 
     /// Return whether `candidate` is this node or a descendant of this node.
@@ -224,11 +228,18 @@ impl Node {
         copy
     }
 
-    /// Copy, prune, and straighten this tree for the next layer.
+    /// Copy, prune, straighten, and realign this tree for the next layer down.
     ///
-    /// The outline arguments are retained as the packet-138 seam. Full outline
-    /// realignment is intentionally deferred to the layer orchestration in
-    /// packet 139.
+    /// Port of canonical `Node::propagateToNextLayer` (`TreeNode.cpp`). The
+    /// canonical signature appends into a single `next_trees` vector: any
+    /// subtree that `realign` disconnects is pushed as an independent root
+    /// first, then the main copy is pushed **only if `realign` returned true**
+    /// (i.e. this node is still inside `next_outlines`). This port returns that
+    /// same vector in that same order instead of taking an out-parameter; an
+    /// empty result means the whole tree fell outside the next layer.
+    ///
+    /// `outline_locator_resolution` is canonical's `outline_locator.resolution()`
+    /// — the Lightning locator cell size, not the supporting radius.
     pub fn propagate_to_next_layer(
         &self,
         next_outlines: &[Point2],
@@ -236,17 +247,114 @@ impl Node {
         prune_distance: i64,
         smooth_magnitude: i64,
         max_remove_colinear_dist: i64,
-    ) -> Option<NodeRef> {
-        let _ = (next_outlines, outline_locator_resolution);
+    ) -> Vec<NodeRef> {
         let copy = self.deep_copy();
-        let had_children = !copy.borrow().children().is_empty();
-        let distance_pruned = copy.borrow().prune(prune_distance);
-        if prune_distance > 0 && had_children && distance_pruned < prune_distance {
-            return None;
-        }
+        // Canonical order is prune -> straighten -> realign, and the *only*
+        // gate on emitting the copy is realign. Canonical discards
+        // `prune`'s returned distance here.
+        copy.borrow().prune(prune_distance);
         copy.borrow()
             .straighten(smooth_magnitude, max_remove_colinear_dist);
-        Some(copy)
+
+        let mut next_trees = Vec::new();
+        let kept =
+            copy.borrow()
+                .realign(next_outlines, outline_locator_resolution, &mut next_trees);
+        if kept {
+            next_trees.push(copy);
+        }
+        next_trees
+    }
+
+    /// Re-anchor this subtree against the outlines of the layer below.
+    ///
+    /// Port of canonical `Node::realign` (`TreeNode.cpp`). Returns `true` when
+    /// this node lies inside `outlines` and therefore stays attached to its
+    /// parent. Descendants that survive but get disconnected are re-emitted
+    /// into `rerooted_parts` as independent roots.
+    ///
+    /// Note the canonical asymmetry, reproduced here: when this node is inside
+    /// and had to drop a crossing child it *clears* its own grounding location,
+    /// whereas when this node is outside each surviving child inherits the
+    /// **dead parent's** position as its grounding location.
+    ///
+    /// `outlines` is one flat ring in the Pinch 'n Print model (a layer outline
+    /// arrives as a single `contour.points` list). If a caller ever passes a
+    /// concatenation of several rings, the even-odd test in `point_in_polygon`
+    /// will also walk the spurious wrap-around edge from the last point back to
+    /// the first; the outline representation is deliberately left alone here
+    /// rather than restructured.
+    fn realign(
+        &self,
+        outlines: &[Point2],
+        outline_locator_resolution: i64,
+        rerooted_parts: &mut Vec<NodeRef>,
+    ) -> bool {
+        if outlines.is_empty() {
+            return false;
+        }
+
+        // Canonical passes `outline_locator.resolution() * 2` as the maximum
+        // distance from the parent at which a boundary crossing still counts.
+        let crossing_max_dist = outline_locator_resolution.saturating_mul(2);
+        let my_location = self.location();
+
+        if point_in_polygon(my_location, outlines) {
+            let mut reground_me = false;
+            let mut retained: Vec<NodeRef> = Vec::new();
+            for child in self.children() {
+                let mut connect_branch =
+                    child
+                        .borrow()
+                        .realign(outlines, outline_locator_resolution, rerooted_parts);
+                if connect_branch {
+                    let child_location = child.borrow().location();
+                    if line_segment_polygons_intersection(
+                        child_location,
+                        my_location,
+                        outlines,
+                        crossing_max_dist,
+                    ) {
+                        {
+                            let child_node = child.borrow();
+                            child_node.set_last_grounding_location(None);
+                            *child_node.parent.borrow_mut() = Weak::new();
+                            child_node.is_root.set(true);
+                        }
+                        rerooted_parts.push(Rc::clone(&child));
+                        reground_me = true;
+                        connect_branch = false;
+                    }
+                }
+                if connect_branch {
+                    retained.push(child);
+                }
+            }
+            *self.children.borrow_mut() = retained;
+            if reground_me {
+                self.set_last_grounding_location(None);
+            }
+            return true;
+        }
+
+        // Outside the next outline: this node dies, but any descendant that is
+        // still inside is lifted out as an independent root.
+        for child in self.children() {
+            if child
+                .borrow()
+                .realign(outlines, outline_locator_resolution, rerooted_parts)
+            {
+                {
+                    let child_node = child.borrow();
+                    child_node.set_last_grounding_location(Some(my_location));
+                    *child_node.parent.borrow_mut() = Weak::new();
+                    child_node.is_root.set(true);
+                }
+                rerooted_parts.push(child);
+            }
+        }
+        self.children.borrow_mut().clear();
+        false
     }
 
     /// Reverse parent-child edges up to the root and optionally attach this
@@ -537,6 +645,88 @@ fn normalized_scaled_difference(start: Point2, end: Point2, magnitude: i64) -> P
             y: (dy / length * magnitude as f64) as i64,
         }
     }
+}
+
+/// Whether segment `a`–`b` crosses `outlines` within `within_max_dist` of `b`.
+///
+/// Intent-port of canonical `lineSegmentPolygonsIntersection` (`TreeNode.cpp`).
+///
+/// **Deliberate divergence — the canonical implementation is buggy and the bug
+/// is NOT reproduced here.** Canonical's `EdgeGrid` visitor computes a fresh
+/// intersection point `ip`, then measures the candidate distance from the
+/// *previously stored* `intersection_pt` member rather than from `ip`. That
+/// member is uninitialised until the first candidate is accepted, so for the
+/// common single-intersection case the accept/reject decision reads
+/// indeterminate memory — undefined behaviour, not a stable behaviour worth
+/// matching. This port implements the evident intent: find the intersection of
+/// `a`–`b` with the outline that is nearest to `b`, and report whether that
+/// nearest intersection is closer to `b` than `within_max_dist`.
+///
+/// The canonical `EdgeGrid` acceleration structure is also skipped; a
+/// brute-force scan over the outline's segments is equivalent and the outlines
+/// handled here are small.
+fn line_segment_polygons_intersection(
+    a: Point2,
+    b: Point2,
+    outlines: &[Point2],
+    within_max_dist: i64,
+) -> bool {
+    if outlines.len() < 2 || within_max_dist <= 0 {
+        return false;
+    }
+
+    let mut nearest2 = within_max_dist as f64 * within_max_dist as f64;
+    let mut found = false;
+
+    for (start, end) in outlines
+        .iter()
+        .copied()
+        .zip(outlines.iter().copied().cycle().skip(1))
+        .take(outlines.len())
+    {
+        let Some((ix, iy)) = segment_segment_intersection(a, b, start, end) else {
+            continue;
+        };
+        let dx = ix - b.x as f64;
+        let dy = iy - b.y as f64;
+        let dist2 = dx * dx + dy * dy;
+        if dist2 < nearest2 {
+            nearest2 = dist2;
+            found = true;
+        }
+    }
+
+    found
+}
+
+/// Intersection point of segments `a0`–`a1` and `b0`–`b1`, if they cross.
+///
+/// Mirrors canonical `Geometry::segment_segment_intersection`: parallel and
+/// collinear pairs report no intersection.
+fn segment_segment_intersection(
+    a0: Point2,
+    a1: Point2,
+    b0: Point2,
+    b1: Point2,
+) -> Option<(f64, f64)> {
+    let rx = (a1.x - a0.x) as f64;
+    let ry = (a1.y - a0.y) as f64;
+    let sx = (b1.x - b0.x) as f64;
+    let sy = (b1.y - b0.y) as f64;
+    let denominator = rx * sy - ry * sx;
+    if denominator == 0.0 {
+        return None;
+    }
+
+    let qpx = (b0.x - a0.x) as f64;
+    let qpy = (b0.y - a0.y) as f64;
+    let t = (qpx * sy - qpy * sx) / denominator;
+    let u = (qpx * ry - qpy * rx) / denominator;
+    if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+        return None;
+    }
+
+    Some((a0.x as f64 + t * rx, a0.y as f64 + t * ry))
 }
 
 fn distance_to_line_squared(point: Point2, start: Point2, end: Point2) -> f64 {
