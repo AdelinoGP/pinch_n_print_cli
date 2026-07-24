@@ -330,41 +330,66 @@ fn variant_name(v: &ConfigValue) -> String {
     }
 }
 
-/// Coerce a `Bool` that originated as an untyped `"0"`/`"1"` string.
+/// How [`ResolvedConfig`]'s declaration list types a config key.
+///
+/// Used to break the `"0"`/`"1"` ambiguity in OrcaSlicer 3MFs — see
+/// [`classify_declared_key`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeclaredKeyKind {
+    /// The key names a declared field whose type is `bool`.
+    Boolean,
+    /// The key names a declared field of some non-boolean type.
+    NonBoolean,
+    /// The key is not declared by [`ResolvedConfig`]; it routes to
+    /// [`ResolvedConfig::extensions`] untyped.
+    Undeclared,
+}
+
+/// Classify `key` against the declared config schema.
 ///
 /// OrcaSlicer serialises *every* `project_settings.config` value as a string,
-/// so `"1"` is ambiguous between `enable_support` (a boolean) and `wall_loops`
-/// (an integer). The 3MF loader's `coerce_string_to_config_value` has no
-/// schema to disambiguate and guesses `Bool` for `"0"`/`"1"`, which meant any
-/// numeric key that happened to hold 0 or 1 aborted config resolution with a
-/// `TypeMismatch` — e.g. `mmu_segmented_region_interlocking_depth = "0"`,
-/// which crashed every slice of `resources/cube_4color.3mf`.
+/// so `"1"` is ambiguous between `enable_support` (a flag) and `wall_loops`
+/// (a count). This is the schema the 3MF loader consults to break that tie
+/// while the value is still a string — see `coerce_string_to_config_value` in
+/// `crates/slicer-model-io/src/loader.rs`.
 ///
-/// The ambiguity is irreducible at load time, so it is resolved at the point
-/// of consumption instead: the declaring field knows its own type, and treats
-/// a `"0"`/`"1"`-derived `Bool` as the number it stands for.
-fn bool_as_number(value: &ConfigValue) -> Option<i64> {
-    match value {
-        ConfigValue::Bool(b) => Some(i64::from(*b)),
-        _ => None,
+/// Resolving it there rather than at consumption is what lets the numeric
+/// extractors stay strict: a `Bool` reaching [`extract_float`] remains a
+/// genuine `TypeMismatch`, so `layer_height = true` cannot silently slice at
+/// 1 mm.
+///
+/// The classification probes [`ResolvedConfig::apply_cli_key`] rather than
+/// duplicating the field list, so it cannot drift from the declaration:
+/// `Ok(true)` for a `Bool` means the field accepted one and is therefore
+/// boolean, `Err` means it rejected one, and `Ok(false)` means the key is not
+/// declared at all. The probe is one-directional on purpose — probing with an
+/// `Int` would not separate the cases, because [`extract_bool`] deliberately
+/// accepts `Int` 0/1.
+#[must_use]
+pub fn classify_declared_key(key: &str) -> DeclaredKeyKind {
+    let mut probe = ResolvedConfig::default();
+    match probe.apply_cli_key(key, &ConfigValue::Bool(true)) {
+        Ok(true) => DeclaredKeyKind::Boolean,
+        Ok(false) => DeclaredKeyKind::Undeclared,
+        Err(_) => DeclaredKeyKind::NonBoolean,
     }
 }
 
 /// Extract an `f32` from a `Float`/`Int` `ConfigValue`. Used by the
 /// [`declare_resolved_config!`] macro expansion.
 ///
-/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
+/// A `Bool` is rejected: the `"0"`/`"1"` ambiguity in OrcaSlicer 3MFs is
+/// resolved at load time via [`is_declared_bool_key`], so a `Bool` arriving
+/// here means the value really was boolean.
 #[doc(hidden)]
 pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
     match value {
         ConfigValue::Float(f) => Ok(*f as f32),
         ConfigValue::Int(i) => Ok(*i as f32),
-        other => bool_as_number(other).map(|n| n as f32).ok_or_else(|| {
-            ConfigResolutionError::TypeMismatch {
-                key: key.to_string(),
-                expected: "Float",
-                actual: variant_name(other),
-            }
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Float",
+            actual: variant_name(other),
         }),
     }
 }
@@ -383,43 +408,41 @@ pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolu
 /// only `f32` cast happens at the WIT `layer-proposal.z: f32` boundary,
 /// equivalent to OrcaSlicer's `float(print_z)` at `slice_facet`'s
 /// `slice_z` parameter (`TriangleMeshSlicer.cpp:158`).
-/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
+/// A `Bool` is rejected — see [`extract_float`].
 pub fn extract_f64(key: &str, value: &ConfigValue) -> Result<f64, ConfigResolutionError> {
     match value {
         ConfigValue::Float(f) => Ok(*f),
         ConfigValue::Int(i) => Ok(*i as f64),
-        other => bool_as_number(other).map(|n| n as f64).ok_or_else(|| {
-            ConfigResolutionError::TypeMismatch {
-                key: key.to_string(),
-                expected: "Float",
-                actual: variant_name(other),
-            }
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Float",
+            actual: variant_name(other),
         }),
     }
 }
 
 /// Extract a `u32` from an `Int` `ConfigValue`.
 ///
-/// Also accepts a `Bool` as 0/1 — see [`bool_as_number`].
+/// A `Bool` is rejected — see [`extract_float`].
 #[doc(hidden)]
 pub fn extract_int_as_u32(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
     match value {
         ConfigValue::Int(i) => Ok(*i as u32),
-        other => bool_as_number(other).map(|n| n as u32).ok_or_else(|| {
-            ConfigResolutionError::TypeMismatch {
-                key: key.to_string(),
-                expected: "Int",
-                actual: variant_name(other),
-            }
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Int",
+            actual: variant_name(other),
         }),
     }
 }
 
 /// Extract a `bool` from a `Bool` `ConfigValue`.
 ///
-/// The mirror of [`bool_as_number`]: an `Int` 0/1 is accepted as a boolean, so
-/// a genuinely-boolean key still resolves if the loader's `"0"`/`"1"` guess
-/// ever changes, or if a hand-written JSON config spells the flag numerically.
+/// An `Int` 0/1 is accepted as a boolean. This is the backstop for boolean
+/// keys the loader could not classify (anything not in [`is_declared_bool_key`])
+/// and for hand-written JSON configs that spell a flag numerically. The
+/// tolerance is one-directional on purpose: a number standing in for a flag is
+/// unambiguous, whereas a flag standing in for a number is not.
 #[doc(hidden)]
 pub fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
     match value {
@@ -461,9 +484,7 @@ pub fn extract_float_list(
         match v {
             ConfigValue::Float(f) => Ok(*f),
             ConfigValue::Int(n) => Ok(*n as f64),
-            // Orca serialises list entries as strings (`["1.24","1.24"]`), and
-            // a `"0"`/`"1"` entry reaches us as `Bool` for the same reason
-            // `extract_float` tolerates one — see `bool_as_number`.
+            // Orca serialises list entries as strings (`["1.24","1.24"]`).
             ConfigValue::String(s) => {
                 s.trim()
                     .parse::<f64>()
@@ -473,12 +494,16 @@ pub fn extract_float_list(
                         actual: "String".to_string(),
                     })
             }
-            other => bool_as_number(other).map(|n| n as f64).ok_or_else(|| {
-                ConfigResolutionError::TypeMismatch {
-                    key: key.to_string(),
-                    expected: "Float",
-                    actual: variant_name(other),
-                }
+            // Unlike the scalar extractors, a `Bool` element is accepted as
+            // 0/1. `is_declared_bool_key` disambiguates whole keys, not list
+            // *elements*: a `"0"` inside `filament_density = ["0","1.24"]`
+            // still reaches the loader with no per-element schema to consult,
+            // and no config key in this port is a list of booleans.
+            ConfigValue::Bool(b) => Ok(f64::from(i64::from(*b) as i32)),
+            other => Err(ConfigResolutionError::TypeMismatch {
+                key: key.to_string(),
+                expected: "Float",
+                actual: variant_name(other),
             }),
         }
     }

@@ -713,7 +713,7 @@ fn resolve_object(
                             }
                             continue;
                         }
-                        config_fields.insert(k.clone(), coerce_string_to_config_value(v));
+                        config_fields.insert(k.clone(), coerce_string_to_config_value(k, v));
                     }
                     if let Some(density_str) = part.metadata.get("sparse_infill_density") {
                         match parse_density_value(density_str) {
@@ -864,11 +864,11 @@ fn object_metadata_to_config_data(
                     let rebased = if v >= 1 { v - 1 } else { 0 };
                     out.insert(key.clone(), ConfigValue::Int(rebased));
                 } else {
-                    out.insert(key.clone(), coerce_string_to_config_value(value));
+                    out.insert(key.clone(), coerce_string_to_config_value(key, value));
                 }
             }
             "enable_support" | "support_type" => {
-                out.insert(key.clone(), coerce_string_to_config_value(value));
+                out.insert(key.clone(), coerce_string_to_config_value(key, value));
             }
             "wall_loops"
             | "top_shell_layers"
@@ -1075,7 +1075,7 @@ pub(crate) fn parse_project_settings_json(text: &str) -> HashMap<String, ConfigV
     };
     let mut out = HashMap::with_capacity(object.len());
     for (key, raw) in object {
-        out.insert(key, json_to_config_value(&raw));
+        out.insert(key.clone(), json_to_config_value(&key, &raw));
     }
     out
 }
@@ -1083,9 +1083,9 @@ pub(crate) fn parse_project_settings_json(text: &str) -> HashMap<String, ConfigV
 /// Convert a `serde_json::Value` to a `ConfigValue`, applying heuristic
 /// string-coercion to scalar string values (OrcaSlicer stores every scalar
 /// as a string in `project_settings.config`).
-fn json_to_config_value(raw: &serde_json::Value) -> ConfigValue {
+fn json_to_config_value(key: &str, raw: &serde_json::Value) -> ConfigValue {
     match raw {
-        serde_json::Value::String(s) => coerce_string_to_config_value(s),
+        serde_json::Value::String(s) => coerce_string_to_config_value(key, s),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 ConfigValue::Int(i)
@@ -1097,9 +1097,12 @@ fn json_to_config_value(raw: &serde_json::Value) -> ConfigValue {
             }
         }
         serde_json::Value::Bool(b) => ConfigValue::Bool(*b),
-        serde_json::Value::Array(items) => {
-            ConfigValue::List(items.iter().map(json_to_config_value).collect())
-        }
+        serde_json::Value::Array(items) => ConfigValue::List(
+            items
+                .iter()
+                .map(|item| json_to_config_value(key, item))
+                .collect(),
+        ),
         serde_json::Value::Null | serde_json::Value::Object(_) => {
             // `project_settings.config` should never contain nested objects or
             // nulls; fall back to an empty string so the key still lands in
@@ -1120,20 +1123,48 @@ fn json_type_name(v: &serde_json::Value) -> &'static str {
     }
 }
 
-/// Heuristic coercion of a string to a typed `ConfigValue`.
+/// Schema-directed coercion of a string to a typed `ConfigValue`.
 ///
 /// OrcaSlicer serialises every value in `project_settings.config` as a JSON
-/// string — even numbers and booleans. Apply a try-int → try-float →
-/// try-bool → fallback-to-`String` chain so downstream consumers that read
-/// `filament_colour`, `enable_support`, `wall_loops`, `layer_height`, etc.
-/// see the typed value they expect.
-pub(crate) fn coerce_string_to_config_value(s: &str) -> ConfigValue {
-    // Booleans: OrcaSlicer uses "0"/"1" (and "true"/"false" in some keys).
-    if s == "0" || s.eq_ignore_ascii_case("false") {
+/// string — even numbers and booleans. That makes `"0"` and `"1"` ambiguous:
+/// `enable_support = "1"` is a flag, `wall_loops = "1"` is a count. Where
+/// `ResolvedConfig` declares the key, `slicer_ir::classify_declared_key`
+/// settles it from the declared field type; `"1"` becomes `Bool` for a boolean
+/// field and `Int(1)` for everything else.
+///
+/// Doing this here rather than at consumption is what lets the numeric
+/// extractors stay strict. Guessing `Bool` for every `"0"`/`"1"` used to abort
+/// config resolution on any declared numeric key that happened to hold 0 or 1 —
+/// e.g. `mmu_segmented_region_interlocking_depth = "0"`, which crashed every
+/// slice of `resources/cube_4color.3mf`. Widening the extractors to accept a
+/// `Bool` as 0/1 also clears the crash, but at the cost of letting
+/// `layer_height = true` resolve to a 1 mm layer.
+///
+/// Keys this port does not declare (`enable_arc_fitting` and the rest of
+/// Orca's several-hundred-key surface) have no schema to consult, so they keep
+/// the original `"0"`/`"1"` → `Bool` heuristic. That guess is safe precisely
+/// because it is unreachable by the typed extractors: `apply_cli_key` returns
+/// `Ok(false)` for an undeclared key and the value routes to
+/// `ResolvedConfig::extensions` with its variant intact.
+///
+/// `"true"`/`"false"` are unambiguous and stay `Bool` for any key. Everything
+/// else falls through try-int → try-float → `String`.
+pub(crate) fn coerce_string_to_config_value(key: &str, s: &str) -> ConfigValue {
+    // Spelled-out booleans are unambiguous regardless of the declared type.
+    if s.eq_ignore_ascii_case("false") {
         return ConfigValue::Bool(false);
     }
-    if s == "1" || s.eq_ignore_ascii_case("true") {
+    if s.eq_ignore_ascii_case("true") {
         return ConfigValue::Bool(true);
+    }
+    if s == "0" || s == "1" {
+        match slicer_ir::classify_declared_key(key) {
+            slicer_ir::DeclaredKeyKind::Boolean | slicer_ir::DeclaredKeyKind::Undeclared => {
+                return ConfigValue::Bool(s == "1");
+            }
+            // Fall through to the numeric parse below.
+            slicer_ir::DeclaredKeyKind::NonBoolean => {}
+        }
     }
     // Integers (must come before floats — `"0.0"` parses as f64 but `s.parse::<f64>`
     // rejects `"4"`-style integer strings only when no decimal point is present).
@@ -2891,27 +2922,95 @@ mod tests {
     #[test]
     fn coerce_string_to_config_value_types() {
         // OrcaSlicer serialises every value in `project_settings.config` as a
-        // string. Verify the heuristic coercion: int → Int, float → Float,
-        // 0/1/true/false → Bool, everything else → String.
-        assert_eq!(coerce_string_to_config_value("4"), ConfigValue::Int(4));
-        assert_eq!(coerce_string_to_config_value("0"), ConfigValue::Bool(false));
-        assert_eq!(coerce_string_to_config_value("1"), ConfigValue::Bool(true));
+        // string. Verify the coercion: int → Int, float → Float,
+        // true/false → Bool, everything else → String.
         assert_eq!(
-            coerce_string_to_config_value("true"),
+            coerce_string_to_config_value("wall_loops", "4"),
+            ConfigValue::Int(4)
+        );
+        assert_eq!(
+            coerce_string_to_config_value("enable_support", "true"),
             ConfigValue::Bool(true)
         );
         assert_eq!(
-            coerce_string_to_config_value("false"),
+            coerce_string_to_config_value("enable_support", "false"),
             ConfigValue::Bool(false)
         );
         assert_eq!(
-            coerce_string_to_config_value("0.5"),
+            coerce_string_to_config_value("layer_height", "0.5"),
             ConfigValue::Float(0.5)
         );
         assert_eq!(
-            coerce_string_to_config_value("normal(auto)"),
+            coerce_string_to_config_value("support_style", "normal(auto)"),
             ConfigValue::String("normal(auto)".to_string())
         );
+    }
+
+    /// `"0"`/`"1"` is the ambiguous case: identical text, two intended types.
+    /// The declared field type decides, so a numeric key holding 0 or 1 no
+    /// longer arrives as a `Bool` and abort config resolution — and a boolean
+    /// key holding "1" does not arrive as an `Int`.
+    #[test]
+    fn zero_and_one_coerce_by_declared_key_type() {
+        for key in ["enable_support", "wipe_tower_enabled", "disable_m73"] {
+            assert_eq!(
+                slicer_ir::classify_declared_key(key),
+                slicer_ir::DeclaredKeyKind::Boolean,
+                "{key} must be a declared bool key for this test to mean anything"
+            );
+            assert_eq!(
+                coerce_string_to_config_value(key, "0"),
+                ConfigValue::Bool(false),
+                "{key} = \"0\""
+            );
+            assert_eq!(
+                coerce_string_to_config_value(key, "1"),
+                ConfigValue::Bool(true),
+                "{key} = \"1\""
+            );
+        }
+
+        // The regression: every one of these is numeric and legitimately holds
+        // 0 or 1 in a real Orca 3MF. `mmu_segmented_region_interlocking_depth`
+        // is the key that crashed `resources/cube_4color.3mf`.
+        for key in [
+            "wall_count",
+            "top_shell_layers",
+            "bottom_shell_layers",
+            "mmu_segmented_region_interlocking_depth",
+            "mmu_segmented_region_max_width",
+            "layer_height",
+        ] {
+            assert_eq!(
+                slicer_ir::classify_declared_key(key),
+                slicer_ir::DeclaredKeyKind::NonBoolean,
+                "{key} must be a declared non-bool key for this test to mean anything"
+            );
+            assert_eq!(
+                coerce_string_to_config_value(key, "0"),
+                ConfigValue::Int(0),
+                "{key} = \"0\""
+            );
+            assert_eq!(
+                coerce_string_to_config_value(key, "1"),
+                ConfigValue::Int(1),
+                "{key} = \"1\""
+            );
+        }
+
+        // Keys this port does not declare keep the original heuristic — they
+        // route to `extensions` untyped and never reach a typed extractor.
+        for key in ["enable_arc_fitting", "enable_prime_tower"] {
+            assert_eq!(
+                slicer_ir::classify_declared_key(key),
+                slicer_ir::DeclaredKeyKind::Undeclared
+            );
+            assert_eq!(
+                coerce_string_to_config_value(key, "1"),
+                ConfigValue::Bool(true),
+                "{key} = \"1\""
+            );
+        }
     }
 
     #[test]

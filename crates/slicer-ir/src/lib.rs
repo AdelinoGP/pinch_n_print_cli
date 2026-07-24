@@ -21,7 +21,9 @@ pub mod validation;
 pub use entity_id::LayerEntityIdGen;
 pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
-pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
+pub use resolved_config::{
+    classify_declared_key, ConfigResolutionError, DeclaredKeyKind, ResolvedConfig,
+};
 pub use stage_io::{
     BlackboardError, BlackboardPrepassSlot, Diagnostic, DiagnosticSeverity, FinalizationError,
     FinalizationOutput, LayerArenaError, LayerArenaSlot, LayerStageCommit, LayerStageError,
