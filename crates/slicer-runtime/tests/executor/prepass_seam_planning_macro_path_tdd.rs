@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectMesh, Point3, SemVer, Transform3d,
+    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, Transform3d,
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
@@ -226,14 +226,47 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
 
     let mesh = Arc::new(cube_mesh());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
-    // PrePass::SeamPlanning's prerequisite check requires LayerPlanIR.
+    // PrePass::SeamPlanning's prerequisites are LayerPlanIR + SliceIR +
+    // RegionMapIR (`required_slots` in `crates/slicer-runtime/src/prepass.rs`).
+    // Since packet 178 the planner sources seam candidates *exclusively* from
+    // the active-region SliceIR boundaries projected by
+    // `project_seam_planning_view` — mesh vertices are no longer a candidate
+    // source — so the fixture must supply real region geometry whose
+    // `RegionKey` identity is present in the committed `RegionMapIR`.
     blackboard
         .commit_layer_plan(Arc::new(LayerPlanIR {
             schema_version: semver(1, 0, 0),
-            global_layers: Vec::new(),
+            global_layers: vec![GlobalLayer {
+                index: 0,
+                z: 0.2,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
+            }],
             object_participation: HashMap::new(),
         }))
         .expect("commit_layer_plan must succeed");
+    blackboard
+        .commit_slice_ir(Arc::new(vec![
+            crate::common::ir_builders::slice_ir::with_ids(&[("cube", 0)])
+                .at_layer(0)
+                .at_z(0.2)
+                .build(),
+        ]))
+        .expect("commit_slice_ir must succeed");
+    let mut region_map = RegionMapIR::default();
+    region_map.entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "cube".to_string(),
+            region_id: 0,
+            variant_chain: Vec::new(),
+        },
+        RegionPlan::default(),
+    );
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit_region_map must succeed");
 
     execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed for seam planning");
