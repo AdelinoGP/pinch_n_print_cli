@@ -38,14 +38,14 @@ fn module_dir() -> PathBuf {
 
 fn config_source(support_enabled: bool) -> HashMap<String, ConfigValue> {
     HashMap::from([(
-        "support_enabled".to_owned(),
+        "enable_support".to_owned(),
         ConfigValue::Bool(support_enabled),
     )])
 }
 
 fn write_config(tmp: &TempDir, support_enabled: bool) -> PathBuf {
     let path = tmp.path().join("config.json");
-    let json = serde_json::json!({ "support_enabled": support_enabled });
+    let json = serde_json::json!({ "enable_support": support_enabled });
     fs::write(
         &path,
         serde_json::to_vec(&json).expect("config JSON serialization"),

@@ -173,7 +173,7 @@ is the authoritative catalog of their defaults and ranges.
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
 | `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `support-planner` |
-| `support_enabled` | bool | `true` | — | `support-planner` |
+| `enable_support` | bool | `true` | — | `support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `support-planner` |
@@ -199,12 +199,12 @@ is the authoritative catalog of their defaults and ranges.
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `traditional-support` |
-| `support_enabled` | bool | `true` | — | `traditional-support` |
+| `enable_support` | bool | `true` | — | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `tree-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `tree-support` |
-| `support_enabled` | bool | `true` | — | `tree-support` |
+| `enable_support` | bool | `true` | — | `tree-support` |
 | `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
 | `support_top_z_distance_mm` | float | `0.0` | [0.0, 5.0] | `tree-support` |

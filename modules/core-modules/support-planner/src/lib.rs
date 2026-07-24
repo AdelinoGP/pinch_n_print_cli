@@ -133,7 +133,7 @@ struct LayerCollisionCache {
 #[slicer_module]
 impl PrepassModule for SupportPlanner {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.get("support_enabled") {
+        let enabled = match config.get("enable_support") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => true,
         };

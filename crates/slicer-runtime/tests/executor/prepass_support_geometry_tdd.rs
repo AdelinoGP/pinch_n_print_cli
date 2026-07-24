@@ -256,7 +256,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
 
 fn default_planner_config_map() -> HashMap<String, ConfigValue> {
     let mut map = HashMap::new();
-    map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
+    map.insert("enable_support".to_string(), ConfigValue::Bool(true));
     map.insert(
         "support_branch_angle_deg".to_string(),
         ConfigValue::Float(45.0),

@@ -152,7 +152,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
     //   - top-interface layers (just below contact) carry MORE branch_segments
     //     than the contact layer itself
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(3)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
@@ -272,7 +272,7 @@ fn wall_count_scales_max_move_distance() {
 fn benchy_orca_parity_within_tolerance() {
     // ── 1. Run the planner against a fixed synthetic fixture ──────────────
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(2)),
         ("support_interface_top_layers", ConfigValue::Int(2)),
         ("tree_support_interface_spacing_mm", ConfigValue::Float(0.4)),
@@ -459,7 +459,7 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
     use slicer_sdk::prepass_types::{Diagnostic, DiagnosticSeverity};
 
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
         (

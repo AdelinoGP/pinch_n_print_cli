@@ -53,20 +53,53 @@ fn write_bounded_config(dir: &Path) -> PathBuf {
     path
 }
 
+fn write_bounded_support_config(dir: &Path) -> PathBuf {
+    let path = dir.join("support-config.json");
+    fs::write(
+        &path,
+        br#"{"layer_height":1.0,"enable_support":true,"support_filament":2,"support_interface_filament":3}"#,
+    )
+    .expect("write bounded support config");
+    path
+}
+
 fn tap(name: &str) -> TapSelector {
     TapSelector::Name(name.to_string())
 }
 
 fn model_request(taps: Vec<&str>, layers: Vec<i64>, config: PathBuf) -> VisualDebugRequest {
+    model_request_for_model(wedge_path(), taps, layers, config)
+}
+
+fn model_request_for_model(
+    model: PathBuf,
+    taps: Vec<&str>,
+    layers: Vec<i64>,
+    config: PathBuf,
+) -> VisualDebugRequest {
+    model_request_for_model_with_selectors(
+        model,
+        taps,
+        layers.into_iter().map(LayerSelector::Index).collect(),
+        config,
+    )
+}
+
+fn model_request_for_model_with_selectors(
+    model: PathBuf,
+    taps: Vec<&str>,
+    layers: Vec<LayerSelector>,
+    config: PathBuf,
+) -> VisualDebugRequest {
     VisualDebugRequest {
         schema_version: "1.0.0".to_string(),
         source: VisualDebugSource::Model {
-            model: Some(wedge_path()),
+            model: Some(model),
             config: Some(config),
             module_dirs: vec![module_dir()],
             path: None,
         },
-        layers: layers.into_iter().map(LayerSelector::Index).collect(),
+        layers,
         taps: taps.into_iter().map(tap).collect(),
         visualizations: Vec::new(),
         resolution_scale: 1,
@@ -165,6 +198,49 @@ fn typed_tap_capture_records_selected_layer() {
         payload["value"].is_object(),
         "typed capture payload must carry the captured PerimeterIR value"
     );
+}
+
+#[test]
+fn visual_debug_forwards_support_tool_selection() {
+    let tmp = TempDir::new().expect("tempdir");
+    let config = write_bounded_support_config(tmp.path());
+    let output = tmp.path().join("bundle");
+    let model = workspace_root()
+        .join("resources")
+        .join("bridge_support_enforcers.3mf");
+
+    let req = model_request_for_model_with_selectors(
+        model,
+        vec!["Layer::PathOptimization"],
+        vec![LayerSelector::Range { start: 0, end: 100 }],
+        config,
+    );
+
+    let manifest = manifest_at(
+        &run_visual_debug(req, &output, false)
+            .expect("visual-debug support capture should succeed"),
+    );
+    let images = manifest["images"].as_array().expect("images array");
+    let support_entities: Vec<&Value> = images
+        .iter()
+        .filter(|image| image["tap"] == "Layer::PathOptimization")
+        .flat_map(|image| image["typed_capture"]["value"]["ordered_entities"].as_array())
+        .flatten()
+        .filter(|entity| {
+            matches!(
+                entity["role"].as_str(),
+                Some("SupportMaterial") | Some("SupportInterface")
+            )
+        })
+        .collect();
+    assert!(
+        support_entities
+            .iter()
+            .any(|entity| entity["role"] == "SupportMaterial" && entity["tool_index"] == 1),
+        "support entities must use raw support_filament=2 rebased to tool 1; captured={support_entities:#?}"
+    );
+    // This real fixture emits support material but no interface entities. The
+    // shared parser and synthetic entity test cover the interface selector.
 }
 
 // ─────────────────────────────── AC-2 ──────────────────────────────────────
@@ -509,7 +585,7 @@ fn unavailable_tap_source_fails_without_partial_success() {
     let output = tmp.path().join("bundle");
 
     // All supported arena stages are bound in the current core-module set.
-    // With support_enabled=false (the bounded fixture's default), Layer::Support
+    // With enable_support=false (the bounded fixture's default), Layer::Support
     // has no committed SupportIR, so its source remains unavailable.
     let req = model_request(vec!["Layer::Support"], vec![0], config);
 

@@ -23,10 +23,13 @@ use slicer_gcode::{
     ThumbnailAwareSerializer, ThumbnailFormat, ThumbnailSpec,
 };
 
+use crate::layer_executor::{
+    execute_per_layer_with_events_and_support_tools,
+    execute_per_layer_with_instrumentation_and_support_tools, SupportToolSelection,
+};
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization,
-    execute_layer_finalization_with_instrumentation, execute_per_layer_with_events,
-    execute_per_layer_with_instrumentation, execute_postpass,
+    execute_layer_finalization_with_instrumentation, execute_postpass,
     prepass::execute_prepass_with_builtins_configured, Blackboard, ConfigBoundsIndex,
     ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
     LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
@@ -60,6 +63,8 @@ pub struct PipelineConfig {
     pub plan: ExecutionPlan,
     /// Injectable stage runners.
     pub runners: PipelineStageRunners,
+    /// Filament indices selected for support and interface paths.
+    pub support_tools: SupportToolSelection,
     /// Per-object resolved configs, keyed by `ObjectMesh.id`.
     ///
     /// Produced by [`crate::resolve_per_object_configs`] from the user-supplied CLI
@@ -180,6 +185,7 @@ pub fn run_pipeline_with_events(
         default_resolved_config,
         bounds,
         wasm_handles,
+        support_tools,
         cancel_flag: _,
     } = config;
 
@@ -221,12 +227,13 @@ pub fn run_pipeline_with_events(
     }
 
     // Step 3: Execute per-layer stages in parallel via rayon
-    let (mut layer_irs, layer_audits) = execute_per_layer_with_events(
+    let (mut layer_irs, layer_audits) = execute_per_layer_with_events_and_support_tools(
         &plan,
         &blackboard,
         runners.layer.as_ref(),
         sink,
         &wasm_handles,
+        support_tools,
     )?;
 
     // Step 4: Execute layer finalization (if present)
@@ -316,6 +323,7 @@ fn run_pipeline_core(
         default_resolved_config,
         bounds,
         wasm_handles,
+        support_tools,
         cancel_flag,
     } = config;
 
@@ -378,13 +386,14 @@ fn run_pipeline_core(
     }
     instrumentation
         .on_phase_start_with_layer_count(Phase::PerLayer, Some(plan.global_layers.len() as u32));
-    let per_layer_result = execute_per_layer_with_instrumentation(
+    let per_layer_result = execute_per_layer_with_instrumentation_and_support_tools(
         &plan,
         &blackboard,
         runners.layer.as_ref(),
         sink,
         instrumentation,
         &wasm_handles,
+        support_tools,
         cancel_flag.as_deref(),
     );
     instrumentation.on_phase_end(Phase::PerLayer);

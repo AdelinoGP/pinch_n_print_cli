@@ -443,6 +443,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);

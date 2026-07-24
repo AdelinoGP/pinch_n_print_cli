@@ -243,6 +243,7 @@ pub fn run_pipeline_capturing_perimeters(
         bounds: Arc::new(config_bounds),
         wasm_handles,
         cancel_flag: None,
+        support_tools: Default::default(),
     };
     run_pipeline_with_raw_config(pipeline_config, &config_source, &NoopLayerProgressSink)
         .map_err(|e| PerimeterHarnessError(format!("pipeline run failed: {e}")))?;

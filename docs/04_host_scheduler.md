@@ -783,7 +783,7 @@ holdout). Modules declaring no `[config.schema]` receive an empty
 `ConfigView`. Config keys are looked up by string name; absent keys
 return `None`. The `support-geometry` runner specifically:
 
-- Now honours `support_enabled` (false → planner is invoked but emits
+- Now honours `enable_support` (false → planner is invoked but emits
   no plan; was previously discarded by an empty `ConfigView` injection).
 - Surfaces planner fatals as `DispatchError` instead of swallowing them
   inside the macro/host glue (required by Packet 73 AC-N2).

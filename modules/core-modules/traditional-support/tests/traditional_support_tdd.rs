@@ -10,7 +10,7 @@ use traditional_support::TraditionalSupport;
 
 fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .bool("support_enabled", enabled)
+        .bool("enable_support", enabled)
         .float("support_density", density)
         .float("support_angle", angle)
         .float("support_speed", speed)
@@ -27,7 +27,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
         .build()
 }
 
-/// Test 1: support_enabled=false produces no output.
+/// Test 1: enable_support=false produces no output.
 #[test]
 fn support_disabled_no_output() {
     let config = make_config(false, 0.2, 0.0, 50.0, 0.4);

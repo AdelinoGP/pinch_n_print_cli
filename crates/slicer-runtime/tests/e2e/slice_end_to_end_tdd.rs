@@ -763,7 +763,7 @@ fn wedge_no_support_marker_when_disabled() {
     let modules = core_modules_dir();
     assert_path_exists(&modules, "core-modules directory");
 
-    // Run WITHOUT any config â€” support_enabled defaults to false.
+    // Run WITHOUT any config â€” enable_support defaults to false.
     let cached = crate::common::slicer_cache::cached_run(
         &model,
         crate::common::slicer_cache::ModuleDirKind::CoreModules,
@@ -786,7 +786,7 @@ fn wedge_no_support_marker_when_disabled() {
         support_marker_lines.is_empty(),
         "When support config is absent, G-code must NOT contain support \
          markers. Found: {:?}. This indicates support is being generated \
-         even when support_enabled=false. Stderr tail:\n{}\nG-code preview:\n{}",
+         even when enable_support=false. Stderr tail:\n{}\nG-code preview:\n{}",
         support_marker_lines,
         stderr
             .lines()

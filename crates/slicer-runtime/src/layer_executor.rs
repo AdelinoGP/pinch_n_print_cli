@@ -141,7 +141,8 @@ impl std::error::Error for LayerExecutionError {}
 // It takes CompiledModuleLive<'_> + LayerStageInput<'_> and returns
 // Option<LayerStageCommit> (ADR-0020); the executor's `apply` performs the arena writes.
 
-/// Executes the Tier-2 per-layer parallel pipeline using rayon.
+/// Executes the Tier-2 per-layer parallel pipeline using rayon with the
+/// compatibility default tool selection (support and interface tool 0).
 ///
 /// Layers are processed in parallel, but stages within each layer are sequential.
 /// Each layer gets its own `LayerArena` that is freed when the layer completes.
@@ -164,7 +165,9 @@ pub fn execute_per_layer(
 
 /// Like [`execute_per_layer`] but additionally routes per-layer progress
 /// events (including host-built-in paint-annotation fallback warnings)
-/// to `sink`.
+/// to `sink`. This compatibility wrapper intentionally uses tool 0 for both
+/// support and interface paths; callers with configured selections must use
+/// [`execute_per_layer_with_events_and_support_tools`].
 ///
 /// Returns both the collected layer IRs and the runtime access audits from
 /// all per-layer module executions (TASK-123b).
@@ -175,19 +178,43 @@ pub fn execute_per_layer_with_events(
     sink: &(dyn LayerProgressSink + Sync),
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation(
+    execute_per_layer_with_events_and_support_tools(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        wasm_handles,
+        SupportToolSelection::default(),
+    )
+}
+
+/// Like [`execute_per_layer_with_events`] but selects the filament indices
+/// used for support and interface paths.
+pub fn execute_per_layer_with_events_and_support_tools(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    support_tools: SupportToolSelection,
+) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    execute_per_layer_with_instrumentation_and_support_tools(
         plan,
         blackboard,
         runner,
         sink,
         &NoopInstrumentation,
         wasm_handles,
+        support_tools,
         None,
     )
 }
 
 /// Like [`execute_per_layer_with_events`] but additionally records timing,
-/// memory, and DAG bracket calls into `instrumentation`. Pass
+/// memory, and DAG bracket calls into `instrumentation`. This compatibility
+/// wrapper intentionally uses tool 0 for both support and interface paths;
+/// callers with configured selections must use
+/// [`execute_per_layer_with_instrumentation_and_support_tools`]. Pass
 /// `&NoopInstrumentation` for zero-overhead behavior identical to the
 /// non-instrumented variant.
 pub fn execute_per_layer_with_instrumentation(
@@ -197,6 +224,28 @@ pub fn execute_per_layer_with_instrumentation(
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    execute_per_layer_with_instrumentation_and_support_tools(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        instrumentation,
+        wasm_handles,
+        SupportToolSelection::default(),
+        cancel_flag,
+    )
+}
+
+pub(crate) fn execute_per_layer_with_instrumentation_and_support_tools(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    support_tools: SupportToolSelection,
     cancel_flag: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
@@ -218,6 +267,7 @@ pub fn execute_per_layer_with_instrumentation(
                     &[],
                     layer,
                     wasm_handles,
+                    support_tools,
                 )
             })
             .collect();
@@ -250,6 +300,7 @@ fn execute_single_layer(
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    support_tools: SupportToolSelection,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     instrumentation.on_layer_start(layer.index, layer.z);
     let result = execute_single_layer_inner(
@@ -261,9 +312,19 @@ fn execute_single_layer(
         required_semantics,
         layer,
         wasm_handles,
+        support_tools,
     );
     instrumentation.on_layer_end(layer.index);
     result
+}
+
+#[derive(Clone, Copy, Default)]
+/// Filament indices selected for support and interface paths.
+pub struct SupportToolSelection {
+    /// Filament index used for support paths.
+    pub support_tool: u32,
+    /// Filament index used for interface paths.
+    pub interface_tool: u32,
 }
 
 fn execute_single_layer_inner(
@@ -275,6 +336,7 @@ fn execute_single_layer_inner(
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    support_tools: SupportToolSelection,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let mut audits = Vec::new();
 
@@ -295,7 +357,13 @@ fn execute_single_layer_inner(
     // optimization commit path (and any downstream per-layer stage) can see
     // the same entity sequence that the host emitter will consume.
     for stage in &plan.per_layer_stages {
-        prestage_layer_collection_if_path_optimization(&mut arena, stage, layer, blackboard);
+        prestage_layer_collection_if_path_optimization(
+            &mut arena,
+            stage,
+            layer,
+            blackboard,
+            support_tools,
+        );
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
@@ -477,6 +545,7 @@ fn execute_single_layer_inner(
             arena.support(),
             blackboard.region_map().map(|arc| arc.as_ref()),
             arena.slice(),
+            support_tools,
         );
         LayerCollectionIR {
             global_layer_index: layer.index,
@@ -625,6 +694,7 @@ fn prestage_layer_collection_if_path_optimization(
     stage: &CompiledStage,
     layer: &GlobalLayer,
     blackboard: &Blackboard,
+    support_tools: SupportToolSelection,
 ) {
     if stage.stage_id != "Layer::PathOptimization" || arena.layer_collection().is_some() {
         return;
@@ -636,6 +706,7 @@ fn prestage_layer_collection_if_path_optimization(
         arena.support(),
         blackboard.region_map().map(|arc| arc.as_ref()),
         arena.slice(),
+        support_tools,
     );
     arena.set_layer_collection(LayerCollectionIR {
         global_layer_index: layer.index,
@@ -969,7 +1040,8 @@ fn capture_ir_for_stage(stage_id: &str, arena: &LayerArena) -> Option<CapturedIr
 }
 
 /// Request-gated, typed post-stage capture at the executor boundary
-/// (packet 158).
+/// (packet 158), using the compatibility default tool selection (support and
+/// interface tool 0).
 ///
 /// Executes only the scheduler dependency closure required to reach the
 /// furthest tap in `request.stage_ids`: `plan.per_layer_stages` is
@@ -999,6 +1071,26 @@ pub fn execute_captured_stages(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    request: &CaptureRequest,
+) -> Result<CaptureOutput, CaptureExecutionError> {
+    execute_captured_stages_with_support_tools(
+        plan,
+        blackboard,
+        runner,
+        wasm_handles,
+        SupportToolSelection::default(),
+        request,
+    )
+}
+
+/// Like [`execute_captured_stages`] but selects the filament indices used for
+/// support and interface paths.
+pub fn execute_captured_stages_with_support_tools(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+    support_tools: SupportToolSelection,
     request: &CaptureRequest,
 ) -> Result<CaptureOutput, CaptureExecutionError> {
     for tap in &request.stage_ids {
@@ -1066,7 +1158,13 @@ pub fn execute_captured_stages(
         hydrate_slice_arena(&mut arena, blackboard, layer)?;
 
         for stage in truncated_stages {
-            prestage_layer_collection_if_path_optimization(&mut arena, stage, layer, blackboard);
+            prestage_layer_collection_if_path_optimization(
+                &mut arena,
+                stage,
+                layer,
+                blackboard,
+                support_tools,
+            );
 
             for module in &stage.modules {
                 if !module_invocation_allowed_on_layer(
@@ -1429,6 +1527,7 @@ pub(crate) fn assemble_ordered_entities(
     support: Option<&SupportIR>,
     region_map: Option<&RegionMapIR>,
     slice: Option<&SliceIR>,
+    support_tools: SupportToolSelection,
 ) -> Vec<PrintEntity> {
     let mut out: Vec<PrintEntity> = Vec::new();
     let id_gen = LayerEntityIdGen::new();
@@ -1710,18 +1809,42 @@ pub(crate) fn assemble_ordered_entities(
             region_id: 0,
             variant_chain: Vec::new(),
         };
-        // Support geometry prints with the base tool (T0); region_id=0 identity.
+        // Support geometry uses the configured support tool (default T0); region_id=0 identity.
         for path in &sup.support_paths {
-            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
+            push(
+                path.clone(),
+                path.role.clone(),
+                support_tools.support_tool,
+                key.clone(),
+                &mut out,
+            );
         }
         for path in &sup.interface_paths {
-            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
+            push(
+                path.clone(),
+                path.role.clone(),
+                support_tools.interface_tool,
+                key.clone(),
+                &mut out,
+            );
         }
         for path in &sup.raft_paths {
-            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
+            push(
+                path.clone(),
+                path.role.clone(),
+                support_tools.support_tool,
+                key.clone(),
+                &mut out,
+            );
         }
         for path in &sup.ironing_paths {
-            push(path.clone(), path.role.clone(), 0, key.clone(), &mut out);
+            push(
+                path.clone(),
+                path.role.clone(),
+                support_tools.interface_tool,
+                key.clone(),
+                &mut out,
+            );
         }
     }
 
@@ -2255,6 +2378,95 @@ pub fn module_invocation_allowed_on_layer(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn support_tool_selection_assigns_entities() {
+        fn path(role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {
+            let point = slicer_ir::Point3WithWidth {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+            };
+            slicer_ir::ExtrusionPath3D {
+                points: vec![point, point],
+                role,
+                speed_factor: 1.0,
+            }
+        }
+
+        let support = slicer_ir::SupportIR {
+            support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+            interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+            raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+            ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+            ..Default::default()
+        };
+        let mut raw_config = std::collections::HashMap::new();
+        raw_config.insert("support_filament", slicer_ir::ConfigValue::Int(2));
+        raw_config.insert("support_interface_filament", slicer_ir::ConfigValue::Int(3));
+        let support_tools = crate::run::parse_support_tool_selection(&raw_config);
+
+        let entities = super::assemble_ordered_entities(
+            0,
+            None,
+            None,
+            Some(&support),
+            None,
+            None,
+            support_tools,
+        );
+
+        assert_eq!(
+            entities
+                .iter()
+                .map(|entity| entity.tool_index)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 1, 2]
+        );
+    }
+
+    #[test]
+    fn support_tool_selection_default_keeps_tool_zero() {
+        fn path(role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {
+            let point = slicer_ir::Point3WithWidth {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
+                dist_to_top_mm: 0.0,
+            };
+            slicer_ir::ExtrusionPath3D {
+                points: vec![point, point],
+                role,
+                speed_factor: 1.0,
+            }
+        }
+
+        let support = slicer_ir::SupportIR {
+            support_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+            interface_paths: vec![path(slicer_ir::ExtrusionRole::SupportInterface)],
+            raft_paths: vec![path(slicer_ir::ExtrusionRole::SupportMaterial)],
+            ironing_paths: vec![path(slicer_ir::ExtrusionRole::Ironing)],
+            ..Default::default()
+        };
+
+        let entities = super::assemble_ordered_entities(
+            0,
+            None,
+            None,
+            Some(&support),
+            None,
+            None,
+            super::SupportToolSelection::default(),
+        );
+
+        assert!(entities.iter().all(|entity| entity.tool_index == 0));
+    }
     use slicer_ir::LayerStageOutput;
 
     #[test]
@@ -2368,6 +2580,7 @@ mod tests {
             None, // support
             None, // region_map  → modifier_tool = None
             None, // slice       → variant_tool = None, spatial_tool = None
+            super::SupportToolSelection::default(),
         );
 
         assert!(

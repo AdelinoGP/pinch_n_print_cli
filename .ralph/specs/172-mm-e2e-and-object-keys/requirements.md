@@ -3,8 +3,8 @@
 ## Packet Metadata
 
 - Grouped task IDs: `TASK-210`, `TASK-211`, `TASK-212`
-- Backlog source: `docs/07_implementation_status.md` (rows at lines 137-139, all open)
-- Packet status: `draft`
+- Backlog source: `docs/07_implementation_status.md` (three rows reconciled and done via packet 172)
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -23,12 +23,23 @@ These form one coherent slice because the E2E (TASK-211) is the acceptance vehic
   - Int: `wall_loops`, `top_shell_layers`, `bottom_shell_layers`, `raft_layers`, `support_interface_top_layers`, `support_interface_bottom_layers` (warn-and-skip on parse failure, mirroring `extruder`).
   - Int with 1-indexed→0-indexed rebase (mirroring `extruder`): `support_filament`, `support_interface_filament` (raw `0` = "no dedicated filament" stays `Int(0)`).
   - Float: `layer_height`, `brim_width`, `support_threshold_angle`, `support_top_z_distance` (warn-and-skip on parse failure).
-  - String passthrough: `seam_position`, `sparse_infill_density`, `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`, `support_base_pattern`.
+  - String passthrough: `seam_position`, `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`, `support_base_pattern`; `sparse_infill_density` remains a String for percentage values and is a Float for numeric non-percentage values.
   - Unrecognized keys: emit one log line naming each dropped key (excluding the known-benign `name` and `matrix` sidecar keys) — logged, never silently dropped.
 - **TASK-210**: a `SupportToolSelection` (support tool + interface tool, 0-indexed, both defaulting to 0) parsed from `config_source` keys `support_filament`/`support_interface_filament` at the `PipelineConfig` construction site (`run.rs`, next to the `use_relative_e_distances` read at `run.rs:619-622`), threaded through the per-layer execution path into `assemble_ordered_entities` (signature at `layer_executor.rs:1365-1372`; call sites at `layer_executor.rs:463`, `:573`, test `:2300`): `support_paths` + `raft_paths` → support tool; `interface_paths` + `ironing_paths` → interface tool.
 - **TASK-211**: new real-fixture E2E tests in the `e2e` bucket: `mm_painted_fixture_t0_t1` over `crates/slicer-runtime/tests/fixtures/perimeter_parity/multi_tool_triangle/multi_tool_triangle.3mf` (T0 and T1 both emitted) and `mm_support_filament_real_fixture` over `resources/bridge_support_enforcers.3mf` with `enable_support=true`, `support_filament=2` (support prints on T1).
 - Unit tests: extended-allowlist typing + rebase + unknown-key logging (slicer-model-io), `SupportToolSelection` entity assignment + default-zero (in-file `#[cfg(test)]` tests in `layer_executor.rs`, run via `cargo test -p slicer-runtime --lib` — the `pub(crate)` symbols are unreachable from the external unit bucket).
 - `docs/02_ir_schemas.md` per-object allowlist + rebase-semantics doc update.
+
+## Closure Extensions
+
+The production-ready closure also includes the user-approved adjacent fixes and coverage:
+
+- `xtask/src/build_guests.rs` records semantic guest-WIT/content fingerprints in metadata, and `crates/slicer-macros/build.rs` tracks canonical `root.wit` changes.
+- `crates/slicer-wasm-host/tests/contract/production_guest_smoke_tdd.rs` covers production `classic-perimeters` instantiation; `slice_region_view_contract_tdd.rs` and `layer_collection_builder_contract_tdd.rs` fill the missing host contract tests.
+- `crates/slicer-runtime/src/run.rs` has configured support-tool parser regression tests for defaults, 1-indexed rebasing, invalid, and out-of-range values.
+- The external runtime/module key is standardized on Orca `enable_support`; the internal Rust field may remain `support_enabled`.
+- `crates/slicer-ir/src/slice_ir.rs::Point3WithWidth` gives legacy `dist_to_top_mm` deserialization a default of zero for compatibility.
+- Per AC-1, percentage object density remains raw `String` (`20%`), while numeric non-percentage density remains `Float`.
 
 ## Out of Scope
 
@@ -67,11 +78,11 @@ Files to inspect for this packet:
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `mkdir -p target && cargo test -p slicer-model-io --test threemf_sidecar_classification_tdd 2>&1 \| tee target/test-output.log \| grep "^test result"` | Extended allowlist typing, rebase, unknown-key logging, plus pre-existing sidecar assertions | FACT pass/fail; SNIPPETS <=20 lines on failure |
-| `mkdir -p target && cargo test -p slicer-runtime --lib -- support_tool_selection 2>&1 \| tee target/test-output.log \| grep "^test result"` | In-file `assemble_ordered_entities` tool assignment + default-zero tests (AC-3, AC-N1) | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test unit -- tool_ordering 2>&1 \| tee target/test-output.log \| grep "^test result"` | Pre-existing external tool-ordering suite unchanged (AC-N1 regression) | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test e2e -- mm_ 2>&1 \| tee target/test-output.log \| grep "^test result"` | Both real-fixture MM E2E tests | FACT pass/fail |
-| `mkdir -p target && cargo test -p slicer-runtime --test executor -- cube_4color 2>&1 \| tee target/test-output.log \| grep "^test result"` | Painted-region tool attribution unaffected by the threading change | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-model-io --test threemf_sidecar_classification_tdd 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | Extended allowlist typing, rebase, unknown-key logging, plus pre-existing sidecar assertions | FACT pass/fail; SNIPPETS <=20 lines on failure |
+| `mkdir -p target && cargo test -p slicer-runtime --lib -- support_tool_selection 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | In-file `assemble_ordered_entities` tool assignment + default-zero tests (AC-3, AC-N1) | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test unit -- tool_ordering 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | Pre-existing external tool-ordering suite unchanged (AC-N1 regression) | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test e2e -- mm_ 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | Both real-fixture MM E2E tests | FACT pass/fail |
+| `mkdir -p target && cargo test -p slicer-runtime --test executor -- cube_4color 2>&1 \| tee target/test-output.log \| grep "^test result: ok"` | Painted-region tool attribution unaffected by the threading change | FACT pass/fail |
 | `cargo check --workspace --all-targets` | Whole-workspace type gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint gate | FACT pass/fail |
 

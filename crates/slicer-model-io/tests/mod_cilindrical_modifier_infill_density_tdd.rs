@@ -2,7 +2,7 @@
 //! `sparse_infill_density` overrides, and the loader plumbs them into the IR.
 //!
 //! This is the M3 fixture's contract: a base cube (object id=3) with infill
-//! density 0.15 plus a centered cylinder modifier (part id=2) with density 0.40.
+//! density 15% plus a centered cylinder modifier (part id=2) with density 0.40.
 //! The two-density delta must reach both `ObjectMesh.config.data` (base) and
 //! `ModifierVolume.config_delta.fields` (modifier) so that the per-region config
 //! delivery (packet 131) can resolve the two regions to their distinct densities.
@@ -98,17 +98,9 @@ fn cube_cilindrical_modifier_object_carries_base_density_override() {
                 obj.config.data.keys().collect::<Vec<_>>()
             )
         });
-    match object_density {
-        ConfigValue::Float(v) => {
-            assert!(
-                (v - 0.15).abs() < 1e-9,
-                "base object sparse_infill_density should be 0.15, got {}",
-                v
-            );
-        }
-        other => panic!(
-            "base object sparse_infill_density should be ConfigValue::Float(0.15), got {:?}",
-            other
-        ),
-    }
+    assert_eq!(
+        object_density,
+        &ConfigValue::String("15%".to_string()),
+        "base object sparse_infill_density must preserve the raw percentage string"
+    );
 }

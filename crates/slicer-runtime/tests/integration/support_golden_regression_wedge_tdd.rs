@@ -67,7 +67,7 @@ fn current_wedge_output_stays_within_self_capture_tolerance() {
     let plan = ctx
         .blackboard
         .support_plan()
-        .expect("support_plan must be committed when support_enabled=true");
+        .expect("support_plan must be committed when enable_support=true");
     let current_count = support_wedge::branch_segment_count(plan);
     let current_endpoints = support_wedge::branch_endpoints(plan);
 

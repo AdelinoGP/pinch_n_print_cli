@@ -12,7 +12,7 @@ Four PrePass stage exports — `run-layer-planning`, `run-seam-planning`, `run-s
 2. Some wrote through a named output resource (`layer-plan-output`, `seam-planning-output`); others returned a bare record.
 3. Some returned `result<_, module-error>` and surfaced fatals as `DispatchError`; one silently swallowed module fatals inside the macro/host glue and continued.
 
-Concretely: `run-support-geometry` was the last holdout. It still ran with an empty ConfigView (so `support_enabled = false` and `support_raft_layers = N` were both invisible to the planner) and its fatals were caught and discarded by the host. The misalignment had real consequences — disabling support at the config layer still ran the planner; planner panics were observable only as missing geometry, not as errors.
+Concretely: `run-support-geometry` was the last holdout. It still ran with an empty ConfigView (so `enable_support = false` and `support_raft_layers = N` were both invisible to the planner) and its fatals were caught and discarded by the host. The misalignment had real consequences — disabling support at the config layer still ran the planner; planner panics were observable only as missing geometry, not as errors.
 
 Packet 73 normalised the boundary across all four exports. The normalisation is sufficiently load-bearing for future stages that it deserves an ADR rather than a one-time packet note.
 
@@ -28,7 +28,7 @@ The contract applies to every existing PrePass export and every future one.
 
 ## Consequences
 
-- **Config-driven planner behaviour works end-to-end.** `support_enabled = false` actually disables the planner. `paint_order:` overrides reach the paint-segmentation kernel. Configuration becomes a real control surface for prepass modules.
+- **Config-driven planner behaviour works end-to-end.** `enable_support = false` actually disables the planner. `paint_order:` overrides reach the paint-segmentation kernel. Configuration becomes a real control surface for prepass modules.
 - **Errors are visible.** A `support-planner` panic surfaces as `Err(DispatchError::PrepassFatal { stage, module, source })`. The user sees a stack-traceable error path; the host does not silently produce broken geometry.
 - **The four stage runners and their `*Output` resources are symmetric.** Authoring a new PrePass stage is a copy-edit job: define the WIT export with this shape, define the output resource, harvest into the IR, done. No exception cases.
 - **Backwards compatibility is finite.** A prepass module shipped before packet 73 that depended on the empty-ConfigView behaviour is now broken in a defensible direction: it should have been honouring the config it declared all along. No grace-period shim is offered.

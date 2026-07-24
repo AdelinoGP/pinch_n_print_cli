@@ -48,7 +48,7 @@ use support_planner::SupportPlanner;
 #[test]
 fn contact_xy_outside_footprint_sets_to_buildplate_true() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_on_build_plate_only", ConfigValue::Bool(true)),
         ("tree_support_branch_diameter", ConfigValue::Float(5.0)),
@@ -136,7 +136,7 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
 #[test]
 fn unreachable_buildplate_node_pruned() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("tree_support_branch_diameter", ConfigValue::Float(5.0)),
         (
@@ -237,7 +237,7 @@ fn unreachable_buildplate_node_pruned() {
 #[test]
 fn buildplate_only_rejects_to_model_contacts() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_on_build_plate_only", ConfigValue::Bool(true)),
         ("tree_support_branch_diameter", ConfigValue::Float(5.0)),
@@ -323,7 +323,7 @@ fn buildplate_only_rejects_to_model_contacts() {
 #[test]
 fn default_config_does_not_reject_to_model_contacts() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         // No support_on_build_plate_only key — defaults to false.
         ("tree_support_branch_diameter", ConfigValue::Float(5.0)),
@@ -410,7 +410,7 @@ fn default_config_does_not_reject_to_model_contacts() {
 #[test]
 fn to_model_node_with_collision_not_pruned_by_new_rule() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         // No support_on_build_plate_only — contact is admitted.
         ("tree_support_branch_diameter", ConfigValue::Float(5.0)),

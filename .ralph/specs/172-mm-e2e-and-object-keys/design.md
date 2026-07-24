@@ -15,6 +15,17 @@
 - All change surfaces are host-side (loader, runtime, scheduler-consumed config): no WIT edit, no guest source edit, no guest WASM rebuild is triggered by this packet.
 - Filament-index rebase convention is locked to the existing `extruder` handling (`loader.rs:818-833`): Orca authors 1-indexed; runtime is 0-indexed; raw `0` stays `Int(0)`.
 
+## Closure Extensions
+
+The implemented production scope also includes these approved extensions:
+
+- `xtask/src/build_guests.rs` writes semantic guest-WIT/content fingerprint metadata, while `crates/slicer-macros/build.rs` tracks canonical `root.wit` for macro rebuilds.
+- `crates/slicer-wasm-host/tests/contract/production_guest_smoke_tdd.rs` verifies production `classic-perimeters` instantiation; `slice_region_view_contract_tdd.rs` and `layer_collection_builder_contract_tdd.rs` provide the missing host contract coverage.
+- `crates/slicer-runtime/src/run.rs` covers configured support-tool parsing and rebasing in regression tests.
+- The public runtime/module key is Orca `enable_support`; the internal Rust field can remain `support_enabled`.
+- `crates/slicer-ir/src/slice_ir.rs::Point3WithWidth` defaults legacy `dist_to_top_mm` to zero during serde deserialization.
+- Object density preserves percentage values as raw `String` and parses numeric non-percentage values as `Float`.
+
 ## Code Change Surface
 
 - Selected approach:
@@ -34,6 +45,7 @@
 - `crates/slicer-runtime/src/layer_executor.rs` - role: `SupportToolSelection` + assignment + threading; expected change: struct, +1 param on three functions, four `push(...)` tool arguments.
 - `crates/slicer-runtime/src/run.rs` - role: config parse + `PipelineConfig` field; expected change: ~12 lines.
 - Justified extras: `crates/slicer-runtime/src/pipeline.rs` (`PipelineConfig` struct definition + any literal construction), new test files `crates/slicer-model-io/tests/threemf_sidecar_classification_tdd.rs` (extend existing file), the in-file `#[cfg(test)] mod tests` of `layer_executor.rs` (line 2195; the `pub(crate)` symbols are unreachable from the external unit bucket, so the two new tool-selection tests run via `cargo test -p slicer-runtime --lib`), `crates/slicer-runtime/tests/e2e/mm_real_fixture_gcode_tdd.rs` (new) + e2e harness `mod` line.
+- Closure extension files: `xtask/src/build_guests.rs`, `crates/slicer-macros/build.rs`, `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-ir/src/resolved_config.rs`, `crates/slicer-runtime/tests/e2e/main.rs`, `crates/slicer-wasm-host/tests/contract/main.rs`, `crates/slicer-wasm-host/tests/contract/production_guest_smoke_tdd.rs`, `crates/slicer-wasm-host/tests/contract/slice_region_view_contract_tdd.rs`, `crates/slicer-wasm-host/tests/contract/layer_collection_builder_contract_tdd.rs`, and `docs/ORCA_CONFIG_REFERENCE.md`.
 
 ## Read-Only Context
 
@@ -43,6 +55,17 @@
 - `crates/slicer-runtime/src/run.rs` - lines 340-360 and 600-660 only - purpose: object-config seeding and `PipelineConfig` construction.
 - `crates/slicer-scheduler/src/config_resolution.rs` - lines 403-431 and 520-550 only - purpose: confirm no second allowlist (verified this session).
 - `crates/slicer-runtime/tests/e2e/run_slice_api_tdd.rs` - purpose: full-slice test API pattern.
+- `xtask/src/build_guests.rs` - purpose: semantic guest-WIT/content fingerprint metadata and stale-artifact checks.
+- `crates/slicer-macros/build.rs` - purpose: canonical WIT rerun tracking, including `root.wit`.
+- `crates/slicer-ir/src/slice_ir.rs` - purpose: legacy `dist_to_top_mm` serde default.
+- `crates/slicer-ir/src/resolved_config.rs` - purpose: external `enable_support` key and internal `support_enabled` field mapping.
+- `crates/slicer-runtime/src/run.rs` - purpose: configured support-tool parser regression tests.
+- `crates/slicer-runtime/tests/e2e/main.rs` - purpose: real-fixture E2E registration.
+- `crates/slicer-wasm-host/tests/contract/main.rs` - purpose: contract-test registration.
+- `crates/slicer-wasm-host/tests/contract/production_guest_smoke_tdd.rs` - purpose: production classic-perimeters instantiation smoke test.
+- `crates/slicer-wasm-host/tests/contract/slice_region_view_contract_tdd.rs` - purpose: slice-region-view host-trait contract.
+- `crates/slicer-wasm-host/tests/contract/layer_collection_builder_contract_tdd.rs` - purpose: layer-collection-builder host-trait contract.
+- `docs/ORCA_CONFIG_REFERENCE.md` - purpose: current status of the three implemented Orca support keys.
 
 ## Out-of-Bounds Files
 
@@ -50,7 +73,6 @@
 - `target/`, `Cargo.lock`, generated code, vendored dependencies, `*.3mf` binaries - never load
 - `crates/slicer-gcode/src/serialize.rs` and `emit.rs` - packets 167/171 territory / unchanged consumer; delegate symbol lookups
 - `.ralph/specs/167-*`, `.ralph/specs/171-*`, `.ralph/specs/124_*` - other packets' directories; SUMMARY dispatch only
-- `crates/slicer-ir/src/resolved_config.rs` - no edit needed (extensions bucket already absorbs unknown keys); bounded lookup only
 
 ## Expected Sub-Agent Dispatches
 
@@ -77,7 +99,7 @@
 
 ## Risks and Tradeoffs
 
-- `multi_tool_triangle.3mf` may need explicit filament/config keys to produce two tools in the e2e harness; the Step 3 FACT dispatch on its existing parity test resolves this before test authoring. Fallback fixture: `resources/cube_4color.3mf` (4 painted colors, guaranteed multi-tool per `cube_4color_gcode_output_tdd.rs`).
+- Resolved: `crates/slicer-runtime/tests/fixtures/perimeter_parity/multi_tool_triangle/multi_tool_triangle.3mf` passes the two-tool E2E and is the fixture used by AC-5. `resources/cube_4color.3mf` remains a separate painted-region regression fixture.
 - Threading a new parameter through `execute_single_layer_inner` touches a hot, heavily-tested path; the change is signature-only plus a passthrough, and `tool_ordering`/`cube_4color` suites gate regressions.
 - Interface-ironing → interface tool is an interpretation (Orca irons interfaces with the interface filament); flagged [FWD] below.
 - Newly admitted keys reaching `extensions` may surface as new config-hash inputs (`resolved_config.rs` hashes extensions) — determinism is preserved (same input → same hash) but per-object config identity may split where it previously merged; covered by the executor regression suite.
@@ -86,10 +108,10 @@
 
 - Aggregate: `M`
 - Largest step: `M` (Step 2 threading)
-- Highest-risk dispatch and required return format: `multi_tool_triangle` fixture-config FACT — must return the exact config the existing parity test uses in ≤10 lines; reject a full test-file dump.
+- The former highest-risk fixture-config dispatch is resolved: the named `multi_tool_triangle.3mf` fixture passes under the in-repo E2E configuration and remains selected for AC-5.
 
 ## Open Questions
 
 - [FWD] Should `ironing_paths` in `SupportIR` follow the interface tool or the support tool? Packet locks interface tool (support ironing targets interface tops); implementer may flip only with a delegated Orca `SupportMaterial.cpp`/`GCode.cpp` FACT showing otherwise, updating AC-3's test in the same change.
-- [FWD] `mm_support_filament_real_fixture` may show T1 only on layers that actually contain support; the AC requires "at least one `T1` line", which holds regardless of layer distribution — implementer should assert presence, not position.
+- Resolved: `mm_support_filament_real_fixture` asserts tool-line presence rather than layer position, so support distribution across layers does not weaken AC-4.
 - [FWD] If the `run.rs` global read and an object-level `support_filament` disagree, the global wins in this packet (flat SupportIR); log a debug note when an object-level `support_filament` key is present so the limitation is observable.

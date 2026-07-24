@@ -6,6 +6,17 @@
 - Use TDD, then implementation, then the narrowest falsifying validation.
 - Every field below is a context-budget contract and must be filled independently; never write "see Step 1".
 
+## Closure Extensions
+
+The production-ready closure also records these approved additions:
+
+- `xtask/src/build_guests.rs` writes semantic guest-WIT/content fingerprint metadata, and `crates/slicer-macros/build.rs` tracks canonical `root.wit` changes.
+- `crates/slicer-wasm-host/tests/contract/production_guest_smoke_tdd.rs` covers production `classic-perimeters` instantiation; `slice_region_view_contract_tdd.rs` and `layer_collection_builder_contract_tdd.rs` cover the previously missing host contracts.
+- `crates/slicer-runtime/src/run.rs` includes configured support-tool parser regression tests.
+- External runtime/module configuration uses Orca `enable_support`; the internal Rust field remains free to be named `support_enabled`.
+- `crates/slicer-ir/src/slice_ir.rs::Point3WithWidth` uses a serde default for legacy `dist_to_top_mm` data.
+- AC-1 preserves percentage object density as raw `String`; numeric non-percentage density remains `Float`.
+
 ## Steps
 
 ### Step 1: Extended object-metadata allowlist (loader)
@@ -32,13 +43,13 @@
   - `OrcaSlicerDocumented/src/slic3r/GUI/GUI_Factories.cpp` - delegate; never load
   - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - delegate; never load
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-model-io --test threemf_sidecar_classification_tdd 2>&1 | tee target/test-output.log | grep "^test result"` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-model-io --all-targets --test threemf_sidecar_classification_tdd 2>&1 | tee target/test-output.log | grep "^test result: ok"` - FACT pass/fail
 - Exit condition: all three new tests (`extended_object_allowlist_types`, `support_filament_keys_rebased`, `invalid_and_unknown_object_keys_logged`) green with zero pre-existing failures; a silently-dropped unknown key falsifies.
 
 ### Step 2: SupportToolSelection routing (runtime)
 
 - Task IDs: `TASK-210`
-- Objective: TDD-add `SupportToolSelection` to `layer_executor.rs`, extend `assemble_ordered_entities` with the parameter (support/raft → support tool; interface/ironing → interface tool), thread it via `PipelineConfig` from a `config_source` parse in `run.rs` (1-indexed rebase, default `{0,0}`), updating all three call sites (`layer_executor.rs:463`, `:573`, test `:2300`) and both threading functions (`execute_single_layer_inner`, `prestage_layer_collection_if_path_optimization`). Because `SupportToolSelection` and `assemble_ordered_entities` are `pub(crate)`, the new tests (`support_tool_selection_assigns_entities`, `support_tool_selection_default_keeps_tool_zero`) go in the existing in-file `#[cfg(test)] mod tests` of `layer_executor.rs` (declared at line 2195) and run via `cargo test -p slicer-runtime --lib` — never via the external `--test unit` binary, which cannot reach them.
+- Objective: TDD-add `SupportToolSelection` to `layer_executor.rs`, extend `assemble_ordered_entities` with the parameter (support/raft → support tool; interface/ironing → interface tool), thread it via `PipelineConfig` from a `config_source` parse in `run.rs` (1-indexed rebase, default `{0,0}`), updating all three call sites (`layer_executor.rs:463`, `:573`, test `:2300`) and both threading functions (`execute_single_layer_inner`, `prestage_layer_collection_if_path_optimization`). Because `SupportToolSelection` and `assemble_ordered_entities` are `pub(crate)`, the new tests (`support_tool_selection_assigns_entities`, `support_tool_selection_default_keeps_tool_zero`) go in the existing in-file `#[cfg(test)] mod tests` of `layer_executor.rs` (declared at line 2195) and run via `cargo test -p slicer-runtime --all-targets --lib` — never via the external `--test unit` binary, which cannot reach them.
 - Precondition: Step 1 complete (independent, but fixes rebase convention precedent); delegated FACT on `PrintConfig.cpp` filament-selector semantics received.
 - Postcondition: AC-3 unit test green; AC-N1 (`tool_ordering`) and `cube_4color` executor suites green.
 - Files allowed to read, with ranges when over 300 lines:
@@ -60,14 +71,14 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` - delegate; never load
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --lib -- support_tool_selection 2>&1 | tee target/test-output.log | grep "^test result"` - FACT pass/fail (must report ≥2 tests run; 0 tests run is a FAIL)
-  - `mkdir -p target && cargo test -p slicer-runtime --test unit -- tool_ordering 2>&1 | tee target/test-output.log | grep "^test result"` - FACT pass/fail (pre-existing external suite)
+  - `mkdir -p target && cargo test -p slicer-runtime --all-targets --lib -- support_tool_selection 2>&1 | tee target/test-output.log | grep "^test result: ok"` - FACT pass/fail (must report ≥2 tests run; 0 tests run is a FAIL)
+  - `mkdir -p target && cargo test -p slicer-runtime --all-targets --test unit -- tool_ordering 2>&1 | tee target/test-output.log | grep "^test result: ok"` - FACT pass/fail (pre-existing external suite)
 - Exit condition: both in-file `support_tool_selection` tests green (assignment + default-zero) AND external `tool_ordering` green; any default-path tool_index change, or a `--lib` filter matching 0 tests, falsifies.
 
 ### Step 3: Real-fixture MM E2E
 
 - Task IDs: `TASK-211`
-- Objective: author `crates/slicer-runtime/tests/e2e/mm_real_fixture_gcode_tdd.rs` with `mm_painted_fixture_t0_t1` (multi_tool_triangle.3mf → both `T0` and `T1` lines in emitted G-code) and `mm_support_filament_real_fixture` (bridge_support_enforcers.3mf + `enable_support=true` + `support_filament=2` → at least one `T1` and one `T0` line), registered in the e2e bucket harness.
+- Objective: author `crates/slicer-runtime/tests/e2e/mm_real_fixture_gcode_tdd.rs` with `mm_painted_fixture_t0_t1` (the passing `multi_tool_triangle.3mf` fixture → both `T0` and `T1` lines in emitted G-code) and `mm_support_filament_real_fixture` (bridge_support_enforcers.3mf + `enable_support=true` + `support_filament=2` → at least one `T1` and one `T0` line), registered in the e2e bucket harness.
 - Precondition: Step 2 complete; delegated FACTs on the e2e harness file and the multi_tool_triangle parity-test config received.
 - Postcondition: AC-4 and AC-5 green; executor `cube_4color` suite green.
 - Files allowed to read, with ranges when over 300 lines:
@@ -87,22 +98,27 @@
 - OrcaSlicer refs:
   - none
 - Verification:
-  - `mkdir -p target && cargo test -p slicer-runtime --test e2e -- mm_ 2>&1 | tee target/test-output.log | grep "^test result"` - FACT pass/fail
-  - `mkdir -p target && cargo test -p slicer-runtime --test executor -- cube_4color 2>&1 | tee target/test-output.log | grep "^test result"` - FACT pass/fail
-- Exit condition: both `mm_` e2e tests green on real fixtures; if `multi_tool_triangle` cannot produce two tools, switch AC-5's fixture to `resources/cube_4color.3mf` (fallback locked in `design.md` §Risks) and record the swap — an AC-5 asserting on a single-tool run falsifies.
+  - `mkdir -p target && cargo test -p slicer-runtime --all-targets --test e2e -- mm_ 2>&1 | tee target/test-output.log | grep "^test result: ok"` - FACT pass/fail
+  - `mkdir -p target && cargo test -p slicer-runtime --all-targets --test executor -- cube_4color 2>&1 | tee target/test-output.log | grep "^test result: ok"` - FACT pass/fail
+- Exit condition: both `mm_` e2e tests green on real fixtures; AC-5 uses the named `multi_tool_triangle.3mf` fixture, which now passes, so no fixture substitution is needed.
 
 ### Step 4: Docs + closure gates
 
 - Task IDs: `TASK-210`, `TASK-211`, `TASK-212`
-- Objective: update `docs/02_ir_schemas.md` (per-object allowlist + rebase semantics, `support_filament` routing note incl. the flat-SupportIR global-selection deviation); dispatch the docs/07 row flips per `task-map.md`; run closure gates.
+- Objective: reconcile the packet closure docs, `docs/02_ir_schemas.md` (per-object allowlist + rebase semantics, `support_filament` routing note incl. the flat-SupportIR global-selection deviation), and `docs/ORCA_CONFIG_REFERENCE.md`; dispatch the docs/07 row flips per `task-map.md`; record the approved closure extensions.
 - Precondition: Steps 1-3 complete.
 - Postcondition: doc grep passes; workspace check/clippy green.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/02_ir_schemas.md` - only the per-object config / SupportIR subsections (locate via grep)
   - `.ralph/specs/172-mm-e2e-and-object-keys/task-map.md`
-- Files allowed to edit (at most 3):
+- Files approved for closure documentation:
   - `docs/02_ir_schemas.md`
+  - `docs/ORCA_CONFIG_REFERENCE.md`
   - `.ralph/specs/172-mm-e2e-and-object-keys/packet.spec.md` (status flip at ceremony only)
+  - `.ralph/specs/172-mm-e2e-and-object-keys/requirements.md`
+  - `.ralph/specs/172-mm-e2e-and-object-keys/design.md`
+  - `.ralph/specs/172-mm-e2e-and-object-keys/implementation-plan.md`
+  - `.ralph/specs/172-mm-e2e-and-object-keys/task-map.md`
 - Files explicitly out of bounds:
   - `docs/07_implementation_status.md` (worker dispatch only, never a full read)
 - Expected sub-agent dispatches:
@@ -138,7 +154,9 @@
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC and packet-level gate command.
-- Record remaining packet-local risk (flat-SupportIR global selection deviation; fixture swap if exercised).
+- Confirm AC-5 uses the named `multi_tool_triangle.3mf` fixture; no fixture substitution is expected.
+- Run the required guest freshness/fingerprint gate `cargo xtask build-guests --check` before attributing any e2e result or failure to this packet; rebuild stale guests and rerun the e2e verification if needed.
+- Record remaining packet-local risk (flat-SupportIR global selection deviation).
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` so the test, bench, and example targets compile.

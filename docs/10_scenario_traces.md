@@ -97,7 +97,7 @@ vocabulary) and in the authoritative contract docs (`docs/02_ir_schemas.md`,
 
 ### Inputs
 
-- One overhanging object printed with `support_enabled = true`.
+- One overhanging object printed with `enable_support = true`.
 - Module set installs both `support-planner` (PrePass) and `tree-support`
   (Layer::Support). `traditional-support` is not installed for this scenario.
 - `tree-support.toml` declares `SupportPlanIR` as a manifest read.

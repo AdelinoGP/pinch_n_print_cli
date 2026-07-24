@@ -47,7 +47,7 @@ use support_planner::SupportPlanner;
 #[test]
 fn cap_exceeded_emits_one_diagnostic_per_layer() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_max_branches_per_layer", ConfigValue::Int(1024)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
@@ -116,7 +116,7 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
 #[test]
 fn multi_object_cap_diagnostic_merges_per_layer() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_max_branches_per_layer", ConfigValue::Int(1024)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
@@ -199,7 +199,7 @@ fn multi_object_cap_diagnostic_merges_per_layer() {
 #[test]
 fn below_cap_emits_no_cap_diagnostic() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_max_branches_per_layer", ConfigValue::Int(1024)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
@@ -242,7 +242,7 @@ fn below_cap_emits_no_cap_diagnostic() {
 #[test]
 fn interface_bottom_layers_emits_one_typed_diagnostic() {
     let config = make_planner_config(&[
-        ("support_enabled", ConfigValue::Bool(true)),
+        ("enable_support", ConfigValue::Bool(true)),
         ("support_raft_layers", ConfigValue::Int(0)),
         ("support_interface_bottom_layers", ConfigValue::Int(3)),
         ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
@@ -304,7 +304,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
     // Case 1: explicit -1.
     {
         let config = make_planner_config(&[
-            ("support_enabled", ConfigValue::Bool(true)),
+            ("enable_support", ConfigValue::Bool(true)),
             ("support_raft_layers", ConfigValue::Int(0)),
             ("support_interface_bottom_layers", ConfigValue::Int(-1)),
             ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
@@ -343,7 +343,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
     // Case 2: key absent entirely.
     {
         let config = make_planner_config(&[
-            ("support_enabled", ConfigValue::Bool(true)),
+            ("enable_support", ConfigValue::Bool(true)),
             ("support_raft_layers", ConfigValue::Int(0)),
             ("tree_support_branch_diameter", ConfigValue::Float(2.0)),
             (

@@ -1131,6 +1131,7 @@ fn map_capture_error(e: slicer_runtime::CaptureExecutionError) -> VisualDebugErr
 fn run_postpass_taps(
     ctx: &mut slicer_runtime::PrepassContext,
     request: &slicer_runtime::CaptureRequest,
+    support_tools: slicer_runtime::layer_executor::SupportToolSelection,
 ) -> Result<slicer_runtime::CaptureOutput, VisualDebugError> {
     for tap in &request.stage_ids {
         if !slicer_runtime::layer_executor::POSTPASS_TAP_STAGE_IDS.contains(&tap.as_str()) {
@@ -1144,14 +1145,16 @@ fn run_postpass_taps(
     // Tier 2: run every per-layer stage for every layer (no truncation —
     // the finalization/emission tiers below need every layer's committed
     // LayerCollectionIR).
-    let (mut layer_irs, _layer_audits) = slicer_runtime::execute_per_layer_with_events(
-        &ctx.plan,
-        &ctx.blackboard,
-        &ctx.layer_runner,
-        &slicer_runtime::NoopLayerProgressSink,
-        &ctx.wasm_handles,
-    )
-    .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
+    let (mut layer_irs, _layer_audits) =
+        slicer_runtime::layer_executor::execute_per_layer_with_events_and_support_tools(
+            &ctx.plan,
+            &ctx.blackboard,
+            &ctx.layer_runner,
+            &slicer_runtime::NoopLayerProgressSink,
+            &ctx.wasm_handles,
+            support_tools,
+        )
+        .map_err(|e| VisualDebugError::CaptureFailed(e.to_string()))?;
 
     // Tier 3: layer finalization (module-based, if any is bound in this plan).
     slicer_runtime::execute_layer_finalization(
@@ -1342,6 +1345,7 @@ fn run_model_source(
     // `slicer-gcode`'s serializer reads), which `prepare_prepass_context`
     // consumes below.
     let config_source_raw = config_source.clone();
+    let support_tools = slicer_runtime::run::parse_support_tool_selection(&config_source_raw);
 
     // The model-wide XY extent, captured before `mesh` is moved into the
     // prepass context below.
@@ -1413,11 +1417,12 @@ fn run_model_source(
             stage_ids: arena_tap_ids,
             layer_indices: layer_indices.clone(),
         };
-        arena_output = slicer_runtime::execute_captured_stages(
+        arena_output = slicer_runtime::layer_executor::execute_captured_stages_with_support_tools(
             &ctx.plan,
             &ctx.blackboard,
             &ctx.layer_runner,
             &ctx.wasm_handles,
+            support_tools,
             &capture_request,
         )
         .map_err(map_capture_error)?;
@@ -1442,7 +1447,7 @@ fn run_model_source(
             stage_ids: postpass_tap_ids,
             layer_indices: layer_indices.clone(),
         };
-        postpass_output = run_postpass_taps(&mut ctx, &capture_request)?;
+        postpass_output = run_postpass_taps(&mut ctx, &capture_request, support_tools)?;
     }
 
     // Merge the three closures' outputs into one, deterministically ordered

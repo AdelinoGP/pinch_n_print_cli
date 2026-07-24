@@ -322,7 +322,7 @@
 ### Support
 | Internal key | UI label | Type | Default | Units/Enum | Applies-to mode | Description | In Codebase |
 |---|---|---|---|---|---|---|---|
-| "enable_support" | Enable support | coBool | 0 | - | comSimple | Enable support generation for overhangs. | ❌ |
+| "enable_support" | Enable support | coBool | 0 | - | comSimple | Enable support generation for overhangs. | ✅ |
 | "support_type" | Type | coEnum | normal(auto) | normal(auto)/tree(auto)/normal(manual)/tree(manual) | comSimple | Auto or manual support generation mode. | ✅ |
 | "support_style" | Style | coEnum | Default (Grid/Organic) | normal: default/grid/snug; tree: organic/tree_slim/tree_strong/tree_hybrid | comAdvanced | Style and shape of support material; enum set depends on support_type. | ❌ |
 | "support_threshold_angle" | Threshold angle | coInt | 30 | ° | comSimple | Support generated for overhangs with slope below this angle. | ❌ |
@@ -350,8 +350,8 @@
 ### Support filament
 | Internal key | UI label | Type | Default | Units/Enum | Applies-to mode | Description | In Codebase |
 |---|---|---|---|---|---|---|---|
-| "support_filament" | Support/raft base | coInt | 0 | extruder index | comSimple | Extruder for support base and raft; 0 = default. | ❌ |
-| "support_interface_filament" | Support/raft interface | coInt | 0 | extruder index | comSimple | Extruder for support interface; 0 = default. | ❌ |
+| "support_filament" | Support/raft base | coInt | 0 | extruder index | comSimple | Extruder for support base and raft; 0 = default. | ✅ |
+| "support_interface_filament" | Support/raft interface | coInt | 0 | extruder index | comSimple | Extruder for support interface; 0 = default. | ✅ |
 | "support_interface_not_for_body" | Avoid interface filament for base | coBool | 1 | - | comSimple | Avoid using support interface filament for support base if possible. | ❌ |
 
 ### Support ironing

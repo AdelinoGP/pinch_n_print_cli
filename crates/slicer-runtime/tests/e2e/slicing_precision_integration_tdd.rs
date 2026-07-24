@@ -219,6 +219,8 @@ fn default_emits_fewer_lines_than_legacy() {
 ///
 /// Re-blessed 2026-07-18 after packet 171 made `gcode_flavor` an explicit
 /// CONFIG_BLOCK key; motion lines remain unchanged.
+/// This refresh captures packet 172's Orca `enable_support` key spelling and
+/// the currently emitted `M73` progress lines.
 ///
 /// To record the golden for the first time (or re-record after a justified change):
 /// ```text

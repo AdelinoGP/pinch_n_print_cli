@@ -840,55 +840,115 @@ fn resolve_object(
     }
 }
 
-/// Convert every object-level sidecar key to a typed `ConfigValue` entry.
+/// Convert recognized object-level sidecar keys to typed `ConfigValue` entries.
 ///
-/// Replaces the prior narrow allowlist (`extruder` / `enable_support` /
-/// `support_type`) with a generic extraction: every key in `metadata` is
-/// emitted with string values coerced via
-/// [`coerce_string_to_config_value`], so PNP sees the same OrcaSlicer key
-/// the 3MF authored, regardless of whether the rest of the pipeline
-/// currently reads it. Keys PNP does not know about are still materialised
-/// in the per-object config (and later `apply_overlay`ed through
-/// `object_config:<id>:<key>` into the runtime's `config_source`).
+/// Extends the original (`extruder` / `enable_support` / `support_type`)
+/// allowlist with the OrcaSlicer per-object keys consumed by PNP. Unknown
+/// keys are dropped after emitting a debug log so they cannot enter the
+/// runtime's per-object config through `object_config:<id>:<key>`.
 ///
 /// `extruder` is special-cased: OrcaSlicer 3MF authors it 1-indexed, while
 /// the runtime expects 0-indexed; values ≥ 1 are rebased, raw `0` stays
-/// `Int(0)`. Non-numeric values are coerced normally (and would never be
-/// re-introspected for re-indexing). Mirrors the part-level conversion
-/// discipline at the modifier-volume site.
+/// `Int(0)`. The support filament selectors use the same rebase convention.
+/// Non-numeric `extruder` values are coerced normally, while invalid numeric
+/// values in the typed allowlist are warned about and dropped.
 fn object_metadata_to_config_data(
     metadata: &std::collections::BTreeMap<String, String>,
 ) -> HashMap<String, ConfigValue> {
     let mut out = HashMap::new();
     for (key, value) in metadata {
-        if key == "extruder" {
-            // OrcaSlicer 3MF authors extruders 1-indexed; runtime uses 0-indexed.
-            // Clamp at 0: raw `extruder=0` (OrcaSlicer "inherit" sentinel) stays
-            // as literal `Int(0)`.
-            if let Ok(v) = value.parse::<i64>() {
-                let rebased = if v >= 1 { v - 1 } else { 0 };
-                out.insert(key.clone(), ConfigValue::Int(rebased));
-            } else {
-                log::warn!(
-                    target: "slicer_model_io::loader",
-                    "object-level extruder value '{}' is not a valid integer, skipping",
-                    value
-                );
+        match key.as_str() {
+            "name" | "matrix" => {}
+            "extruder" => {
+                if let Ok(v) = value.parse::<i64>() {
+                    let rebased = if v >= 1 { v - 1 } else { 0 };
+                    out.insert(key.clone(), ConfigValue::Int(rebased));
+                } else {
+                    out.insert(key.clone(), coerce_string_to_config_value(value));
+                }
             }
-            continue;
-        }
-        out.insert(key.clone(), coerce_string_to_config_value(value));
-    }
-    if let Some(s) = metadata.get("sparse_infill_density") {
-        match parse_density_value(s) {
-            Some(v) => {
-                out.insert("sparse_infill_density".to_string(), ConfigValue::Float(v));
+            "enable_support" | "support_type" => {
+                out.insert(key.clone(), coerce_string_to_config_value(value));
             }
-            None => {
-                log::warn!(
+            "wall_loops"
+            | "top_shell_layers"
+            | "bottom_shell_layers"
+            | "raft_layers"
+            | "support_interface_top_layers"
+            | "support_interface_bottom_layers" => match value.parse::<i64>() {
+                Ok(parsed) => {
+                    out.insert(key.clone(), ConfigValue::Int(parsed));
+                }
+                Err(_) => {
+                    log::warn!(
+                        target: "slicer_model_io::loader",
+                        "invalid integer object metadata value for {key}: {value}"
+                    );
+                }
+            },
+            "support_filament" | "support_interface_filament" => match value.parse::<i64>() {
+                Ok(parsed) => {
+                    let rebased = if parsed >= 1 { parsed - 1 } else { 0 };
+                    out.insert(key.clone(), ConfigValue::Int(rebased));
+                }
+                Err(_) => {
+                    log::warn!(
+                        target: "slicer_model_io::loader",
+                        "invalid filament object metadata value for {key}: {value}"
+                    );
+                }
+            },
+            "layer_height"
+            | "brim_width"
+            | "support_threshold_angle"
+            | "support_top_z_distance" => match value.parse::<f64>() {
+                Ok(parsed) if parsed.is_finite() => {
+                    out.insert(key.clone(), ConfigValue::Float(parsed));
+                }
+                _ => {
+                    log::warn!(
+                        target: "slicer_model_io::loader",
+                        "invalid float object metadata value for {key}: {value}"
+                    );
+                }
+            },
+            "sparse_infill_density" => {
+                if value.contains('%') {
+                    if parse_density_value(value).is_some() {
+                        out.insert(key.clone(), ConfigValue::String(value.clone()));
+                    } else {
+                        log::warn!(
+                            target: "slicer_model_io::loader",
+                            "invalid density object metadata value for {key}: {value}"
+                        );
+                    }
+                } else if let Ok(parsed) = value.parse::<f64>() {
+                    if parsed.is_finite() {
+                        out.insert(key.clone(), ConfigValue::Float(parsed));
+                    } else {
+                        log::warn!(
+                            target: "slicer_model_io::loader",
+                            "invalid density object metadata value for {key}: {value}"
+                        );
+                    }
+                } else {
+                    log::warn!(
+                        target: "slicer_model_io::loader",
+                        "invalid density object metadata value for {key}: {value}"
+                    );
+                }
+            }
+            "seam_position"
+            | "sparse_infill_pattern"
+            | "brim_type"
+            | "fuzzy_skin"
+            | "support_base_pattern" => {
+                out.insert(key.clone(), ConfigValue::String(value.clone()));
+            }
+            _ => {
+                log::debug!(
                     target: "slicer_model_io::loader",
-                    "object-level sparse_infill_density value '{}' is not a valid density, skipping",
-                    s
+                    "unrecognized object metadata key dropped: {key}"
                 );
             }
         }

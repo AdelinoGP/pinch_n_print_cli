@@ -11,6 +11,28 @@ use std::time::Instant;
 
 use slicer_ir::{ConfigValue, MeshIR};
 
+/// Parse Orca-style 1-indexed support filament selections into the runtime's
+/// 0-indexed tool selection. Missing, zero, invalid, and out-of-range values
+/// retain the default tool 0 behavior.
+pub fn parse_support_tool_selection<K>(
+    config_source: &std::collections::HashMap<K, ConfigValue>,
+) -> crate::layer_executor::SupportToolSelection
+where
+    K: std::borrow::Borrow<str> + Eq + std::hash::Hash,
+{
+    let rebase = |key: &str| match config_source.get(key) {
+        Some(ConfigValue::Int(value)) if *value >= 1 => value
+            .checked_sub(1)
+            .and_then(|rebased| u32::try_from(rebased).ok())
+            .unwrap_or(0),
+        _ => 0,
+    };
+    crate::layer_executor::SupportToolSelection {
+        support_tool: rebase("support_filament"),
+        interface_tool: rebase("support_interface_filament"),
+    }
+}
+
 use crate::config_resolution::{
     resolve_global_config, resolve_per_object_configs, resolve_per_tool_configs,
     validate_support_layer_heights, ConfigBoundsIndex,
@@ -755,6 +777,7 @@ pub fn run_slice_with_collector(
                 DefaultGCodeSerializer::with_extrusion_mode(relative).with_flavor(flavor),
             ),
         },
+        support_tools: parse_support_tool_selection(&config_source),
         resolved_configs: Arc::new(resolved_configs_map),
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
@@ -986,4 +1009,64 @@ pub fn prepare_prepass_context(
         layer_runner,
         default_resolved_config: Arc::new(default_resolved_config),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_support_tool_selection;
+    use slicer_ir::ConfigValue;
+    use std::collections::HashMap;
+
+    #[test]
+    fn parse_support_tool_selection_rebases_valid_orca_filament_indices() {
+        let absent = HashMap::<String, ConfigValue>::new();
+        let selection = parse_support_tool_selection(&absent);
+        assert_eq!(selection.support_tool, 0);
+        assert_eq!(selection.interface_tool, 0);
+
+        let mut zero = HashMap::new();
+        zero.insert("enable_support".to_string(), ConfigValue::Bool(false));
+        zero.insert("support_filament".to_string(), ConfigValue::Int(0));
+        zero.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(0),
+        );
+        let selection = parse_support_tool_selection(&zero);
+        assert_eq!(selection.support_tool, 0);
+        assert_eq!(selection.interface_tool, 0);
+
+        let mut configured = HashMap::new();
+        configured.insert("enable_support".to_string(), ConfigValue::Bool(true));
+        configured.insert("support_filament".to_string(), ConfigValue::Int(2));
+        configured.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(3),
+        );
+        let selection = parse_support_tool_selection(&configured);
+        assert_eq!(selection.support_tool, 1);
+        assert_eq!(selection.interface_tool, 2);
+    }
+
+    #[test]
+    fn parse_support_tool_selection_rejects_invalid_or_out_of_range_indices() {
+        let mut invalid = HashMap::new();
+        invalid.insert("support_filament".to_string(), ConfigValue::Int(-1));
+        invalid.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(i64::from(u32::MAX) + 2),
+        );
+        let selection = parse_support_tool_selection(&invalid);
+        assert_eq!(selection.support_tool, 0);
+        assert_eq!(selection.interface_tool, 0);
+
+        let mut extreme = HashMap::new();
+        extreme.insert("support_filament".to_string(), ConfigValue::Int(i64::MAX));
+        extreme.insert(
+            "support_interface_filament".to_string(),
+            ConfigValue::Int(i64::MIN),
+        );
+        let selection = parse_support_tool_selection(&extreme);
+        assert_eq!(selection.support_tool, 0);
+        assert_eq!(selection.interface_tool, 0);
+    }
 }

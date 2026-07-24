@@ -12,7 +12,7 @@ use tree_support::TreeSupport;
 
 fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     ConfigViewBuilder::new()
-        .bool("support_enabled", enabled)
+        .bool("enable_support", enabled)
         .float("support_density", density)
         .float("support_angle", angle)
         .float("support_speed", speed)

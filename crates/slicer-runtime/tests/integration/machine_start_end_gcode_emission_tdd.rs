@@ -236,6 +236,7 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
         bounds: Arc::new(config_bounds),
         wasm_handles,
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     // 8. Run the pipeline. pipeline_source drives CONFIG_BLOCK generation.

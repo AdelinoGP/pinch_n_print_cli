@@ -230,7 +230,7 @@ does NOT touch extrusion math.
 
 - Unit: `raft-default` reads a synthetic `RaftPlan` with 3 layers, emits 3 raft regions per object.
 - Unit: multi-object fixture with overlapping footprints — raft regions union correctly.
-- Integration: `regression_wedge.stl` with `support_raft_layers = 3`, `support_enabled = true`. Round-trip through the prepass, assert:
+- Integration: `regression_wedge.stl` with `support_raft_layers = 3`, `enable_support = true`. Round-trip through the prepass, assert:
   - `RaftRegionIR.entries.len() == 3` (or, for Carrier (a), 3 new layers in `LayerPlanIR`).
   - Each raft region's footprint contains the object's first-layer XY bbox.
   - First raft layer Z = `z_bed - raft_layer_height * 3`.

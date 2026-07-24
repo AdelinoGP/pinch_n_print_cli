@@ -13,6 +13,7 @@ mod cube_4color_modifier_part_e2e_tdd;
 mod cube_painted_e2e_tdd;
 mod cube_painted_overrides_e2e_tdd;
 mod infill_overlap_changes_gcode_tdd;
+mod mm_real_fixture_gcode_tdd;
 mod modifier_infill_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;

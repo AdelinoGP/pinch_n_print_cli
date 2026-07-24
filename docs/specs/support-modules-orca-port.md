@@ -429,7 +429,7 @@ numerical OrcaSlicer parity.
 The current invariant tests are in
 `crates/slicer-runtime/tests/integration/support_invariants_wedge_tdd.rs` and
 run against `resources/regression_wedge.stl` with default config and
-`support_enabled = true`.
+`enable_support = true`.
 
 1. **Finite branch paths.** `SupportPlanIR.entries` is non-empty for enabled
    support, every branch has at least two points, and every point's coordinate
@@ -480,7 +480,7 @@ Packet 119 also verifies the additive public seams:
 
 ### Self-capture golden regression
 
-Captured on `regression_wedge.stl` with default config + `support_enabled = true`
+Captured on `regression_wedge.stl` with default config + `enable_support = true`
 after the prerequisite support fixes and before later Block C algorithmic
 changes. These are Pinch 'n Print self-captures, not OrcaSlicer reference data.
 

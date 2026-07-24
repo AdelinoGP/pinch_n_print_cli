@@ -426,7 +426,7 @@ fn traditional_support_wasm_path() -> std::path::PathBuf {
 }
 
 /// Build a TestModuleBundle for a given LoadedModule with the WASM bytes at wasm_path.
-/// Configures support_enabled=true so modules actually emit paths.
+/// Configures enable_support=true so modules actually emit paths.
 fn compile_support_module(
     engine: &Arc<WasmEngine>,
     loaded: LoadedModule,
@@ -458,7 +458,7 @@ fn compile_support_module(
     );
     let mut config_map = std::collections::HashMap::new();
     config_map.insert(
-        "support_enabled".to_string(),
+        "enable_support".to_string(),
         slicer_ir::ConfigValue::Bool(true),
     );
     // Also set density to a non-zero value to avoid early-exit in modules
@@ -973,7 +973,7 @@ mod planner_consuming_tier {
             .expect("instance pool must build"),
         );
         let mut config_map = std::collections::HashMap::new();
-        config_map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
+        config_map.insert("enable_support".to_string(), ConfigValue::Bool(true));
         config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
         let module = CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(ConfigView::from_map(config_map)))

@@ -23,6 +23,218 @@ fn make_zip_without_sidecar() -> zip::ZipArchive<Cursor<Vec<u8>>> {
     zip::ZipArchive::new(buf).unwrap()
 }
 
+fn make_model_3mf(metadata: &[(&str, &str)]) -> Vec<u8> {
+    let metadata_xml = metadata
+        .iter()
+        .map(|(key, value)| format!(r#"    <metadata key="{key}" value="{value}"/>"#))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let sidecar = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="1">
+{metadata_xml}
+  </object>
+</config>"#
+    );
+    let model = r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="1" y="0" z="0"/>
+          <vertex x="0" y="1" z="0"/>
+        </vertices>
+        <triangles><triangle v1="0" v2="1" v3="2"/></triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="1"/></build>
+</model>"#;
+
+    let buf = Cursor::new(Vec::new());
+    let mut writer = zip::ZipWriter::new(buf);
+    let opts = SimpleFileOptions::default();
+    writer.start_file("3D/3dmodel.model", opts).unwrap();
+    writer.write_all(model.as_bytes()).unwrap();
+    writer
+        .start_file("Metadata/model_settings.config", opts)
+        .unwrap();
+    writer.write_all(sidecar.as_bytes()).unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+static NEXT_TEMP_MODEL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+fn load_model_debug(metadata: &[(&str, &str)]) -> String {
+    let suffix = NEXT_TEMP_MODEL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "slicer-model-io-object-metadata-{}-{suffix}.3mf",
+        std::process::id(),
+    ));
+    std::fs::write(&path, make_model_3mf(metadata)).unwrap();
+    let result = slicer_model_io::loader::load_model(&path);
+    let _ = std::fs::remove_file(&path);
+    format!("{result:?}")
+}
+
+#[test]
+fn extended_object_allowlist_types() {
+    let debug = load_model_debug(&[
+        ("wall_loops", "3"),
+        ("top_shell_layers", "4"),
+        ("bottom_shell_layers", "3"),
+        ("raft_layers", "2"),
+        ("support_interface_top_layers", "2"),
+        ("support_interface_bottom_layers", "2"),
+        ("layer_height", "0.28"),
+        ("brim_width", "5.0"),
+        ("support_threshold_angle", "40"),
+        ("support_top_z_distance", "0.2"),
+        ("seam_position", "rear"),
+        ("sparse_infill_density", "20%"),
+        ("sparse_infill_pattern", "gyroid"),
+        ("brim_type", "outer_only"),
+        ("fuzzy_skin", "external"),
+        ("support_base_pattern", "rectilinear"),
+    ]);
+
+    for expected in [
+        "\"wall_loops\": Int(3)",
+        "\"top_shell_layers\": Int(4)",
+        "\"bottom_shell_layers\": Int(3)",
+        "\"raft_layers\": Int(2)",
+        "\"support_interface_top_layers\": Int(2)",
+        "\"support_interface_bottom_layers\": Int(2)",
+        "\"layer_height\": Float(0.28)",
+        "\"brim_width\": Float(5.0)",
+        "\"support_threshold_angle\": Float(40.0)",
+        "\"support_top_z_distance\": Float(0.2)",
+        "\"seam_position\": String(\"rear\")",
+        "\"sparse_infill_density\": String(\"20%\")",
+        "\"sparse_infill_pattern\": String(\"gyroid\")",
+        "\"brim_type\": String(\"outer_only\")",
+        "\"fuzzy_skin\": String(\"external\")",
+        "\"support_base_pattern\": String(\"rectilinear\")",
+    ] {
+        assert!(debug.contains(expected), "missing {expected} in {debug}");
+    }
+}
+
+#[test]
+fn non_finite_object_float_metadata_is_rejected() {
+    let debug = load_model_debug(&[
+        ("layer_height", "NaN"),
+        ("brim_width", "inf"),
+        ("support_threshold_angle", "-inf"),
+        ("support_top_z_distance", "NaN"),
+        ("sparse_infill_density", "NaN"),
+    ]);
+    for key in [
+        "layer_height",
+        "brim_width",
+        "support_threshold_angle",
+        "support_top_z_distance",
+        "sparse_infill_density",
+    ] {
+        assert!(
+            !debug.contains(&format!("\"{key}\":")),
+            "non-finite object metadata must be skipped for {key}: {debug}"
+        );
+    }
+
+    let numeric_density = load_model_debug(&[("sparse_infill_density", "0.4")]);
+    assert!(
+        numeric_density.contains("\"sparse_infill_density\": Float(0.4)"),
+        "finite non-percentage density must remain Float: {numeric_density}"
+    );
+
+    let percentage_density = load_model_debug(&[("sparse_infill_density", "20%")]);
+    assert!(
+        percentage_density.contains("\"sparse_infill_density\": String(\"20%\")"),
+        "percentage density must remain String: {percentage_density}"
+    );
+}
+
+#[test]
+fn support_filament_keys_rebased() {
+    let debug = load_model_debug(&[
+        ("support_filament", "2"),
+        ("support_interface_filament", "3"),
+    ]);
+    assert!(
+        debug.contains("\"support_filament\": Int(1)"),
+        "support_filament must be rebased to zero-based indexing: {debug}"
+    );
+    assert!(
+        debug.contains("\"support_interface_filament\": Int(2)"),
+        "support_interface_filament must be rebased to zero-based indexing: {debug}"
+    );
+
+    let zero = load_model_debug(&[("support_filament", "0")]);
+    assert!(
+        zero.contains("\"support_filament\": Int(0)"),
+        "raw zero must stay zero: {zero}"
+    );
+}
+
+struct CapturedLogs {
+    records: std::sync::Mutex<Vec<(log::Level, String)>>,
+}
+
+impl log::Log for CapturedLogs {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        self.records
+            .lock()
+            .unwrap()
+            .push((record.level(), record.args().to_string()));
+    }
+
+    fn flush(&self) {}
+}
+
+static CAPTURED_LOGS: std::sync::OnceLock<CapturedLogs> = std::sync::OnceLock::new();
+
+#[test]
+fn invalid_and_unknown_object_keys_logged() {
+    let logger = CAPTURED_LOGS.get_or_init(|| CapturedLogs {
+        records: std::sync::Mutex::new(Vec::new()),
+    });
+    let _ = log::set_logger(logger);
+    log::set_max_level(log::LevelFilter::Debug);
+    logger.records.lock().unwrap().clear();
+
+    let debug = load_model_debug(&[("support_filament", "abc"), ("frobnicate_mode", "7")]);
+    assert!(
+        !debug.contains("\"support_filament\""),
+        "invalid support_filament must be dropped: {debug}"
+    );
+    assert!(
+        !debug.contains("\"frobnicate_mode\""),
+        "unknown object keys must be dropped: {debug}"
+    );
+
+    let records = logger.records.lock().unwrap();
+    assert!(
+        records.iter().any(|(level, message)| {
+            *level == log::Level::Warn && message.contains("support_filament")
+        }),
+        "invalid support_filament must be warned about: {records:?}"
+    );
+    assert!(
+        records.iter().any(|(level, message)| {
+            *level == log::Level::Debug && message.contains("frobnicate_mode")
+        }),
+        "unknown frobnicate_mode must be debug-logged: {records:?}"
+    );
+}
+
 #[test]
 fn parses_cube_cilindrical_modifier_sidecar() {
     use slicer_model_io::sidecar::{parse_3mf_sidecar, PartSubtype};

@@ -129,6 +129,7 @@ fn gcode_with_optional_flavor(flavor: Option<&str>) -> String {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

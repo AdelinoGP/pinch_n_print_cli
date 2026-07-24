@@ -27,7 +27,7 @@ use traditional_support::TraditionalSupport;
 /// Helper: create an enabled support config.
 fn enabled_config() -> ConfigView {
     ConfigViewBuilder::new()
-        .bool("support_enabled", true)
+        .bool("enable_support", true)
         .float("support_density", 0.2)
         .float("support_angle", 0.0)
         .float("support_speed", 50.0)

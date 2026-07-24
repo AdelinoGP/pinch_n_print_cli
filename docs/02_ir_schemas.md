@@ -383,13 +383,36 @@ was promoted from `pub(crate)` to `pub` in Packet 81 to support the CLI's
 ### `ObjectConfig.data` Population (Normative — Packet 67)
 
 `ObjectConfig.data: HashMap<String, ConfigValue>` is populated during
-3MF model loading from object-scoped sidecar metadata. The loader
-extracts an allowlist of keys (`extruder`, `enable_support`,
-`support_type`) from each `<object>`'s `<metadata>` block and seeds
-them into the host's `config_source` via the
-`object_config:<id>:<key>` pattern documented in §"Config Key
-Namespaces" of this document. This is what makes user-specified per-object
-metadata from 3MF files reach `RegionMapping` and downstream consumers.
+3MF model loading from object-scoped sidecar metadata. The loader uses a
+hand-written, non-data-driven allowlist from each `<object>`'s `<metadata>`
+block and seeds admitted keys into the host's `config_source` via the
+`object_config:<id>:<key>` pattern documented in §"Config Key Namespaces" of
+this document. This is what makes user-specified per-object metadata from 3MF
+files reach `RegionMapping` and downstream consumers.
+
+The complete admitted object-level key list is:
+
+- Existing keys: `extruder`, `enable_support`, `support_type`.
+- Integer keys: `wall_loops`, `top_shell_layers`, `bottom_shell_layers`,
+  `raft_layers`, `support_interface_top_layers`,
+  `support_interface_bottom_layers`.
+- Rebasing integer keys: `support_filament`,
+  `support_interface_filament`.
+- Float keys: `layer_height`, `brim_width`, `support_threshold_angle`,
+  `support_top_z_distance`.
+- String keys: `seam_position`, `sparse_infill_density`,
+  `sparse_infill_pattern`, `brim_type`, `fuzzy_skin`,
+  `support_base_pattern`.
+
+The 18 Packet 172 additions are the six ordinary integer keys, two rebasing
+integer keys, four float keys, and six string keys above. Orca's
+`support_filament` and `support_interface_filament` values are 1-indexed and
+are rebased to 0-indexed values at load time; raw `0` remains `0`. The existing
+`extruder` selector follows the same rebase convention. For
+`sparse_infill_density`, a percentage such as `20%` remains a raw
+`ConfigValue::String`, while a numeric non-percentage value is a
+`ConfigValue::Float`. Unknown object keys are dropped after one debug log per
+key; they are not silently accepted or inserted untyped.
 
 ### Host-Local Sidecar Types (Normative — Packet 56)
 
@@ -453,10 +476,12 @@ to `resolve_object` for routing (packets 56b/56c).
 distinct sidecar sources in a single 3MF file:
 
 1. **Part-level `<metadata>`** inside a `<part>` element (Packet 56)
-   — keyed and stamped per the standard manifest schema.
+   — follows its separate part-level metadata rules and subtype routing; Packet
+   172 does not widen that allowlist.
 2. **Object-level `<metadata>`** at the `<object>` scope (Packet 67) —
-   routed to every `modifier_volume` belonging to that object. Allowlist:
-   `extruder`, `enable_support`, `support_type`.
+   routed to every `modifier_volume` belonging to that object and governed by
+   the complete object-level allowlist above. This object-level list is
+   separate from the part-level allowlist and does not widen it.
 
 Subtype-key exclusion (Packet 68): the literal key `subtype` is
 routing metadata and is excluded from stamping into
@@ -1313,6 +1338,11 @@ pub struct SupportIR {
     pub ironing_paths:    Vec<ExtrusionPath3D>, 
 }
 ```
+
+Packet 172 routing: support paths and raft paths are emitted on the support
+tool; interface paths and ironing paths are emitted on the interface tool.
+Selection is global because this flat `SupportIR` has no per-object identity;
+a future packet can lift `SupportIR` to per-object selection when needed.
 
 ---
 

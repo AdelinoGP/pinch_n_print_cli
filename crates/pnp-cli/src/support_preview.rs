@@ -51,7 +51,7 @@ pub fn run_support_preview(
         None => HashMap::new(),
     };
     let support_enabled = !matches!(
-        config_source.get("support_enabled"),
+        config_source.get("enable_support"),
         Some(ConfigValue::Bool(false))
     );
 

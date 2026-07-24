@@ -304,7 +304,7 @@ fn support_disabled_produces_explicit_empty_plan() {
     let plan = ctx
         .blackboard
         .support_plan()
-        .expect("SupportPlanIR must be committed even when support_enabled=false");
+        .expect("SupportPlanIR must be committed even when enable_support=false");
     assert!(
         plan.entries.is_empty(),
         "disabled support should produce an empty plan, got {} entries",

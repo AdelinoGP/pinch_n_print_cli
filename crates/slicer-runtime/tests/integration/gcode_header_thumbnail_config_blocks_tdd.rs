@@ -183,6 +183,7 @@ fn slice_to_gcode_with_key(
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -533,6 +534,7 @@ fn config_block_includes_user_passed() {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -642,6 +644,7 @@ fn config_block_fork_keys_never_shadowed() {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
         .expect("pipeline should succeed");
@@ -951,6 +954,7 @@ fn rejects_missing_thumbnail_file() {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -986,6 +990,7 @@ fn rejects_non_png_thumbnail() {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -1022,6 +1027,7 @@ fn empty_config_view_still_emits_sentinels() {
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

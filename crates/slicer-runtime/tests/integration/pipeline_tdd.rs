@@ -241,6 +241,7 @@ fn run_pipeline_empty_modules() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -279,6 +280,7 @@ fn run_pipeline_returns_gcode_string() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -334,6 +336,7 @@ fn run_pipeline_propagates_prepass_error() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -394,6 +397,7 @@ fn run_pipeline_propagates_layer_error() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -430,6 +434,7 @@ fn run_pipeline_propagates_postpass_error() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -538,6 +543,7 @@ fn run_pipeline_calls_stages_in_order() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -604,6 +610,7 @@ fn run_pipeline_propagates_finalization_error() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -684,6 +691,7 @@ fn run_pipeline_with_layers_produces_output() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -764,6 +772,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -841,6 +850,7 @@ fn prepass_audits_live_path() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -961,6 +971,7 @@ fn layer_audits_live_path() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1061,6 +1072,7 @@ fn access_audits_live_path() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1224,6 +1236,7 @@ fn access_audits_live_path_read_performing() {
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
         wasm_handles: Default::default(),
         cancel_flag: None,
+        support_tools: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");

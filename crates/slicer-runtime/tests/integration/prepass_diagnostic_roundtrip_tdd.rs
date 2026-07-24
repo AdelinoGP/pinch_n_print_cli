@@ -214,7 +214,7 @@ fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan
 
 fn base_config() -> HashMap<String, ConfigValue> {
     let mut map = HashMap::new();
-    map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
+    map.insert("enable_support".to_string(), ConfigValue::Bool(true));
     map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     map
 }

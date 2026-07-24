@@ -1295,7 +1295,7 @@ fn minimal_layer_collection_only_module_dir(tmp: &Path) -> PathBuf {
 // Finding 5 (packet 159 second review pass): the CLI-level "no partial
 // bundle" guarantee on a real `CaptureFailed` (as opposed to `RenderFailed`)
 // still holds independent coverage below — a different, still-real failure
-// mode (`Layer::Support` uncommitted because `support_enabled` defaults to
+// mode (`Layer::Support` uncommitted because `enable_support` defaults to
 // `false`) that fails before `run_model_source`'s render loop is ever
 // reached, even on a request that carries a non-empty `visualizations` list.
 
@@ -1305,7 +1305,7 @@ fn capture_failure_on_a_visualization_bearing_request_leaves_no_partial_bundle_v
     let config = write_bounded_config(tmp.path());
     let output = tmp.path().join("bundle");
 
-    // `Layer::Support` with `support_enabled` left at its default (`false`
+    // `Layer::Support` with `enable_support` left at its default (`false`
     // in every support-generating module): the tap is documented/supported
     // but no module commits it at layer 0 for this request, so capture
     // fails before `run_model_source`'s render loop is ever reached — even

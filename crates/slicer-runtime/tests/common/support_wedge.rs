@@ -46,7 +46,7 @@ pub fn prepare_wedge_context_with_overrides(
 
     let mut config: HashMap<String, ConfigValue> = HashMap::new();
     config.insert(
-        "support_enabled".to_string(),
+        "enable_support".to_string(),
         ConfigValue::Bool(support_enabled),
     );
     for (key, value) in overrides {
@@ -62,10 +62,10 @@ pub fn prepare_wedge_context_with_overrides(
         let plan = ctx
             .blackboard
             .support_plan()
-            .expect("support_plan must be committed when support_enabled=true");
+            .expect("support_plan must be committed when enable_support=true");
         assert!(
             !plan.entries.is_empty(),
-            "support_enabled=true but SupportPlanIR.entries is empty (len={}) for fixture {}",
+            "enable_support=true but SupportPlanIR.entries is empty (len={}) for fixture {}",
             plan.entries.len(),
             model.display()
         );

@@ -444,9 +444,9 @@ an empty `ConfigView`; keys absent from the view return `None` on
 lookup. This was normalised in Packet 73 for `support-geometry` (the
 final holdout) — two behavioural consequences for module authors:
 
-- Honour `support_enabled` (and analogous keys) directly. Earlier hosts
+- Honour `enable_support` (and analogous keys) directly. Earlier hosts
   injected an empty `ConfigView`, so a planner that probed
-  `support_enabled` saw `None` and ran anyway; that path is gone.
+  `enable_support` saw `None` and ran anyway; that path is gone.
 - Surface planner fatals as `Err(ModuleError::fatal(...))`. They are
   propagated by the host as `DispatchError` (no longer swallowed by
   macro/host glue).

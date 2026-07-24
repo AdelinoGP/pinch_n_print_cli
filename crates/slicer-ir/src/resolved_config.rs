@@ -116,7 +116,7 @@ impl ResolvedConfig {
             ConfigValue::String(self.sparse_fill_holder.clone()),
         );
         m.insert(
-            "support_enabled".into(),
+            "enable_support".into(),
             ConfigValue::Bool(self.support_enabled),
         );
         m.insert(
@@ -729,7 +729,7 @@ declare_resolved_config! {
 
      // Support
      /// Whether support is enabled.
-     cli "support_enabled"        support_enabled: bool = false => extract_bool;
+     cli "enable_support"         support_enabled: bool = false => extract_bool;
      /// Whether to suppress M73 progress commands.
      cli "disable_m73"             disable_m73: bool = false => extract_bool;
      /// Support generation type. Not CLI-bound today.

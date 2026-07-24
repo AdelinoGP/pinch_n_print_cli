@@ -2,7 +2,7 @@
 //!
 //! AC-2:  `support_raft_layers` and raft-plan config keys reach the guest
 //!         planner without producing raft geometry entries.
-//! AC-N1: `support_enabled = false` produces zero plan entries.
+//! AC-N1: `enable_support = false` produces zero plan entries.
 //! AC-N2: an empty layer-plan-view makes the planner return a fatal
 //!         `ModuleError`, which the host surfaces as `PrepassExecutionError`.
 
@@ -236,7 +236,7 @@ fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan
 
 fn base_config(enabled: bool) -> HashMap<String, ConfigValue> {
     let mut map = HashMap::new();
-    map.insert("support_enabled".to_string(), ConfigValue::Bool(enabled));
+    map.insert("enable_support".to_string(), ConfigValue::Bool(enabled));
     map.insert(
         "support_branch_angle_deg".to_string(),
         ConfigValue::Float(45.0),
@@ -296,7 +296,7 @@ fn raft_layers_config_is_honored() {
 
 // ── AC-N1: support disabled emits no plan ────────────────────────────────────
 
-/// AC-N1: `support_enabled = false` must produce zero plan entries.
+/// AC-N1: `enable_support = false` must produce zero plan entries.
 /// Previously the empty `ConfigView` default forced enabled = true and the
 /// planner always ran; now the config flows so the guest respects the flag.
 #[test]
@@ -304,7 +304,7 @@ fn support_disabled_emits_no_plan() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
-    let config = base_config(false); // support_enabled = false
+    let config = base_config(false); // enable_support = false
 
     let bundle = compile_support_planner_with_config(&engine, config);
     let (module, wasm_handles) = bundle.into_module_and_handles();
@@ -320,7 +320,7 @@ fn support_disabled_emits_no_plan() {
 
     assert!(
         support_plan.entries.is_empty(),
-        "support_enabled=false must produce zero SupportPlanIR entries; \
+        "enable_support=false must produce zero SupportPlanIR entries; \
          got {} entries",
         support_plan.entries.len()
     );
