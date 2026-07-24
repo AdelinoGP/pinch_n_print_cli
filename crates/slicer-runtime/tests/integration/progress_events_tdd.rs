@@ -51,7 +51,7 @@ fn error_fixture(fatal: bool) -> ProgressError {
 // ============================================================================
 
 #[test]
-fn event_schema_version_is_1_2_0() {
+fn event_schema_version_matches_documented_version_table() {
     assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.3.0");
 }
 
@@ -611,7 +611,7 @@ fn slice_stats_event_shape_and_ordering() {
     );
 
     let stats = &lines[stats_indices[0]];
-    assert_eq!(stats["schema_version"], "1.2.0");
+    assert_eq!(stats["schema_version"], PROGRESS_EVENT_SCHEMA_VERSION);
     assert_eq!(stats["gcode_prediction_seconds"], 4321);
     assert_eq!(stats["gcode_weight_grams"], 15.5);
     assert_eq!(stats["gcode_filament_length_mm"], 5432.1);

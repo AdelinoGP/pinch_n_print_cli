@@ -32,6 +32,13 @@ use crate::layer_executor::LayerProgressSink;
 /// `gcode_prediction_seconds`, `gcode_weight_grams`, `gcode_filament_length_mm`,
 /// `layer_count`, `first_layer_height_mm`, `extruded_volume_mm3`, and
 /// `toolchange_count` fields.
+///
+/// 1.3.0 (additive, packet 174): `cancelled` event type.
+///
+/// Every constructor in this module MUST stamp this constant (or its
+/// `_INSTRUMENTED` twin) rather than a version literal. A stream that mixes
+/// versions is unparseable by a consumer that keys its field expectations off
+/// the first line it sees.
 pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.3.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
@@ -89,7 +96,7 @@ pub enum ProgressEventType {
     SliceComplete,
     /// Emitted exactly once per successful slice (including degraded
     /// success), strictly before `slice_complete`, carrying whole-print
-    /// statistics (packet 169, schema 1.2.0).
+    /// statistics (introduced by packet 169 at schema 1.2.0).
     SliceStats,
     /// Emitted when a stage's module loop begins (instrumented stream only).
     StageStart,
@@ -147,7 +154,8 @@ pub struct ProgressError {
 /// A structured progress event emitted during slicing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressEvent {
-    /// Schema version ("1.2.0" — additive slice_stats event and fields).
+    /// Schema version — always `PROGRESS_EVENT_SCHEMA_VERSION`, or its
+    /// `_INSTRUMENTED` twin for the `--instrument-stderr` event types.
     pub schema_version: String,
     /// Type of event.
     pub event: ProgressEventType,
@@ -498,7 +506,7 @@ impl ProgressEvent {
         }
     }
 
-    /// Create a slice_stats event (packet 169, schema 1.2.0).
+    /// Create a slice_stats event (introduced by packet 169 at schema 1.2.0).
     ///
     /// Emitted exactly once per slice that produced a G-code artifact
     /// (including degraded-but-successful runs), strictly before
@@ -517,7 +525,7 @@ impl ProgressEvent {
         toolchange_count: u32,
     ) -> Self {
         Self {
-            schema_version: "1.2.0".to_string(),
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION.to_string(),
             event: ProgressEventType::SliceStats,
             timestamp_ms,
             slice_id,
@@ -864,17 +872,112 @@ impl LayerProgressSink for RuntimeProgressSink {
 mod tests {
     use super::*;
 
+    /// Pins the baseline version so a bump is a deliberate act, not a drift.
+    /// The literal here must match the version table in
+    /// `docs/09_progress_events.md`.
     #[test]
-    fn schema_version_is_1_2_0() {
-        // 1.2.0 (additive bump): `slice_stats` event and its optional fields
-        // introduced (packet 169). Per docs/09_progress_events.md
-        // §Compatibility, additive fields are a minor version bump.
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.2.0");
+    fn baseline_schema_version_matches_documented_version_table() {
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.3.0");
     }
 
+    /// The instrumented stream carries the same additive payload as the
+    /// baseline stream, so the two constants must not diverge.
     #[test]
-    fn instrumented_schema_version_is_1_2_0() {
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED, "1.2.0");
+    fn instrumented_schema_version_tracks_the_baseline() {
+        assert_eq!(
+            PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED,
+            PROGRESS_EVENT_SCHEMA_VERSION
+        );
+    }
+
+    /// Structural invariant: one slice emits one schema version.
+    ///
+    /// Regression guard — `slice_stats` used to hard-code `"1.2.0"` while every
+    /// other constructor stamped the constant, so a single stream advertised
+    /// two schemas. A consumer that reads the version off the first line and
+    /// then keys its field expectations to it is silently mis-parsed by that.
+    /// Asserting per-constructor literals would not have caught it; asserting
+    /// that the whole set agrees does.
+    #[test]
+    fn every_constructor_stamps_one_schema_version_per_stream() {
+        let slice_id = || "slice-xyz".to_string();
+        let ts = 1_735_843_200_000u64;
+
+        let baseline = vec![
+            ProgressEvent::phase_start(slice_id(), ProgressPhase::Prepass, ts),
+            ProgressEvent::phase_complete(
+                slice_id(),
+                ProgressPhase::Prepass,
+                ts,
+                1,
+                ProgressStatus::Ok,
+            ),
+            ProgressEvent::layer_start(slice_id(), ProgressPhase::PerLayer, 0, ts),
+            ProgressEvent::layer_complete(
+                slice_id(),
+                ProgressPhase::PerLayer,
+                0,
+                ts,
+                1,
+                ProgressStatus::Ok,
+                false,
+            ),
+            ProgressEvent::cancelled(slice_id(), ts),
+            ProgressEvent::slice_complete(slice_id(), ts, 1, ProgressStatus::Ok, false, 0, 0),
+            ProgressEvent::slice_stats(
+                slice_id(),
+                ts,
+                42,
+                None,
+                1.0,
+                3,
+                0.2,
+                BTreeMap::new(),
+                0,
+            ),
+        ];
+        for event in &baseline {
+            assert_eq!(
+                event.schema_version, PROGRESS_EVENT_SCHEMA_VERSION,
+                "{:?} stamped a version that differs from the baseline constant",
+                event.event
+            );
+        }
+
+        let instrumented = vec![
+            ProgressEvent::stage_start(
+                slice_id(),
+                ProgressPhase::Prepass,
+                "PrePass::MeshAnalysis".to_string(),
+                None,
+                ts,
+            ),
+            ProgressEvent::stage_complete(
+                slice_id(),
+                ProgressPhase::Prepass,
+                "PrePass::MeshAnalysis".to_string(),
+                None,
+                ts,
+                1,
+            ),
+            ProgressEvent::module_complete(
+                slice_id(),
+                ProgressPhase::PerLayer,
+                "Layer::Perimeters".to_string(),
+                "com.example.perimeters".to_string(),
+                Some(0),
+                ts,
+                1,
+                0,
+            ),
+        ];
+        for event in &instrumented {
+            assert_eq!(
+                event.schema_version, PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED,
+                "{:?} stamped a version that differs from the instrumented constant",
+                event.event
+            );
+        }
     }
 
     #[test]
@@ -890,7 +993,9 @@ mod tests {
             2_048,
         );
         let json = serde_json::to_string(&event).unwrap();
-        assert!(json.contains("\"schema_version\":\"1.2.0\""));
+        assert!(json.contains(&format!(
+            "\"schema_version\":\"{PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED}\""
+        )));
         assert!(json.contains("\"event\":\"module_complete\""));
         assert!(json.contains("\"stage\":\"Layer::Perimeters\""));
         assert!(json.contains("\"module_id\":\"com.example.perimeters\""));

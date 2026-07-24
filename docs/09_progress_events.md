@@ -36,7 +36,7 @@ Buffering requirement:
 
 ```json
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_stats|slice_complete",
   "timestamp_ms": 1735843200123,
   "slice_id": "9f9075ad-2bd8-4e9a-a2f5-3b9055d2f239",
@@ -173,7 +173,8 @@ matching on the dispatch result).
 
 ## Schema Version Cadence
 
-- `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`. `slice_stats` remains at `1.2.0` (its constructor hard-codes the version literal).
+- `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`.
+- A stream carries exactly one `schema_version`. Every constructor stamps `PROGRESS_EVENT_SCHEMA_VERSION` (or `PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED`); no event hard-codes a version literal. `slice_stats` did until this was corrected, which put two versions in one stream.
 
 The `schema_version` field follows additive minor bumps:
 
@@ -212,9 +213,10 @@ estimator falls back to:
 
 Passing `--instrument-stderr` to `pnp_cli slice` additionally emits
 per-stage and per-module brackets on the same stderr JSONL stream, at the
-same schema version (`"1.2.0"`) as the core stream — the instrumented
-stream carries the same additive payload as the base stream. `"1.3.0"`
-remains reserved for the future stage/module-event schema. New event types
+same schema version as the core stream — the instrumented stream carries
+the same additive payload as the base stream, so
+`PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED` always equals
+`PROGRESS_EVENT_SCHEMA_VERSION` (currently `"1.3.0"`). New event types
 (additive, backward-compatible with consumers that ignore unknown
 `event` values):
 
@@ -239,8 +241,8 @@ agent-facing workflow, see `17_agent_debugging.md`.
 Example excerpt (one prepass stage + one per-layer module):
 
 ```jsonl
-{"schema_version":"1.2.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
-{"schema_version":"1.2.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok"}
-{"schema_version":"1.2.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
-{"schema_version":"1.2.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
+{"schema_version":"1.3.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
+{"schema_version":"1.3.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok"}
+{"schema_version":"1.3.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
+{"schema_version":"1.3.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
 ```
