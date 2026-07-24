@@ -89,18 +89,38 @@ fn macro_layer_world_package_name_is_canonical() {
 #[test]
 fn macro_other_world_package_names_are_canonical() {
     let root = workspace_root();
+    // The contract is the package *name*, not its version. `slicer-schema`'s
+    // `WORLD_*` constants are themselves version-free, so a version literal here
+    // would be a second, unowned source of truth: it pins a number nothing else
+    // in the tree agrees to, and a legitimate world bump silently reads as
+    // drift. (It did — this test pinned `@2.0.0` against a `@3.0.0` file.)
+    // Assert instead that each world declares the canonical name with *some*
+    // well-formed version.
     let canonical_worlds = [
-        ("world-prepass", "slicer:world-prepass@2.0.0"),
-        ("world-postpass", "slicer:world-postpass@1.0.0"),
-        ("world-finalization", "slicer:world-finalization@1.0.0"),
+        ("world-prepass", slicer_schema::WORLD_PREPASS),
+        ("world-postpass", slicer_schema::WORLD_POSTPASS),
+        ("world-finalization", slicer_schema::WORLD_FINALIZATION),
     ];
     for (slug, pkg) in canonical_worlds {
         let path = root.join(format!("crates/slicer-schema/wit/deps/{slug}/{slug}.wit"));
         let content =
             fs::read_to_string(&path).unwrap_or_else(|_| panic!("read canonical {slug}.wit"));
+        let declaration = content
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("package "))
+            .and_then(|rest| rest.trim().strip_suffix(';'))
+            .unwrap_or_else(|| panic!("canonical {slug}.wit must declare a package"));
+        let (name, version) = declaration
+            .split_once('@')
+            .unwrap_or_else(|| panic!("canonical {slug}.wit package must be versioned: {declaration}"));
+        assert_eq!(
+            name, pkg,
+            "canonical {slug}.wit must declare package name '{pkg}' (found '{name}')"
+        );
+        let parts: Vec<&str> = version.split('.').collect();
         assert!(
-            content.contains(&format!("package {pkg};")),
-            "canonical {slug}.wit must declare package '{pkg}'"
+            parts.len() == 3 && parts.iter().all(|p| p.parse::<u32>().is_ok()),
+            "canonical {slug}.wit package version must be a three-part semver (found '{version}')"
         );
     }
 

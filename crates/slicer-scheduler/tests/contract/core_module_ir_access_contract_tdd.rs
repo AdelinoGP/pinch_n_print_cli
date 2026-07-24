@@ -249,7 +249,13 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
             ],
             "Layer::PerimetersPostProcess" => &["PerimeterIR", "RegionMapIR"],
             "Layer::Infill" => &["SliceIR", "PerimeterIR", "RegionMapIR"],
-            "Layer::InfillPostProcess" => &["InfillIR", "RegionMapIR"],
+            // `PerimeterIR` is genuinely upstream here: the partitioned
+            // per-role fill polygons an infill post-pass re-clips against
+            // (`infill_areas`, `sparse_infill_area`, `top_solid_fill`,
+            // `bottom_solid_fill`, `bridge_areas`) reach the module through
+            // `PerimeterRegionView`. See the `Layer::InfillPostProcess` row of
+            // the Stage I/O Contract table in docs/01_system_architecture.md.
+            "Layer::InfillPostProcess" => &["InfillIR", "PerimeterIR", "RegionMapIR"],
             "Layer::Support" => &[
                 "SliceIR",
                 "SurfaceClassificationIR",

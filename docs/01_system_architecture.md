@@ -622,7 +622,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `Layer::Perimeters`                      | `SliceIR`, `PaintRegionLayerView`                                  | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
 | `Layer::PerimetersPostProcess`           | `PerimeterIR`                                                      | `PerimeterIR` (seam/geometry refinements)                           |
 | `Layer::Infill`                          | `SliceIR` (infill areas and context)                               | `InfillIR`                                                          |
-| `Layer::InfillPostProcess`               | `InfillIR`                                                         | `InfillIR` (linked sparse polylines from `com.core.infill-linker`)   |
+| `Layer::InfillPostProcess`               | `InfillIR`, `PerimeterIR` (partitioned per-role fill polygons), `RegionMapIR` | `InfillIR` (linked sparse polylines from `com.core.infill-linker`)   |
 | `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionLayerView`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
 | `Layer::SupportPostProcess`              | `SupportIR`                                                        | `SupportIR`                                                         |
 | `Layer::PathOptimization`                | `PerimeterIR`, `InfillIR`, `SupportIR`                             | `LayerCollectionIR`                                                 |

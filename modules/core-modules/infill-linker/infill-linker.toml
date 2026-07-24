@@ -11,7 +11,7 @@ wit-world    = "slicer:world-layer"
 id = "Layer::InfillPostProcess"
 
 [ir-access]
-reads  = ["SliceIR", "InfillIR"]
+reads  = ["InfillIR", "PerimeterIR", "RegionMapIR"]
 writes = ["InfillIR"]
 
 [claims]

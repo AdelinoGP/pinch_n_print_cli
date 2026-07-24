@@ -11,7 +11,7 @@ wit-world    = "slicer:world-layer"
 id = "Layer::Support"
 
 [ir-access]
-reads  = ["SliceIR", "SurfaceClassificationIR", "SupportPlanIR"]
+reads  = ["SliceIR", "SurfaceClassificationIR", "SupportPlanIR", "PaintRegionIR"]
 writes = ["SupportIR"]
 
 [claims]

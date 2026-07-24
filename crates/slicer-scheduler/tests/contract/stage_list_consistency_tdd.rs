@@ -30,6 +30,11 @@ const HOST_ONLY_STAGES: &[&str] = &[
     "PrePass::Slice",
     "PrePass::ShellClassification",
     "PrePass::OverhangAnnotation",
+    // Host built-in producer: `crates/slicer-runtime/src/builtins/lightning_tree_producer.rs`
+    // declares `stage: "PrePass::LightningTreeGen"` and the runtime skips it
+    // unless a region selects the lightning sparse-fill holder. No module
+    // manifest can target it, so it is host-only rather than user-facing.
+    "PrePass::LightningTreeGen",
     "Layer::PaintRegionAnnotation",
     "PostPass::GCodeEmit",
 ];

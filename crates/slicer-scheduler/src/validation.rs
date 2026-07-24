@@ -817,6 +817,50 @@ fn validate_dead_writes(
     }
 }
 
+/// The IR root of an access path — everything before the first `.`.
+///
+/// `"PerimeterIR.infill-areas"` and `"PerimeterIR"` share the root
+/// `"PerimeterIR"`; `"SliceIR.regions.polygons"` has root `"SliceIR"`.
+fn ir_root(path: &str) -> &str {
+    path.split_once('.').map_or(path, |(root, _)| root)
+}
+
+/// Whether a runtime read is covered by a module's declared `[ir-access].reads`.
+///
+/// Reads match at **root granularity**, deliberately asymmetric with writes.
+///
+/// Runtime read labels are field-qualified (`"PerimeterIR.infill-areas"`,
+/// `"SliceIR.regions.polygons"`) and are emitted by the guest-view accessors in
+/// `slicer-wasm-host`'s `host.rs`, not by the module body. The generated shim
+/// `__slicer_adapt_perimeter_regions` (`crates/slicer-macros/src/lib.rs`) calls
+/// *every* accessor on the view unconditionally when it materialises the SDK
+/// view, so `runtime_reads` over-reports: a module that only touches
+/// `infill_areas()` still records the whole `PerimeterIR.*` field set. Three
+/// further wrinkles compound this — four fill fields (`sparse-infill-area`,
+/// `top-solid-fill`, `bottom-solid-fill`, `bridge-areas`) are SliceIR-sourced
+/// but carry `PerimeterIR.*` labels, `view.config()` is presently always `None`
+/// yet still records `PerimeterIR.config`, and the label vocabulary is kebab-case
+/// while manifests are authored against IR root names.
+///
+/// Exact-string matching against that set is therefore unsatisfiable by any
+/// honest manifest: it forces authors to enumerate accessor labels they do not
+/// control and did not ask for. Declaring the root is the meaningful contract,
+/// and it is what `docs/01_system_architecture.md`'s Stage I/O Contract table is
+/// written in terms of.
+///
+/// Writes keep exact matching (see the `runtime_writes` loop below): a write is
+/// a mutation of a specific field, a module names the fields it commits, and
+/// narrowing there is both achievable and load-bearing — `coarse_write_rejected_against_narrow_manifest`
+/// in `crates/slicer-scheduler/tests/contract/core_module_ir_access_contract_tdd.rs`
+/// pins that a declared `PerimeterIR.resolved-seam` must NOT authorise a coarse
+/// `PerimeterIR` write.
+fn read_is_declared(declared: &[String], runtime_path: &str) -> bool {
+    let root = ir_root(runtime_path);
+    declared
+        .iter()
+        .any(|declared_path| ir_root(declared_path) == root)
+}
+
 fn validate_undeclared_access(
     request: &DagValidationRequest,
     modules_by_id: &BTreeMap<ModuleId, &LoadedModule>,
@@ -828,7 +872,7 @@ fn validate_undeclared_access(
         };
 
         for path in &audit.runtime_reads {
-            if !module.ir_reads.contains(path) {
+            if !read_is_declared(&module.ir_reads, path) {
                 report.push_error(
                     DagValidationPass::UndeclaredAccess,
                     SchedulerError::UndeclaredAccess {
