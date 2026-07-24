@@ -652,6 +652,13 @@ fn distance_to_outline(point: Point2, outline: &[Point2]) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+// NAME IS HISTORICAL, AND NOW THE OPPOSITE OF WHAT IT ASSERTS. Since
+// `Node::realign` was ported this test pins that trees do NOT cross layers on
+// this fixture — see the structural argument below for why that is correct
+// here, and TASK-300 in docs/07_implementation_status.md for the generator-level
+// propagation-success case that no fixture can currently reach. The name is kept
+// because packets 139 and 140 cite it verbatim in their verification commands.
+//
 // Orca ref: Generator::generateTrees and Node::realign
 // (OrcaSlicerDocumented/src/libslic3r/Fill/Lightning/Generator.cpp; TreeNode.cpp)
 //
