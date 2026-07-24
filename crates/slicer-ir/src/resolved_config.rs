@@ -520,7 +520,10 @@ pub fn extract_float_list(
 /// The permissiveness is only about accepting the shape Orca actually writes,
 /// not about tolerating malformed input.
 #[doc(hidden)]
-pub fn extract_float_or_first(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+pub fn extract_float_or_first(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<f32, ConfigResolutionError> {
     fn scalar(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
         match value {
             ConfigValue::Float(f) => Ok(*f as f32),
