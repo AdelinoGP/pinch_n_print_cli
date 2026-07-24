@@ -263,7 +263,7 @@ fn parse_sparse_blocks(gcode: &str) -> Vec<SparseBlock> {
 /// fixture's own output would make the assertion self-fulfilling; hardcoding it
 /// would make the test a config tripwire. (The CONFIG_BLOCK's `wall_count` key
 /// is not usable here — it reports 2 while the emitted geometry carries 3 loops
-/// per contour, a discrepancy tracked separately in
+/// per contour, a discrepancy tracked separately as TASK-299 in
 /// `docs/07_implementation_status.md`.)
 fn control_loops_per_contour() -> u32 {
     let model = repo_root().join("resources").join("20mm_cube.obj");
@@ -423,7 +423,11 @@ fn modifier_infill_two_densities() {
 ///   one, spanning the full available extent (2.15 mm, hypotenuse to base).
 ///   Canonical `Fill::connect_infill` joins *pairs* of polyline endpoints — a
 ///   lone polyline has no partner and is correctly left alone. There is
-///   nothing to link.
+///   nothing to link. (That region should not exist at all — it is a spurious
+///   `seam_enforcer` variant minted by routing `paint_seam` through the MMU
+///   cell decomposition, filed as TASK-298 in
+///   `docs/07_implementation_status.md`. The invariant below does not depend
+///   on it either way.)
 ///
 /// - The block boundary itself is a path-ordering artifact, which is why only
 ///   4 of the ~63 layers carrying that region failed rather than all of them.

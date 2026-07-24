@@ -290,7 +290,8 @@ disjoint islands.
 
 ### Not yet ported from canonical
 
-The anchor-length rule is still outstanding. Canonical decides per candidate arc:
+The anchor-length rule is still outstanding — tracked as DEV-089 in
+`docs/DEVIATION_LOG.md`, which is authoritative for its status. Canonical decides per candidate arc:
 if the arc between two adjacent T-joints is shorter than `anchor_length_max` it
 takes the whole arc and merges the two lines into one polyline; otherwise it takes
 only an `anchor_length`-long stub off each end (`take_limited`, which lerps the
@@ -344,4 +345,6 @@ emits are contour geometry either way.
 - `crates/slicer-sdk/src/traits.rs:374-393` — `run_infill_postprocess` trait hook.
 - `crates/slicer-schema/wit/deps/world-layer/world-layer.wit:25` — WIT signature.
 - OrcaSlicer `src/libslic3r/Fill/FillBase.cpp:1497-2300` — `connect_infill` / `chain_or_connect_infill` (per-fill linking, the reference being diverged from).
-- `docs/DEVIATION_LOG.md` — DEV-081 (lightning-infill transitional inconsistency).
+- `docs/DEVIATION_LOG.md` — DEV-081 (lightning-infill transitional inconsistency),
+  DEV-088 (the two containment holes recorded in the 2026-07-24 amendment, closed),
+  DEV-089 (the unported anchor-length rule, open).

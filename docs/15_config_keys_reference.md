@@ -129,6 +129,7 @@ is the authoritative catalog of their defaults and ranges.
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `gyroid-infill` |
 | `infill_speed` | float | `60.0` | [1.0, 300.0] | `gyroid-infill` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `gyroid-infill` |
+| `infill_overlap` | float | `0.45` | [0.0, 1.0] | `infill-linker` |
 | `first_layer_height` | float | `0.3` | [0.01, 1.0] | `layer-planner-default` |
 | `layer_height` | float | `0.2` | [0.01, 1.0] | `layer-planner-default` |
 | `infill_density` | float | `20.0` | [0.0, 100.0] | `lightning-infill` |
@@ -171,9 +172,9 @@ is the authoritative catalog of their defaults and ranges.
 | `skirt_height` | int | `1` | [1.0, 10.0] | `skirt-brim` |
 | `skirt_loops` | int | `6` | [0.0, 20.0] | `skirt-brim` |
 | `base_raft_layers` | int | `1` | [0.0, 20.0] | `support-planner` |
+| `enable_support` | bool | `true` | — | `support-planner` |
 | `interface_raft_layers` | int | `0` | [0.0, 20.0] | `support-planner` |
 | `raft_first_layer_density` | float | `0.4` | [0.0, 1.0] | `support-planner` |
-| `enable_support` | bool | `true` | — | `support-planner` |
 | `support_interface_bottom_layers` | int | `-1` | [-1.0, 10.0] | `support-planner` |
 | `support_interface_top_layers` | int | `2` | [0.0, 10.0] | `support-planner` |
 | `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `support-planner` |
@@ -196,15 +197,15 @@ is the authoritative catalog of their defaults and ranges.
 | `ironing_pattern` | enum | `"rectilinear"` | — | `top-surface-ironing` |
 | `ironing_spacing_mm` | float | `0.1` | [0.01, 1.0] | `top-surface-ironing` |
 | `ironing_speed` | float | `20.0` | [1.0, 300.0] | `top-surface-ironing` |
+| `enable_support` | bool | `true` | — | `traditional-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `traditional-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `traditional-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `traditional-support` |
-| `enable_support` | bool | `true` | — | `traditional-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `traditional-support` |
+| `enable_support` | bool | `true` | — | `tree-support` |
 | `line_width` | float | `0.4` | [0.1, 2.0] | `tree-support` |
 | `support_angle` | float | `60.0` | [0.0, 90.0] | `tree-support` |
 | `support_density` | float | `20.0` | [0.0, 100.0] | `tree-support` |
-| `enable_support` | bool | `true` | — | `tree-support` |
 | `support_layer_height_mm` | float | `0.0` | [0.05, 1.0] | `tree-support` |
 | `support_speed` | float | `50.0` | [1.0, 300.0] | `tree-support` |
 | `support_top_z_distance_mm` | float | `0.0` | [0.0, 5.0] | `tree-support` |
