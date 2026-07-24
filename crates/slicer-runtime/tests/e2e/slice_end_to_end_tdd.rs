@@ -441,25 +441,30 @@ fn wedge_mvp_gcode_has_extrusion_moves() {
     );
 }
 
+/// Structural canary for the default wedge slice (packet 131, AC-N2).
+///
+/// This replaces a SHA256 over the whole G-code file. That hash had already
+/// been re-blessed three times (`8a3b645e` -> `7ac636aa` -> `c6cbe685`, per its
+/// own digest history), which is what a whole-file hash over generated
+/// geometry always converges to: it cannot distinguish an improvement from a
+/// regression, so every legitimate change re-blesses it and the "canary" stops
+/// carrying information. It went stale again here for two independent and
+/// entirely intended reasons — infill connectors are now routed along the
+/// region contour instead of emitted as bare chords (ADR-0025), and a
+/// pre-existing change on this branch shifted the byte stream before that.
+///
+/// The assertions below are the ones the digest was standing in for, named in
+/// its own comment: "a new CONFIG_BLOCK key, a gcode-comment reshuffle, a
+/// layer-count drift". Each now fails with the thing that changed rather than
+/// with two hex strings. Precedent: ADR-0042, and `D-109C-AC22-PARITY-RESHAPE`
+/// in `docs/DEVIATION_LOG.md`, which replaced a byte-SHA golden with structural
+/// assertions for the same reason.
 #[test]
-fn wedge_per_region_config_delivery_byte_identical() {
-    // Wedge byte-identical canary for the per-region config delivery (packet
-    // 131, AC-N2). This guards byte-identical output of the default wedge
-    // slice — any unintentional change to the gcode byte stream (e.g. a new
-    // CONFIG_BLOCK key, a gcode-comment reshuffle, a layer-count drift)
-    // trips this test.
-    //
-    // Digest history:
-    //   - 8a3b645e… : baked by packet 131 (pre-per-region config delivery)
-    //   - 7ac636aa… : intermediate (verified 2026-07-20 by stashing packet 136)
-    //   - c6cbe685… : current (packet 136 final tree)
-    //   The 8a3b645e → 7ac636aa → c6cbe685 transitions both predate this
-    //   re-bless and represent drift in the per-region config delivery
-    //   pipeline. The canary's purpose is to catch UNINTENTIONAL future
-    //   changes; this re-bless pins the current byte-identical state so
-    //   the canary becomes a forward-looking regression guard.
-    const WEDGE_DEFAULT_GCODE_SHA256: &str =
-        "c6cbe685c4d03a0f1c8aef62b0d1e345c5f900b88ccc2568357e8e950fc54d14";
+fn wedge_per_region_config_delivery_structural_canary() {
+    /// Layers in the default wedge slice: 40mm of model at 0.2mm.
+    const EXPECTED_LAYERS: usize = 200;
+    /// Wall loops per contour under the default config: one outer, two inner.
+    const INNER_LOOPS_PER_OUTER: usize = 2;
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let output = tmp.path().join("wedge.gcode");
@@ -473,18 +478,128 @@ fn wedge_per_region_config_delivery_byte_identical() {
     );
     assert!(
         run.status.success(),
-        "pnp_cli must succeed for the default wedge run. Stderr:\n{}",
+        "pnp_cli must succeed for the default wedge run. Stderr:
+{}",
         String::from_utf8_lossy(&run.stderr)
     );
+    let gcode = std::fs::read_to_string(&output).expect("default wedge g-code output");
 
-    let gcode = std::fs::read(&output).expect("default wedge g-code output");
-    let digest = Sha256::digest(&gcode);
+    // ── CONFIG_BLOCK key set ────────────────────────────────────────────────
+    // The public config surface. A key appearing or disappearing is a contract
+    // change and must be deliberate; VALUES are deliberately not pinned, since
+    // those move with every default tweak.
+    let config_start = gcode
+        .find("; CONFIG_BLOCK_START")
+        .expect("CONFIG_BLOCK_START must be present");
+    let config_end = gcode
+        .find("; CONFIG_BLOCK_END")
+        .expect("CONFIG_BLOCK_END must be present");
+    assert!(
+        config_start < config_end,
+        "CONFIG_BLOCK_START must precede CONFIG_BLOCK_END"
+    );
+    // `object_height:<uuid>` entries are per-object bookkeeping injected by the
+    // caller, not part of the config surface, and their UUID varies per run.
+    let mut keys: Vec<&str> = gcode[config_start..config_end]
+        .lines()
+        .filter_map(|line| line.strip_prefix("; "))
+        .filter_map(|rest| rest.split_once(" = "))
+        .map(|(key, _)| key)
+        .filter(|key| !key.contains(':'))
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
     assert_eq!(
-        format!("{digest:x}"),
-        WEDGE_DEFAULT_GCODE_SHA256,
-        "default wedge G-code changed"
+        keys.len(),
+        95,
+        "CONFIG_BLOCK key count changed — a key was added or removed. Keys: {keys:?}"
+    );
+    for required in [
+        "layer_height",
+        "line_width",
+        "wall_count",
+        "wall_loops",
+        "sparse_infill_density",
+        "sparse_fill_holder",
+        "top_fill_holder",
+        "bottom_fill_holder",
+        "bridge_fill_holder",
+        "wall_generator",
+    ] {
+        assert!(
+            keys.contains(&required),
+            "CONFIG_BLOCK lost the `{required}` key. Keys: {keys:?}"
+        );
+    }
+
+    // ── Layer count and monotonic Z ─────────────────────────────────────────
+    let zs: Vec<f64> = gcode
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix(";Z:"))
+        .filter_map(|z| z.parse::<f64>().ok())
+        .collect();
+    assert_eq!(
+        zs.len(),
+        EXPECTED_LAYERS,
+        "layer-count drift: expected {EXPECTED_LAYERS} emitted layers, got {}",
+        zs.len()
+    );
+    assert!(
+        zs.windows(2).all(|w| w[1] > w[0]),
+        "layer Z must ascend strictly monotonically"
+    );
+
+    // ── Role sections present ───────────────────────────────────────────────
+    // A gcode-comment reshuffle that dropped or renamed a role marker shows up
+    // here, naming the role.
+    for role in [
+        ";TYPE:Outer wall",
+        ";TYPE:Inner wall",
+        ";TYPE:Sparse infill",
+        ";TYPE:Bridge",
+        ";TYPE:Top surface",
+        ";TYPE:Bottom surface",
+    ] {
+        assert!(
+            gcode.contains(role),
+            "the default wedge must emit a `{role}` section"
+        );
+    }
+
+    // ── Wall structure ──────────────────────────────────────────────────────
+    // One outer loop per contour with its full inner set. A loop is a travel
+    // followed by a run of consecutive extruding G1s, so maximal extruding runs
+    // count loops.
+    let (mut outer, mut inner) = (0usize, 0usize);
+    let mut role: Option<&str> = None;
+    let mut prev_extruding = false;
+    for raw in gcode.lines() {
+        let line = raw.trim();
+        if let Some(rest) = line.strip_prefix(";TYPE:") {
+            role = Some(rest);
+            prev_extruding = false;
+        } else if line.starts_with("G0") || line.starts_with("G92") {
+            prev_extruding = false;
+        } else if line.starts_with("G1 ") {
+            let extruding = line.contains('E');
+            if extruding && !prev_extruding {
+                match role {
+                    Some("Outer wall") => outer += 1,
+                    Some("Inner wall") => inner += 1,
+                    _ => {}
+                }
+            }
+            prev_extruding = extruding;
+        }
+    }
+    assert!(outer > 0, "the wedge must emit outer wall loops");
+    assert_eq!(
+        inner,
+        INNER_LOOPS_PER_OUTER * outer,
+        "wall structure drift: {outer} outer loops should carry          {INNER_LOOPS_PER_OUTER} inner loops each, got {inner}"
     );
 }
+
 
 /// MVP must progress through at least two distinct layer Z planes and
 /// emit them monotonically.
