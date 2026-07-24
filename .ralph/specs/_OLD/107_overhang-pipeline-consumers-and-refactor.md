@@ -41,9 +41,9 @@ This packet closes all four concerns. The view accessor + WIT mirror + host popu
 
 - IR or manifest contracts touched: no IR change (P106 did it). Manifest narrowing: `overhang-classifier-default.toml` pre-refactor has `reads = ["LayerCollectionIR"]` (confirmed in tree). Post-refactor drops this broad entry and declares a narrower `overhang_quartile`-annotated read on per-vertex `Point3WithWidth`. The `writes = ["LayerCollectionIR"]` entry stays (needed for `SetSpeedFactor` mutations).
 - FORWARD-DEP symbols consumed from upstream drafts:
-  - `SurfaceClassificationIR.overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` ← produced by draft P106 (`status: draft`; not yet in tree).
+  - `SurfaceClassificationIR.overhang_quartile_polygons: HashMap<u32, Vec<QuartileBand>>` ← produced by draft P106 (`status= draft`; not yet in tree)
   - `QuartileBand { quartile: u8, polygons: Vec<ExPolygon> }` ← produced by draft P106.
-  - `SliceRegionView::overhang_areas(&self) -> &[ExPolygon]` ← produced by draft P104 (`status: draft`; not yet in `crates/slicer-sdk/src/views.rs`).
+  - `SliceRegionView::overhang_areas(&self) -> &[ExPolygon]` ← produced by draft P104 (`status= draft`; not yet in `crates/slicer-sdk/src/views.rs`).
   - `SliceRegionView::surface_group(&self) -> Option<&SurfaceGroup>` ← produced by draft P104.
   - `docs/adr/0022-overhang-classification-at-prepass.md` ← authored by draft P106 at ADR slot 0022.
 - Already-in-tree symbols (no forward-dep needed):

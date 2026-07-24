@@ -26,7 +26,7 @@
 - Config keys are snake_case everywhere (CLAUDE.md §Config Key Naming Convention).
 - The baseline-before-edit ordering is a hard constraint (see requirements.md §Step
   Completion Expectations).
-- FORWARD-DEP: packet 130 is `status: draft` at authoring time — this packet's world-version
+- FORWARD-DEP: packet 130 is `status = draft` at authoring time — this packet's world-version
   bump target is computed at activation (+0.1 from whatever 130 lands as), never hardcoded.
 
 ## Code Change Surface

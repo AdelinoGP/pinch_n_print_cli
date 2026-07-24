@@ -2,7 +2,7 @@
 
 ## Packet metadata
 - slug: 167-config-block-viewer-keys
-- status: draft (user invoked implement explicitly; will not auto-flip)
+- status: implemented
 - mode: implement
 - aggregate context cost: S
 - band: standard

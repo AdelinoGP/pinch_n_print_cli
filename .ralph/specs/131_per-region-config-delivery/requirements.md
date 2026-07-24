@@ -32,7 +32,7 @@ survey and carve happen here, restored + re-blessed in packet 136.
   `perimeter-region-view` (`crates/slicer-schema/wit/deps/ir-types.wit`, reusing the existing
   `slicer:config/config-types.config-view` resource via a new `use` in `ir-handles`); affected
   world version bumped by +0.1 from whatever `130_infill-postprocess-contract` lands as (FORWARD-DEP
-  — 130 is `status: draft` at authoring time; mirror the bump on any other world exposing
+  — 130 is `status = draft` at authoring time; mirror the bump on any other world exposing
   these views). Additive only.
 - SDK: `SliceRegionView` / `PerimeterRegionView` gain the config accessor; macros glue.
 - Contract tests: two-density echo (AC-1), single-region equivalence (AC-N1); wedge SHA guard

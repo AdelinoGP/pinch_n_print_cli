@@ -27,7 +27,7 @@ This is the root cause behind the visible Bug B observed against `resources/benc
 
 This packet is producer-only. It adds the parser, plumbs it into `load_3mf` BEFORE the `ZipArchive` is dropped, and threads the resulting `HashMap<u32, ObjectSidecarInfo>` into the existing `parse_3mf_model_xml` → `resolve_object` call chain. `resolve_object`'s body remains unchanged in this packet — the sidecar argument is currently unused. Packet 56b is where `resolve_object` actually branches on the classification; Packet 56c is where the four non-`normal_part` subtypes get downstream wiring.
 
-This packet is the first of a three-way split of the original `56_threemf-modifier-and-subtype-sidecar-ingestion` packet (status: draft, never activated). The original packet's L-aggregate context cost was the explicit activation blocker. Splitting reduces each child packet's aggregate to **M**.
+This packet is the first of a three-way split of the original `56_threemf-modifier-and-subtype-sidecar-ingestion` packet (status= draft, never activated). The original packet's L-aggregate context cost was the explicit activation blocker. Splitting reduces each child packet's aggregate to **M**.
 
 WIT scope is **clean** — confirmed in the original packet's Step-0 sub-agent gate. `ObjectMesh.modifier_volumes` and `ModifierVolume` are host-only types. This packet does not even touch IR; the parser produces a host-local `HashMap<u32, ObjectSidecarInfo>` that is not exposed at any contract boundary.
 

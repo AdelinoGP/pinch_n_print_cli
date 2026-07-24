@@ -28,7 +28,7 @@ an arbitrary region's config); single-region output must be byte-identical.
 
 - Depends on: FORWARD-DEP on draft `130_infill-postprocess-contract` (adjacent WIT churn;
   this packet's world-version bump is computed as +0.1 from whatever 130 lands as, not a
-  hardcoded `1.1.0 → 1.2.0` — 130 is `status: draft` at authoring time, 2026-07-10; the live
+  hardcoded `1.1.0 → 1.2.0` — 130 is `status = draft` at authoring time, 2026-07-10; the live
   `world-layer` version today is still `1.0.0`).
 - Unblocks: `132_modifier-region-split` (sub-regions are useless without per-region config),
   `133_infill-linker-module` (per-region spacing), `134`/`135` (modules read per-region
