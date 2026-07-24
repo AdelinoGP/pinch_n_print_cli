@@ -180,6 +180,9 @@ row immediately on generation/closure. **T1 packets (181–183) commit together.
 | 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | pending |
 | 8 | `<tbd>-machine-custom-gcode-injection` | DEV-085 | T3 | — | pending |
 | 9 | `<tbd>-gcode-smoothed-speed-add-intersections` | DEV-009 | T3 | — | pending |
+| 10 | `<tbd>-infill-linker-anchor-length` | DEV-089 | T3 | — | pending |
+
+**Queue amendment (2026-07-24, post-generation):** row 10 was appended after this plan was written. DEV-089 was registered later the same day, from the `infill-linker` containment work (ADR-0025's 2026-07-24 amendment): canonical's per-arc anchor-length rule — whole arc under `anchor_length_max`, otherwise an `anchor_length` stub off each end via `take_limited`, candidates consumed shortest-first — is not ported, and PnP applies a single 10 × spacing gate with no stub mode. T3 with no dependency: it is a quality divergence rather than a containment one, since the connectors are contour geometry either way, and it needs new config keys plus the lerped partial segment.
 
 **Queue amendment (2026-07-24, at generation time):** row 3 was authored as a D-167 **diagnosis spike only**. D-154 was split out to new row 6 because grounding confirmed `is_secondary` does **not** exist on `HalfEdge` (`crates/slicer-core/src/voronoi.rs`) and must be added and populated from boostvoronoi — a struct-field change whose blast radius, bundled with the spike, would have made row 3 context-cost `L`. This matches the plan's own tranche text, which already placed the spike in T1 and the discretize port in T3.
 
