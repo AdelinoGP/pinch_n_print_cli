@@ -447,7 +447,16 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             runtime_reads.push(String::from("MeshIR"));
             runtime_reads.push(String::from("SliceIR.regions.polygons"));
             // Undeclared path read at runtime (triggers UndeclaredAccess error).
-            runtime_reads.push(String::from("SliceIR.regions.undeclared"));
+            //
+            // The root must be one the module does not declare. Reads match at
+            // root granularity (`read_is_declared`,
+            // `crates/slicer-scheduler/src/validation.rs`) because the generated
+            // view shim over-reports field-qualified read labels, so a
+            // `SliceIR.*` path would be authorised here by the declared
+            // `SliceIR.regions.polygons` and fire nothing. `PaintRegionIR` is
+            // foreign to this module's declared reads, which is what an
+            // undeclared read looks like under that rule.
+            runtime_reads.push(String::from("PaintRegionIR.regions.undeclared"));
             runtime_writes.push(String::from("SliceIR"));
             // Undeclared write at runtime (triggers UndeclaredAccess error).
             runtime_writes.push(String::from("SliceIR.regions.undeclared_write"));
@@ -462,8 +471,9 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     }
 
     // Modules that actually READ at runtime produce live audit entries:
-    // - `earlier` reads: MeshIR, SliceIR.regions.polygons, and SliceIR.regions.undeclared
-    //   (undeclared read -> must fire error)
+    // - `earlier` reads: MeshIR, SliceIR.regions.polygons, and
+    //   PaintRegionIR.regions.undeclared (undeclared read -> must fire error;
+    //   the root is deliberately foreign, since reads match at root granularity)
     // - `earlier` writes: SliceIR (declared write) and SliceIR.regions.undeclared_write
     //   (undeclared write -> must fire error; only SliceIR is declared)
     let earlier = loaded_module("com.example.earlier", "Layer::SlicePostProcess")
@@ -501,8 +511,9 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let report = validate_startup_dag(&request);
 
     // Live-path undeclared-read detection:
-    // `earlier` reads `SliceIR.regions.undeclared` at runtime but does not
-    // declare it in its `ir_reads` -> must fire `UndeclaredAccess` for Read.
+    // `earlier` reads `PaintRegionIR.regions.undeclared` at runtime but declares
+    // no `PaintRegionIR` read in its `ir_reads` -> must fire `UndeclaredAccess`
+    // for Read.
     assert!(
         report.errors.iter().any(|diagnostic| {
             diagnostic.pass == DagValidationPass::UndeclaredAccess
@@ -512,10 +523,10 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
                         access: AccessKind::Read,
                         path: ref p,
                         ..
-                    } if p == "SliceIR.regions.undeclared"
+                    } if p == "PaintRegionIR.regions.undeclared"
                 )
         }),
-        "undeclared read SliceIR.regions.undeclared must produce UndeclaredAccess error"
+        "undeclared read PaintRegionIR.regions.undeclared must produce UndeclaredAccess error"
     );
     // Also verify undeclared-write fires for the write-only path that wasn't declared.
     assert!(
