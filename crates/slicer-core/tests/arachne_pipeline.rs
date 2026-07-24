@@ -7,8 +7,9 @@
 //! `crates/slicer-core/src/arachne/pipeline.rs`'s module-level doc comment,
 //! and every stage it chains together for their own from-first-principles
 //! adaptation notes). This file asserts real, self-consistent invariants
-//! over the pipeline's own output — non-empty, observable per-junction width
-//! variation, determinism — never OrcaSlicer numeric parity.
+//! over the pipeline's own output — non-empty, determinism, and per-junction
+//! width behaviour that follows from the fixture's geometry — never
+//! OrcaSlicer numeric parity.
 //!
 //! Host-only: `arachne::pipeline` is gated behind the `host-algos` feature
 //! (matching `voronoi`, `algos`, `medial_axis`, `skeletal_trapezoidation`),
@@ -56,16 +57,51 @@ fn square_10mm() -> ExPolygon {
     ])
 }
 
-/// AC: `run_arachne_pipeline` on a (sufficiently large) square returns
-/// `Ok` with at least one `ExtrusionLine`, and per-junction widths are not
-/// all identical — the medial axis of a square runs from each corner
-/// (`distance_to_boundary == 0`, sitting exactly on the boundary) to the
-/// center (`distance_to_boundary == side / 2`), so every emitted line's own
-/// two junctions carry genuinely different local-R-derived widths (see
-/// `crate::arachne::generate_toolpaths`'s module-level doc comment for the
-/// per-junction local-R width derivation this relies on).
+/// A wedge that tapers from a 0.35mm-wide tip to a 2.6mm-wide base over 12mm.
+///
+/// # Geometry note
+///
+/// This is the fixture that exercises variable-width output, which
+/// [`square_10mm`] structurally cannot. Arachne only varies a junction's width
+/// where the bead count *changes*: `DistributedBeadingStrategy::compute`
+/// distributes the leftover `to_be_divided` across beads, and
+/// `SkeletalTrapezoidation::generateTransitioningRibs` interpolates widths
+/// across a transition region. A taper sweeps continuously through several
+/// optimal bead counts, so it has transition regions; a constant-width shape
+/// has none.
+fn tapered_wedge() -> ExPolygon {
+    let mm = |v: f64| (v * UNITS_PER_MM as f64) as i64;
+    expoly(vec![
+        p(0, mm(-0.175)),
+        p(mm(12.0), mm(-1.3)),
+        p(mm(12.0), mm(1.3)),
+        p(0, mm(0.175)),
+    ])
+}
+
+/// AC: `run_arachne_pipeline` on a (sufficiently large) square returns `Ok`
+/// with at least one `ExtrusionLine`, and every junction carries the same
+/// width — the optimal width exactly.
+///
+/// # Why uniform, and why that is the correct expectation
+///
+/// This assertion used to demand that some junction width *differ*. It never
+/// could on this fixture, and canonical agrees: the square is 10mm on a side at
+/// a 0.4mm optimal width, so `10.0 / 0.4 == 25` exactly and
+/// `DistributedBeadingStrategy::compute` has `to_be_divided == 0` — there is no
+/// leftover to redistribute, so every bead is emitted at exactly the optimal
+/// width. Nor are there transitions to interpolate across: a square's 90-degree
+/// corner gives a medial-axis `dR/dD` of about 0.707, far above the
+/// `sin(5 degrees) ~= 0.087` cap that the default 10-degree
+/// `wall_transition_angle` imposes, so `filter_central` marks no edge central
+/// and `generateTransitioningRibs` has nothing to work on.
+///
+/// Variable-width output is asserted on [`tapered_wedge`], which actually has
+/// transition regions. (The old rationale here cited a "per-junction local-R
+/// width derivation" in `generate_toolpaths`; that derivation was deleted in
+/// Step 9D, so the justification had outlived the code it named.)
 #[test]
-fn arachne_pipeline_square_produces_lines() {
+fn arachne_pipeline_square_produces_uniform_width_lines() {
     let square = square_10mm();
     let params = ArachneParams::default();
 
@@ -87,10 +123,57 @@ fn arachne_pipeline_square_produces_lines() {
         "expected at least two junctions total to compare widths, got {}",
         widths.len()
     );
+
+    let optimal = params.optimal_width as f32;
+    for (i, &w) in widths.iter().enumerate() {
+        assert!(
+            (w - optimal).abs() <= 1e-6,
+            "junction {i} width {w} != optimal {optimal}; a 10mm/0.4mm square \
+             divides exactly, so no bead should be widened or interpolated. \
+             All widths: {widths:?}"
+        );
+    }
+}
+
+/// AC: a shape with a genuine taper produces variable-width output.
+///
+/// This is the assertion that moved off `arachne_pipeline_square_produces_uniform_width_lines`.
+/// It is a self-captured invariant, not an OrcaSlicer numeric golden: it
+/// asserts only that widths vary and stay within the strategy's own bounds,
+/// never a specific width at a specific junction.
+#[test]
+fn arachne_pipeline_taper_produces_variable_width_lines() {
+    let wedge = tapered_wedge();
+    let params = ArachneParams::default();
+
+    let result = run_arachne_pipeline(std::slice::from_ref(&wedge), &params, false);
+    let (lines, _) = result.expect("tapered wedge should produce Ok(lines) under default params");
+
+    assert!(
+        !lines.is_empty(),
+        "expected at least one ExtrusionLine from a tapered wedge"
+    );
+
+    let widths: Vec<f32> = lines
+        .iter()
+        .flat_map(|line| line.junctions.iter())
+        .map(|j| j.p.width)
+        .collect();
+    assert!(
+        widths.len() >= 2,
+        "expected at least two junctions total to compare widths, got {}",
+        widths.len()
+    );
+
     let first = widths[0];
     assert!(
         widths.iter().any(|&w| (w - first).abs() > 1e-6),
-        "expected variable-width output (not every junction width identical): {widths:?}"
+        "a tapered shape must produce variable-width output; every junction \
+         width was identical: {widths:?}"
+    );
+    assert!(
+        widths.iter().all(|&w| w > 0.0),
+        "no junction may carry a non-positive width: {widths:?}"
     );
 }
 
