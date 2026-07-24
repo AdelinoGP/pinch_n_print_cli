@@ -200,19 +200,23 @@ fn assert_core_contract(events: &[Value]) {
         "slice_stats.toolchange_count required"
     );
 
-    // Uniform schema version (slice_stats is on 1.2.0 per packet 169; all
-    // other events are on 1.3.0). The test asserts each event's schema
-    // matches its event type, not that the stream is single-versioned.
+    // One schema version per stream. The version is a property of the stream,
+    // not of an event type: a consumer that reads it off the first line and
+    // keys its field expectations to it is silently mis-parsed by a stream that
+    // advertises two. This previously asserted a per-event-type map
+    // (`slice_stats` on 1.2.0, everything else on 1.3.0), which pinned the
+    // very defect 5ab416bf removed — `slice_stats` hard-coded its literal while
+    // every other constructor stamped `PROGRESS_EVENT_SCHEMA_VERSION`.
+    //
+    // Asserting against the constant rather than a literal means this does not
+    // rot on the next schema bump, and it still fails if the stream is
+    // uniformly wrong.
     for e in events {
         let event_name = e["event"].as_str().unwrap_or("");
-        let expected_schema = match event_name {
-            "slice_stats" => "1.2.0",
-            _ => "1.3.0",
-        };
         assert_eq!(
             e["schema_version"].as_str(),
-            Some(expected_schema),
-            "event {event_name} has unexpected schema_version"
+            Some(slicer_runtime::progress_events::PROGRESS_EVENT_SCHEMA_VERSION),
+            "event {event_name} does not carry the stream's one schema version"
         );
         assert_eq!(
             e["slice_id"].as_str(),
