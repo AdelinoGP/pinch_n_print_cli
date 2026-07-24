@@ -319,3 +319,77 @@ fn cube_4color_mmu_cells_are_disjoint() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Regression: segmentation partitions area, it never removes it
+// ---------------------------------------------------------------------------
+
+fn cube_cilindrical_modifier_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/cube_cilindrical_modifier.3mf"
+    ))
+}
+
+/// Paint segmentation must not empty a layer that had geometry.
+///
+/// `cube_cilindrical_modifier.3mf`'s cube carries `paint_seam` facet data
+/// (it was derived from `cube_4color.3mf`), so `mesh_has_any_paint` admits it
+/// and the kernel runs on every layer. On layers below the lowest painted
+/// facet the cell decomposition yields no cells at all, and BASE was being
+/// emitted with the `None`-keyed residual — which on an empty map is `[]`.
+/// The resulting geometry-less region set then replaced the real
+/// cross-section, because the commit guard only checked that the replacement
+/// was non-empty, and a set of geometry-less regions satisfies that.
+///
+/// The effect was silent and severe: every layer beneath the lowest painted
+/// facet was lost. Sliced end to end, that fixture printed nothing at z=0.2 or
+/// z=0.4 — no walls, no infill, only skirt. The onset is geometric rather than
+/// a fixed layer index (at 0.1mm layers the first surviving layer is index 4,
+/// at 0.2mm it is index 2), which is why it read as a fixture quirk rather
+/// than a defect.
+///
+/// The invariant asserted here is the general one, not the fixture's specific
+/// layer count: segmentation redistributes a layer's area among regions, so a
+/// layer that had area before must still have area after.
+#[test]
+fn paint_segmentation_never_empties_a_layer_that_had_geometry() {
+    let path = cube_cilindrical_modifier_path();
+    assert!(path.exists(), "fixture missing: {}", path.display());
+    let mesh = Arc::new(load_model(&path).expect("load cube_cilindrical_modifier.3mf"));
+
+    let object_id = mesh.objects[0].id.clone();
+    let object_mesh = mesh.objects[0].mesh.clone();
+    let layer_plan = build_50_layer_plan(&object_id);
+    let before = build_initial_slice_ir(&object_id, &object_mesh, &layer_plan);
+    let region_map = build_region_map(&object_id, LAYER_COUNT);
+
+    let had_geometry: Vec<bool> = before
+        .iter()
+        .map(|layer| layer.regions.iter().any(|r| !r.polygons.is_empty()))
+        .collect();
+    assert!(
+        had_geometry.iter().filter(|had| **had).count() >= 2,
+        "the fixture must slice to at least two non-empty layers for this test \
+         to mean anything; got {had_geometry:?}"
+    );
+
+    let after = execute_paint_segmentation(mesh, Arc::new(before), region_map)
+        .expect("execute_paint_segmentation must succeed");
+
+    let emptied: Vec<usize> = after
+        .iter()
+        .enumerate()
+        .filter(|(i, layer)| {
+            had_geometry[*i] && !layer.regions.iter().any(|r| !r.polygons.is_empty())
+        })
+        .map(|(i, _)| i)
+        .collect();
+
+    assert!(
+        emptied.is_empty(),
+        "paint segmentation emptied layer(s) {emptied:?} that had geometry before \
+         it ran. Segmentation partitions a layer's area among regions; it never \
+         removes it."
+    );
+}

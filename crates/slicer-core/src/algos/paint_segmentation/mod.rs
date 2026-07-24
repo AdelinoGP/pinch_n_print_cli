@@ -702,10 +702,42 @@ pub fn execute_paint_segmentation(
             let residual_polys: Vec<slicer_ir::ExPolygon> =
                 polys_by_color.get(&None).cloned().unwrap_or_default();
 
+            // Whether the cell decomposition produced any painted geometry at
+            // all on this layer.
+            let has_painted_geometry = polys_by_color
+                .iter()
+                .any(|(color, polys)| color.is_some() && !polys.is_empty());
+
             let base_polygons: Vec<slicer_ir::ExPolygon> = if base_has_modifier_annotations {
                 layer_total_contours.clone()
-            } else {
+            } else if has_painted_geometry {
                 residual_polys
+            } else {
+                // No painted chain on this layer, so there is no partition to
+                // take a residual of — BASE is the whole cross-section.
+                //
+                // Taking `residual_polys` here destroyed the layer. The `None`
+                // key is only populated when the Voronoi/MMU decomposition
+                // emits unpainted cells; on a layer the kernel declined to
+                // decompose at all, `polys_by_color` is empty, `residual_polys`
+                // is `[]`, and the empty region set then replaced the real
+                // cross-section below. Every layer beneath the lowest painted
+                // facet was lost — silently, since a region with no polygons is
+                // a legal shape that perimeter generators simply skip.
+                //
+                // This is why `resources/cube_cilindrical_modifier.3mf` printed
+                // nothing at z=0.2 or z=0.4: the cube carries `paint_seam` data
+                // whose lowest painted facet sits at z in (0.4, 0.5], so
+                // `mesh_has_any_paint` admitted it and the layers below died.
+                // The onset is geometric, not a fixed layer index — at 0.1mm
+                // layers the first surviving layer is index 4 rather than 2.
+                //
+                // Falling back to the full contour cannot reintroduce the
+                // doubled-outer-wall regression that the `residual_polys`
+                // branch exists to prevent: that requires painted chains for
+                // BASE to double against, and this branch fires only when there
+                // are none.
+                layer_total_contours.clone()
             };
 
             // Always emit BASE so the v2 contract holds: every painted layer
@@ -942,7 +974,18 @@ pub fn execute_paint_segmentation(
                 }
             }
 
-            if !new_regions.is_empty() {
+            // Invariant backstop: segmentation PARTITIONS area, it never
+            // removes it. A replacement set carrying zero total area on a layer
+            // that had area is a kernel no-op, never a legitimate result, so
+            // keep the original slice rather than commit an empty layer.
+            //
+            // The old guard only checked that `new_regions` was non-empty,
+            // which a set of geometry-less regions satisfies — that is how a
+            // layer could be silently emptied (see the `base_polygons` fallback
+            // above).
+            let replacement_has_geometry = new_regions.iter().any(|r| !r.polygons.is_empty());
+            let original_had_geometry = working[i].regions.iter().any(|r| !r.polygons.is_empty());
+            if !new_regions.is_empty() && (replacement_has_geometry || !original_had_geometry) {
                 working[i].regions = new_regions;
             }
         }
