@@ -288,9 +288,27 @@ pub fn list_command(ws_root: &Path) -> std::io::Result<i32> {
 
 #[derive(Debug)]
 pub enum BuildError {
-    CargoFailed { guest: String, stderr_tail: String },
-    WasmToolsFailed { guest: String, stderr_tail: String },
-    MissingIntermediate { guest: String, expected: PathBuf },
+    CargoFailed {
+        guest: String,
+        stderr_tail: String,
+    },
+    ComponentInputFailed {
+        guest: String,
+        stderr_tail: String,
+    },
+    WasmToolsFailed {
+        guest: String,
+        stderr_tail: String,
+    },
+    MissingIntermediate {
+        guest: String,
+        expected: PathBuf,
+    },
+    FingerprintMetadataFailed {
+        guest: String,
+        path: PathBuf,
+        error: String,
+    },
     WasmToolsNotFound,
 }
 
@@ -299,6 +317,9 @@ impl fmt::Display for BuildError {
         match self {
             BuildError::CargoFailed { guest, stderr_tail } => {
                 write!(f, "cargo build failed for '{guest}':\n{stderr_tail}")
+            }
+            BuildError::ComponentInputFailed { guest, stderr_tail } => {
+                write!(f, "wasm-tools strip failed for '{guest}':\n{stderr_tail}")
             }
             BuildError::WasmToolsFailed { guest, stderr_tail } => {
                 write!(
@@ -311,6 +332,13 @@ impl fmt::Display for BuildError {
                     f,
                     "intermediate wasm not found for '{guest}': {}",
                     expected.display()
+                )
+            }
+            BuildError::FingerprintMetadataFailed { guest, path, error } => {
+                write!(
+                    f,
+                    "could not write freshness metadata for '{guest}' at {}: {error}",
+                    path.display()
                 )
             }
             BuildError::WasmToolsNotFound => {
@@ -389,7 +417,7 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
         });
     }
 
-    // Step C: wasm-tools component new
+    // Step C: remove conflicting SDK helper metadata before componentization.
     let output_path = ws_root.join(&spec.artifact_path);
 
     // Ensure parent directory exists
@@ -397,9 +425,31 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
         fs::create_dir_all(parent).ok();
     }
 
+    // SDK helper bindings carry an older copy of shared WIT metadata. Keep the
+    // module's canonical world metadata and remove only those conflicting helpers.
+    let component_input = intermediate_base.join(format!("{}-component-input.wasm", spec.lib_name));
+    let strip_out = Command::new("wasm-tools")
+        .args(["strip", "--delete", "^component-type:.*:slicer:sdk-"])
+        .arg(&intermediate)
+        .args(["-o"])
+        .arg(&component_input)
+        .output()
+        .map_err(|e| BuildError::ComponentInputFailed {
+            guest: spec.crate_name.clone(),
+            stderr_tail: format!("failed to spawn wasm-tools: {e}"),
+        })?;
+
+    if !strip_out.status.success() {
+        let stderr = String::from_utf8_lossy(&strip_out.stderr);
+        return Err(BuildError::ComponentInputFailed {
+            guest: spec.crate_name.clone(),
+            stderr_tail: tail_lines(&stderr, 20),
+        });
+    }
+
     let wt_out = Command::new("wasm-tools")
         .args(["component", "new"])
-        .arg(&intermediate)
+        .arg(&component_input)
         .arg("-o")
         .arg(&output_path)
         .output()
@@ -415,6 +465,25 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
             stderr_tail: tail_lines(&stderr, 20),
         });
     }
+
+    // Record the inputs only after both cargo and componentization succeeded.
+    let shared = compute_shared_freshness(ws_root);
+    let freshness = compute_guest_freshness(spec, ws_root, &shared);
+    let metadata_path = fingerprint_metadata_path(ws_root, spec);
+    if let Some(parent) = metadata_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| BuildError::FingerprintMetadataFailed {
+            guest: spec.crate_name.clone(),
+            path: metadata_path.clone(),
+            error: e.to_string(),
+        })?;
+    }
+    fs::write(&metadata_path, freshness.fingerprint.as_bytes()).map_err(|e| {
+        BuildError::FingerprintMetadataFailed {
+            guest: spec.crate_name.clone(),
+            path: metadata_path,
+            error: e.to_string(),
+        }
+    })?;
 
     Ok(())
 }
@@ -454,15 +523,160 @@ pub fn build_command(ws_root: &Path) -> i32 {
 // Freshness-check helpers
 // ---------------------------------------------------------------------------
 
-/// Return the maximum mtime across all files reachable from `root`.
-/// Returns `None` if `root` doesn't exist or contains no files.
-pub fn newest_mtime_recursive(root: &Path) -> Option<SystemTime> {
-    walkdir::WalkDir::new(root)
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FingerprintEntry {
+    path: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FreshnessSnapshot {
+    pub newest_mtime: SystemTime,
+    pub fingerprint: String,
+    entries: Vec<FingerprintEntry>,
+}
+
+/// Return all files below `root`, sorted by path, optionally restricted by extension.
+fn input_files(root: &Path, extension: Option<&str>) -> Vec<PathBuf> {
+    let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
-        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
-        .max()
+        .filter(|e| {
+            extension
+                .is_none_or(|wanted| e.path().extension().and_then(|s| s.to_str()) == Some(wanted))
+        })
+        .map(|e| e.into_path())
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// Reuse the existing shared source set for both mtime and content freshness.
+fn shared_input_paths(ws_root: &Path) -> Vec<PathBuf> {
+    let wit_root = ws_root.join("crates/slicer-schema/wit");
+    let mut paths = input_files(&wit_root, Some("wit"));
+
+    let shared_crates = ["slicer-macros", "slicer-sdk", "slicer-ir", "slicer-schema"];
+    for krate in shared_crates {
+        let crate_root = ws_root.join("crates").join(krate);
+        paths.extend(input_files(&crate_root.join("src"), None));
+        for file in ["Cargo.toml", "build.rs"] {
+            let path = crate_root.join(file);
+            if path.is_file() {
+                paths.push(path);
+            }
+        }
+    }
+
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn guest_input_paths(spec: &GuestSpec) -> Vec<PathBuf> {
+    let mut paths = input_files(&spec.guest_dir.join("src"), None);
+    paths.push(spec.manifest_path.clone());
+
+    // Core guests compile the parent module through the path dependency.
+    if spec.tree == GuestTree::Core {
+        let parent_dir = spec
+            .guest_dir
+            .parent()
+            .expect("wit-guest/ must have a parent directory");
+        paths.extend(input_files(&parent_dir.join("src"), None));
+        paths.push(parent_dir.join("Cargo.toml"));
+    }
+
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn relative_input_path(ws_root: &Path, path: &Path) -> String {
+    path.strip_prefix(ws_root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn fingerprint_entries(entries: &[FingerprintEntry]) -> String {
+    let mut ordered = entries.to_vec();
+    ordered.sort_by(|a, b| a.path.cmp(&b.path).then(a.bytes.cmp(&b.bytes)));
+
+    let mut hash = [0xcbf29ce484222325_u64, 0x84222325cbf29ce4_u64];
+    for entry in ordered {
+        hash_update(&mut hash, &(entry.path.len() as u64).to_le_bytes());
+        hash_update(&mut hash, entry.path.as_bytes());
+        hash_update(&mut hash, &[0]);
+        hash_update(&mut hash, &(entry.bytes.len() as u64).to_le_bytes());
+        hash_update(&mut hash, &entry.bytes);
+    }
+    format!("v1-{:016x}{:016x}", hash[0], hash[1])
+}
+
+fn hash_update(hash: &mut [u64; 2], bytes: &[u8]) {
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+    for byte in bytes {
+        hash[0] ^= u64::from(*byte);
+        hash[0] = hash[0].wrapping_mul(FNV_PRIME);
+        hash[1] ^= u64::from(!*byte);
+        hash[1] = hash[1].wrapping_mul(FNV_PRIME);
+    }
+}
+
+fn snapshot_from_paths(ws_root: &Path, paths: &[PathBuf]) -> FreshnessSnapshot {
+    let mut entries = Vec::with_capacity(paths.len());
+    let mut newest_mtime = UNIX_EPOCH;
+
+    for path in paths {
+        if let Some(mtime) = file_mtime(path) {
+            newest_mtime = newest_mtime.max(mtime);
+        }
+        let bytes = fs::read(path).unwrap_or_else(|_| b"<unreadable-input>".to_vec());
+        entries.push(FingerprintEntry {
+            path: relative_input_path(ws_root, path),
+            bytes,
+        });
+    }
+
+    FreshnessSnapshot {
+        fingerprint: fingerprint_entries(&entries),
+        newest_mtime,
+        entries,
+    }
+}
+
+/// Compute shared mtime and content inputs once per freshness invocation.
+pub fn compute_shared_freshness(ws_root: &Path) -> FreshnessSnapshot {
+    snapshot_from_paths(ws_root, &shared_input_paths(ws_root))
+}
+
+fn compute_guest_freshness(
+    spec: &GuestSpec,
+    ws_root: &Path,
+    shared: &FreshnessSnapshot,
+) -> FreshnessSnapshot {
+    let guest = snapshot_from_paths(ws_root, &guest_input_paths(spec));
+    let mut entries = shared.entries.clone();
+    entries.extend(guest.entries);
+    FreshnessSnapshot {
+        fingerprint: fingerprint_entries(&entries),
+        newest_mtime: shared.newest_mtime.max(guest.newest_mtime),
+        entries,
+    }
+}
+
+pub fn fingerprint_metadata_path(ws_root: &Path, spec: &GuestSpec) -> PathBuf {
+    ws_root
+        .join("target/guest-fingerprints")
+        .join(format!("{}.fingerprint", spec.crate_name))
+}
+
+fn metadata_matches(path: &Path, expected: &str) -> bool {
+    fs::read_to_string(path)
+        .map(|actual| actual.trim() == expected)
+        .unwrap_or(false)
 }
 
 /// Return the mtime of a single file, or `None` if it doesn't exist.
@@ -470,85 +684,25 @@ pub fn file_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).ok().and_then(|m| m.modified().ok())
 }
 
-/// Return the larger of two `Option<SystemTime>` values.
-/// `None` is treated as "no constraint" (smaller than anything).
-pub fn max_opt<T: Ord>(a: Option<T>, b: Option<T>) -> Option<T> {
-    match (a, b) {
-        (Some(x), Some(y)) => Some(x.max(y)),
-        (Some(x), None) => Some(x),
-        (None, Some(y)) => Some(y),
-        (None, None) => None,
-    }
-}
-
-/// Compute the shared mtime once per `--check` invocation.
-/// Covers: `crates/slicer-schema/wit/**/*.wit` + 4 shared crates (slicer-macros, slicer-sdk, slicer-ir, slicer-schema).
-pub fn compute_shared_mtime(ws_root: &Path) -> SystemTime {
-    // --- wit/**/*.wit ---
-    let wit_mtime: Option<SystemTime> =
-        walkdir::WalkDir::new(ws_root.join("crates").join("slicer-schema").join("wit"))
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("wit"))
-            .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
-            .max();
-
-    // --- 4 shared crates ---
-    let shared_crates = ["slicer-macros", "slicer-sdk", "slicer-ir", "slicer-schema"];
-    let mut shared_mtime: Option<SystemTime> = wit_mtime;
-
-    for krate in &shared_crates {
-        let crate_root = ws_root.join("crates").join(krate);
-        // src/** (all files, no extension filter — bash uses `find … -type f`)
-        let src_mtime = newest_mtime_recursive(&crate_root.join("src"));
-        // Cargo.toml
-        let toml_mtime = file_mtime(&crate_root.join("Cargo.toml"));
-        shared_mtime = max_opt(shared_mtime, max_opt(src_mtime, toml_mtime));
-    }
-
-    shared_mtime.unwrap_or(UNIX_EPOCH)
-}
-
 /// Return `true` if the guest artifact is absent or older than its sources.
-pub fn is_stale(spec: &GuestSpec, ws_root: &Path, shared_mtime: SystemTime) -> bool {
-    // Per-guest source inputs
-    let guest_src = newest_mtime_recursive(&spec.guest_dir.join("src"));
-    let guest_toml = file_mtime(&spec.manifest_path);
-    let mut per_guest = max_opt(guest_src, guest_toml);
-
-    // Core tree: also track the parent module crate (one level above wit-guest/)
-    if spec.tree == GuestTree::Core {
-        let parent_dir = spec
-            .guest_dir
-            .parent()
-            .expect("wit-guest/ must have a parent directory");
-        let parent_src = newest_mtime_recursive(&parent_dir.join("src"));
-        let parent_toml = file_mtime(&parent_dir.join("Cargo.toml"));
-        per_guest = max_opt(per_guest, max_opt(parent_src, parent_toml));
-    }
-
-    let newest_src = match max_opt(per_guest, Some(shared_mtime)) {
-        Some(t) => t,
-        None => UNIX_EPOCH,
-    };
-
+pub fn is_stale(spec: &GuestSpec, ws_root: &Path, shared: &FreshnessSnapshot) -> bool {
+    let freshness = compute_guest_freshness(spec, ws_root, shared);
     let artifact_mtime = file_mtime(&ws_root.join(&spec.artifact_path));
-
-    match artifact_mtime {
-        None => true,                  // artifact missing → stale
-        Some(art) => newest_src > art, // source newer than artifact → stale
-    }
+    artifact_mtime.is_none_or(|artifact| freshness.newest_mtime > artifact)
+        || !metadata_matches(
+            &fingerprint_metadata_path(ws_root, spec),
+            &freshness.fingerprint,
+        )
 }
 
 /// Freshness check: print `STALE: <crate_name>` for every stale guest; exit 1 if any.
 pub fn check_command(ws_root: &Path) -> i32 {
-    let shared = compute_shared_mtime(ws_root);
+    let shared = compute_shared_freshness(ws_root);
     let (guests, _skips) = discover_guests(ws_root);
 
     let mut any_stale = false;
     for spec in &guests {
-        if is_stale(spec, ws_root, shared) {
+        if is_stale(spec, ws_root, &shared) {
             println!("STALE: {}", spec.crate_name);
             any_stale = true;
         }
@@ -558,5 +712,82 @@ pub fn check_command(ws_root: &Path) -> i32 {
         1
     } else {
         0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "pnp-xtask-fingerprint-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temporary test directory");
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn fingerprint_is_deterministic_and_content_sensitive() {
+        let entries = vec![
+            FingerprintEntry {
+                path: "b.wit".to_string(),
+                bytes: b"second".to_vec(),
+            },
+            FingerprintEntry {
+                path: "a.wit".to_string(),
+                bytes: b"first".to_vec(),
+            },
+        ];
+        assert_eq!(fingerprint_entries(&entries), fingerprint_entries(&entries));
+
+        let mut changed = entries.clone();
+        changed[1].bytes = b"changed".to_vec();
+        assert_ne!(fingerprint_entries(&entries), fingerprint_entries(&changed));
+    }
+
+    #[test]
+    fn missing_fingerprint_metadata_is_stale() {
+        let temp = TempDir::new();
+        let guest_dir = temp.0.join("guest");
+        fs::create_dir_all(guest_dir.join("src")).expect("create guest source directory");
+        let manifest_path = guest_dir.join("Cargo.toml");
+        fs::write(&manifest_path, "[package]\nname = \"guest\"\n").expect("write manifest");
+        fs::write(guest_dir.join("src/lib.rs"), "fn main() {}\n").expect("write source");
+        let artifact_path = temp.0.join("guest.wasm");
+        fs::write(&artifact_path, b"artifact").expect("write artifact");
+
+        let spec = GuestSpec {
+            crate_name: "guest".to_string(),
+            lib_name: "guest".to_string(),
+            manifest_path,
+            guest_dir,
+            artifact_path: PathBuf::from("guest.wasm"),
+            tree: GuestTree::TestGuest,
+        };
+        let shared = compute_shared_freshness(&temp.0);
+        assert!(is_stale(&spec, &temp.0, &shared));
+
+        let freshness = compute_guest_freshness(&spec, &temp.0, &shared);
+        let metadata_path = fingerprint_metadata_path(&temp.0, &spec);
+        fs::create_dir_all(metadata_path.parent().expect("metadata parent"))
+            .expect("create metadata directory");
+        fs::write(&metadata_path, freshness.fingerprint).expect("write metadata");
+        assert!(!is_stale(&spec, &temp.0, &shared));
     }
 }

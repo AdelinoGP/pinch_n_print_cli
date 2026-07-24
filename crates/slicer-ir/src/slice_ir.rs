@@ -1725,6 +1725,7 @@ pub struct Point3WithWidth {
     #[serde(default)]
     pub overhang_quartile: Option<u8>,
     /// Distance from this point to the top of its support column in mm
+    #[serde(default)]
     pub dist_to_top_mm: f32,
 }
 

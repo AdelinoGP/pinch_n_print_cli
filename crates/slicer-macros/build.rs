@@ -10,6 +10,7 @@ fn main() {
         "../slicer-schema/wit/deps/world-postpass/world-postpass.wit",
         "../slicer-schema/wit/deps/world-finalization/world-finalization.wit",
         "../slicer-schema/wit/deps/world-layer/world-layer.wit",
+        "../slicer-schema/wit/root.wit",
     ] {
         println!("cargo:rerun-if-changed={path}");
     }

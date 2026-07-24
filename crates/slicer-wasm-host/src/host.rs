@@ -3047,9 +3047,10 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
 impl ir::HostLayerCollectionBuilder for HostExecutionContext {
     fn set_entity_order(
         &mut self,
-        _self_: Resource<LayerCollectionBuilderData>,
+        self_: Resource<LayerCollectionBuilderData>,
         items: Vec<(u32, bool)>,
     ) -> wasmtime::Result<Result<(), String>> {
+        self.table.get(&self_)?;
         if self.layer_collection_proposal.is_some() {
             return Ok(Err(
                 "set-entity-order called twice within one run-path-optimization".into(),
