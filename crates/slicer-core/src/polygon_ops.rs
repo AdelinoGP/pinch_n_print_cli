@@ -229,6 +229,16 @@ pub fn clip_polygons(
     use clipper2_rust::core::FillRule;
     use clipper2_rust::{boolean_op_tree_64, ClipType, PolyTree64};
 
+    // Profiling mark. `clip_polygons` is one of only three clipper2 entry points
+    // in this module, so it is marked and its wrappers are not: `union`,
+    // `intersection`, `difference`, `xor` — and transitively `union_ex`,
+    // `intersection_ex`, `difference_ex` — do nothing but forward here with a
+    // different `ClipOperation`. Marking them too would double-count the same
+    // clipper2 work and make nested scopes indistinguishable from real nesting.
+    // Marking the primitive also covers slicer-core's own internal callers, such
+    // as `top_surface_split::split_top_surfaces`, for free.
+    let _profile = crate::profile::scope(crate::profile::ScopeId::CLIP_POLYGONS);
+
     // Flatten all polygons (contours + holes) into separate paths — clipper2
     // boolean ops work on flat path lists as input regardless of hierarchy.
     let subject_paths: Vec<Vec<Point64>> = subject.iter().flat_map(expolygon_to_paths).collect();
@@ -352,6 +362,12 @@ pub fn offset(
     join: OffsetJoinType,
     arc_tolerance_mm: f32,
 ) -> Vec<ExPolygon> {
+    // Profiling mark: the single-pass clipper2 inflate entry point. Marked here
+    // rather than in `inflate_once` so that a two-pass op is one scope, not two
+    // — `offset2_ex` carries its own mark, and `morph_pass` (used by `opening`
+    // and `closing_ex`) is an internal helper, not a public primitive.
+    let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET);
+
     // miter_limit matches Clipper2's default (2.0); callers needing
     // OrcaSlicer's closing/opening miter limit go through `opening`/
     // `closing_ex`, which pass `ORCA_MORPH_MITER_LIMIT` explicitly.
@@ -462,6 +478,9 @@ fn morph_pass(subject: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec
 /// [`OffsetJoinType::Miter`]; `Round` reproduces this helper's historical
 /// hard-coded behaviour bit-for-bit.
 pub fn opening(subject: &[ExPolygon], distance: f64, join: OffsetJoinType) -> Vec<ExPolygon> {
+    // Marked here, not in `morph_pass`: both passes reach `inflate_once`
+    // directly and so bypass `offset`'s mark. See `ScopeId::OPENING`.
+    let _scope = crate::profile::scope(crate::profile::ScopeId::OPENING);
     let eroded = morph_pass(subject, -distance as f32, join);
     morph_pass(&eroded, distance as f32, join)
 }
@@ -472,6 +491,8 @@ pub fn opening(subject: &[ExPolygon], distance: f64, join: OffsetJoinType) -> Ve
 /// [`opening`] for the join-type contract (Miter = OrcaSlicer parity,
 /// Round = historical behaviour).
 pub fn closing_ex(subject: &[ExPolygon], distance: f64, join: OffsetJoinType) -> Vec<ExPolygon> {
+    // Same `morph_pass` bypass as `opening`. See `ScopeId::CLOSING_EX`.
+    let _scope = crate::profile::scope(crate::profile::ScopeId::CLOSING_EX);
     let dilated = morph_pass(subject, distance as f32, join);
     morph_pass(&dilated, -distance as f32, join)
 }
@@ -494,6 +515,11 @@ pub fn offset2_ex(
     miter_limit: f64,
 ) -> Vec<ExPolygon> {
     use clipper2_rust::{inflate_paths_64, ClipperOffset, EndType, JoinType, PolyTree64};
+
+    // Profiling mark: the two-pass clipper2 inflate entry point. It does not go
+    // through `offset`, so it needs its own scope. `opening_ex` is not marked —
+    // it forwards straight here, and marking it would double-count.
+    let _profile = crate::profile::scope(crate::profile::ScopeId::OFFSET2_EX);
 
     let join_type = match join {
         OffsetJoinType::Miter => JoinType::Miter,

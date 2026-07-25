@@ -30,6 +30,11 @@ pub mod paint_policy;
 pub mod perimeter_utils;
 pub mod polygon_ops;
 pub mod polygon_tree;
+/// Profiling-scope seam: `slicer-core` declares the sink, others install it.
+///
+/// Deliberately NOT gated behind `host-algos` — it must compile for the wasm32
+/// guests, which is where the guest-side sink (installed by `slicer-sdk`) runs.
+pub mod profile;
 #[cfg(feature = "host-algos")]
 pub mod skeletal_trapezoidation;
 pub mod stage_io;
