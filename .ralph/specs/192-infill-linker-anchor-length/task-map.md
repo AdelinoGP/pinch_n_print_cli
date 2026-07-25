@@ -1,0 +1,26 @@
+# Task Map: 192-infill-linker-anchor-length
+
+This packet groups a single task ID (`TASK-311`). The crosswalk is carried anyway because `TASK-311` is **newly allocated** and has zero hits in `docs/07_implementation_status.md` at authoring time — registering it there is packet work (AC-17), and this table is the mapping that registration must reproduce. Its backlog authority is not `docs/07` but `docs/specs/deviation-backlog-remediation-plan.md` §Packet Queue row 10, added by that plan's "Queue amendment (2026-07-24, post-generation)" note, whose subject is `DEV-089` (tranche T3, no dependency).
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `TASK-311` | `Step 1` | `docs/03_wit_and_manifest.md` | `modules/core-modules/infill-linker/infill-linker.toml` | `PrintConfig.cpp` — `PrintConfigDef::init_fff_params` | `S` | Declares the two keys `DEV-089`'s status cell names as prerequisites for closure (`anchor_length` / `anchor_length_max`), **plus `layer_height` and `line_width`** so the host's `ConfigView::from_declared` filter stops dropping the reads that feed the percent base. Proven by `pnp_cli module config-schema` (which exercises `parse_percent_default`'s acceptance of `"400%"`) and by AC-20's declared-vs-read guard. |
+| `TASK-311` | `Step 2` | `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` §"Regression coverage" | `modules/core-modules/infill-linker/tests/anchor_length_tdd.rs` (new), `tests/orchestrate_tdd.rs` | `FillBase.cpp` — `take_ccw_limited` / `take_cw_limited` | `M` | Red-first drivers for every change-proving AC. Pins the percent base at `0.3570796` mm so the 5.6× line-spacing error cannot be introduced silently later. |
+| `TASK-311` | `Step 3a` | `docs/08_coordinate_system.md` | `modules/core-modules/infill-linker/src/connect.rs`, `src/graph.rs` | `FillBase.hpp` — `FillParams` / `dont_connect()`; `Fill.cpp` — `group_fills`; `FillBase.cpp` — `take_ccw_limited` / `take_cw_limited` | `M` | `AnchorParams` + `contour_stub`, and the deletion of the `LINK_THRESHOLD_SPACINGS` gate that **is** `DEV-089`. Ends non-compiling by design; gated on static probes only. |
+| `TASK-311` | `Step 3b` | `docs/adr/0025-infill-linker-as-raw-emit-post-pass.md` §"Regression coverage" | `modules/core-modules/infill-linker/tests/connect_tdd.rs`, `src/orchestrate.rs` | none | `S` | Moves the five `connect_infill` call sites plus the one production call site. Proves `DEV-088`'s three containment guards survive the signature change untouched. |
+| `TASK-311` | `Step 4` | `docs/adr/0026-infill-linking-algorithms-in-linker-module.md` | `modules/core-modules/infill-linker/src/connect.rs`, `src/orchestrate.rs` | `FillBase.cpp` — `Fill::connect_infill` / `Fill::chain_or_connect_infill`; `Fill.cpp` — `group_fills` | `M` | The three behaviours `DEV-089`'s description enumerates: whole-arc-vs-stub branch, shortest-first greedy consumption, and the solid/bridge force-to-unlimited. This is the step that makes the row closable. |
+| `TASK-311` | `Step 5` | `docs/DEVIATION_LOG.md`, `docs/15_config_keys_reference.md`, `docs/07_implementation_status.md`, `docs/ORCA_CONFIG_REFERENCE.md` | `crates/slicer-ir/src/resolved_config.rs` (doc comment only), `docs/specs/deviation-backlog-remediation-plan.md` | `FillBase.cpp` — cited **by function name only**; drops ADR-0025's legacy `FillBase.cpp:1497-2300` pin | `M` | Closes `DEV-089`, corrects its `graph.rs` file pin to `connect.rs` and its "no shortest-first ordering" wording to lexicographic-by-endpoint, files the three residual rows, and **registers `TASK-311` in `docs/07_implementation_status.md`** — the row this table exists to specify. |
+
+Costs are copied from `implementation-plan.md` §Per-Step Budget Roll-Up. Aggregate `M`; no row is `L`, so no pre-activation split is required.
+
+## Deviation crosswalk
+
+| Deviation | Relationship | Where discharged |
+| --- | --- | --- |
+| `DEV-089` | Closed by this packet; its file pin and its ordering wording are both **corrected** as part of closure | Steps 3a / 4 (behaviour), Step 5 (row) — AC-16 |
+| `DEV-088` | **Landed and must stay landed.** Its containment property is a do-not-regress constraint, never re-litigated here | AC-11, AC-13 |
+| new `DEV-###` (re-derive) | Residual: canonical's `ContourIntersectionPoint` neighbour trimming is not ported; PnP clamps the stub to the next boundary position instead | Step 5 — AC-N3 documents the substitute |
+| new `DEV-###` (re-derive) | Residual: the percent form is declarable and validated but not transportable — `parse_config_field_entry` discards `parse_percent_default`'s return | Step 5 |
+| new `DEV-###` (re-derive) | Residual: the percent **base** uses PnP's generic `line_width` where canonical uses the per-role `frInfill` flow width; the `line_width_to_spacing` formula itself matches canonical exactly | Step 5 |
+
+Every `DEV-###` above must have its number **re-derived at the moment the row is written** (`rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, take the next). Sibling packets in this batch file rows concurrently; a number captured earlier in the session will collide.

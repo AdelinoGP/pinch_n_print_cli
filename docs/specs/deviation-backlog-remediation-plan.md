@@ -21,10 +21,32 @@ Scope decisions:
   excluded from fix-planning (listed at the end so nothing is silently dropped).
 - Package as a **few themed packets**; sequence into **prioritized tranches**.
 
-Environment note: **OrcaSlicer canonical is vendored in-repo** at `OrcaSlicerDocumented/src/libslic3r/`
-(`PerimeterGenerator.cpp`, `SkeletalTrapezoidation.cpp`, `VariableWidth.cpp`, `FillConcentric.cpp`,
-`PrintConfig.cpp`, `WallToolPaths.cpp`). Every packet verifies its port against this vendored
-source — cite by **function name**, never line number.
+Environment note: **OrcaSlicer canonical is NOT vendored in this repo, and no path to it may be
+assumed.** An earlier revision of this note claimed the gitignored `OrcaSlicerDocumented/` at the
+repo root was canonical and instructed every packet to verify against it. That instruction was
+wrong and actively dangerous: per `CLAUDE.md`, an `OrcaSlicerDocumented/` tree may have been reduced
+to serve as a Pinch 'n Print GUI, with **whole functions missing**. A parity check against a reduced
+tree silently reads a truncated file and returns a confidently wrong answer, and `.gitignore` means
+nothing in the repo warns you.
+
+Every packet MUST verify its port against a **full** OrcaSlicer checkout:
+
+- The checkout's location is **machine-local and deliberately not recorded here.** Ask the
+  maintainer where it lives; do not guess, and do not fall back to whatever
+  `OrcaSlicerDocumented/` happens to be on disk.
+- **Sanity-check fullness before trusting any result.** Compare against a known-full reference:
+  `src/libslic3r/PrintObject.cpp` is ~4,880 lines with 9 occurrences of
+  `discover_horizontal_shells`; a reduced tree measures ~3,240 lines and 6. Confirm the specific
+  function you need is present and complete, not merely that the file exists.
+- If no full checkout is available, record the canonical claim as `[BLOCK]` in the packet's
+  `design.md` and keep the packet `draft`. **Never ground a parity claim in an unverified tree.**
+
+Files a packet in this plan will typically need: `PerimeterGenerator.cpp`,
+`SkeletalTrapezoidation.cpp`, `VariableWidth.cpp`, `FillConcentric.cpp`, `PrintConfig.cpp`,
+`WallToolPaths.cpp`, `Flow.cpp`, `FillBase.cpp`.
+
+Cite canonical by **function name**, never line number — line numbers are pinned to whatever
+upstream revision their author had open and are unverifiable for anyone else.
 
 ## Target set
 
@@ -174,13 +196,91 @@ row immediately on generation/closure. **T1 packets (181–183) commit together.
 | 1 | `.ralph/specs/181-dispatch-missing-component-handling` | DEV-087 | T1 | — | generated · draft · TASK-297 · **PREFLIGHT PASS** |
 | 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 · **PREFLIGHT PASS** |
 | 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike) | T1 | — | generated · draft · TASK-296 · **PREFLIGHT PASS** |
-| 4 | `<tbd>-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | pending |
-| 5 | `<tbd>-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | pending |
-| 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | pending |
-| 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | pending |
-| 8 | `<tbd>-machine-custom-gcode-injection` | DEV-085 | T3 | — | pending |
-| 9 | `<tbd>-gcode-smoothed-speed-add-intersections` | DEV-009 | T3 | — | pending |
-| 10 | `<tbd>-infill-linker-anchor-length` | DEV-089 | T3 | — | pending |
+| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | generated · draft · TASK-303 · **PREFLIGHT PASS** |
+| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 · **PREFLIGHT PASS** |
+| 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
+| 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | **pending — dependency-blocked** (see amendment 2026-07-25a) |
+| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · draft · TASK-305 · **PREFLIGHT PASS** |
+| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | DEV-085 (layer-scoped points) | T3 | #8a | generated · draft · TASK-306 · **PREFLIGHT PASS** |
+| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | DEV-085 (tool/role-scoped points + residuals) | T3 | #8b | generated · draft · TASK-307 · **PREFLIGHT PASS** |
+| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | DEV-009 (carrier prerequisite) | T3 | — | generated · draft · TASK-308 · **PREFLIGHT PASS** |
+| 9b | `.ralph/specs/190-smoothed-overhang-speed` | DEV-009 (smoothed-speed half) | T3 | #9a | generated · draft · TASK-309 · **BLOCKED — maintainer decision required on `[BLOCK-1]`/`[BLOCK-1b]`/`[BLOCK-2]`/`[BLOCK-3]`** |
+| 9c | `.ralph/specs/191-overhang-add-intersections` | DEV-009 (ADD_INTERSECTIONS half) | T3 | #9b | generated · draft · TASK-310 · **PREFLIGHT PASS** (not schedulable until #9b resolves) |
+| 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 · **PREFLIGHT PASS** |
+
+**Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
+`.ralph/specs/183-arachne-voronoi-panic-diagnosis` is `status: draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
+all of which are also `draft`. Packet 183 is a **diagnosis spike**: its whole output is a verdict on D-167 (close as inert, or narrow to a successor
+owning `preprocess_input_outline` hardening). That verdict **does not exist yet**, and D-154's design is gated on it — the spike decides whether the
+skeletal path needs hardening before `discretize_edge`'s 3-branch dispatch is ported at all. Authoring row 6 now would mean inventing a verdict to
+design against. Row 7 (D-104f) depends on both row 5 and row 6, so it inherits the block. **Both rows stay `pending`. Resume them only after packet
+183 has been executed and its D-167 verdict recorded** — not merely after 183 is generated.
+
+**Queue amendment (2026-07-25b): rows 8 and 9 were each decomposed into three packets. Neither may ship at aggregate `L`.**
+The plan rates both `L`, and the Batch Protocol forbids shipping a packet at aggregate `L`; the remedy is decomposition, not scope compression.
+Grounding then moved the seams away from where this plan predicted them:
+
+- **Row 8 (DEV-085) → 8a/8b/8c.** The row's own headline counts are **wrong and must not be quoted**: canonical `PrintConfigDef::init_fff_params`
+  registers **16** custom-G-code injection points (13 `coString` + 3 `coStrings`, the latter per-filament vectors resolved via `get_at(filament_id)`),
+  not 15; the row's enumerated unimplemented list contains 14 names; and its claim that the extrusion-role family appears in
+  `docs/ORCA_CONFIG_REFERENCE.md` is false (zero occurrences of `filament_change_extrusion_role_gcode` / `process_change_extrusion_role_gcode`).
+  The split seam is the one the code actually has: **8a** fixes the substitution engine itself (the `bytes[i] as char` mojibake, the unknown-placeholder
+  policy, and the placeholder *value* keys `docs/15` advertised but the manifest never declared) before any new injection point is added; **8b** builds the
+  injection-point registry and lands the layer-scoped points; **8c** lands the tool- and role-scoped points. `time_lapse_gcode` moved 8c→8b (it is
+  layer-scoped and shares 8b's `;LAYER_CHANGE` walk). `file_start_gcode` moved 8b→8c **as a recorded residual, not an implementation**:
+  `DefaultGCodeSerializer::serialize_gcode` (`crates/slicer-gcode/src/serialize.rs`) writes `serialize_header_block` before it iterates
+  `gcode_ir.commands`, so nothing a `PostPass::GCodePostProcess` module emits can precede the header. Four further points
+  (`wrapping_detection_gcode`, `machine_pause_gcode`, `template_custom_gcode`, `printing_by_object_gcode`) are likewise recorded as residuals with
+  measured unreachability evidence rather than faked. **Note that canonical has no injection-point abstraction to mirror** — the same block is
+  hand-inlined 20+ times across `GCode::_do_export`, `GCode::process_layer`, `GCode::set_extruder` and `GCode::_extrude`, and its one table
+  (`s_CustomGcodeSpecificPlaceholders`) is validation-only and already drifted. The registry is an improvement over canonical, not parity with it.
+- **Row 9 (DEV-009) → 9a/9b/9c.** This plan describes DEV-009 as "two features in `crates/slicer-gcode/src/emit.rs` (`resolve_feedrate`)" that are
+  independent. **All three parts of that are false.** `resolve_feedrate` (on `DefaultGCodeEmitter`) contains no quantized lookup — it is a flat per-role
+  table times a clamped `speed_factor`. The quantization lives in `modules/core-modules/overhang-classifier-default/src/lib.rs`
+  (`quartile_for_distance`, `BAND_BOUNDARY_MULTIPLIERS`). And PnP carries **one `speed_factor` per entity**, not per point — the classifier takes a
+  whole-entity `max()` of overhang quartiles — whereas canonical's `calculate_speed` (in `ExtrusionQualityEstimator::estimate_extrusion_quality`)
+  interpolates per point. So a per-point speed carrier is a **prerequisite this plan never identified**, and it becomes **9a**. The two features are
+  also coupled, one-directionally: canonical feeds `ADD_INTERSECTIONS`' inserted vertices into `calculate_speed`, so ordering is fixed —
+  carrier (9a) → smoothed interpolation (9b) → mid-segment insertion (9c). The six-band schedule remains an accepted permanent deviation and is out
+  of scope in all three; note the distinction that makes this coherent — the accepted deviation is `annotate_overhangs`' four *quartile bands*, while
+  canonical's six *overlap levels* `{90, 75, 50, 25, 13, 0}` build a different table (`speed_sections`), which is what 9b ports.
+
+**Queue amendment (2026-07-25c): row 9b is BLOCKED pending a maintainer decision — it is not an authoring defect.**
+`190-smoothed-overhang-speed` reached PREFLIGHT PASS on every mechanical axis, but porting canonical's smoothed
+overhang-speed interpolation **reverses three recorded decisions**, so the packet records four `[BLOCK]` items in its
+`design.md` §Open Questions and refuses to activate until they are answered. The three reversed decisions, each verified
+verbatim against the artifact:
+
+- **ADR-0032** (Accepted, unsuperseded) requires curl distance to bucket through the *same* `BAND_BOUNDARY_MULTIPLIERS`
+  and merge via `max(overhang_quartile, curl_quartile)`, and states "**No new config keys.** … If that independent
+  control is ever needed, it is **new scope**." The port deletes the merge and adds `slowdown_for_curled_perimeters`.
+- **ADR-0031** (Accepted, unsuperseded) shrinks `overhang-classifier-default` to "a pure finalization-tier consumer",
+  drops the cross-layer wall-distance code as "redundant", and notes that walls are "merely an inset-by-`line_width/2`
+  proxy". The port reintroduces cross-layer wall-distance scanning and removes `EntityMutation::SetSpeedFactor`.
+  (ADR-0031's own in-body Amendment preserves the contested clauses, so the conflict stands; ADR-0008 is cross-referenced
+  by ADR-0031 as still standing on the same decision and is **not** examined by the packet.)
+- **`crates/slicer-core/src/algos/overhang_annotation.rs`**'s accepted deviation records PnP's **4** bands at pre-pass
+  time against OrcaSlicer's **6** overlap levels `{90, 75, 50, 25, 13, 0}` at emission time. The port restores both halves.
+
+The options, as the packet presents them: **(A)** supersede the two ADRs with amendment rows; **(B)** conform, dropping
+the smoothed-speed half of DEV-009; **(C)** add a continuous `overhang_distance_mm` beside `overhang_quartile` on
+`Point3WithWidth`, stamped by the same prepass — which *minimises* the supersession rather than avoiding it (AC-6 removes
+`SetSpeedFactor` under every option), at the cost of a further packet ahead of 9b whose struct-literal blast radius is
+`L` and must be split. **Row 9c (191) inherits the block** and additionally departs from ADR-0031 in a direction 9b never
+raises — it makes the module a *geometry* mutator rewriting `path.points` — which the maintainer's ruling should be
+understood to cover.
+
+Grounding settled the one question that could have dissolved the fork: a `PostPass::LayerFinalization` guest **cannot**
+reach `SliceRegionView`. `world-finalization.wit` does not import the package declaring it, `layer-collection-view`
+exposes six methods, and `host-services` exposes fifteen — none region-, surface- or quartile-related. The module must
+therefore derive overhang distance in-module against the previous layer's `OuterWall` centreline, which is a
+half-line-width proxy for canonical's slice boundary. That bias is filed as its own deviation row rather than hidden.
+
+**Packet numbers and TASK IDs were allocated centrally by the batch orchestrator, not re-derived per packet.** With authors running in parallel,
+per-author re-derivation is precisely the collision that made packet 181's first allocation clash with 178's `TASK-294`. Allocation: 186→TASK-305,
+187→TASK-306, 188→TASK-307, 189→TASK-308, 190→TASK-309, 191→TASK-310, 192→TASK-311. `DEV-###` IDs are **not** allocated here — every packet
+re-derives its own at the moment of writing. Each packet carries an explicit "register TASK-### in `docs/07_implementation_status.md`" Doc Impact
+obligation with a verification grep; packets 181–183 allocated IDs without one, which reads as fabrication at preflight.
 
 **Queue amendment (2026-07-24, post-generation):** row 10 was appended after this plan was written. DEV-089 was registered later the same day, from the `infill-linker` containment work (ADR-0025's 2026-07-24 amendment): canonical's per-arc anchor-length rule — whole arc under `anchor_length_max`, otherwise an `anchor_length` stub off each end via `take_limited`, candidates consumed shortest-first — is not ported, and PnP applies a single 10 × spacing gate with no stub mode. T3 with no dependency: it is a quality divergence rather than a containment one, since the connectors are contour geometry either way, and it needs new config keys plus the lerped partial segment.
 

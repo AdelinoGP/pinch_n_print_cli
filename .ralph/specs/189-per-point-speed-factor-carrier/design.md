@@ -1,0 +1,108 @@
+# Design: 189-per-point-speed-factor-carrier
+
+## Controlling Code Paths
+
+- Primary code path: `LayerCollectionIR` and its `Default` impl (`crates/slicer-ir/src/slice_ir.rs`) → `slicer_sdk::traits::EntityMutation` and the `MergeOp::ModifyEntity` arm of `FinalizationOutputBuilder::apply_to` (`crates/slicer-sdk/src/traits.rs`) → `DefaultGCodeEmitter::emit_gcode`'s per-entity loop and `DefaultGCodeEmitter::resolve_feedrate` (`crates/slicer-gcode/src/emit.rs`).
+- Guest→host channel: `variant entity-mutation` (`crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`) → the `fm::EntityMutation` match inside the `modify_entity` host implementation and `WitEntityMutation` (`crates/slicer-wasm-host/src/host.rs`) → the `FinalizationBuilderPush::ModifyEntity` arm (`crates/slicer-wasm-host/src/dispatch.rs`) → the `#[slicer_module]` guest-side translation (`crates/slicer-macros/src/lib.rs`).
+- Neighboring tests/fixtures: `crates/slicer-gcode/tests/gcode_feedrate_emission_tdd.rs` (the only file in the tree that exercises `resolve_feedrate`), `crates/slicer-gcode/tests/golden_emit_tdd.rs`, `crates/slicer-sdk/tests/finalization_builder_tdd.rs` (`modify_entity_set_speed_factor_applies`, `modify_entity_set_flow_factor_applies`, `modify_entity_unknown_id_errors`), `crates/slicer-ir/tests/ir_tests.rs` (the `Default().schema_version` vs constant assertion).
+- OrcaSlicer comparison: see `requirements.md` §OrcaSlicer Reference Obligations; do not repeat delegation rules.
+
+## Architecture Constraints
+
+- **The carrier must be indexable by the point's ORIGINAL index.** `emit_gcode` thins each entity with `simplify_polyline_mm` and `drop_short_segments_mm`, then rebuilds `kept: Vec<&Point3WithWidth>` by coordinate matching, discarding the original index. A per-point factor keyed by position-in-`kept` would silently shift every factor whenever simplification drops a vertex, and the shift would be invisible in a uniform-profile world — i.e. undetectable until packet 190 lands. The remap must therefore carry `(original_index, &Point3WithWidth)`.
+- **`SetSpeedFactor` and `SetPointSpeedFactors` must stay independent.** `SetSpeedFactor` writes `e.path.speed_factor` and writes **no** profile row; an absent row means "uniform". That is the entire compatibility rule that keeps every existing golden and fixture unmoved, and AC-N2 exists to keep it tested.
+<!-- snippet: wasm-staleness -->
+- Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
+- Schema/version constants and event-specific locking: `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` moves `1.1.0 → 1.2.0` in the same step as the field addition, together with its test fallout. The only assertion in the tree that pins it is `crates/slicer-ir/tests/ir_tests.rs`'s `LayerCollectionIR::default().schema_version must equal CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION` — a *relative* assertion, so it survives the bump provided the `Default` impl and the constant move together. Verified: no test in the tree hard-asserts the literal `1.1.0` for this IR (the only `"1.1.0"` string literals belong to the unrelated visual-debug manifest schema). Do not defer the bump to a later step.
+- **No `coord-system` bullet applies.** Every value this packet moves is a dimensionless speed multiplier or an `f32` mm/s feed rate; nothing crosses the mm ↔ 100 nm unit boundary. `Point3WithWidth` coordinates are read but never constructed or converted here.
+
+## Code Change Surface
+
+- **Selected approach — an `entity_id`-keyed side table on `LayerCollectionIR`.** New `pub struct EntitySpeedProfile { pub entity_id: u64, pub factors: Vec<f32> }`; new `#[serde(default)] pub speed_profiles: Vec<EntitySpeedProfile>` on `LayerCollectionIR`; `speed_profiles: Vec::new()` in its explicit `Default` impl. This is the shape **`TravelMove`** already uses on the same struct: `pub entity_id: u64`, anchored by id rather than positional index precisely so finalization sorting and insertion cannot dangle the anchor. `docs/02_ir_schemas.md` records the rationale — "Packet 39 earlier renamed `TravelMove.entity_idx: u32` → `entity_id: u64` … decoupling travel anchors from positional indices so finalization-stage entity insertion no longer invalidates anchors". **`TravelRetract` is deliberately NOT cited as a second example**: its first field is `pub after_entity_index: u32`, doc-commented "Index of the entity after which this retract/unretract is anchored" — a *positional* anchor that packet 39 did not convert (verified). The precedent is `TravelMove` alone, and it is sufficient; claiming two would double the apparent support with a false example. The emitter already builds an `entity_id → …` map (`travel_moves_by_entity`) in the same loop, so the lookup is a two-line addition next to an identical one.
+- **Exact functions, traits, manifests, tests, and fixtures:**
+  - `crates/slicer-ir/src/slice_ir.rs`: `EntitySpeedProfile` (new), `LayerCollectionIR` (field), `impl Default for LayerCollectionIR`, `CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION`.
+  - `crates/slicer-ir/src/lib.rs`: re-export beside `TravelMove`.
+  - `crates/slicer-sdk/src/traits.rs`: `EntityMutation` (variant), the `MergeOp::ModifyEntity` arm inside `apply_to`.
+  - `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`: `variant entity-mutation`.
+  - `crates/slicer-wasm-host/src/host.rs`: `WitEntityMutation` and the `fm::EntityMutation` match in the `modify_entity` host impl.
+  - `crates/slicer-wasm-host/src/dispatch.rs`: the `host::WitEntityMutation` match in the `FinalizationBuilderPush::ModifyEntity` arm.
+  - `crates/slicer-macros/src/lib.rs`: the `::slicer_sdk::traits::EntityMutation` match in the generated finalization forwarding.
+  - `crates/slicer-gcode/src/emit.rs`: `DefaultGCodeEmitter::emit_gcode` — the map construction next to `travel_moves_by_entity`, the `kept` remap, and the `GCodeCommand::Move { … f: … }` push.
+  - Tests named in `requirements.md` §In Scope.
+- **Rejected alternative 1 — a per-point field on `Point3WithWidth`.** Architecturally the cleanest (it sits next to `flow_factor` and `overhang_quartile`, and it would ride through the `kept` remap for free), but measured in the **hundreds** of exhaustive struct literals across well over a hundred files on this tree — **a ledger fact; re-derive with `rg -c 'dist_to_top_mm:' --glob '*.rs' crates modules xtask` (an exact proxy: every exhaustive literal names that field once) rather than trusting any number frozen here, which has already drifted upward since this packet was authored** — plus an added field on the `point3-with-width` WIT record. That is unambiguously an `L` blast radius and cannot be split into `M` steps without inventing artificial seams.
+- **Rejected alternative 2 — a `Vec<f32>` on `ExtrusionPath3D` beside `speed_factor`.** The most natural *reading* site (the emitter already holds `entity.path`), and it would ride through `push_entity_to_layer`, which carries an `extrusion-path3d` across WIT. Rejected on a measured **185 exhaustive literals across 94 files**, and because it would also require a `point`-count invariant on a record that crosses the WIT boundary in both directions.
+- **Rejected alternative 3 — a field on `PrintEntity`.** Measured at **~100 exhaustive literals across 49 files**; `PrintEntity` deliberately has no `Default` derive ("the struct intentionally has no `Default` derive so every construction site is compiler-forced to set this field"), so every site is forced. Twice the sweep of the selected approach for no additional benefit.
+- **Selected approach's own blast radius:** the `implementation-plan.md` Step 3 command reports 50 `LayerCollectionIR\s*\{` hits across 27 files lacking a trailing `..Default::default()`. **Both figures are ledger facts and both over-count:** the regex also matches `pub struct LayerCollectionIR {`, `impl Default for LayerCollectionIR {`, and every `-> [path::]LayerCollectionIR {` return-type brace, none of which is a literal needing an inserted field. Re-derive at the moment of use, treat the file list as an over-broad worklist, and let `cargo check --workspace --all-targets`'s `E0063` set decide which sites are real. Even at the raw figure it is several times smaller than alternative 1. The cost paid for it is the `kept`-remap change, which is a genuine correctness requirement (see Architecture Constraints) rather than incidental.
+
+## Files in Scope (read + edit)
+
+Target at most 3 primary files; this packet exceeds that because a mutation channel is by construction a five-file chain plus its carrier and its reader. `implementation-plan.md` splits them so no single step edits more than the chain segment it owns.
+
+- `crates/slicer-ir/src/slice_ir.rs` - role: owns the carrier type, the field, the `Default` impl, and the schema constant; expected change: add `EntitySpeedProfile`, add `speed_profiles`, bump to `1.2.0`.
+- `crates/slicer-sdk/src/traits.rs` - role: owns `EntityMutation` and the host-side applier; expected change: add the variant and the upsert/reject branch in `apply_to`.
+- `crates/slicer-gcode/src/emit.rs` - role: the only consumer that turns a speed factor into an `F` token; expected change: per-entity profile lookup, original-index remap, per-point `resolve_feedrate`.
+- `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit` - role: canonical WIT source read by both host `bindgen!` and the guest macro's `include_str!`; expected change: one additive variant case.
+- `crates/slicer-wasm-host/src/host.rs`, `crates/slicer-wasm-host/src/dispatch.rs`, `crates/slicer-macros/src/lib.rs` - role: the three mechanical translations of the new variant; expected change: one match arm each.
+- `crates/slicer-ir/src/lib.rs` - role: the crate's public re-export surface; expected change: one name.
+- The 27 blast-radius files enumerated in `implementation-plan.md` Steps 3 and 4 - role: struct-literal sites; expected change: one inserted field initialiser each.
+
+## Read-Only Context
+
+Include ranges for files over 300 lines.
+
+- `docs/02_ir_schemas.md` (2157 lines) - §"IR 10 — LayerCollectionIR" through the start of §"IR 11 — GCodeIR" only - purpose: the `TravelMove` side-table precedent, the `tool_index` additive-bump precedent, and the normative `LayerCollectionIR::default()` contract paragraph that must gain `speed_profiles = vec![]`.
+- `crates/slicer-gcode/src/emit.rs` (over 1200 lines) - locate `travel_moves_by_entity`, `simplified_points`, `DefaultGCodeEmitter::resolve_feedrate` and open ±40 lines around each - purpose: the exact insertion points.
+- `crates/slicer-sdk/src/traits.rs` (long) - locate `pub enum EntityMutation` and the `MergeOp::ModifyEntity` arm inside `apply_to` - purpose: the applier's existing `SetSpeedFactor` / `SetFlowFactor` shape and its `Err` convention (`"modify_entity: entity_id {} not found in layer {}"`).
+- `modules/core-modules/overhang-classifier-default/src/lib.rs` (303 lines) - read-only, for the shape of the producer packet 190 will change; **do not edit it in this packet.**
+- `CLAUDE.md` §"Guest WASM Staleness" and §"WIT/Type Changes Checklist" - purpose: the mandatory post-WIT-edit procedure.
+
+## Out-of-Bounds Files
+
+- `OrcaSlicerDocumented/...` - delegate; never load
+- `target/`, `Cargo.lock`, generated code, vendored dependencies - never load
+- `modules/core-modules/overhang-classifier-default/src/lib.rs` and its manifest TOML - **read-only here; editing is packet 190's exclusive surface.**
+- `crates/slicer-core/src/algos/overhang_annotation.rs` - its four concentric `overhang_quartile` bands and `BAND_BOUNDARY_MULTIPLIERS`; never touched by any of the three packets. (Do **not** paraphrase this as "the accepted six-band deviation": the same file documents canonical’s six overlap levels separately, and whether packet 190 may restore those is an open `[BLOCK-1b]` there. This packet is unaffected either way — it adds a carrier and touches no band table.)
+- `crates/slicer-ir/src/feedrate.rs` - the `overhang_*_4_speed` / `bridge_speed` config fields already exist; no change is needed here and adding one belongs to packet 190.
+- Unrelated crates - delegate symbol lookups; do not browse.
+
+## Expected Sub-Agent Dispatches
+
+- Question: "List every `LayerCollectionIR { … }` struct literal in `crates/`, `modules/` and `xtask/` whose body does **not** contain `..Default::default()`, as `path:count`."; scope: `crates/**/*.rs`, `modules/**/*.rs`, `xtask/**/*.rs`; return: `LOCATIONS`; purpose: Steps 3-4 blast-radius sweep (the command is pre-baked in `implementation-plan.md` Step 3; dispatch it rather than reading the files).
+- Question: "Does `cargo check --workspace --all-targets` pass? If not, return only the distinct file paths carrying `E0063` (missing field) errors."; scope: workspace; return: `FACT` plus at most 20 paths; purpose: Steps 3-4 exit.
+- Question: "In `docs/02_ir_schemas.md`, quote the `pub struct LayerCollectionIR` code block and the `LayerCollectionIR::default()` contract paragraph verbatim."; scope: `docs/02_ir_schemas.md`; return: `SNIPPETS` (≤ 2, ≤ 30 lines each); purpose: Step 8 doc edit without loading the file.
+- Question: "In `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`, does `GCode::_extrude` emit a fresh `F` token per extrusion sub-segment or once per path?"; scope: that file; return: `SUMMARY` ≤ 200 words; purpose: the OrcaSlicer obligation bullet.
+
+## Data and Contract Notes
+
+- **IR/manifest contracts.** `EntitySpeedProfile.factors.len()` MUST equal the target entity's `path.points.len()` at the moment the mutation is applied. `apply_to` enforces it with an `Err`; nothing downstream re-checks it. A profile row for an `entity_id` that no longer exists in the layer is impossible by construction, because `apply_to` resolves the entity before writing the row and returns the existing `"modify_entity: entity_id {} not found in layer {}"` error otherwise.
+- **Upsert semantics.** A second `SetPointSpeedFactors` for the same `entity_id` **replaces** the existing row rather than appending a duplicate; `speed_profiles` therefore holds at most one row per `entity_id`. This matters because `apply_to` processes `merge_ops` in submission order and packet 191 will submit a geometry mutation followed by a resized profile for the same entity.
+- **WIT world-package version — deliberately NOT bumped, and here is why in one sentence.** The file declares `package slicer:world-finalization@1.0.0;` and `docs/11_operational_governance_and_acceptance_gate.md` says additive fields/variants take a minor bump, which would make this `1.1.0`. It stays `1.0.0` under the ADR-0044 exemption that **WIT world versions are advisory and erased from guest binaries** — no host or guest resolves a component by that version, so bumping it changes no behaviour and gates no compatibility. The IR schema constant is bumped in the same packet because `LayerCollectionIR` *is* a `serde` surface with a live `Default` contract; the asymmetry is intentional, not an oversight. **Sibling evidence, measured, and it points both ways:** `world-prepass@3.0.0` and `world-layer@2.3.0` do bump (the latter for an additive parameter, the closest precedent to this change), while `world-postpass@1.0.0` and `world-finalization@1.0.0` never have. Nothing resolves a component by the version: the guest manifest carries `wit-world = "slicer:world-finalization"` unversioned, `docs/03_wit_and_manifest.md` records that a versioned `wit-world` is **Rejected**, and the host `bindgen!` names `slicer:world-finalization/finalization-module` unversioned. So the bump’s only fallout is one line in `docs/03_wit_and_manifest.md`’s package table — whose neighbouring entries are themselves already stale (it lists `world-layer@2.1.0` against an actual `2.3.0`). It is a one-token edit with no test fallout; it must not be done silently either way, and if it is done, the `docs/03_wit_and_manifest.md` line must move with it.
+- **WIT boundary.** `set-point-speed-factors(list<f32>)` is an additive case on an existing `variant`, so it is a wire-format change for `world-finalization` only. Every guest is nonetheless invalidated because bindgen re-reads `crates/slicer-schema/wit/**/*.wit` — 34 guest artifacts on this tree. The `--check` gate is mandatory before interpreting any component test.
+- **Error asymmetry, deliberate and documented.** `dispatch.rs`'s `FinalizationBuilderPush::ModifyEntity` arm calls `sdk_builder.modify_entity(…).unwrap_or_else(|e| log::warn!(…))`. A length-mismatched profile from a *WASM guest* is therefore a logged no-op, not a hard failure; only the native SDK path surfaces the `Err`. This is pre-existing behaviour for `SetSpeedFactor` too and is not changed here, but packet 190's producer must size its profile exactly rather than relying on a fatal.
+- **Determinism/scheduler constraints.** `speed_profiles` is written only from `apply_to`, which runs on the host after finalization dispatch, in `merge_ops` submission order. No scheduler rule, DAG edge, or `[ir-access]` manifest entry changes: `overhang-classifier-default` already declares `writes = ["LayerCollectionIR"]`.
+
+## Locked Assumptions and Invariants
+
+- **Absent profile ⇒ uniform speed.** An entity with no `speed_profiles` row must emit exactly the `F` values it emits today. This is the packet’s load-bearing compatibility lock, and **`AC-N3` is the criterion that actually defends it.** AC-7, AC-8 and AC-N2 defend only the weaker *no profile anywhere* case — AC-N3’s own text says so — so listing them alone would name three criteria that by construction cannot see the mixed profiled/un-profiled layer where a `speed_profiles_by_entity` lookup miss is exercised. Defended by `AC-N3` primarily, with `AC-7`, `AC-8` and `AC-N2` as the all-absent backstop. Reversible only by deleting the feature.
+- **Profile length is exact, never padded or truncated.** Locked at the `apply_to` boundary so no consumer has to invent a fallback for a short profile.
+- **`ExtrusionPath3D::speed_factor` remains the fallback and is never removed.** It stays the value used for any point index outside a present profile and for every entity without one.
+- **Schema `1.2.0` is additive.** `#[serde(default)]` on `speed_profiles` keeps 1.1.0 payloads deserializable, matching the `tool_index` precedent.
+
+## Risks and Tradeoffs
+
+- **A 50-site mechanical sweep across 27 files is the largest single risk of a botched merge.** Mitigation: the sweep is compiler-driven (every miss is an `E0063`), it is split across two steps by crate group, and the exit is `cargo check --workspace --all-targets` rather than a reviewer's eye.
+- **The `kept`-remap change touches emission for every entity in every slice**, including entities with no profile. Mitigation: the fallback path must resolve to the identical `resolve_feedrate(role, entity.path.speed_factor)` call; AC-7 (`golden_emit_tdd` + the nine feedrate tests) and AC-8 (whole crate) are the wall. Note that whole-output G-code byte comparison is *not* available as a check — `DEV-093` records that the pipeline is not byte-deterministic run-to-run.
+- **A per-point `F` token on every move is a G-code size increase once packet 190 lands.** Not a risk in this packet (no profile is ever produced), but the emitter should keep the existing behaviour of emitting `f` unconditionally rather than adding de-duplication logic here; de-duplication, if wanted, is a separate concern and canonical emits per-segment feed rates anyway.
+- **34 guest artifacts must be rebuilt after the WIT edit**, which is slow and is the most likely source of a confusing unrelated-looking test failure mid-packet.
+
+## Context Cost Estimate
+
+- Aggregate: `M`
+- Largest step: `M` (Step 4, the 13-file `slicer-runtime` slice of the struct-literal sweep — mechanical, one inserted line per site, no file read beyond the literal)
+- Highest-risk dispatch and required return format: the `cargo check --workspace --all-targets` sweep exit — must return `FACT` pass/fail plus at most 20 distinct `E0063` file paths, never the raw compiler output.
+
+## Open Questions
+
+- `[FWD]` Should `speed_profiles` be pruned when an entity is removed from a layer? No finalization primitive removes an entity today (`push_entity_to_layer`, `insert_entity_at`, `set_entity_order`, `sort_layer_by` only add or reorder), so a stale row is currently unreachable. The emitter's lookup is keyed by `entity_id` and simply misses, so a stale row would be inert. Implementer may leave pruning unimplemented; if it is implemented, it must not change emission for any reachable input.
+- `[FWD]` Should the emitter skip re-emitting an identical `f` on consecutive points? Today it emits `f` on every `Move`; keeping that unchanged is the conservative choice and is what AC-7/AC-8 assume. Any de-duplication would move existing goldens and is out of scope.
+- `[FWD]` `EntitySpeedProfile.factors` is `Vec<f32>` of *factors*, not absolute speeds, so that `resolve_feedrate`'s existing `clamp(0.05, 5.0)` and per-role base-speed selection stay the single place speed is resolved. Packet 190 must therefore divide its computed per-point speed by the same role base speed it already uses for `SetSpeedFactor`. If an implementer prefers absolute mm/s, that is a contract change requiring a new AC and a `resolve_feedrate` signature change — do not make it silently.
