@@ -665,7 +665,20 @@ fn shared_input_paths(ws_root: &Path) -> Vec<PathBuf> {
     let wit_root = ws_root.join("crates/slicer-schema/wit");
     let mut paths = input_files(&wit_root, Some("wit"));
 
-    let shared_crates = ["slicer-macros", "slicer-sdk", "slicer-ir", "slicer-schema"];
+    // `slicer-core` belongs here even though it is not a guest *shim*: it is
+    // baked into every guest, both transitively through `slicer-sdk` and
+    // directly by 7 core modules, so a change to `polygon_ops` (or anything
+    // else guest-reachable) changes the emitted `.wasm`. Omitting it made
+    // `--check` report clean while every guest still carried the previous
+    // `slicer-core` — a silent staleness hole, since the failure mode is a
+    // guest that runs old code rather than one that fails to instantiate.
+    let shared_crates = [
+        "slicer-macros",
+        "slicer-sdk",
+        "slicer-ir",
+        "slicer-schema",
+        "slicer-core",
+    ];
     for krate in shared_crates {
         let crate_root = ws_root.join("crates").join(krate);
         paths.extend(input_files(&crate_root.join("src"), None));

@@ -108,7 +108,9 @@ If it reports `STALE:`, rebuild (drop `--check`) and re-run the failing test bef
 **You MUST run `--check` (and rebuild if stale) after editing any of these paths** (build scripts treat them as guest-WASM inputs):
 
 - `crates/slicer-schema/wit/**/*.wit` — invalidates every guest's bindgen (canonical single source; old top-level `wit/` deleted in packet 72)
-- `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**` — universal guest deps baked into every guest `.wasm`
+- `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**`, `crates/slicer-core/**` — universal guest deps baked into every guest `.wasm`
+
+  `slicer-core` was missing from this list *and* from `shared_input_paths`' `shared_crates` in `xtask/src/build_guests.rs` until 2026-07-25, so `--check` reported clean after a `slicer-core` edit while every guest still ran the previous copy. Measured: adding two scope marks to `polygon_ops` left `--check` green; adding `slicer-core` to `shared_crates` immediately reported all 34 guests `STALE:`. This failure mode is worse than the usual one — a stale guest normally fails typed instantiation loudly, but a stale `slicer-core` just silently runs old geometry code.
 - `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — `#[slicer_module]` impl bodies
 - `modules/core-modules/*/wit-guest/**` — per-module guest shim
 - `crates/slicer-wasm-host/test-guests/*/src/**` and `crates/slicer-wasm-host/test-guests/*/Cargo.toml` — test guest sources
