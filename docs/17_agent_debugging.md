@@ -34,6 +34,15 @@ events emitted under the flag:
 - `stage_start` / `stage_complete` — `elapsed_ms` on complete.
 - `module_start` / `module_complete` — `elapsed_ms` and `wasm_peak_kb`
   (ceiling-rounded KiB; `0` for host built-ins) on complete.
+- `module_log` — one event per log record a module wrote through
+  `slicer_sdk::host::log`, carrying `level` and `message` alongside the usual
+  `module_id` / `stage` / `phase` / `layer_index`. Every occurrence is
+  emitted, so `grep '"event":"module_log"' … | jq -s 'group_by(.message) | map({m: .[0].message, n: length})'`
+  gives an exact hit count per message. The human-readable stderr channel
+  (the `log` facade, filtered by `RUST_LOG`, default `warn`) instead collapses
+  identical `(level, message)` pairs to one line and reports the suppressed
+  counts once at slice end — use this stream, not that one, when you need
+  frequencies.
 
 The existing `phase_*` / `layer_*` / `module_error` / `slice_complete`
 events still appear and are unchanged.

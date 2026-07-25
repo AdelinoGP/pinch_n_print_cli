@@ -160,6 +160,27 @@ pub trait PipelineInstrumentation: Send + Sync {
     ) {
     }
 
+    /// Called once per log record a module emitted during the dispatch that
+    /// just returned, in FIFO order. `level` is the lower-case label produced
+    /// by `slicer_sdk::host::LogLevel::as_str`. `layer` is `None` for
+    /// prepass/postpass modules.
+    ///
+    /// The executors drain these from the runner's `last_log_messages` right
+    /// after `on_module_end`; the records have already been fanned out to the
+    /// human `log` facade by `forward_module_logs`
+    /// (`crates/slicer-wasm-host/src/dispatch.rs`), so this callback exists to
+    /// carry them onto the structured stream instead of dropping them.
+    /// Default impl is a no-op so existing implementors stay valid.
+    fn on_module_log(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &ModuleId,
+        _level: &str,
+        _message: &str,
+    ) {
+    }
+
     /// Called before a layer's stage loop begins. `z_mm` is the layer's
     /// nominal Z height in millimetres (matches `GlobalLayer.z: f32`).
     fn on_layer_start(&self, layer: u32, z_mm: f32);
@@ -375,6 +396,17 @@ impl PipelineInstrumentation for CompositeInstrumentation<'_> {
     ) {
         self.a.on_module_error(stage, layer, module, message, fatal);
         self.b.on_module_error(stage, layer, module, message, fatal);
+    }
+    fn on_module_log(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        level: &str,
+        message: &str,
+    ) {
+        self.a.on_module_log(stage, layer, module, level, message);
+        self.b.on_module_log(stage, layer, module, level, message);
     }
     fn on_layer_start(&self, layer: u32, z_mm: f32) {
         self.a.on_layer_start(layer, z_mm);

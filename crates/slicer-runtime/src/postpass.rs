@@ -261,6 +261,22 @@ pub fn execute_postpass_with_capture(
                     &mut gcode_ir.commands,
                 );
                 instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
+                // Drain module log messages (already forwarded to the human
+                // `log` facade inside the dispatcher; this clears the
+                // thread-local stash) and forward each onto the structured
+                // stream as a `module_log` event. Drained here rather than
+                // inside the `GCodeSuccess` arm so the non-fatal, text-output,
+                // and error paths clear the stash too — otherwise a module's
+                // records leak into the next module's drain.
+                for (level, message) in runner.last_log_messages() {
+                    instrumentation.on_module_log(
+                        &stage.stage_id,
+                        None,
+                        module.module_id(),
+                        &level,
+                        &message,
+                    );
+                }
                 let result = match res {
                     Ok(r) => r,
                     Err(e) => {
@@ -280,12 +296,6 @@ pub fn execute_postpass_with_capture(
                         // Record runtime audit for GCodePostProcess modules.
                         // runtime_reads are drained via take_runtime_reads().
                         let runtime_reads = runner.take_runtime_reads();
-                        // Drain module log messages (already forwarded to the log facade
-                        // inside the dispatcher; this clears the thread-local stash).
-                        let _log_messages = runner.last_log_messages();
-                        // Drain module log messages (already forwarded to the log facade
-                        // inside the dispatcher; this clears the thread-local stash).
-                        let _log_messages = runner.last_log_messages();
                         let reads = runtime_reads.into_iter().flatten().collect();
                         let batch_calls = runner.take_batch_calls().into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {

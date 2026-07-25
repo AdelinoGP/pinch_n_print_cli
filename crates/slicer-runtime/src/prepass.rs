@@ -259,9 +259,19 @@ pub fn execute_prepass_with_instrumentation(
             };
             let runtime_reads: Vec<String> = runner.last_runtime_reads();
             let batch_calls: Vec<(String, u32)> = runner.last_batch_calls();
-            // Drain module log messages (already forwarded to the log facade
-            // inside the dispatcher; this clears the thread-local stash).
-            let _log_messages = runner.last_log_messages();
+            // Drain module log messages (already forwarded to the human `log`
+            // facade inside the dispatcher; this clears the thread-local stash)
+            // and forward each onto the structured stream as a `module_log`
+            // event.
+            for (level, message) in runner.last_log_messages() {
+                instrumentation.on_module_log(
+                    &stage.stage_id,
+                    None,
+                    module.module_id(),
+                    &level,
+                    &message,
+                );
+            }
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);

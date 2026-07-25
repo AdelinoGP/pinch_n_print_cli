@@ -35,17 +35,23 @@ use crate::layer_executor::LayerProgressSink;
 ///
 /// 1.3.0 (additive, packet 174): `cancelled` event type.
 ///
+/// 1.4.0 (additive): `module_log` event type plus the optional `level` and
+/// `message` fields it carries. Emitted only under `--instrument-stderr`; one
+/// event per module log record, forwarded from `last_log_messages` at each
+/// executor drop-site. Unlike the human `log`-facade channel, this stream is
+/// never de-duplicated.
+///
 /// Every constructor in this module MUST stamp this constant (or its
 /// `_INSTRUMENTED` twin) rather than a version literal. A stream that mixes
 /// versions is unparseable by a consumer that keys its field expectations off
 /// the first line it sees.
-pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.3.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.4.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
 /// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
 /// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
-pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.3.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.4.0";
 
 /// Stable `ProgressError.code` for a `validation_error` raised by intra-stage
 /// DAG construction failure during the 14-pass startup validation.
@@ -106,6 +112,9 @@ pub enum ProgressEventType {
     ModuleStart,
     /// Emitted immediately after a module dispatch returns (instrumented stream only).
     ModuleComplete,
+    /// Emitted once per module log record drained after a dispatch
+    /// (instrumented stream only). Introduced at schema 1.4.0.
+    ModuleLog,
 }
 
 /// Phase of the slicing pipeline.
@@ -221,6 +230,16 @@ pub struct ProgressEvent {
     /// Number of tool changes in the print (for slice_stats).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub toolchange_count: Option<u32>,
+    /// Module log level, lower-case (`trace`/`debug`/`info`/`warn`/`error`),
+    /// matching `slicer_sdk::host::LogLevel::as_str`. Populated only on
+    /// `module_log` events (schema 1.4.0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+    /// Module log message text. Populated only on `module_log` events
+    /// (schema 1.4.0). Distinct from `error.message`, which describes a
+    /// dispatch failure rather than a module-authored log record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 impl ProgressEvent {
@@ -249,6 +268,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -279,6 +300,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -315,6 +338,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -350,6 +375,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -388,6 +415,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -435,6 +464,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -465,6 +496,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -503,6 +536,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -547,6 +582,8 @@ impl ProgressEvent {
             first_layer_height_mm: Some(first_layer_height_mm),
             extruded_volume_mm3: Some(extruded_volume_mm3),
             toolchange_count: Some(toolchange_count),
+            level: None,
+            message: None,
         }
     }
 
@@ -584,6 +621,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -621,6 +660,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -658,6 +699,8 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
         }
     }
 
@@ -698,6 +741,56 @@ impl ProgressEvent {
             first_layer_height_mm: None,
             extruded_volume_mm3: None,
             toolchange_count: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    /// Create a `module_log` event (emitted only under `--instrument-stderr`).
+    ///
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase,
+    /// stage, module_id, status, level, message. `layer_index` is populated for
+    /// per-layer stages and absent for prepass/postpass stages.
+    ///
+    /// One event per module log record — the JSONL stream is never
+    /// de-duplicated, unlike the human `log`-facade channel gated by
+    /// `forward_module_logs` in `crates/slicer-wasm-host/src/dispatch.rs`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn module_log(
+        slice_id: String,
+        phase: ProgressPhase,
+        stage: String,
+        module_id: String,
+        layer_index: Option<u32>,
+        timestamp_ms: u64,
+        level: String,
+        message: String,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::ModuleLog,
+            timestamp_ms,
+            slice_id,
+            phase: Some(phase),
+            stage: Some(stage),
+            layer_index,
+            module_id: Some(module_id),
+            status: ProgressStatus::Ok,
+            elapsed_ms: None,
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
+            level: Some(level),
+            message: Some(message),
         }
     }
 }
@@ -877,7 +970,7 @@ mod tests {
     /// `docs/09_progress_events.md`.
     #[test]
     fn baseline_schema_version_matches_documented_version_table() {
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.3.0");
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.4.0");
     }
 
     /// The instrumented stream carries the same additive payload as the
@@ -960,6 +1053,16 @@ mod tests {
                 1,
                 0,
             ),
+            ProgressEvent::module_log(
+                slice_id(),
+                ProgressPhase::PerLayer,
+                "Layer::Perimeters".to_string(),
+                "com.example.perimeters".to_string(),
+                Some(0),
+                ts,
+                "warn".to_string(),
+                "thin wall skipped".to_string(),
+            ),
         ];
         for event in &instrumented {
             assert_eq!(
@@ -992,6 +1095,47 @@ mod tests {
         assert!(json.contains("\"layer_index\":7"));
         assert!(json.contains("\"elapsed_ms\":4947"));
         assert!(json.contains("\"wasm_peak_kb\":2048"));
+    }
+
+    #[test]
+    fn module_log_event_serializes_with_required_fields() {
+        let event = ProgressEvent::module_log(
+            "slice-xyz".to_string(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            "com.example.perimeters".to_string(),
+            Some(7),
+            1_735_843_200_123,
+            "warn".to_string(),
+            "thin wall skipped".to_string(),
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"event\":\"module_log\""));
+        assert!(json.contains("\"phase\":\"per_layer\""));
+        assert!(json.contains("\"stage\":\"Layer::Perimeters\""));
+        assert!(json.contains("\"module_id\":\"com.example.perimeters\""));
+        assert!(json.contains("\"layer_index\":7"));
+        assert!(json.contains("\"level\":\"warn\""));
+        assert!(json.contains("\"message\":\"thin wall skipped\""));
+    }
+
+    /// `level` / `message` are `module_log`-only; every other event must omit
+    /// them so a consumer can key on their presence.
+    #[test]
+    fn level_and_message_omitted_when_none_on_other_events() {
+        let event = ProgressEvent::module_complete(
+            "slice-xyz".to_string(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            "com.example.perimeters".to_string(),
+            Some(0),
+            1_735_843_200_000,
+            1,
+            0,
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("\"level\""));
+        assert!(!json.contains("\"message\""));
     }
 
     #[test]

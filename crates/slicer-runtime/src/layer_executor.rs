@@ -481,9 +481,20 @@ fn execute_single_layer_inner(
                 .unwrap_or_default();
             let runtime_reads = runner.last_runtime_reads();
             let batch_calls = runner.last_batch_calls();
-            // Drain module log messages (already forwarded to the log facade
-            // inside the dispatcher; this clears the thread-local stash).
-            let _log_messages = runner.last_log_messages();
+            // Drain module log messages (already forwarded to the human `log`
+            // facade inside the dispatcher; this clears the thread-local stash)
+            // and forward each onto the structured stream as a `module_log`
+            // event. Dropping them here is what made `--instrument-stderr`
+            // blind to everything a module logged.
+            for (level, message) in runner.last_log_messages() {
+                instrumentation.on_module_log(
+                    &stage.stage_id,
+                    Some(layer.index),
+                    module.module_id(),
+                    &level,
+                    &message,
+                );
+            }
             if !writes.is_empty() || !runtime_reads.is_empty() || !batch_calls.is_empty() {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),

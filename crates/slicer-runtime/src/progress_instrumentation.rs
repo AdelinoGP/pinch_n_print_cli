@@ -248,6 +248,33 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
         ));
     }
 
+    fn on_module_log(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        level: &str,
+        message: &str,
+    ) {
+        // Instrumented tier only — the core docs/09 contract stream does not
+        // carry module logs, and a per-call log from a hot module would swamp
+        // it. Every record reaches this stream (no de-duplication); the human
+        // `log`-facade channel is the one that collapses repeats.
+        if self.tier == ProgressTier::Core {
+            return;
+        }
+        self.sink.record(ProgressEvent::module_log(
+            self.slice_id.clone(),
+            phase_from_stage(stage),
+            stage.to_string(),
+            module.to_string(),
+            layer,
+            Self::now_unix_ms(),
+            level.to_string(),
+            message.to_string(),
+        ));
+    }
+
     fn on_layer_start(&self, layer: u32, _z_mm: f32) {
         self.layer_starts
             .lock()
@@ -487,6 +514,53 @@ mod tests {
             assert_eq!(err.code, crate::progress_events::MODULE_DISPATCH_FATAL_CODE);
             assert_eq!(err.message, "dispatch trap");
         }
+    }
+
+    #[test]
+    fn module_log_emits_one_event_per_record_without_dedup() {
+        let sink = Arc::new(RecordingSink::default());
+        let pi = ProgressPipelineInstrumentation::new(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+        );
+        let stage = StageId::from("Layer::Infill");
+        let module = ModuleId::from("com.example.infill");
+
+        // The same (level, message) pair three times: the JSONL stream keeps
+        // every one. Collapsing repeats is the human channel's job.
+        for _ in 0..3 {
+            pi.on_module_log(&stage, Some(4), &module, "warn", "clipper retry");
+        }
+
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 3);
+        for e in events.iter() {
+            assert_eq!(e.event, ProgressEventType::ModuleLog);
+            assert_eq!(e.phase, Some(ProgressPhase::PerLayer));
+            assert_eq!(e.stage.as_deref(), Some("Layer::Infill"));
+            assert_eq!(e.module_id.as_deref(), Some("com.example.infill"));
+            assert_eq!(e.layer_index, Some(4));
+            assert_eq!(e.level.as_deref(), Some("warn"));
+            assert_eq!(e.message.as_deref(), Some("clipper retry"));
+        }
+    }
+
+    #[test]
+    fn core_tier_suppresses_module_log_events() {
+        let sink = Arc::new(RecordingSink::default());
+        let pi = ProgressPipelineInstrumentation::with_tier(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+            ProgressTier::Core,
+        );
+        pi.on_module_log(
+            &StageId::from("PrePass::MeshAnalysis"),
+            None,
+            &ModuleId::from("com.example.mesh"),
+            "info",
+            "hello",
+        );
+        assert!(sink.events.lock().unwrap().is_empty());
     }
 
     #[test]

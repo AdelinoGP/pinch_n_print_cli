@@ -25,6 +25,7 @@ slicer-model-io = { path = "../slicer-model-io" }
 slicer-helpers = { path = "../slicer-helpers" }
 slicer-ir = { path = "../slicer-ir" }
 clap = { workspace = true, features = ["derive"] }
+env_logger = "0.11"
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"

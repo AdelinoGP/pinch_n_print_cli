@@ -785,14 +785,24 @@ pub fn run_slice_with_collector(
     };
 
     // Run the pipeline through the 4-way instrumentation fork.
-    let pipeline_output = run_pipeline_fork(
+    let pipeline_result = run_pipeline_fork(
         &opts,
         &channel,
         pipeline_config,
         &config_source,
         #[cfg(feature = "report")]
         dag_snapshot,
-    )?;
+    );
+
+    // Report the human channel's suppressed module-log repeats before
+    // returning, on both the success and the failure path. `forward_module_logs`
+    // collapses identical `(level, message)` pairs to one emission so a
+    // per-call module warn cannot drown stderr; this is where the occurrence
+    // counts land. The `--instrument-stderr` `module_log` stream is unaffected —
+    // it carries every occurrence.
+    slicer_wasm_host::dispatch::emit_module_log_repeat_summary();
+
+    let pipeline_output = pipeline_result?;
 
     let wallclock_ms = t0.elapsed().as_millis() as u64;
 

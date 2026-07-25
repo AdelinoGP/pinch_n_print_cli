@@ -152,7 +152,7 @@ fn progress_event_cancelled_serializes_with_required_fields() {
     let json = serde_json::to_string(&event).expect("cancelled event should serialize");
 
     assert!(json.contains("\"event\":\"cancelled\""));
-    assert!(json.contains("\"schema_version\":\"1.3.0\""));
+    assert!(json.contains("\"schema_version\":\"1.4.0\""));
     assert!(json.contains("\"timestamp_ms\":12345"));
     assert!(json.contains("\"slice_id\":\"test-slice-id\""));
 }

@@ -318,3 +318,54 @@ fn forward_module_logs_clears_stash_on_read() {
     let second = last_log_messages_for_test();
     assert_eq!(second.len(), 0, "stash should be empty after drain");
 }
+
+/// The human `log`-facade channel collapses identical `(level, message)` pairs
+/// to one emission and reports the occurrence count at slice end, while the
+/// thread-local stash that feeds the structured `module_log` JSONL stream keeps
+/// every record. A per-call module `warn` can otherwise fire tens of thousands
+/// of times in a single slice.
+#[test]
+fn forward_module_logs_dedups_human_channel_but_not_the_stash() {
+    use slicer_wasm_host::dispatch::{
+        drain_module_log_repeats, forward_module_logs, last_log_messages_for_test,
+    };
+
+    // Unique to this test: the dedup table is process-global, so a shared
+    // message text would collide with any other test in this binary.
+    let repeated = "dedup-tdd: identical warn from a hot module".to_string();
+    let once_only = "dedup-tdd: emitted exactly once".to_string();
+
+    let messages = vec![
+        ("warn".to_string(), repeated.clone()),
+        ("warn".to_string(), repeated.clone()),
+        ("warn".to_string(), repeated.clone()),
+        ("info".to_string(), once_only.clone()),
+    ];
+    forward_module_logs("com.core.dedup-test", &messages);
+
+    // The stash (→ JSONL `module_log`) keeps every occurrence.
+    let stashed = last_log_messages_for_test();
+    assert_eq!(
+        stashed.len(),
+        4,
+        "the structured stream must not be de-duplicated"
+    );
+    assert_eq!(stashed.iter().filter(|(_, m)| *m == repeated).count(), 3);
+
+    // The human channel reports the repeat with its total occurrence count;
+    // a pair seen exactly once has nothing to summarize and is omitted.
+    let repeats = drain_module_log_repeats();
+    let mine: Vec<_> = repeats
+        .iter()
+        .filter(|r| r.message == repeated || r.message == once_only)
+        .collect();
+    assert_eq!(mine.len(), 1, "only the repeated pair is summarized");
+    assert_eq!(mine[0].level, "warn");
+    assert_eq!(mine[0].count, 3);
+    assert_eq!(mine[0].target, "slicer_module::com.core.dedup-test");
+
+    // Draining clears the table, so a second slice starts from zero.
+    assert!(drain_module_log_repeats()
+        .iter()
+        .all(|r| r.message != repeated));
+}

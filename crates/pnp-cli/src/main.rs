@@ -372,7 +372,24 @@ fn print_json<T: serde::Serialize>(value: &T) {
 // main
 // ---------------------------------------------------------------------------
 
+/// Install the process-wide `log` implementation.
+///
+/// Without an implementation crate the `log` facade discards every record —
+/// including the module logs `forward_module_logs` fans out with target
+/// `slicer_module::<module_id>` and every native `log::` call site in the
+/// workspace. `RUST_LOG` is honoured verbatim (so
+/// `RUST_LOG=slicer_module::com.example.infill=debug` filters per module);
+/// when it is unset the filter defaults to `warn`.
+///
+/// This writes to stderr through `env_logger`'s own writer and does not touch
+/// the direct `eprintln!` diagnostics (e.g. the `warning: startup DAG ...`
+/// advisories in `run_slice`), which stay unconditional.
+fn init_logging() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+}
+
 fn main() {
+    init_logging();
     let cli = Cli::parse();
     match cli.cmd {
         // ── slice ──────────────────────────────────────────────────────────

@@ -2366,20 +2366,149 @@ fn derive_layer_output_envelope_from_input(
 
 // ── Layer-context deconstruction (HostExecutionContext → LayerStageCommit) ─────
 
+/// A `(level, message)` pair the human channel emitted more than once during
+/// the current slice, with its total occurrence count.
+///
+/// Produced by [`drain_module_log_repeats`]; rendered by
+/// [`emit_module_log_repeat_summary`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleLogRepeat {
+    /// Lower-case level label (`trace`/`debug`/`info`/`warn`/`error`).
+    pub level: String,
+    /// `log` target of the first module that emitted this pair
+    /// (`slicer_module::<module_id>`).
+    pub target: String,
+    /// The message text.
+    pub message: String,
+    /// Total occurrences across the slice, including the one emission that
+    /// actually reached the human channel. Always `>= 2`.
+    pub count: u64,
+}
+
+/// First-seen target plus running occurrence count for one `(level, message)`
+/// pair on the human channel.
+struct ModuleLogSeen {
+    target: String,
+    count: u64,
+}
+
+/// Human-channel de-duplication table, keyed by `(level, message)`.
+///
+/// Process-global rather than thread-local on purpose: identical records from
+/// the same module on different rayon workers are the case this exists to
+/// collapse. A per-call `warn` in a hot module fires once per layer per
+/// region — tens of thousands of identical lines in one slice — which drowns
+/// every other diagnostic on stderr.
+///
+/// Only the `log` facade is gated. The structured `module_log` JSONL stream is
+/// fed from `LAST_MODULE_LOG_MESSAGES` via each executor's drain loop and keeps
+/// every occurrence.
+static MODULE_LOG_DEDUP: std::sync::LazyLock<
+    std::sync::Mutex<HashMap<(String, String), ModuleLogSeen>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Record one `(level, message)` occurrence and report whether it is the first
+/// — i.e. whether the caller should emit it on the human channel.
+fn record_human_channel_occurrence(level: &str, message: &str, target: &str) -> bool {
+    let mut table = MODULE_LOG_DEDUP
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match table.get_mut(&(level.to_string(), message.to_string())) {
+        Some(seen) => {
+            seen.count = seen.count.saturating_add(1);
+            false
+        }
+        None => {
+            table.insert(
+                (level.to_string(), message.to_string()),
+                ModuleLogSeen {
+                    target: target.to_string(),
+                    count: 1,
+                },
+            );
+            true
+        }
+    }
+}
+
+/// Drain the de-duplication table, returning every `(level, message)` pair that
+/// occurred more than once, sorted by `(level, message)` for deterministic
+/// output. Pairs seen exactly once are dropped — they were already emitted in
+/// full and have nothing to summarize.
+pub fn drain_module_log_repeats() -> Vec<ModuleLogRepeat> {
+    let drained: Vec<ModuleLogRepeat> = {
+        let mut table = MODULE_LOG_DEDUP
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::mem::take(&mut *table)
+            .into_iter()
+            .filter(|(_, seen)| seen.count > 1)
+            .map(|((level, message), seen)| ModuleLogRepeat {
+                level,
+                target: seen.target,
+                message,
+                count: seen.count,
+            })
+            .collect()
+    };
+    let mut drained = drained;
+    drained.sort_by(|a, b| {
+        a.level
+            .cmp(&b.level)
+            .then_with(|| a.message.cmp(&b.message))
+    });
+    drained
+}
+
+/// Drain the de-duplication table and report each suppressed repeat on the
+/// human channel, at the level the original record carried (so `RUST_LOG`
+/// filtering behaves identically for the summary and the original line).
+///
+/// Called once per slice by `run_slice` (`crates/slicer-runtime/src/run.rs`)
+/// on both the success and the failure path.
+pub fn emit_module_log_repeat_summary() {
+    for repeat in drain_module_log_repeats() {
+        let suppressed = repeat.count - 1;
+        emit_to_log_facade(
+            &repeat.level,
+            &repeat.target,
+            &format!(
+                "{} [repeated {} more time(s) this slice; --instrument-stderr module_log carries every occurrence]",
+                repeat.message, suppressed
+            ),
+        );
+    }
+}
+
+/// Emit one record on the `log` facade at the named level. Unknown level
+/// labels fall back to `info`, matching the WIT `log-level` enum's closed set.
+fn emit_to_log_facade(level: &str, target: &str, message: &str) {
+    match level {
+        "trace" => log::trace!(target: target, "{}", message),
+        "debug" => log::debug!(target: target, "{}", message),
+        "info" => log::info!(target: target, "{}", message),
+        "warn" => log::warn!(target: target, "{}", message),
+        "error" => log::error!(target: target, "{}", message),
+        _ => log::info!(target: target, "{}", message),
+    }
+}
+
 /// Forward module log messages to the host's `log` facade and stash them
 /// in the thread-local `LAST_MODULE_LOG_MESSAGES` for the `last_log_messages`
 /// accessor. Each message is emitted with target `slicer_module::<module_id>`
 /// so `RUST_LOG` filtering applies per-module.
+///
+/// The `log`-facade fan-out is de-duplicated by `(level, message)` — see
+/// `MODULE_LOG_DEDUP`. The thread-local stash that feeds the structured
+/// `module_log` JSONL stream is not: every record is kept there.
 pub fn forward_module_logs(module_id: &str, messages: &[(String, String)]) {
+    if messages.is_empty() {
+        return;
+    }
     let target = format!("slicer_module::{module_id}");
     for (level, msg) in messages {
-        match level.as_str() {
-            "trace" => log::trace!(target: &target, "{}", msg),
-            "debug" => log::debug!(target: &target, "{}", msg),
-            "info" => log::info!(target: &target, "{}", msg),
-            "warn" => log::warn!(target: &target, "{}", msg),
-            "error" => log::error!(target: &target, "{}", msg),
-            _ => log::info!(target: &target, "{}", msg),
+        if record_human_channel_occurrence(level, msg, &target) {
+            emit_to_log_facade(level, &target, msg);
         }
     }
     LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().extend(messages.iter().cloned()));
