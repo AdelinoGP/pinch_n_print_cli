@@ -6,6 +6,7 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod batch_call_audit_tdd;
 mod macro_mesh_raycast_z_down_tdd;
 mod object_bounds_transform_tdd;
 mod raycast_z_down_hit_tdd;

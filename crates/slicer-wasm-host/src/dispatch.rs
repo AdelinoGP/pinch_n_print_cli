@@ -50,6 +50,15 @@ thread_local! {
     /// the `PrepassStageRunner` trait.
     static LAST_PREPASS_DIAGNOSTICS: std::cell::RefCell<Vec<slicer_ir::Diagnostic>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding the batched host-service calls made by
+    /// the most recent layer- or prepass-module invocation on this thread.
+    /// Each entry is `(ir_path, batch_size)`, one per batch. Read and cleared
+    /// by `last_batch_calls` on the runner traits. Same thread-locality
+    /// argument as `LAST_MODULE_LOG_MESSAGES`: rayon workers are stable
+    /// threads, so `run_stage → audit` stays on one thread.
+    static LAST_BATCH_CALLS: std::cell::RefCell<Vec<(String, u32)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -235,6 +244,12 @@ pub struct WasmRuntimeDispatcher {
     /// Populated by `run_gcode_postprocess` and `run_text_postprocess`,
     /// consumed by `take_runtime_reads`.
     postpass_runtime_reads: std::cell::RefCell<Vec<Vec<String>>>,
+    /// Accumulated batched host-service calls from postpass dispatch calls,
+    /// one inner `Vec` per call. Populated by `dispatch_postpass_gcode_call` /
+    /// `dispatch_postpass_text_call`, consumed by `take_batch_calls`.
+    /// A parallel stash rather than a wider tuple return, so the existing
+    /// `(Result, Vec<String>)` dispatch signatures are untouched.
+    postpass_batch_calls: std::cell::RefCell<Vec<Vec<(String, u32)>>>,
 }
 
 impl WasmRuntimeDispatcher {
@@ -243,7 +258,19 @@ impl WasmRuntimeDispatcher {
         Self {
             engine,
             postpass_runtime_reads: std::cell::RefCell::new(Vec::new()),
+            postpass_batch_calls: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Move a finished postpass call's batched host-service records into the
+    /// per-dispatcher stash `take_batch_calls` drains. Empty calls push nothing,
+    /// mirroring how `postpass_runtime_reads` skips empty read sets.
+    fn stash_postpass_batch_calls(&self, ctx: &mut HostExecutionContext) {
+        if ctx.batch_calls.is_empty() {
+            return;
+        }
+        let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+        self.postpass_batch_calls.borrow_mut().push(calls);
     }
 
     // ── Typed layer-world dispatch ─────────────────────────────────────
@@ -413,6 +440,8 @@ impl WasmRuntimeDispatcher {
 
         let mem_peak_bytes = store.data().mem_tracker.peak_bytes;
         LAST_WASM_MEM_SAMPLE.with(|c| c.set((mem_initial_bytes, mem_peak_bytes)));
+
+        stash_batch_calls(store.data_mut());
 
         Ok(store.into_data())
     }
@@ -916,6 +945,8 @@ impl WasmRuntimeDispatcher {
             store.data_mut().diagnostics_mut().drain(..).collect();
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
+        stash_batch_calls(store.data_mut());
+
         Ok(store.into_data())
     }
 
@@ -1178,6 +1209,7 @@ impl WasmRuntimeDispatcher {
             own(config_handle),
         );
         let runtime_reads = store.data().runtime_reads.clone();
+        self.stash_postpass_batch_calls(store.data_mut());
         // Forward module log messages to the host log facade before the
         // store (and its HostExecutionContext) is consumed.
         forward_module_logs(module_id, &store.data().log_messages);
@@ -1327,6 +1359,7 @@ impl WasmRuntimeDispatcher {
 
         let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
         let runtime_reads = store.data().runtime_reads.clone();
+        self.stash_postpass_batch_calls(store.data_mut());
         // Forward module log messages to the host log facade before the
         // store (and its HostExecutionContext) is consumed.
         forward_module_logs(module_id, &store.data().log_messages);
@@ -1944,6 +1977,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
 
+    fn last_batch_calls(&self) -> Vec<(String, u32)> {
+        LAST_BATCH_CALLS.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
     fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().drain(..).collect())
     }
@@ -2143,6 +2180,10 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         LAST_WASM_MEM_SAMPLE.with(|c| c.replace((0, 0)))
     }
 
+    fn last_batch_calls(&self) -> Vec<(String, u32)> {
+        LAST_BATCH_CALLS.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
@@ -2263,6 +2304,10 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         self.postpass_runtime_reads.borrow_mut().drain(..).collect()
     }
 
+    fn take_batch_calls(&mut self) -> Vec<Vec<(String, u32)>> {
+        self.postpass_batch_calls.borrow_mut().drain(..).collect()
+    }
+
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
@@ -2346,6 +2391,28 @@ pub fn forward_module_logs(module_id: &str, messages: &[(String, String)]) {
 #[doc(hidden)]
 pub fn last_log_messages_for_test() -> Vec<(String, String)> {
     LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+}
+
+/// Move the batched host-service records off a finished call's context into the
+/// thread-local stash the layer/prepass `last_batch_calls` accessors drain.
+///
+/// Draining rather than cloning: the context is about to be consumed by
+/// `into_data`, and the records must not be double-counted if a caller inspects
+/// the returned context.
+fn stash_batch_calls(ctx: &mut HostExecutionContext) {
+    if ctx.batch_calls.is_empty() {
+        return;
+    }
+    let calls: Vec<(String, u32)> = ctx.batch_calls.drain(..).collect();
+    LAST_BATCH_CALLS.with(|c| c.borrow_mut().extend(calls));
+}
+
+/// Test-only accessor: drain the thread-local batch-call stash.
+/// Mirrors `WasmRuntimeDispatcher::last_batch_calls` but callable without
+/// a dispatcher instance.
+#[doc(hidden)]
+pub fn last_batch_calls_for_test() -> Vec<(String, u32)> {
+    LAST_BATCH_CALLS.with(|c| c.borrow_mut().drain(..).collect())
 }
 
 /// Build paint-layer data for dispatch contract tests without exposing the

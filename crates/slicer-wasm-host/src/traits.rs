@@ -46,6 +46,15 @@ pub trait LayerStageRunner {
         Vec::new()
     }
 
+    /// Returns the batched host-service calls captured during the most recent
+    /// `run_stage` call, as `(ir_path, batch_size)`. Used by the executor to
+    /// populate `ModuleAccessAudit.batch_calls`. One entry per batch, not per
+    /// batched item. Default returns an empty `Vec` for runners that do not
+    /// instrument batches.
+    fn last_batch_calls(&self) -> Vec<(String, u32)> {
+        Vec::new()
+    }
+
     /// Returns the log messages emitted by the module during the most recent
     /// `run_stage` call. Each entry is `(level, message)`. Default returns an
     /// empty `Vec` for runners that do not capture logs.
@@ -68,6 +77,15 @@ pub trait PrepassStageRunner {
     /// `run_stage` call. Used by the executor to populate `ModuleAccessAudit.runtime_reads`.
     /// Default returns an empty `Vec` for runners that do not instrument reads.
     fn last_runtime_reads(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Returns the batched host-service calls captured during the most recent
+    /// `run_stage` call, as `(ir_path, batch_size)`. Used by the executor to
+    /// populate `ModuleAccessAudit.batch_calls`. One entry per batch, not per
+    /// batched item. Default returns an empty `Vec` for runners that do not
+    /// instrument batches.
+    fn last_batch_calls(&self) -> Vec<(String, u32)> {
         Vec::new()
     }
 
@@ -109,6 +127,13 @@ pub trait PostpassStageRunner {
     /// Drain any runtime-side read captures accumulated during postprocessing.
     /// Default returns an empty `Vec`.
     fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
+        Vec::new()
+    }
+
+    /// Drain any batched host-service captures accumulated during postprocessing,
+    /// one inner `Vec` per dispatch call, each entry `(ir_path, batch_size)`.
+    /// Default returns an empty `Vec`.
+    fn take_batch_calls(&mut self) -> Vec<Vec<(String, u32)>> {
         Vec::new()
     }
 

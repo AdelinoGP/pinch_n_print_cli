@@ -287,10 +287,12 @@ pub fn execute_postpass_with_capture(
                         // inside the dispatcher; this clears the thread-local stash).
                         let _log_messages = runner.last_log_messages();
                         let reads = runtime_reads.into_iter().flatten().collect();
+                        let batch_calls = runner.take_batch_calls().into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {
                             module_id: module.module_id().to_owned(),
                             runtime_reads: reads,
                             runtime_writes: vec![String::from("GCodeIR")],
+                            batch_calls,
                             diagnostics: Vec::new(),
                         });
                     }
@@ -388,10 +390,12 @@ pub fn execute_postpass_with_capture(
                     // TextPostProcess modules produce final text output.
                     let runtime_reads = runner.take_runtime_reads();
                     let reads = runtime_reads.into_iter().flatten().collect();
+                    let batch_calls = runner.take_batch_calls().into_iter().flatten().collect();
                     audits.push(ModuleAccessAudit {
                         module_id: module.module_id().to_owned(),
                         runtime_reads: reads,
                         runtime_writes: vec![String::from("GCodeIR")],
+                        batch_calls,
                         diagnostics: Vec::new(),
                     });
                     text = new_text;

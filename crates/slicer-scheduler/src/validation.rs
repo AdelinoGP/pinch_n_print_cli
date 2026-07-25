@@ -293,6 +293,15 @@ pub struct ModuleAccessAudit {
     pub runtime_reads: Vec<String>,
     /// Runtime write paths committed by the module.
     pub runtime_writes: Vec<String>,
+    /// Batched host-service calls made by the module, as `(ir_path, batch_size)`.
+    ///
+    /// One entry per *batch* — a 4,000-item `raycast-z-down-batch` records
+    /// `("MeshIR", 4000)`, not 4,000 entries. `runtime_reads` still gets exactly
+    /// one `"MeshIR"` for that same call, so the read *set* is unchanged by
+    /// batching while the read *volume* stays visible here. Recorded additively:
+    /// not compared by scheduler validation, which only reads `runtime_reads`
+    /// and `runtime_writes`. See ADR-0049.
+    pub batch_calls: Vec<(String, u32)>,
     /// Typed diagnostics emitted by the module during prepass execution.
     /// FIFO order, preserved from guest emission. Not compared by scheduler
     /// validation — only runtime_reads and runtime_writes participate.

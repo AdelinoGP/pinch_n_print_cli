@@ -890,6 +890,88 @@ fn prepass_audits_live_path() {
     // which would populate runtime_writes.
 }
 
+// ---------- Test 10a-2: prepass audits carry batched host-service calls ----------
+/// A prepass module that batches a mesh query (the shape `support-planner`
+/// adopted in ADR-0049) must surface that batch on the audit: one
+/// `batch_calls` entry carrying the batch size, alongside the single
+/// `runtime_reads` entry the batch produced. Recording is additive — the read
+/// set is the same one an unbatched module would report.
+#[test]
+fn prepass_audits_carry_batch_calls() {
+    struct BatchingPrepassRunner;
+    impl PrepassStageRunner for BatchingPrepassRunner {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::None)
+        }
+        // What `HostExecutionContext` records for one 4,096-ray
+        // `raycast-z-down-batch`: one read, one sized batch entry.
+        fn last_runtime_reads(&self) -> Vec<String> {
+            vec!["MeshIR".to_string()]
+        }
+        fn last_batch_calls(&self) -> Vec<(String, u32)> {
+            vec![("MeshIR".to_string(), 4096)]
+        }
+    }
+
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::MeshAnalysis".into(),
+            modules: vec![make_dummy_module("PrePass::MeshAnalysis", "batcher")],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+        aggregated_region_split: BTreeMap::new(),
+    };
+
+    let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
+        plan,
+        runners: PipelineStageRunners {
+            prepass: Box::new(BatchingPrepassRunner),
+            layer: Box::new(NoopLayerRunner),
+            finalization: Box::new(NoopFinalizationRunner),
+            postpass: Box::new(NoopPostpassRunner),
+            emitter: Box::new(MinimalEmitter),
+            serializer: Box::new(MinimalSerializer),
+        },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
+        cancel_flag: None,
+        support_tools: Default::default(),
+    };
+
+    let output = run_pipeline(config).expect("pipeline must succeed");
+
+    assert_eq!(
+        output.prepass_audits.len(),
+        1,
+        "expected 1 prepass audit entry for the batching module"
+    );
+    let audit = &output.prepass_audits[0];
+    assert_eq!(audit.module_id, "batcher");
+    assert_eq!(
+        audit.batch_calls,
+        vec![("MeshIR".to_string(), 4096u32)],
+        "the batch and its size must reach the audit"
+    );
+    assert_eq!(
+        audit.runtime_reads,
+        vec!["MeshIR".to_string()],
+        "batching must not multiply the read set: one entry, not 4096"
+    );
+}
+
 // ---------- Test 10b: live-path layer audits contain SliceIR reads ----------
 /// Regression guard for TASK-123b: per-layer audit collection must populate
 /// `PipelineOutput.layer_audits` with `ModuleAccessAudit` entries for every

@@ -258,6 +258,7 @@ pub fn execute_prepass_with_instrumentation(
                 }
             };
             let runtime_reads: Vec<String> = runner.last_runtime_reads();
+            let batch_calls: Vec<(String, u32)> = runner.last_batch_calls();
             // Drain module log messages (already forwarded to the log facade
             // inside the dispatcher; this clears the thread-local stash).
             let _log_messages = runner.last_log_messages();
@@ -289,14 +290,16 @@ pub fn execute_prepass_with_instrumentation(
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: vec![ir_path],
+                    batch_calls,
                     diagnostics,
                 });
-            } else if !runtime_reads.is_empty() {
+            } else if !runtime_reads.is_empty() || !batch_calls.is_empty() {
                 // Module performed reads but produced no output — still record audit.
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: Vec::new(),
+                    batch_calls,
                     diagnostics,
                 });
             }

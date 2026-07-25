@@ -402,6 +402,7 @@ fn seam_placer_narrow_manifest_write_validates() {
             "PerimeterIR.resolved-seam".into(),
             "PerimeterIR.regions.walls".into(),
         ],
+        batch_calls: Vec::new(),
         diagnostics: Vec::new(),
     };
 
@@ -463,6 +464,7 @@ fn coarse_write_rejected_against_narrow_manifest() {
         module_id: "com.core.perimeter-gen".into(),
         runtime_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
         runtime_writes: vec!["PerimeterIR".into()], // coarse - not declared
+        batch_calls: Vec::new(),
         diagnostics: Vec::new(),
     };
 
@@ -518,6 +520,7 @@ fn perimeter_narrow_write_audit() {
         module_id: "com.core.perimeter-gen".into(),
         runtime_reads: vec!["SliceIR".into()],
         runtime_writes: vec!["PerimeterIR.regions.walls".into()],
+        batch_calls: Vec::new(),
         diagnostics: Vec::new(),
     };
 
@@ -594,6 +597,7 @@ fn reads_match_at_root_granularity_writes_do_not() {
         ],
         // A coarse write against a narrow declaration: NOT authorised.
         runtime_writes: vec!["PerimeterIR".into()],
+        batch_calls: Vec::new(),
         diagnostics: Vec::new(),
     };
 
@@ -650,6 +654,7 @@ fn read_of_an_undeclared_root_is_still_flagged() {
         module_id: "com.test.foreign-root".into(),
         runtime_reads: vec!["GCodeIR.commands".into()],
         runtime_writes: Vec::new(),
+        batch_calls: Vec::new(),
         diagnostics: Vec::new(),
     };
 
