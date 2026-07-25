@@ -64,6 +64,10 @@ name = "medial_axis_degenerate_input_tdd"
 required-features = ["host-algos"]
 
 [[test]]
+name = "medial_axis_determinism_tdd"
+required-features = ["host-algos"]
+
+[[test]]
 name = "voronoi_stress"
 required-features = ["host-algos"]
 
