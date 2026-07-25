@@ -205,13 +205,7 @@ fn bench_shell_classification(c: &mut Criterion) {
     // — it is what a real print produces, and it isolates the timeline axis.
     // The 16-object rows are retained only to show the object axis is not the
     // cost driver.
-    let scenarios = [
-        (1usize, 120usize),
-        (1, 240),
-        (1, 480),
-        (16, 120),
-        (16, 480),
-    ];
+    let scenarios = [(1usize, 120usize), (1, 240), (1, 480), (16, 120), (16, 480)];
 
     for &(n_objects, n_layers) in &scenarios {
         let id = format!("objs={n_objects}_layers={n_layers}");

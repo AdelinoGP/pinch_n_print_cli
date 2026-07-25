@@ -397,7 +397,8 @@ fn compute_region_updates(
                     object_id,
                     region_id,
                     timeline,
-                    (1..k_bot.min(remaining.saturating_add(1) as u8)).map(|d| (d, *pos + d as usize)),
+                    (1..k_bot.min(remaining.saturating_add(1) as u8))
+                        .map(|d| (d, *pos + d as usize)),
                 )
             })
             .collect();

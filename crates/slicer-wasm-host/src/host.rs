@@ -2023,7 +2023,8 @@ impl hs::Host for HostExecutionContext {
             &items,
             |(_, object)| object.map_or(0, |o| (o.mesh.indices.len() / 3) as u64),
             |(request, object)| {
-                object.and_then(|o| raycast_z_down_against(o, request.x, request.y, request.start_z))
+                object
+                    .and_then(|o| raycast_z_down_against(o, request.x, request.y, request.start_z))
             },
         );
         Ok(results)
