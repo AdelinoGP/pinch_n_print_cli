@@ -3155,6 +3155,7 @@ name = "slicer-wasm-host"
 version = "0.1.0"
 dependencies = [
  "log",
+ "rayon",
  "slicer-core",
  "slicer-ir",
  "slicer-scheduler",

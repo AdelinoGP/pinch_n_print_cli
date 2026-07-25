@@ -22,6 +22,7 @@ pub mod config_resolution;
 pub mod coords;
 pub mod error;
 pub mod host;
+pub mod host_batch;
 pub mod layer_collection_builder;
 pub mod postpass_builders;
 pub mod postpass_types;

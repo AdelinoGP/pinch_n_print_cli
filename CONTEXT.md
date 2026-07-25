@@ -548,6 +548,11 @@ instances in parallel across layers: a threaded guest is one host call that
 parallelizes *inside* the module, so the scheduler's serialized stage ordering is
 unchanged. Opt-in per module; the default guest target stays single-threaded.
 
+**Not currently constructible — do not design against this term.** Rust cannot
+emit a component that spawns a thread on the target this project's guests use.
+The engine half is ready (wasmtime accepts shared memory in a component under the
+existing configuration); the guest build pipeline is the blocker. See ADR-0049.
+
 ### Parallel-safe host service
 A host service a **threaded guest**'s worker threads may call concurrently,
 having been audited for concurrent re-entry. Ordinary host services are not
@@ -555,6 +560,13 @@ parallel-safe: a guest reaching the host re-enters through the module instance's
 single execution context, which the runtime serializes. A service being a pure
 function of its arguments is necessary but not sufficient — the property is about
 the call path, not just the computation.
+
+**Blocked with **threaded guest**, and possibly unreachable.** A component call
+takes an exclusive borrow of the store, so several guest threads being inside
+host imports at once may not be expressible at all. Do not confuse this with a
+*batched* host service, which takes a whole batch in one call from a
+single-threaded guest and fans out in native code — that requires only a
+thread-safe algorithm, not a concurrent-safe call path. See ADR-0049.
 
 ### Deterministic merge
 The guest-side reduction that makes a **threaded guest**'s output invariant to

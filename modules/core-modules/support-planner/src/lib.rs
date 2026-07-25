@@ -274,6 +274,17 @@ impl PrepassModule for SupportPlanner {
         let branch_radius = self.tree_support_branch_diameter / 2.0;
         let avoid_inflate = branch_radius + self.tree_support_branch_distance / 2.0;
 
+        // Every outline's inflation is independent of every other's, and this
+        // loop dominates the module: a native replay of a captured benchy
+        // prepass put 98% of `run_support_geometry`'s runtime here, across ~600
+        // calls at ~7 ms each. Guests cannot thread, and `offset_polygons` runs
+        // clipper2 *inside* the sandbox, so the only way to parallelize it is to
+        // hand the whole set to the host at once (ADR-0049).
+        //
+        // Collect in exactly the order the serial loop visited, then distribute
+        // results back the same way — `batch_offset` keeps each result paired
+        // with its own input, so push order into both caches is unchanged.
+        let mut outlines: Vec<(usize, &ExPolygon)> = Vec::new();
         for entry in &support_geometry.entries {
             let layer_idx = entry.global_support_layer_index as usize;
             if layer_idx >= collision_cache.len() {
@@ -281,19 +292,26 @@ impl PrepassModule for SupportPlanner {
             }
             for expoly in &entry.outlines {
                 if expoly.contour.points.len() >= 3 {
-                    collision_cache[layer_idx]
-                        .collision_polys
-                        .push(expoly.clone());
-                    let inflated = host::offset_polygons(
-                        &[expoly.clone()],
-                        avoid_inflate,
-                        OffsetJoinType::Miter,
-                    );
-                    for off in inflated {
-                        if off.contour.points.len() >= 3 {
-                            collision_cache[layer_idx].avoidance_polys.push(off);
-                        }
-                    }
+                    outlines.push((layer_idx, expoly));
+                }
+            }
+        }
+
+        let inflated = slicer_sdk::host_batch::batch_offset(&outlines, |(_, expoly)| {
+            slicer_sdk::host_batch::OffsetRequest {
+                polygons: vec![(*expoly).clone()],
+                delta_mm: avoid_inflate,
+                join: OffsetJoinType::Miter,
+            }
+        });
+
+        for ((layer_idx, expoly), avoidance) in inflated {
+            collision_cache[*layer_idx]
+                .collision_polys
+                .push((*expoly).clone());
+            for off in avoidance {
+                if off.contour.points.len() >= 3 {
+                    collision_cache[*layer_idx].avoidance_polys.push(off);
                 }
             }
         }

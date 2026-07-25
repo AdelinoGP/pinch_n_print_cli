@@ -822,6 +822,12 @@ pub struct HostExecutionContext {
     /// called. Extracted by the dispatcher and returned as part of
     /// `ModuleAccessAudit.runtime_reads`.
     pub(crate) runtime_reads: Vec<String>,
+    /// One entry per **batched** host-service call: the IR path it read and how
+    /// many items the batch carried. A batch records its IR once here rather
+    /// than pushing N copies into `runtime_reads`, so the read set stays the
+    /// answer to "which IR did this module touch" while the call count
+    /// survives. Surfaces as `ModuleAccessAudit.batch_calls`.
+    pub(crate) batch_calls: Vec<(String, u32)>,
 
     /// Runtime IR write paths accessed by the guest via WIT builder methods
     /// during this call. Populated by instrumenting each builder method to
@@ -944,6 +950,7 @@ impl HostExecutionContextBuilder {
             layer_collection_proposal: None,
             host_get_ordered_entities_call_count: 0,
             runtime_reads: Vec::new(),
+            batch_calls: Vec::new(),
             runtime_writes: Vec::new(),
             layer_z: self.layer_z,
             effective_layer_height: self.effective_layer_height,
@@ -1123,6 +1130,12 @@ impl HostExecutionContext {
     /// Runtime IR read paths recorded by view-method instrumentation.
     pub fn runtime_reads(&self) -> &[String] {
         &self.runtime_reads
+    }
+
+    /// Batched host-service calls made during this invocation, as
+    /// `(ir_path, batch_size)` in call order.
+    pub fn batch_calls(&self) -> &[(String, u32)] {
+        &self.batch_calls
     }
 
     /// Runtime IR write paths recorded by builder-method instrumentation.
@@ -1633,18 +1646,84 @@ fn point_on_triangle(point: slicer_ir::Point3, triangle: [slicer_ir::Point3; 3])
         && w <= 1.0 + MESH_QUERY_EPSILON
 }
 
-fn raycast_z_down_mesh_query(
-    ctx: &mut HostExecutionContext,
-    object_id: &str,
+// Shared bodies for the singular and batched geometry services.
+//
+// Each singular host service and its `-batch` counterpart must compute exactly
+// the same thing; these are factored out so the two cannot drift apart. The
+// mesh-query bodies additionally take an already-resolved `&ObjectMesh` rather
+// than the host context, so the batched forms can run them concurrently: they
+// borrow only the mesh and touch no host state.
+
+fn ir_join(join: hs::OffsetJoinType) -> slicer_core::polygon_ops::OffsetJoinType {
+    match join {
+        hs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
+        hs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
+        hs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
+    }
+}
+
+fn ir_clip_op(op: hs::ClipOperation) -> slicer_core::polygon_ops::ClipOperation {
+    match op {
+        hs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
+        hs::ClipOperation::Intersection => slicer_core::polygon_ops::ClipOperation::Intersection,
+        hs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference,
+        hs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
+    }
+}
+
+/// Total input vertices across a polygon set: the cost unit the batched
+/// clipper-backed services estimate work in (see `crate::batch`).
+fn expolygon_vertex_count(polygons: &[ExPolygon]) -> u64 {
+    polygons
+        .iter()
+        .map(|p| {
+            (p.contour.points.len() + p.holes.iter().map(|h| h.points.len()).sum::<usize>()) as u64
+        })
+        .sum()
+}
+
+/// Collinearity-based simplification: remove points that are collinear with
+/// their neighbors. The WIT signature's `tolerance_mm` is reserved for future
+/// Douglas-Peucker support; this uses exact collinearity and ignores it.
+fn simplify_polygon_collinear(polygon: Polygon) -> Polygon {
+    let mut points = polygon.points;
+    if points.len() < 3 {
+        return Polygon { points };
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let n = points.len();
+        if n < 3 {
+            break;
+        }
+        let mut keep = vec![true; n];
+        for i in 0..n {
+            let a = &points[i];
+            let b = &points[(i + 1) % n];
+            let c = &points[(i + 2) % n];
+            let cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            if cross == 0 {
+                keep[(i + 1) % n] = false;
+                changed = true;
+            }
+        }
+        points = points
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| keep[*i])
+            .map(|(_, p)| p)
+            .collect();
+    }
+    Polygon { points }
+}
+
+fn raycast_z_down_against(
+    object: &slicer_ir::ObjectMesh,
     x: f32,
     y: f32,
     start_z: f32,
-) -> wasmtime::Result<Option<f32>> {
-    ctx.runtime_reads.push(String::from("MeshIR"));
-    let Some(object) = lookup_object_mesh(ctx, "raycast-z-down", object_id)? else {
-        return Ok(None);
-    };
-
+) -> Option<f32> {
     let mut best_hit = None;
     for triangle in object.mesh.indices.chunks_exact(3) {
         let Some(vertices) = triangle_vertices(object, triangle) else {
@@ -1660,8 +1739,47 @@ fn raycast_z_down_mesh_query(
             best_hit = Some(hit_z);
         }
     }
+    best_hit
+}
 
-    Ok(best_hit)
+fn surface_normal_at_against(
+    object: &slicer_ir::ObjectMesh,
+    x: f32,
+    y: f32,
+    z: f32,
+) -> Option<slicer_ir::Point3> {
+    let query_point = slicer_ir::Point3 { x, y, z };
+    for triangle in object.mesh.indices.chunks_exact(3) {
+        let Some(vertices) = triangle_vertices(object, triangle) else {
+            continue;
+        };
+        if !point_on_triangle(query_point, vertices) {
+            continue;
+        }
+        let Some(normal) = triangle_unit_normal(vertices) else {
+            continue;
+        };
+        return Some(slicer_ir::Point3 {
+            x: normal[0],
+            y: normal[1],
+            z: normal[2],
+        });
+    }
+    None
+}
+
+fn raycast_z_down_mesh_query(
+    ctx: &mut HostExecutionContext,
+    object_id: &str,
+    x: f32,
+    y: f32,
+    start_z: f32,
+) -> wasmtime::Result<Option<f32>> {
+    ctx.runtime_reads.push(String::from("MeshIR"));
+    let Some(object) = lookup_object_mesh(ctx, "raycast-z-down", object_id)? else {
+        return Ok(None);
+    };
+    Ok(raycast_z_down_against(object, x, y, start_z))
 }
 
 fn surface_normal_at_mesh_query(
@@ -1675,26 +1793,7 @@ fn surface_normal_at_mesh_query(
     let Some(object) = lookup_object_mesh(ctx, "surface-normal-at", object_id)? else {
         return Ok(None);
     };
-    let query_point = slicer_ir::Point3 { x, y, z };
-
-    for triangle in object.mesh.indices.chunks_exact(3) {
-        let Some(vertices) = triangle_vertices(object, triangle) else {
-            continue;
-        };
-        if !point_on_triangle(query_point, vertices) {
-            continue;
-        }
-        let Some(normal) = triangle_unit_normal(vertices) else {
-            continue;
-        };
-        return Ok(Some(slicer_ir::Point3 {
-            x: normal[0],
-            y: normal[1],
-            z: normal[2],
-        }));
-    }
-
-    Ok(None)
+    Ok(surface_normal_at_against(object, x, y, z))
 }
 
 fn object_bounds_mesh_query(
@@ -1821,15 +1920,7 @@ impl hs::Host for HostExecutionContext {
     ) -> wasmtime::Result<Vec<ExPolygon>> {
         let ir_subject = wit_to_ir_expolygons(&subject);
         let ir_clip = wit_to_ir_expolygons(&clip);
-        let ir_op = match op {
-            hs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
-            hs::ClipOperation::Intersection => {
-                slicer_core::polygon_ops::ClipOperation::Intersection
-            }
-            hs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference,
-            hs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
-        };
-        let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_op);
+        let result = slicer_core::polygon_ops::clip_polygons(&ir_subject, &ir_clip, ir_clip_op(op));
         Ok(ir_to_wit_expolygons(&result))
     }
 
@@ -1840,12 +1931,7 @@ impl hs::Host for HostExecutionContext {
         join: hs::OffsetJoinType,
     ) -> wasmtime::Result<Vec<ExPolygon>> {
         let ir_polys = wit_to_ir_expolygons(&polygons);
-        let ir_join = match join {
-            hs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
-            hs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
-            hs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
-        };
-        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join, 0.0);
+        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join(join), 0.0);
         Ok(ir_to_wit_expolygons(&result))
     }
 
@@ -1854,39 +1940,124 @@ impl hs::Host for HostExecutionContext {
         polygon: Polygon,
         _tolerance_mm: f32,
     ) -> wasmtime::Result<Polygon> {
-        // Collinearity-based simplification: remove points that are collinear
-        // with their neighbors. The tolerance_mm parameter is reserved for
-        // future Douglas-Peucker support; current impl uses exact collinearity.
-        let mut points = polygon.points;
-        if points.len() < 3 {
-            return Ok(Polygon { points });
+        Ok(simplify_polygon_collinear(polygon))
+    }
+
+    fn offset_polygons_batch(
+        &mut self,
+        requests: Vec<hs::OffsetRequest>,
+    ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+        let (results, _mode) = crate::batch::map_batch(
+            &requests,
+            |r| expolygon_vertex_count(&r.polygons),
+            |r| {
+                let ir_polys = wit_to_ir_expolygons(&r.polygons);
+                let result =
+                    slicer_core::polygon_ops::offset(&ir_polys, r.delta_mm, ir_join(r.join), 0.0);
+                ir_to_wit_expolygons(&result)
+            },
+        );
+        Ok(results)
+    }
+
+    fn clip_polygons_batch(
+        &mut self,
+        requests: Vec<hs::ClipRequest>,
+    ) -> wasmtime::Result<Vec<Vec<ExPolygon>>> {
+        let (results, _mode) = crate::batch::map_batch(
+            &requests,
+            |r| expolygon_vertex_count(&r.subject) + expolygon_vertex_count(&r.clip),
+            |r| {
+                let ir_subject = wit_to_ir_expolygons(&r.subject);
+                let ir_clip = wit_to_ir_expolygons(&r.clip);
+                let result = slicer_core::polygon_ops::clip_polygons(
+                    &ir_subject,
+                    &ir_clip,
+                    ir_clip_op(r.op),
+                );
+                ir_to_wit_expolygons(&result)
+            },
+        );
+        Ok(results)
+    }
+
+    fn simplify_polygon_batch(
+        &mut self,
+        requests: Vec<hs::SimplifyRequest>,
+    ) -> wasmtime::Result<Vec<Polygon>> {
+        let (results, _mode) = crate::batch::map_batch(
+            &requests,
+            |r| r.polygon.points.len() as u64,
+            |r| simplify_polygon_collinear(r.polygon.clone()),
+        );
+        Ok(results)
+    }
+
+    fn raycast_z_down_batch(
+        &mut self,
+        requests: Vec<hs::RaycastRequest>,
+    ) -> wasmtime::Result<Vec<Option<f32>>> {
+        // One audit entry for the whole batch rather than one per ray - see
+        // `HostExecutionContext::batch_calls`.
+        self.runtime_reads.push(String::from("MeshIR"));
+        self.batch_calls
+            .push((String::from("MeshIR"), requests.len() as u32));
+
+        // Resolve every object first, on this thread. `lookup_object_mesh`
+        // borrows the context immutably, so the fan-out below holds only shared
+        // borrows. A missing object is an error in the singular form; keep that,
+        // and raise the first one in request order so the failure does not
+        // depend on scheduling.
+        let mut resolved: Vec<Option<&slicer_ir::ObjectMesh>> = Vec::with_capacity(requests.len());
+        for request in &requests {
+            resolved.push(lookup_object_mesh(
+                self,
+                "raycast-z-down",
+                &request.object_id,
+            )?);
         }
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let n = points.len();
-            if n < 3 {
-                break;
-            }
-            let mut keep = vec![true; n];
-            for i in 0..n {
-                let a = &points[i];
-                let b = &points[(i + 1) % n];
-                let c = &points[(i + 2) % n];
-                let cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-                if cross == 0 {
-                    keep[(i + 1) % n] = false;
-                    changed = true;
-                }
-            }
-            points = points
-                .into_iter()
-                .enumerate()
-                .filter(|(i, _)| keep[*i])
-                .map(|(_, p)| p)
-                .collect();
+
+        let items: Vec<(&hs::RaycastRequest, Option<&slicer_ir::ObjectMesh>)> =
+            requests.iter().zip(resolved).collect();
+        let (results, _mode) = crate::batch::map_batch(
+            &items,
+            |(_, object)| object.map_or(0, |o| (o.mesh.indices.len() / 3) as u64),
+            |(request, object)| {
+                object.and_then(|o| raycast_z_down_against(o, request.x, request.y, request.start_z))
+            },
+        );
+        Ok(results)
+    }
+
+    fn surface_normal_at_batch(
+        &mut self,
+        requests: Vec<hs::SurfaceNormalRequest>,
+    ) -> wasmtime::Result<Vec<Option<Point3>>> {
+        self.runtime_reads.push(String::from("MeshIR"));
+        self.batch_calls
+            .push((String::from("MeshIR"), requests.len() as u32));
+
+        let mut resolved: Vec<Option<&slicer_ir::ObjectMesh>> = Vec::with_capacity(requests.len());
+        for request in &requests {
+            resolved.push(lookup_object_mesh(
+                self,
+                "surface-normal-at",
+                &request.object_id,
+            )?);
         }
-        Ok(Polygon { points })
+
+        let items: Vec<(&hs::SurfaceNormalRequest, Option<&slicer_ir::ObjectMesh>)> =
+            requests.iter().zip(resolved).collect();
+        let (results, _mode) = crate::batch::map_batch(
+            &items,
+            |(_, object)| object.map_or(0, |o| (o.mesh.indices.len() / 3) as u64),
+            |(request, object)| {
+                object
+                    .and_then(|o| surface_normal_at_against(o, request.x, request.y, request.z))
+                    .map(ir_point3_to_layer)
+            },
+        );
+        Ok(results)
     }
 
     fn medial_axis(

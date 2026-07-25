@@ -171,3 +171,5 @@ Applies to code comments, ADRs, `docs/DEVIATION_LOG.md` rows, and spec packets. 
 Existing line-pinned citations are legacy. **Drop the line numbers on any citation you touch**; do NOT mass-rewrite the rest.
 
 If you have a local OrcaSlicer checkout, use it to verify behaviour before claiming canonical says anything — but never cite its line numbers, and never assume a reviewer has it.
+
+**A gitignored `OrcaSlicerDocumented/` at this repo's root is NOT canonical.** That tree has been reduced to serve as a GUI for Pinch 'n Print; whole functions are missing from it. Parity checks against it silently read a truncated file and give a wrong answer — measured: its `PrintObject.cpp` is 3,243 lines with 6 occurrences of `discover_horizontal_shells`, against 4,882 lines and 9 occurrences in a full checkout. Because `.gitignore` hides the directory, nothing in the repo warns you. **Verify against a separate full OrcaSlicer checkout, and sanity-check file length before trusting a parity result.** Ask the maintainer where the full checkout lives on this machine rather than guessing — the path is machine-local and deliberately not recorded here.

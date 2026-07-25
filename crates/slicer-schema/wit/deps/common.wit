@@ -19,6 +19,65 @@ interface host-services {
     clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
     offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
     simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+
+    // ── Batched forms ────────────────────────────────────────────────────
+    //
+    // A guest that calls one of these once, instead of calling the singular
+    // form in a loop, lets the host run the items concurrently on the rayon
+    // pool it already owns. The guest itself stays single-threaded: the whole
+    // batch crosses the boundary in one call, so nothing re-enters the host
+    // concurrently and no host service has to be safe against that.
+    //
+    // Results are returned in **input order**, always — the i-th result
+    // corresponds to the i-th request whether the host ran the batch serially
+    // or in parallel. Output therefore cannot depend on worker count or
+    // scheduling.
+    //
+    // Parameters are per item rather than shared across the batch, so a caller
+    // whose deltas or operations vary does not have to fall back to a loop.
+    //
+    // The host decides serially-or-parallel from an estimated-work model, not
+    // from item count; see `batch` in the host implementation. Callers should
+    // batch whatever is naturally independent and leave that choice alone.
+    //
+    // `medial-axis` and `generate-arachne-walls` deliberately have no batch
+    // form — see ADR-0049.
+
+    record offset-request {
+        polygons: list<ex-polygon>,
+        delta-mm: f32,
+        join:     offset-join-type,
+    }
+    offset-polygons-batch: func(requests: list<offset-request>) -> list<list<ex-polygon>>;
+
+    record clip-request {
+        subject: list<ex-polygon>,
+        clip:    list<ex-polygon>,
+        op:      clip-operation,
+    }
+    clip-polygons-batch: func(requests: list<clip-request>) -> list<list<ex-polygon>>;
+
+    record simplify-request {
+        polygon:      polygon,
+        tolerance-mm: f32,
+    }
+    simplify-polygon-batch: func(requests: list<simplify-request>) -> list<polygon>;
+
+    record raycast-request {
+        object-id: object-id,
+        x:         f32,
+        y:         f32,
+        start-z:   f32,
+    }
+    raycast-z-down-batch: func(requests: list<raycast-request>) -> list<option<f32>>;
+
+    record surface-normal-request {
+        object-id: object-id,
+        x:         f32,
+        y:         f32,
+        z:         f32,
+    }
+    surface-normal-at-batch: func(requests: list<surface-normal-request>) -> list<option<point3>>;
     medial-axis:      func(input: ex-polygon, min-width: f32, max-width: f32) -> result<list<thick-polyline>, string>;
     /// Parameters for `generate-arachne-walls`, mirroring
     /// `slicer_core::arachne::pipeline::ArachneParams` field-for-field

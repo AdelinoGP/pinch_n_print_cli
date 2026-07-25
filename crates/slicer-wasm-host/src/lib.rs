@@ -6,6 +6,7 @@
 //! Rust type identity across the four worlds. The layer world is canonical;
 //! see `host.rs` for the ordering rule.
 
+pub mod batch;
 pub mod binding;
 pub mod dispatch;
 pub mod execution_plan_live;
