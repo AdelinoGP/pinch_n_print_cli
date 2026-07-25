@@ -372,6 +372,8 @@ fn run_pipeline_core(
     instrumentation.on_phase_end(Phase::PrePass);
     let prepass_audits = prepass_audits?;
 
+    dump_prepass_ir_if_requested(&blackboard);
+
     if let Some(layer_plan) = blackboard.layer_plan() {
         plan.global_layers = Arc::new(layer_plan.global_layers.clone());
     }
@@ -449,6 +451,53 @@ fn run_pipeline_core(
         layer_audits,
         postpass_audits,
     })
+}
+
+/// Dump the committed prepass IR artifacts when `PNP_DUMP_PREPASS_IR` names a
+/// directory. Off unless the variable is set, so the normal slice path pays
+/// only one environment read.
+///
+/// Exists so performance harnesses can replay a *real* model's prepass output
+/// (benchy scale: hundreds of layers) instead of hand-built fixtures, which do
+/// not reproduce the cost distribution being measured. Written on demand rather
+/// than committed, per the repo's "re-record, don't vendor large fixtures" rule.
+///
+/// Failures are reported but never fatal: this is a diagnostic side-channel and
+/// must not be able to fail a slice.
+fn dump_prepass_ir_if_requested(blackboard: &Blackboard) {
+    let Ok(dir) = std::env::var("PNP_DUMP_PREPASS_IR") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("PNP_DUMP_PREPASS_IR: cannot create {}: {e}", dir.display());
+        return;
+    }
+
+    // Postcard, not JSON: `RegionMapIR` and `SupportGeometryIR` are maps keyed
+    // by `RegionKey` / `SupportGeometryKey` structs, and JSON object keys must
+    // be strings — `serde_json` rejects both with "key must be a string".
+    // Postcard has no such restriction, is already the workspace's IR codec,
+    // and keeps the mesh dump ~10x smaller.
+    fn write<T: serde::Serialize>(dir: &std::path::Path, name: &str, value: &T) {
+        let path = dir.join(format!("{name}.postcard"));
+        match postcard::to_allocvec(value).map(|bytes| std::fs::write(&path, bytes)) {
+            Ok(Ok(())) => eprintln!("PNP_DUMP_PREPASS_IR: wrote {}", path.display()),
+            Ok(Err(e)) => eprintln!("PNP_DUMP_PREPASS_IR: write {} failed: {e}", path.display()),
+            Err(e) => eprintln!("PNP_DUMP_PREPASS_IR: encode {name} failed: {e}"),
+        }
+    }
+
+    write(&dir, "mesh", blackboard.mesh().as_ref());
+    if let Some(ir) = blackboard.layer_plan() {
+        write(&dir, "layer_plan", ir.as_ref());
+    }
+    if let Some(ir) = blackboard.region_map() {
+        write(&dir, "region_map", ir.as_ref());
+    }
+    if let Some(ir) = blackboard.support_geometry() {
+        write(&dir, "support_geometry", ir.as_ref());
+    }
 }
 
 /// PNG file signature — first 8 bytes of every valid PNG.

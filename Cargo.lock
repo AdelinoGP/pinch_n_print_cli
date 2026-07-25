@@ -3092,6 +3092,7 @@ dependencies = [
  "lightning-infill",
  "log",
  "png",
+ "postcard",
  "predicates",
  "rayon",
  "rectilinear-infill",
