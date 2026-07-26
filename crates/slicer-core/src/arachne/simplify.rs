@@ -38,6 +38,23 @@
 
 use slicer_ir::{ExtrusionJunction, ExtrusionLine, Point3WithWidth};
 
+/// Width-difference threshold (mm) below which
+/// [`calculate_extrusion_area_deviation_error`] takes canonical's
+/// equal-width branch instead of the weighted-average-area branch.
+///
+/// Canonical tests `width_diff > 1` in scaled integer units. Under its standard
+/// scaling factor one unit is one nanometre, so the millimetre equivalent is
+/// `1e-6`.
+///
+/// **Known divergence:** canonical's scaling factor is not a constant — it
+/// carries a standard value and a ten-times-coarser large-printer value, so this
+/// branch point (and the `maximum_extrusion_area_deviation` threshold that gates
+/// the same guard) shift by 10x on large-printer profiles. PnP has no
+/// large-printer scaling concept anywhere in its coordinate system, so both
+/// values are pinned to canonical's standard-printer behaviour rather than
+/// introducing one here to match a fork quirk.
+const WIDTH_DIFF_EPSILON_MM: f64 = 1e-6;
+
 /// Runs distance-gated simplification on every line's junction polyline.
 ///
 /// `visvalingam_area_threshold` is the maximum width-weighted area deviation
@@ -432,13 +449,36 @@ fn simplify_area_only(
         .collect()
 }
 
-/// Width-weighted area deviation of the middle junction `b` relative to the
-/// chord `a`–`c`.
+/// Width-weighted extrusion-area deviation introduced by removing the middle
+/// junction `b`, i.e. by replacing the two segments `a`–`b` and `b`–`c` with the
+/// single segment `a`–`c` carrying their length-weighted average width.
 ///
-/// Formula (OrcaSlicer ExtrusionLine.cpp:248):
-/// `0.5 * width_at_b * |cross(AB, AC)| / |AC|` — the magnitude of the
-/// triangle area projected at `b`, weighted by `b`'s extrusion width, and
-/// normalized by the chord length `a`–`c`. Returned in mm².
+/// Port of canonical `ExtrusionLine::calculateExtrusionAreaDeviationError`
+/// (`ExtrusionLine.cpp`). Returned in mm².
+///
+/// **This replaced a non-canonical formula.** The previous implementation
+/// computed `0.5 * width_at_b * |cross(AB, AC)| / |AC|` — a width-weighted
+/// triangle height — and attributed it to canonical. That formula does not
+/// appear anywhere in `ExtrusionLine.cpp`: it measures how far `b` sits off the
+/// chord, not how much extruded area moves when `b` is dropped, and it ignores
+/// the widths at `a` and `c` entirely. Canonical's quantity is a genuine area
+/// difference and depends on all three widths. Do not "simplify" it back.
+///
+/// Two fidelity notes against canonical, both deliberate:
+///
+/// 1. **Arithmetic domain.** Canonical works in scaled integer `coord_t` and
+///    accumulates in `int64_t`, so its two divisions truncate. PnP's junction
+///    coordinates and widths are `f32` millimetres (`Point3WithWidth`), so this
+///    port evaluates in `f64` and does not truncate. Reproducing the truncation
+///    would mean reproducing canonical's scaled-integer coordinate space inside
+///    this one function, which would be a larger and more fragile divergence
+///    than the rounding it removes.
+/// 2. **The small-width-difference branch threshold.** Canonical tests
+///    `width_diff > 1`, where `1` is one scaled unit — one nanometre under its
+///    standard scaling factor. Expressed in millimetres that is `1e-6`, which is
+///    what [`WIDTH_DIFF_EPSILON_MM`] carries. Note this makes canonical's own
+///    branch point scaling-factor dependent; PnP pins the standard-printer
+///    value (see [`WIDTH_DIFF_EPSILON_MM`]).
 fn calculate_extrusion_area_deviation_error(
     a: &ExtrusionJunction,
     b: &ExtrusionJunction,
@@ -448,21 +488,40 @@ fn calculate_extrusion_area_deviation_error(
     let (bx, by) = (b.p.x as f64, b.p.y as f64);
     let (cx, cy) = (c.p.x as f64, c.p.y as f64);
 
-    let abx = bx - ax;
-    let aby = by - ay;
-    let acx = cx - ax;
-    let acy = cy - ay;
+    let (aw, bw, cw) = (a.p.width as f64, b.p.width as f64, c.p.width as f64);
 
-    let cross = abx * acy - aby * acx;
-    let chord_len = (acx * acx + acy * acy).sqrt();
+    let ab_length = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+    let bc_length = ((cx - bx).powi(2) + (cy - by).powi(2)).sqrt();
 
-    if chord_len < 1e-18 {
-        let dx = bx - ax;
-        let dy = by - ay;
-        return 0.5 * b.p.width as f64 * (dx * dx + dy * dy).sqrt();
+    let width_diff = (bw - aw).abs().max((cw - bw).abs());
+
+    if width_diff > WIDTH_DIFF_EPSILON_MM {
+        let ab_weight = (aw + bw) / 2.0;
+        let bc_weight = (bw + cw) / 2.0;
+
+        let total_length = ab_length + bc_length;
+        if total_length < 1e-18 {
+            // Degenerate: a, b and c coincide, so removing b moves no area.
+            // Canonical divides by this sum unguarded (both lengths are zero
+            // only for coincident junctions, which its callers filter earlier).
+            return 0.0;
+        }
+
+        let weighted_average_width =
+            (ab_length * ab_weight + bc_length * bc_weight) / total_length;
+        let ac_length = ((cx - ax).powi(2) + (cy - ay).powi(2)).sqrt();
+
+        ((ab_weight * ab_length + bc_weight * bc_length) - (weighted_average_width * ac_length))
+            .abs()
+    } else {
+        // Widths are effectively equal: charge the width difference against the
+        // shorter of the two segments, matching canonical's else-branch.
+        if ab_length > bc_length {
+            width_diff * bc_length
+        } else {
+            width_diff * ab_length
+        }
     }
-
-    0.5 * b.p.width as f64 * cross.abs() / chord_len
 }
 
 /// Squared perpendicular distance from point `p` to the line through `a` and

@@ -611,7 +611,11 @@ impl Default for ArachneParams {
             is_topmost_layer: false,
             smallest_line_segment_squared: 0.0025,
             allowed_error_distance_squared: 0.000025,
-            maximum_extrusion_area_deviation: 0.005,
+            // 2e-6 mm², derived from canonical's `scaled<coord_t>(2.)`; must
+            // stay in step with `ArachneParams::default` in
+            // `crates/slicer-core/src/arachne/pipeline.rs`, which carries the
+            // full derivation.
+            maximum_extrusion_area_deviation: 2e-6,
             wall_sequence: WallSequence::InnerOuter,
         }
     }

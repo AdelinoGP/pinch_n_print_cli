@@ -220,8 +220,18 @@ impl Default for ArachneParams {
             smallest_line_segment_squared: 0.0025,
             // meshfix_maximum_deviation = 0.005mm, squared = 0.000025 mm².
             allowed_error_distance_squared: 0.000025,
-            // meshfix_maximum_extrusion_area_deviation = 0.005 mm².
-            maximum_extrusion_area_deviation: 0.005,
+            // Canonical `meshfix_maximum_extrusion_area_deviation()` returns
+            // `scaled<coord_t>(2.)`. That is a *scaled* quantity: canonical's
+            // `calculateExtrusionAreaDeviationError` accumulates width x length
+            // in scaled units, so the comparison is scaled-area against 2/s,
+            // where s is canonical's scaling factor. In millimetres the gate is
+            // therefore 2s = 2e-6 mm², not 2 and not 0.005.
+            //
+            // The previous value here was 0.005 with a comment asserting it was
+            // canonical's "= 0.005 mm²" — roughly 2500x too permissive, against
+            // a formula that was itself not canonical's (see
+            // `calculate_extrusion_area_deviation_error`). Both are now ported.
+            maximum_extrusion_area_deviation: 2e-6,
             wall_sequence: WallSequence::InnerOuter,
         }
     }
