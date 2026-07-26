@@ -12,11 +12,13 @@
 - Task IDs: `TASK-306`
 - Objective: capture the commit this packet starts from, so every "this packet must not modify X" guard has a ref that survives the packet's own commits.
 - Precondition: the working tree is at the commit from which this packet's work begins.
-- Postcondition: `target/pkt-187-baseline-ref.txt` exists and contains a single commit SHA.
+- Postcondition: **two** copies of the same SHA exist — the durable one at `.ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt` (version-controlled) and the working one at `target/pkt-187-baseline-ref.txt` (scratch cache, which is what every embedded guard command reads).
+- **Why two, and the recovery rule.** `target/` is gitignored scratch and is destroyed by `cargo clean`, which this packet's own guest-WASM rebuild instructions make a realistic mid-packet event. With only the `target/` copy, a `cargo clean` mid-packet leaves AC-10 (and the `docs/ORCA_CONFIG_REFERENCE.md` no-touch guard, which uses the same ref) hard-failing with `FAIL: baseline ref … missing` and **no way to recover**: re-running Step 0 at that point records the *current* HEAD, which already contains this packet's edits, so the guard would then pass vacuously — the exact false-PASS the ref exists to prevent. **Recovery rule, mandatory: never re-run Step 0 to recreate a lost ref.** Restore the cache from the durable copy instead: `bash -c 'mkdir -p target && cp .ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt target/pkt-187-baseline-ref.txt && echo RESTORED'`. If the durable copy is *also* gone, stop and report — do not synthesise a ref.
 - Files allowed to read, with ranges when over 300 lines:
   - none.
 - Files allowed to edit (at most 3):
-  - none under version control; this step writes only `target/pkt-187-baseline-ref.txt`.
+  - `.ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt` (new; version-controlled, so it survives `cargo clean`)
+  - `target/pkt-187-baseline-ref.txt` (not under version control)
 - Files explicitly out of bounds:
   - every source and doc file.
 - Expected sub-agent dispatches:
@@ -27,8 +29,33 @@
 - OrcaSlicer refs:
   - none.
 - Verification:
-  - `bash -c 'git diff --quiet && git diff --cached --quiet || { echo "FAIL: working tree or index is dirty - commit or stash first, or the baseline bakes in edits this packet must be measured against"; exit 1; }; mkdir -p target && git rev-parse HEAD > target/pkt-187-baseline-ref.txt && rg -q "^[0-9a-f]{40}$" target/pkt-187-baseline-ref.txt && echo PASS || echo "FAIL: baseline ref not recorded"'`
-- Exit condition: the file exists and holds one SHA. **Every no-touch guard in this packet diffs against it.** Do not substitute `HEAD` (empty after the packet commits, so a committed edit passes) or `git merge-base HEAD master` (measured: `crates/slicer-gcode/src/emit.rs` already differs from that merge-base because of pre-existing branch work, so the guard would fail a correct implementation).
+  - `bash -c 'git diff --quiet && git diff --cached --quiet || { echo "FAIL: working tree or index is dirty - commit or stash first, or the baseline bakes in edits this packet must be measured against"; exit 1; }; mkdir -p target && git rev-parse HEAD > .ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt && cp .ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt target/pkt-187-baseline-ref.txt && rg -q "^[0-9a-f]{40}$" target/pkt-187-baseline-ref.txt && echo PASS || echo "FAIL: baseline ref not recorded"'`
+- Exit condition: both files exist and hold the same single SHA. **Every no-touch guard in this packet diffs against the `target/` copy.** Do not substitute `HEAD` (empty after the packet commits, so a committed edit passes) or `git merge-base HEAD master` (measured: `crates/slicer-gcode/src/emit.rs` already differs from that merge-base because of pre-existing branch work, so the guard would fail a correct implementation). If a guard later reports the ref missing, apply the recovery rule above — do **not** re-run this step.
+
+### Step 0a: Re-measure the AC baselines against the post-186 tree
+
+- Task IDs: `TASK-306`
+- Objective: re-run every change-proving AC command **before** writing a line of this packet, and record which clauses are actually red now that packet 186 has landed. The AC baselines quoted throughout `packet.spec.md` were measured on the **pre-186** tree.
+- **Why this step exists — a measured cross-packet interaction, not a formality.** AC-11 requires the absence of the `docs/15_config_keys_reference.md` blockquote sentence "The wider OrcaSlicer placeholder set (`[first_layer_temperature]`, `[layer_count]`, `[max_layer_z]`, …) is not implemented". That sentence and the sentence "Unknown placeholders pass through verbatim, into the emitted G-code." — which packet **186**'s own AC-11 requires to be deleted — are **the same blockquote** in the same section. If 186 deletes the block wholesale, one of the "three independent failing clauses" AC-11 claims is **already green when this packet starts**, and the packet would be gating on a two-clause AC while believing it had three. The other two clauses (the three injection-point names, the three layer macros) are untouched by 186 and keep AC-11 discriminating either way — but the count must be *known*, not assumed.
+- Precondition: packet 186 is `implemented` and its commits are in the tree; Step 0's baseline ref is recorded.
+- Postcondition: a written record (in the packet's swarm log, not a repo file) of the PASS/FAIL state of each change-proving AC command, and an explicit note of any clause that is already green.
+- Files allowed to read, with ranges when over 300 lines:
+  - `docs/15_config_keys_reference.md` — **ranged read only**: the injection-point section, to see what 186 actually left behind.
+- Files allowed to edit (at most 3):
+  - none. This step only measures.
+- Files explicitly out of bounds:
+  - every source and doc file.
+- Expected sub-agent dispatches:
+  - Question: after 186, does `docs/15_config_keys_reference.md` still contain the string `The wider OrcaSlicer placeholder set`, and does it still contain a numeric claim about how many macros resolve? Scope: `docs/15_config_keys_reference.md`; return: `FACT` ≤ 3 lines
+- Context cost: `S`
+- Authoritative docs:
+  - none.
+- OrcaSlicer refs:
+  - none.
+- Verification:
+  - Re-dispatch every pipe-suffixed command in `packet.spec.md` and record the result. Any command that prints **PASS** before this packet has written a line is a **non-discriminating AC**: say so explicitly in the step's report rather than treating the eventual PASS as evidence.
+  - `bash -c 'python3 -c "import io; s=io.open(r"docs/15_config_keys_reference.md",encoding="utf-8").read(); print("stale caveat present (AC-11 clause still red): "+str("The wider OrcaSlicer placeholder set" in s))"'`
+- Exit condition: the post-186 baseline is recorded, and every AC that turns out to be pre-satisfied is named. Do not amend the AC text to hide a pre-satisfied clause; AC-11 stays as written because its other clauses still discriminate.
 
 ### Step 1: Red tests for the registry and the layer-scoped points
 
@@ -101,7 +128,7 @@
 - Postcondition: `[config.schema]` has eight keys; the whole `machine_start_end_gcode_emission_tdd` module is green.
 - Files allowed to read, with ranges when over 300 lines:
   - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` — whole file (short).
-  - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` — **long; ranged reads only.** Read `slice_with_raw` / `try_slice_with_raw`, `count_occurrences`, and the two block-position tests. Do not load the whole file.
+  - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` — **long; ranged reads only.** Read `slice_with_raw` / `try_slice_with_raw`, `count_occurrences`, and the two block-position tests. Do not load the whole file. **`try_slice_with_raw` is a FORWARD-DEP on packet 186, not an existing symbol** — 186 adds it beside `slice_with_raw` in this file (its `design.md` §Code Change Surface and its `implementation-plan.md` Step 3 both specify the addition, re-expressing `slice_with_raw` as `try_slice_with_raw(raw).expect("pipeline must succeed")`). If it is absent when this step runs, 186 has not landed and this packet's stated precondition is violated — **stop and report; do not add it here.**
 - Files allowed to edit (at most 3):
   - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`
   - `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs`
@@ -130,9 +157,11 @@
 ### Step 4: Rewrite the `docs/15` injection-point section and regenerate the config-keys block
 
 - Task IDs: `TASK-306`
-- Objective: extend §"Machine start / end G-code" into a registry-shaped section that names all five registered points, states the canonical layer-boundary order, and documents that `[layer_num]` / `[layer_z]` / `[max_layer_z]` resolve only at the four layer-aware sites; then regenerate the `module-config-keys` block.
+- Objective: retitle §"Machine start / end G-code (packet 59)" to `## Custom G-code injection points`, write the literal anchor `<!-- anchor: custom-gcode-injection-points -->` on the line immediately below the new heading, and extend the section into a registry-shaped one that names all five registered points, states the canonical layer-boundary order, and documents that `[layer_num]` / `[layer_z]` / `[max_layer_z]` resolve only at the four layer-aware sites; then regenerate the `module-config-keys` block.
+- **The anchor is what makes the retitle and AC-11 compatible.** AC-11 slices the section from the anchor, not from the heading text; without the anchor the retitle blanks AC-11's section slice and fails every one of its content clauses. Place the anchor outside every `<!-- BEGIN GENERATED … -->` span.
+- **Restate the resolvable-placeholder count NON-numerically, and do not reintroduce a numeral.** Packet 186 rewrote this same section and was explicitly instructed to drop its `four macros resolve` sentence, because (a) `run_gcode_postprocess`'s `for key in config.keys()` sweep also resolves the manifest's own `machine_start_gcode` / `machine_end_gcode` string keys, so "four" was already wrong when written, and (b) **this packet adds three more manifest keys to the same module**, which would falsify any numeral 186 had pinned. Write the **rule** instead — the placeholder domain is exactly this module's manifest-declared key set plus the alias table, per `docs/adr/0050-custom-gcode-architecture.md` — and enumerate the injection points and the per-site variables, which are the facts AC-11 actually probes. This is a **cross-packet coordination point with 186 Step 4**: if the section arrives from 186 still carrying a count sentence, delete it here rather than incrementing it.
 - Precondition: Step 3 landed, so the manifest is final.
-- Postcondition: `cargo xtask gen-config-docs --check` exits 0; the three new key names and the three layer macros appear in the file.
+- Postcondition: `cargo xtask gen-config-docs --check` exits 0; the anchor `<!-- anchor: custom-gcode-injection-points -->` exists exactly once and outside every generated span; the three new key names and the three layer macros appear inside the anchored section; and the section states **no** numeric total of resolvable placeholders.
 - Files allowed to read, with ranges when over 300 lines:
   - `docs/15_config_keys_reference.md` — **long; ranged reads only.** §"Machine start / end G-code" and the `<!-- BEGIN GENERATED: module-config-keys (cargo xtask gen-config-docs) -->` / `<!-- END GENERATED: module-config-keys -->` marker lines.
 - Files allowed to edit (at most 3):
@@ -150,7 +179,8 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — `custom_gcode_specific_placeholders`; delegate; supplies the per-site variable sets quoted in the rewritten prose, including the note that the table itself keys timelapse as `timelapse_gcode` while the option is `time_lapse_gcode`.
 - Verification:
-  - `bash -c 'python3 -c "import io; s=io.open(r\"docs/15_config_keys_reference.md\",encoding=\"utf-8\").read(); b=chr(96); i=s.find(\"## Machine start / end G-code\"); sec = s[i:] if i>=0 else \"\"; j=sec.find(chr(10)+\"## \",1); sec = sec[:j] if j>0 else sec; pts=[k for k in (\"before_layer_change_gcode\",\"time_lapse_gcode\",\"layer_change_gcode\") if k not in sec]; mac=[v for v in (\"layer_num\",\"layer_z\",\"max_layer_z\") if (b+chr(91)+v+chr(93)+b) not in sec]; stale=\"The wider OrcaSlicer placeholder set\" in s; ok = i>=0 and not pts and not mac and not stale; print(\"PASS\" if ok else \"FAIL: missing points=\"+str(pts)+\", missing macros=\"+str(mac)+\", stale not-implemented caveat still present=\"+str(stale))"'` — **verbatim copy of `packet.spec.md` AC-11; if either changes, change both.** An earlier draft left a superseded whole-file copy here with no section slice and no stale-caveat clause, so this step gated green on a tree where AC-11 failed.
+  - `bash -c 'python3 -c "import io; s=io.open(r\"docs/15_config_keys_reference.md\",encoding=\"utf-8\").read(); b=chr(96); a=\"<!-- anchor: custom-gcode-injection-points -->\"; i=s.find(a); sec = s[i:] if i>=0 else \"\"; j=sec.find(chr(10)+\"## \",1); sec = sec[:j] if j>0 else sec; pts=[k for k in (\"before_layer_change_gcode\",\"time_lapse_gcode\",\"layer_change_gcode\") if k not in sec]; mac=[v for v in (\"layer_num\",\"layer_z\",\"max_layer_z\") if (b+chr(91)+v+chr(93)+b) not in sec]; stale=\"The wider OrcaSlicer placeholder set\" in s; ok = i>=0 and not pts and not mac and not stale; print(\"PASS\" if ok else \"FAIL: anchor=\"+str(i>=0)+\", missing points=\"+str(pts)+\", missing macros=\"+str(mac)+\", stale not-implemented caveat still present=\"+str(stale))"'` — **verbatim copy of `packet.spec.md` AC-11; if either changes, change both.** An earlier draft left a superseded whole-file copy here with no section slice and no stale-caveat clause, so this step gated green on a tree where AC-11 failed; a later one keyed the slice on the heading text this very step retitles.
+  - `bash -c 'python3 -c "import io; s=io.open(r\"docs/15_config_keys_reference.md\",encoding=\"utf-8\").read(); a=\"<!-- anchor: custom-gcode-injection-points -->\"; n=s.count(a); print(\"PASS\" if n==1 else \"FAIL: anchor occurs \"+str(n)+\" times; expected exactly 1\")"'` — the anchor is now load-bearing for AC-11 here and for packet 188's doc AC; a duplicate or a missing one silently changes which text both probes read.
   - `bash -c 'cargo xtask gen-config-docs --check >/dev/null 2>&1 && python3 -c "import io; s=io.open(r\"docs/15_config_keys_reference.md\",encoding=\"utf-8\").read(); b=chr(96); p=chr(124); rows=[ln for ln in s.splitlines() if ln.startswith(p)]; miss=[k for k in (\"before_layer_change_gcode\",\"layer_change_gcode\",\"time_lapse_gcode\") if not any((b+k+b) in ln and (b+\"machine-gcode-emit\"+b) in ln for ln in rows)]; print(\"PASS\" if not miss else \"FAIL: no generated row pairs \"+str(miss)+\" with machine-gcode-emit\")" || echo "FAIL: gen-config-docs --check is red"'` — **verbatim copy of `packet.spec.md` AC-12; if either changes, change both.** The bare `cargo xtask gen-config-docs --check` that stood here is green today, so it could not fail; AC-12 keeps that guard and adds the generated-row clauses that actually discriminate.
 - Exit condition: AC-11 and AC-12 both print PASS.
 
@@ -207,13 +237,14 @@
   - `cargo check --workspace --all-targets`
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo xtask build-guests --check`
-- Exit condition: both gates exit 0, `build-guests --check` reports no `STALE:`, and all seventeen numbered AC commands (AC-1..AC-14, AC-N1..AC-N3) print PASS. Note Step 0's baseline ref must still exist at `target/pkt-187-baseline-ref.txt`; AC-10's no-touch guard reads it.
+- Exit condition: both gates exit 0, `build-guests --check` reports no `STALE:`, and all seventeen numbered AC commands (AC-1..AC-14, AC-N1..AC-N3) print PASS. Note Step 0's baseline ref must still exist at `target/pkt-187-baseline-ref.txt`; AC-10's no-touch guard reads it. If `cargo clean` removed it at any point, restore it from `.ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt` per Step 0's recovery rule — **never** by re-running Step 0, which would record a HEAD that already contains this packet's edits and make the guard pass vacuously.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 0 | S | Records `target/pkt-187-baseline-ref.txt`; no repo edit. |
+| Step 0 | S | Records the baseline SHA twice: durably at `.ralph/specs/187-custom-gcode-injection-registry/baseline-ref.txt`, cached at `target/pkt-187-baseline-ref.txt`. |
+| Step 0a | S | Measurement only: re-runs the AC baselines against the post-186 tree and names any pre-satisfied clause. |
 | Step 1 | S | One short test file; two delegated canonical dispatches. |
 | Step 2 | M | Registry + site walk + per-site lookup + start/end migration, plus the guest-freshness gate. |
 | Step 3 | M | Manifest edit, ranged reads of a long e2e test file, guest rebuild, emitter no-touch proof. |

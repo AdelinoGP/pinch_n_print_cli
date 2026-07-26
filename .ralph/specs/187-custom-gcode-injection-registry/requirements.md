@@ -92,7 +92,7 @@ This is the authoritative full matrix; `packet.spec.md` lists only the four gate
 
 ## Context Discipline Notes
 
-- `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` is long. Read only `slice_with_raw` / `try_slice_with_raw`, `count_occurrences`, and the two block-position tests; do not load the whole file.
+- `crates/slicer-runtime/tests/integration/machine_start_end_gcode_emission_tdd.rs` is long. Read only `slice_with_raw` / `try_slice_with_raw`, `count_occurrences`, and the two block-position tests; do not load the whole file. **`try_slice_with_raw` is created by packet 186 (FORWARD-DEP), not present on today's tree** — its absence means 186 has not landed, which violates this packet's precondition; report rather than creating it here.
 - `crates/slicer-gcode/src/emit.rs` is long and is **read-only** here. Read only the layer-boundary block that pushes the three `Raw` markers; that is the entire fact this packet needs from it.
 - `docs/15_config_keys_reference.md` and `docs/DEVIATION_LOG.md` are both long and must be range-read or delegated.
 - Do not read `OrcaSlicerDocumented/` directly; the five facts this packet borrows are enumerated above and each is delegable in one dispatch.

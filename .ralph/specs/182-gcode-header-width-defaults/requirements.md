@@ -31,13 +31,14 @@ There is **no config-driven setter** for these two serializer fields — the onl
 ## Out of Scope
 
 - The sibling header fields `sparse_infill_line_width` (`0.45`), `top_surface_line_width` (`0.42`), and `support_line_width` (`0.35`). D-165 names only the two wall-width keys; correcting the others requires separately establishing each one's governing fallback and is not chartered here.
+- **Knowingly surviving: the three sibling per-field doc comments keep the disproved parity attribution.** Step 2 deletes the *shared* constructor comment ("OrcaSlicer 0.4 mm nozzle parity defaults (matches config_schema.rs registration)") and rewrites the two wall-width field doc comments. The three sibling field doc comments on `sparse_infill_line_width`, `top_surface_line_width`, and `support_line_width` (`crates/slicer-gcode/src/serialize.rs`) each carry the identical "(OrcaSlicer 0.4 mm nozzle parity default: N)" attribution, and `D-164-WALL-WIDTH-KEYS-NOT-FLOAT-OR-PERCENT` disproves that framing for the wall keys specifically — not for these three, whose governing fallback this packet has **not** established. They therefore survive deliberately, not by oversight. Do not delete or rewrite them here: correcting an attribution without proving the replacement is how D-165 was created. Whichever packet charters those three fields inherits the cleanup.
 - Introducing config-driven wiring so the header reports the *actual* resolved widths rather than a default. That is a larger change (a new setter plus a runtime call-site change in `crates/slicer-runtime/src/run.rs` and `pipeline.rs`); this packet only makes the hard-coded default truthful.
 - Any change to `resolve_line_width_mm` or the `classic-perimeters` / `arachne-perimeters` width resolution — those are the *authority* here, not the subject. The T2 flow packets own them.
 - Re-recording any perimeter or arachne fixture, and any golden other than `precision_legacy_20mmbox.gcode`. This packet changes no geometry — but note that "no geometry change" does **not** imply "no fixture fallout": the one golden in scope breaks precisely because it records the emitted *header text*. Do not generalize this exclusion into skipping the recorded-output blast radius.
 
 ## Authoritative Docs
 
-- `docs/15_config_keys_reference.md` — delegated grep only; verified it contains no `0.42`/`0.45` literal, so no doc edit is required.
+- `docs/15_config_keys_reference.md` — delegated grep only; every `outer_wall_line_width` / `inner_wall_line_width` row already documents default `0.4`, so no doc edit is required. The evidence must be **field-scoped**: an unqualified `0.42|0.45` grep matches an unrelated `infill_overlap | float | 0.45` row and is not admissible. See `packet.spec.md` §Doc Impact for the scoped command.
 - `docs/DEVIATION_LOG.md` — the D-165 row only (ranged read; the file is large). Status flip at the completion gate.
 
 ## Acceptance Summary
@@ -46,7 +47,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (emitted header reports `0.4` on whole lines for both wall-width keys and no longer reports the `0.42`/`0.45` forms of those two keys), `AC-2` (source defaults are `0.4` and the `config_schema` citation is gone), `AC-3` (the byte-identity golden `precision_legacy_20mmbox.gcode` is re-blessed and `legacy_zero_matches_golden` passes).
 - Negative: none. This is a constant correction with no validator, scheduler-rule, contract-boundary, or error-path surface; there is no rejection behavior to assert.
-- Cross-packet impact: the T2 packet `<tbd>-classic-perimeter-flow-parity` retypes these same config keys to float-or-percent with an auto (`0`→nozzle) default. That packet must preserve `0.4` as the resolved fallback so this header stays truthful; it does not change this packet's assertions.
+- Cross-packet impact: the T2 packet **`184-classic-perimeter-flow-parity`** retypes these same config keys to float-or-percent with an auto (`0`→nozzle) default. Its `[FWD-1]` decision (`.ralph/specs/184-classic-perimeter-flow-parity/design.md` §Open Questions) deliberately preserves `0.4` as the absent-key resolved fallback, which is what keeps this header truthful; it does not change this packet's assertions. **The two packets do collide on `crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode`** — see `packet.spec.md` §Prerequisites for the whichever-lands-second rule.
 
 ## Verification Commands
 
@@ -59,7 +60,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 | `cargo test -p slicer-gcode --test golden_emit_tdd -- header_reports_governing_wall_width_defaults` guarded by `rg "^test result"` + `rg -v "0 passed"` | AC-1: emitted header reports `0.4` on whole lines for both keys | FACT pass/fail; SNIPPETS <=20 lines on failure |
 | `rg -q "outer_wall_line_width: 0\.4," …` + `rg -q "inner_wall_line_width: 0\.4," …` + `! rg -q "config_schema" …` on `crates/slicer-gcode/src/serialize.rs` | AC-2: source defaults corrected, dangling citation removed | FACT PASS/FAIL |
 | `rg -q "^; outer_wall_line_width = 0\.4$"` on the golden + `cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden` with the `0 passed` guard | AC-3: byte-identity golden re-blessed and green | FACT pass/fail |
-| `git diff --numstat crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode` | Re-bless touched exactly the two wall-width lines (2 insertions, 2 deletions) | FACT numstat line |
+| `git diff crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode \| rg "^[-+][^-+]"` | Re-bless touched **the two wall-width header lines and nothing else** — every changed line must be an `; outer_wall_line_width` or `; inner_wall_line_width` comment. Do **not** pin this at 2 insertions / 2 deletions: packet 184 re-blesses the same golden for wall-coordinate drift and, if it lands first, the numstat baseline moves. See `packet.spec.md` §Prerequisites | FACT: the changed-line listing |
 | `cargo test -p slicer-gcode --test golden_emit_tdd` | No regression in the existing sentinel test | FACT pass/fail |
 | `cargo check --workspace --all-targets` | Compilation gate | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint gate | FACT pass/fail |

@@ -8,6 +8,30 @@
 
 ## Steps
 
+### Step 0: Attribute the observed panics to a call site BEFORE scoping the guard
+
+- Task IDs: `TASK-296`
+- Objective: Establish **which boostvoronoi entry point** produces each `is_finite()` panic line in the baseline `perimeter_parity` output. The rest of this packet assumes the answer is `voronoi_from_segments`; that assumption is **unverified** and must be tested before a single line of guard is written.
+- Why this cannot be skipped: the same `robust_fpt` `fpv.is_finite()` assertion fires from **three** call sites in `crates/slicer-core/`, and the printed panic line is identical in all three — `std::panic::catch_unwind` does **not** suppress the default panic hook, so an already-*caught* panic prints exactly the same text as an unguarded one. Attribution by reading the log is therefore impossible. Worse, one of the two "already guarded" sites hides its own occurrences: `slicer_core::medial_axis::medial_axis`'s catch arm returns `Err(())`, which its caller converts to `return Ok(vec![])` — a **silent empty result**, no error, no diagnostic. That site is reached from `classic-perimeters` (two `slicer_sdk::host::medial_axis` calls in `ClassicPerimeters::run_perimeters`, `modules/core-modules/classic-perimeters/src/lib.rs`, bridged by the `medial_axis` host-service impl in `crates/slicer-wasm-host/src/host.rs`); `voronoi_from_segments` is reached from arachne via `SkeletalTrapezoidationGraph::from_polygons`; `algos/paint_segmentation/voronoi_graph.rs` is the third. `perimeter_parity` exercises classic and arachne in the same run, so all three are live in the baseline.
+- Precondition: working tree clean of this packet's changes.
+- Postcondition: `FINDINGS.md` `## Panic attribution` names the producing call site(s) for the observed panics and the mechanism used to establish it. If the answer is **not** `voronoi_from_segments`, stop and re-scope: Step 2's guard is aimed at the wrong site and D-167's premise needs revisiting before proceeding.
+- Files allowed to read, with ranges when over 300 lines:
+  - `crates/slicer-core/src/medial_axis.rs` — the `catch_unwind` block and its `Err(())` catch arm only, via `rg 'catch_unwind'` — to confirm the silent-degrade behaviour first-hand.
+- Files allowed to edit (at most 3):
+  - `.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md` (`## Panic attribution` section)
+  - a **temporary, reverted-before-Step-2** per-site marker, if that is the mechanism chosen — record it in `FINDINGS.md` and confirm the tree is clean again before Step 1's baseline run.
+- Files explicitly out of bounds: `crates/slicer-core/src/voronoi.rs` (Step 2's surface — no guard yet).
+- Blast-radius discipline: not applicable — measurement only; any temporary instrumentation must be reverted before Step 1.
+- Expected sub-agent dispatches:
+  - Question: run `perimeter_parity` with `RUST_BACKTRACE=1` and report, for up to 5 `is_finite` panic lines, the innermost `slicer_core::` frame in each backtrace; scope: `cargo test -p slicer-runtime --test integration -- perimeter_parity`; return: `FACT` (<=10 lines)
+- Context cost: `S`
+- Authoritative docs: none required for this step.
+- OrcaSlicer refs: none — this packet ports no canonical behavior.
+- Verification:
+  - `bash -c 'rg -q "^## Panic attribution" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && echo PASS || echo FAIL'` — FACT PASS/FAIL (AC-0).
+  - `bash -c 'git status --porcelain crates/ | rg -q . && echo "FAIL: temporary instrumentation not reverted" || echo PASS'` — FACT PASS/FAIL; the tree must be clean before Step 1 measures it.
+- Exit condition: the producing call site is named with evidence, any temporary instrumentation is reverted, and the packet's scope is either confirmed or explicitly re-opened.
+
 ### Step 1: Capture the pre-change baseline
 
 - Task IDs: `TASK-296`
@@ -35,7 +59,7 @@
 ### Step 2: Add the catch_unwind guard and the distinct error variant
 
 - Task IDs: `TASK-296`
-- Objective: Wrap the boostvoronoi `Builder::build()` call in `voronoi_from_segments` in `std::panic::catch_unwind(AssertUnwindSafe(...))`, copying the guard shape already used by `medial_axis.rs` and `algos/paint_segmentation/voronoi_graph.rs`, and map a caught panic to a new distinct `VoronoiError` variant. On the catch branch only, capture the segment count, coordinate bounds (internal units), and duplicate/zero-length/near-collinear classification.
+- Objective: Wrap the boostvoronoi `Builder::build()` call in `voronoi_from_segments` in `std::panic::catch_unwind(AssertUnwindSafe(...))`, copying **only** the guard shape used by `MmuGraphError::PredicatePanic` in `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs` (`match { Ok(Ok(d)) => d, Ok(Err(e)) => return Err(…), Err(_) => return Err(<panic variant>) }`), and map a caught panic to a new distinct `VoronoiError` variant. **Do not copy `medial_axis.rs`'s catch arm** — it returns `Err(())` which its caller converts to `Ok(vec![])`, the silent-empty outcome this packet's Architecture Constraints explicitly bar. `medial_axis.rs` may be read for its `AssertUnwindSafe` justification comment only. On the catch branch only, capture the segment count, coordinate bounds (internal units), and duplicate/zero-length/near-collinear classification.
 - Precondition: Step 1's baseline is recorded.
 - Postcondition: AC-1 passes; a builder panic surfaces as `Err(VoronoiError::<variant>)` instead of unwinding; the success path is unchanged and pays no new cost.
 - Files allowed to read, with ranges when over 300 lines:
@@ -49,7 +73,7 @@
   - `crates/slicer-core/src/medial_axis.rs`, `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs` (pattern references, already correct)
 - Blast-radius discipline (mandatory — this step adds an enum variant): adding a `VoronoiError` variant ripples to every exhaustive `match` on `VoronoiError`. Dispatch a `LOCATIONS` worker for those match sites before editing and add any non-exhaustive ones to this step's edit list; do not let a follow-up `cargo check` discover them.
 - Expected sub-agent dispatches:
-  - Question: quote the `catch_unwind` guard block from the two already-guarded call sites; scope: `crates/slicer-core/src/medial_axis.rs`, `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs`; return: `SNIPPETS` (<=2 x 30 lines)
+  - Question: quote the `catch_unwind` guard block and its `MmuGraphError::PredicatePanic` catch arm; scope: `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs`; return: `SNIPPETS` (<=1 x 30 lines). Do **not** also fetch `medial_axis.rs`'s catch arm as a pattern — it is the anti-pattern here.
   - Question: list every site that `match`es on `VoronoiError`; scope: `crates/**`; return: `LOCATIONS` (<=20 entries)
 - Context cost: `S`
 - Authoritative docs:
@@ -109,14 +133,16 @@
 - OrcaSlicer refs:
   - None — this packet ports no canonical behavior.
 - Verification:
-  - `mkdir -p target && cargo xtask build-guests --check && cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 | tee target/183-parity.log | rg "^test result"; rg -c 'fpv_?\.is_finite|assertion failed.*is_finite' target/183-parity.log || echo "0 raw panics"` — FACT: suite status plus raw-panic count, which must be 0 (AC-2). The `build-guests --check` prefix is mandatory — `--test integration` loads core-module WASMs, so a stale guest would fail this workload and be misattributed to the new guard.
+  - `bash -c 'F=.ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md; mkdir -p target && cargo xtask build-guests --check && cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 | tee target/183-parity.log | rg "^test result"; rg -q "^## Baseline" "$F" && rg -q "^## Caught panic count" "$F" && rg -q "^## Suite status vs baseline" "$F" && echo PASS || echo "FAIL: FINDINGS.md is missing the Baseline / Caught panic count / Suite status vs baseline sections"'` — FACT: suite status must match the Step-1 baseline, and the three `FINDINGS.md` sections must exist (AC-2). The `build-guests --check` prefix is mandatory — `--test integration` loads core-module WASMs, so a stale guest would fail this workload and be misattributed to the new guard. **Do not re-add a "raw panic count must be 0" clause:** `catch_unwind` does not suppress the default panic hook, `rg 'set_hook|take_hook' crates/slicer-core/src/` returns nothing, and the process-global-hook alternative was rejected as racy under the `par_iter` in `crates/slicer-runtime/src/layer_executor.rs`. See AC-2 in `packet.spec.md`.
+  - `bash -c 'rg -c "fpv_?\.is_finite|assertion failed.*is_finite" target/183-parity.log || echo "0 raw panic lines"'` — FACT: **recorded, not asserted.** Raw panic lines are expected to persist (the guard converts the unwind, not the printing); the count is a datum for `FINDINGS.md`, not a pass/fail gate.
   - `bash -c 'rg -q "## Caught panic count" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && rg -q "## Input characterization" .ralph/specs/183-arachne-voronoi-panic-diagnosis/FINDINGS.md && echo PASS || echo FAIL'` — FACT PASS/FAIL.
-- Exit condition: zero raw `is_finite()` panic lines reach stderr, the suite's pass/fail status matches the Step 1 baseline, and the caught-panic count plus input characterization are recorded — including an explicit `0` if the panics do not reproduce on this tree.
+- Exit condition: the suite's pass/fail status matches the Step 1 baseline; `FINDINGS.md` carries `## Baseline`, `## Caught panic count`, `## Input characterization`, and `## Suite status vs baseline` — including an explicit `0` if the panics do not reproduce on this tree. Raw stderr panic lines are recorded as a datum, not required to be zero.
 
 ### Step 5: Write the verdict and update the deviation row
 
 - Task IDs: `TASK-296`
-- Objective: Complete `FINDINGS.md` with an explicit `## Verdict` sentence answering "does the panicking computation feed live geometry or is it discarded", then update the D-167 row in `docs/DEVIATION_LOG.md` to match — either `Closed` with the evidence summary, or `Open — narrowed` naming a successor deviation that owns the `preprocess_input_outline` hardening.
+- Objective: Complete `FINDINGS.md` with an explicit `## Verdict` sentence answering "does the panicking computation feed live geometry or is it discarded", then update the D-167 row in `docs/DEVIATION_LOG.md` to match — either `Closed` with the evidence summary, or `Open — narrowed` naming a successor deviation that owns the `preprocess_input_outline` hardening. **Also file the `medial_axis` inconsistency row** (see below).
+- **Second required row: the `medial_axis` degrade-to-empty inconsistency.** This packet asserts "a caught panic must never become a silently-successful empty result" **only** for the boostvoronoi entry points that return a typed error (`voronoi_from_segments` and `MmuGraphError::PredicatePanic`). Shipped `medial_axis.rs` contradicts it — its catch arm returns `Err(())` and its caller converts that to `return Ok(vec![])` — and this packet does not change that, because doing so would turn quiet degenerate regions into hard errors in `classic-perimeters`' gap-fill and thin-wall paths, unmeasured here. **No ADR is authored for this**; file a `DEV-###` row instead, severity Low, status Open, recording the scope of the invariant, why `medial_axis` is exempt, and the cost of a fix; owner: whichever packet next touches `medial_axis`. **Re-derive the id at the moment of filing — never carry one forward from this packet:** `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, then take the next free number. Use the log's existing eight-column format.
 - Precondition: Step 4's measurements are recorded.
 - Postcondition: AC-3 and AC-4 pass; `FINDINGS.md` and the D-167 row state the same verdict and, if applicable, the same successor id.
 - Files allowed to read, with ranges when over 300 lines:
@@ -144,6 +170,7 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
+| Step 0 | S | Delegated backtrace/marker attribution run; artifact section only. Gates the guard's scope. |
 | Step 1 | S | Delegated baseline run; artifact section only. |
 | Step 2 | S | One function plus one enum variant; two bounded dispatches. |
 | Step 3 | S | One test file; reuses an existing degenerate-input precedent. |
@@ -159,6 +186,8 @@ Split before activation if aggregate cost exceeds M or any step is L.
 - `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets -- -D warnings` are clean.
 - Update `docs/07_implementation_status.md` through a worker dispatch, never a full backlog read: register `TASK-296` complete and reconcile the D-167 line.
 - If the verdict is "geometry is lost", the successor deviation row exists and a follow-up packet for `preprocess_input_outline` hardening is appended to `docs/specs/deviation-backlog-remediation-plan.md`'s Packet Queue.
+- The `medial_axis` degrade-to-empty inconsistency row is filed (Low / Open, id re-derived at filing time), and no ADR was authored for it. Verify: `bash -c 'rg -q "medial_axis" docs/DEVIATION_LOG.md && echo PASS || echo "FAIL: inconsistency row not filed"'`.
+- Step 0's attribution stands: `FINDINGS.md` `## Panic attribution` names the producing call site, and the guard was scoped to it — not assumed.
 - No reopened/superseded packet transitions apply.
 - `packet.spec.md` is ready for `status: implemented`.
 

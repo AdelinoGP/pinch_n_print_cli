@@ -15,8 +15,8 @@ Grounding identified the structural reason these are invisible, and it is an asy
 
 | Call site | Guard |
 | --- | --- |
-| `medial_axis.rs` | wraps the builder in `std::panic::catch_unwind(AssertUnwindSafe(...))`; its comment explicitly names `assertion failed: fpv.is_finite()` at `robust_fpt.rs` |
-| `algos/paint_segmentation/voronoi_graph.rs` | wraps the builder in `catch_unwind` the same way |
+| `medial_axis.rs` | wraps the builder in `std::panic::catch_unwind(AssertUnwindSafe(...))`; its comment explicitly names `assertion failed: fpv.is_finite()` at `robust_fpt.rs`. **Its catch arm returns `Err(())`, which the caller converts to `return Ok(vec![])` — a silent empty result, no error and no diagnostic.** Guarded, but not in a way this packet may copy. |
+| `algos/paint_segmentation/voronoi_graph.rs` | wraps the builder in `catch_unwind` and maps the catch arm to the distinct typed error `MmuGraphError::PredicatePanic`, which propagates. **This is the pattern this packet copies.** |
 | **`voronoi_from_segments` (`crates/slicer-core/src/voronoi.rs`)** | **no `catch_unwind`** — only `map_err(map_bv_error)` on the returned `Result` |
 
 A `robust_fpt` failure is an `assert!` **panic**, not a `Result::Err`, so `map_err` and the `?` operator cannot observe it. The skeletal/Arachne path — `voronoi_from_segments` ← `SkeletalTrapezoidationGraph::from_polygons` ← `run_arachne_pipeline` — is therefore the one boostvoronoi entry point with no backstop. Because per-layer work runs under a rayon `par_iter()` (`crates/slicer-runtime/src/layer_executor.rs`) and `arachne-perimeters` forwards to the host bridge `generate_arachne_walls` which runs `run_arachne_pipeline` natively on the host, the panic executes on a rayon worker: it prints to stderr and unwinds that worker's region, which is exactly the "swallowed background-thread panic" the row describes.
@@ -27,7 +27,8 @@ This is one coherent slice: add the missing guard (which is also the instrumenta
 
 ## In Scope
 
-- Wrap the boostvoronoi `Builder::build()` call in `voronoi_from_segments` in `std::panic::catch_unwind(AssertUnwindSafe(...))`, matching the existing pattern in `medial_axis.rs` and `algos/paint_segmentation/voronoi_graph.rs`.
+- **Attribute the baseline panic lines to a call site first (Step 0).** Three `slicer-core` sites raise the identical `robust_fpt` assertion, and `catch_unwind` does **not** suppress the default panic hook — a caught panic prints exactly the same line as an uncaught one — so the 13 observed lines cannot be attributed to `voronoi_from_segments` by inspection. `medial_axis` is reached from `classic-perimeters` (two `slicer_sdk::host::medial_axis` calls in `ClassicPerimeters::run_perimeters`) and degrades silently, so it can contribute panic lines while leaving no other trace. Establish attribution by an explicit mechanism (temporary per-site marker, or `RUST_BACKTRACE=1` innermost-frame capture) before the guard is scoped.
+- Wrap the boostvoronoi `Builder::build()` call in `voronoi_from_segments` in `std::panic::catch_unwind(AssertUnwindSafe(...))`, matching **only** `MmuGraphError::PredicatePanic`'s pattern in `algos/paint_segmentation/voronoi_graph.rs` — a caught panic becomes a distinct typed error that propagates. Do **not** copy `medial_axis.rs`'s catch arm, which returns `Err(())` → caller `Ok(vec![])`.
 - Add a distinct `VoronoiError` variant for a caught builder panic, so the failure becomes a value the caller can observe instead of an unwind.
 - Capture, for each caught panic, the offending segment set (count, coordinate bounds, duplicate / zero-length / near-collinear classification) and the owning layer/region identifiers.
 - Run the `perimeter_parity` workload and measure whether any wall loops are lost on affected layers/regions relative to the pre-change baseline.
@@ -40,7 +41,7 @@ This is one coherent slice: add the missing guard (which is also the instrumenta
 - Implementing the `preprocess_input_outline` pre-snapping hardening (`crates/slicer-core/src/arachne/preprocess.rs`) that a "geometry is lost" verdict would call for. ADR-0023 assigns near-collinear/T-junction/duplicate pre-snapping to the caller, and `voronoi_from_segments`'s own doc comment restates it — but that fix is a separate, larger packet. This packet names the successor; it does not implement it.
 - D-154-DISCRETIZE-POINT-POINT-CASE. It shares the graph-construction path and was originally queued alongside this work, but it requires new `is_secondary` plumbing on `HalfEdge` and is queued as its own T3 packet. This packet's verdict gates that packet's design.
 - Upgrading, forking, or patching the `boostvoronoi` dependency. The guard is on our side of the boundary.
-- Changing `medial_axis.rs` or `algos/paint_segmentation/voronoi_graph.rs` — they already have the guard and are the pattern being copied, not modified.
+- Changing `medial_axis.rs` or `algos/paint_segmentation/voronoi_graph.rs`. `voronoi_graph.rs` is the pattern being copied. `medial_axis.rs` is **not** — its catch arm degrades to a silent empty result, contradicting this packet's own no-silent-empty constraint. It is knowingly left as-is: fixing it would turn quiet degenerate regions into hard errors in `classic-perimeters`' gap-fill and thin-wall paths, a behaviour change this diagnosis-first packet has not measured. **No ADR is authored for the inconsistency; Step 5 files a `DEV-###` row recording it** (re-derive the id at filing time: `rg -o '^\| DEV-[0-9]{3}' docs/DEVIATION_LOG.md | sort -u | tail -1`, then take the next free number).
 
 ## Authoritative Docs
 
@@ -51,7 +52,7 @@ This is one coherent slice: add the missing guard (which is also the instrumenta
 
 Reference, never copy, criteria from `packet.spec.md`.
 
-- Positive: `AC-1` (guard + distinct error variant present), `AC-2` (zero raw `is_finite()` panic lines from the `perimeter_parity` workload, pass/fail status unchanged), `AC-3` (`FINDINGS.md` records counts, input characterization, and an explicit verdict), `AC-4` (D-167 row carries the verdict).
+- Positive: `AC-0` (baseline panics attributed to a call site before the guard is scoped), `AC-1` (guard + distinct error variant present), `AC-2` (`perimeter_parity` pass/fail status unchanged from baseline, and the baseline / caught-panic / suite-status sections recorded in `FINDINGS.md` — **not** "zero raw panic lines", which is unsatisfiable: `catch_unwind` does not suppress the default panic hook and nothing in `crates/slicer-core/src/` installs one), `AC-3` (`FINDINGS.md` records counts, input characterization, and an explicit verdict), `AC-4` (D-167 row carries the verdict).
 - Negative: `AC-N1` (degenerate segment set returns a `Result` instead of unwinding the calling thread).
 - Cross-packet impact: the verdict gates the queued T3 D-154 packet's design; if the verdict is "geometry is lost", a successor packet owning `preprocess_input_outline` hardening must be filed and named in the D-167 row.
 

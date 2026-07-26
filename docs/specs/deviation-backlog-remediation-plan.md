@@ -191,22 +191,29 @@ into a T1 spike and a T3 port (queue rows 3 and 6); see the queue amendment.
 Dependency-ordered. Resume at the first `pending` row whose dependencies are `generated`. Update each
 row immediately on generation/closure. **T1 packets (181–183) commit together.**
 
+**Preflight verdicts are deliberately not stored in this table.** A gate verdict is a ledger fact: it is true only of
+the packet revision that was gated, and it rots the moment the packet is edited. This column previously carried a
+frozen `**PREFLIGHT PASS**` on every row — including rows whose packets had never been gated, and including one row
+whose packet fails `S0` outright. Re-derive a verdict by running `/spec-review --preflight <packet>` at the moment you
+need it; never read one out of this table.
+
 | # | Packet dir | Deviations | Tranche | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | `.ralph/specs/181-dispatch-missing-component-handling` | DEV-087 | T1 | — | generated · draft · TASK-297 · **PREFLIGHT PASS** |
-| 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 · **PREFLIGHT PASS** |
-| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike) | T1 | — | generated · draft · TASK-296 · **PREFLIGHT PASS** |
-| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | generated · draft · TASK-303 · **PREFLIGHT PASS** |
-| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 · **PREFLIGHT PASS** |
+| 1 | `.ralph/specs/181-dispatch-missing-component-handling` | DEV-087 | T1 | — | generated · draft · TASK-297 |
+| 2 | `.ralph/specs/182-gcode-header-width-defaults` | D-165 | T1 | — | generated · draft · TASK-295 |
+| 3 | `.ralph/specs/183-arachne-voronoi-panic-diagnosis` | D-167 (diagnosis spike) | T1 | — | generated · draft · TASK-296 |
+| 4 | `.ralph/specs/184-classic-perimeter-flow-parity` | D-164-classic, D-105-classic, D-152-classic | T2 | — | generated · draft · TASK-303 |
+| 5 | `.ralph/specs/185-arachne-width-bridge-parity` | D-164-arachne, D-168, D-163 | T2 | — | generated · draft · TASK-304 |
 | 6 | `<tbd>-arachne-discretize-point-point` | D-154 | T3 | #3 (D-167 verdict gates design) | **pending — dependency-blocked** (see amendment 2026-07-25a) |
 | 7 | `<tbd>-concentric-infill-arachne` | D-104f | T3 | #5, #6 | **pending — dependency-blocked** (see amendment 2026-07-25a) |
-| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · draft · TASK-305 · **PREFLIGHT PASS** |
-| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | DEV-085 (layer-scoped points) | T3 | #8a | generated · draft · TASK-306 · **PREFLIGHT PASS** |
-| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | DEV-085 (tool/role-scoped points + residuals) | T3 | #8b | generated · draft · TASK-307 · **PREFLIGHT PASS** |
-| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | DEV-009 (carrier prerequisite) | T3 | — | generated · draft · TASK-308 · **PREFLIGHT PASS** |
-| 9b | `.ralph/specs/190-smoothed-overhang-speed` | DEV-009 (smoothed-speed half) | T3 | #9a | generated · draft · TASK-309 · **BLOCKED — maintainer decision required on `[BLOCK-1]`/`[BLOCK-1b]`/`[BLOCK-2]`/`[BLOCK-3]`** |
-| 9c | `.ralph/specs/191-overhang-add-intersections` | DEV-009 (ADD_INTERSECTIONS half) | T3 | #9b | generated · draft · TASK-310 · **PREFLIGHT PASS** (not schedulable until #9b resolves) |
-| 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 · **PREFLIGHT PASS** |
+| 8a | `.ralph/specs/186-custom-gcode-placeholder-engine` | DEV-085 (engine half) | T3 | — | generated · draft · TASK-305 |
+| 8b | `.ralph/specs/187-custom-gcode-injection-registry` | DEV-085 (layer-scoped points) | T3 | #8a | generated · draft · TASK-306 |
+| 8c | `.ralph/specs/188-custom-gcode-conditional-points` | DEV-085 (tool/role-scoped points + residuals) | T3 | #8b | generated · draft · TASK-307 |
+| 9a | `.ralph/specs/189-per-point-speed-factor-carrier` | DEV-009 (carrier prerequisite) | T3 | — | generated · draft · TASK-308 |
+| 9a2 | `.ralph/specs/193-overhang-distance-prepass-carrier` | DEV-009 (overhang-distance carrier prerequisite) | T3 | — | generated · draft (see amendment 2026-07-25d) |
+| 9b | `.ralph/specs/190-smoothed-overhang-speed` | DEV-009 (smoothed-speed half) | T3 | #9a, #9a2 | generated · draft · TASK-309 · **maintainer ruled option (C)** (see amendment 2026-07-25d) |
+| 9c | `.ralph/specs/191-overhang-add-intersections` | DEV-009 (ADD_INTERSECTIONS half) | T3 | #9a2, #9b | generated · draft · TASK-310 (not schedulable until #9b resolves) |
+| 10 | `.ralph/specs/192-infill-linker-anchor-length` | DEV-089 | T3 | — | generated · draft · TASK-311 |
 
 **Queue amendment (2026-07-25a): rows 6 and 7 are dependency-blocked, not merely ordered.** Row 6 (D-154) depends on row 3, and row 3's packet
 `.ralph/specs/183-arachne-voronoi-panic-diagnosis` is `status: draft` — verified at the time of this amendment, along with 181, 182, 184 and 185,
@@ -246,7 +253,9 @@ Grounding then moved the seams away from where this plan predicted them:
   canonical's six *overlap levels* `{90, 75, 50, 25, 13, 0}` build a different table (`speed_sections`), which is what 9b ports.
 
 **Queue amendment (2026-07-25c): row 9b is BLOCKED pending a maintainer decision — it is not an authoring defect.**
-`190-smoothed-overhang-speed` reached PREFLIGHT PASS on every mechanical axis, but porting canonical's smoothed
+*(Superseded by amendment 2026-07-25d below, which records the ruling. Retained for the reasoning.)*
+`190-smoothed-overhang-speed` cleared most mechanical axes — though **not** `S0`: it has no `task-map.md`, so it never
+"reached PREFLIGHT PASS on every mechanical axis" as an earlier revision of this line claimed. Porting canonical's smoothed
 overhang-speed interpolation **reverses three recorded decisions**, so the packet records four `[BLOCK]` items in its
 `design.md` §Open Questions and refuses to activate until they are answered. The three reversed decisions, each verified
 verbatim against the artifact:
@@ -262,8 +271,9 @@ verbatim against the artifact:
 - **`crates/slicer-core/src/algos/overhang_annotation.rs`**'s accepted deviation records PnP's **4** bands at pre-pass
   time against OrcaSlicer's **6** overlap levels `{90, 75, 50, 25, 13, 0}` at emission time. The port restores both halves.
 
-The options, as the packet presents them: **(A)** supersede the two ADRs with amendment rows; **(B)** conform, dropping
-the smoothed-speed half of DEV-009; **(C)** add a continuous `overhang_distance_mm` beside `overhang_quartile` on
+The options, **in the packet's own lettering — an earlier revision of this line swapped (A) and (B) against
+`190/design.md`, which would have made a recorded ruling ambiguous**: **(A)** conform, dropping the smoothed-speed half
+of DEV-009; **(B)** supersede the two ADRs with amendment rows; **(C)** add a continuous `overhang_distance_mm` beside `overhang_quartile` on
 `Point3WithWidth`, stamped by the same prepass — which *minimises* the supersession rather than avoiding it (AC-6 removes
 `SetSpeedFactor` under every option), at the cost of a further packet ahead of 9b whose struct-literal blast radius is
 `L` and must be split. **Row 9c (191) inherits the block** and additionally departs from ADR-0031 in a direction 9b never
@@ -275,6 +285,30 @@ reach `SliceRegionView`. `world-finalization.wit` does not import the package de
 exposes six methods, and `host-services` exposes fifteen — none region-, surface- or quartile-related. The module must
 therefore derive overhang distance in-module against the previous layer's `OuterWall` centreline, which is a
 half-line-width proxy for canonical's slice boundary. That bias is filed as its own deviation row rather than hidden.
+
+**Queue amendment (2026-07-25d): the maintainer ruled option (C). Row 9b is unblocked; new row 9a2 is its prerequisite.**
+The ruling was taken after a `--preflight` gate run over rows 1–10 verified 9b's characterisation of the conflict rather
+than taking it on trust. Three things that verification changed:
+
+- **9b's quotations of ADR-0031 and ADR-0032 are verbatim and clean**, its `[BLOCK-3]` WIT-reachability measurement is
+  exactly right (world-finalization imports no `slicer:ir-handles`; `layer-collection-view` has six methods;
+  `host-services` has fifteen functions, of which **five** — not four, as 9b's prose says — are `*-batch` forms), and
+  ADR-0031's in-body amendment does preserve the contested clauses. The fork was real and correctly described.
+- **9b's own cost estimate for option (C) was inflated against itself.** Its `design.md` claimed the previously frozen
+  figure understated the sweep by "roughly 15-20 %". Re-derived at ruling time, the two figures were materially the same.
+  Do not quote either one: re-derive with `rg -c 'dist_to_top_mm:' --glob '*.rs' crates modules xtask` and sum.
+- **Option (C) is not ADR-conforming and was not chosen as if it were.** `AC-6` removes `EntityMutation::SetSpeedFactor`
+  under every option, and ADR-0008's finalization-tier speed-factor decision is implicated under (C) exactly as under (B).
+  (C) narrows the supersession; it does not avoid it.
+
+Consequences: a new prerequisite packet (row 9a2) adds a continuous `overhang_distance_mm` beside `overhang_quartile` on
+`Point3WithWidth`, stamped by the prepass that already stamps the quartile, with the matching `point3-with-width` WIT
+record field and the exhaustive struct-literal sweep split into `M` steps. **The carrier's signedness and
+`+ boundary_offset` normalisation are defined once, in row 9a2, and referenced by 9b and 9c** — rows 9b and 9c previously
+disagreed on this (9b specified an *unsigned* point-to-segment minimum while every predicate 9c ports reads canonical's
+*signed* distance plus `boundary_offset`, which would have made 9c's proximity test half-unreachable and degenerated its
+crossing test). `ADR-0053` records the ruling and amends ADR-0031, ADR-0032 and ADR-0008; it is written to cover **9c's
+geometry mutation as well as 9b's interpolation**, because an ADR scoped to 9b alone would not reach it.
 
 **Packet numbers and TASK IDs were allocated centrally by the batch orchestrator, not re-derived per packet.** With authors running in parallel,
 per-author re-derivation is precisely the collision that made packet 181's first allocation clash with 178's `TASK-294`. Allocation: 186→TASK-305,

@@ -19,8 +19,9 @@ Touches only `outer_wall_line_width` and `inner_wall_line_width` (their construc
 
 ## Prerequisites and Blockers
 
-- Depends on: none.
-- Unblocks: none (weak agreement: the T2 flow packets retype these same config keys to float-or-percent with an auto `0`→nozzle default and must preserve `0.4` as the resolved fallback so this header stays truthful).
+- Depends on: none in code.
+- **Collision to coordinate: `crates/slicer-runtime/tests/fixtures/golden/precision_legacy_20mmbox.gcode`.** Draft packet `184-classic-perimeter-flow-parity` re-blesses the **same** golden in its Step 5 — for wall-coordinate drift from the `line_width_to_spacing` inset change — while this packet's Step 3 re-blesses it for the two `; …_line_width` header comment lines. Packet 184 declares this collision in its `packet.spec.md` §Prerequisites, `requirements.md` §Cross-packet impact, and `implementation-plan.md` Step 5. Both packets are `draft`, so **neither may assume it lands first: whichever lands second re-blesses and re-verifies rather than assuming the first packet's green result still holds.** Before re-blessing, run `git log --oneline -1 -- modules/core-modules/classic-perimeters/src/lib.rs` and `rg -q line_width_to_spacing modules/core-modules/classic-perimeters/src/lib.rs` to establish which order actually happened, and record it in the step's completion note. Practical consequence: **do not pin the re-bless diff at 2 insertions / 2 deletions** — that shape only holds if this packet lands first. If 184 landed first, the wall coordinates have already moved and this packet's diff is measured against that post-Step-5 baseline. The durable expectation is *the two wall-width header lines change and nothing else does*, which is what the numstat check below asserts.
+- Unblocks: none (weak agreement: packet `184-classic-perimeter-flow-parity` retypes these same config keys to float-or-percent with an auto `0`→nozzle default and, per its `[FWD-1]` decision, deliberately preserves `0.4` as the resolved fallback so this header stays truthful).
 - Activation blockers: none. Packet `140_lightning-module-rewrite` is currently `active`; this packet stays `draft` until that clears.
 
 ## Acceptance Criteria
@@ -39,12 +40,12 @@ Assertions below are **whole-line and per-key**. `; outer_wall_line_width = 0.4`
 
 ## Authoritative Docs
 
-- `docs/15_config_keys_reference.md` — delegated grep only; verified to contain no `0.42`/`0.45` literal (it already documents both keys at default `0.4`), so no doc edit is required.
+- `docs/15_config_keys_reference.md` — delegated grep only; every `outer_wall_line_width` / `inner_wall_line_width` row already documents default `0.4`, so no doc edit is required. Do **not** justify this with an unscoped `0.42|0.45` grep — that matches an unrelated `infill_overlap` row. Use the field-scoped form in §Doc Impact.
 - `docs/DEVIATION_LOG.md` — the D-165 row only; flipped to `Closed` at the completion gate.
 
 ## Doc Impact Statement (Required)
 
-- **`none`** — this changes a code default value in the G-code serializer and re-blesses one recorded golden; it touches no IR, WIT, scheduler, claim, manifest, host-service, or SDK contract. `docs/15_config_keys_reference.md` documents config-key schemas, not the serializer's internal header fallback, and contains no `0.42`/`0.45` literal (verified: `rg -q '0\.42|0\.45' docs/15_config_keys_reference.md` returns no match). The D-165 status flip in `docs/DEVIATION_LOG.md` plus the `cargo xtask check-deviations` regeneration of `docs/07_implementation_status.md` are handled at the completion gate as status bookkeeping, not contract-doc edits.
+- **`none`** — this changes a code default value in the G-code serializer and re-blesses one recorded golden; it touches no IR, WIT, scheduler, claim, manifest, host-service, or SDK contract. `docs/15_config_keys_reference.md` documents config-key schemas, not the serializer's internal header fallback, and **already documents both wall-width keys at `0.4`**, so no doc edit is required. Scope the evidence to those rows — an unqualified `rg -q '0\.42|0\.45' docs/15_config_keys_reference.md` **does** match (an unrelated `infill_overlap | float | 0.45` row) and must not be cited. Scoped check, verified passing on the current tree: `bash -c '! rg -q "(outer|inner)_wall_line_width. \| float \| .0\.4[25]" docs/15_config_keys_reference.md && echo PASS || echo FAIL'` (the `.` placeholders stand in for backticks so the pattern survives a double-quoted `bash -c` string; every `outer_wall_line_width` / `inner_wall_line_width` row in the file reads `0.4`). The D-165 status flip in `docs/DEVIATION_LOG.md` plus the `cargo xtask check-deviations` regeneration of `docs/07_implementation_status.md` are handled at the completion gate as status bookkeeping, not contract-doc edits.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note
