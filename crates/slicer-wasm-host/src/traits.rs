@@ -17,6 +17,7 @@ use crate::binding::{
     CompiledModuleLive, FinalizationStageInput, LayerStageInput, PostpassStageInput,
     PrepassStageInput,
 };
+use crate::profiling::ProfileMark;
 
 /// Runner for layer-stage dispatch (infill, perimeter, seam, support, etc.).
 pub trait LayerStageRunner {
@@ -61,6 +62,23 @@ pub trait LayerStageRunner {
     fn last_log_messages(&self) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    /// Returns the profiling scope transitions the module emitted during the
+    /// most recent `run_stage` call, in emission order (ADR-0050).
+    ///
+    /// Always empty unless the runner's engine was built with
+    /// `WasmEngine::with_profiling(true)` *and* the guest emits marks. Fold with
+    /// [`crate::profiling::fold_marks`] to get per-scope self and total cost.
+    fn last_profile_marks(&self) -> Vec<ProfileMark> {
+        Vec::new()
+    }
+
+    /// Returns the total fuel the guest consumed during the most recent
+    /// `run_stage` call. `0` means "no sample" — either profiling is off (fuel
+    /// is not metered then) or the guest executed nothing.
+    fn last_call_fuel(&self) -> u64 {
+        0
+    }
 }
 
 /// Runner for prepass-stage dispatch (mesh analysis, support geometry, seam planning, etc.).
@@ -101,6 +119,19 @@ pub trait PrepassStageRunner {
     /// runners that do not capture diagnostics.
     fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
         Vec::new()
+    }
+
+    /// Returns the profiling scope transitions the module emitted during the
+    /// most recent `run_stage` call, in emission order (ADR-0050). See
+    /// [`LayerStageRunner::last_profile_marks`].
+    fn last_profile_marks(&self) -> Vec<ProfileMark> {
+        Vec::new()
+    }
+
+    /// Returns the total fuel the guest consumed during the most recent
+    /// `run_stage` call. See [`LayerStageRunner::last_call_fuel`].
+    fn last_call_fuel(&self) -> u64 {
+        0
     }
 }
 
@@ -143,6 +174,19 @@ pub trait PostpassStageRunner {
     fn last_log_messages(&self) -> Vec<(String, String)> {
         Vec::new()
     }
+
+    /// Drain the profiling scope transitions accumulated across postprocessing
+    /// calls, one inner `Vec` per dispatch call, in emission order within each
+    /// (ADR-0050). Default returns an empty `Vec`.
+    fn take_profile_marks(&mut self) -> Vec<Vec<ProfileMark>> {
+        Vec::new()
+    }
+
+    /// Drain the total fuel consumed per postprocessing call, in call order.
+    /// One entry per dispatch call. Default returns an empty `Vec`.
+    fn take_call_fuel(&mut self) -> Vec<u64> {
+        Vec::new()
+    }
 }
 
 /// Runner for finalization-stage dispatch (layer-collection assembly).
@@ -161,5 +205,18 @@ pub trait FinalizationStageRunner {
     /// empty `Vec` for runners that do not capture logs.
     fn last_log_messages(&self) -> Vec<(String, String)> {
         Vec::new()
+    }
+
+    /// Returns the profiling scope marks captured during the most recent
+    /// `run_stage` call (ADR-0050). Default returns an empty `Vec` for runners
+    /// that do not instrument scopes.
+    fn last_profile_marks(&self) -> Vec<ProfileMark> {
+        Vec::new()
+    }
+
+    /// Returns the fuel consumed by the guest during the most recent
+    /// `run_stage` call. `0` for runners that do not meter fuel.
+    fn last_call_fuel(&self) -> u64 {
+        0
     }
 }

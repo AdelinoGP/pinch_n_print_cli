@@ -466,6 +466,30 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
     }
 }
 
+/// The statement every macro-generated WIT export body opens with: it installs
+/// the guest profiling sink (ADR-0050).
+///
+/// # Why here and not somewhere shared
+///
+/// `slicer_core::profile`'s marks on the clipper2 primitives are inert until
+/// something installs a [`slicer_sdk::profile::BridgeSink`], and the guest has
+/// no other entry point — a wasm component built for `wasm32-unknown-unknown`
+/// runs no constructors, so there is no "guest start" to hook. A WIT export body
+/// is the first guest code that runs on every dispatch call, and *every* path
+/// into a module's own code goes through one. Emitting the call at the top of
+/// each `impl Guest` method is therefore the smallest thing that guarantees the
+/// sink is up before any module body — and before any `polygon_ops` call —
+/// executes.
+///
+/// It is safe to repeat: `install_guest_sink` is `OnceLock`-guarded on both the
+/// prime and the install, and it compiles to nothing off `wasm32`.
+///
+/// Kept as one helper rather than 17 copied literals so a new world or stage
+/// export picks it up by construction.
+fn profile_install_stmt() -> TokenStream2 {
+    quote! { ::slicer_sdk::profile::install_guest_sink(); }
+}
+
 /// Shared per-world module preamble: `wit_bindgen::generate!` expansion,
 /// a `ConfigValue` `use` statement, a `__slicer_adapt_config` helper
 /// and a `__slicer_error_out` helper. The `world_ident` string selects
@@ -621,6 +645,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-postpass/world-postpass.wit");
 
     let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline);
+    let profile_install = profile_install_stmt();
 
     // Decide which stage method routes into the user's trait: the
     // detected stage for this impl. The other arm returns a benign
@@ -869,6 +894,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     output: GcodeOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     #gcode_arm
                 }
 
@@ -876,6 +902,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     gcode_text: String,
                     config: ConfigView,
                 ) -> Result<String, ModuleError> {
+                    #profile_install
                     #text_arm
                 }
             }
@@ -897,6 +924,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
         include_str!("../../slicer-schema/wit/deps/world-finalization/world-finalization.wit");
 
     let preamble = emit_world_preamble("finalization-module", "world_finalization", wit_inline);
+    let profile_install = profile_install_stmt();
 
     quote! {
         #[cfg(target_arch = "wasm32")]
@@ -1043,6 +1071,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     output: FinalizationOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     let ir_config = __slicer_adapt_config(&config);
                     let module = match <#self_ty as ::slicer_sdk::traits::FinalizationModule>::on_print_start(&ir_config) {
                         Ok(m) => m,
@@ -1215,6 +1244,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-prepass/world-prepass.wit");
 
     let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
+    let profile_install = profile_install_stmt();
     let segmentation_helpers = quote! {
         // `polygon` / `point2` are brought into scope by the flat type
         // aliases that `wit_bindgen::generate!` (>= 0.57) emits at the
@@ -1798,6 +1828,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     _output: MeshAnalysisOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     #mesh_arm
                 }
                 fn run_layer_planning(
@@ -1805,6 +1836,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     _output: LayerPlanOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     #layer_arm
                 }
                 fn run_seam_planning(
@@ -1814,6 +1846,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     config: ConfigView,
                     _region_input: SeamPlanningView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     #seam_arm
                 }
                 fn run_support_geometry(
@@ -1824,6 +1857,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     _output: SupportGeometryOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
+                    #profile_install
                     #support_arm
                 }
             }
@@ -1847,6 +1881,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = LAYER_WORLD_WIT;
     let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline);
+    let profile_install = profile_install_stmt();
 
     // Real deep-copy IN (from wit-bindgen resources to SDK views).
     let adapt_slice = quote! {
@@ -2996,6 +3031,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
             impl Guest for __SlicerLayerComponent {
                 fn on_print_start(config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
                     let ir_config = __slicer_adapt_config(&config);
                     match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                         Ok(_m) => Ok(()),
@@ -3010,7 +3046,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     paint: PaintRegionLayerView,
                     output: SlicePostprocessBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #slice_postprocess_arm }
+                ) -> Result<(), ModuleError> { #profile_install #slice_postprocess_arm }
 
                 fn run_perimeters(
                     layer_index: i32,
@@ -3018,14 +3054,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     paint: PaintRegionLayerView,
                     output: PerimeterOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #perimeters_arm }
+                ) -> Result<(), ModuleError> { #profile_install #perimeters_arm }
 
                 fn run_wall_postprocess(
                     layer_index: i32,
                     regions: Vec<PerimeterRegionView>,
                     output: PerimeterOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #wall_postprocess_arm }
+                ) -> Result<(), ModuleError> { #profile_install #wall_postprocess_arm }
 
                 fn run_infill(
                     layer_index: i32,
@@ -3033,7 +3069,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     paint: PaintRegionLayerView,
                     output: InfillOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #infill_arm }
+                ) -> Result<(), ModuleError> { #profile_install #infill_arm }
 
                 fn run_infill_postprocess(
                     layer_index: i32,
@@ -3041,7 +3077,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     prior_infill: Vec<PriorInfillRegion>,
                     output: InfillOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #infill_postprocess_arm }
+                ) -> Result<(), ModuleError> { #profile_install #infill_postprocess_arm }
 
                 fn run_support(
                     layer_index: i32,
@@ -3049,14 +3085,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     paint: PaintRegionLayerView,
                     output: SupportOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #support_arm }
+                ) -> Result<(), ModuleError> { #profile_install #support_arm }
 
                 fn run_support_postprocess(
                     layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     output: SupportOutputBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #support_postprocess_arm }
+                ) -> Result<(), ModuleError> { #profile_install #support_postprocess_arm }
 
                 fn run_path_optimization(
                     layer_index: i32,
@@ -3064,7 +3100,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     output: GcodeOutputBuilder,
                     collection: LayerCollectionBuilder,
                     config: ConfigView,
-                ) -> Result<(), ModuleError> { #path_opt_arm }
+                ) -> Result<(), ModuleError> { #profile_install #path_opt_arm }
             }
 
             export!(__SlicerLayerComponent);

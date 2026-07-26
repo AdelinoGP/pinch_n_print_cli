@@ -4,6 +4,43 @@ interface module-errors {
     record module-error { code: u32, message: string, fatal: bool }
 }
 
+/// Fuel-based module profiling (ADR-0050).
+///
+/// Deliberately a **separate interface** from `host-services` rather than three
+/// more functions on it: profiling is host-gated diagnostic plumbing with a
+/// different lifetime and a different audience than the geometry/mesh services,
+/// and keeping it apart means a world can import one without the other.
+///
+/// A guest cannot read a clock (`wasm32-unknown-unknown` has no WASI) and cannot
+/// read its own fuel. So the guest only says *where* it is; the host samples
+/// *what it costs* at that instant. Because a mark is a host call, it burns no
+/// fuel and therefore cannot pollute the measurement it is taking.
+interface profiling {
+    /// Which side of a scope a mark sits on. Marks nest: the host keeps a
+    /// per-call stack so both self and total cost are recoverable.
+    enum mark-edge { enter, exit }
+
+    /// Whether the host is recording marks at all. Guests are expected to cache
+    /// this once per instance and branch on the cached bool, so the steady-state
+    /// cost with profiling off is a predictable branch rather than a host call.
+    profile-enabled: func() -> bool;
+
+    /// Interns `name` and returns its scope id, allocating one on first sight.
+    ///
+    /// The registry is process-global and append-only, so an id stays valid for
+    /// the whole run even though each dispatch call gets a fresh guest instance
+    /// (and therefore a fresh copy of whatever the guest cached). Re-registering
+    /// a name always returns the same id.
+    ///
+    /// Ids below `slicer_core::profile::ScopeId::USER_BASE` are reserved for
+    /// `slicer-core`'s own scopes and are never handed out by this function.
+    profile-register: func(name: string) -> u32;
+
+    /// Records one scope transition. The host attaches consumed fuel and a
+    /// wall-clock reading taken at this instant.
+    profile-mark: func(scope: u32, edge: mark-edge);
+}
+
 interface host-services {
     use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon, thick-polyline};
     use slicer:ir-handles/ir-handles.{extrusion-line};

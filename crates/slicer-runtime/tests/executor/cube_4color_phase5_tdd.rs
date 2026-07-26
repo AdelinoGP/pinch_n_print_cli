@@ -66,6 +66,8 @@ fn slice_cube(name: &str, config_json: Option<&str>) -> String {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
         progress_events: false,
         cancel_flag: None,
         config_overrides: std::collections::HashMap::new(),

@@ -8,6 +8,7 @@
 
 use pnp_cli::io::{write_with_parents, OutputFormat};
 use pnp_cli::module_new;
+use pnp_cli::profile_cmd::run_profile_from;
 
 // Install the host-allocation accounting wrapper as the process global
 // allocator so `--report` can attribute per-bracket bytes. The wrapper's fast
@@ -85,12 +86,36 @@ enum Cmd {
         /// Emit per-stage/per-module timing events on stderr JSONL stream.
         #[arg(long = "instrument-stderr")]
         instrument_stderr: bool,
+        /// Meter wasmtime fuel, attribute it to scopes, and print a ranked
+        /// summary to stderr at slice end (ADR-0050). Costs throughput.
+        #[arg(long)]
+        profile: bool,
+        /// Also attach each dispatch call's scope fold to its `module_complete`
+        /// event. Requires `--profile`.
+        #[arg(long = "profile-verbose", requires = "profile")]
+        profile_verbose: bool,
         /// Suppress the default JSONL progress-event stream on stderr.
         #[arg(long = "no-progress-events")]
         no_progress_events: bool,
         /// Cancel the slice when stdin is closed (EOF). The process exits with code 130.
         #[arg(long = "cancel-on-stdin-eof")]
         cancel_on_stdin_eof: bool,
+    },
+    /// Re-summarise a captured progress-event stream without re-slicing.
+    ///
+    /// Reads the `profile_summary` event out of a `--profile` capture and
+    /// prints the same ranked table `slice --profile` printed live. Mirrors
+    /// `cargo xtask test --summary-from`: the expensive work already happened,
+    /// and re-running it to see the numbers again would be the mistake.
+    Profile {
+        /// Path to a JSONL capture produced by `slice --profile` (the stderr
+        /// stream), or `-` to read stdin.
+        #[arg(long = "from", value_name = "EVENTS.JSONL")]
+        from: PathBuf,
+        /// Print the `profile_summary` event's JSON payload instead of the
+        /// ranked table.
+        #[arg(long)]
+        json: bool,
     },
     /// Generate a support-geometry preview JSON document.
     SupportPreview {
@@ -405,6 +430,8 @@ fn main() {
             #[cfg(feature = "report")]
             report_verbose,
             instrument_stderr,
+            profile,
+            profile_verbose,
             no_progress_events,
             cancel_on_stdin_eof,
         } => {
@@ -495,12 +522,19 @@ fn main() {
                 report: report_opt,
                 report_verbose: report_verbose_opt,
                 instrument_stderr,
+                profile,
+                profile_verbose,
                 progress_events: !no_progress_events,
                 cancel_flag: Some(cancel_flag.clone()),
                 config_overrides,
             };
             match slicer_runtime::run_slice(opts) {
                 Ok(outcome) => {
+                    // Printed to stderr, after the JSONL stream, so G-code on
+                    // stdout is never polluted by a diagnostic.
+                    if let Some(summary) = outcome.profile.as_ref() {
+                        eprint!("{}", slicer_runtime::format_profile_summary(summary));
+                    }
                     if let Some(out_path) = output_path {
                         if let Err(e) = write_with_parents(&out_path, outcome.gcode_text.as_bytes())
                         {
@@ -528,6 +562,14 @@ fn main() {
                 }
             }
         }
+
+        Cmd::Profile { from, json } => match run_profile_from(&from, json) {
+            Ok(rendered) => print!("{rendered}"),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        },
 
         Cmd::SupportPreview {
             input,

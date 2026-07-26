@@ -21,6 +21,7 @@ mod mesh_analysis_tdd;
 mod multi_object_transform_world_z_tdd;
 mod overhang_classifier_manifest_dag_validation_tdd;
 mod path_ordering_tdd;
+mod profile_flag_tdd;
 mod region_mapping_resolved_config_tdd;
 mod rotated_object_world_extent_tdd;
 mod tool_ordering_tdd;

@@ -203,6 +203,30 @@ pub fn load_live_modules_for_plan_with_config(
     host_parallelism: usize,
     config_source: &HashMap<ConfigKey, ConfigValue>,
 ) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
+    load_live_modules_for_plan_profiled(search_roots, host_parallelism, config_source, false)
+}
+
+/// Same as [`load_live_modules_for_plan_with_config`], plus control over
+/// whether the shared [`WasmEngine`] meters fuel (ADR-0050).
+///
+/// `profile` is the single switch that turns fuel-based module profiling on for
+/// a whole run. It reaches the guest by two routes, both derived from this one
+/// engine: `wasmtime::Config::consume_fuel` (so `store.get_fuel()` returns a
+/// real reading) and `WasmEngine::profiling_enabled`, which
+/// `WasmRuntimeDispatcher`'s store constructor copies onto every
+/// `HostExecutionContext` as the answer to the WIT `profile-enabled` query.
+/// Because both come from the engine, there is no second place a caller could
+/// forget to flip.
+///
+/// Kept as a separate entry point rather than a fourth parameter on
+/// [`load_live_modules_for_plan_with_config`] so the dozens of existing call
+/// sites — none of which profile — stay untouched.
+pub fn load_live_modules_for_plan_profiled(
+    search_roots: &[PathBuf],
+    host_parallelism: usize,
+    config_source: &HashMap<ConfigKey, ConfigValue>,
+    profile: bool,
+) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
     let mut report = load_modules_from_roots(search_roots)?;
 
     let wall_generator = config_source
@@ -255,7 +279,7 @@ pub fn load_live_modules_for_plan_with_config(
 
     // Build per-module runtime bindings, compiling each module's .wasm
     // into a reusable `WasmComponent` via a single shared engine.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = Arc::new(WasmEngine::with_profiling(profile));
     let mut diagnostics = report.diagnostics;
     let mut bindings = Vec::with_capacity(report.modules.len());
     for module in report.modules {

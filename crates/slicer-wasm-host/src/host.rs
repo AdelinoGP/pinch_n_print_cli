@@ -404,6 +404,7 @@ pub mod prepass {
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/profiling": super::layer::slicer::common::profiling,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
             // `host-services#generate-arachne-walls` (packet 112, Step 9A) now
             // `use`s `extrusion-line` from `slicer:ir-handles/ir-handles`,
@@ -597,6 +598,7 @@ pub mod finalization {
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/profiling": super::layer::slicer::common::profiling,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
@@ -626,6 +628,7 @@ pub mod postpass {
             "slicer:types/geometry": super::layer::slicer::types::geometry,
             "slicer:config/config-types": super::layer::slicer::config::config_types,
             "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/profiling": super::layer::slicer::common::profiling,
             "slicer:common/module-errors": super::layer::slicer::common::module_errors,
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
@@ -872,6 +875,38 @@ pub struct HostExecutionContext {
     /// Linear-memory tracker, installed as the store's `ResourceLimiter`
     /// to sample guest memory growth for the slicer report.
     pub(crate) mem_tracker: MemTracker,
+
+    // ── Fuel profiling (ADR-0050) ────────────────────────────────────
+    /// Whether the host is recording profile marks for this call. Answers the
+    /// WIT `profiling.profile-enabled`, and gates the mark recorder so a guest
+    /// that ignores that answer still costs almost nothing.
+    ///
+    /// Set by the dispatcher from `WasmEngine::profiling_enabled`; `false`
+    /// unless the store was built by a profiling engine, in which case fuel is
+    /// not metered at all and every sample would read zero.
+    pub(crate) profiling_enabled: bool,
+
+    /// Fuel consumed by the guest as of the most recent guest→host transition.
+    ///
+    /// Written by the store's `call_hook` (see `new_store` in
+    /// `crates/slicer-wasm-host/src/instance.rs`) because that is the only place
+    /// with both the store — which owns the fuel counter — and this context.
+    /// `profile_mark` reads it back out; the hook fires immediately before the
+    /// host method runs, so the value is current for that mark.
+    pub(crate) host_entry_fuel: u64,
+
+    /// Scope transitions recorded during this call, in emission order.
+    /// Drained by the dispatcher into the runner traits' `last_profile_marks`.
+    pub(crate) profile_marks: Vec<crate::profiling::ProfileMark>,
+
+    /// Ids of the scopes currently open on this call's stack, innermost last.
+    ///
+    /// Kept live rather than reconstructed, so an `exit` that does not match
+    /// the open scope can be dropped at the boundary instead of corrupting the
+    /// recorded stream. `crate::profiling::fold_marks` re-derives the same
+    /// stack when it folds, and tolerates a malformed stream anyway; this is
+    /// the cheaper first line of defence.
+    pub(crate) profile_stack: Vec<u32>,
 }
 
 /// Consuming builder for [`HostExecutionContext`].
@@ -958,6 +993,10 @@ impl HostExecutionContextBuilder {
             mesh_ir: self.mesh_ir,
             held_claims_per_region: std::collections::HashMap::new(),
             mem_tracker: MemTracker::default(),
+            profiling_enabled: false,
+            host_entry_fuel: 0,
+            profile_marks: Vec::new(),
+            profile_stack: Vec::new(),
         }
     }
 }
@@ -1136,6 +1175,26 @@ impl HostExecutionContext {
     /// `(ir_path, batch_size)` in call order.
     pub fn batch_calls(&self) -> &[(String, u32)] {
         &self.batch_calls
+    }
+
+    /// Turns profile-mark recording on for this call.
+    ///
+    /// The dispatcher calls this from the store-construction path when the
+    /// engine meters fuel. Off by default, so a context built for a
+    /// non-profiling run answers `profile-enabled` with `false` and records
+    /// nothing even if a guest marks anyway.
+    pub fn set_profiling_enabled(&mut self, enabled: bool) {
+        self.profiling_enabled = enabled;
+    }
+
+    /// Whether profile-mark recording is on for this call.
+    pub fn profiling_enabled(&self) -> bool {
+        self.profiling_enabled
+    }
+
+    /// Scope transitions recorded during this invocation, in emission order.
+    pub fn profile_marks(&self) -> &[crate::profiling::ProfileMark] {
+        &self.profile_marks
     }
 
     /// Runtime IR write paths recorded by builder-method instrumentation.
@@ -1840,6 +1899,9 @@ fn object_bounds_mesh_query(
 // ── Host trait implementations ──────────────────────────────────────────
 
 use layer::slicer::common::host_services as hs;
+// Aliased to `prof` so it cannot be confused with `crate::profiling`, which is
+// the host-side data model rather than the generated WIT bindings.
+use layer::slicer::common::profiling as prof;
 use layer::slicer::config::config_types as ct;
 use layer::slicer::ir_handles::ir_handles as ir;
 use layer::slicer::types::geometry as geo;
@@ -1857,6 +1919,61 @@ pub static HOST_ARACHNE_WALL_SEQUENCE_CAPTURE: std::sync::Mutex<Vec<hs::WallSequ
 impl layer::slicer::common::module_errors::Host for HostExecutionContext {}
 
 impl geo::Host for HostExecutionContext {}
+
+// ── Fuel profiling (ADR-0050) ───────────────────────────────────────────
+
+impl crate::instance::FuelSampleSink for HostExecutionContext {
+    fn record_host_entry_fuel(&mut self, consumed: u64) {
+        self.host_entry_fuel = consumed;
+    }
+}
+
+impl prof::Host for HostExecutionContext {
+    fn profile_enabled(&mut self) -> wasmtime::Result<bool> {
+        Ok(self.profiling_enabled)
+    }
+
+    fn profile_register(&mut self, name: String) -> wasmtime::Result<u32> {
+        // Registration is answered even with profiling off: a guest sink is
+        // free to build its id table up front and only then discover, via
+        // `profile-enabled`, that it has nothing to report.
+        Ok(crate::profiling::register_scope(&name))
+    }
+
+    fn profile_mark(&mut self, scope: u32, edge: prof::MarkEdge) -> wasmtime::Result<()> {
+        if !self.profiling_enabled {
+            return Ok(());
+        }
+        let edge = match edge {
+            prof::MarkEdge::Enter => crate::profiling::MarkEdge::Enter,
+            prof::MarkEdge::Exit => crate::profiling::MarkEdge::Exit,
+        };
+        match edge {
+            crate::profiling::MarkEdge::Enter => self.profile_stack.push(scope),
+            crate::profiling::MarkEdge::Exit => {
+                // Drop an exit that does not close the innermost open scope.
+                // Recording it would hand the fold a bracket sequence it cannot
+                // interpret, and the cost of the enclosing scope would silently
+                // absorb the mismatch.
+                if self.profile_stack.last() != Some(&scope) {
+                    return Ok(());
+                }
+                self.profile_stack.pop();
+            }
+        }
+        // `host_entry_fuel` was refreshed by the store's `call_hook` on the way
+        // into this very function, so it is the fuel reading for this mark.
+        // Zero when fuel is not metered, which cannot happen here because
+        // `profiling_enabled` implies it is.
+        self.profile_marks.push(crate::profiling::ProfileMark {
+            scope,
+            edge,
+            fuel: self.host_entry_fuel,
+            wall_ns: self.start_time.elapsed().as_nanos() as u64,
+        });
+        Ok(())
+    }
+}
 
 fn ir_point3_to_layer(point: slicer_ir::Point3) -> Point3 {
     Point3 {

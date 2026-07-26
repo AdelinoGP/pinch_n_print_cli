@@ -181,6 +181,28 @@ pub trait PipelineInstrumentation: Send + Sync {
     ) {
     }
 
+    /// Called with the profiling marks and total fuel a module's dispatch
+    /// produced, immediately *before* the matching [`Self::on_module_end`]
+    /// (ADR-0050).
+    ///
+    /// The ordering is deliberate: `on_module_end` is what emits
+    /// `module_complete`, and `--profile-verbose` attaches this call's scope
+    /// fold to that event. Draining afterwards would leave nothing to attach.
+    ///
+    /// `marks` is empty and `call_fuel` is `0` on every dispatch when
+    /// profiling is off — no store meters fuel then and no guest records a
+    /// mark — so implementors should treat that pair as "nothing happened"
+    /// rather than as a zero-cost call. Default impl is a no-op.
+    fn on_module_profile(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &ModuleId,
+        _marks: &[slicer_wasm_host::profiling::ProfileMark],
+        _call_fuel: u64,
+    ) {
+    }
+
     /// Called before a layer's stage loop begins. `z_mm` is the layer's
     /// nominal Z height in millimetres (matches `GlobalLayer.z: f32`).
     fn on_layer_start(&self, layer: u32, z_mm: f32);
@@ -408,6 +430,19 @@ impl PipelineInstrumentation for CompositeInstrumentation<'_> {
         self.a.on_module_log(stage, layer, module, level, message);
         self.b.on_module_log(stage, layer, module, level, message);
     }
+    fn on_module_profile(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        marks: &[slicer_wasm_host::profiling::ProfileMark],
+        call_fuel: u64,
+    ) {
+        self.a
+            .on_module_profile(stage, layer, module, marks, call_fuel);
+        self.b
+            .on_module_profile(stage, layer, module, marks, call_fuel);
+    }
     fn on_layer_start(&self, layer: u32, z_mm: f32) {
         self.a.on_layer_start(layer, z_mm);
         self.b.on_layer_start(layer, z_mm);
@@ -479,6 +514,16 @@ mod composite_tests {
         ) {
             self.calls.lock().unwrap().push("module_end");
         }
+        fn on_module_profile(
+            &self,
+            _stage: &StageId,
+            _layer: Option<u32>,
+            _module: &ModuleId,
+            _marks: &[slicer_wasm_host::profiling::ProfileMark],
+            _call_fuel: u64,
+        ) {
+            self.calls.lock().unwrap().push("module_profile");
+        }
         fn on_layer_start(&self, _layer: u32, _z_mm: f32) {
             self.calls.lock().unwrap().push("layer_start");
         }
@@ -513,6 +558,7 @@ mod composite_tests {
         composite.on_stage_start(&stage, Some(0));
         composite.on_stage_end(&stage, Some(0));
         composite.on_module_start(&stage, Some(0), &module);
+        composite.on_module_profile(&stage, Some(0), &module, &[], 0);
         composite.on_module_end(&stage, Some(0), &module, 1, 2);
         composite.on_layer_start(0, 0.2);
         composite.on_layer_end(0);
@@ -529,6 +575,7 @@ mod composite_tests {
                 "stage_start",
                 "stage_end",
                 "module_start",
+                "module_profile",
                 "module_end",
                 "layer_start",
                 "layer_end",

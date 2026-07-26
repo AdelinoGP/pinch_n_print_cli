@@ -15,6 +15,9 @@ pub mod negative_part_subtract;
 pub mod pipeline;
 pub mod postpass;
 pub mod prepass;
+/// Run-wide aggregation, native-sink installation, and ranked rendering for
+/// fuel-based module profiling (ADR-0050).
+pub mod profiling_report;
 pub mod progress_events;
 pub mod progress_instrumentation;
 pub mod region_partition;
@@ -168,6 +171,12 @@ pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
     execute_prepass_with_builtins_configured_instr, PrepassExecutionError,
 };
+// Re-exported so consumers of the profiling surface (pnp-cli, tests) can name
+// a mark without taking a direct slicer-wasm-host dependency.
+pub use profiling_report::{
+    format_profile_summary, ProfileAggregator, ProfileCallDetail, ProfileModuleRow,
+    ProfileScopeRow, ProfileSummary, ProfileUnit,
+};
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use run::{
     prepare_prepass_context, run_slice, PrepassContext, SliceOutcome, SliceRunError,
@@ -182,6 +191,7 @@ pub use slice_postprocess::{
 pub use slice_postprocess_prepass::{
     commit_shell_classification_builtin, ShellClassificationError,
 };
+pub use slicer_wasm_host::profiling::{fold_marks, MarkEdge, ProfileMark, ScopeTotals};
 pub use visual_debug_render::{
     collect_overlay_events, compute_viewport_bounds, render_stage_capture,
     render_stage_capture_styled, GeometryView, Projector, RenderError, RenderStyle, RenderView,

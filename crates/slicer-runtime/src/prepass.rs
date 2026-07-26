@@ -241,6 +241,16 @@ pub fn execute_prepass_with_instrumentation(
                 _phantom: std::marker::PhantomData,
             };
             let run_result = runner.run_stage(&stage.stage_id, &live_module, input);
+            // Fuel/scope marks (ADR-0050), drained before `on_module_end` so
+            // `--profile-verbose` still has this call's fold to attach to the
+            // `module_complete` that `on_module_end` emits.
+            instrumentation.on_module_profile(
+                &stage.stage_id,
+                None,
+                module.module_id(),
+                &runner.last_profile_marks(),
+                runner.last_call_fuel(),
+            );
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             // Map PrepassRunnerError → PrepassExecutionError via the From impl.
             let output = match run_result {
@@ -753,6 +763,12 @@ fn run_builtin_stage(
         let before = blackboard.estimated_size();
         let guard =
             StageInstrumentationGuard::start(instrumentation, stage_id, None, module_id, before);
+        // Attribute this built-in's native `slicer_core::polygon_ops` marks to
+        // `module_id` (ADR-0050). Built-ins run one at a time here, and any
+        // rayon fan-out inside `execute` is nested within this bracket, so a
+        // single owner is both sufficient and correct. Costs one relaxed atomic
+        // load when profiling is off.
+        let _native_owner = crate::profiling_report::NativeOwnerGuard::new(module_id);
         execute(blackboard)?;
         guard.finish(blackboard.estimated_size());
     }

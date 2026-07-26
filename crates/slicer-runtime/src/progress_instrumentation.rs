@@ -18,6 +18,7 @@ use slicer_ir::{ModuleId, StageId};
 
 use crate::instrumentation::{Phase, PipelineInstrumentation, SerialEdge, TierKind};
 use crate::layer_executor::LayerProgressSink;
+use crate::profiling_report::{call_detail, ProfileAggregator, ProfileCallDetail};
 use crate::progress_events::{ProgressEvent, ProgressPhase};
 
 /// Convert the bracket trait's `Phase` to the wire `ProgressPhase`.
@@ -74,6 +75,17 @@ pub struct ProgressPipelineInstrumentation {
     stage_starts: Mutex<HashMap<(String, Option<u32>), Instant>>,
     module_starts: Mutex<HashMap<(String, String, Option<u32>), Instant>>,
     layer_starts: Mutex<HashMap<u32, Instant>>,
+    /// Run-wide profiling fold, shared with `run_slice` so it can emit the
+    /// single `profile_summary` event after the pipeline returns. `None` when
+    /// `--profile` is off, which is what keeps `on_module_profile` free.
+    profile: Option<Arc<ProfileAggregator>>,
+    /// `--profile-verbose`: also attach each call's own scope fold to its
+    /// `module_complete` event.
+    profile_verbose: bool,
+    /// Per-call scope detail parked by `on_module_profile`, claimed by the
+    /// `on_module_end` that follows it. Keyed the same way as `module_starts`
+    /// so concurrent layers cannot claim each other's detail.
+    pending_profile: Mutex<HashMap<(String, String, Option<u32>), ProfileCallDetail>>,
 }
 
 /// Emission tier for [`ProgressPipelineInstrumentation`].
@@ -114,7 +126,22 @@ impl ProgressPipelineInstrumentation {
             stage_starts: Mutex::new(HashMap::new()),
             module_starts: Mutex::new(HashMap::new()),
             layer_starts: Mutex::new(HashMap::new()),
+            profile: None,
+            profile_verbose: false,
+            pending_profile: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Route fuel/scope marks into `aggregator` (ADR-0050).
+    ///
+    /// `verbose` mirrors `--report-verbose`: aggregation always happens, and
+    /// `verbose` additionally hangs each individual call's scope fold off its
+    /// `module_complete` event.
+    #[must_use]
+    pub fn with_profiling(mut self, aggregator: Arc<ProfileAggregator>, verbose: bool) -> Self {
+        self.profile = Some(aggregator);
+        self.profile_verbose = verbose;
+        self
     }
 
     fn now_unix_ms() -> u64 {
@@ -236,7 +263,15 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
             .remove(&key)
             .map(|t| t.elapsed().as_millis() as u64)
             .unwrap_or(0);
-        self.sink.record(ProgressEvent::module_complete(
+        // Claimed unconditionally, not just when verbose: `on_module_profile`
+        // only parks detail when verbose is on, so an unclaimed entry here
+        // would be a leak rather than an optimisation.
+        let detail = self
+            .pending_profile
+            .lock()
+            .expect("pending_profile poisoned")
+            .remove(&key);
+        let mut event = ProgressEvent::module_complete(
             self.slice_id.clone(),
             phase_from_stage(stage),
             stage.to_string(),
@@ -245,7 +280,41 @@ impl PipelineInstrumentation for ProgressPipelineInstrumentation {
             Self::now_unix_ms(),
             elapsed_ms,
             wasm_bytes_to_kb(wasm_peak_bytes),
-        ));
+        );
+        event.profile_scopes = detail;
+        self.sink.record(event);
+    }
+
+    fn on_module_profile(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        marks: &[slicer_wasm_host::profiling::ProfileMark],
+        call_fuel: u64,
+    ) {
+        let Some(aggregator) = self.profile.as_ref() else {
+            return;
+        };
+        // Exactly what a profiling-off dispatch looks like. Recording it would
+        // put a module in the summary that was never measured.
+        if marks.is_empty() && call_fuel == 0 {
+            return;
+        }
+        aggregator.record_call(module, marks, call_fuel);
+        // Parking is gated on the tier as well as on `profile_verbose`: the
+        // Core tier emits no `module_complete`, so `on_module_end` would never
+        // claim what was parked and the map would grow for the whole run.
+        // Aggregation above is unaffected — `--profile` works at either tier.
+        if self.profile_verbose && self.tier == ProgressTier::Instrumented {
+            self.pending_profile
+                .lock()
+                .expect("pending_profile poisoned")
+                .insert(
+                    (module.to_string(), stage.to_string(), layer),
+                    call_detail(marks, call_fuel),
+                );
+        }
     }
 
     fn on_module_log(
@@ -561,6 +630,193 @@ mod tests {
             "hello",
         );
         assert!(sink.events.lock().unwrap().is_empty());
+    }
+
+    fn mark(
+        scope: u32,
+        enter: bool,
+        fuel: u64,
+        wall_ns: u64,
+    ) -> slicer_wasm_host::profiling::ProfileMark {
+        slicer_wasm_host::profiling::ProfileMark {
+            scope,
+            edge: if enter {
+                slicer_wasm_host::profiling::MarkEdge::Enter
+            } else {
+                slicer_wasm_host::profiling::MarkEdge::Exit
+            },
+            fuel,
+            wall_ns,
+        }
+    }
+
+    /// Without `--profile` there is no aggregator, so the callback must not
+    /// touch the stream at all — this is the "profiling off changes nothing"
+    /// guarantee at the instrumentation seam.
+    #[test]
+    fn module_profile_is_inert_without_an_aggregator() {
+        let sink = Arc::new(RecordingSink::default());
+        let pi = ProgressPipelineInstrumentation::new(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+        );
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        pi.on_module_start(&stage, Some(0), &module);
+        pi.on_module_profile(&stage, Some(0), &module, &[mark(3, true, 0, 0)], 500);
+        pi.on_module_end(&stage, Some(0), &module, 0, 0);
+
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events[1].profile_scopes.is_none());
+    }
+
+    #[test]
+    fn module_profile_feeds_the_aggregator_without_touching_module_complete() {
+        let sink = Arc::new(RecordingSink::default());
+        let agg = Arc::new(ProfileAggregator::new());
+        let pi = ProgressPipelineInstrumentation::new(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+        )
+        .with_profiling(Arc::clone(&agg), false);
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        pi.on_module_start(&stage, Some(0), &module);
+        pi.on_module_profile(
+            &stage,
+            Some(0),
+            &module,
+            &[mark(3, true, 0, 0), mark(3, false, 900, 90)],
+            1_000,
+        );
+        pi.on_module_end(&stage, Some(0), &module, 0, 0);
+
+        let summary = agg.finish();
+        assert_eq!(summary.fuel_total, 1_000);
+        assert_eq!(summary.modules[0].module_id, "com.example.perimeters");
+
+        let events = sink.events.lock().unwrap();
+        assert!(
+            events[1].profile_scopes.is_none(),
+            "aggregate mode must not fatten every module_complete"
+        );
+    }
+
+    #[test]
+    fn profile_verbose_attaches_this_calls_scopes_to_module_complete() {
+        let sink = Arc::new(RecordingSink::default());
+        let agg = Arc::new(ProfileAggregator::new());
+        let pi = ProgressPipelineInstrumentation::new(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+        )
+        .with_profiling(agg, true);
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        pi.on_module_start(&stage, Some(4), &module);
+        pi.on_module_profile(
+            &stage,
+            Some(4),
+            &module,
+            &[mark(3, true, 0, 0), mark(3, false, 900, 90)],
+            1_000,
+        );
+        pi.on_module_end(&stage, Some(4), &module, 0, 0);
+
+        let events = sink.events.lock().unwrap();
+        let detail = events[1]
+            .profile_scopes
+            .as_ref()
+            .expect("verbose mode attaches per-call detail");
+        assert_eq!(detail.call_fuel, 1_000);
+        assert_eq!(detail.scopes.len(), 1);
+        assert_eq!(detail.scopes[0].scope, "polygon_ops::offset2_ex");
+        assert_eq!(detail.scopes[0].self_fuel, 900);
+    }
+
+    /// Two layers of the same module run concurrently on rayon workers; each
+    /// `module_complete` must carry its own layer's detail, not the other's.
+    #[test]
+    fn verbose_detail_is_keyed_per_layer() {
+        let sink = Arc::new(RecordingSink::default());
+        let pi = ProgressPipelineInstrumentation::new(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+        )
+        .with_profiling(Arc::new(ProfileAggregator::new()), true);
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        pi.on_module_start(&stage, Some(0), &module);
+        pi.on_module_start(&stage, Some(1), &module);
+        pi.on_module_profile(
+            &stage,
+            Some(0),
+            &module,
+            &[mark(3, true, 0, 0), mark(3, false, 100, 10)],
+            100,
+        );
+        pi.on_module_profile(
+            &stage,
+            Some(1),
+            &module,
+            &[mark(3, true, 0, 0), mark(3, false, 700, 70)],
+            700,
+        );
+        pi.on_module_end(&stage, Some(1), &module, 0, 0);
+        pi.on_module_end(&stage, Some(0), &module, 0, 0);
+
+        let events = sink.events.lock().unwrap();
+        let by_layer = |idx: u32| {
+            events
+                .iter()
+                .find(|e| {
+                    e.event == ProgressEventType::ModuleComplete && e.layer_index == Some(idx)
+                })
+                .unwrap()
+                .profile_scopes
+                .as_ref()
+                .unwrap()
+                .call_fuel
+        };
+        assert_eq!(by_layer(0), 100);
+        assert_eq!(by_layer(1), 700);
+    }
+
+    /// The Core tier emits no `module_complete`, so nothing would ever claim a
+    /// parked detail. Parking anyway would grow the map for the whole run —
+    /// a leak that only shows up on long slices, which is the worst kind.
+    #[test]
+    fn verbose_parks_nothing_at_the_core_tier_but_still_aggregates() {
+        let sink = Arc::new(RecordingSink::default());
+        let agg = Arc::new(ProfileAggregator::new());
+        let pi = ProgressPipelineInstrumentation::with_tier(
+            sink.clone() as Arc<dyn LayerProgressSink + Send + Sync>,
+            "slice-test".to_string(),
+            ProgressTier::Core,
+        )
+        .with_profiling(Arc::clone(&agg), true);
+        let stage = StageId::from("Layer::Perimeters");
+        let module = ModuleId::from("com.example.perimeters");
+
+        for layer in 0..8 {
+            pi.on_module_profile(
+                &stage,
+                Some(layer),
+                &module,
+                &[mark(3, true, 0, 0), mark(3, false, 10, 1)],
+                10,
+            );
+        }
+        assert!(
+            pi.pending_profile.lock().unwrap().is_empty(),
+            "Core tier must not park detail nobody will claim"
+        );
+        assert_eq!(agg.finish().fuel_total, 80, "aggregation still happens");
     }
 
     #[test]

@@ -85,6 +85,8 @@ fn slice_fixture_file(model_path: &PathBuf) -> SliceOutcome {
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
         progress_events: false,
         cancel_flag: None,
         // Ironing defaults to OFF (OrcaSlicer parity, commit d11f9ff8), so this

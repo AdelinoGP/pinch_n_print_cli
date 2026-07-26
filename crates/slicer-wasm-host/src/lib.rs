@@ -15,6 +15,9 @@ pub mod instance;
 /// IR-to-WIT and WIT-to-IR marshalling helpers for the WASM stage boundary.
 pub mod marshal;
 pub mod pool;
+/// Host-side fuel/scope profiling: mark records, the scope-stack fold, and the
+/// process-global scope-name registry (ADR-0050).
+pub mod profiling;
 pub mod traits;
 
 // ---------------------------------------------------------------------------
@@ -27,8 +30,11 @@ pub use binding::{
 };
 
 pub use instance::{
-    HostState, WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLinker, WasmLoadError,
+    new_store, FuelSampleSink, HostState, WasmCallError, WasmComponent, WasmEngine, WasmInstance,
+    WasmLinker, WasmLoadError, FUEL_BUDGET,
 };
+
+pub use profiling::{fold_marks, register_scope, scope_name, MarkEdge, ProfileMark, ScopeTotals};
 
 pub use pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,

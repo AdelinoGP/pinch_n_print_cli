@@ -109,9 +109,69 @@ impl HostState {
     }
 }
 
+// `HostState` backs the bare `WasmInstance` path, which has no WIT `profiling`
+// import to report through — it takes the no-op default so it still routes
+// through `new_store` and therefore still gets a fuel budget.
+impl FuelSampleSink for HostState {}
+
+/// Fuel handed to every store built by [`new_store`] when profiling is on.
+///
+/// Enabling `Config::consume_fuel` makes a store with no fuel trap on its very
+/// first instruction, so a budget is mandatory rather than optional. This one is
+/// effectively unlimited — at a billion instructions per second it would take
+/// over a century to exhaust — and it stays at or below `i64::MAX` so wasmtime
+/// injects the whole amount into the VM instead of splitting it into a reserve,
+/// which keeps `budget - get_fuel()` an exact consumed-fuel reading.
+pub const FUEL_BUDGET: u64 = 1 << 62;
+
+/// Store data that can accept the fuel sample taken at a guest→host boundary.
+///
+/// This exists because bindgen-generated host methods receive `&mut T`, never
+/// the `Store`, and `get_fuel` lives on the store. The store's `call_hook` sees
+/// both, so it pushes the reading *into* `T` on the way in and the host method
+/// reads it back out. Implementors that do not profile inherit the no-op
+/// default and pay nothing.
+pub trait FuelSampleSink: 'static {
+    /// Called on every `CallHook::CallingHost` transition with the fuel the
+    /// guest has consumed so far in this call. Only fires when profiling is on.
+    fn record_host_entry_fuel(&mut self, consumed: u64) {
+        let _ = consumed;
+    }
+}
+
+/// Builds the `wasmtime::Store` for a dispatch call, applying the fuel budget
+/// and profiling call hook that [`WasmEngine::with_profiling`] implies.
+///
+/// **Every** store in this crate goes through here. With `consume_fuel` on, a
+/// store that skipped the budget would trap on its first instruction, and that
+/// failure would look like a broken module rather than a missed call site — so
+/// the budget is not something individual call sites are trusted to remember.
+pub fn new_store<T: FuelSampleSink>(engine: &WasmEngine, data: T) -> wasmtime::Store<T> {
+    let mut store = wasmtime::Store::new(&engine.inner, data);
+    if engine.profiling_enabled() {
+        store
+            .set_fuel(FUEL_BUDGET)
+            .expect("consume_fuel is enabled whenever profiling is");
+        store.call_hook(|mut cx, hook| {
+            if matches!(hook, wasmtime::CallHook::CallingHost) {
+                // Sample here rather than inside the host method: this is the
+                // last point at which the store is reachable. A mark is a host
+                // call, so this fires immediately before `profile_mark` runs and
+                // the reading it stashes is the one that mark reports.
+                let remaining = cx.get_fuel().unwrap_or(FUEL_BUDGET);
+                cx.data_mut()
+                    .record_host_entry_fuel(FUEL_BUDGET.saturating_sub(remaining));
+            }
+            Ok(())
+        });
+    }
+    store
+}
+
 /// Wrapper around a [`wasmtime::Engine`] with the component model enabled.
 pub struct WasmEngine {
     inner: wasmtime::Engine,
+    profiling: bool,
 }
 
 impl fmt::Debug for WasmEngine {
@@ -121,12 +181,34 @@ impl fmt::Debug for WasmEngine {
 }
 
 impl WasmEngine {
-    /// Create a new engine with the component model enabled.
+    /// Create a new engine with the component model enabled and profiling off.
+    ///
+    /// This is the default for every non-profiling call site: fuel metering
+    /// costs throughput, so it rides an explicit opt-in (ADR-0050).
     pub fn new() -> Self {
+        Self::with_profiling(false)
+    }
+
+    /// Create a new engine, optionally with fuel metering enabled.
+    ///
+    /// With `profiling` on, `Config::consume_fuel` makes wasmtime count executed
+    /// instructions, which is what gives per-scope attribution a deterministic,
+    /// machine-independent signal. It also means every store needs a fuel
+    /// budget — see [`new_store`], which is the only place stores are built.
+    pub fn with_profiling(profiling: bool) -> Self {
         let mut config = wasmtime::Config::new();
         config.wasm_component_model(true);
+        config.consume_fuel(profiling);
         let engine = wasmtime::Engine::new(&config).expect("failed to create wasmtime engine");
-        Self { inner: engine }
+        Self {
+            inner: engine,
+            profiling,
+        }
+    }
+
+    /// Whether this engine meters fuel and installs the profiling call hook.
+    pub fn profiling_enabled(&self) -> bool {
+        self.profiling
     }
 
     /// Returns a reference to the underlying `wasmtime::Engine`.
@@ -210,7 +292,7 @@ impl WasmComponent {
         linker: &WasmLinker,
     ) -> Result<WasmInstance, WasmLoadError> {
         let module_id = state.module_id().to_string();
-        let mut store = wasmtime::Store::new(&engine.inner, state);
+        let mut store = new_store(engine, state);
         linker
             .inner
             .instantiate(&mut store, &self.inner)
@@ -240,6 +322,15 @@ impl WasmInstance {
     /// Returns the module identifier for this instance.
     pub fn module_id(&self) -> &str {
         self.store.data().module_id()
+    }
+
+    /// Total fuel this instance's guest code has consumed so far.
+    ///
+    /// `0` when the engine does not meter fuel, which is the default — see
+    /// [`WasmEngine::with_profiling`]. Cumulative across every export call made
+    /// on this instance, because they share one store.
+    pub fn fuel_consumed(&self) -> u64 {
+        FUEL_BUDGET.saturating_sub(self.store.get_fuel().unwrap_or(FUEL_BUDGET))
     }
 
     /// Invoke a named export function that takes no arguments and returns nothing.
@@ -295,5 +386,155 @@ impl WasmInstance {
                 })?;
 
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// A component with one export that burns a known-nonzero amount of fuel
+    /// and then calls a host import, so a test can observe both the fuel meter
+    /// and the `CallHook::CallingHost` transition the profiler rides on.
+    const TICKING_COMPONENT_WAT: &str = r#"
+    (component
+      (import "host-tick" (func $tick))
+      (core func $tick_core (canon lower (func $tick)))
+      (core module $m
+        (import "host" "tick" (func $tick))
+        (func (export "run")
+          (local $i i32)
+          (loop $l
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br_if $l (i32.lt_s (local.get $i) (i32.const 1000))))
+          (call $tick)))
+      (core instance $shim (export "tick" (func $tick_core)))
+      (core instance $i (instantiate $m (with "host" (instance $shim))))
+      (func (export "run") (canon lift (core func $i "run")))
+    )
+    "#;
+
+    /// Store data that records every fuel sample the call hook pushes at it.
+    #[derive(Default)]
+    struct RecordingState {
+        samples: RefCell<Vec<u64>>,
+    }
+
+    impl FuelSampleSink for RecordingState {
+        fn record_host_entry_fuel(&mut self, consumed: u64) {
+            self.samples.borrow_mut().push(consumed);
+        }
+    }
+
+    fn run_ticking_component(engine: &WasmEngine) -> (u64, Vec<u64>) {
+        let wasm = wat::parse_str(TICKING_COMPONENT_WAT).expect("WAT parse");
+        let component = wasmtime::component::Component::new(engine.wasmtime_engine(), &wasm)
+            .expect("component compile");
+
+        let mut linker =
+            wasmtime::component::Linker::<RecordingState>::new(engine.wasmtime_engine());
+        linker
+            .root()
+            .func_wrap("host-tick", |_store, (): ()| Ok(()))
+            .expect("wire host-tick");
+
+        let mut store = new_store(engine, RecordingState::default());
+        let instance = linker
+            .instantiate(&mut store, &component)
+            .expect("instantiate");
+        let run = instance
+            .get_typed_func::<(), ()>(&mut store, "run")
+            .expect("run export");
+        run.call(&mut store, ()).expect("call must not trap");
+
+        let consumed = FUEL_BUDGET.saturating_sub(store.get_fuel().unwrap_or(FUEL_BUDGET));
+        let samples = store.data().samples.borrow().clone();
+        (consumed, samples)
+    }
+
+    /// The regression this guards: turning on `consume_fuel` makes a store with
+    /// no fuel trap on its first instruction. If any construction site skipped
+    /// the budget, `run.call` would fail here rather than at some distant
+    /// module dispatch that looks like a broken guest.
+    #[test]
+    fn profiling_engine_budgets_fuel_and_reports_consumption() {
+        let engine = WasmEngine::with_profiling(true);
+        assert!(engine.profiling_enabled());
+
+        let (consumed, samples) = run_ticking_component(&engine);
+
+        assert!(
+            consumed > 1000,
+            "the 1000-iteration loop must register on the fuel meter, saw {consumed}"
+        );
+
+        // The call hook fired on the guest→host transition, which is the whole
+        // mechanism `profile_mark` uses to see fuel it cannot otherwise reach.
+        assert_eq!(
+            samples.len(),
+            1,
+            "exactly one CallingHost transition expected, saw {samples:?}"
+        );
+        assert!(
+            samples[0] > 1000 && samples[0] <= consumed,
+            "the sample must be the fuel burned before the host call, \
+             saw {} against a call total of {consumed}",
+            samples[0]
+        );
+    }
+
+    /// The default engine must stay exactly as it was: no metering, no hook,
+    /// and no fuel-related failure on a call.
+    #[test]
+    fn default_engine_does_not_meter_fuel() {
+        let engine = WasmEngine::new();
+        assert!(!engine.profiling_enabled());
+
+        let (consumed, samples) = run_ticking_component(&engine);
+
+        assert_eq!(
+            consumed, 0,
+            "fuel must read as 'no sample' when metering off"
+        );
+        assert!(
+            samples.is_empty(),
+            "no call hook may be installed when profiling is off"
+        );
+    }
+
+    /// `WasmInstance` goes through the same shared store constructor, so the
+    /// bare instantiate/call path must survive a profiling engine too.
+    #[test]
+    fn wasm_instance_path_survives_profiling_and_exposes_fuel() {
+        let engine = WasmEngine::with_profiling(true);
+        // No imports here: `WasmInstance`'s linker is `Linker<HostState>` and
+        // carries no host functions, so the component must be self-contained.
+        let wat = r#"
+        (component
+          (core module $m
+            (func (export "run")
+              (local $i i32)
+              (loop $l
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                (br_if $l (i32.lt_s (local.get $i) (i32.const 1000))))))
+          (core instance $i (instantiate $m))
+          (func (export "run") (canon lift (core func $i "run")))
+        )
+        "#;
+        let wasm = wat::parse_str(wat).expect("WAT parse");
+        let component = engine.compile_component(&wasm).expect("compile");
+        let mut instance = component
+            .instantiate(&engine, HostState::new("fuel-probe".to_string()))
+            .expect("instantiate must not trap for lack of fuel");
+
+        assert_eq!(instance.fuel_consumed(), 0, "no export called yet");
+        instance
+            .call_void_export("run")
+            .expect("call must not trap");
+        assert!(
+            instance.fuel_consumed() > 1000,
+            "fuel must accumulate on the instance's store"
+        );
     }
 }

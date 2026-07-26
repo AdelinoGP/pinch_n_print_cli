@@ -418,6 +418,17 @@ fn execute_single_layer_inner(
             // Pull the wasm linear-memory sample for the just-completed call.
             // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
             let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
+            // Fuel/scope marks (ADR-0050), drained before `on_module_end` so
+            // `--profile-verbose` still has this call's fold to hang off the
+            // `module_complete` that `on_module_end` emits. Both accessors
+            // return empty/zero when profiling is off.
+            instrumentation.on_module_profile(
+                &stage.stage_id,
+                Some(layer.index),
+                module.module_id(),
+                &runner.last_profile_marks(),
+                runner.last_call_fuel(),
+            );
             instrumentation.on_module_end(
                 &stage.stage_id,
                 Some(layer.index),

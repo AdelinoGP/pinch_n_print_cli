@@ -189,6 +189,8 @@ fn ordinary_slice_has_no_visual_debug_overhead() {
             report: None,
             report_verbose: false,
             instrument_stderr: false,
+            profile: false,
+            profile_verbose: false,
             progress_events: false,
             cancel_flag: None,
             config_overrides: std::collections::HashMap::new(),

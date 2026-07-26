@@ -78,6 +78,8 @@ fn slice_fixture(model: PathBuf, config_overrides: HashMap<String, ConfigValue>)
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
         progress_events: false,
         cancel_flag: None,
         config_overrides,

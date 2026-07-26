@@ -39,6 +39,8 @@ fn run_cancel_test_scenario(cancel_flag: Arc<AtomicBool>) -> Result<SliceOutcome
         report: None,
         report_verbose: false,
         instrument_stderr: false,
+        profile: false,
+        profile_verbose: false,
         progress_events: false,
         cancel_flag: Some(cancel_flag),
         config_overrides: HashMap::new(),
@@ -152,7 +154,7 @@ fn progress_event_cancelled_serializes_with_required_fields() {
     let json = serde_json::to_string(&event).expect("cancelled event should serialize");
 
     assert!(json.contains("\"event\":\"cancelled\""));
-    assert!(json.contains("\"schema_version\":\"1.4.0\""));
+    assert!(json.contains("\"schema_version\":\"1.5.0\""));
     assert!(json.contains("\"timestamp_ms\":12345"));
     assert!(json.contains("\"slice_id\":\"test-slice-id\""));
 }

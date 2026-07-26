@@ -2,6 +2,7 @@ package slicer:world-layer@2.3.0;
 
 world layer-module {
     import slicer:common/host-services;
+    import slicer:common/profiling;
     import slicer:config/config-types;
     import slicer:ir-handles/ir-handles;
 

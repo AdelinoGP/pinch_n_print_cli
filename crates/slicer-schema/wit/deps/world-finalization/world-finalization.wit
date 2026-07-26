@@ -2,6 +2,7 @@ package slicer:world-finalization@1.0.0;
 
 world finalization-module {
     import slicer:common/host-services;
+    import slicer:common/profiling;
     import slicer:config/config-types;
 
     use slicer:config/config-types.{config-view};

@@ -36,7 +36,7 @@ Buffering requirement:
 
 ```json
 {
-  "schema_version": "1.4.0",
+  "schema_version": "1.5.0",
   "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_stats|slice_complete",
   "timestamp_ms": 1735843200123,
   "slice_id": "9f9075ad-2bd8-4e9a-a2f5-3b9055d2f239",
@@ -164,7 +164,7 @@ Cancellation (`--cancel-on-stdin-eof` or Ctrl+C/Ctrl+Break)
 ──────────────────────────────────────────────────────────
 `layer_start` (Layer N)
   … layer in progress …
-`cancelled` { "schema_version": "1.4.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "..." }
+`cancelled` { "schema_version": "1.5.0", "event": "cancelled", "timestamp_ms": ..., "slice_id": "..." }
 (stream ends; no `slice_complete`; process exits with code 130; `--output` path is absent)
 
 Note: under `--instrument-stderr` the failing module's `module_complete`
@@ -175,6 +175,7 @@ matching on the dispatch result).
 
 - `1.3.0`: New `cancelled` event (added by packet 174) — emitted at most once on the cancel path; never followed by `slice_complete`.
 - `1.4.0`: New `module_log` event, emitted only under `--instrument-stderr`, carrying the log records modules write through `slicer_sdk::host::log`. Adds the OPTIONAL `level` and `message` top-level fields, present only on `module_log`.
+- `1.5.0`: New `profile_summary` event, emitted once at slice end under `--profile`, carrying the per-(module, scope) fuel fold described in ADR-0050. Adds the OPTIONAL `profile` top-level field, present only on `profile_summary`, and the OPTIONAL `profile_scopes` field on `module_complete`, present only under `--profile-verbose`. Guest modules are reported in fuel (deterministic executed wasm instructions); native host built-ins are not fuel-metered and are reported in wall-clock, in a separate section with its own denominator — the two are never summed.
 - A stream carries exactly one `schema_version`. Every constructor stamps `PROGRESS_EVENT_SCHEMA_VERSION` (or `PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED`); no event hard-codes a version literal. `slice_stats` did until this was corrected, which put two versions in one stream.
 
 The `schema_version` field follows additive minor bumps:
@@ -217,7 +218,7 @@ per-stage and per-module brackets on the same stderr JSONL stream, at the
 same schema version as the core stream — the instrumented stream carries
 the same additive payload as the base stream, so
 `PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED` always equals
-`PROGRESS_EVENT_SCHEMA_VERSION` (currently `"1.4.0"`). New event types
+`PROGRESS_EVENT_SCHEMA_VERSION` (currently `"1.5.0"`). New event types
 (additive, backward-compatible with consumers that ignore unknown
 `event` values):
 
@@ -259,8 +260,8 @@ agent-facing workflow, see `17_agent_debugging.md`.
 Example excerpt (one prepass stage + one per-layer module):
 
 ```jsonl
-{"schema_version":"1.4.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
-{"schema_version":"1.4.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok"}
-{"schema_version":"1.4.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
-{"schema_version":"1.4.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
+{"schema_version":"1.5.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
+{"schema_version":"1.5.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok"}
+{"schema_version":"1.5.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host:mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
+{"schema_version":"1.5.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
 ```

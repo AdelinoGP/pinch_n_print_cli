@@ -59,6 +59,22 @@ thread_local! {
     /// threads, so `run_stage → audit` stays on one thread.
     static LAST_BATCH_CALLS: std::cell::RefCell<Vec<(String, u32)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding the profile marks emitted by the most
+    /// recent layer- or prepass-module invocation on this thread (ADR-0050).
+    /// Read and cleared by `last_profile_marks` on the runner traits. Same
+    /// thread-locality argument as `LAST_BATCH_CALLS`. Always empty when
+    /// profiling is off — no store meters fuel then, and `profile_mark`
+    /// records nothing.
+    static LAST_PROFILE_MARKS: std::cell::RefCell<Vec<crate::profiling::ProfileMark>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+
+    /// Per-worker-thread slot holding total fuel consumed by the guest during
+    /// the most recent layer- or prepass-module invocation on this thread.
+    /// Read and cleared by `last_call_fuel`. `0` means "no sample" — either
+    /// profiling is off, or the guest genuinely executed nothing. Mirrors
+    /// `LAST_WASM_MEM_SAMPLE`, including the replace-on-read semantics.
+    static LAST_CALL_FUEL: Cell<u64> = const { Cell::new(0) };
 }
 
 /// Structured runtime dispatch error with full diagnostic context.
@@ -250,6 +266,15 @@ pub struct WasmRuntimeDispatcher {
     /// A parallel stash rather than a wider tuple return, so the existing
     /// `(Result, Vec<String>)` dispatch signatures are untouched.
     postpass_batch_calls: std::cell::RefCell<Vec<Vec<(String, u32)>>>,
+    /// Accumulated profile marks from postpass dispatch calls, one inner `Vec`
+    /// per call. Postpass runs on the caller's thread through `&mut self`
+    /// accessors, so it uses a field rather than the thread-local the
+    /// layer/prepass paths use — same split as `postpass_batch_calls`.
+    postpass_profile_marks: std::cell::RefCell<Vec<Vec<crate::profiling::ProfileMark>>>,
+    /// Total fuel consumed per postpass dispatch call, in call order. One entry
+    /// per call including calls that consumed nothing, so the vector lines up
+    /// index-for-index with the postpass invocations.
+    postpass_call_fuel: std::cell::RefCell<Vec<u64>>,
 }
 
 impl WasmRuntimeDispatcher {
@@ -259,7 +284,38 @@ impl WasmRuntimeDispatcher {
             engine,
             postpass_runtime_reads: std::cell::RefCell::new(Vec::new()),
             postpass_batch_calls: std::cell::RefCell::new(Vec::new()),
+            postpass_profile_marks: std::cell::RefCell::new(Vec::new()),
+            postpass_call_fuel: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    /// Build the `wasmtime::Store` for one dispatch call.
+    ///
+    /// The single construction point for every store in this file. Routing all
+    /// of them through here is what guarantees the fuel budget is set — with
+    /// `Config::consume_fuel` on, a store that missed it traps on its first
+    /// instruction, and that failure would read as a broken module rather than
+    /// as a forgotten call site. It also carries the engine's profiling flag
+    /// onto the context, which is what `profile-enabled` answers with.
+    fn new_call_store(
+        &self,
+        mut ctx: HostExecutionContext,
+    ) -> wasmtime::Store<HostExecutionContext> {
+        ctx.set_profiling_enabled(self.engine.profiling_enabled());
+        let mut store = crate::instance::new_store(&self.engine, ctx);
+        store.limiter(|ctx| &mut ctx.mem_tracker);
+        store
+    }
+
+    /// Move a finished postpass call's profile marks and fuel total into the
+    /// per-dispatcher stashes `take_profile_marks` / `take_call_fuel` drain.
+    fn stash_postpass_profile(&self, store: &mut wasmtime::Store<HostExecutionContext>) {
+        self.postpass_call_fuel
+            .borrow_mut()
+            .push(call_fuel_consumed(store));
+        let marks: Vec<crate::profiling::ProfileMark> =
+            store.data_mut().profile_marks.drain(..).collect();
+        self.postpass_profile_marks.borrow_mut().push(marks);
     }
 
     /// Move a finished postpass call's batched host-service records into the
@@ -356,8 +412,7 @@ impl WasmRuntimeDispatcher {
         )
         .mesh_ir(Some(mesh_ir))
         .build();
-        let mut store = wasmtime::Store::new(engine, ctx);
-        store.limiter(|ctx| &mut ctx.mem_tracker);
+        let mut store = self.new_call_store(ctx);
 
         store.data_mut().set_held_claims_per_region(held_claims_map);
 
@@ -442,6 +497,7 @@ impl WasmRuntimeDispatcher {
         LAST_WASM_MEM_SAMPLE.with(|c| c.set((mem_initial_bytes, mem_peak_bytes)));
 
         stash_batch_calls(store.data_mut());
+        stash_profile(&mut store);
 
         Ok(store.into_data())
     }
@@ -774,8 +830,7 @@ impl WasmRuntimeDispatcher {
         let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir.clone()))
             .build();
-        let mut store = wasmtime::Store::new(engine, ctx);
-        store.limiter(|ctx| &mut ctx.mem_tracker);
+        let mut store = self.new_call_store(ctx);
 
         let config_handle = store
             .data_mut()
@@ -946,6 +1001,7 @@ impl WasmRuntimeDispatcher {
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().extend(diags));
 
         stash_batch_calls(store.data_mut());
+        stash_profile(&mut store);
 
         Ok(store.into_data())
     }
@@ -995,8 +1051,7 @@ impl WasmRuntimeDispatcher {
         let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir))
             .build();
-        let mut store = wasmtime::Store::new(engine, ctx);
-        store.limiter(|ctx| &mut ctx.mem_tracker);
+        let mut store = self.new_call_store(ctx);
 
         let config_handle = store
             .data_mut()
@@ -1078,6 +1133,8 @@ impl WasmRuntimeDispatcher {
         // store (and its HostExecutionContext) is consumed.
         forward_module_logs(module_id, &store.data().log_messages);
 
+        stash_profile(&mut store);
+
         Ok(store.data_mut().drain_finalization_output_builder())
     }
 
@@ -1140,8 +1197,7 @@ impl WasmRuntimeDispatcher {
         let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir))
             .build();
-        let mut store = wasmtime::Store::new(engine, ctx);
-        store.limiter(|ctx| &mut ctx.mem_tracker);
+        let mut store = self.new_call_store(ctx);
 
         let config_handle = match store
             .data_mut()
@@ -1210,6 +1266,7 @@ impl WasmRuntimeDispatcher {
         );
         let runtime_reads = store.data().runtime_reads.clone();
         self.stash_postpass_batch_calls(store.data_mut());
+        self.stash_postpass_profile(&mut store);
         // Forward module log messages to the host log facade before the
         // store (and its HostExecutionContext) is consumed.
         forward_module_logs(module_id, &store.data().log_messages);
@@ -1315,8 +1372,7 @@ impl WasmRuntimeDispatcher {
         let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
             .mesh_ir(Some(mesh_ir))
             .build();
-        let mut store = wasmtime::Store::new(engine, ctx);
-        store.limiter(|ctx| &mut ctx.mem_tracker);
+        let mut store = self.new_call_store(ctx);
 
         let config_handle = match store
             .data_mut()
@@ -1360,6 +1416,7 @@ impl WasmRuntimeDispatcher {
         let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
         let runtime_reads = store.data().runtime_reads.clone();
         self.stash_postpass_batch_calls(store.data_mut());
+        self.stash_postpass_profile(&mut store);
         // Forward module log messages to the host log facade before the
         // store (and its HostExecutionContext) is consumed.
         forward_module_logs(module_id, &store.data().log_messages);
@@ -1984,6 +2041,14 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
     fn last_diagnostics(&self) -> Vec<slicer_ir::Diagnostic> {
         LAST_PREPASS_DIAGNOSTICS.with(|c| c.borrow_mut().drain(..).collect())
     }
+
+    fn last_profile_marks(&self) -> Vec<crate::profiling::ProfileMark> {
+        LAST_PROFILE_MARKS.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_call_fuel(&self) -> u64 {
+        LAST_CALL_FUEL.with(|c| c.replace(0))
+    }
 }
 
 impl LayerStageRunner for WasmRuntimeDispatcher {
@@ -2187,6 +2252,14 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
     }
+
+    fn last_profile_marks(&self) -> Vec<crate::profiling::ProfileMark> {
+        LAST_PROFILE_MARKS.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_call_fuel(&self) -> u64 {
+        LAST_CALL_FUEL.with(|c| c.replace(0))
+    }
 }
 
 impl FinalizationStageRunner for WasmRuntimeDispatcher {
@@ -2226,6 +2299,14 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
 
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_profile_marks(&self) -> Vec<crate::profiling::ProfileMark> {
+        LAST_PROFILE_MARKS.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn last_call_fuel(&self) -> u64 {
+        LAST_CALL_FUEL.with(|c| c.replace(0))
     }
 }
 
@@ -2310,6 +2391,14 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
 
     fn last_log_messages(&self) -> Vec<(String, String)> {
         LAST_MODULE_LOG_MESSAGES.with(|c| c.borrow_mut().drain(..).collect())
+    }
+
+    fn take_profile_marks(&mut self) -> Vec<Vec<crate::profiling::ProfileMark>> {
+        self.postpass_profile_marks.borrow_mut().drain(..).collect()
+    }
+
+    fn take_call_fuel(&mut self) -> Vec<u64> {
+        self.postpass_call_fuel.borrow_mut().drain(..).collect()
     }
 }
 
@@ -2542,6 +2631,38 @@ fn stash_batch_calls(ctx: &mut HostExecutionContext) {
 #[doc(hidden)]
 pub fn last_batch_calls_for_test() -> Vec<(String, u32)> {
     LAST_BATCH_CALLS.with(|c| c.borrow_mut().drain(..).collect())
+}
+
+/// Total fuel the guest burned during this call: budget minus what is left.
+///
+/// Returns `0` when the store's engine does not meter fuel — `get_fuel` errors
+/// in that case, and "no sample" is the honest answer, matching how
+/// `LAST_WASM_MEM_SAMPLE` reports `(0, 0)` for a component with no memory.
+fn call_fuel_consumed(store: &wasmtime::Store<HostExecutionContext>) -> u64 {
+    let remaining = store.get_fuel().unwrap_or(crate::instance::FUEL_BUDGET);
+    crate::instance::FUEL_BUDGET.saturating_sub(remaining)
+}
+
+/// Move a finished layer/prepass call's profile marks and fuel total off the
+/// store into the thread-local stashes `last_profile_marks` / `last_call_fuel`
+/// drain. Draining rather than cloning, for the same reason as
+/// [`stash_batch_calls`]: the context is about to be consumed by `into_data`.
+fn stash_profile(store: &mut wasmtime::Store<HostExecutionContext>) {
+    LAST_CALL_FUEL.with(|c| c.set(call_fuel_consumed(store)));
+    if store.data().profile_marks().is_empty() {
+        return;
+    }
+    let marks: Vec<crate::profiling::ProfileMark> =
+        store.data_mut().profile_marks.drain(..).collect();
+    LAST_PROFILE_MARKS.with(|c| c.borrow_mut().extend(marks));
+}
+
+/// Test-only accessor: drain the thread-local profile-mark stash.
+/// Mirrors `WasmRuntimeDispatcher::last_profile_marks` but callable without
+/// a dispatcher instance.
+#[doc(hidden)]
+pub fn last_profile_marks_for_test() -> Vec<crate::profiling::ProfileMark> {
+    LAST_PROFILE_MARKS.with(|c| c.borrow_mut().drain(..).collect())
 }
 
 /// Build paint-layer data for dispatch contract tests without exposing the

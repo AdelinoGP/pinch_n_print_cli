@@ -47,6 +47,7 @@ use crate::pipeline::{
     run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
     PipelineStageRunners,
 };
+use crate::profiling_report::{ProfileAggregator, ProfileSummary};
 use crate::progress_events::{
     JsonLinesEmitter, NullEmitter, ProgressError, ProgressEvent, ProgressEventEmitter,
     ProgressPhase, ProgressStatus, RuntimeProgressSink, SliceEventCollector,
@@ -58,6 +59,7 @@ use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
 use slicer_gcode::{
     estimate_print, DefaultGCodeEmitter, DefaultGCodeSerializer, EstimatorLimits, GcodeFlavor,
 };
+use slicer_wasm_host::execution_plan_live::load_live_modules_for_plan_profiled;
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan_with_config};
 
@@ -91,6 +93,21 @@ pub struct SliceRunOptions {
     /// When true, emit per-stage / per-module timing events on the stderr
     /// JSONL stream during the slice (schema version `"1.2.0"`).
     pub instrument_stderr: bool,
+    /// When true, meter wasmtime fuel and collect scope marks, then emit one
+    /// `profile_summary` event at slice end (ADR-0050).
+    ///
+    /// Separate from `instrument_stderr` because fuel metering costs
+    /// throughput: a plain instrumented run must stay unaffected. Setting this
+    /// also builds the shared `WasmEngine` with `consume_fuel`, which is what
+    /// makes `profile-enabled` answer `true` to every guest.
+    pub profile: bool,
+    /// When true, additionally attach each dispatch call's own scope fold to
+    /// its `module_complete` event. Requires `profile`; ignored without it.
+    ///
+    /// Mirrors `report_verbose`: aggregation is always the default because a
+    /// benchy emits thousands of `module_complete` events, and this is the
+    /// opt-in for finding one pathological layer.
+    pub profile_verbose: bool,
     /// When true (the default for `pnp_cli slice`), emit the docs/09 core
     /// progress-event contract (phase/layer/validation/module_error/
     /// slice_complete) as JSONL on stderr. When false
@@ -114,6 +131,12 @@ pub struct SliceOutcome {
     pub layer_count: u32,
     /// Wall-clock time of the pipeline in milliseconds.
     pub wallclock_ms: u64,
+    /// Run-wide fuel/scope fold, present only when
+    /// [`SliceRunOptions::profile`] was set (ADR-0050).
+    ///
+    /// Returned as well as emitted on the JSONL stream so `pnp_cli` can print
+    /// its ranked table without parsing back the stream it just wrote.
+    pub profile: Option<crate::profiling_report::ProfileSummary>,
 }
 
 /// Error returned by `run_slice`.
@@ -223,11 +246,17 @@ fn run_pipeline_fork(
     channel: &ProgressChannel,
     config: PipelineConfig,
     config_source: &std::collections::HashMap<String, ConfigValue>,
+    profile: Option<&Arc<ProfileAggregator>>,
     #[cfg(feature = "report")] dag_snapshot: Option<crate::report::ReportDagSnapshot>,
 ) -> Result<crate::pipeline::PipelineOutput, SliceRunError> {
     let sink_arc = Arc::clone(&channel.sink);
 
-    let progress_pi = if opts.progress_events {
+    // Profiling needs the adapter even under `--no-progress-events`: it is the
+    // only thing that sees every module bracket. Nothing reaches stderr in that
+    // case — the channel's emitter is a `NullEmitter` — so the flag keeps its
+    // meaning while `--profile --no-progress-events` still produces a summary
+    // for the caller to print.
+    let progress_pi = if opts.progress_events || profile.is_some() {
         let tier = if opts.instrument_stderr {
             ProgressTier::Instrumented
         } else {
@@ -235,11 +264,16 @@ fn run_pipeline_fork(
         };
         let sink_dyn: Arc<dyn LayerProgressSink + Send + Sync> =
             Arc::clone(&sink_arc) as Arc<dyn LayerProgressSink + Send + Sync>;
-        Some(ProgressPipelineInstrumentation::with_tier(
-            sink_dyn,
-            channel.slice_id.clone(),
-            tier,
-        ))
+        let pi =
+            ProgressPipelineInstrumentation::with_tier(sink_dyn, channel.slice_id.clone(), tier);
+        // Profiling rides the progress adapter because that is where every
+        // module bracket already lands. It is independent of `tier`: a
+        // `--profile` run without `--instrument-stderr` still folds marks, it
+        // just does not emit the per-module timing events.
+        Some(match profile {
+            Some(agg) => pi.with_profiling(Arc::clone(agg), opts.profile_verbose),
+            None => pi,
+        })
     } else {
         None
     };
@@ -408,6 +442,21 @@ pub fn run_slice_with_collector(
     let t0 = Instant::now();
     let channel = build_progress_channel(opts.progress_events, collector);
 
+    // Fuel-based profiling (ADR-0050). The aggregator's existence is the single
+    // switch: nothing downstream records anything without it. The native sink
+    // is installed here too so host built-ins report under the same
+    // `polygon_ops::*` vocabulary the guests use — with wall-clock only, since
+    // native code is not fuel-metered.
+    let profile = opts.profile.then(|| {
+        if !crate::profiling_report::begin_native_profiling() {
+            eprintln!(
+                "warning: another slicer-core profiling sink is already installed; \
+                 host built-in attribution will be unavailable this run"
+            );
+        }
+        Arc::new(ProfileAggregator::new())
+    });
+
     // Mesh is pre-loaded by the caller (see SliceRunOptions::mesh).
     let mesh_ir = Arc::clone(&opts.mesh);
 
@@ -509,15 +558,21 @@ pub fn run_slice_with_collector(
     // `wall_generator` config key rather than alphabetical module-id order
     // (packet 112 Step 10 — see `load_live_modules_for_plan_with_config`'s
     // doc comment for the production defect this closes).
-    let mut loaded =
-        load_live_modules_for_plan_with_config(&search_roots, num_cpus_guess(), &config_source)
-            .map_err(|e| {
-                SliceRunError(format!(
-                    "failed to load modules from {} root(s) {:?}: {e}",
-                    search_roots.len(),
-                    search_roots
-                ))
-            })?;
+    // `opts.profile` reaches every guest through this one engine: it turns on
+    // `consume_fuel` *and* is what `profile-enabled` answers with.
+    let mut loaded = load_live_modules_for_plan_profiled(
+        &search_roots,
+        num_cpus_guess(),
+        &config_source,
+        opts.profile,
+    )
+    .map_err(|e| {
+        SliceRunError(format!(
+            "failed to load modules from {} root(s) {:?}: {e}",
+            search_roots.len(),
+            search_roots
+        ))
+    })?;
     for diag in &loaded.diagnostics {
         eprintln!(
             "{level:?}: {path}: {msg}",
@@ -790,9 +845,18 @@ pub fn run_slice_with_collector(
         &channel,
         pipeline_config,
         &config_source,
+        profile.as_ref(),
         #[cfg(feature = "report")]
         dag_snapshot,
     );
+
+    // Fold the host built-ins' native marks in and stop recording, on both the
+    // success and the failure path: leaving the sink recording would let a
+    // later profiling-off run in the same process accumulate silently.
+    let profile_summary: Option<ProfileSummary> = profile.as_ref().map(|agg| {
+        crate::profiling_report::end_native_profiling(agg);
+        agg.finish()
+    });
 
     // Report the human channel's suppressed module-log repeats before
     // returning, on both the success and the failure path. `forward_module_logs`
@@ -855,12 +919,24 @@ pub fn run_slice_with_collector(
             toolchange_count: estimate.toolchange_count,
         }
     });
+    // `profile_summary` precedes `slice_stats` / `slice_complete`: the
+    // terminal events stay terminal, so a consumer that stops reading at
+    // `slice_complete` never misses the profile (ADR-0050).
+    if let Some(summary) = profile_summary.as_ref() {
+        channel.sink.record(ProgressEvent::profile_summary(
+            channel.slice_id.clone(),
+            now_unix_ms(),
+            wallclock_ms,
+            summary.clone(),
+        ));
+    }
     emit_end_of_slice_events(&channel.sink, &channel.slice_id, wallclock_ms, stats);
 
     Ok(SliceOutcome {
         gcode_text: pipeline_output.gcode_text,
         layer_count,
         wallclock_ms,
+        profile: profile_summary,
     })
 }
 

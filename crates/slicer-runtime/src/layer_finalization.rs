@@ -91,6 +91,16 @@ pub fn execute_layer_finalization_with_instrumentation(
                     &message,
                 );
             }
+            // Must precede `on_module_end`, which is what emits the
+            // `module_complete` the verbose scope detail attaches to. Both
+            // accessors return empty/zero when profiling is off.
+            instrumentation.on_module_profile(
+                &stage.stage_id,
+                None,
+                module.module_id(),
+                &runner.last_profile_marks(),
+                runner.last_call_fuel(),
+            );
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             res?;
 

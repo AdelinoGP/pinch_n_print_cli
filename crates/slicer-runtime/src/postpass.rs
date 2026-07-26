@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_gcode::{GCodeEmitError, GCodeEmitter, GCodeSerializer};
-use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput, StageId};
 
 thread_local! {
     /// The final `GCodeIR` of the most recent successful postpass on this
@@ -129,6 +129,34 @@ pub fn execute_postpass(
         &NoopInstrumentation,
         wasm_handles,
     )
+}
+
+/// Drain the profiling marks and fuel totals a postpass dispatch left in the
+/// runner's per-call stashes and hand them to `instrumentation` (ADR-0050).
+///
+/// Unlike the layer/prepass path — where `last_profile_marks` is a thread-local
+/// holding exactly the last call — `PostpassStageRunner` accumulates one entry
+/// per dispatch and drains them all at once. Calling this right after each
+/// dispatch means the stash holds exactly one call's worth, which is what makes
+/// the attribution to `module_id` correct; letting entries pile up and draining
+/// at the end would leave no way to say which module produced which entry.
+///
+/// The mark vectors are flattened because a single postpass dispatch produces
+/// one entry; a runner that pushed several would still be reported under the
+/// same module, which is the truthful answer.
+fn drain_postpass_profile(
+    runner: &mut dyn PostpassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    stage_id: &StageId,
+    module_id: &ModuleId,
+) {
+    let marks: Vec<slicer_wasm_host::profiling::ProfileMark> =
+        runner.take_profile_marks().into_iter().flatten().collect();
+    let call_fuel: u64 = runner.take_call_fuel().into_iter().sum();
+    if marks.is_empty() && call_fuel == 0 {
+        return;
+    }
+    instrumentation.on_module_profile(stage_id, None, module_id, &marks, call_fuel);
 }
 
 /// Instrumented variant of [`execute_postpass`] that brackets each
@@ -260,6 +288,16 @@ pub fn execute_postpass_with_capture(
                     input,
                     &mut gcode_ir.commands,
                 );
+                // Fuel/scope marks (ADR-0050). Drained per dispatch rather than
+                // once at the end like `take_batch_calls`: the per-dispatcher
+                // stash is a `Vec` per call, and a batch drain would have no way
+                // to say which module each entry came from.
+                drain_postpass_profile(
+                    runner,
+                    instrumentation,
+                    &stage.stage_id,
+                    module.module_id(),
+                );
                 instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
                 // Drain module log messages (already forwarded to the human
                 // `log` facade inside the dispatcher; this clears the
@@ -378,6 +416,7 @@ pub fn execute_postpass_with_capture(
                 _phantom: std::marker::PhantomData,
             };
             let res = runner.run_text_postprocess(&stage.stage_id, &live_module, input, text);
+            drain_postpass_profile(runner, instrumentation, &stage.stage_id, module.module_id());
             instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             let result = match res {
                 Ok(r) => r,

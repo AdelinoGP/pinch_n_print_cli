@@ -41,17 +41,24 @@ use crate::layer_executor::LayerProgressSink;
 /// executor drop-site. Unlike the human `log`-facade channel, this stream is
 /// never de-duplicated.
 ///
+/// 1.5.0 (additive, ADR-0050): `profile_summary` event type plus the optional
+/// `profile` field it carries, and the optional `profile_scopes` field on
+/// `module_complete`. Both are emitted only under `pnp_cli slice --profile`
+/// (`profile_scopes` additionally requires `--profile-verbose`). A run without
+/// `--profile` produces a byte-identical stream to 1.4.0 apart from the version
+/// string.
+///
 /// Every constructor in this module MUST stamp this constant (or its
 /// `_INSTRUMENTED` twin) rather than a version literal. A stream that mixes
 /// versions is unparseable by a consumer that keys its field expectations off
 /// the first line it sees.
-pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.4.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.5.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
 /// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
 /// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
-pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.4.0";
+pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.5.0";
 
 /// Stable `ProgressError.code` for a `validation_error` raised by intra-stage
 /// DAG construction failure during the 14-pass startup validation.
@@ -115,6 +122,10 @@ pub enum ProgressEventType {
     /// Emitted once per module log record drained after a dispatch
     /// (instrumented stream only). Introduced at schema 1.4.0.
     ModuleLog,
+    /// Emitted exactly once per profiled slice, at slice end, carrying the
+    /// run-wide per-(module, scope) fuel and wall-clock fold (ADR-0050).
+    /// Introduced at schema 1.5.0; present only under `--profile`.
+    ProfileSummary,
 }
 
 /// Phase of the slicing pipeline.
@@ -240,6 +251,20 @@ pub struct ProgressEvent {
     /// dispatch failure rather than a module-authored log record.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// Run-wide profiling fold. Populated only on the single `profile_summary`
+    /// event emitted at the end of a `--profile` slice (schema 1.5.0).
+    ///
+    /// Aggregated by construction: a 0.2 mm benchy emits thousands of
+    /// `module_complete` events, so attaching scope arrays to each of them
+    /// would force every consumer to write a reducer before reading anything.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<crate::profiling_report::ProfileSummary>,
+    /// One dispatch call's scope fold, attached to `module_complete` under
+    /// `--profile-verbose` only (schema 1.5.0). The opt-in escape hatch for
+    /// finding a single pathological layer, mirroring how `--report-verbose`
+    /// adds per-layer-per-module rows to the HTML report.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_scopes: Option<crate::profiling_report::ProfileCallDetail>,
 }
 
 impl ProgressEvent {
@@ -270,6 +295,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -302,6 +329,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -340,6 +369,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -377,6 +408,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -417,6 +450,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -466,6 +501,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -498,6 +535,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -538,6 +577,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -584,6 +625,8 @@ impl ProgressEvent {
             toolchange_count: Some(toolchange_count),
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -623,6 +666,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -662,6 +707,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -701,6 +748,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -743,6 +792,8 @@ impl ProgressEvent {
             toolchange_count: None,
             level: None,
             message: None,
+            profile: None,
+            profile_scopes: None,
         }
     }
 
@@ -791,6 +842,53 @@ impl ProgressEvent {
             toolchange_count: None,
             level: Some(level),
             message: Some(message),
+            profile: None,
+            profile_scopes: None,
+        }
+    }
+
+    /// Create the single `profile_summary` event (schema 1.5.0, ADR-0050).
+    ///
+    /// Emitted once per `--profile` slice, at slice end, strictly after the
+    /// last `module_complete`. It carries the whole run's per-(module, scope)
+    /// fold so a consumer reads one line instead of reducing thousands.
+    ///
+    /// `elapsed_ms` is the slice's wall-clock, present so a reader can put the
+    /// fuel figures in temporal context; it is *not* the sum of the profile's
+    /// own wall-clock columns, which cover only marked scopes.
+    pub fn profile_summary(
+        slice_id: String,
+        timestamp_ms: u64,
+        elapsed_ms: u64,
+        profile: crate::profiling_report::ProfileSummary,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::ProfileSummary,
+            timestamp_ms,
+            slice_id,
+            phase: None,
+            stage: None,
+            layer_index: None,
+            module_id: None,
+            status: ProgressStatus::Ok,
+            elapsed_ms: Some(elapsed_ms),
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+            gcode_prediction_seconds: None,
+            gcode_weight_grams: None,
+            gcode_filament_length_mm: None,
+            layer_count: None,
+            first_layer_height_mm: None,
+            extruded_volume_mm3: None,
+            toolchange_count: None,
+            level: None,
+            message: None,
+            profile: Some(profile),
+            profile_scopes: None,
         }
     }
 }
@@ -970,7 +1068,7 @@ mod tests {
     /// `docs/09_progress_events.md`.
     #[test]
     fn baseline_schema_version_matches_documented_version_table() {
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.4.0");
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.5.0");
     }
 
     /// The instrumented stream carries the same additive payload as the
@@ -1063,6 +1161,12 @@ mod tests {
                 "warn".to_string(),
                 "thin wall skipped".to_string(),
             ),
+            ProgressEvent::profile_summary(
+                slice_id(),
+                ts,
+                1,
+                crate::profiling_report::ProfileAggregator::new().finish(),
+            ),
         ];
         for event in &instrumented {
             assert_eq!(
@@ -1136,6 +1240,90 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(!json.contains("\"level\""));
         assert!(!json.contains("\"message\""));
+    }
+
+    /// `profile` / `profile_scopes` are opt-in payloads. A run without
+    /// `--profile` must produce a stream that carries neither key, so a
+    /// consumer can key on their presence to detect a profiled capture.
+    #[test]
+    fn profile_keys_are_absent_from_every_non_profiled_event() {
+        let events = vec![
+            ProgressEvent::layer_start(
+                "s".to_string(),
+                ProgressPhase::PerLayer,
+                0,
+                1_735_843_200_000,
+            ),
+            ProgressEvent::module_complete(
+                "s".to_string(),
+                ProgressPhase::PerLayer,
+                "Layer::Perimeters".to_string(),
+                "com.example.perimeters".to_string(),
+                Some(0),
+                1_735_843_200_000,
+                1,
+                0,
+            ),
+            ProgressEvent::slice_complete(
+                "s".to_string(),
+                1_735_843_200_000,
+                1,
+                ProgressStatus::Ok,
+                false,
+                0,
+                0,
+            ),
+        ];
+        for event in &events {
+            let json = serde_json::to_string(event).unwrap();
+            assert!(!json.contains("\"profile\""), "{:?}: {json}", event.event);
+            assert!(
+                !json.contains("\"profile_scopes\""),
+                "{:?}: {json}",
+                event.event
+            );
+        }
+    }
+
+    #[test]
+    fn profile_summary_event_carries_the_fold_and_no_module_context() {
+        let agg = crate::profiling_report::ProfileAggregator::new();
+        agg.record_call(
+            "com.example.perimeters",
+            &[
+                slicer_wasm_host::profiling::ProfileMark {
+                    scope: 3,
+                    edge: slicer_wasm_host::profiling::MarkEdge::Enter,
+                    fuel: 0,
+                    wall_ns: 0,
+                },
+                slicer_wasm_host::profiling::ProfileMark {
+                    scope: 3,
+                    edge: slicer_wasm_host::profiling::MarkEdge::Exit,
+                    fuel: 900,
+                    wall_ns: 90,
+                },
+            ],
+            1_000,
+        );
+        let event = ProgressEvent::profile_summary(
+            "slice-xyz".to_string(),
+            1_735_843_200_123,
+            4_947,
+            agg.finish(),
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"event\":\"profile_summary\""), "{json}");
+        assert!(json.contains("\"fuel_total\":1000"), "{json}");
+        assert!(json.contains("polygon_ops::offset2_ex"), "{json}");
+        assert!(json.contains("\"unit\":\"fuel\""), "{json}");
+        // A run-wide roll-up belongs to no single stage/module/layer. Checked
+        // on the parsed event, not by substring: `module_id` legitimately
+        // appears *inside* the nested profile payload.
+        assert_eq!(event.module_id, None);
+        assert_eq!(event.stage, None);
+        assert_eq!(event.layer_index, None);
+        assert_eq!(event.phase, None);
     }
 
     #[test]

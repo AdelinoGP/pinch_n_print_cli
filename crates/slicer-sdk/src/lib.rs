@@ -11,7 +11,9 @@
 //! - prepass types (FacetAnnotation, FacetClass, LayerProposal, etc.),
 //! - prepass builders (MeshAnalysisOutput, LayerPlanOutput),
 //! - postpass types (GcodeCommand, GcodeOutputCommand),
-//! - postpass builders (GcodeOutputBuilder, GcodeMoveCmd).
+//! - postpass builders (GcodeOutputBuilder, GcodeMoveCmd),
+//! - the guest profiling sink that bridges `slicer_core::profile` to the WIT
+//!   `slicer:common/profiling` interface (ADR-0050).
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -29,6 +31,7 @@ pub mod postpass_types;
 pub mod prelude;
 pub mod prepass_builders;
 pub mod prepass_types;
+pub mod profile;
 #[rustfmt::skip]
 #[cfg(any(test, feature = "test"))] pub mod test_prelude;
 #[rustfmt::skip]
