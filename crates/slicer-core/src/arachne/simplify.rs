@@ -176,16 +176,19 @@ fn simplify_distance_gated(
     // `ExtrusionLine`'s first and last junctions are the same point, and it ends
     // by copying the last position onto the first.
     //
-    // PnP has two conventions in play. `stitch_extrusions` builds closed loops
-    // that way, duplicating the start junction onto the end. But
-    // `generate_toolpaths` emits the local-maximum hexagonal micro-loop as six
-    // *distinct* junctions with `is_closed: true` and no duplicate. Applying the
-    // closing copy to that representation overwrites a real vertex, collapsing
-    // two of the six and shifting the loop's centroid.
+    // Both of this crate's producers now satisfy that: `stitch_extrusions`
+    // duplicates the start junction onto the end when it closes a loop, and
+    // `generate_local_maxima_single_beads` closes its hexagonal micro-loop the
+    // same way. The check below is therefore expected to pass for every closed
+    // line in the current pipeline.
     //
-    // So the wrap-around is driven by the actual geometry rather than by the
-    // flag alone: a closed line whose endpoints do not coincide is walked as an
-    // open polyline, which keeps every one of its vertices.
+    // It is kept as a guard rather than an assertion because the convention is
+    // not enforced by the type: `ExtrusionLine` lets any producer set
+    // `is_closed: true` on a vertex ring with no duplicate, and the micro-loop
+    // did exactly that until it was normalised. Applying the closing copy to
+    // that shape overwrites a real vertex — it collapsed two of the hexagon's
+    // six and shifted its centroid. A closed line whose endpoints do not
+    // coincide is walked as an open polyline instead, which keeps every vertex.
     let has_duplicate_endpoint =
         junctions[0].p.x == junctions[n - 1].p.x && junctions[0].p.y == junctions[n - 1].p.y;
     let wrap_around = is_closed && has_duplicate_endpoint;

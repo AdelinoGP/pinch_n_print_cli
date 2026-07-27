@@ -117,36 +117,47 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     )
     .expect("pentagon should produce Ok(lines)");
 
-    // Find closed is_odd lines with exactly 6 junctions — the micro-loop.
+    // Find the micro-loop: closed is_odd lines with 7 junctions — 6 hexagon
+    // vertices plus the duplicated closing junction the closed-loop convention
+    // requires (`first.xy == last.xy`).
     let micro_loops: Vec<&ExtrusionLine> = lines
         .iter()
-        .filter(|l| l.is_odd && l.is_closed && l.junctions.len() == 6)
+        .filter(|l| l.is_odd && l.is_closed && l.junctions.len() == 7)
         .collect();
 
     assert!(
         !micro_loops.is_empty(),
-        "expected at least one closed is_odd ExtrusionLine with 6 junctions (hexagonal \
+        "expected at least one closed is_odd ExtrusionLine with 7 junctions (hexagonal \
          micro-loop from generateLocalMaximaSingleBeads) for a regular pentagon with odd bead \
-         count and no central edges, got {} total lines with {} closed-is_odd-6j candidates",
+         count and no central edges, got {} total lines with {} closed-is_odd-7j candidates",
         lines.len(),
         micro_loops.len()
     );
 
-    // Verify the micro-loop's geometry: the 6 junctions should form a
-    // roughly hexagonal shape.
+    // Verify the micro-loop's geometry: the 6 distinct junctions should form a
+    // roughly hexagonal shape. The 7th is the closing duplicate of the first and
+    // is excluded from every geometric statistic below, so it cannot skew the
+    // centroid.
     let ml = micro_loops[0];
+    let verts = &ml.junctions[..6];
+
+    assert_eq!(
+        (ml.junctions[0].p.x, ml.junctions[0].p.y),
+        (ml.junctions[6].p.x, ml.junctions[6].p.y),
+        "micro-loop must be closed: last junction duplicates the first"
+    );
     assert_eq!(
         ml.inset_idx, ml.junctions[0].perimeter_index,
         "micro-loop's inset_idx should match its junctions' perimeter_index (the middle bead)"
     );
 
     // All 6 junctions should be equidistant from their centroid (within tolerance).
-    let cx: f32 = ml.junctions.iter().map(|j| j.p.x).sum::<f32>() / 6.0;
-    let cy: f32 = ml.junctions.iter().map(|j| j.p.y).sum::<f32>() / 6.0;
+    let cx: f32 = verts.iter().map(|j| j.p.x).sum::<f32>() / 6.0;
+    let cy: f32 = verts.iter().map(|j| j.p.y).sum::<f32>() / 6.0;
 
     // All junctions should have the same width (the middle bead's width).
-    let first_width = ml.junctions[0].p.width;
-    for (i, j) in ml.junctions.iter().enumerate() {
+    let first_width = verts[0].p.width;
+    for (i, j) in verts.iter().enumerate() {
         assert!(
             (j.p.width - first_width).abs() < 1e-3,
             "junction {} width {:.4} differs from first junction width {:.4}",
@@ -159,7 +170,7 @@ fn ac1_local_maximum_emits_hexagonal_micro_loop() {
     // The radius (distance from centroid to each junction) should be
     // width/8 (in mm).
     let expected_r_mm = first_width / 8.0;
-    for (i, j) in ml.junctions.iter().enumerate() {
+    for (i, j) in verts.iter().enumerate() {
         let dx = j.p.x - cx;
         let dy = j.p.y - cy;
         let r = (dx * dx + dy * dy).sqrt();

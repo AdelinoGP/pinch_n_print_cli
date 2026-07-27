@@ -55,8 +55,19 @@ const MAX_AREA_DEV: f64 = f64::INFINITY;
 /// AC-7 (preserves_junction): an interior junction that is a candidate for the
 /// tier-3 special case (`next` far away) is retained because the intersection
 /// of the infinite lines `(prev_prev → prev)` and `(curr → next)` lies farther
-/// than `smallest_line_segment_squared` from `prev`. OrcaSlicer
-/// `ExtrusionLine.cpp:163-175` (`dist_greater` reject path).
+/// than `smallest_line_segment_squared` from `prev`. Canonical
+/// `ExtrusionLine::simplify`'s `dist_greater` reject path.
+///
+/// Geometry chosen from the branch conditions, not from the observed output:
+/// with `SMALLEST = 1e-3`, the middle junction has `seg_len^2 = 3.13e-4` (above
+/// tier 1's 2.5e-5, below the tier-3 gate) and sits `inline_dist^2 = 2.00e-4`
+/// off the chord — outside canonical's 5um tier-2 band (2.5e-5), so tier 2 does
+/// not claim it. `next_length^2 = 8.27e-3` exceeds `4 * SMALLEST`, so the
+/// relocation branch is entered, and the intersection (0.14465, 0.01447) is far
+/// from both `prev` and `curr`, so it is rejected and the junction survives.
+///
+/// The previous geometry sat 4.080um off its chord — inside the 5um band — so
+/// tier 2 removed it and tier 3 was never reached.
 #[test]
 fn simplify_intersection_distance_gate_preserves_junction() {
     // Open polyline: J1 retained (short segment, off the J0-J2 chord),
@@ -66,7 +77,7 @@ fn simplify_intersection_distance_gate_preserves_junction() {
         vec![
             j(0.0, 0.0, 0.4, 0),
             j(0.1, 0.01, 0.4, 0),
-            j(0.11, 0.0131, 0.4, 0),
+            j(0.1120, 0.0230, 0.4, 0),
             j(0.2, 0.0, 0.4, 0),
         ],
         false,
@@ -93,15 +104,23 @@ fn simplify_intersection_distance_gate_preserves_junction() {
 /// (OrcaSlicer `ExtrusionLine.cpp:196-220`).
 #[test]
 fn simplify_junction_replacement_moves_to_intersection() {
-    // Lines (J0->J1) and (J2->J3) cross exactly at J1. J2 is a short segment
-    // from J1. The tier-3 replace branch fires: J1 is popped and the
-    // intersection (coincident with J1) is pushed, carrying J2's width/perim.
+    // J1 is retained at curr=1 (its seg_len^2 = 0.02 is far above the tier-3
+    // gate), so by curr=2 `prev_prev` is a genuinely distinct junction. That
+    // matters: in the previous 4-point geometry `prev_prev == prev` at curr=1,
+    // making the intersection degenerate and the replace path unreachable by
+    // construction.
+    //
+    // At curr=2: seg_len^2 = 6.73e-4 (below the tier-3 gate), inline_dist^2 =
+    // 1.09e-4 (outside the 5um tier-2 band), next_length^2 = 3.80e-1 (above
+    // 4 * SMALLEST). The intersection of (J0->J1) and (J2->J3) is
+    // (0.09225, 0.00775), which lies within the allowed offset of the J1-J2
+    // line and within SMALLEST of both, so the replace branch fires.
     let input = line(
         vec![
-            j(0.0, 0.0, 0.4, 0),
-            j(0.1, 0.01, 0.4, 0),     // previously-pushed junction (width 0.4)
-            j(0.1005, 0.008, 0.9, 7), // the current; width/perim must be carried
-            j(0.05, 0.21, 0.4, 0),
+            j(0.0, 0.1, 0.4, 0),
+            j(0.1, 0.0, 0.4, 0),       // previously-pushed junction (width 0.4)
+            j(0.1120, 0.0230, 0.9, 7), // the current; width/perim must be carried
+            j(0.6, 0.4, 0.4, 0),
         ],
         false,
     );
@@ -118,9 +137,12 @@ fn simplify_junction_replacement_moves_to_intersection() {
     );
 
     let mid = &result[0].junctions[1];
-    // The replacement sits at the intersection (= J1 position) within 1e-3 mm.
+    // The replacement sits at the intersection of the infinite lines through
+    // (J0 -> J1) and (J2 -> J3). Solving those two line equations gives
+    // (0.09225, 0.00775); this expected value is computed from the input
+    // geometry, not read back from the implementation.
     assert!(
-        (mid.p.x - 0.1).abs() < 1e-3 && (mid.p.y - 0.01).abs() < 1e-3,
+        (mid.p.x - 0.09225).abs() < 1e-3 && (mid.p.y - 0.00775).abs() < 1e-3,
         "AC-8: junction moved to intersection (got {:?})",
         mid.p
     );

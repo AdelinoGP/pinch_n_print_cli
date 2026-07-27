@@ -802,8 +802,8 @@ fn emit_chain_lines(
 }
 
 /// Emits 6-segment hexagonal micro-loops at local maxima with odd bead count,
-/// mirroring OrcaSlicer's `generateLocalMaximaSingleBeads`
-/// (`SkeletalTrapezoidation.cpp:2383-2413`).
+/// mirroring canonical `generateLocalMaximaSingleBeads`
+/// (`SkeletalTrapezoidation.cpp`).
 ///
 /// For each vertex whose beading has an odd `bead_widths` count,
 /// `is_local_maximum` (strict — matching canonical `isLocalMaximum(true)`),
@@ -850,7 +850,12 @@ fn generate_local_maxima_single_beads(
         let r_mm = (r / UNITS_PER_MM) as f32;
         let width_mm = (width / UNITS_PER_MM) as f32;
 
-        let mut junctions = Vec::with_capacity(6);
+        // 6 hexagon vertices plus a 7th duplicating the first. A closed
+        // `ExtrusionLine` in this crate carries `first.xy == last.xy` (the
+        // convention `stitch_extrusions` produces and `ExtrusionPath3D::is_closed`
+        // documents), and `simplify_toolpaths`' closed-polygon walk relies on it.
+        // This loop skips stitch (AC-6), so it must close itself.
+        let mut junctions = Vec::with_capacity(7);
         for seg in 0..6usize {
             let angle = TAU * seg as f64 / 6.0;
             let jx = cx as f32 + r_mm * angle.cos() as f32;
@@ -868,6 +873,8 @@ fn generate_local_maxima_single_beads(
                 perimeter_index: mid_bead as u32,
             });
         }
+        // Close the loop: duplicate the start junction onto the end.
+        junctions.push(junctions[0].clone());
 
         buckets
             .entry(mid_bead as u32)
