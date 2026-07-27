@@ -172,14 +172,32 @@ fn simplify_distance_gated(
         return junctions.to_vec();
     }
 
+    // Canonical's closed-polygon walk assumes the representation where a closed
+    // `ExtrusionLine`'s first and last junctions are the same point, and it ends
+    // by copying the last position onto the first.
+    //
+    // PnP has two conventions in play. `stitch_extrusions` builds closed loops
+    // that way, duplicating the start junction onto the end. But
+    // `generate_toolpaths` emits the local-maximum hexagonal micro-loop as six
+    // *distinct* junctions with `is_closed: true` and no duplicate. Applying the
+    // closing copy to that representation overwrites a real vertex, collapsing
+    // two of the six and shifting the loop's centroid.
+    //
+    // So the wrap-around is driven by the actual geometry rather than by the
+    // flag alone: a closed line whose endpoints do not coincide is walked as an
+    // open polyline, which keeps every one of its vertices.
+    let has_duplicate_endpoint = junctions[0].p.x == junctions[n - 1].p.x
+        && junctions[0].p.y == junctions[n - 1].p.y;
+    let wrap_around = is_closed && has_duplicate_endpoint;
+
     // Always retain the first junction.
     let mut result: Vec<ExtrusionJunction> = Vec::with_capacity(n);
     result.push(junctions[0].clone());
 
-    // Track previous and previous_previous as value copies (not indices). For a
-    // closed polygon the first and last junctions coincide, so the vertex
-    // "before" the start is the one prior to the last, not the start itself.
-    let mut previous_previous = if is_closed {
+    // Track previous and previous_previous as value copies (not indices). When
+    // the first and last junctions coincide, the vertex "before" the start is
+    // the one prior to the last, not the start itself.
+    let mut previous_previous = if wrap_around {
         junctions[n - 2].clone()
     } else {
         junctions[0].clone()
@@ -221,7 +239,7 @@ fn simplify_distance_gated(
     // A closed polygon processes one vertex further than an open polyline: its
     // final vertex is the same point as its first, and canonical folds it back
     // into the already-emitted output rather than treating it as an endpoint.
-    let end = if is_closed { n } else { n - 1 };
+    let end = if wrap_around { n } else { n - 1 };
 
     let mut curr = 1usize;
     while curr < end {
@@ -237,7 +255,7 @@ fn simplify_distance_gated(
         // Never simplify a closed polygon below 3 junctions. This also bounds
         // the wrap-around indexing below: it fires before `curr + 2 - n` could
         // exceed what has been emitted.
-        if is_closed && result.len() + (n - curr) <= 3 {
+        if wrap_around && result.len() + (n - curr) <= 3 {
             result.push(current);
             previous_previous = previous.clone();
             previous = result[result.len() - 1].clone();
@@ -247,7 +265,7 @@ fn simplify_distance_gated(
 
         // Spill over into the emitted output when `next` would run past the
         // end of a closed polygon.
-        let spill_over = is_closed && curr + 2 >= n && (curr + 2 - n) < result.len();
+        let spill_over = wrap_around && curr + 2 >= n && (curr + 2 - n) < result.len();
         let next = if spill_over {
             result[curr + 2 - n].clone()
         } else {
@@ -333,32 +351,28 @@ fn simplify_distance_gated(
                 // a noticeable artifact, so try to relocate it to the
                 // intersection of `previous_previous -> previous` and
                 // `current -> next`, which keeps both edge directions.
-                let relocated = line_intersection_infinite(
-                    &previous_previous,
-                    &previous,
-                    &current,
-                    &next,
-                )
-                .filter(|&(ix, iy)| {
-                    // Reject an intersection that is itself an artifact: too far
-                    // off the `previous -> current` line, or too far from either
-                    // endpoint to stand in for `current`.
-                    point_to_infinite_line_distance_squared_xy(
-                        (ix, iy),
-                        &previous,
-                        &current,
-                    ) <= allowed_error_distance_squared
-                        && !dist_greater(
-                            (ix, iy),
-                            (previous.p.x as f64, previous.p.y as f64),
-                            smallest_line_segment_squared,
-                        )
-                        && !dist_greater(
-                            (ix, iy),
-                            (current.p.x as f64, current.p.y as f64),
-                            smallest_line_segment_squared,
-                        )
-                });
+                let relocated =
+                    line_intersection_infinite(&previous_previous, &previous, &current, &next)
+                        .filter(|&(ix, iy)| {
+                            // Reject an intersection that is itself an artifact: too far
+                            // off the `previous -> current` line, or too far from either
+                            // endpoint to stand in for `current`.
+                            point_to_infinite_line_distance_squared_xy(
+                                (ix, iy),
+                                &previous,
+                                &current,
+                            ) <= allowed_error_distance_squared
+                                && !dist_greater(
+                                    (ix, iy),
+                                    (previous.p.x as f64, previous.p.y as f64),
+                                    smallest_line_segment_squared,
+                                )
+                                && !dist_greater(
+                                    (ix, iy),
+                                    (current.p.x as f64, current.p.y as f64),
+                                    smallest_line_segment_squared,
+                                )
+                        });
 
                 if let Some((ix, iy)) = relocated {
                     // Replace: drop the previously-pushed junction and push the
@@ -404,7 +418,7 @@ fn simplify_distance_gated(
         curr += 1;
     }
 
-    if is_closed {
+    if wrap_around {
         // The first and last points of a closed polygon must be the same. The
         // last point was processed in the loop above, so copy its position into
         // the first — position only, so the start junction keeps its own width
