@@ -20,8 +20,9 @@
 //! Three-tier removal per junction (evaluated in order):
 //! 1. **Ultra-short bypass**: segments shorter than ~5 µm (0.005mm) are
 //!    always removed.
-//! 2. **Near-colinear fast path**: if `height_2 ≤ 0.001` AND the point is
-//!    truly colinear (`distance_to_infinite ≤ 0.001`) AND
+//! 2. **Near-colinear fast path**: if `height_2 ≤ 2.5e-5 mm²` AND the point is
+//!    truly colinear (`distance_to_infinite² ≤ 2.5e-5 mm²`, i.e. canonical's
+//!    0.005mm branch point) AND
 //!    `calculateExtrusionAreaDeviationError ≤ maximum_extrusion_area_deviation`
 //!    → remove. The area-deviation guard is only on this branch.
 //! 3. **Primary gate** (`smallest_line_segment_squared` +
@@ -306,15 +307,19 @@ fn simplify_distance_gated(
         }
 
         // Tier 2: Near-colinear fast path with area deviation guard.
-        // Thresholds match OrcaSlicer ExtrusionLine.cpp's µm-scale constants
-        // converted to mm²: 0.001² = 1e-6 mm² for height and inline distance.
-        let near_colinear_height = 1e-6; // (0.001mm)² = 1µm²
-        let near_colinear_inline = 1e-6; // (0.001mm)² = 1µm²
+        //
+        // Canonical gates this on `height_2 <= sqr(scaled(0.005))` and
+        // `distance_to_infinite(current, previous, next) <= scaled(0.005)`.
+        // Both constants are 0.005mm — 5µm, not 1µm. The height term is
+        // already squared, giving 2.5e-5 mm²; the distance term is compared
+        // un-squared upstream, so squaring both sides of that comparison gives
+        // the same 2.5e-5 mm² against PnP's squared distance helper.
+        //
+        // PnP previously used 1e-6 for both, i.e. a 0.001mm branch point,
+        // making this guard 25x stricter than canonical in squared terms.
+        const NEAR_COLINEAR_MM2: f64 = 0.005 * 0.005; // 2.5e-5 mm²
         let inline_dist = point_to_infinite_line_distance_squared(&previous, &next, &current);
-        if height_2 <= near_colinear_height
-            && inline_dist <= near_colinear_inline
-            && maximum_extrusion_area_deviation > 0.0
-        {
+        if height_2 <= NEAR_COLINEAR_MM2 && inline_dist <= NEAR_COLINEAR_MM2 {
             let area_dev = calculate_extrusion_area_deviation_error(&previous, &current, &next);
             if area_dev <= maximum_extrusion_area_deviation {
                 // Remove: near-colinear with acceptable area deviation.
