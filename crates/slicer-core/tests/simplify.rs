@@ -192,3 +192,50 @@ fn uniform_width_arc_survives_production_gates() {
         "1mm-amplitude arc must not be simplified away: {retained} of {original_len}"
     );
 }
+
+/// A closed polygon must stay closed. Canonical processes the final vertex
+/// (which is the same point as the first) inside the walk and then copies the
+/// last position onto the first, rather than appending an endpoint the way it
+/// does for an open polyline.
+///
+/// PnP previously used `is_closed` only to pick the minimum path size and then
+/// simplified every loop as an open polyline, so a closed wall could come back
+/// with its start and end no longer coincident.
+#[test]
+fn closed_polygon_remains_closed() {
+    // A 16-gon with a coincident final vertex, as ExtrusionLines carry closed
+    // loops. Radius 5mm, so no gate is near firing on the long edges.
+    let mut junctions: Vec<_> = (0..16)
+        .map(|i| {
+            let t = i as f32 * std::f32::consts::TAU / 16.0;
+            junction(5.0 * t.cos(), 5.0 * t.sin(), 0.40)
+        })
+        .collect();
+    let first = junctions[0].clone();
+    junctions.push(first);
+
+    let line = ExtrusionLine {
+        junctions,
+        inset_idx: 0,
+        is_odd: false,
+        is_closed: true,
+    };
+
+    let result = simplify_toolpaths(vec![line], 0.0025, 0.000025, 2e-6);
+    assert_eq!(result.len(), 1);
+    let simplified = &result[0];
+
+    assert!(
+        simplified.junctions.len() >= 3,
+        "a closed polygon must never simplify below 3 junctions, got {}",
+        simplified.junctions.len()
+    );
+
+    let front = simplified.junctions.first().unwrap().p;
+    let back = simplified.junctions.last().unwrap().p;
+    assert_eq!(
+        (front.x, front.y),
+        (back.x, back.y),
+        "closed polygon must remain closed after simplification"
+    );
+}

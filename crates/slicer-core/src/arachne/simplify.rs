@@ -176,8 +176,14 @@ fn simplify_distance_gated(
     let mut result: Vec<ExtrusionJunction> = Vec::with_capacity(n);
     result.push(junctions[0].clone());
 
-    // Track previous and previous_previous as value copies (not indices).
-    let mut previous_previous = junctions[0].clone();
+    // Track previous and previous_previous as value copies (not indices). For a
+    // closed polygon the first and last junctions coincide, so the vertex
+    // "before" the start is the one prior to the last, not the start itself.
+    let mut previous_previous = if is_closed {
+        junctions[n - 2].clone()
+    } else {
+        junctions[0].clone()
+    };
     let mut previous = junctions[0].clone();
 
     // Canonical accumulates the cut-off region with the Shoelace formula as a
@@ -212,10 +218,41 @@ fn simplify_distance_gated(
     // removed area on retain/replace.
     let mut accumulated_area_removed = shoelace(&junctions[0], &junctions[1]);
 
+    // A closed polygon processes one vertex further than an open polyline: its
+    // final vertex is the same point as its first, and canonical folds it back
+    // into the already-emitted output rather than treating it as an endpoint.
+    let end = if is_closed { n } else { n - 1 };
+
     let mut curr = 1usize;
-    while curr < n - 1 {
-        let current = junctions[curr].clone();
-        let next = junctions[curr + 1].clone();
+    while curr < end {
+        // For the last vertex of a closed polygon, use the first junction of
+        // the *new* polygon, since it may already have been relocated.
+        let is_last = curr + 1 == n;
+        let current = if is_last {
+            result[0].clone()
+        } else {
+            junctions[curr].clone()
+        };
+
+        // Never simplify a closed polygon below 3 junctions. This also bounds
+        // the wrap-around indexing below: it fires before `curr + 2 - n` could
+        // exceed what has been emitted.
+        if is_closed && result.len() + (n - curr) <= 3 {
+            result.push(current);
+            previous_previous = previous.clone();
+            previous = result[result.len() - 1].clone();
+            curr += 1;
+            continue;
+        }
+
+        // Spill over into the emitted output when `next` would run past the
+        // end of a closed polygon.
+        let spill_over = is_closed && curr + 2 >= n && (curr + 2 - n) < result.len();
+        let next = if spill_over {
+            result[curr + 2 - n].clone()
+        } else {
+            junctions[curr + 1].clone()
+        };
 
         // Canonical computes both area terms and accumulates once per
         // iteration, before any removal test. `negative_area_closing` closes
@@ -367,8 +404,20 @@ fn simplify_distance_gated(
         curr += 1;
     }
 
-    // Always retain the last junction.
-    result.push(junctions[n - 1].clone());
+    if is_closed {
+        // The first and last points of a closed polygon must be the same. The
+        // last point was processed in the loop above, so copy its position into
+        // the first — position only, so the start junction keeps its own width
+        // and per-vertex attributes.
+        if let Some(back) = result.last().map(|j| j.p) {
+            if let Some(front) = result.first_mut() {
+                front.p = back;
+            }
+        }
+    } else {
+        // The ending junction always exists in the simplified path.
+        result.push(junctions[n - 1].clone());
+    }
     result
 }
 
