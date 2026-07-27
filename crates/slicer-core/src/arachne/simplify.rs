@@ -186,8 +186,8 @@ fn simplify_distance_gated(
     // So the wrap-around is driven by the actual geometry rather than by the
     // flag alone: a closed line whose endpoints do not coincide is walked as an
     // open polyline, which keeps every one of its vertices.
-    let has_duplicate_endpoint = junctions[0].p.x == junctions[n - 1].p.x
-        && junctions[0].p.y == junctions[n - 1].p.y;
+    let has_duplicate_endpoint =
+        junctions[0].p.x == junctions[n - 1].p.x && junctions[0].p.y == junctions[n - 1].p.y;
     let wrap_around = is_closed && has_duplicate_endpoint;
 
     // Always retain the first junction.
@@ -466,19 +466,34 @@ fn line_intersection_infinite(
     Some((ax + t * r_px, ay + t * r_py))
 }
 
-/// Overflow-avoiding distance-greater predicate (ExtrusionLine.cpp:180-188).
+/// Returns `true` when `p1` is farther from `p2` than `threshold_sq`, which is a
+/// *squared* length (`smallest_line_segment_squared`) — so this is the plain
+/// comparison `|p1 − p2|² > threshold_sq`.
 ///
-/// Returns `true` when `p1` is farther from `p2` than `threshold_sq` (the
-/// squared form): first a component-wise fast-reject (any coordinate magnitude
-/// exceeds `threshold_sq`), then the precise squared-norm comparison
-/// `(p1 − p2).squaredNorm() > threshold_sq²`.
+/// Canonical (`ExtrusionLine::simplify`'s local `dist_greater` lambda) precedes
+/// that with a component-wise fast-reject, `vec.x() > threshold ⇒ true`. That
+/// shortcut is **deliberately not ported**, for two reasons:
+///
+/// 1. **Its implication only holds when `threshold >= 1`.** Canonical's
+///    coordinates are scaled integers and its threshold is a squared length in
+///    those units — an enormous number — so a single component exceeding it
+///    guarantees the squared norm does too, and the branch is a pure overflow
+///    guard that essentially never fires. PnP's coordinates are `f32`
+///    millimetres, where `smallest_line_segment_squared` is `0.0025` (0.05mm
+///    squared) — *less than one*. There the implication inverts: `dx = 0.01`mm
+///    exceeds `0.0025` while `dx² = 1e-4` does not, so the shortcut rejects
+///    points that are comfortably inside the threshold.
+/// 2. **`f64` cannot overflow here anyway**, so the guard buys nothing.
+///
+/// PnP previously ported the shortcut literally *and* squared the threshold a
+/// second time in the fallback (`> threshold_sq * threshold_sq`). Together those
+/// made this predicate reject anything beyond ~2.5µm where canonical allows
+/// 50µm — 20x too strict — which left the tier-3 relocation branch effectively
+/// unreachable.
 fn dist_greater(p1: (f64, f64), p2: (f64, f64), threshold_sq: f64) -> bool {
     let dx = p1.0 - p2.0;
     let dy = p1.1 - p2.1;
-    if dx > threshold_sq || dx < -threshold_sq || dy > threshold_sq || dy < -threshold_sq {
-        return true;
-    }
-    dx * dx + dy * dy > threshold_sq * threshold_sq
+    dx * dx + dy * dy > threshold_sq
 }
 
 /// Width-weighted extrusion-area deviation introduced by removing the middle
