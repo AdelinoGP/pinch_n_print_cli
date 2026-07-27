@@ -45,7 +45,9 @@ Benchmark commands and the HTML slicer report (`--report`) are rarely needed —
 
 **A narrow `-p <crate>` run does not enable that crate's non-default features. Test files gated on one silently compile to *zero tests* and the run prints `ok`.** This is worse than a normal false negative: there is no skip notice, no "0 filtered out" oddity in the aggregate, just a clean green wall.
 
-For `slicer-core` specifically — `default = []`, and most of `crates/slicer-core/tests/arachne_*.rs` open with `#![cfg(feature = "host-algos")]`:
+Two mechanisms do this, and `slicer-core` uses both: 11 test targets carry `required-features = ["host-algos"]` in `Cargo.toml` (Cargo skips building them outright), and most of `crates/slicer-core/tests/arachne_*.rs` additionally open with `#![cfg(feature = "host-algos")]` (the file compiles to an empty binary). With `default = []`, a bare `-p slicer-core` run gets neither.
+
+Under `--workspace` the feature is unified on, because `slicer-gcode`, `slicer-runtime`, `slicer-sdk` and `slicer-wasm-host` each depend on `slicer-core` with `features = ["host-algos"]`. That is why the broad run sees tests the narrow run cannot.
 
 ```bash
 cargo test -p slicer-core --features host-algos --no-fail-fast   # correct
@@ -55,7 +57,7 @@ cargo test -p slicer-core                                        # arachne suite
 **Measured, 2026-07-27.** A six-commit arachne parity series was verified with the bare command at every step and reported "64/64 binaries green" throughout. The correct invocation showed **74** binaries and four failures — one of them a regression introduced three commits earlier (a closed-polygon change that collapsed two vertices of the local-maxima micro-loop). It surfaced only because `cargo test --workspace` enables the feature transitively via another member, so the *broad* run disagreed with every narrow run that preceded it.
 
 Rules:
-- Before trusting a narrow run, check the crate's `[features]` and grep the target test files for `#![cfg(feature`.
+- Before trusting a narrow run, check the crate's `[features]`, its targets' `required-features`, and grep the test files for `#![cfg(feature`.
 - **A binary-count drop between a narrow run and a `--workspace` run means the narrow run was blind — never the reverse.** Reconcile the counts before concluding anything.
 - Never explain away a failure that appears only under `--workspace` as a feature-unification quirk without first confirming the narrow run actually compiled the tests.
 
