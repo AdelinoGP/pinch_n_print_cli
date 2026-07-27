@@ -317,7 +317,7 @@ fn typed_instantiation_failure_produces_structured_error() {
 }
 
 #[test]
-fn missing_component_gracefully_skipped() {
+fn missing_component_is_fatal() {
     let mut fx = dispatch_fixture::for_stage("Layer::Infill")
         .no_wasm()
         .build();
@@ -332,14 +332,16 @@ fn missing_component_gracefully_skipped() {
 
     let result = fx.run_layer(&layer);
 
+    let Err(slicer_ir::LayerStageError::FatalModule { message, .. }) = result else {
+        panic!("missing component must produce a fatal module error: {result:?}");
+    };
     assert!(
-        result.is_ok(),
-        "missing component should be gracefully skipped, not fatal: {:?}",
-        result.err()
+        message.contains("MissingComponent"),
+        "error should identify the missing component: {message}"
     );
     assert!(
-        fx.arena.take_infill().is_none(),
-        "arena must be empty after skipping a module with no compiled component"
+        message.contains("com.test.fixture"),
+        "error should name the module: {message}"
     );
 }
 

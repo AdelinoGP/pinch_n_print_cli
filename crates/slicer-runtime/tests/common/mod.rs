@@ -520,46 +520,15 @@ pub fn run_layer_and_commit_with_bundle(
 }
 
 /// Convenience: dispatch a Layer stage AND commit the resulting LayerStageCommit
-/// to the arena in one call — bridges the orchestration split so tests that previously
-/// expected `run_stage` to mutate `arena` continue to work via this single helper.
+/// to the arena in one call using a real component-backed module bundle.
 #[allow(dead_code)]
 pub fn run_layer_and_commit(
     dispatcher: &slicer_wasm_host::WasmRuntimeDispatcher,
     stage_id: &str,
     layer: &slicer_ir::GlobalLayer,
-    module: &slicer_runtime::CompiledModule,
+    bundle: &TestModuleBundle,
     blackboard: &Blackboard,
     arena: &mut slicer_runtime::LayerArena,
 ) -> Result<(), slicer_ir::LayerStageError> {
-    use slicer_runtime::StageApplyContext;
-    use slicer_wasm_host::LayerStageRunner;
-    let live = slicer_wasm_host::CompiledModuleLive::new(
-        module.module_id(),
-        slicer_wasm_host::WasmInstancePool::placeholder(),
-        None,
-        module.claims(),
-        Arc::clone(module.config_view()),
-    );
-    let input = layer_input(blackboard, arena);
-    let commit_opt =
-        LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
-    let seam_plan_arc = blackboard.seam_plan().cloned();
-    let ctx = StageApplyContext {
-        stage_id,
-        module_id: module.module_id(),
-        layer_index: layer.index,
-        seam_plan: seam_plan_arc.as_deref(),
-    };
-    // PerimetersPostProcess(None) still needs apply so seam back-fill runs on
-    // the existing arena perimeter even when the guest emitted no new perimeter.
-    let effective_commit = if commit_opt.is_none() && stage_id == "Layer::PerimetersPostProcess" {
-        Some(slicer_ir::LayerStageCommit::PerimetersPostProcess(None))
-    } else {
-        commit_opt
-    };
-    if let Some(commit) = effective_commit {
-        slicer_runtime::apply_for_test(arena, commit, &ctx)
-    } else {
-        Ok(())
-    }
+    run_layer_and_commit_with_bundle(dispatcher, stage_id, layer, bundle, blackboard, arena)
 }

@@ -60,11 +60,10 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 
 fn make_module_with_config(
     module_id: &str,
-    _component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> (CompiledModule, Arc<WasmInstancePool>) {
     let loaded = make_loaded_module(module_id);
-    let _pool = Arc::new(
+    let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -76,9 +75,10 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(module_id)
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
-        .build()
+        .build();
+    (module, pool)
 }
 
 fn make_gcode_ir(commands: Vec<GCodeCommand>) -> GCodeIR {
@@ -105,11 +105,8 @@ fn postpass_gcode_empty_list_is_valid_and_does_not_mutate_output() {
         "postpass_mode".to_string(),
         ConfigValue::String("echo".to_string()),
     );
-    let module = make_module_with_config(
-        "com.test.postpass-empty",
-        component,
-        ConfigView::from_map(fields),
-    );
+    let (module, pool) =
+        make_module_with_config("com.test.postpass-empty", ConfigView::from_map(fields));
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let mut gcode_ir = make_gcode_ir(Vec::new());
 
@@ -117,8 +114,8 @@ fn postpass_gcode_empty_list_is_valid_and_does_not_mutate_output() {
         &StageId::from("PostPass::GCodePostProcess"),
         &CompiledModuleLive::new(
             module.module_id(),
-            WasmInstancePool::placeholder(),
-            None,
+            pool,
+            Some(component),
             module.claims(),
             Arc::clone(module.config_view()),
         ),

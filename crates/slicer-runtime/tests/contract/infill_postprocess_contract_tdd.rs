@@ -500,10 +500,10 @@ fn infill_postprocess_wall_source() {
     );
 }
 
-// ── AC-N1: absent module preserves the committed InfillIR ────────────────
+// ── AC-N1: absent module fails without mutating the committed InfillIR ───
 
 #[test]
-fn infill_postprocess_absent_module_preserves_infill() {
+fn infill_postprocess_absent_module_is_fatal_without_mutating_infill() {
     let prior = InfillIR {
         global_layer_index: 0,
         regions: vec![InfillRegion {
@@ -523,8 +523,7 @@ fn infill_postprocess_absent_module_preserves_infill() {
     };
 
     // No module component registered at Layer::InfillPostProcess — the
-    // MissingComponent graceful-skip path must leave the committed InfillIR
-    // byte-identical to the post-Layer::Infill IR.
+    // fatal MissingComponent path must not mutate the committed InfillIR.
     let mut fx = dispatch_fixture::for_stage("Layer::InfillPostProcess")
         .no_wasm()
         .build();
@@ -535,8 +534,18 @@ fn infill_postprocess_absent_module_preserves_infill() {
         serde_json::to_vec(fx.arena.infill().unwrap()).expect("serialize prior InfillIR");
 
     let layer = layer_at(0, 0.0);
-    fx.run_layer(&layer)
-        .expect("absent module must be a graceful skip, not an error");
+    let result = fx.run_layer(&layer);
+    let Err(slicer_ir::LayerStageError::FatalModule { message, .. }) = result else {
+        panic!("missing component must produce a fatal module error: {result:?}");
+    };
+    assert!(
+        message.contains("MissingComponent"),
+        "error should identify the missing component: {message}"
+    );
+    assert!(
+        message.contains("com.test.fixture"),
+        "error should name the module: {message}"
+    );
 
     let after = fx
         .arena

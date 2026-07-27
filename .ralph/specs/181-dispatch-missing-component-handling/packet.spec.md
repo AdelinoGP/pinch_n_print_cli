@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 181-dispatch-missing-component-handling
 task_ids:
   - TASK-297

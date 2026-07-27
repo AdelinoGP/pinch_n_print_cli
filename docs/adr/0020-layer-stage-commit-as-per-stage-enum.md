@@ -176,3 +176,13 @@ reversing it.
   `resolved_seam`; `apply(PathOptimization { order_proposal: Some(..), .. })`
   permutes `ordered_entities`; `apply(PathOptimization)` z-hop stamps
   `after_entity_index == ordered_entities.len()-1`.
+
+## Amendment — 2026-07-27 (packet 181)
+
+Decision item 1 previously said:
+
+> `None` is the empty/`MissingComponent` case ("this invocation committed nothing" is the absence of a commit, not a kind of commit).
+
+That clause is retired. `None` is the empty-commit case only; a missing component is `Err(LayerStageError::FatalModule { ... })`. Missing compiled components are fatal at both module load and dispatch, so they cannot be represented as an empty stage commit.
+
+This amendment closes DEV-087 and is recorded as `D-181-ADR-0020-AMENDED` in `docs/DEVIATION_LOG.md`.

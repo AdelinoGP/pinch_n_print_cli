@@ -27,7 +27,7 @@ pub struct CompiledModuleLive<'a> {
     pub module_id: &'a ModuleId,
     /// Arc-cloned instance pool handle for leasing WASM instances during dispatch.
     pub instance_pool: Arc<WasmInstancePool>,
-    /// Optional WASM component handle; `None` for placeholder or test modules.
+    /// WASM component handle; an absent component is fatal at dispatch.
     pub wasm_component: Option<Arc<WasmComponent>>,
     /// Borrowed claim list from the owning `CompiledModuleStatic`.
     pub claims: &'a [String],

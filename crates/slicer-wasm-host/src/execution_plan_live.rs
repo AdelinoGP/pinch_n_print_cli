@@ -18,7 +18,7 @@ use slicer_scheduler::execution_plan::{
     SortedStageModules, SPIRAL_VASE_CONFIG_KEY, STAGE_ORDER, WALL_GENERATOR_CONFIG_KEY,
 };
 use slicer_scheduler::manifest::{
-    load_modules_from_roots, DiagnosticLevel, LoadDiagnostic, LoadError, LoadedModule,
+    load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule,
 };
 use slicer_scheduler::topology::topological_sort;
 use slicer_scheduler::validation::SchedulerError;
@@ -118,6 +118,13 @@ pub enum LiveModuleLoadError {
     },
     /// WASM instance pool planning rejected a module.
     InstancePool(InstancePoolError),
+    /// A module's WASM artifact could not be loaded for live dispatch.
+    Component {
+        /// Module ID whose artifact could not be loaded.
+        module_id: String,
+        /// Human-readable cause of the artifact load failure.
+        cause: String,
+    },
 }
 
 impl std::fmt::Display for LiveModuleLoadError {
@@ -130,6 +137,12 @@ impl std::fmt::Display for LiveModuleLoadError {
                 "stage '{stage_id}' contains a dependency cycle; unsorted modules: {unsorted:?}"
             ),
             Self::InstancePool(e) => write!(f, "instance pool planning failed: {e:?}"),
+            Self::Component { module_id, cause } => {
+                write!(
+                    f,
+                    "module '{module_id}' WASM component load failed: {cause}"
+                )
+            }
         }
     }
 }
@@ -280,7 +293,7 @@ pub fn load_live_modules_for_plan_profiled(
     // Build per-module runtime bindings, compiling each module's .wasm
     // into a reusable `WasmComponent` via a single shared engine.
     let engine = Arc::new(WasmEngine::with_profiling(profile));
-    let mut diagnostics = report.diagnostics;
+    let diagnostics = report.diagnostics;
     let mut bindings = Vec::with_capacity(report.modules.len());
     for module in report.modules {
         let pool = build_wasm_instance_pool(
@@ -293,11 +306,11 @@ pub fn load_live_modules_for_plan_profiled(
         .map_err(|e| -> Box<LiveModuleLoadError> {
             Box::new(LiveModuleLoadError::InstancePool(e))
         })?;
-        let wasm_component = compile_module_component(engine.as_ref(), &module, &mut diagnostics);
+        let wasm_component = compile_module_component(engine.as_ref(), &module)?;
         bindings.push(LiveModuleBinding {
             module,
             instance_pool: Arc::new(pool),
-            wasm_component,
+            wasm_component: Some(wasm_component),
         });
     }
 
@@ -309,59 +322,32 @@ pub fn load_live_modules_for_plan_profiled(
     })
 }
 
-/// Compile one module's `.wasm` into a `WasmComponent`, or push a
-/// structured `LoadDiagnostic` and return `None` for the well-defined
-/// skip cases (placeholder binary, read failure, or non-component
-/// compile failure). Dispatch-time will surface a typed error if a
-/// `None` component is actually needed.
+/// Compile one module's `.wasm` into a `WasmComponent`.
 fn compile_module_component(
     engine: &WasmEngine,
     module: &LoadedModule,
-    diagnostics: &mut Vec<LoadDiagnostic>,
-) -> Option<Arc<WasmComponent>> {
+) -> Result<Arc<WasmComponent>, Box<LiveModuleLoadError>> {
     if module.placeholder_wasm() {
-        diagnostics.push(LoadDiagnostic {
-            level: DiagnosticLevel::Warning,
-            path: module.wasm_path().to_owned(),
-            field: Some(String::from("wasm_path")),
-            message: format!(
-                "module '{id}' uses a placeholder .wasm binary; \
-                 skipping component compilation (dispatch of this module will fail fatally)",
-                id = module.id()
-            ),
-        });
-        return None;
+        return Err(Box::new(LiveModuleLoadError::Component {
+            module_id: module.id().to_owned(),
+            cause: String::from("placeholder .wasm binary"),
+        }));
     }
 
-    let bytes = match std::fs::read(module.wasm_path()) {
-        Ok(b) => b,
-        Err(e) => {
-            diagnostics.push(LoadDiagnostic {
-                level: DiagnosticLevel::Warning,
-                path: module.wasm_path().to_owned(),
-                field: Some(String::from("wasm_path")),
-                message: format!(
-                    "failed to read .wasm for module '{id}': {e}",
-                    id = module.id()
-                ),
-            });
-            return None;
-        }
-    };
+    let bytes = std::fs::read(module.wasm_path()).map_err(|e| {
+        Box::new(LiveModuleLoadError::Component {
+            module_id: module.id().to_owned(),
+            cause: format!("failed to read .wasm: {e}"),
+        })
+    })?;
 
-    match engine.compile_component(&bytes) {
-        Ok(component) => Some(Arc::new(component)),
-        Err(e) => {
-            diagnostics.push(LoadDiagnostic {
-                level: DiagnosticLevel::Warning,
-                path: module.wasm_path().to_owned(),
-                field: Some(String::from("wasm_path")),
-                message: format!(
-                    "failed to compile component for module '{id}': {e}",
-                    id = module.id()
-                ),
-            });
-            None
-        }
-    }
+    engine
+        .compile_component(&bytes)
+        .map(|component| Arc::new(component))
+        .map_err(|e| {
+            Box::new(LiveModuleLoadError::Component {
+                module_id: module.id().to_owned(),
+                cause: format!("failed to compile component: {e}"),
+            })
+        })
 }

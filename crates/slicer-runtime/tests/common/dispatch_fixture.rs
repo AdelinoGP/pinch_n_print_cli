@@ -2,7 +2,7 @@
 //!
 //! Provides `DispatchFixture::for_stage("…")` → builder → `.build()` → fixture
 //! with four per-runner `run_*` methods. Default = real WAT-compiled test guest
-//! + empty ConfigView. Use `.no_wasm()` for the MissingComponent graceful-skip path.
+//! + empty ConfigView. Use `.no_wasm()` for MissingComponent tests.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -126,7 +126,7 @@ impl DispatchFixtureBuilder {
         self
     }
 
-    /// Opt out of real WASM (no compiled component) — for MissingComponent tests.
+    /// Opt out of real WASM (no compiled component) — for fatal MissingComponent tests.
     pub fn no_wasm(mut self) -> Self {
         self.no_wasm = true;
         self

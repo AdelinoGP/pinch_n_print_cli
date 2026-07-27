@@ -60,11 +60,15 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 
 fn make_module_with_config(
     module_id: &str,
-    _component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> (
+    CompiledModule,
+    Arc<slicer_runtime::WasmComponent>,
+    Arc<WasmInstancePool>,
+) {
     let loaded = make_loaded_module(module_id);
-    let _pool = Arc::new(
+    let component = wasm_cache::compiled_guest("postpass-guest");
+    let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -76,9 +80,10 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(module_id)
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
-        .build()
+        .build();
+    (module, component, pool)
 }
 
 fn make_gcode_ir(commands: Vec<GCodeCommand>) -> GCodeIR {
@@ -98,18 +103,14 @@ fn make_gcode_ir(commands: Vec<GCodeCommand>) -> GCodeIR {
 fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = wasm_cache::compiled_guest("postpass-guest");
 
     let mut fields = HashMap::new();
     fields.insert(
         "postpass_mode".to_string(),
-        ConfigValue::String("echo".to_string()),
+        ConfigValue::String("emit-sample".to_string()),
     );
-    let module = make_module_with_config(
-        "com.test.postpass-boundary",
-        component,
-        ConfigView::from_map(fields),
-    );
+    let (module, component, pool) =
+        make_module_with_config("com.test.postpass-boundary", ConfigView::from_map(fields));
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
 
     let expected = vec![
@@ -181,14 +182,15 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
             text: "M117 boundary raw".to_string(),
         },
     ];
+
     let mut gcode_ir = make_gcode_ir(expected.clone());
 
     let result = dispatcher.run_gcode_postprocess(
         &StageId::from("PostPass::GCodePostProcess"),
         &CompiledModuleLive::new(
             module.module_id(),
-            WasmInstancePool::placeholder(),
-            None,
+            pool,
+            Some(component),
             module.claims(),
             Arc::clone(module.config_view()),
         ),
@@ -196,6 +198,14 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
         &mut gcode_ir.commands,
     );
 
-    assert!(matches!(result, Ok(PostpassOutput::GCodeSuccess)));
-    assert_eq!(gcode_ir.commands, expected);
+    assert!(
+        matches!(&result, Ok(PostpassOutput::GCodeSuccess)),
+        "postpass failed: {result:?}"
+    );
+    assert_eq!(
+        gcode_ir.commands.len(),
+        8,
+        "emit-sample must replace the input with its eight-command sample"
+    );
+    assert_ne!(gcode_ir.commands, expected);
 }

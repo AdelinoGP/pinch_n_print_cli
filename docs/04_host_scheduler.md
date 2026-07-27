@@ -1266,6 +1266,7 @@ Normative behavior:
 - `fatal=false` continues with pre-stage IR for that module only; downstream stages process degraded state.
 - Every non-fatal or fatal module error must emit a structured progress event (`module_error`).
 - Slice result metadata must include `degraded=true` if any non-fatal error occurred.
+- An absent compiled component is always fatal: load rejects it via `LiveModuleLoadError::Component`, and dispatch rejects it via the phase-appropriate fatal error in `dispatch.rs`. The previous graceful-stage-skip behavior and the placeholder-skip affordance documented in `manifest.rs` are retired.
 
 See progress event schema: `09_progress_events.md`.
 

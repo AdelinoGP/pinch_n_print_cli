@@ -1962,7 +1962,11 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                return Ok(slicer_core::PrepassStageOutput::None);
+                return Err(slicer_ir::PrepassRunnerError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
             }
             Err(e) => {
                 return Err(slicer_ir::PrepassRunnerError::FatalModule {
@@ -2226,7 +2230,11 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                return Ok(None);
+                return Err(slicer_ir::LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
             }
             Err(e) => {
                 return Err(slicer_ir::LayerStageError::FatalModule {
@@ -2283,7 +2291,11 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         ) {
             Ok(p) => p,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                return Ok(slicer_ir::FinalizationOutput::Success);
+                return Err(slicer_ir::FinalizationError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
             }
             Err(e) => {
                 return Err(slicer_ir::FinalizationError::FatalModule {
@@ -2338,7 +2350,11 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
             }
             Ok(None) => Ok(slicer_ir::PostpassOutput::GCodeSuccess),
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                Ok(slicer_ir::PostpassOutput::GCodeSuccess)
+                Err(slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                })
             }
             Err(e) => Err(slicer_ir::PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
@@ -2371,7 +2387,11 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         match result {
             Ok(result_text) => Ok(slicer_ir::PostpassOutput::TextSuccess { text: result_text }),
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
-                Ok(slicer_ir::PostpassOutput::TextSuccess { text })
+                Err(slicer_ir::PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                })
             }
             Err(e) => Err(slicer_ir::PostpassError::FatalModule {
                 stage_id: stage_id.clone(),

@@ -13,6 +13,7 @@ mod config_view_encapsulation_source_tdd;
 mod dispatch_config_tdd;
 mod dispatch_identity_tdd;
 mod dispatch_infill_output_tdd;
+mod dispatch_missing_component_tdd;
 mod dispatch_pathopt_tdd;
 mod dispatch_perimeter_output_tdd;
 mod dispatch_prepass_harvest_tdd;

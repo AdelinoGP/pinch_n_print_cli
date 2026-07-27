@@ -374,7 +374,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     use slicer_runtime::manifest::LoadedModuleBuilder;
     use slicer_runtime::{
         Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
-        WasmInstancePool, WasmRuntimeDispatcher,
+        WasmRuntimeDispatcher,
     };
     use std::sync::Arc;
 
@@ -395,7 +395,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             wasm_path.display()
         )
     });
-    let _component = Arc::new(
+    let component = Arc::new(
         engine
             .compile_component(&bytes)
             .expect("path-optimization-default.wasm must compile"),
@@ -431,7 +431,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     })
     .layer_parallel_safe(true)
     .build();
-    let _pool = Arc::new(
+    let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -589,8 +589,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         &layer,
         &CompiledModuleLive::new(
             module.module_id(),
-            WasmInstancePool::placeholder(),
-            None,
+            pool,
+            Some(component),
             module.claims(),
             Arc::clone(module.config_view()),
         ),
@@ -898,7 +898,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             wasm_path.display()
         )
     });
-    let _component = Arc::new(
+    let component = Arc::new(
         engine
             .compile_component(&bytes)
             .expect("seam-placer.wasm must compile"),
@@ -938,7 +938,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     })
     .layer_parallel_safe(true)
     .build();
-    let _pool = Arc::new(
+    let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -955,6 +955,11 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             std::collections::HashMap::new(),
         )))
         .build();
+    let bundle = crate::common::TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    };
 
     let layer_z = 0.2;
     let layer_index = 0u32;
@@ -1143,7 +1148,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         &dispatcher,
         "Layer::PerimetersPostProcess",
         &layer,
-        &module,
+        &bundle,
         &blackboard,
         &mut arena,
     )

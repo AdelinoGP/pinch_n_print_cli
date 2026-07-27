@@ -31,7 +31,7 @@ fn repo_root() -> PathBuf {
 
 fn write_module(root: &Path, stem: &str, manifest: &str) {
     fs::write(root.join(format!("{stem}.toml")), manifest).expect("write manifest");
-    fs::write(root.join(format!("{stem}.wasm")), b"placeholder wasm").expect("write wasm");
+    fs::write(root.join(format!("{stem}.wasm")), minimal_component_bytes()).expect("write wasm");
 }
 
 fn manifest(
@@ -484,31 +484,14 @@ fn placeholder_wasm_is_skipped_with_structured_warning_diagnostic() {
         &infill_manifest("com.example.placeholder", &[]),
         b"x",
     );
-    let out =
-        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
-    let binding = out
-        .bindings
-        .iter()
-        .find(|b| b.module.id() == "com.example.placeholder")
-        .unwrap();
-    assert!(binding.module.placeholder_wasm());
-    assert!(
-        binding.wasm_component.is_none(),
-        "placeholder binary must not produce a compiled component"
-    );
-    // The loader-side skip diagnostic is distinguished by
-    // `field = Some("wasm_path")`; manifest ingestion emits its own
-    // placeholder warning with `field = None`.
-    let warn = out
-        .diagnostics
-        .iter()
-        .find(|d| {
-            d.path == binding.module.wasm_path()
-                && matches!(d.level, DiagnosticLevel::Warning)
-                && d.field.as_deref() == Some("wasm_path")
-        })
-        .expect("placeholder skip must emit a structured loader diagnostic");
-    assert!(warn.message.contains("placeholder"));
+    let error =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("placeholder binary must fail live module loading"),
+            Err(error) => error,
+        };
+    let message = error.to_string();
+    assert!(message.contains("com.example.placeholder"));
+    assert!(message.contains("placeholder"));
 }
 
 #[test]
@@ -521,28 +504,14 @@ fn non_component_bytes_are_skipped_with_compile_failure_diagnostic() {
         &infill_manifest("com.example.broken", &[]),
         b"this is definitely not a wasm component binary",
     );
-    let out =
-        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
-    let binding = out
-        .bindings
-        .iter()
-        .find(|b| b.module.id() == "com.example.broken")
-        .unwrap();
-    assert!(!binding.module.placeholder_wasm());
-    assert!(
-        binding.wasm_component.is_none(),
-        "invalid component bytes must not crash the loader but also must not attach"
-    );
-    let warn = out
-        .diagnostics
-        .iter()
-        .find(|d| {
-            d.path == binding.module.wasm_path()
-                && matches!(d.level, DiagnosticLevel::Warning)
-                && d.message.contains("compile component")
-        })
-        .expect("invalid component must emit a compile-failure warning diagnostic");
-    assert_eq!(warn.field.as_deref(), Some("wasm_path"));
+    let error =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("invalid component must fail live module loading"),
+            Err(error) => error,
+        };
+    let message = error.to_string();
+    assert!(message.contains("com.example.broken"));
+    assert!(message.contains("failed to compile component"));
 }
 
 #[test]
@@ -572,6 +541,18 @@ fn component_attachment_is_deterministic_across_repeated_loads() {
 
 #[test]
 fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
+    let valid_dir = TempDir::new().unwrap();
+    write_module_with_wasm(
+        valid_dir.path(),
+        "ok",
+        &infill_manifest("com.example.ok", &[]),
+        &minimal_component_bytes(),
+    );
+    let valid_modules =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(valid_dir.path())), 1)
+            .expect("the valid component should load");
+    assert!(valid_modules.bindings[0].wasm_component.is_some());
+
     let dir = TempDir::new().unwrap();
     write_module_with_wasm(
         dir.path(),
@@ -591,22 +572,38 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
         &infill_manifest("com.example.ph", &[]),
         b"x",
     );
-    let out =
-        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
-    let by_id: std::collections::HashMap<&str, &slicer_runtime::LiveModuleBinding> =
-        out.bindings.iter().map(|b| (b.module.id(), b)).collect();
-    assert!(by_id["com.example.ok"].wasm_component.is_some());
-    assert!(by_id["com.example.bad"].wasm_component.is_none());
-    assert!(by_id["com.example.ph"].wasm_component.is_none());
-    // One warning per skipped module, exactly.
-    let skipped_warnings = out
-        .diagnostics
-        .iter()
-        .filter(|d| {
-            matches!(d.level, DiagnosticLevel::Warning) && d.field.as_deref() == Some("wasm_path")
-        })
-        .count();
-    assert_eq!(skipped_warnings, 2);
+    let first_error =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("the first invalid binary must fail live module loading"),
+            Err(error) => error,
+        };
+    let first_message = first_error.to_string();
+    assert!(first_message.contains("com.example.bad"));
+    assert!(first_message.contains("failed to compile component"));
+    assert!(!first_message.contains("com.example.ph"));
+
+    let second_message =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("the first invalid binary must fail live module loading"),
+            Err(error) => error.to_string(),
+        };
+    assert_eq!(first_message, second_message);
+
+    let placeholder_dir = TempDir::new().unwrap();
+    write_module_with_wasm(
+        placeholder_dir.path(),
+        "ph",
+        &infill_manifest("com.example.ph", &[]),
+        b"x",
+    );
+    let placeholder_error = match load_live_modules_for_plan(
+        std::slice::from_ref(&PathBuf::from(placeholder_dir.path())),
+        1,
+    ) {
+        Ok(_) => panic!("the placeholder binary must fail live module loading"),
+        Err(error) => error.to_string(),
+    };
+    assert!(placeholder_error.contains("com.example.ph"));
 }
 
 #[test]
@@ -639,4 +636,44 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
             .contains("Vec::new(),\n                Vec::new(),\n                &config_source"),
         "run.rs must no longer pass empty bindings into build_live_execution_plan"
     );
+}
+
+#[test]
+fn live_module_loading_rejects_uncompilable_component() {
+    let dir = TempDir::new().unwrap();
+    write_module_with_wasm(
+        dir.path(),
+        "uncompilable",
+        &infill_manifest("com.example.uncompilable", &[]),
+        b"this is definitely not a wasm component binary",
+    );
+
+    let error =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("uncompilable component must fail live module loading"),
+            Err(error) => error,
+        };
+    let message = error.to_string();
+    assert!(message.contains("com.example.uncompilable"));
+    assert!(message.contains("failed to compile component"));
+}
+
+#[test]
+fn live_module_loading_rejects_placeholder_stub() {
+    let dir = TempDir::new().unwrap();
+    write_module_with_wasm(
+        dir.path(),
+        "placeholder",
+        &infill_manifest("com.example.placeholder-stub", &[]),
+        b"abcdefgh",
+    );
+
+    let error =
+        match load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1) {
+            Ok(_) => panic!("placeholder stub must fail live module loading"),
+            Err(error) => error,
+        };
+    let message = error.to_string();
+    assert!(message.contains("com.example.placeholder-stub"));
+    assert!(message.contains("placeholder"));
 }
