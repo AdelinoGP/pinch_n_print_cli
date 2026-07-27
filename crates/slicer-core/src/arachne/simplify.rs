@@ -144,10 +144,11 @@ fn simplify_line(
 /// `previous`, the previously-pushed junction is popped and replaced by the
 /// intersection carrying `current`'s width and `perimeter_index` verbatim.
 ///
-/// Height at the tier-2 and tier-3 gate sites uses the OrcaSlicer Shoelace
-/// formula `height_2 = area_removed_so_far² / base_length_2`
-/// (ExtrusionLine.cpp:151), where `area_removed_so_far` is the running
-/// `accumulated_area_removed` plus the constant `negative_area_closing`.
+/// Height at the tier-2 and tier-3 gate sites uses canonical's Shoelace
+/// formula `height_2 = area_removed_so_far² / base_length_2`, where
+/// `area_removed_so_far` is the running `accumulated_area_removed` plus
+/// `negative_area_closing` — the latter recomputed each iteration against the
+/// current short-cutting segment, not hoisted.
 fn simplify_distance_gated(
     junctions: &[ExtrusionJunction],
     is_closed: bool,
@@ -173,22 +174,50 @@ fn simplify_distance_gated(
     let mut previous_previous = junctions[0].clone();
     let mut previous = junctions[0].clone();
 
-    // Signed area of the closing edge junctions[0] → junctions[1]
-    // (ExtrusionLine.cpp: negative_area_closing). Constant for the whole walk.
-    let negative_area_closing = {
-        let c0 = &junctions[0];
-        let c1 = &junctions[1];
-        (c0.p.x as f64) * (c1.p.y as f64) - (c1.p.x as f64) * (c0.p.y as f64)
+    // Canonical accumulates the cut-off region with the Shoelace formula as a
+    // *fan* of blades from an origin to each removed segment, so every term is
+    // origin-relative (`p.x * q.y - p.y * q.x`) rather than a translation-
+    // invariant triangle area. The fan sum's origin-dependence cancels only in
+    // the closed combination `accumulated_area_removed + negative_area_closing`,
+    // so the two must share one origin and `negative_area_closing` must be
+    // recomputed against the current `next` on every iteration.
+    //
+    // **Deliberate numeric deviation.** Canonical works in scaled `coord_t`
+    // and accumulates in `int64_t`, where origin-relative products are exact.
+    // PnP's coordinates are `f32` millimetres evaluated in `f64`, so taking the
+    // global origin would form products on the order of the plate offset and
+    // then difference them, losing several digits to cancellation exactly where
+    // canonical loses none. Translating the origin to `junctions[0]` keeps the
+    // operands on the order of the part rather than the plate. The combination
+    // is origin-independent in exact arithmetic, so this changes no result
+    // canonical would compute -- it only removes error canonical never had.
+    let ox = junctions[0].p.x as f64;
+    let oy = junctions[0].p.y as f64;
+    let shoelace = |p: &ExtrusionJunction, q: &ExtrusionJunction| -> f64 {
+        let px = p.p.x as f64 - ox;
+        let py = p.p.y as f64 - oy;
+        let qx = q.p.x as f64 - ox;
+        let qy = q.p.y as f64 - oy;
+        px * qy - py * qx
     };
 
-    // Running accumulator of removed triangle area (declared once outside the
-    // loop). Reset to the current iteration's removed area on retain/replace.
-    let mut accumulated_area_removed = 0.0;
+    // Seeded with the blade from the origin to junctions[0] → junctions[1]
+    // (canonical's `initial`), not zero. Reset to the current iteration's
+    // removed area on retain/replace.
+    let mut accumulated_area_removed = shoelace(&junctions[0], &junctions[1]);
 
     let mut curr = 1usize;
     while curr < n - 1 {
         let current = junctions[curr].clone();
         let next = junctions[curr + 1].clone();
+
+        // Canonical computes both area terms and accumulates once per
+        // iteration, before any removal test. `negative_area_closing` closes
+        // the fan against the *current* short-cutting segment, so it depends on
+        // `next` and cannot be hoisted out of the loop.
+        let removed_area_next = shoelace(&current, &next);
+        let negative_area_closing = shoelace(&next, &previous);
+        accumulated_area_removed += removed_area_next;
 
         let next_length2 = {
             let dx = (next.p.x - previous.p.x) as f64;
@@ -203,8 +232,6 @@ fn simplify_distance_gated(
             if let Some((ix, iy)) =
                 line_intersection_infinite(&previous_previous, &previous, &current, &next)
             {
-                let removed_area_next = triangle_signed_area_x2(&previous, &current, &next);
-
                 // Reject path: if the intersection is too far from `previous`,
                 // preserve `previous` and advance (current becomes the new
                 // previous, retained).
@@ -246,15 +273,24 @@ fn simplify_distance_gated(
             }
         }
 
-        // Height via OrcaSlicer Shoelace formula (ExtrusionLine.cpp:151).
-        let removed_area_next = triangle_signed_area_x2(&previous, &current, &next);
+        // Height via the canonical Shoelace formula: closing the fan gives the
+        // cut-off area, and `h² = L² / b²` recovers the representative
+        // triangle's height without recomputing previously removed vertices.
         let area_removed_so_far = accumulated_area_removed + negative_area_closing;
         let base_length2 = {
             let dx = (next.p.x - previous.p.x) as f64;
             let dy = (next.p.y - previous.p.y) as f64;
             dx * dx + dy * dy
         };
-        let height_2 = (area_removed_so_far * area_removed_so_far) / base_length2.max(1e-18);
+
+        // Two segments doubling back with no area between them: canonical
+        // removes the junction rather than dividing by zero.
+        if base_length2 == 0.0 {
+            curr += 1;
+            continue;
+        }
+
+        let height_2 = (area_removed_so_far * area_removed_so_far) / base_length2;
 
         // Segment length squared (previous → current).
         let seg_dx = (current.p.x - previous.p.x) as f64;
@@ -265,7 +301,6 @@ fn simplify_distance_gated(
         let ultra_short_threshold = 0.000025; // 0.005mm squared = 2.5e-5 mm²
         if seg_len_sq < ultra_short_threshold {
             // Remove: ultra-short segment.
-            accumulated_area_removed += removed_area_next;
             curr += 1;
             continue;
         }
@@ -283,7 +318,6 @@ fn simplify_distance_gated(
             let area_dev = calculate_extrusion_area_deviation_error(&previous, &current, &next);
             if area_dev <= maximum_extrusion_area_deviation {
                 // Remove: near-colinear with acceptable area deviation.
-                accumulated_area_removed += removed_area_next;
                 curr += 1;
                 continue;
             }
@@ -293,7 +327,6 @@ fn simplify_distance_gated(
         if seg_len_sq < smallest_line_segment_squared && height_2 <= allowed_error_distance_squared
         {
             // Remove: short segment within error tolerance.
-            accumulated_area_removed += removed_area_next;
             curr += 1;
             continue;
         }
@@ -309,24 +342,6 @@ fn simplify_distance_gated(
     // Always retain the last junction.
     result.push(junctions[n - 1].clone());
     result
-}
-
-/// Twice the signed area of triangle `(a, b, c)` via the cross product
-/// `(a − c) × (b − c)` — the OrcaSlicer `removed_area_next` term
-/// (ExtrusionLine.cpp:151 area term). Used by the Shoelace height formula and
-/// by `accumulated_area_removed`.
-fn triangle_signed_area_x2(
-    a: &ExtrusionJunction,
-    b: &ExtrusionJunction,
-    c: &ExtrusionJunction,
-) -> f64 {
-    let ax = a.p.x as f64;
-    let ay = a.p.y as f64;
-    let bx = b.p.x as f64;
-    let by = b.p.y as f64;
-    let cx = c.p.x as f64;
-    let cy = c.p.y as f64;
-    (ax - cx) * (by - cy) - (bx - cx) * (ay - cy)
 }
 
 /// Intersection of the infinite lines through `a`–`b` and `c`–`d`.
