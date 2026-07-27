@@ -81,7 +81,6 @@ is the authoritative catalog of their defaults and ranges.
 | `sparse_infill_density` | float | `20.0` | [0.0, 100.0] | `arachne-perimeters` |
 | `spiral_vase` | bool | `false` | — | `arachne-perimeters` |
 | `thick_bridges` | bool | `false` | — | `arachne-perimeters` |
-| `visvalingam_area_threshold` | float | `100` | >= 0.0 | `arachne-perimeters` |
 | `wall_count` | int | `3` | >= 1.0 | `arachne-perimeters` |
 | `wall_direction` | string | `"counter_clockwise"` | — | `arachne-perimeters` |
 | `wall_distribution_count` | int | `1` | >= 1.0 | `arachne-perimeters` |

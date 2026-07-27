@@ -250,7 +250,6 @@ fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, Modu
     // yet grown fields for them, so their values are read and discarded here.
     {
         let min_central_distance = config.get_float("min_central_distance").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.min_central_distance);
-        let visvalingam_area_threshold = config.get_float("visvalingam_area_threshold").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.visvalingam_area_threshold);
         let min_width = config.get_float("min_width").map(|v| units_to_mm(v as i64) as f64).unwrap_or(defaults.min_width);
 
         // `wall_transition_length` is now `percent` (packet 150, D-104h): resolve
@@ -327,7 +326,6 @@ fn arachne_params_from_config(config: &ConfigView) -> Result<ArachneParams, Modu
             min_bead_width,
             print_thin_walls,
             min_central_distance,
-            visvalingam_area_threshold,
             min_width,
             wall_transition_length,
             wall_transition_angle,

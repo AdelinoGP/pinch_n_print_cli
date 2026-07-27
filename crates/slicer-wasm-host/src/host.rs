@@ -2224,7 +2224,6 @@ impl hs::Host for HostExecutionContext {
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist as f64,
             min_central_distance: params.min_central_distance as f64,
-            visvalingam_area_threshold: params.visvalingam_area_threshold as f64,
             min_length_factor: params.min_length_factor as f64,
             min_width: params.min_width as f64,
             print_thin_walls: params.print_thin_walls,

@@ -438,11 +438,6 @@ fn arachne_params_defaults_when_keys_absent() {
         "test fixture must not contain min_central_distance"
     );
     assert_eq!(
-        empty_config.get_float("visvalingam_area_threshold"),
-        None,
-        "test fixture must not contain visvalingam_area_threshold"
-    );
-    assert_eq!(
         empty_config.get_float("min_width"),
         None,
         "test fixture must not contain min_width"
@@ -473,6 +468,5 @@ fn arachne_params_defaults_when_keys_absent() {
     // wired keys influence; the remaining fields are unchanged by the empty
     // config anyway.
     assert_eq!(default_params.min_central_distance, 0.0);
-    assert_eq!(default_params.visvalingam_area_threshold, 0.01);
     assert_eq!(default_params.min_width, 0.4);
 }

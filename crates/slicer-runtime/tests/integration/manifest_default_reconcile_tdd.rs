@@ -236,7 +236,6 @@ const ARACHNE_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("initial_layer_min_bead_width", Float(3400.0)), // units; defaults 0.34mm
     ("outer_wall_offset", Float(0.0)),               // units; defaults 0.0
     ("min_central_distance", Float(0.0)),            // units; defaults 0.0
-    ("visvalingam_area_threshold", Float(100.0)),    // units; defaults 0.01mm
     ("min_width", Float(4000.0)),                    // units; defaults 0.4mm
     // 0 is the "auto: 2 * wall_count" sentinel; an absent key takes the same
     // branch, so 0 IS the code fallback.

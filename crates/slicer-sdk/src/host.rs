@@ -529,7 +529,6 @@ pub struct ArachneParams {
     pub min_central_distance: f64,
     /// Visvalingam-Whyatt width-weighted area threshold (mm²) for toolpath
     /// simplification.
-    pub visvalingam_area_threshold: f64,
     /// Length-factor multiplier for the small-line removal threshold.
     pub min_length_factor: f64,
     /// Nominal width (mm) used by the small-line removal threshold.
@@ -596,7 +595,6 @@ impl Default for ArachneParams {
             distribution_count: 1,
             transition_filter_dist: 0.1,
             min_central_distance: 0.0,
-            visvalingam_area_threshold: 0.01,
             min_length_factor: 0.5,
             min_width: 0.4,
             print_thin_walls: false,
@@ -643,7 +641,6 @@ pub fn generate_arachne_walls(
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist,
             min_central_distance: params.min_central_distance,
-            visvalingam_area_threshold: params.visvalingam_area_threshold,
             min_length_factor: params.min_length_factor,
             min_width: params.min_width,
             print_thin_walls: params.print_thin_walls,
@@ -709,7 +706,6 @@ package slicer:common {
             distribution-count: u32,
             transition-filter-dist: f32,
             min-central-distance: f32,
-            visvalingam-area-threshold: f32,
             min-length-factor: f32,
             min-width: f32,
             print-thin-walls: bool,
@@ -789,7 +785,6 @@ world sdk-arachne {
             distribution_count: params.distribution_count,
             transition_filter_dist: params.transition_filter_dist as f32,
             min_central_distance: params.min_central_distance as f32,
-            visvalingam_area_threshold: params.visvalingam_area_threshold as f32,
             min_length_factor: params.min_length_factor as f32,
             min_width: params.min_width as f32,
             print_thin_walls: params.print_thin_walls,

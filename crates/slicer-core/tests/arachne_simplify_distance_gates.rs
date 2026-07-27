@@ -59,7 +59,6 @@ fn long_low_curvature_arc_survives_distance_gates() {
     // Area threshold = 0.01mm² (typical).
     let result = simplify_toolpaths(
         vec![line],
-        0.01,     // visvalingam_area_threshold
         0.0025,   // smallest_line_segment_squared (0.05mm²)
         0.000025, // allowed_error_distance_squared (0.005mm²)
         0.005,    // maximum_extrusion_area_deviation
@@ -83,11 +82,15 @@ fn long_low_curvature_arc_survives_distance_gates() {
     );
 }
 
-/// Under the old area-only sweep (distance gates = 0), the same arc would be
-/// aggressively simplified because each junction's area deviation is small.
-/// This test demonstrates the difference between the two modes.
+/// Zero distance gates are not a mode switch. Canonical `ExtrusionLine::simplify`
+/// has no area-only fallback, so unsatisfiable gates simply remove nothing.
+///
+/// This test previously asserted the opposite — that zero gates simplified the
+/// arc *more* aggressively than real gates — because PnP carried a legacy
+/// area-only sweep on that branch. That inverted the meaning of "0", making the
+/// slicer discard the most geometry exactly when asked to discard none.
 #[test]
-fn area_only_sweep_aggressively_simplifies_arc() {
+fn zero_distance_gates_retain_the_arc() {
     // Same arc as above (amplitude 1.0mm).
     let mut junctions = Vec::new();
     for i in 0..20 {
@@ -104,17 +107,15 @@ fn area_only_sweep_aggressively_simplifies_arc() {
         is_closed: false,
     };
 
-    // Legacy mode: distance gates = 0 → falls back to area-only sweep.
-    let result = simplify_toolpaths(vec![line], 0.01, 0.0, 0.0, 0.0);
+    let result = simplify_toolpaths(vec![line], 0.0, 0.0, 0.0);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
 
-    // The area-only sweep should simplify more aggressively than the
-    // distance-gated version.
-    assert!(
-        simplified.junctions.len() < original_len,
-        "area-only sweep should simplify the arc (got {} of {})",
+    assert_eq!(
+        simplified.junctions.len(),
+        original_len,
+        "zero gates must retain every junction (got {} of {})",
         simplified.junctions.len(),
         original_len
     );
@@ -136,7 +137,7 @@ fn ultra_short_segments_always_removed() {
         is_closed: false,
     };
 
-    let result = simplify_toolpaths(vec![line], 0.01, 0.0025, 0.000025, 0.005);
+    let result = simplify_toolpaths(vec![line], 0.0025, 0.000025, 0.005);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
@@ -165,7 +166,7 @@ fn near_colinear_junctions_removed_by_fast_path() {
         is_closed: false,
     };
 
-    let result = simplify_toolpaths(vec![line], 0.01, 0.0025, 0.000025, 0.005);
+    let result = simplify_toolpaths(vec![line], 0.0025, 0.000025, 0.005);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];
@@ -198,7 +199,6 @@ fn high_curvature_junction_retained() {
 
     let result = simplify_toolpaths(
         vec![line],
-        0.01,
         0.0025,   // smallest_line_segment_squared = 0.05mm²
         0.000025, // allowed_error_distance_squared = 0.005mm²
         0.005,
@@ -231,7 +231,7 @@ fn endpoints_always_retained() {
         is_closed: false,
     };
 
-    let result = simplify_toolpaths(vec![line], 0.01, 0.0025, 0.000025, 0.005);
+    let result = simplify_toolpaths(vec![line], 0.0025, 0.000025, 0.005);
 
     assert_eq!(result.len(), 1);
     let simplified = &result[0];

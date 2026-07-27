@@ -32,6 +32,12 @@
 //! A junction that fails all removal tests is pushed onto the output and
 //! resets the area accumulator. Both endpoints are always retained.
 //!
+//! There is no area-only fallback. Canonical `ExtrusionLine::simplify` has no
+//! such branch, and the one PnP carried (the packet-113a sweep, kept alive for
+//! zero distance gates) inverted the meaning of zero gates: it simplified most
+//! aggressively exactly when the caller had asked for no simplification. Zero
+//! gates now leave every junction in place.
+//!
 //! Each retained junction keeps its original `ExtrusionJunction` value
 //! (width, flow_factor, overhang_quartile, perimeter_index) untouched — no
 //! averaging or interpolation of width across a dropped run.
@@ -57,10 +63,6 @@ const WIDTH_DIFF_EPSILON_MM: f64 = 1e-6;
 
 /// Runs distance-gated simplification on every line's junction polyline.
 ///
-/// `visvalingam_area_threshold` is the maximum width-weighted area deviation
-/// (mm²) a dropped junction may introduce (legacy parameter, used as fallback
-/// when distance gates are zero).
-///
 /// `smallest_line_segment_squared` (mm²) is the squared distance gate from
 /// `meshfix_maximum_resolution`: segments shorter than this AND within
 /// `allowed_error_distance_squared` of the chord are removed.
@@ -72,7 +74,6 @@ const WIDTH_DIFF_EPSILON_MM: f64 = 1e-6;
 /// for the near-colinear fast-path guard.
 pub fn simplify_toolpaths(
     lines: Vec<ExtrusionLine>,
-    visvalingam_area_threshold: f64,
     smallest_line_segment_squared: f64,
     allowed_error_distance_squared: f64,
     maximum_extrusion_area_deviation: f64,
@@ -82,7 +83,6 @@ pub fn simplify_toolpaths(
         .map(|line| {
             simplify_line(
                 line,
-                visvalingam_area_threshold,
                 smallest_line_segment_squared,
                 allowed_error_distance_squared,
                 maximum_extrusion_area_deviation,
@@ -93,7 +93,6 @@ pub fn simplify_toolpaths(
 
 fn simplify_line(
     line: ExtrusionLine,
-    visvalingam_area_threshold: f64,
     smallest_line_segment_squared: f64,
     allowed_error_distance_squared: f64,
     maximum_extrusion_area_deviation: f64,
@@ -115,34 +114,22 @@ fn simplify_line(
         };
     }
 
-    // Use distance gates if both are positive; otherwise fall back to the
-    // legacy area-only sweep.
-    let use_distance_gates =
-        smallest_line_segment_squared > 0.0 && allowed_error_distance_squared > 0.0;
-
-    if use_distance_gates {
-        let simplified = simplify_distance_gated(
-            &junctions,
-            is_closed,
-            smallest_line_segment_squared,
-            allowed_error_distance_squared,
-            maximum_extrusion_area_deviation,
-        );
-        ExtrusionLine {
-            junctions: simplified,
-            inset_idx,
-            is_odd,
-            is_closed,
-        }
-    } else {
-        // Legacy fallback: iterative area-only sweep (packet 113a).
-        let simplified = simplify_area_only(&junctions, visvalingam_area_threshold);
-        ExtrusionLine {
-            junctions: simplified,
-            inset_idx,
-            is_odd,
-            is_closed,
-        }
+    // Canonical has no fallback branch: `ExtrusionLine::simplify` always runs
+    // the single distance-gated pass. Zero gates are not a mode switch — they
+    // simply make the gates unsatisfiable, so every junction is retained, which
+    // is the correct reading of "don't simplify".
+    let simplified = simplify_distance_gated(
+        &junctions,
+        is_closed,
+        smallest_line_segment_squared,
+        allowed_error_distance_squared,
+        maximum_extrusion_area_deviation,
+    );
+    ExtrusionLine {
+        junctions: simplified,
+        inset_idx,
+        is_odd,
+        is_closed,
     }
 }
 
@@ -388,67 +375,6 @@ fn dist_greater(p1: (f64, f64), p2: (f64, f64), threshold_sq: f64) -> bool {
     dx * dx + dy * dy > threshold_sq * threshold_sq
 }
 
-/// Legacy iterative area-only sweep (packet 113a). Kept as fallback when
-/// distance gates are zero.
-fn simplify_area_only(
-    junctions: &[ExtrusionJunction],
-    visvalingam_area_threshold: f64,
-) -> Vec<ExtrusionJunction> {
-    let n = junctions.len();
-    if n <= 2 {
-        return junctions.to_vec();
-    }
-
-    let mut keep: Vec<bool> = vec![true; n];
-
-    loop {
-        let mut removed = false;
-        let mut i = 1;
-        while i < n - 1 {
-            if !keep[i] {
-                i += 1;
-                continue;
-            }
-
-            let mut prev = i.saturating_sub(1);
-            while prev > 0 && !keep[prev] {
-                prev -= 1;
-            }
-            if !keep[prev] {
-                prev = i;
-            }
-            let mut next = i + 1;
-            while next < n && !keep[next] {
-                next += 1;
-            }
-            if next >= n {
-                break;
-            }
-
-            let deviation = calculate_extrusion_area_deviation_error(
-                &junctions[prev],
-                &junctions[i],
-                &junctions[next],
-            );
-            if deviation <= visvalingam_area_threshold {
-                keep[i] = false;
-                removed = true;
-            }
-            i = next;
-        }
-        if !removed {
-            break;
-        }
-    }
-
-    junctions
-        .iter()
-        .zip(keep)
-        .filter(|(_, k)| *k)
-        .map(|(j, _)| j.clone())
-        .collect()
-}
-
 /// Width-weighted extrusion-area deviation introduced by removing the middle
 /// junction `b`, i.e. by replacing the two segments `a`–`b` and `b`–`c` with the
 /// single segment `a`–`c` carrying their length-weighted average width.
@@ -507,8 +433,7 @@ fn calculate_extrusion_area_deviation_error(
             return 0.0;
         }
 
-        let weighted_average_width =
-            (ab_length * ab_weight + bc_length * bc_weight) / total_length;
+        let weighted_average_width = (ab_length * ab_weight + bc_length * bc_weight) / total_length;
         let ac_length = ((cx - ax).powi(2) + (cy - ay).powi(2)).sqrt();
 
         ((ab_weight * ab_length + bc_weight * bc_length) - (weighted_average_width * ac_length))

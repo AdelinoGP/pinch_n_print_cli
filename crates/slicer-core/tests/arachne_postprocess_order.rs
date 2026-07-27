@@ -86,7 +86,7 @@ fn remove_small_before_simplify_short_odd_line_removed() {
     );
 
     // Old order: simplify first (2 junctions, simplify keeps ≥2), then remove.
-    let after_simplify = simplify_toolpaths(vec![line], 0.01, 0.0, 0.0, 0.0);
+    let after_simplify = simplify_toolpaths(vec![line], 0.0, 0.0, 0.0);
     let after_remove_old = remove_small_lines(after_simplify, 0.5, 0.4, false, false);
     assert!(
         after_remove_old.is_empty(),
@@ -117,7 +117,7 @@ fn line_above_threshold_survives_canonical_order() {
         1,
         "line above threshold survives remove_small"
     );
-    let after_simplify = simplify_toolpaths(after_remove, 0.01, 0.0, 0.0, 0.0);
+    let after_simplify = simplify_toolpaths(after_remove, 0.0, 0.0, 0.0);
     assert!(
         !after_simplify.is_empty(),
         "line survives the full canonical pipeline"

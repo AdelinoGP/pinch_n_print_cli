@@ -100,9 +100,6 @@ pub struct ArachneParams {
     /// endpoint never reaches this distance from the boundary is never
     /// central.
     pub min_central_distance: f64,
-    /// Visvalingam-Whyatt width-weighted area threshold (mm²) for
-    /// `simplify_toolpaths`.
-    pub visvalingam_area_threshold: f64,
     /// Length-factor multiplier for `remove_small_lines`'s removal threshold
     /// (`min_length_factor * min_width`).
     pub min_length_factor: f64,
@@ -182,9 +179,7 @@ impl Default for ArachneParams {
     /// `distribution_count` = 1, `transition_filter_dist` = 0.1mm — the
     /// factory's own `1000.0`-unit default), plus this pipeline's own
     /// post-process defaults: `min_central_distance` = 0.0mm (no floor,
-    /// matching `CentralityParams::default()`), `visvalingam_area_threshold` =
-    /// 0.01 mm² (matching a typical bead-width-weighted area default derived
-    /// from OrcaSlicer's `maximum_deviation` × typical 0.4 mm width),
+    /// matching `CentralityParams::default()`),
     /// `min_length_factor` = 0.5 (matching OrcaSlicer's `removeSmallLines`
     /// default multiplier, also reused by this crate's own
     /// `tests/remove_small.rs`), `min_width` = 0.4mm (matching
@@ -202,7 +197,6 @@ impl Default for ArachneParams {
             distribution_count: 1,
             transition_filter_dist: 0.1,
             min_central_distance: 0.0,
-            visvalingam_area_threshold: 0.01,
             min_length_factor: 0.5,
             min_width: 0.4,
             print_thin_walls: false,
@@ -457,7 +451,6 @@ pub fn run_arachne_pipeline(
         let (toolpaths, mut group_inner_contour) = separate_out_inner_contour(without_small);
         let simplified = simplify_toolpaths(
             toolpaths,
-            params.visvalingam_area_threshold,
             params.smallest_line_segment_squared,
             params.allowed_error_distance_squared,
             params.maximum_extrusion_area_deviation,

@@ -72,7 +72,7 @@ fn simplify_intersection_distance_gate_preserves_junction() {
         false,
     );
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     // Junction count is preserved: nothing removed.
@@ -106,7 +106,7 @@ fn simplify_junction_replacement_moves_to_intersection() {
         false,
     );
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     // Pop + push preserves the running count (2 -> 2), so a 4-junction input
@@ -154,7 +154,7 @@ fn simplify_distance_gated_uses_shoelace_height_2() {
         false,
     );
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     // J1 is removed, J2 is retained by the Shoelace height (naive would also
@@ -180,7 +180,7 @@ fn simplify_degenerate_two_junctions_unchanged() {
     let junctions = vec![j(0.0, 0.0, 0.4, 0), j(5.0, 2.0, 0.4, 0)];
     let input = line(junctions.clone(), false);
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     assert_eq!(
@@ -200,7 +200,7 @@ fn simplify_closed_line_minimum_size_preserved() {
     ];
     let input = line(junctions.clone(), true);
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     assert_eq!(
@@ -229,7 +229,7 @@ fn simplify_closed_line_near_colinear_minimum_size_preserved() {
     ];
     let input = line(junctions.clone(), true);
 
-    let result = simplify_toolpaths(vec![input], 0.0, SMALLEST, ALLOWED, MAX_AREA_DEV);
+    let result = simplify_toolpaths(vec![input], SMALLEST, ALLOWED, MAX_AREA_DEV);
 
     assert_eq!(result.len(), 1);
     assert_eq!(

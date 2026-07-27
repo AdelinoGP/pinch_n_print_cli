@@ -371,7 +371,7 @@ fn arachne_parity_simplify_intersection_distance_gate_present() {
     // (`:166-220`) was dead and the old test could not have exercised the gate
     // it names. The new parameters place junction 2 inside the gate. **The
     // assertion is strengthened, never weakened.**
-    let result = simplify_toolpaths(vec![line], 0.01, 1e-3, 1.0, f64::INFINITY);
+    let result = simplify_toolpaths(vec![line], 1e-3, 1.0, f64::INFINITY);
 
     assert!(
         !result.is_empty(),

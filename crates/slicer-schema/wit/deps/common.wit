@@ -127,7 +127,6 @@ interface host-services {
         distribution-count: u32,
         transition-filter-dist: f32,
         min-central-distance: f32,
-        visvalingam-area-threshold: f32,
         min-length-factor: f32,
         min-width: f32,
         print-thin-walls: bool,
