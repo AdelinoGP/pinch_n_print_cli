@@ -419,6 +419,11 @@ pub fn assemble_flat_bridge_areas(
     //   intermediate polygon and made this call ~92 % of PrePass::Slice
     //   wall-clock on Benchy (~28 s / 30 s). It is retained only as the
     //   bit-identical pre-optimisation legacy path.
+    // - Exact same-direction-collinearity cleanup and a sound per-component
+    //   bounding-box rejection guard were also evaluated. Both preserve the
+    //   discriminator, but the former reduced the 0.2 mm Benchy profile by
+    //   only ~2% (inside timing noise) and the latter skipped none of its 240
+    //   calls. Do not revive either without a deterministic win or hit rate.
     let closed = closing_ex(&support, FLAT_BRIDGE_ENCLOSURE_RADIUS_MM, closing_join);
     let refilled = difference(&closed, &support);
     if refilled.is_empty() {
