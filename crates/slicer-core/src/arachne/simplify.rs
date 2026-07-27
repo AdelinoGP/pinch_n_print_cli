@@ -36,8 +36,13 @@
 //! There is no area-only fallback. Canonical `ExtrusionLine::simplify` has no
 //! such branch, and the one PnP carried (the packet-113a sweep, kept alive for
 //! zero distance gates) inverted the meaning of zero gates: it simplified most
-//! aggressively exactly when the caller had asked for no simplification. Zero
-//! gates now leave every junction in place.
+//! aggressively exactly when the caller had asked for no simplification.
+//!
+//! Note that only tier 3 reads the distance gates. Tier 1 compares against a
+//! hardcoded 5µm and tier 2 against a hardcoded 5µm colinearity band, so zero
+//! gates do not freeze the polyline outright — they disable the primary gate
+//! while ultra-short and exactly-colinear junctions remain removable, exactly
+//! as in canonical.
 //!
 //! Each retained junction keeps its original `ExtrusionJunction` value
 //! (width, flow_factor, overhang_quartile, perimeter_index) untouched — no
@@ -220,60 +225,6 @@ fn simplify_distance_gated(
         let negative_area_closing = shoelace(&next, &previous);
         accumulated_area_removed += removed_area_next;
 
-        let next_length2 = {
-            let dx = (next.p.x - previous.p.x) as f64;
-            let dy = (next.p.y - previous.p.y) as f64;
-            dx * dx + dy * dy
-        };
-
-        // Tier 3 special case: the next vertex is far away, so the previous
-        // vertex might be a feature we need to keep or relocate
-        // (ExtrusionLine.cpp:166-220).
-        if next_length2 > 4.0 * smallest_line_segment_squared {
-            if let Some((ix, iy)) =
-                line_intersection_infinite(&previous_previous, &previous, &current, &next)
-            {
-                // Reject path: if the intersection is too far from `previous`,
-                // preserve `previous` and advance (current becomes the new
-                // previous, retained).
-                if dist_greater(
-                    (ix, iy),
-                    (previous.p.x as f64, previous.p.y as f64),
-                    smallest_line_segment_squared,
-                ) {
-                    result.push(current.clone());
-                    previous_previous = previous.clone();
-                    previous = current.clone();
-                    accumulated_area_removed = removed_area_next;
-                    curr += 1;
-                    continue;
-                }
-
-                // Replacement path: pop the previously-pushed junction,
-                // restore previous = previous_previous, push the intersection
-                // carrying `current`'s width and perimeter_index verbatim,
-                // re-advance both cursors.
-                result.pop();
-                let intersection = ExtrusionJunction {
-                    p: Point3WithWidth {
-                        x: ix as f32,
-                        y: iy as f32,
-                        z: current.p.z,
-                        width: current.p.width,
-                        flow_factor: current.p.flow_factor,
-                        overhang_quartile: current.p.overhang_quartile,
-                        dist_to_top_mm: current.p.dist_to_top_mm,
-                    },
-                    perimeter_index: current.perimeter_index,
-                };
-                result.push(intersection.clone());
-                previous = intersection;
-                accumulated_area_removed = removed_area_next;
-                curr += 1;
-                continue;
-            }
-        }
-
         // Height via the canonical Shoelace formula: closing the fan gives the
         // cut-off area, and `h² = L² / b²` recovers the representative
         // triangle's height without recomputing previously removed vertices.
@@ -328,12 +279,84 @@ fn simplify_distance_gated(
             }
         }
 
-        // Tier 3: Primary distance gate.
+        // Tier 3: Primary distance gate. Canonical nests the far-next-vertex
+        // special case *inside* this gate — it is not a standalone branch — so
+        // a junction that fails this gate is never a candidate for relocation.
         if seg_len_sq < smallest_line_segment_squared && height_2 <= allowed_error_distance_squared
         {
-            // Remove: short segment within error tolerance.
-            curr += 1;
-            continue;
+            // Canonical measures `current -> next` here, not `previous -> next`.
+            let next_length2 = {
+                let dx = (next.p.x - current.p.x) as f64;
+                let dy = (next.p.y - current.p.y) as f64;
+                dx * dx + dy * dy
+            };
+
+            if next_length2 > 4.0 * smallest_line_segment_squared {
+                // The next line is long: removing `current` outright could leave
+                // a noticeable artifact, so try to relocate it to the
+                // intersection of `previous_previous -> previous` and
+                // `current -> next`, which keeps both edge directions.
+                let relocated = line_intersection_infinite(
+                    &previous_previous,
+                    &previous,
+                    &current,
+                    &next,
+                )
+                .filter(|&(ix, iy)| {
+                    // Reject an intersection that is itself an artifact: too far
+                    // off the `previous -> current` line, or too far from either
+                    // endpoint to stand in for `current`.
+                    point_to_infinite_line_distance_squared_xy(
+                        (ix, iy),
+                        &previous,
+                        &current,
+                    ) <= allowed_error_distance_squared
+                        && !dist_greater(
+                            (ix, iy),
+                            (previous.p.x as f64, previous.p.y as f64),
+                            smallest_line_segment_squared,
+                        )
+                        && !dist_greater(
+                            (ix, iy),
+                            (current.p.x as f64, current.p.y as f64),
+                            smallest_line_segment_squared,
+                        )
+                });
+
+                if let Some((ix, iy)) = relocated {
+                    // Replace: drop the previously-pushed junction and push the
+                    // intersection, carrying `current`'s width and
+                    // `perimeter_index` verbatim.
+                    let intersection = ExtrusionJunction {
+                        p: Point3WithWidth {
+                            x: ix as f32,
+                            y: iy as f32,
+                            z: current.p.z,
+                            width: current.p.width,
+                            flow_factor: current.p.flow_factor,
+                            overhang_quartile: current.p.overhang_quartile,
+                            dist_to_top_mm: current.p.dist_to_top_mm,
+                        },
+                        perimeter_index: current.perimeter_index,
+                    };
+                    if !result.is_empty() {
+                        result.pop();
+                        previous = previous_previous.clone();
+                    }
+                    accumulated_area_removed = removed_area_next;
+                    previous_previous = previous.clone();
+                    previous = intersection.clone();
+                    result.push(intersection);
+                    curr += 1;
+                    continue;
+                }
+                // No usable spot for it: fall through and retain `current`.
+            } else {
+                // Remove: short segment within error tolerance, and the next
+                // line is not long enough to need the relocation treatment.
+                curr += 1;
+                continue;
+            }
         }
 
         // Retain this junction.
@@ -508,4 +531,30 @@ fn point_to_infinite_line_distance_squared(
     p: &ExtrusionJunction,
 ) -> f64 {
     point_line_distance_squared(a, p, b)
+}
+
+/// Squared distance from a bare `(x, y)` to the infinite line through `a` and
+/// `b`. Used by the tier-3 relocation test, where the candidate point is a
+/// computed intersection rather than an existing junction.
+fn point_to_infinite_line_distance_squared_xy(
+    p: (f64, f64),
+    a: &ExtrusionJunction,
+    b: &ExtrusionJunction,
+) -> f64 {
+    let (ax, ay) = (a.p.x as f64, a.p.y as f64);
+    let (bx, by) = (b.p.x as f64, b.p.y as f64);
+
+    let abx = bx - ax;
+    let aby = by - ay;
+    let apx = p.0 - ax;
+    let apy = p.1 - ay;
+
+    let ab_len_sq = abx * abx + aby * aby;
+    if ab_len_sq < 1e-18 {
+        // Degenerate: a and b coincide.
+        return apx * apx + apy * apy;
+    }
+
+    let cross = abx * apy - aby * apx;
+    (cross * cross) / ab_len_sq
 }
