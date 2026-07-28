@@ -6,6 +6,7 @@
 - Backlog source: `docs/07_implementation_status.md` (TASK-146 reopened by ADR-0044/0045; sub-lettered per `docs/specs/adr-0045-per-stage-wit-packages-plan.md` §"Task mapping")
 - Packet status: `draft`
 - Aggregate context cost: `M`
+- Behavioral prerequisite: packet `181-dispatch-missing-component-handling` (TASK-297) is implemented; its five-stage fatal-on-missing-component behavior is consumed and preserved here.
 
 ## Problem Statement
 
@@ -34,7 +35,8 @@ Packet 163 proved the per-stage versioned-package mechanism on the three cheapes
 - `WORLD_LAYER` / `WORLD_PREPASS` / `WORLD_POSTPASS` / `WORLD_FINALIZATION` consts and `StageSpec.world_id` — **retained** as tier vocabulary (their doc comments are corrected to say "tier id; not a loadable WIT package since packet 164"). 163's design listed them among things "#3 retires", but that overreached the plan's queue row: 30+ files consume them as tier identity (scheduler DAG, instrumentation, macro metadata, dozens of tests), the naming rule itself reads the tier from `world_id`, and deleting them buys no honesty a doc comment doesn't. Recorded as an explicit divergence from 163's expectation in `design.md` §Open Questions.
 - `ExportKind` / `ExportBinding` structural collapse beyond the metadata qualification above.
 - Per-stage staleness granularity for **test** guests (`[package.metadata.slicer] stage_id` in 12 `Cargo.toml`s) — conservative over-rebuild is safe and correct; deferred again with rationale in `design.md`.
-- The `pnp_cli` binary-locator extraction (packet 165), DEV-085 (custom G-code injection points), DEV-087 (MissingComponent laundering — referenced by dispatch work here, not resolved), DEV-026 (advisory DAG).
+- The `pnp_cli` binary-locator extraction (packet 165), DEV-085 (custom G-code injection points), and DEV-026 (advisory DAG).
+- Packet 181's DEV-087 implementation is not in this packet's code scope. The five fatal `MissingComponent` arms are consumed as an existing invariant and must remain fatal through the dispatch refactor; packet 164 adds no duplicate five-stage test.
 - The 7 known-red parity tests' own fixes (their fix landed pre-162 per the plan's §"Status since approval"; this packet only keeps the baseline green).
 - `OrcaSlicerDocumented/` — no parity surface exists for a WASM contract refactor (see `design.md` §Controlling Code Paths).
 
@@ -52,7 +54,7 @@ Packet 163 proved the per-stage versioned-package mechanism on the three cheapes
 Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (WIT shape ×12 + prepass-types + tier dirs gone), `AC-2` (STAGES totality incl. the host-built-in exception), `AC-3` (15 `bindgen!` mods, `with:` discipline), `AC-4` (dispatch rewiring + executor suite), `AC-5` (macro glue split, fallbacks dead), `AC-6` (decoded guest exports), `AC-7` (`wit-world` retirement end-to-end), `AC-8` (deviation closure), `AC-9` (contract-guard suites on the 15-package surface).
-- Negative: `AC-N1` (fatal-on-miss, layer case, engine's expected-only wording), `AC-N2` (isolation: touch one stage's `.wit`, unrelated core guests stay FRESH and byte-identical — the ADR's headline claim, now on the motivating tier), `AC-N3` (manifest loads without `wit-world`; legacy key tolerated-ignored), `AC-N4` (behavior-neutrality baseline).
+- Negative: `AC-N1` (fatal-on-miss, layer case, engine's expected-only wording), `AC-N2` (isolation: touch one stage's `.wit`, unrelated core guests stay FRESH and byte-identical — the ADR's headline claim, now on the motivating tier), `AC-N3` (manifest loads without `wit-world`; legacy key tolerated-ignored), `AC-N4` (behavior-neutrality baseline), `AC-N5` (packet 181's existing five-stage fatal-on-missing-component test remains green after dispatch restructuring).
 - Cross-packet impact: consumes 163's exports ledger wholesale; closes the deviation row 163 files; leaves nothing for a successor — after this packet exactly one contract mechanism exists. Diverges from 163's expectation on `WORLD_*`/`world_id` retirement (kept as vocabulary; see Out of Scope).
 
 ## Verification Commands

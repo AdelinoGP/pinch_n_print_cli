@@ -20,6 +20,7 @@ This packet replaces `slicer:world-layer@2.0.0` and `slicer:world-prepass@1.0.0`
 ## Prerequisites and Blockers
 
 - Depends on: `163_per-stage-wit-packages-pilot` (TASK-146b) — **must be IMPLEMENTED, not merely generated**, which itself requires 162 implemented. Every symbol this packet consumes is cited in its post-163 form, taken from `.ralph/specs/163_per-stage-wit-packages-pilot/design.md` §"Exports handed to packet #3" (the contract) — `StageSpec.{wit_dir,wit_package,wit_interface,wit_world}`, `qualified_export_for_stage_id`, `StageGlueKind`/`resolve_stage_glue`, the `build_postpass_gcode_glue`/`build_postpass_text_glue` glue template, `GuestSpec.stage_id` + `stage_wit_mtime` in `xtask`, and the per-stage `bindgen!` mod pattern in `crates/slicer-wasm-host/src/host.rs`. Starting against a tree where 163 has not landed produces spurious conflicts in every file this packet touches. Step 0 of `implementation-plan.md` verifies the tree before any edit.
+- Consumes: `181-dispatch-missing-component-handling` (TASK-297) — **must be IMPLEMENTED**. The five `MissingComponent` arms are already fatal; packet 164 may relocate them as part of dispatch restructuring but must preserve that behavior and must not reintroduce success laundering.
 - Unblocks: nothing structurally (165 depends only on 162), but until this packet lands two contract mechanisms are live in-tree — the accepted intermediate 163 records as a deviation row owned by this packet.
 - Activation blockers: none. `[FWD]` entries in `design.md` are implementer-resolvable.
 
@@ -155,11 +156,13 @@ print('PASS' if not missing and not leaked and not changed else f'FAIL not_stale
 
 - **AC-N4. Given** the behavior-neutrality baseline (`perimeter_parity` → `12 passed; 0 failed; 11 ignored`; `legacy_zero_matches_golden` → `1 passed; 0 failed`; green at 163's close per its AC-N3), **when** this packet's migration is complete, **then** both still report `0 failed` — a regression here is caused by this packet and must not be "fixed" by editing goldens. `0 passed` means the filter matched nothing and is a FAIL. | `cd F:/slicerProject/pinch_n_print_cli && mkdir -p target && cargo xtask build-guests --check && ((cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 | tee target/test-output.log | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 perimeter_parity tests ran') && ((cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 | tee -a target/test-output.log | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 legacy_zero tests ran')`
 
+- **AC-N5. Given** packet 181's `dispatch_missing_component_tdd::missing_component_is_fatal_for_all_five_stages` already covers all five dispatch entry points, **when** packet 164's per-stage dispatch refactor is complete, **then** that existing test remains green and no arm returns a successful empty/skip output for `MissingComponent`. This is a behavior-preservation gate, not a second test.
+
 ## Verification
 
 - `cargo check --workspace --all-targets`
 - `cargo clippy --workspace --all-targets -- -D warnings`
-- `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 tests ran'` — the `rg -v '0 passed'` guard is **mandatory on every name-filtered `cargo test` gate in this packet**: an absent or unregistered test filters to nothing, prints `ok. 0 passed`, and exits 0. Unfiltered whole-binary runs do not need it.
+- `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 tests ran'` and `(cargo test -p slicer-runtime --test contract -- missing_component_is_fatal_for_all_five_stages 2>&1 | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 tests ran'` — the `rg -v '0 passed'` guard is **mandatory on every name-filtered `cargo test` gate in this packet**: an absent or unregistered test filters to nothing, prints `ok. 0 passed`, and exits 0. Unfiltered whole-binary runs do not need it.
 
 ## Authoritative Docs
 

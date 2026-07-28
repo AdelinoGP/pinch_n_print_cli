@@ -98,7 +98,7 @@
 ### Step 5: Dispatch rewiring (layer + prepass)
 
 - Task IDs: `TASK-146c`
-- Objective: restructure `dispatch_layer_call`/`call_layer_export` and `dispatch_prepass_call`/its router so the stage match selects the per-stage world (per-arm `add_to_linker` + `instantiate` + interface-accessor `call_run`), moving each arm's existing marshalling body unmodified; add 163's qualified-export `reason` to every `TypedInstantiation` arm; leave the `MissingComponent` conversion arms (DEV-087) byte-untouched.
+- Objective: restructure `dispatch_layer_call`/`call_layer_export` and `dispatch_prepass_call`/its router so the stage match selects the per-stage world (per-arm `add_to_linker` + `instantiate` + interface-accessor `call_run`), moving each arm's existing marshalling body unmodified; add 163's qualified-export `reason` to every `TypedInstantiation` arm; move the five already-fatal `MissingComponent` arms only as a behavior-preserving refactor, with packet 181's `missing_component_is_fatal_for_all_five_stages` test as the regression gate.
 - Precondition: Step 4 done.
 - Postcondition: `dispatch.rs` has zero `host::LayerModule`/`host::PrepassModule` (AC-4's grep half).
 - Files allowed to read, with ranges:
@@ -217,7 +217,7 @@ Aggregate `M`. No step is L; Steps 4-5 are the ones to watch — if either excee
 
 - Re-dispatch every pipe-suffixed AC and gate command.
 - `cargo xtask test --summary --workspace` dispatched to a sub-agent, `FACT` pass/fail + failing names only (CLAUDE.md §Test Discipline; the guest-freshness gate must run — `xtask test`, not bare `cargo test`).
-- Record remaining packet-local risk (expected: none beyond DEV-087, which is untouched by design).
+- Record remaining packet-local risk (expected: none beyond preserving packet 181's closed fatal-on-miss invariant; DEV-087 is not reopened or re-implemented).
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 
 All `cargo check`, `cargo clippy`, and `cargo test` invocations in gate and verification commands must use `--all-targets` where applicable so test, bench, and example targets compile.
