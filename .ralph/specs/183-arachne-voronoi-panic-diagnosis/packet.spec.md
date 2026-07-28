@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 183-arachne-voronoi-panic-diagnosis
 task_ids:
   - TASK-296
