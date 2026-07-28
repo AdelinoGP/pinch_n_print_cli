@@ -8,8 +8,8 @@
 ; filament_colour = #EC0006
 ; extruder_colour = #EC0006
 ; HEADER_BLOCK_END
-; outer_wall_line_width = 0.42
-; inner_wall_line_width = 0.45
+; outer_wall_line_width = 0.4
+; inner_wall_line_width = 0.4
 ; sparse_infill_line_width = 0.45
 ; top_surface_line_width = 0.42
 ; support_line_width = 0.35

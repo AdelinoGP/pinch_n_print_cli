@@ -74,9 +74,9 @@ pub struct DefaultGCodeSerializer {
     /// Minimum max_z_height in mm used when no Z moves appear in the output
     /// (default 256.0 per config schema — the schema's configured build height).
     max_z_height_floor_mm: f32,
-    /// Extrusion width for outer wall in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
+    /// Extrusion width for outer wall in mm (default `0.4`, from the `resolve_line_width_mm` fallback in `crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`).
     outer_wall_line_width: f32,
-    /// Extrusion width for inner walls in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
+    /// Extrusion width for inner walls in mm (default `0.4`, from the `resolve_line_width_mm` fallback in `crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`).
     inner_wall_line_width: f32,
     /// Extrusion width for sparse infill in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
     sparse_infill_line_width: f32,
@@ -105,9 +105,10 @@ impl DefaultGCodeSerializer {
             filament_diameter_mm: 1.75,
             filament_density_g_cm3: 1.24,
             max_z_height_floor_mm: 256.0,
-            // OrcaSlicer 0.4 mm nozzle parity defaults (matches config_schema.rs registration).
-            outer_wall_line_width: 0.42,
-            inner_wall_line_width: 0.45,
+            // Wall-width defaults follow the 0.4 mm fallback in `resolve_line_width_mm`
+            // (`crates/slicer-runtime/src/builtins/overhang_annotation_producer.rs`).
+            outer_wall_line_width: 0.4,
+            inner_wall_line_width: 0.4,
             sparse_infill_line_width: 0.45,
             top_surface_line_width: 0.42,
             support_line_width: 0.35,

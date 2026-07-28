@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 182-gcode-header-width-defaults
 task_ids:
   - TASK-295

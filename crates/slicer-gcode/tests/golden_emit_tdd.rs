@@ -146,3 +146,38 @@ fn serialize_gcode_emits_documented_sentinels() {
         "expected `G1 E-0.80000` retract line (relative-E default), got:\n{output}"
     );
 }
+
+#[test]
+fn header_reports_governing_wall_width_defaults() {
+    let gcode_ir = build_minimal_gcode_ir();
+    let serializer = DefaultGCodeSerializer::default();
+
+    let output = serializer
+        .serialize_gcode(&gcode_ir)
+        .expect("DefaultGCodeSerializer::serialize_gcode must succeed on a well-formed GCodeIR");
+
+    assert!(
+        output
+            .lines()
+            .any(|line| line.trim() == "; outer_wall_line_width = 0.4"),
+        "expected exact header line `; outer_wall_line_width = 0.4`, got:\n{output}"
+    );
+    assert!(
+        output
+            .lines()
+            .any(|line| line.trim() == "; inner_wall_line_width = 0.4"),
+        "expected exact header line `; inner_wall_line_width = 0.4`, got:\n{output}"
+    );
+    assert!(
+        !output
+            .lines()
+            .any(|line| line.trim() == "; outer_wall_line_width = 0.42"),
+        "unexpected unfixed header line `; outer_wall_line_width = 0.42`, got:\n{output}"
+    );
+    assert!(
+        !output
+            .lines()
+            .any(|line| line.trim() == "; inner_wall_line_width = 0.45"),
+        "unexpected unfixed header line `; inner_wall_line_width = 0.45`, got:\n{output}"
+    );
+}
