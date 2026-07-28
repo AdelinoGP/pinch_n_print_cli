@@ -31,7 +31,7 @@
 //! All extrusion speeds are normalized relative to a base speed:
 //! `speed_factor = configured_speed / BASE_SPEED` where `BASE_SPEED = 50.0`.
 //! The configured speed is read from the `support_speed` config key at
-//! `on_print_start` and stored as `self.support_speed`.
+//! `from_config` and stored as `self.support_speed`.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -68,7 +68,7 @@ pub struct TraditionalSupport {
 
 #[slicer_module]
 impl LayerModule for TraditionalSupport {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("enable_support") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
@@ -361,9 +361,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
-        let module = TraditionalSupport::on_print_start(&config).unwrap();
+        let module = TraditionalSupport::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);

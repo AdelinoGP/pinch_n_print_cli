@@ -16,26 +16,20 @@ struct TestPrepassModule {
 }
 
 impl PrepassModule for TestPrepassModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         // Verify ConfigView is accessible
         let _ = config.len();
         Ok(Self { initialized: true })
     }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
 }
 
 #[test]
-fn test_01_prepass_module_trait_exists_with_lifecycle() {
-    // Test that PrepassModule trait can be implemented with on_print_start/on_print_end
+fn test_01_prepass_module_trait_exists_with_from_config() {
+    // Test that PrepassModule trait can be implemented with from_config
     let config = ConfigView::from_map(HashMap::new());
 
-    let module = TestPrepassModule::on_print_start(&config).expect("on_print_start should succeed");
+    let module = TestPrepassModule::from_config(&config).expect("from_config should succeed");
     assert!(module.initialized, "module should be initialized");
-
-    module.on_print_end().expect("on_print_end should succeed");
 }
 
 // =============================================================================
@@ -297,7 +291,7 @@ fn test_09_layer_plan_output_push_layer() {
 struct MeshAnalysisTestModule;
 
 impl PrepassModule for MeshAnalysisTestModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -318,7 +312,7 @@ impl PrepassModule for MeshAnalysisTestModule {
 #[test]
 fn test_10_run_mesh_analysis_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = MeshAnalysisTestModule::on_print_start(&config).unwrap();
+    let module = MeshAnalysisTestModule::from_config(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = MeshAnalysisOutput::new();
 
@@ -333,7 +327,7 @@ fn test_10_run_mesh_analysis_signature_matches_wit() {
 struct LayerPlanningTestModule;
 
 impl PrepassModule for LayerPlanningTestModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -354,7 +348,7 @@ impl PrepassModule for LayerPlanningTestModule {
 #[test]
 fn test_11_run_layer_planning_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = LayerPlanningTestModule::on_print_start(&config).unwrap();
+    let module = LayerPlanningTestModule::from_config(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = LayerPlanOutput::new();
 
@@ -369,7 +363,7 @@ fn test_11_run_layer_planning_signature_matches_wit() {
 struct MinimalPrepassModule;
 
 impl PrepassModule for MinimalPrepassModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     // Both run_mesh_analysis and run_layer_planning have default implementations
@@ -378,7 +372,7 @@ impl PrepassModule for MinimalPrepassModule {
 #[test]
 fn test_12_default_implementations_exist() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = MinimalPrepassModule::on_print_start(&config).unwrap();
+    let module = MinimalPrepassModule::from_config(&config).unwrap();
     let objects: Vec<ObjectId> = vec![];
     let mut mesh_output = MeshAnalysisOutput::new();
     let mut layer_output = LayerPlanOutput::new();
@@ -400,7 +394,7 @@ struct CustomPrepassModule {
 }
 
 impl PrepassModule for CustomPrepassModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let threshold = config
             .get("overhang_threshold_deg")
             .and_then(|v| match v {
@@ -438,7 +432,7 @@ fn test_13_custom_module_implementation() {
     );
     let config = ConfigView::from_map(fields);
 
-    let module = CustomPrepassModule::on_print_start(&config).expect("should create module");
+    let module = CustomPrepassModule::from_config(&config).expect("should create module");
     assert!((module.overhang_threshold_deg - 60.0).abs() < 1e-6);
 }
 

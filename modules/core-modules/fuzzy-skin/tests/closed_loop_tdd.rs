@@ -100,7 +100,7 @@ fn fuzzy_skin_perturbs_closing_edge_of_closed_loop() {
         "fixture must be closed (5 points, last == first); got {} points",
         wall.path.points.len()
     );
-    let module = FuzzySkinModule::on_print_start(&config_apply_to_all(0.5, 0.8)).unwrap();
+    let module = FuzzySkinModule::from_config(&config_apply_to_all(0.5, 0.8)).unwrap();
     let region = region_with(wall);
     let mut output = PerimeterOutputBuilder::new();
     module
@@ -154,7 +154,7 @@ fn fuzzy_skin_output_preserves_closing_repeat_invariant() {
     // point must equal the first (so downstream emitter / future post-processors
     // see the same convention).
     let wall = closed_square_outer_wall(true);
-    let module = FuzzySkinModule::on_print_start(&config_apply_to_all(0.3, 0.8)).unwrap();
+    let module = FuzzySkinModule::from_config(&config_apply_to_all(0.3, 0.8)).unwrap();
     let region = region_with(wall);
     let mut output = PerimeterOutputBuilder::new();
     module

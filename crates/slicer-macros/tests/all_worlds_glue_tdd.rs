@@ -105,18 +105,12 @@ fn macro_no_longer_emits_placeholder_shim_for_supported_worlds() {
         src.contains("real_glue_world.is_some()"),
         "macro must gate the placeholder shim path behind the real-glue detector"
     );
-    assert!(
-        src.contains("let skip_lifecycle_shims = real_glue_world.is_some();"),
-        "macro must skip lifecycle shims wherever real glue is emitted"
-    );
 }
 
 #[test]
-fn macro_layer_world_covers_all_eight_stage_exports_plus_lifecycle() {
+fn macro_layer_world_covers_all_eight_stage_exports() {
     let src = macro_src();
     for export_arm in [
-        "fn on_print_start",
-        "fn on_print_end",
         "fn run_slice_postprocess",
         "fn run_perimeters",
         "fn run_wall_postprocess",

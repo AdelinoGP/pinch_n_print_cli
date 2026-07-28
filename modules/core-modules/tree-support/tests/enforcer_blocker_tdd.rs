@@ -106,7 +106,7 @@ fn paint_view_with_annotations(z: f32, semantics: &[PaintSemantic]) -> PaintRegi
 #[test]
 fn fully_blocked_region_generates_zero_support() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
@@ -129,7 +129,7 @@ fn fully_blocked_region_generates_zero_support() {
 #[test]
 fn fully_enforced_region_generates_support_at_zero_overhang() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(false);
 
@@ -151,7 +151,7 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
 #[test]
 fn blocked_plus_enforced_resolves_to_zero_support() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
@@ -180,7 +180,7 @@ fn blocked_plus_enforced_resolves_to_zero_support() {
 #[test]
 fn unpainted_region_keeps_existing_behaviour() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let region = square_region(0.3);
 
     // No paint data at all
@@ -204,7 +204,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 #[test]
 fn default_ineligible_region_generates_zero_support() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(false);
 
@@ -225,7 +225,7 @@ fn default_ineligible_region_generates_zero_support() {
 #[test]
 fn default_eligible_region_generates_support() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 
@@ -246,7 +246,7 @@ fn default_eligible_region_generates_support() {
 #[test]
 fn enforcer_overrides_needs_support_false() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(false);
 
@@ -267,7 +267,7 @@ fn enforcer_overrides_needs_support_false() {
 #[test]
 fn blocker_overrides_needs_support_true() {
     let config = enabled_config();
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     let mut region = square_region(0.3);
     region.set_needs_support(true);
 

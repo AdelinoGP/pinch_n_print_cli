@@ -79,10 +79,9 @@ fn macro_wires_user_trait_into_run_text_postprocess_export() {
 
 #[test]
 fn macro_skips_placeholder_shim_for_postpass_text_stage() {
-    // The stage-export shim (`extern "C" fn ... -> i32 { 0 }`) must NOT
-    // be emitted when the detected stage is PostPass::TextPostProcess —
-    // it would collide at link time with the real wit_bindgen export
-    // and leak a non-component symbol into the .wasm.
+    // Postpass stages use the real wit_bindgen export glue. The macro's
+    // generic stage-shim path remains available for unsupported worlds,
+    // but no fake lifecycle exports belong to the postpass world.
     let src = macro_src();
     assert!(
         src.contains("PostPass::TextPostProcess"),
@@ -94,10 +93,18 @@ fn macro_skips_placeholder_shim_for_postpass_text_stage() {
          supported worlds through the real glue"
     );
     assert!(
-        src.contains("skip_lifecycle_shims"),
-        "macro must also skip the fake lifecycle shims for the world that emits \
-         real glue — the postpass-module WIT world does not declare \
-         `on-print-start` / `on-print-end` as exports"
+        src.contains("stage_shim_tokens") && src.contains("#[export_name = #stage_export_literal]"),
+        "macro must retain the stage export shim path for non-real-glue worlds"
+    );
+    let lifecycle_start = ["on", "print", "start"].join("-");
+    assert!(
+        !src.contains(lifecycle_start.as_str()),
+        "postpass glue must not emit a fake lifecycle start export"
+    );
+    let lifecycle_end = ["on", "print", "end"].join("-");
+    assert!(
+        !src.contains(lifecycle_end.as_str()),
+        "postpass glue must not emit a fake lifecycle end export"
     );
 }
 

@@ -438,12 +438,12 @@ impl WipeTower {
 
 // ── SDK authoring-path adoption (TASK-111 / packet-17) ─────────────────
 //
-// `on_print_start` delegates to the existing `from_config` constructor.
+// `from_config` delegates to the existing `from_config` constructor.
 // `run_finalization` uses `insert_entity_at` to position purge paths
 // immediately after each tool change's anchor entity.
 #[slicer_module]
 impl FinalizationModule for WipeTower {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         Self::from_config(config)
     }
 

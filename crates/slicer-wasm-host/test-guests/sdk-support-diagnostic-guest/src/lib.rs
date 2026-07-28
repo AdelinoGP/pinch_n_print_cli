@@ -7,7 +7,7 @@ pub struct SdkSupportDiagnosticGuest;
 
 #[slicer_module]
 impl PrepassModule for SdkSupportDiagnosticGuest {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

@@ -17,7 +17,7 @@ pub struct FinalizationMutationRoundtripGuest;
 
 #[slicer_module]
 impl FinalizationModule for FinalizationMutationRoundtripGuest {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

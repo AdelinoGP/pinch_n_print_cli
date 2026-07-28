@@ -94,7 +94,7 @@ fn gap_fill_emitted_for_narrow_gap() {
         .float("filter_out_gap_fill", 0.5_f64)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let regions = vec![make_thin_arm_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
@@ -204,7 +204,7 @@ fn no_gaps_case() {
         .float("filter_out_gap_fill", 0.5)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     // Clean 10 mm × 10 mm square — no slot, no thin features.
     let regions = vec![SliceRegionViewBuilder::new()
         .object_id("obj-1")

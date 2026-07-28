@@ -59,7 +59,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 fn per_region_line_width_sets_emitted_wall_width() {
     let outer_width_for = |lw: f64| -> f32 {
         let config = make_config(2, lw);
-        let module = ClassicPerimeters::on_print_start(&config).unwrap();
+        let module = ClassicPerimeters::from_config(&config).unwrap();
         let regions = vec![make_region(10.0, 0.2)];
         let paint = PaintRegionLayerView::new(0);
         let mut output = PerimeterOutputBuilder::new();
@@ -95,7 +95,7 @@ fn per_region_line_width_sets_emitted_wall_width() {
 #[test]
 fn single_square_two_walls() {
     let config = make_config(2, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -115,7 +115,7 @@ fn single_square_two_walls() {
 #[test]
 fn outer_wall_is_index_zero() {
     let config = make_config(2, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -137,7 +137,7 @@ fn outer_wall_is_index_zero() {
 #[test]
 fn inner_walls_correct_type() {
     let config = make_config(3, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -167,7 +167,7 @@ fn inner_walls_correct_type() {
 #[test]
 fn infill_area_computed() {
     let config = make_config(2, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -197,7 +197,7 @@ fn infill_area_computed() {
 #[test]
 fn empty_polygon_no_output() {
     let config = make_config(2, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
     region.set_region_id(1);
@@ -225,7 +225,7 @@ fn empty_polygon_no_output() {
 #[test]
 fn wall_count_zero() {
     let config = make_config(0, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -249,7 +249,7 @@ fn wall_count_zero() {
 #[test]
 fn seam_candidates_generated() {
     let config = make_config(2, 0.4);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -273,7 +273,7 @@ fn seam_candidates_generated() {
 #[test]
 fn speed_factor_from_config() {
     let config = make_speed_config(2, 0.4, 30.0, 60.0);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

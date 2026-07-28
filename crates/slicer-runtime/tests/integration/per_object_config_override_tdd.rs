@@ -3,16 +3,16 @@
 //! Verifies that the 7 P105 config keys (outer_wall_line_width,
 //! inner_wall_line_width, wall_sequence, detect_thin_wall, gap_infill_speed,
 //! filter_out_gap_fill, precise_outer_wall) are read per-invocation from the
-//! `_config` argument to `run_perimeters`, NOT from the cached `on_print_start`
+//! `_config` argument to `run_perimeters`, NOT from the cached `from_config`
 //! config.
 //!
-//! Test: set print-global outer_wall_line_width=0.5 at on_print_start, then
+//! Test: set print-global outer_wall_line_width=0.5 at from_config, then
 //! pass a per-object override config with outer_wall_line_width=0.6 to
 //! run_perimeters.  The emitted outer-wall vertex widths must equal 0.6 (the
 //! override), proving the per-invocation read is respected.
 //!
 //! The "per-object override mechanism" in the test harness is simply passing a
-//! different ConfigView to run_perimeters than was used at on_print_start.
+//! different ConfigView to run_perimeters than was used at from_config.
 //! This is sufficient: R2's intent is that run_perimeters reads _config (the
 //! per-invocation argument) rather than cached struct fields, so any caller
 //! that passes a different ConfigView at invoke time gets the override applied.
@@ -35,7 +35,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 
 /// AC-8: per-invocation outer_wall_line_width override.
 ///
-/// on_print_start sees global outer_wall_line_width=0.5.
+/// from_config sees global outer_wall_line_width=0.5.
 /// run_perimeters is called with a per-object config of outer_wall_line_width=0.6.
 /// Emitted outer-wall vertex widths MUST be 0.6.
 #[test]
@@ -44,14 +44,14 @@ fn per_object_outer_wall_line_width_override() {
     let override_outer_w = 0.6_f32;
     let inner_w = 0.4_f64;
 
-    // on_print_start config: global values.
+    // from_config config: global values.
     let start_config = ConfigViewBuilder::new()
         .int("wall_count", 3)
         .float("outer_wall_line_width", global_outer_w)
         .float("inner_wall_line_width", inner_w)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&start_config).unwrap();
+    let module = ClassicPerimeters::from_config(&start_config).unwrap();
 
     // Per-object override config: outer_wall_line_width bumped to 0.6.
     let override_config = ConfigViewBuilder::new()
@@ -82,7 +82,7 @@ fn per_object_outer_wall_line_width_override() {
         for pt in &outer.path.points {
             assert!(
                 (pt.width - override_outer_w).abs() < 0.005,
-                "Outer wall vertex width {} != override {} (per-invocation config read must prevail over on_print_start cache)",
+                "Outer wall vertex width {} != override {} (per-invocation config read must prevail over from_config cache)",
                 pt.width,
                 override_outer_w
             );
@@ -90,7 +90,7 @@ fn per_object_outer_wall_line_width_override() {
     }
 
     // Also verify the inner wall uses the inner_w from override_config, not anything
-    // stale from on_print_start (inner_w is the same in both configs, so we just
+    // stale from from_config (inner_w is the same in both configs, so we just
     // confirm the module didn't produce zero-width inner walls).
     let inner_walls: Vec<_> = walls
         .iter()
@@ -114,7 +114,7 @@ fn per_object_outer_wall_line_width_override() {
 
 /// Regression: inner_wall_line_width override is also respected per-invocation.
 ///
-/// on_print_start sees inner_wall_line_width=0.4; run_perimeters gets 0.3.
+/// from_config sees inner_wall_line_width=0.4; run_perimeters gets 0.3.
 /// Inner wall vertex widths must equal 0.3.
 #[test]
 fn per_object_inner_wall_line_width_override() {
@@ -128,7 +128,7 @@ fn per_object_inner_wall_line_width_override() {
         .float("inner_wall_line_width", global_inner_w)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&start_config).unwrap();
+    let module = ClassicPerimeters::from_config(&start_config).unwrap();
 
     let override_config = ConfigViewBuilder::new()
         .int("wall_count", 3)

@@ -54,7 +54,7 @@ pub struct InfillPostprocessEchoModule;
 
 #[slicer_module]
 impl LayerModule for InfillPostprocessEchoModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

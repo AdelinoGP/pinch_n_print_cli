@@ -32,7 +32,7 @@ fn concave_region_emits_outer_wall_without_panic() {
         .int("wall_count", 2)
         .float("line_width", 0.4)
         .build();
-    let module = ClassicPerimeters::on_print_start(&cfg).unwrap();
+    let module = ClassicPerimeters::from_config(&cfg).unwrap();
 
     let region = SliceRegionViewBuilder::new()
         .object_id("obj-1")

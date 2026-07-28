@@ -410,12 +410,8 @@ fn commit_wall_sequence(walls: &mut Vec<WallLoop>, sequence: WallSequence) {
 
 #[slicer_module]
 impl LayerModule for ArachnePerimeters {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 
     /// `_paint_regions` is intentionally unread — see this module's top-level

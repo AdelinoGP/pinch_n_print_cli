@@ -42,7 +42,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 #[test]
 fn single_square_sparse_fill() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -73,8 +73,8 @@ fn density_affects_line_count() {
     let config_low = make_config(0.2, 0.0, 50.0, 0.4);
     let config_high = make_config(0.5, 0.0, 50.0, 0.4);
 
-    let module_low = RectilinearInfill::on_print_start(&config_low).unwrap();
-    let module_high = RectilinearInfill::on_print_start(&config_high).unwrap();
+    let module_low = RectilinearInfill::from_config(&config_low).unwrap();
+    let module_high = RectilinearInfill::from_config(&config_high).unwrap();
 
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
@@ -116,7 +116,7 @@ fn density_affects_line_count() {
 #[test]
 fn angle_rotation_45() {
     let config = make_config(0.2, 45.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -150,7 +150,7 @@ fn angle_rotation_45() {
 #[test]
 fn layer_alternation() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region0 = make_square_region(10.0, 0.3);
     let region1 = make_square_region(10.0, 0.5);
@@ -201,7 +201,7 @@ fn layer_alternation() {
 #[test]
 fn empty_infill_areas() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     // Region with empty infill_areas
     let mut region = SliceRegionView::default();
@@ -231,7 +231,7 @@ fn empty_infill_areas() {
 #[test]
 fn zero_density_no_output() {
     let config = make_config(0.0, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -251,7 +251,7 @@ fn zero_density_no_output() {
 #[test]
 fn extrusion_role_is_sparse() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -274,7 +274,7 @@ fn extrusion_role_is_sparse() {
 #[test]
 fn speed_factor_from_config() {
     let config = make_config(0.2, 0.0, 100.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -295,7 +295,7 @@ fn speed_factor_from_config() {
 
 /// Test 9: per-region `infill_density` override (packet 131 / TASK-256) is
 /// read through `slicer_sdk::config_resolution` and overrides the
-/// module-global default set in `on_print_start`.
+/// module-global default set in `from_config`.
 ///
 /// Module-global density 0.2 (line_width=0.4 → spacing 2mm → ~5 lines on a
 /// 10mm square). Per-region density 0.4 doubles the density → spacing 1mm →
@@ -303,7 +303,7 @@ fn speed_factor_from_config() {
 #[test]
 fn per_region_density_overrides_module_global() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     // Region A: no per-region config. Module-global density 0.2 → spacing 2mm.
     let region_a = make_square_region(10.0, 0.3);

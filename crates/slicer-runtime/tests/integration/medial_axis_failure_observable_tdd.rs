@@ -178,7 +178,7 @@ fn no_spurious_diagnostics_on_happy_path() {
         .bool("detect_thin_wall", true)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_thin_protrusion_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

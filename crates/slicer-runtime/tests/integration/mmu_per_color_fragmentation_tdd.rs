@@ -56,7 +56,7 @@ fn right_cell_region(z: f32) -> SliceRegionView {
 #[test]
 fn per_color_regions_each_trace_own_outer_wall() {
     let config = fragmentation_config();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let regions = vec![left_cell_region(0.2), right_cell_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
@@ -145,7 +145,7 @@ fn per_color_regions_each_trace_own_outer_wall() {
 #[test]
 fn single_color_region_traces_one_outer_wall() {
     let config = fragmentation_config();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     // Single 10×10 mm square, one region, one object.
     let regions = vec![SliceRegionViewBuilder::new()

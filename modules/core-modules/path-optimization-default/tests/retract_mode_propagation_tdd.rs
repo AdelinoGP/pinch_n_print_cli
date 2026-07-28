@@ -1,7 +1,7 @@
 //! TDD: `retract_mode` config propagation into emitted `Retract` / `Unretract`
 //! `GCodeCommand`s on path-optimization-default (packet 34, Step 3).
 //!
-//! Verifies that `self.retract_mode`, resolved in `on_print_start` from the
+//! Verifies that `self.retract_mode`, resolved in `from_config` from the
 //! `retract_mode` config field, is carried verbatim into every
 //! `GCodeCommand::Retract` and `GCodeCommand::Unretract` written to the
 //! `GcodeOutputBuilder` during `run_path_optimization`.
@@ -75,8 +75,8 @@ fn two_separate_regions() -> Vec<PerimeterRegionView> {
 /// Run the module against the synthetic two-region fixture and return the
 /// emitted command stream.
 fn run_with_config(config: &ConfigView) -> Vec<GcodeOutputCommand> {
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(config)
-        .expect("on_print_start must succeed");
+    let module = path_optimization_default::PathOptimizationDefault::from_config(config)
+        .expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     let regions = two_separate_regions();

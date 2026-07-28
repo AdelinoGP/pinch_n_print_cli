@@ -88,7 +88,7 @@ fn manifest_config_key_type(key: &str) -> String {
 /// Drive `ArachnePerimeters::run_perimeters` natively via the `LayerModule`
 /// trait and return the emitted wall loops.
 fn run_walls(config: &ConfigView, regions: &[SliceRegionView], layer_index: u32) -> Vec<WallLoop> {
-    let module = ArachnePerimeters::on_print_start(config).unwrap();
+    let module = ArachnePerimeters::from_config(config).unwrap();
     let paint = PaintRegionLayerView::new(layer_index);
     let mut output = PerimeterOutputBuilder::new();
     module

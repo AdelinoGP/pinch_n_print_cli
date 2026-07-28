@@ -165,7 +165,7 @@ fn raft_and_interface_layers_emit_expected_entry_count() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     let obj = overhang_plate_fixture("col");
     let lp = make_layer_plan(11, 0.0, 0.2);
@@ -285,7 +285,7 @@ fn benchy_orca_parity_within_tolerance() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     let obj = overhang_plate_fixture("benchy-stand-in");
     let lp = make_layer_plan(11, 0.0, 0.2);
@@ -470,7 +470,7 @@ fn node_dropped_when_avoidance_rejects_all_moves() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     let obj = overhang_plate_fixture("blocked");
     let lp = make_layer_plan(11, 0.0, 0.2);

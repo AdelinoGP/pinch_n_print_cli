@@ -18,8 +18,6 @@ world layer-module {
     };
     use slicer:common/module-errors.{module-error};
 
-    export on-print-start: func(config: config-view) -> result<_, module-error>;
-    export on-print-end:   func() -> result<_, module-error>;
     export run-slice-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: slice-postprocess-builder, config: config-view) -> result<_, module-error>;
     export run-perimeters: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
     export run-wall-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;

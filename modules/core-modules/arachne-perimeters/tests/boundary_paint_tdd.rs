@@ -54,7 +54,7 @@ fn make_region(poly: slicer_ir::ExPolygon) -> SliceRegionView {
 #[test]
 fn unpainted_region_produces_default_flags() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -83,7 +83,7 @@ fn unpainted_region_produces_default_flags() {
 #[test]
 fn material_paint_sets_tool_index_on_outer_and_inner_walls() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -126,7 +126,7 @@ fn material_paint_sets_tool_index_on_outer_and_inner_walls() {
 #[test]
 fn fuzzy_skin_paint_sets_flag_on_arachne_walls() {
     let config = make_config(1, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -164,7 +164,7 @@ fn fuzzy_skin_paint_sets_flag_on_arachne_walls() {
 #[test]
 fn outer_wall_stays_exterior_surface_when_painted_without_transitions() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

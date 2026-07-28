@@ -10,7 +10,7 @@ pub struct SdkLayerPathoptGuest;
 
 #[slicer_module]
 impl LayerModule for SdkLayerPathoptGuest {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

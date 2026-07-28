@@ -107,7 +107,7 @@ fn sdk_region(
 #[test]
 fn seam_placer_selects_lowest_effective_score_candidate() {
     let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let regions = vec![sdk_region(
         "obj-a",
         0,
@@ -141,7 +141,7 @@ fn seam_placer_selects_lowest_effective_score_candidate() {
 #[test]
 fn seam_rotation_preserves_non_target_walls() {
     let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
     let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)]);
     let regions = vec![sdk_region(
@@ -184,7 +184,7 @@ fn seam_rotation_preserves_non_target_walls() {
 #[test]
 fn seam_contract_is_deterministic_across_repeated_dispatch() {
     let config = random_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
 
     let run_once = || {
         let mut output = PerimeterOutputBuilder::new();
@@ -234,7 +234,7 @@ fn seam_candidate_missing_from_any_wall_is_non_fatal_and_preserves_walls() {
     // region's walls here corrupts the `(object_id, region_id)` pairing in
     // `layer_executor::commit_layer_outputs` for multi-region prints.
     let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
     let regions = vec![sdk_region(
         "obj-a",

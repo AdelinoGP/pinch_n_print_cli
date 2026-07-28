@@ -755,6 +755,51 @@ fn no_versioned_world_identifiers_outside_canonical_wit() {
     );
 }
 
+#[test]
+fn no_lifecycle_exports_anywhere() {
+    let root = workspace_root();
+    let mut files = Vec::new();
+    collect_files(&root, &["rs", "wit"], &mut files);
+    assert!(
+        files.len() > 100,
+        "sanity: the walk should find the workspace's sources, found {}",
+        files.len()
+    );
+
+    let mut offenders: Vec<String> = Vec::new();
+    for path in &files {
+        if path
+            .file_name()
+            .is_some_and(|n| n == "wit_drift_detection_tdd.rs")
+        {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
+        for (idx, line) in content.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if line.contains("on-print-start")
+                || line.contains("on-print-end")
+                || line.contains("on_print_start")
+                || line.contains("on_print_end")
+            {
+                let rel = path.strip_prefix(&root).unwrap_or(path);
+                offenders.push(format!("{}:{}", rel.display(), idx + 1));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "lifecycle exports must not appear outside this guard; found {} offender(s):\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+
 /// True if `line` contains a versioned world reference in either shape:
 ///   - `slicer:world-layer@2.0.0` — bare package form.
 ///   - `slicer:world-layer/layer-module@1.1.0` — package-qualified path form,

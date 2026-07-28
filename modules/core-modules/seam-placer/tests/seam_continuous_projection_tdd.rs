@@ -83,7 +83,7 @@ fn aligned_region(walls: Vec<WallLoop>, resolved: Option<Point3WithWidth>) -> Pe
 #[test]
 fn projects_onto_nearest_segment_point() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
     let regions = vec![aligned_region(vec![wall], Some(ir_point(1.5, 0.8, 0.2)))];
     let mut output = PerimeterOutputBuilder::new();
@@ -117,7 +117,7 @@ fn projects_onto_nearest_segment_point() {
 #[test]
 fn target_on_existing_vertex_does_not_insert() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall = ir_wall(0.2, &[(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]);
     let original_len = wall.path.points.len();
     let regions = vec![aligned_region(vec![wall], Some(ir_point(4.0, 0.0, 0.2)))];
@@ -135,7 +135,7 @@ fn target_on_existing_vertex_does_not_insert() {
 #[test]
 fn degenerate_empty_wall_loop_is_non_fatal_and_preserved() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let regions = vec![aligned_region(
         vec![ir_wall(0.2, &[])],
         Some(ir_point(1.0, 1.0, 0.2)),
@@ -161,7 +161,7 @@ fn degenerate_empty_wall_loop_is_non_fatal_and_preserved() {
 #[test]
 fn aligned_no_wall_loops_is_silent() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let regions = vec![aligned_region(vec![], Some(ir_point(1.0, 1.0, 0.2)))];
     let mut output = PerimeterOutputBuilder::new();
 

@@ -96,7 +96,7 @@ fn aligned_region(
 #[test]
 fn missing_plan_emits_non_fatal_and_preserves_walls() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let input_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
     let regions = vec![aligned_region(
         "obj-missing",
@@ -129,7 +129,7 @@ fn missing_plan_emits_non_fatal_and_preserves_walls() {
 #[test]
 fn aligned_with_resolved_seam_does_not_emit_non_fatal() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let seam = ir_point(1.0, 0.0, 0.2);
     let regions = vec![aligned_region(
         "obj-resolved",
@@ -153,7 +153,7 @@ fn aligned_with_resolved_seam_does_not_emit_non_fatal() {
 #[test]
 fn nearest_mode_does_not_emit_non_fatal_on_missing_plan() {
     let config = config_with_mode("nearest");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let regions = vec![aligned_region(
         "obj-nearest",
         9,
@@ -174,7 +174,7 @@ fn nearest_mode_does_not_emit_non_fatal_on_missing_plan() {
 #[test]
 fn aligned_missing_plan_uses_nearest_candidate_as_fallback() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let regions = vec![aligned_region(
         "obj-candidate",
         10,

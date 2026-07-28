@@ -18,7 +18,5 @@ fn binding_surface_matches_manifest() {
     );
     assert_eq!(SkirtBrim::__slicer_stage_export_name(), "run-finalization");
     let exports = SkirtBrim::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-finalization"));
 }

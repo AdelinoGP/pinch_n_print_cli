@@ -170,7 +170,7 @@ fn apply_to_all_config() -> ConfigView {
 
 #[test]
 fn fuzzy_flagged_segments_are_perturbed() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[true, true, true, true]);
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();
@@ -194,7 +194,7 @@ fn fuzzy_flagged_segments_are_perturbed() {
 
 #[test]
 fn non_fuzzy_segments_unchanged() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[false, false, false, false]);
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();
@@ -218,7 +218,7 @@ fn non_fuzzy_segments_unchanged() {
 #[test]
 fn apply_to_all_perturbs_all_outer() {
     let config = apply_to_all_config();
-    let module = FuzzySkinModule::on_print_start(&config).unwrap();
+    let module = FuzzySkinModule::from_config(&config).unwrap();
     // All flags false, but apply-to-all overrides
     let wall = outer_wall(0.3, &[false, false, false, false]);
     let regions = vec![region_with_walls(vec![wall.clone()])];
@@ -242,7 +242,7 @@ fn apply_to_all_perturbs_all_outer() {
 
 #[test]
 fn inner_walls_not_perturbed() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let inner = inner_wall(0.3);
     let regions = vec![region_with_walls(vec![inner.clone()])];
     let mut output = PerimeterOutputBuilder::new();
@@ -265,7 +265,7 @@ fn inner_walls_not_perturbed() {
 
 #[test]
 fn feature_flags_parallel_with_points() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[true, true, true, true]);
     let regions = vec![region_with_walls(vec![wall])];
     let mut output = PerimeterOutputBuilder::new();
@@ -296,7 +296,7 @@ fn feature_flags_parallel_with_points() {
 
 #[test]
 fn all_output_points_finite() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[true, true, true, true]);
     let regions = vec![region_with_walls(vec![wall])];
     let mut output = PerimeterOutputBuilder::new();
@@ -317,27 +317,27 @@ fn all_output_points_finite() {
 }
 
 // ============================================================================
-// Test 7: on_print_start with default config succeeds
+// Test 7: from_config with default config succeeds
 // ============================================================================
 
 #[test]
-fn on_print_start_defaults() {
-    let module = FuzzySkinModule::on_print_start(&default_config());
+fn from_config_defaults() {
+    let module = FuzzySkinModule::from_config(&default_config());
     assert!(module.is_ok());
 }
 
 // ============================================================================
-// Test 8: on_print_start with custom config succeeds
+// Test 8: from_config with custom config succeeds
 // ============================================================================
 
 #[test]
-fn on_print_start_custom_config() {
+fn from_config_custom_config() {
     let config = ConfigViewBuilder::new()
         .float("thickness", 1.0)
         .float("point_distance", 0.5)
         .bool("apply_to_all", true)
         .build();
-    let module = FuzzySkinModule::on_print_start(&config);
+    let module = FuzzySkinModule::from_config(&config);
     assert!(module.is_ok());
 }
 
@@ -347,7 +347,7 @@ fn on_print_start_custom_config() {
 
 #[test]
 fn empty_regions_no_output() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = PerimeterOutputBuilder::new();
 
@@ -367,7 +367,7 @@ fn empty_regions_no_output() {
 
 #[test]
 fn deterministic_output() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[true, true, true, true]);
     let regions = vec![region_with_walls(vec![wall])];
 
@@ -390,7 +390,7 @@ fn deterministic_output() {
 
 #[test]
 fn mixed_fuzzy_loops_keep_unflagged_tail_vertices() {
-    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let module = FuzzySkinModule::from_config(&default_config()).unwrap();
     let wall = outer_wall(0.3, &[true, false, false, false]);
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();

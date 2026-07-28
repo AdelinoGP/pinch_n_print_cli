@@ -182,19 +182,15 @@ pub const STAGES: &[StageSpec] = &[
 /// Kind of a single WIT export carried by a module's binding surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportKind {
-    /// One of the world's unconditional lifecycle exports
-    /// (`on-print-start`, `on-print-end`).
-    Lifecycle,
     /// The stage-specific export detected in the impl (e.g. `run-infill`).
     Stage,
 }
 
 /// One WIT export entry in a module's binding schema: the kebab-case
-/// export name the guest provides plus whether it is a lifecycle or
-/// stage export.
+/// export name the guest provides as a stage export.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportBinding {
-    /// Kebab-case WIT export name, e.g. `"on-print-start"`, `"run-infill"`.
+    /// Kebab-case WIT export name, e.g. `"run-infill"`.
     pub name: &'static str,
     /// Classification of this export.
     pub kind: ExportKind,
@@ -214,25 +210,16 @@ pub struct SlicerModuleSchema {
     /// or `""` if the impl targets no known trait or stage.
     pub world_id: &'static str,
     /// Canonical scheduler stage id (e.g. `"Layer::Infill"`) or `""` if no
-    /// stage method was detected (lifecycle-only impls).
+    /// stage method was detected.
     pub stage_id: &'static str,
     /// Rust-cased stage method name (e.g. `"run_infill"`) or `""`.
     pub stage_method: &'static str,
     /// Kebab-case stage export name (e.g. `"run-infill"`) or `""`.
     pub stage_export: &'static str,
-    /// Complete ordered export surface: world lifecycle exports (in
-    /// lifecycle order) followed by the detected stage export if any.
+    /// Complete ordered export surface: the detected stage export, if any
+    /// (0 or 1 entries).
     pub exports: &'static [ExportBinding],
 }
-
-/// WIT worlds and the unconditional lifecycle exports every world ships
-/// (`on-print-start`, `on-print-end` per docs/03 §deps/config-types).
-pub const WORLD_LIFECYCLE_EXPORTS: &[(&str, &[&str])] = &[
-    (WORLD_LAYER, &["on-print-start", "on-print-end"]),
-    (WORLD_PREPASS, &["on-print-start", "on-print-end"]),
-    (WORLD_FINALIZATION, &["on-print-start", "on-print-end"]),
-    (WORLD_POSTPASS, &["on-print-start", "on-print-end"]),
-];
 
 // region: region-split priorities
 
@@ -292,16 +279,6 @@ pub fn world_for_trait(trait_name: &str) -> Option<&'static str> {
     }
 }
 
-/// Return the lifecycle exports for a given WIT world id.
-#[must_use]
-pub fn lifecycle_exports_for_world(world_id: &str) -> &'static [&'static str] {
-    WORLD_LIFECYCLE_EXPORTS
-        .iter()
-        .find(|(w, _)| *w == world_id)
-        .map(|(_, e)| *e)
-        .unwrap_or(&[])
-}
-
 /// Return the full list of canonical stage ids, in table order.
 #[must_use]
 pub fn all_stage_ids() -> Vec<&'static str> {
@@ -351,8 +328,8 @@ pub const VALID_STAGES: &[&str] = &[
 
 /// All WIT world package strings supported by the current SDK.
 ///
-/// Mirrors the world column of [`WORLD_LIFECYCLE_EXPORTS`].
-/// See docs/03 §host-boundary enforcement.
+/// Worlds supported by this schema; see `world-layer.wit`,
+/// `world-prepass.wit`, etc. See docs/03 §host-boundary enforcement.
 pub const SUPPORTED_WIT_WORLDS: &[&str] = &[
     WORLD_LAYER,
     WORLD_PREPASS,
@@ -421,15 +398,6 @@ mod tests {
             assert_eq!(stage_by_method(s.method).unwrap(), s);
             assert_eq!(world_for_stage_id(s.stage_id), Some(s.world_id));
             assert_eq!(world_for_trait(s.trait_name), Some(s.world_id));
-        }
-    }
-
-    #[test]
-    fn every_world_has_lifecycle_exports() {
-        for s in STAGES {
-            let exports = lifecycle_exports_for_world(s.world_id);
-            assert!(exports.contains(&"on-print-start"));
-            assert!(exports.contains(&"on-print-end"));
         }
     }
 }

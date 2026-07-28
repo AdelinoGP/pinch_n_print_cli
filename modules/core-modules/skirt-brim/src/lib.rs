@@ -331,13 +331,13 @@ struct BBox2D {
     y_max: f32,
 }
 
-// `on_print_start` delegates to `from_config`; `run_finalization` is
+// `from_config` delegates to `from_config`; `run_finalization` is
 // fully implemented via `LayerCollectionView` + `FinalizationOutputBuilder`
 // (packet 16, TASK-142). The legacy `process()` helper remains for tests
 // but is no longer called on the live host path.
 #[slicer_module]
 impl FinalizationModule for SkirtBrim {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         Self::from_config(config)
     }
 

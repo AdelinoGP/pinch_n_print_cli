@@ -330,30 +330,17 @@ fn point_in_polygon_ring(ring: &[slicer_ir::Point2], pt: slicer_ir::Point2) -> b
 /// The core trait for per-layer modules.
 ///
 /// Module authors implement this trait and annotate with `#[slicer_module]`.
-/// Per docs/05_module_sdk.md:
-/// - `on_print_start` is called once before the per-layer loop
-/// - `on_print_end` is called after all layers are processed
+/// `from_config` constructs one module value per stage call.
+/// Per-print state belongs in the prepass tier + Blackboard (ADR-0029).
 /// - Exactly one of the `run_*` methods should be implemented based on manifest stage
 ///
-/// Per docs/03_wit_and_manifest.md (world-layer.wit), this maps to:
-/// - `export on-print-start: func(config: config-view) -> result<_, module-error>;`
-/// - `export on-print-end: func() -> result<_, module-error>;`
-/// - Stage-specific exports (run_infill, run_perimeters, etc.)
+/// Stage-specific exports include `run_infill`, `run_perimeters`, and others.
 pub trait LayerModule: Sized {
-    /// Called once before the per-layer loop starts.
+    /// Construct one module value for this stage call.
     ///
     /// Use this to validate config and initialize expensive resources.
     /// Returns Self on success, or a fatal ModuleError on failure.
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
-
-    /// Called once after all layers are processed.
-    ///
-    /// Use this for cleanup. Default implementation does nothing.
-    /// Note: This is best-effort cleanup; correctness must not depend on it
-    /// running after a fatal abort.
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError>;
 
     /// Run infill generation for a layer.
     ///
@@ -554,9 +541,8 @@ pub trait LayerModule: Sized {
 /// The trait for prepass modules.
 ///
 /// Module authors implement this trait for mesh analysis and layer planning stages.
-/// Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-prepass.wit):
-/// - `on_print_start` is called once before prepass stages
-/// - `on_print_end` is called after prepass stages complete
+/// `from_config` constructs one module value per stage call.
+/// Per-print state belongs in the prepass tier + Blackboard (ADR-0029).
 /// - `run_mesh_analysis` is for MeshAnalysis stage modules
 /// - `run_layer_planning` is for LayerPlanning stage modules
 ///
@@ -564,18 +550,11 @@ pub trait LayerModule: Sized {
 /// - `export run-mesh-analysis: func(objects, output, config) -> result<_, module-error>;`
 /// - `export run-layer-planning: func(objects, output, config) -> result<_, module-error>;`
 pub trait PrepassModule: Sized {
-    /// Called once before prepass stages start.
+    /// Construct one module value for this stage call.
     ///
     /// Use this to validate config and initialize expensive resources.
     /// Returns Self on success, or a fatal ModuleError on failure.
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
-
-    /// Called once after prepass stages complete.
-    ///
-    /// Use this for cleanup. Default implementation does nothing.
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError>;
 
     /// Run mesh analysis for the given objects.
     ///
@@ -697,9 +676,8 @@ pub trait PrepassModule: Sized {
 /// The trait for postpass modules.
 ///
 /// Module authors implement this trait for gcode and text postprocessing stages.
-/// Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-postpass.wit):
-/// - `on_print_start` is called once before postpass stages
-/// - `on_print_end` is called after postpass stages complete
+/// `from_config` constructs one module value per stage call.
+/// Per-print state belongs in the prepass tier + Blackboard (ADR-0029).
 /// - `run_gcode_postprocess` is for GcodePostprocess stage modules
 /// - `run_text_postprocess` is for TextPostprocess stage modules
 ///
@@ -707,18 +685,11 @@ pub trait PrepassModule: Sized {
 /// - `export run-gcode-postprocess: func(commands, output, config) -> result<_, module-error>;`
 /// - `export run-text-postprocess: func(gcode-text, config) -> result<string, module-error>;`
 pub trait PostpassModule: Sized {
-    /// Called once before postpass stages start.
+    /// Construct one module value for this stage call.
     ///
     /// Use this to validate config and initialize expensive resources.
     /// Returns Self on success, or a fatal ModuleError on failure.
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
-
-    /// Called once after postpass stages complete.
-    ///
-    /// Use this for cleanup. Default implementation does nothing.
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError>;
 
     /// Run GCode postprocessing on the command list.
     ///
@@ -1729,6 +1700,8 @@ impl std::fmt::Debug for FinalizationOutputBuilder {
 /// The trait for finalization modules.
 ///
 /// Module authors implement this trait for PostPass::LayerFinalization stage.
+/// `from_config` constructs one module value per stage call.
+/// Per-print state belongs in the prepass tier + Blackboard (ADR-0029).
 /// Per docs/03_wit_and_manifest.md (world-finalization.wit):
 /// - Modules receive read-only views of all completed layers
 /// - Modules may append entities to existing layers or insert synthetic layers
@@ -1738,13 +1711,8 @@ impl std::fmt::Debug for FinalizationOutputBuilder {
 /// - Modules must set `layer-parallel-safe = false` in hints
 /// - Host instantiates exactly one WASM instance for finalization modules
 pub trait FinalizationModule: Sized {
-    /// Called once before finalization begins.
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
-
-    /// Called once after finalization completes.
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    /// Construct one module value for this stage call.
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError>;
 
     /// Run layer finalization across all completed layers.
     ///

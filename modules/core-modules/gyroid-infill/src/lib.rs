@@ -105,7 +105,7 @@ impl GyroidInfill {
 
 #[slicer_module]
 impl LayerModule for GyroidInfill {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let density = match config.get("infill_density") {
             Some(ConfigValue::Float(d)) => *d as f32,
             _ => 0.2,
@@ -249,7 +249,7 @@ impl GyroidInfill {
     ///
     /// `density` and `line_width` are passed in by the caller rather than
     /// read from `self` so the per-region config (packet 131 / TASK-256) can
-    /// override the module-global default set in `on_print_start`.
+    /// override the module-global default set in `from_config`.
     fn fill_expolygon(
         &self,
         expoly: &ExPolygon,
@@ -675,9 +675,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
-        let module = GyroidInfill::on_print_start(&config).unwrap();
+        let module = GyroidInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
     }

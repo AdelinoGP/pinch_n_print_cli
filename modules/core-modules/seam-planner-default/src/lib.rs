@@ -206,7 +206,7 @@ fn run_aligned_planning(
 
 #[slicer_module]
 impl PrepassModule for SeamPlannerDefault {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let mode = match config.get("seam_mode") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "nearest" => SeamPlannerMode::Nearest,

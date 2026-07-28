@@ -40,7 +40,7 @@ impl InfillLinker {
 
 #[slicer_module]
 impl LayerModule for InfillLinker {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let infill_overlap = match config.get("infill_overlap") {
             Some(ConfigValue::Float(value))
                 if value.is_finite() && *value >= 0.0 && *value <= 1.0 =>

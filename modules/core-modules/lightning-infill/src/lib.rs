@@ -51,7 +51,7 @@ impl LightningInfill {
 
 #[slicer_module]
 impl LayerModule for LightningInfill {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let density = match config.get("infill_density") {
             Some(ConfigValue::Float(d)) => *d as f32,
             _ => 0.2,
@@ -125,9 +125,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
-        let module = LightningInfill::on_print_start(&config).unwrap();
+        let module = LightningInfill::from_config(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);
     }

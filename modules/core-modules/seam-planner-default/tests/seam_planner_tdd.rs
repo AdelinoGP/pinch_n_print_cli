@@ -2,7 +2,7 @@
 //!
 //! Lifted from the former inline `#[cfg(test)]` module in `src/lib.rs` (which
 //! constructed the planner via its private `mode` field) and expanded. External
-//! tests build the planner through the public `on_print_start` constructor.
+//! tests build the planner through the public `from_config` constructor.
 
 #![allow(missing_docs)]
 
@@ -10,7 +10,7 @@ use seam_planner_default::SeamPlannerDefault;
 use slicer_sdk::prelude::*;
 
 fn planner() -> SeamPlannerDefault {
-    SeamPlannerDefault::on_print_start(&ConfigView::default()).expect("on_print_start must succeed")
+    SeamPlannerDefault::from_config(&ConfigView::default()).expect("from_config must succeed")
 }
 
 /// Unit cube: 8 vertices, 12 triangles.

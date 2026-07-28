@@ -96,7 +96,7 @@ fn run(seam_mode: &str) -> Vec<SeamPlanEntry> {
     let config = ConfigViewBuilder::new()
         .string("seam_mode", seam_mode)
         .build();
-    let planner = SeamPlannerDefault::on_print_start(&config).expect("on_print_start must succeed");
+    let planner = SeamPlannerDefault::from_config(&config).expect("from_config must succeed");
     let mut output = SeamPlanningOutput::new();
     planner
         .run_seam_planning(

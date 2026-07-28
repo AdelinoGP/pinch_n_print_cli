@@ -32,8 +32,8 @@ fn config_with_wall_count(n: i64) -> ConfigView {
 
 #[test]
 fn per_layer_config_wall_count_override() {
-    let base_module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     // Layer 0: base wall_count = 2 (default)
     let region0 = square_region(0.2);
@@ -76,8 +76,8 @@ fn per_layer_config_wall_count_override() {
 
 #[test]
 fn per_layer_config_wall_count_zero_emits_only_infill() {
-    let base_module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let base_module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
@@ -103,14 +103,14 @@ fn per_layer_config_wall_count_zero_emits_only_infill() {
 }
 
 #[test]
-fn per_layer_config_missing_wall_count_falls_back_to_on_print_start() {
+fn per_layer_config_missing_wall_count_falls_back_to_from_config() {
     let config = ConfigView::from_map([("wall_count".to_string(), ConfigValue::Int(3))].into());
-    let module = ClassicPerimeters::on_print_start(&config)
-        .expect("on_print_start with wall_count=3 should succeed");
+    let module = ClassicPerimeters::from_config(&config)
+        .expect("from_config with wall_count=3 should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
-    // No wall_count in per-layer config → falls back to on_print_start value (3)
+    // No wall_count in per-layer config → falls back to from_config value (3)
     let empty_config = ConfigView::from_map(HashMap::new());
     module
         .run_perimeters(
@@ -125,14 +125,14 @@ fn per_layer_config_missing_wall_count_falls_back_to_on_print_start() {
     assert_eq!(
         output.wall_loops().len(),
         3,
-        "fallback to on_print_start wall_count=3 should emit 3 walls"
+        "fallback to from_config wall_count=3 should emit 3 walls"
     );
 }
 
 #[test]
 fn per_layer_config_speed_override() {
-    let module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();

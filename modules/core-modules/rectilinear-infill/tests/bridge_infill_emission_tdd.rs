@@ -121,7 +121,7 @@ fn rect_expoly_mm(x0: i32, y0: i32, x1: i32, y1: i32) -> slicer_ir::ExPolygon {
 #[test]
 fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
     let bridge_angle = 45.0_f32;
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_bridge_region(bridge_angle);
     let mut output = InfillOutputBuilder::new();
 
@@ -175,7 +175,7 @@ fn bridge_areas_emit_bridge_infill_at_oriented_angle() {
 /// must lie inside [0,0]–[20,20] \ [5,5]–[15,15]; no overlap between roles.
 #[test]
 fn straddling_expoly_partitioned_via_set_difference() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
 
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge = rect_expoly_mm(5, 5, 15, 15);
@@ -262,7 +262,7 @@ fn straddling_expoly_partitioned_via_set_difference() {
 #[test]
 fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let bridge_angle = 37.0_f32;
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
 
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge_rect = rect_expoly_mm(2, 2, 18, 18);
@@ -332,7 +332,7 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
 /// is_bridge=true but bridge_areas is empty. Module must emit zero BridgeInfill paths.
 #[test]
 fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
 
     let region = with_rectilinear_claims(
         SliceRegionViewBuilder::new()

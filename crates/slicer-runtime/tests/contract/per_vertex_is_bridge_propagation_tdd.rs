@@ -70,7 +70,7 @@ fn bridge_right_half() -> ExPolygon {
 #[test]
 fn no_bridge_areas_case() {
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -118,7 +118,7 @@ fn no_bridge_areas_case() {
 #[test]
 fn bridge_areas_set_is_bridge_on_inner_vertices() {
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

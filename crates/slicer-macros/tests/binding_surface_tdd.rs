@@ -37,10 +37,7 @@ pub struct FinalizationOutputBuilder;
 pub struct GcodeCommand;
 
 pub trait LayerModule: Sized {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError>;
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError>;
     fn run_infill(
         &self,
         _layer_index: u32,
@@ -83,10 +80,7 @@ pub trait LayerModule: Sized {
 }
 
 pub trait PrepassModule: Sized {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError>;
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError>;
     fn run_mesh_analysis(
         &self,
         _objects: &[MeshObjectView],
@@ -106,10 +100,7 @@ pub trait PrepassModule: Sized {
 }
 
 pub trait FinalizationModule: Sized {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError>;
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError>;
     fn run_finalization(
         &self,
         _layers: &[LayerCollectionView],
@@ -121,10 +112,7 @@ pub trait FinalizationModule: Sized {
 }
 
 pub trait PostpassModule: Sized {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError>;
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError>;
     fn run_gcode_postprocess(
         &self,
         _commands: &[GcodeCommand],
@@ -147,7 +135,7 @@ pub trait PostpassModule: Sized {
 pub struct LayerInfillFixture;
 #[slicer_module]
 impl LayerModule for LayerInfillFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_infill(
@@ -164,7 +152,7 @@ impl LayerModule for LayerInfillFixture {
 pub struct LayerLifecycleOnly;
 #[slicer_module]
 impl LayerModule for LayerLifecycleOnly {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 }
@@ -172,7 +160,7 @@ impl LayerModule for LayerLifecycleOnly {
 pub struct PrepassMeshAnalysisFixture;
 #[slicer_module]
 impl PrepassModule for PrepassMeshAnalysisFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_mesh_analysis(
@@ -188,7 +176,7 @@ impl PrepassModule for PrepassMeshAnalysisFixture {
 pub struct PrepassLayerPlanningFixture;
 #[slicer_module]
 impl PrepassModule for PrepassLayerPlanningFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_layer_planning(
@@ -204,7 +192,7 @@ impl PrepassModule for PrepassLayerPlanningFixture {
 pub struct FinalizationFixture;
 #[slicer_module]
 impl FinalizationModule for FinalizationFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_finalization(
@@ -220,7 +208,7 @@ impl FinalizationModule for FinalizationFixture {
 pub struct PostpassGcodeFixture;
 #[slicer_module]
 impl PostpassModule for PostpassGcodeFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_gcode_postprocess(
@@ -236,7 +224,7 @@ impl PostpassModule for PostpassGcodeFixture {
 pub struct PostpassTextFixture;
 #[slicer_module]
 impl PostpassModule for PostpassTextFixture {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_text_postprocess(&self, _t: &str, _c: &ConfigView) -> Result<String, ModuleError> {
@@ -265,24 +253,21 @@ fn layer_stage_module_reports_layer_world_and_stage_export() {
 }
 
 #[test]
-fn layer_module_wit_exports_include_lifecycle_plus_detected_stage() {
+fn layer_module_wit_exports_only_detected_stage() {
     let exports = LayerInfillFixture::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
-    assert!(exports.contains(&"run-infill"));
-    assert_eq!(exports.len(), 3);
+    assert_eq!(exports, &["run-infill"]);
+    assert_eq!(exports.len(), 1);
 }
 
 #[test]
-fn layer_lifecycle_only_module_still_lists_world_lifecycle_exports() {
-    // No stage → still exports lifecycle per `world-layer.wit`.
+fn layer_stageless_module_lists_no_exports() {
     assert_eq!(
         LayerLifecycleOnly::__slicer_world_id(),
         slicer_schema::WORLD_LAYER
     );
     assert_eq!(LayerLifecycleOnly::__slicer_stage_export_name(), "");
     let exports = LayerLifecycleOnly::__slicer_wit_exports();
-    assert_eq!(exports, &["on-print-start", "on-print-end"]);
+    assert_eq!(exports, &[] as &[&str]);
 }
 
 #[test]
@@ -367,8 +352,6 @@ fn binding_schema_json_captures_full_export_surface() {
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""stage_method":"run_infill""#));
     assert!(json.contains(r#""stage_export":"run-infill""#));
-    assert!(json.contains(r#""on-print-start""#));
-    assert!(json.contains(r#""on-print-end""#));
     assert!(json.contains(r#""run-infill""#));
 }
 
@@ -393,7 +376,7 @@ fn legacy_marker_surface_still_available() {
 pub struct ValidCrossWorldPrepass;
 #[slicer_module]
 impl PrepassModule for ValidCrossWorldPrepass {
-    fn on_print_start(_c: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_c: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     fn run_mesh_analysis(
@@ -434,24 +417,9 @@ fn typed_schema_const_mirrors_string_accessors_for_layer_infill() {
     assert_eq!(s.stage_method, "run_infill");
     assert_eq!(s.stage_export, "run-infill");
 
-    // Lifecycle exports precede the stage export in binding order.
-    assert_eq!(s.exports.len(), 3);
+    assert_eq!(s.exports.len(), 1);
     assert_eq!(
         s.exports[0],
-        ExportBinding {
-            name: "on-print-start",
-            kind: ExportKind::Lifecycle
-        }
-    );
-    assert_eq!(
-        s.exports[1],
-        ExportBinding {
-            name: "on-print-end",
-            kind: ExportKind::Lifecycle
-        }
-    );
-    assert_eq!(
-        s.exports[2],
         ExportBinding {
             name: "run-infill",
             kind: ExportKind::Stage
@@ -464,8 +432,7 @@ fn typed_schema_const_for_lifecycle_only_impl_has_no_stage_export() {
     let s = LayerLifecycleOnly::__slicer_module_schema();
     assert_eq!(s.stage_id, "");
     assert_eq!(s.stage_export, "");
-    assert_eq!(s.exports.len(), 2);
-    assert!(s.exports.iter().all(|e| e.kind == ExportKind::Lifecycle));
+    assert_eq!(s.exports.len(), 0);
 }
 
 #[test]
@@ -513,20 +480,6 @@ fn typed_schema_covers_every_world() {
 }
 
 #[test]
-fn typed_schema_lifecycle_export_count_matches_world_lifecycle_table() {
-    // Every documented WIT world ships exactly two lifecycle exports
-    // (`on-print-start` + `on-print-end`). Every schema emitted by the
-    // macro must reflect that count.
-    assert_eq!(LayerInfillFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
-    assert_eq!(
-        PrepassMeshAnalysisFixture::__SLICER_LIFECYCLE_EXPORT_COUNT,
-        2
-    );
-    assert_eq!(FinalizationFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
-    assert_eq!(PostpassGcodeFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
-}
-
-#[test]
 fn typed_schema_exports_are_deterministic_across_invocations() {
     // Reflecting over the typed surface must be byte-stable: host
     // validate/build tooling compares schemas across runs to detect drift.
@@ -536,25 +489,5 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
     let names_a: Vec<&str> = a.exports.iter().map(|e| e.name).collect();
     let names_b: Vec<&str> = b.exports.iter().map(|e| e.name).collect();
     assert_eq!(names_a, names_b);
-    assert_eq!(
-        names_a,
-        vec!["on-print-start", "on-print-end", "run-infill"]
-    );
-}
-
-#[test]
-fn typed_schema_kinds_distinguish_lifecycle_from_stage() {
-    let s = LayerInfillFixture::__slicer_module_schema();
-    let lifecycle_count = s
-        .exports
-        .iter()
-        .filter(|e| e.kind == ExportKind::Lifecycle)
-        .count();
-    let stage_count = s
-        .exports
-        .iter()
-        .filter(|e| e.kind == ExportKind::Stage)
-        .count();
-    assert_eq!(lifecycle_count, 2);
-    assert_eq!(stage_count, 1);
+    assert_eq!(names_a, vec!["run-infill"]);
 }

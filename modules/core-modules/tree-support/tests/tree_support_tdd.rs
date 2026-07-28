@@ -29,21 +29,21 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
         .build()
 }
 
-/// Test 1: on_print_start with empty config uses defaults.
+/// Test 1: from_config with empty config uses defaults.
 #[test]
-fn on_print_start_defaults() {
+fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.density() - 0.2).abs() < 0.001);
     assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
-/// Test 2: on_print_start reads custom config values.
+/// Test 2: from_config reads custom config values.
 #[test]
-fn on_print_start_custom() {
+fn from_config_custom() {
     let config = make_config(true, 0.5, 15.0, 80.0, 0.6);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
     assert!(module.enabled());
     assert!((module.density() - 0.5).abs() < 0.001);
     assert!((module.line_width() - 0.6).abs() < 0.001);
@@ -53,7 +53,7 @@ fn on_print_start_custom() {
 #[test]
 fn square_region_produces_paths() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -73,7 +73,7 @@ fn square_region_produces_paths() {
 #[test]
 fn paths_have_support_role() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -97,7 +97,7 @@ fn paths_have_support_role() {
 #[test]
 fn disabled_no_paths() {
     let config = make_config(false, 0.2, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -118,7 +118,7 @@ fn disabled_no_paths() {
 #[test]
 fn zero_density_no_paths() {
     let config = make_config(true, 0.0, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -139,7 +139,7 @@ fn zero_density_no_paths() {
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj1".to_string());
@@ -171,7 +171,7 @@ fn empty_regions_no_output() {
 fn paths_at_correct_z() {
     let z = 1.5_f32;
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, z);
     let paint = PaintRegionLayerView::new(0);
@@ -201,7 +201,7 @@ fn branching_pattern_present() {
     // density is interpreted as percent (0..100) post packet 26; 30% on a
     // 20mm region yields ~25 grid samples and ample branching.
     let config = make_config(true, 30.0, 0.0, 50.0, 0.4);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     // Use a large region to get many branches
     let region = make_square_region(20.0, 0.3);
@@ -270,8 +270,8 @@ fn density_affects_coverage() {
     let config_low = make_config(true, 10.0, 0.0, 50.0, 0.4);
     let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
 
-    let module_low = TreeSupport::on_print_start(&config_low).unwrap();
-    let module_high = TreeSupport::on_print_start(&config_high).unwrap();
+    let module_low = TreeSupport::from_config(&config_low).unwrap();
+    let module_high = TreeSupport::from_config(&config_high).unwrap();
 
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
@@ -303,7 +303,7 @@ fn density_affects_coverage() {
 fn width_matches_config() {
     let lw = 0.6_f32;
     let config = make_config(true, 0.2, 0.0, 50.0, lw as f64);
-    let module = TreeSupport::on_print_start(&config).unwrap();
+    let module = TreeSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);

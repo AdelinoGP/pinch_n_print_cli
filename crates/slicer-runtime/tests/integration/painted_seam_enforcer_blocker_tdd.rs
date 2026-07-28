@@ -222,7 +222,7 @@ fn enforcer_bias_flips_seam_placer_selection() {
     let region = region_builder.build();
 
     let config = ConfigViewBuilder::new().build();
-    let module = SeamPlacer::on_print_start(&config).expect("on_print_start");
+    let module = SeamPlacer::from_config(&config).expect("from_config");
     let mut output = PerimeterOutputBuilder::new();
     module
         .run_wall_postprocess(0, &[region], &mut output, &config)
@@ -252,7 +252,7 @@ fn classic_perimeters_blocker_excludes_painted_corner() {
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).expect("on_print_start");
+    let module = ClassicPerimeters::from_config(&config).expect("from_config");
     let paint = PaintRegionLayerView::new(0);
 
     // Baseline: no annotations, expect 4 candidates (one per 90-degree corner).
@@ -321,7 +321,7 @@ fn blocker_exhausts_candidates_preserves_walls_no_seam() {
     assert!(region.resolved_seam().is_none());
 
     let config = ConfigViewBuilder::new().build();
-    let module = SeamPlacer::on_print_start(&config).expect("on_print_start");
+    let module = SeamPlacer::from_config(&config).expect("from_config");
     let mut output = PerimeterOutputBuilder::new();
 
     // A blocker that exhausts every candidate must NOT abort the layer: the

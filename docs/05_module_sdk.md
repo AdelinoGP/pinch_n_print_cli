@@ -175,7 +175,7 @@ construct-a-tiny-GCodeIR-and-serialise example.
 
 ### Module Entry Point (`#[slicer_module]`)
 
-The `#[slicer_module]` macro generates the WIT export bindings, validates that the impl matches the declared stage, and wires up the `on-print-start` / `on-print-end` lifecycle.
+The `#[slicer_module]` macro generates the WIT export bindings, validates that the impl matches the declared stage, and wires up the detected stage export.
 
 ```rust
 use slicer_sdk::prelude::*;
@@ -183,25 +183,19 @@ use slicer_sdk::prelude::*;
 // The struct name is arbitrary. The macro reads your manifest's stage field
 // to determine which WIT export to implement.
 pub struct MyInfillModule {
-    // module-level state initialized in on_print_start
-    // must be Send + Sync for parallel-safe modules
+    // Configuration is validated for each stage call.
 }
 
 #[slicer_module]
 impl LayerModule for MyInfillModule {
 
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Validate config, initialize expensive resources once per print.
-        // Called before the per-layer loop starts.
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
+        // Validate config for this stage call.
         let density = config.get_float("density").unwrap_or(0.15);
         if density <= 0.0 || density >= 1.0 {
             return Err(ModuleError::fatal(1, "density must be in (0, 1)"));
         }
         Ok(Self {})
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 
     // Implement the function matching your manifest's stage.
@@ -314,7 +308,7 @@ pub struct MySupportPlanner;
 
 #[slicer_module]
 impl PrepassModule for MySupportPlanner {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -469,7 +463,7 @@ duplicate-symbol errors.
 Workaround: when one trait permits multiple stages (e.g. `PrepassModule`
 permits `run_mesh_analysis`, `run_paint_segmentation`, `run_layer_planning`, `run_seam_planning`, `run_support_geometry`), author one
 sibling crate per stage. Each sibling overrides only the one stage method it
-implements and relies on the trait's default `Ok(())` bodies for the rest. The test guest `crates/slicer-wasm-host/test-guests/sdk-prepass-guest/` is a reference exemplar: a standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`, `slicer-schema`, `wit-bindgen` as deps) with a `#[slicer_module] impl PrepassModule for ...` block overriding `on_print_start` plus the prepass stage method(s) it implements.
+implements and relies on the trait's default `Ok(())` bodies for the rest. The test guest `crates/slicer-wasm-host/test-guests/sdk-prepass-guest/` is a reference exemplar: a standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`, `slicer-schema`, `wit-bindgen` as deps) with a `#[slicer_module] impl PrepassModule for ...` block overriding `from_config` plus the prepass stage method(s) it implements.
 
 Macro authors note (relevant when the prepass world inline WIT or the
 `segmentation_helpers` quote block in `build_prepass_world_glue` is touched):
@@ -869,11 +863,9 @@ candidate/placement — operate independently.
 
 ### Module State Lifecycle (Normative)
 
-- `on_print_start()` creates one logical module state per WASM instance.
-- For `layer-parallel-safe` modules, multiple instances may exist simultaneously.
-- Module state must not assume global singleton semantics across instances.
-- `on_print_end()` is best-effort cleanup; correctness must not depend on it running after fatal abort.
-- **Per-layer config re-read (Normative — Packet 102).** Per-layer stage methods (e.g. `run_perimeters`) MUST re-read config via `_config.get*` on every call rather than caching values captured in `on_print_start`. Caching defeats the host's `LayerOverrides` mechanism, which can change a config value's effective resolution on a per-layer basis.
+`from_config` constructs one module value per stage call (per layer, per stage).
+No state is retained across calls. Per-print state lives in the prepass tier +
+Blackboard (ADR-0029).
 
 ### Stable Entity IDs (packet 39)
 
@@ -988,7 +980,7 @@ let mut infill_output = InfillOutputCapture::new();
 let mut perim_output  = PerimeterOutputCapture::new();
 
 // Run the module
-let module = MyInfillModule::on_print_start(&config).unwrap();
+let module = MyInfillModule::from_config(&config).unwrap();
 module.run_infill(0, &[region], &mut infill_output, &config).unwrap();
 
 // Assert on captured output
@@ -1090,7 +1082,7 @@ mod tests {
             .add_infill_area(square_polygon(0.0, 0.0, 20.0))
             .build();
 
-        let module = MyInfillModule::on_print_start(&config).unwrap();
+        let module = MyInfillModule::from_config(&config).unwrap();
         let mut output = InfillOutputCapture::new();
         module.run_infill(0, &[region], &mut output, &config).unwrap();
 
@@ -1104,7 +1096,7 @@ mod tests {
         let config = ConfigViewBuilder::new()
             .float("density", 0.0)  // invalid
             .build();
-        let result = MyInfillModule::on_print_start(&config);
+        let result = MyInfillModule::from_config(&config);
         assert!(result.is_err());
         assert!(result.unwrap_err().fatal);
     }
@@ -1287,7 +1279,7 @@ pub struct FuzzySkinModule;
 
 #[slicer_module]
 impl LayerModule for FuzzySkinModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

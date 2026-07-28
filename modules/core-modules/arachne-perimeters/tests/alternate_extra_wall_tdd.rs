@@ -66,7 +66,7 @@ fn make_region(z: f32) -> SliceRegionView {
 }
 
 fn wall_loop_count(config: &ConfigView, layer_index: u32) -> usize {
-    let module = ArachnePerimeters::on_print_start(config).unwrap();
+    let module = ArachnePerimeters::from_config(config).unwrap();
     let regions = vec![make_region(0.2)];
     let paint = PaintRegionLayerView::new(layer_index);
     let mut output = PerimeterOutputBuilder::new();

@@ -65,7 +65,7 @@ fn region_with_sparse(area: ExPolygon, z: f32) -> SliceRegionView {
 #[test]
 fn non_convex_polygon_emits_finite_sparse_paths_without_panic() {
     let cfg = config(0.5);
-    let module = RectilinearInfill::on_print_start(&cfg).unwrap();
+    let module = RectilinearInfill::from_config(&cfg).unwrap();
     let region = region_with_sparse(l_shape(), 0.3);
     let mut output = InfillOutputBuilder::new();
 
@@ -94,7 +94,7 @@ fn very_small_polygon_emits_no_paths_without_panic() {
     // 0.1mm square is smaller than the 0.8mm line spacing (line_width/density),
     // so the scan-line loop never produces a row → empty output, no panic.
     let cfg = config(0.5);
-    let module = RectilinearInfill::on_print_start(&cfg).unwrap();
+    let module = RectilinearInfill::from_config(&cfg).unwrap();
     let tiny = square_polygon(0.0, 0.0, 0.1);
     let region = region_with_sparse(tiny, 0.3);
     let mut output = InfillOutputBuilder::new();

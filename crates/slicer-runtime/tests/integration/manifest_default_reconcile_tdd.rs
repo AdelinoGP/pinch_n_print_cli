@@ -96,7 +96,7 @@ fn square_region(z: f32) -> SliceRegionView {
 /// fallbacks as `speed_factor`.
 fn observed_code_fallbacks<M: LayerModule>() -> (usize, f32, f32) {
     let empty = ConfigView::from_map(HashMap::new());
-    let module = M::on_print_start(&empty).expect("on_print_start should succeed");
+    let module = M::from_config(&empty).expect("from_config should succeed");
     let region = square_region(0.2);
     let mut output = PerimeterOutputBuilder::new();
     module
@@ -172,10 +172,10 @@ enum CodeFallback {
 }
 use CodeFallback::*;
 
-/// Transcribed from `classic-perimeters/src/lib.rs` — `on_print_start` and
+/// Transcribed from `classic-perimeters/src/lib.rs` — `from_config` and
 /// the R2 per-invocation block at the top of `run_perimeters`.
 const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
-    ("wall_count", Int(3)),       // on_print_start `_ => 3`
+    ("wall_count", Int(3)),       // from_config `_ => 3`
     ("extra_perimeters", Int(0)), // unwrap_or(0)
     ("extra_perimeters_on_overhangs", Bool(false)),
     ("line_width", Float(0.4)), // legacy_line_width `_ => 0.4`
@@ -192,8 +192,8 @@ const CLASSIC_FALLBACKS: &[(&str, CodeFallback)] = &[
     ("filter_out_gap_fill", Float(0.5)),
     ("gap_fill_medial_axis_on_painted", Bool(false)),
     ("slice_has_paint", Bool(false)),
-    ("outer_wall_speed", Float(30.0)), // on_print_start `_ => 30.0`
-    ("inner_wall_speed", Float(45.0)), // on_print_start `_ => 45.0`
+    ("outer_wall_speed", Float(30.0)), // from_config `_ => 30.0`
+    ("inner_wall_speed", Float(45.0)), // from_config `_ => 45.0`
     ("perimeter_arc_tolerance", Float(0.0125)),
     ("only_one_wall_top", Bool(false)),
     ("only_one_wall_first_layer", Bool(false)),

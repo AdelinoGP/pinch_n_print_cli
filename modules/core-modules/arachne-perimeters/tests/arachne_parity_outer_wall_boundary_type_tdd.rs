@@ -41,7 +41,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 #[test]
 fn outer_wall_has_exterior_surface_boundary_type() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

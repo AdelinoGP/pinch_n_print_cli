@@ -74,7 +74,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 /// Runs the module end-to-end and returns the outer wall (`perimeter_index
 /// == 0`) `WallLoop`.
 fn run_and_get_outer_wall(config: &ConfigView) -> WallLoop {
-    let module = ArachnePerimeters::on_print_start(config).unwrap();
+    let module = ArachnePerimeters::from_config(config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

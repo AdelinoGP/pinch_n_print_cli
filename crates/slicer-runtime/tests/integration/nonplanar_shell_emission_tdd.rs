@@ -30,7 +30,7 @@ fn make_surface_group(shell_count: u32) -> SurfaceGroup {
 #[test]
 fn nonplanar_region_emits_shell_count_walls() {
     let config = ConfigViewBuilder::new().int("wall_count", 2).build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let region = SliceRegionViewBuilder::new()
         .object_id("obj-1")
@@ -80,7 +80,7 @@ fn nonplanar_skips_thin_wall_case() {
         .int("wall_count", 2)
         .bool("detect_thin_wall", true)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let region = SliceRegionViewBuilder::new()
         .object_id("obj-1")

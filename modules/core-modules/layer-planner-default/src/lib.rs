@@ -46,7 +46,7 @@ pub struct DefaultLayerPlanner {
 
 #[slicer_module]
 impl PrepassModule for DefaultLayerPlanner {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let layer_height = config
             .get("layer_height")
             .and_then(|v| match v {
@@ -362,9 +362,9 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(HashMap::new());
-        let planner = DefaultLayerPlanner::on_print_start(&config).unwrap();
+        let planner = DefaultLayerPlanner::from_config(&config).unwrap();
         assert!((planner.layer_height - 0.2).abs() < 1e-6);
         assert!((planner.first_layer_height - 0.2).abs() < 1e-6);
     }

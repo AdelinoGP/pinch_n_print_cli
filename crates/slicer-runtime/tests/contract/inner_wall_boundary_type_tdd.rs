@@ -36,7 +36,7 @@ fn config_2_walls() -> ConfigView {
 #[test]
 fn inner_wall_has_material_boundary_with_multi_tool_region() {
     let config = config_2_walls();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

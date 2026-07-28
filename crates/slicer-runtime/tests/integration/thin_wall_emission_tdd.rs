@@ -101,7 +101,7 @@ fn thin_wall_emitted_for_thin_protrusion() {
         .bool("detect_thin_wall", true)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     // Use 0.22 mm protrusion — narrower than 2*(nozzle_diameter/3) = 0.267 mm.
     let regions = vec![make_thin_protrusion_region(0.22, 0.2)];
     let paint = PaintRegionLayerView::new(0);
@@ -210,7 +210,7 @@ fn detect_disabled_case() {
         .bool("detect_thin_wall", false)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_thin_protrusion_region(0.22, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

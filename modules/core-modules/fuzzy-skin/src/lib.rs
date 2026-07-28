@@ -49,7 +49,7 @@ pub struct FuzzySkinModule {
 
 #[slicer_module]
 impl LayerModule for FuzzySkinModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let thickness = match config.get("thickness") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.3,

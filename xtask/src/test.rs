@@ -1,11 +1,34 @@
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::build_guests;
 
 // Note: we spawn via a shell (cmd /C on Windows, sh -c on Unix) so we can use
 // `tee` to stream live output while also capturing it to the log file.
+
+fn newest_mtime_in(root: &Path) -> Option<SystemTime> {
+    fn visit(path: &Path, newest: &mut Option<SystemTime>) {
+        let Ok(entries) = fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, newest);
+            } else if path.is_file() {
+                if let Some(mtime) = build_guests::file_mtime(&path) {
+                    *newest = Some(newest.map_or(mtime, |current| current.max(mtime)));
+                }
+            }
+        }
+    }
+
+    let mut newest = None;
+    visit(root, &mut newest);
+    newest
+}
 
 /// `cargo xtask test [--summary] [--summary-from <FILE>] [ARGS...]`
 ///
@@ -129,6 +152,44 @@ pub fn test_command(ws_root: &Path, passthrough: &[String]) -> i32 {
         if build_code != 0 {
             eprintln!("xtask test: guest rebuild failed; aborting test run.");
             return build_code;
+        }
+    }
+
+    let exe_name = if cfg!(windows) {
+        "pnp_cli.exe"
+    } else {
+        "pnp_cli"
+    };
+    let pnp_cli_path = ["release", "debug"]
+        .iter()
+        .map(|profile| ws_root.join("target").join(profile).join(exe_name))
+        .find(|path| path.is_file());
+    let newest_source_mtime = build_guests::compute_shared_freshness(ws_root).newest_mtime;
+    let pnp_cli_mtime_src = newest_mtime_in(&ws_root.join("crates/pnp-cli/src"))
+        .into_iter()
+        .chain(build_guests::file_mtime(
+            &ws_root.join("crates/pnp-cli/Cargo.toml"),
+        ))
+        .max()
+        .unwrap_or(UNIX_EPOCH);
+    let cutoff = newest_source_mtime.max(pnp_cli_mtime_src);
+    let pnp_cli_mtime = pnp_cli_path.as_deref().and_then(build_guests::file_mtime);
+    if pnp_cli_mtime.is_none_or(|mtime| cutoff > mtime) {
+        eprintln!("xtask test: pnp_cli is stale or absent; rebuilding...");
+        match Command::new("cargo")
+            .args(["build", "--bin", "pnp_cli"])
+            .current_dir(ws_root)
+            .status()
+        {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                eprintln!("xtask test: pnp_cli rebuild failed; aborting test run.");
+                return status.code().unwrap_or(1);
+            }
+            Err(error) => {
+                eprintln!("xtask test: failed to start pnp_cli rebuild: {error}");
+                return 1;
+            }
         }
     }
 

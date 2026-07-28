@@ -33,8 +33,8 @@ fn config_with_wall_count(n: i64) -> ConfigView {
 
 #[test]
 fn capacity_zero_wall_loops_rejects_push() {
-    let module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(2);
@@ -63,8 +63,8 @@ fn capacity_zero_wall_loops_rejects_push() {
 
 #[test]
 fn capacity_one_wall_loop_accepts_one_rejects_second() {
-    let module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
 
@@ -107,8 +107,8 @@ fn capacity_one_wall_loop_accepts_one_rejects_second() {
 
 #[test]
 fn unbounded_builder_never_rejects() {
-    let module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(5);
@@ -137,8 +137,8 @@ fn unbounded_builder_never_rejects() {
 
 #[test]
 fn capacity_zero_seam_candidates_rejects_push() {
-    let module = ClassicPerimeters::on_print_start(&ConfigView::from_map(HashMap::new()))
-        .expect("on_print_start should succeed");
+    let module = ClassicPerimeters::from_config(&ConfigView::from_map(HashMap::new()))
+        .expect("from_config should succeed");
 
     let region = square_region(0.2);
     let config = config_with_wall_count(1);

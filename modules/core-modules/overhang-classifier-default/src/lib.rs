@@ -173,7 +173,7 @@ fn nearest_reference_point(points: &[(f32, f32, f32)], x: f32, y: f32) -> Option
 
 #[slicer_module]
 impl FinalizationModule for OverhangClassifierDefault {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(OverhangClassifierDefault)
     }
 

@@ -352,8 +352,7 @@ from region top/bottom metadata**:
 the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
 shared `module-error` from `slicer:common/module-errors`.
 
-It has two optional lifecycle exports (`on-print-start`, `on-print-end`) and
-eight stage exports — a module implements exactly the one matching its declared
+It has eight stage exports — a module implements exactly the one matching its declared
 manifest stage, and the host rejects a module whose export set mismatches its
 stage:
 

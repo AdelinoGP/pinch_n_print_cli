@@ -75,7 +75,7 @@ const DEGENERATE_MIN_AREA_SQ_UNITS: f64 = 1.0;
 
 #[slicer_module]
 impl LayerModule for ClassicPerimeters {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let wall_count = match config.get("wall_count") {
             Some(ConfigValue::Int(n)) => *n as u32,
             _ => 3, // default
@@ -118,7 +118,7 @@ impl LayerModule for ClassicPerimeters {
     ) -> Result<(), ModuleError> {
         // ── R2: Per-invocation config reads (P105) ───────────────────────
         // These 7 keys support per-object/per-layer overrides and MUST be read
-        // from _config here, not cached at on_print_start.
+        // from _config here, not cached at from_config.
         let legacy_line_width = match _config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
@@ -1213,9 +1213,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(HashMap::new());
-        let module = ClassicPerimeters::on_print_start(&config).unwrap();
+        let module = ClassicPerimeters::from_config(&config).unwrap();
         assert_eq!(module.wall_count, 3);
         // R2: inner_wall_line_width is now read per-invocation, not cached.
         // Verify the module still initialises without error (struct fields reduced).

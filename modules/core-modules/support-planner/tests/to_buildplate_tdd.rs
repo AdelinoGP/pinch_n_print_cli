@@ -60,7 +60,7 @@ fn contact_xy_outside_footprint_sets_to_buildplate_true() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Single-triangle contact at the same (2.67, 1.33) centroid as the
     // working `lone_fresh_contact_emits_tip_on_origin_layer` lib test, to
@@ -147,7 +147,7 @@ fn unreachable_buildplate_node_pruned() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // A 2x2 grid of overhang triangles at z=1.8 → 4 contact centroids
     // forming a tight cluster. The MST has 3 edges; each node has at
@@ -249,7 +249,7 @@ fn buildplate_only_rejects_to_model_contacts() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Single-triangle plate so the contact has only one centroid at
     // (2.67, 1.33) on layer 8. No MST edge means the origin tip is the
@@ -335,7 +335,7 @@ fn default_config_does_not_reject_to_model_contacts() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Single-triangle plate: the contact at (2.67, 1.33) is the lone
     // contact at layer 8. The footprint covers that centroid ⇒
@@ -422,7 +422,7 @@ fn to_model_node_with_collision_not_pruned_by_new_rule() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // A 2x2 grid of overhang triangles at z=1.8 → 4 contact centroids
     // forming a tight cluster. The MST has 3 edges; the propagation's

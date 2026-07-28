@@ -63,10 +63,10 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     region.set_seam_candidates(vec![]);
     region.set_resolved_seam(Some(resolved_seam));
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(
+    let module = path_optimization_default::PathOptimizationDefault::from_config(
         &slicer_ir::ConfigView::default(),
     )
-    .expect("on_print_start must succeed");
+    .expect("from_config must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
@@ -128,10 +128,10 @@ fn missing_resolved_seam_leaves_wall_loop_order_unchanged() {
     region.set_seam_candidates(vec![]);
     region.set_resolved_seam(None);
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(
+    let module = path_optimization_default::PathOptimizationDefault::from_config(
         &slicer_ir::ConfigView::default(),
     )
-    .expect("on_print_start must succeed");
+    .expect("from_config must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
@@ -188,10 +188,10 @@ fn seam_started_wall_replay_is_deterministic() {
     region.set_seam_candidates(vec![]);
     region.set_resolved_seam(Some(resolved_seam));
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(
+    let module = path_optimization_default::PathOptimizationDefault::from_config(
         &slicer_ir::ConfigView::default(),
     )
-    .expect("on_print_start must succeed");
+    .expect("from_config must succeed");
 
     let mut output1 = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection1 = slicer_sdk::LayerCollectionBuilder::new();

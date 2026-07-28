@@ -336,7 +336,7 @@ fn run_and_link(
     let views = vec![perimeter_view_of(region)];
 
     let config = min_density_config();
-    let linker = InfillLinker::on_print_start(&config).expect("linker init");
+    let linker = InfillLinker::from_config(&config).expect("linker init");
     let mut linked = InfillOutputBuilder::new();
     linker
         .run_infill_postprocess(0, &views, &prior, &mut linked, &config)
@@ -347,9 +347,9 @@ fn run_and_link(
 fn all_three_modules() -> Vec<FillModule> {
     let cfg = min_density_config();
     vec![
-        FillModule::Rectilinear(RectilinearInfill::on_print_start(&cfg).unwrap()),
-        FillModule::Gyroid(GyroidInfill::on_print_start(&cfg).unwrap()),
-        FillModule::Lightning(LightningInfill::on_print_start(&cfg).unwrap()),
+        FillModule::Rectilinear(RectilinearInfill::from_config(&cfg).unwrap()),
+        FillModule::Gyroid(GyroidInfill::from_config(&cfg).unwrap()),
+        FillModule::Lightning(LightningInfill::from_config(&cfg).unwrap()),
     ]
 }
 

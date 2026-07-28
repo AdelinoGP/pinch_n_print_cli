@@ -78,7 +78,7 @@ fn overhang_config() -> slicer_ir::ConfigView {
 #[module_test]
 fn quartile_present_receives_speed_factor_below_one() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(3));
     let layer = LayerCollectionFixtureBuilder::new()
@@ -118,7 +118,7 @@ fn quartile_present_receives_speed_factor_below_one() {
 #[module_test]
 fn quartile_absent_emits_no_mutation() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.2, 0, 0, None);
     let layer = LayerCollectionFixtureBuilder::new()
@@ -148,7 +148,7 @@ fn quartile_absent_emits_no_mutation() {
 #[module_test]
 fn quartile_four_is_honored() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(4));
     let layer = LayerCollectionFixtureBuilder::new()
@@ -198,7 +198,7 @@ fn quartile_four_is_honored() {
 #[module_test]
 fn curled_edge_triggers_slowdown_on_next_layer() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
     let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
@@ -274,7 +274,7 @@ fn curled_edge_triggers_slowdown_on_next_layer() {
 #[module_test]
 fn curled_edge_out_of_range_emits_no_mutation() {
     let cfg = overhang_config();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let layer0 = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.0, 0, 0, None);
     let layer1 = wall_square_with_quartile(1, 0.3, 0.0, 10.3, 10.0, 0.2, 0, 1, None);
@@ -332,7 +332,7 @@ fn all_zero_config_emits_no_mutations() {
         .float("overhang_3_4_speed", 0.0)
         .float("overhang_4_4_speed", 0.0)
         .build();
-    let classifier = OverhangClassifierDefault::on_print_start(&cfg).unwrap();
+    let classifier = OverhangClassifierDefault::from_config(&cfg).unwrap();
 
     let entity = wall_square_with_quartile(1, 0.0, 0.0, 10.0, 10.0, 0.4, 0, 1, Some(2));
     let layer = LayerCollectionFixtureBuilder::new()

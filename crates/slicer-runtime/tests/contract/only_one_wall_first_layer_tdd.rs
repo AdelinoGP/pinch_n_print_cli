@@ -54,7 +54,7 @@ fn make_region() -> SliceRegionView {
 #[test]
 fn first_layer_clamped_to_one_wall() {
     let config = config_4_walls(true);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -77,7 +77,7 @@ fn first_layer_clamped_to_one_wall() {
 #[test]
 fn non_first_layer_respects_wall_count() {
     let config = config_4_walls(true);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

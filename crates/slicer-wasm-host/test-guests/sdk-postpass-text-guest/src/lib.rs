@@ -18,7 +18,7 @@ pub struct SdkPostpassTextModule;
 
 #[slicer_module]
 impl PostpassModule for SdkPostpassTextModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 

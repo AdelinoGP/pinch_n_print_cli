@@ -70,8 +70,8 @@ fn external_travel_emits_matched_retract_and_unretract() {
     region_b.set_seam_candidates(vec![]);
     region_b.set_resolved_seam(None);
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
-        .expect("on_print_start must succeed");
+    let module = path_optimization_default::PathOptimizationDefault::from_config(&config)
+        .expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     module
@@ -147,8 +147,8 @@ fn internal_travel_suppresses_retraction() {
     region.set_seam_candidates(vec![]);
     region.set_resolved_seam(None);
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
-        .expect("on_print_start must succeed");
+    let module = path_optimization_default::PathOptimizationDefault::from_config(&config)
+        .expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     module
@@ -202,8 +202,8 @@ fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
     region_b.set_seam_candidates(vec![]);
     region_b.set_resolved_seam(None);
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
-        .expect("on_print_start must succeed");
+    let module = path_optimization_default::PathOptimizationDefault::from_config(&config)
+        .expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     module
@@ -273,8 +273,8 @@ fn travel_policy_output_is_deterministic() {
         ]
     };
 
-    let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
-        .expect("on_print_start must succeed");
+    let module = path_optimization_default::PathOptimizationDefault::from_config(&config)
+        .expect("from_config must succeed");
 
     let mut out1 = GcodeOutputBuilder::new();
     let mut collection1 = LayerCollectionBuilder::new();

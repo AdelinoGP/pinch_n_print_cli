@@ -259,7 +259,7 @@ impl PathOptimizationDefault {
 
 #[slicer_module]
 impl LayerModule for PathOptimizationDefault {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let emit_layer_markers = match config.get("path_optimization_emit_layer_markers") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => true,
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn defaults_emit_layer_markers_true() {
         let config = ConfigView::from_map(HashMap::new());
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(module.emit_layer_markers);
     }
 
@@ -425,7 +425,7 @@ mod tests {
             ConfigValue::Bool(false),
         );
         let config = ConfigView::from_map(fields);
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(!module.emit_layer_markers);
     }
 
@@ -437,7 +437,7 @@ mod tests {
             ConfigValue::Bool(false),
         );
         let config = ConfigView::from_map(fields);
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
         let mut output = GcodeOutputBuilder::new();
         let mut collection = LayerCollectionBuilder::new();
 
@@ -458,7 +458,7 @@ mod tests {
         // With emit_layer_markers=true and an empty regions list the module emits
         // one marker comment referencing layer 0 with 0 regions and 0 entities.
         let config = ConfigView::from_map(HashMap::new());
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
         let mut output = GcodeOutputBuilder::new();
         let mut collection = LayerCollectionBuilder::new();
 
@@ -478,7 +478,7 @@ mod tests {
         let mut fields: HashMap<String, ConfigValue> = HashMap::new();
         fields.insert("retract_length".into(), ConfigValue::Float(1.5));
         let config = ConfigView::from_map(fields);
-        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let module = PathOptimizationDefault::from_config(&config).unwrap();
         assert!(
             (module.retract_length - 1.5_f32).abs() < 1e-4,
             "retract_length must be read from config"

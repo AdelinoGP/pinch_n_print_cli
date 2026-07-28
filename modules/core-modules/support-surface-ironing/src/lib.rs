@@ -156,7 +156,7 @@ impl SupportSurfaceIroning {
 
 #[slicer_module]
 impl LayerModule for SupportSurfaceIroning {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("ironing_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
@@ -250,9 +250,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn on_print_start_defaults() {
+    fn from_config_defaults() {
         let config = ConfigView::from_map(std::collections::HashMap::new());
-        let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+        let module = SupportSurfaceIroning::from_config(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.ironing_speed - 15.0).abs() < 0.001);
         assert!((module.ironing_flow_rate - 0.1).abs() < 0.001);

@@ -56,18 +56,18 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 
 /// Test 1: Default config values when no fields provided.
 #[test]
-fn on_print_start_defaults() {
+fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
     assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
 /// Test 2: Custom config values are read correctly.
 #[test]
-fn on_print_start_custom() {
+fn from_config_custom() {
     let config = make_config(0.3, 30.0, 80.0, 0.5);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.3).abs() < 0.001);
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
@@ -76,7 +76,7 @@ fn on_print_start_custom() {
 #[test]
 fn square_region_produces_paths() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -95,7 +95,7 @@ fn square_region_produces_paths() {
 #[test]
 fn paths_have_sparse_infill_role() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -118,7 +118,7 @@ fn paths_have_sparse_infill_role() {
 #[test]
 fn zero_density_no_paths() {
     let config = make_config(0.0, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -138,7 +138,7 @@ fn zero_density_no_paths() {
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj1".to_string());
@@ -167,7 +167,7 @@ fn empty_regions_no_output() {
 #[test]
 fn paths_at_correct_z() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let z = 1.5;
     let region = make_square_region(10.0, z);
@@ -194,7 +194,7 @@ fn paths_at_correct_z() {
 #[test]
 fn wave_pattern_varies_by_layer() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let region1 = make_square_region(10.0, 0.3);
     let region2 = make_square_region(10.0, 1.5);
@@ -232,8 +232,8 @@ fn density_affects_spacing() {
     let config_low = make_config(0.1, 0.0, 50.0, 0.4);
     let config_high = make_config(0.5, 0.0, 50.0, 0.4);
 
-    let module_low = GyroidInfill::on_print_start(&config_low).unwrap();
-    let module_high = GyroidInfill::on_print_start(&config_high).unwrap();
+    let module_low = GyroidInfill::from_config(&config_low).unwrap();
+    let module_high = GyroidInfill::from_config(&config_high).unwrap();
 
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
@@ -276,7 +276,7 @@ fn density_affects_spacing() {
 fn width_matches_config() {
     let lw = 0.6;
     let config = make_config(0.2, 0.0, 50.0, lw);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -302,7 +302,7 @@ fn width_matches_config() {
 #[test]
 fn asin_nan_protection() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     // Test at z values where sin(z) or cos(z) are at extremes
     for z in [
@@ -334,7 +334,7 @@ fn asin_nan_protection() {
 #[test]
 fn square_10mm_z_0p2_emits_raw_waves() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.2);
     let mut output = InfillOutputBuilder::new();
     module
@@ -408,8 +408,8 @@ fn square_10mm_z_0p2_emits_raw_waves() {
 fn rotated_square_45_matches_unrotated_after_inverse() {
     let config_0 = make_config(0.2, 0.0, 50.0, 0.4);
     let config_45 = make_config(0.2, 45.0, 50.0, 0.4);
-    let module_0 = GyroidInfill::on_print_start(&config_0).unwrap();
-    let module_45 = GyroidInfill::on_print_start(&config_45).unwrap();
+    let module_0 = GyroidInfill::from_config(&config_0).unwrap();
+    let module_45 = GyroidInfill::from_config(&config_45).unwrap();
     let region_0 = make_square_region(10.0, 0.3);
     let region_45 = make_square_region(10.0, 0.3);
     let mut output_0 = InfillOutputBuilder::new();
@@ -523,8 +523,8 @@ fn rotated_square_45_matches_unrotated_after_inverse() {
 fn rotated_square_45_per_point_correspondence_within_2mm() {
     let config_0 = make_config(0.2, 0.0, 50.0, 0.4);
     let config_45 = make_config(0.2, 45.0, 50.0, 0.4);
-    let module_0 = GyroidInfill::on_print_start(&config_0).unwrap();
-    let module_45 = GyroidInfill::on_print_start(&config_45).unwrap();
+    let module_0 = GyroidInfill::from_config(&config_0).unwrap();
+    let module_45 = GyroidInfill::from_config(&config_45).unwrap();
     let region_0 = make_square_region(10.0, 0.3);
     let region_45 = make_square_region(10.0, 0.3);
     let mut output_0 = InfillOutputBuilder::new();
@@ -671,7 +671,7 @@ fn align_to_grid_snaps_bbox_min() {
 #[test]
 fn expand_factor_is_10x_spacing() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
     module
@@ -734,7 +734,7 @@ fn expand_factor_is_10x_spacing() {
 #[test]
 fn default_holders_gyroid_sparse_only() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     let sq = square_polygon(0.0, 0.0, 10.0);
     let mut region = SliceRegionViewBuilder::new()
         .object_id("obj1")
@@ -775,7 +775,7 @@ fn default_holders_gyroid_sparse_only() {
 #[test]
 fn adjacent_layers_have_phase_coherent_bbox() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
     let region_z1 = make_square_region(10.0, 0.2);
     let region_z2 = make_square_region(10.0, 0.4);
     let mut output_z1 = InfillOutputBuilder::new();
@@ -829,7 +829,7 @@ fn adjacent_layers_have_phase_coherent_bbox() {
 
 /// Test 18: per-region `infill_density` override (packet 131 / TASK-256) is
 /// read through `slicer_sdk::config_resolution` and overrides the
-/// module-global default set in `on_print_start`.
+/// module-global default set in `from_config`.
 ///
 /// Two scenarios, same module, same module-global density (0.2):
 /// 1. region A — no per-region config — produces `spacing = line_width / (0.2 * 2.44)`
@@ -841,7 +841,7 @@ fn adjacent_layers_have_phase_coherent_bbox() {
 #[test]
 fn per_region_density_overrides_module_global() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = GyroidInfill::on_print_start(&config).unwrap();
+    let module = GyroidInfill::from_config(&config).unwrap();
 
     // Region A: no per-region config. Should use module-global density 0.2.
     let region_a = make_square_region(10.0, 0.2);

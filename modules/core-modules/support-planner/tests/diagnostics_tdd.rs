@@ -59,7 +59,7 @@ fn cap_exceeded_emits_one_diagnostic_per_layer() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     let obj = cap_overflow_fixture("cap", 1100);
     let lp = make_layer_plan(11, 0.0, 0.2);
@@ -128,7 +128,7 @@ fn multi_object_cap_diagnostic_merges_per_layer() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Two objects on disjoint XY extents (the cap-overflow fixture spans
     // (0..sqrt(1100)*0.4 ≈ 13.3 mm) on each side, so offsetting the second
@@ -211,7 +211,7 @@ fn below_cap_emits_no_cap_diagnostic() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     // Only 5 triangles — well below the 1024 cap on a single layer.
     let obj = cap_overflow_fixture("nocap", 5);
@@ -254,7 +254,7 @@ fn interface_bottom_layers_emits_one_typed_diagnostic() {
         ("tree_support_wall_count", ConfigValue::Int(1)),
         ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
     ]);
-    let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+    let planner = SupportPlanner::from_config(&config).expect("from_config");
 
     let obj = small_overhang_fixture("ibl");
     let lp = make_layer_plan(11, 0.0, 0.2);
@@ -316,7 +316,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ("tree_support_wall_count", ConfigValue::Int(1)),
             ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
         ]);
-        let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+        let planner = SupportPlanner::from_config(&config).expect("from_config");
 
         let obj = small_overhang_fixture("ibl-neg");
         let lp = make_layer_plan(11, 0.0, 0.2);
@@ -354,7 +354,7 @@ fn interface_bottom_layers_default_emits_no_typed_diagnostic() {
             ("tree_support_wall_count", ConfigValue::Int(1)),
             ("support_branch_angle_deg", ConfigValue::Float(45.0_f64)),
         ]);
-        let planner = SupportPlanner::on_print_start(&config).expect("on_print_start");
+        let planner = SupportPlanner::from_config(&config).expect("from_config");
 
         let obj = small_overhang_fixture("ibl-absent");
         let lp = make_layer_plan(11, 0.0, 0.2);

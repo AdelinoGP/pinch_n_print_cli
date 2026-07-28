@@ -11,12 +11,6 @@ wit_bindgen::generate!({
 struct Component;
 
 impl Guest for Component {
-    fn on_print_start(_config: ConfigView) -> Result<(), ModuleError> {
-        Ok(())
-    }
-    fn on_print_end() -> Result<(), ModuleError> {
-        Ok(())
-    }
     fn run_slice_postprocess(
         layer_index: LayerIdx,
         regions: Vec<SliceRegionView>,

@@ -34,7 +34,7 @@ fn region_at(id: u32, x: f32) -> SliceRegionView {
 
 fn committed_indices(mode: &str, layer: u32) -> Vec<u32> {
     let config = config(mode);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![region()];
     let paint = PaintRegionLayerView::new(layer);
     let mut output = PerimeterOutputBuilder::new();
@@ -50,7 +50,7 @@ fn committed_indices(mode: &str, layer: u32) -> Vec<u32> {
 
 fn committed_markers(mode: &str, layer: u32) -> Vec<(f32, u32, LoopType)> {
     let config = config(mode);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![region_at(1, 0.0), region_at(2, 20.0)];
     let paint = PaintRegionLayerView::new(layer);
     let mut output = PerimeterOutputBuilder::new();

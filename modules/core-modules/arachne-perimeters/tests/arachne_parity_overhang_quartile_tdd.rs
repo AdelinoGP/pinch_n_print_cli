@@ -42,7 +42,7 @@ fn make_region(side_mm: f32, band_side_mm: f32, quartile: u8, z: f32) -> SliceRe
 #[test]
 fn overhang_quartile_set_per_vertex_inside_band() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 4.0, 3, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

@@ -18,7 +18,5 @@ fn binding_surface_matches_manifest() {
         "run-infill-postprocess"
     );
     let exports = InfillLinker::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-infill-postprocess"));
 }

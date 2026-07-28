@@ -36,7 +36,7 @@ fn run_with_config(
     config: slicer_ir::ConfigView,
     overhang_areas: Vec<slicer_ir::ExPolygon>,
 ) -> Vec<WallLoop> {
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(overhang_areas)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

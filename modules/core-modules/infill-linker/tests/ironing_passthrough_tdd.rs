@@ -66,7 +66,7 @@ fn prior_infill() -> Vec<InfillRegion> {
 #[test]
 fn ironing_passthrough_identical() {
     let config = ConfigView::new();
-    let module = InfillLinker::on_print_start(&config).unwrap();
+    let module = InfillLinker::from_config(&config).unwrap();
     let prior = prior_infill();
     let mut output = InfillOutputBuilder::new();
 

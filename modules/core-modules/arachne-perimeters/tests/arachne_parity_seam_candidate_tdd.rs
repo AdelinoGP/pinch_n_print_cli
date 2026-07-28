@@ -37,7 +37,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 #[test]
 fn seam_candidates_emitted_at_input_polygon_corners() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -80,7 +80,7 @@ fn seam_candidates_emitted_at_input_polygon_corners() {
 #[test]
 fn seam_candidates_emitted_for_every_island_in_a_multi_island_region() {
     let config = make_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
 
     // Two 10mm squares, centers 30mm apart on X, leaving a 20mm gap between
     // their facing edges (5mm half-width each) — comfortably disjoint.

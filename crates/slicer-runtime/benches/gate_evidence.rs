@@ -42,9 +42,81 @@ fn repo_root() -> PathBuf {
 }
 
 /// Resolve the `pnp_cli` binary matching this bench binary's own build
-/// profile (release vs debug), falling back to release-then-debug if profile
-/// inference fails. Mirrors (does not import — see module doc-comment)
+/// profile (release vs debug). Mirrors (does not import — see module
+/// doc-comment)
 /// `crates/slicer-runtime/tests/common/slicer_cache.rs::pnp_cli_bin`.
+fn staleness_reason(
+    bin_mtime: Option<std::time::SystemTime>,
+    newest_src_mtime: std::time::SystemTime,
+) -> Option<String> {
+    match bin_mtime {
+        None => Some(
+            "pnp_cli is stale because its resolved path is absent; run `cargo build --bin pnp_cli`."
+                .to_string(),
+        ),
+        Some(artifact_mtime) if newest_src_mtime > artifact_mtime => Some(
+            "pnp_cli is stale at its resolved path; run `cargo build --bin pnp_cli` to rebuild it."
+                .to_string(),
+        ),
+        Some(_) => None,
+    }
+}
+
+fn newest_source_mtime(root: &std::path::Path) -> std::time::SystemTime {
+    fn visit(path: &std::path::Path, extension: Option<&str>, newest: &mut std::time::SystemTime) {
+        let entries = match std::fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, extension, newest);
+            } else if path.is_file() {
+                let matches_extension = match extension {
+                    Some(wanted) => path.extension().and_then(|s| s.to_str()) == Some(wanted),
+                    None => true,
+                };
+                if !matches_extension {
+                    continue;
+                }
+                if let Ok(mtime) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
+                {
+                    *newest = (*newest).max(mtime);
+                }
+            }
+        }
+    }
+
+    let mut newest = std::time::UNIX_EPOCH;
+    let crates_root = root.join("crates");
+    if let Ok(entries) = std::fs::read_dir(&crates_root) {
+        for entry in entries.flatten() {
+            let crate_root = entry.path();
+            if !crate_root.is_dir() {
+                continue;
+            }
+            visit(&crate_root.join("src"), None, &mut newest);
+            let manifest = crate_root.join("Cargo.toml");
+            if let Ok(mtime) = std::fs::metadata(manifest).and_then(|metadata| metadata.modified())
+            {
+                newest = newest.max(mtime);
+            }
+        }
+    }
+    visit(
+        &root.join("crates/slicer-schema/wit"),
+        Some("wit"),
+        &mut newest,
+    );
+    if let Ok(mtime) =
+        std::fs::metadata(root.join("Cargo.toml")).and_then(|metadata| metadata.modified())
+    {
+        newest = newest.max(mtime);
+    }
+    newest
+}
+
 fn pnp_cli_bin() -> PathBuf {
     let exe_name = if cfg!(windows) {
         "pnp_cli.exe"
@@ -53,23 +125,23 @@ fn pnp_cli_bin() -> PathBuf {
     };
     if let Ok(bench_exe) = std::env::current_exe() {
         if let Some(profile_dir) = bench_exe.parent().and_then(Path::parent) {
-            let candidate = profile_dir.join(exe_name);
-            if candidate.exists() {
-                return candidate;
+            let bin = profile_dir.join(exe_name);
+            let root = repo_root();
+            let newest_src_mtime = newest_source_mtime(&root);
+            if let Some(reason) = staleness_reason(
+                std::fs::metadata(&bin)
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok()),
+                newest_src_mtime,
+            ) {
+                panic!("{reason} Resolved path: {}.", bin.display());
             }
-        }
-    }
-    let root = repo_root();
-    for profile in ["release", "debug"] {
-        let p = root.join("target").join(profile).join(exe_name);
-        if p.exists() {
-            return p;
+            return bin;
         }
     }
     panic!(
-        "pnp_cli binary not found under {}/target/{{debug,release}}/{exe_name}. \
-         Run `cargo build --workspace` (or `--release`) first.",
-        root.display(),
+        "could not resolve the pnp_cli path from the benchmark executable; \
+         run `cargo build -p pnp-cli` first."
     );
 }
 

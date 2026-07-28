@@ -116,7 +116,7 @@ fn region_with(
 
 #[test]
 fn topmost_layer_with_top_solid_fill_emits_ironing_paths() {
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
@@ -140,7 +140,7 @@ fn topmost_layer_with_top_solid_fill_emits_ironing_paths() {
 
 #[test]
 fn missing_top_shell_index_emits_no_ironing() {
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(None, None, vec![]);
     let mut output = InfillOutputBuilder::new();
 
@@ -164,7 +164,7 @@ fn missing_top_shell_index_emits_no_ironing() {
 fn interior_top_shell_layers_emit_no_ironing() {
     // top_shell_index = Some(1) means the region is 1 layer below the exposed
     // top — only Some(0) (the actual topmost exposed surface) gets ironed.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(Some(1), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
@@ -200,7 +200,7 @@ fn absent_ironing_enabled_defaults_to_disabled() {
             ConfigValue::String("rectilinear".to_string()),
         ),
     ]);
-    let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
+    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
@@ -226,7 +226,7 @@ fn disabled_config_emits_no_ironing() {
             ConfigValue::String("rectilinear".to_string()),
         ),
     ]);
-    let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
+    let module = TopSurfaceIroning::from_config(&cfg).unwrap();
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
@@ -242,7 +242,7 @@ fn spacing_governs_stroke_count_lower_bound() {
     // 10mm × 10mm square at 0.1mm spacing → ≥ 80 vertices (40+ strokes ×
     // 2 endpoints). Loose lower bound — clip-to-polygon trimming reduces the
     // exact count but the square is convex so every row should clip cleanly.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
@@ -267,7 +267,7 @@ fn spacing_governs_stroke_count_lower_bound() {
 fn bottom_only_region_emits_no_ironing() {
     // bottom_shell_index=Some(0) (exposed bottom) — ironing is a top-surface
     // feature; bottom exposure must not trigger it.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(None, Some(0), vec![]);
     let mut output = InfillOutputBuilder::new();
 
@@ -285,7 +285,7 @@ fn bottom_only_region_emits_no_ironing() {
 }
 
 #[test]
-fn zero_flow_config_rejected_at_on_print_start() {
+fn zero_flow_config_rejected_at_from_config() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
@@ -297,7 +297,7 @@ fn zero_flow_config_rejected_at_on_print_start() {
         ),
     ]);
     let err =
-        TopSurfaceIroning::on_print_start(&cfg).expect_err("ironing_flow = 0.0 must be rejected");
+        TopSurfaceIroning::from_config(&cfg).expect_err("ironing_flow = 0.0 must be rejected");
     let msg = err.message.to_string();
     assert!(
         msg.contains("ironing_flow"),
@@ -306,7 +306,7 @@ fn zero_flow_config_rejected_at_on_print_start() {
 }
 
 #[test]
-fn unsupported_pattern_rejected_at_on_print_start() {
+fn unsupported_pattern_rejected_at_from_config() {
     let cfg = config_with(&[
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
@@ -317,8 +317,8 @@ fn unsupported_pattern_rejected_at_on_print_start() {
             ConfigValue::String("concentric".to_string()),
         ),
     ]);
-    let err = TopSurfaceIroning::on_print_start(&cfg)
-        .expect_err("non-rectilinear pattern must be rejected");
+    let err =
+        TopSurfaceIroning::from_config(&cfg).expect_err("non-rectilinear pattern must be rejected");
     let msg = err.message.to_string();
     assert!(
         msg.contains("ironing_pattern"),
@@ -332,7 +332,7 @@ fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
     // fall in the cut-out 5×5 quadrant must not be emitted (or must be clipped
     // away). We verify by computing the bounding-box-centred midpoint of every
     // stroke and confirming it lies inside the L-shape polygon.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(Some(0), None, vec![l_shape_polygon()]);
     let mut output = InfillOutputBuilder::new();
 
@@ -375,7 +375,7 @@ fn u_shape_top_fill_produces_disjoint_segments_per_row() {
     // per row that crosses any internal notch. For benchy layer 59 this
     // produced a catastrophic O(span/step · P) inner loop that trapped the
     // WASM module before any ironing could be emitted.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region = region_with(Some(0), None, vec![u_shape_polygon()]);
     let mut output = InfillOutputBuilder::new();
 
@@ -432,7 +432,7 @@ fn u_shape_top_fill_produces_disjoint_segments_per_row() {
 fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
     // Two regions on the same layer; only region A has top_shell_index=Some(0).
     // Region B (top_shell_index=None) must not contribute any ironing path.
-    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let module = TopSurfaceIroning::from_config(&default_config()).unwrap();
     let region_a = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let region_b = region_with(None, None, vec![]);
     let mut output = InfillOutputBuilder::new();

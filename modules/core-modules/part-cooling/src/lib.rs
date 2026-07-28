@@ -77,7 +77,7 @@ impl PartCooling {
 
 #[slicer_module]
 impl FinalizationModule for PartCooling {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         Self::from_config(config)
     }
 

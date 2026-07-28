@@ -31,6 +31,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Discriminator for `--module-dir` scenarios. Each variant maps to a
 /// stable list of paths the cache feeds the binary as repeated
@@ -104,11 +105,80 @@ pub fn repo_root() -> PathBuf {
         .expect("repo root canonicalize")
 }
 
+/// Return a diagnostic when the CLI artifact is absent or older than sources.
+pub fn staleness_reason(
+    bin_mtime: Option<SystemTime>,
+    newest_src_mtime: SystemTime,
+) -> Option<String> {
+    match bin_mtime {
+        None => Some(
+            "pnp_cli is stale because its resolved path is absent; run `cargo build --bin pnp_cli`."
+                .to_string(),
+        ),
+        Some(artifact_mtime) if newest_src_mtime > artifact_mtime => Some(
+            "pnp_cli is stale at its resolved path; run `cargo build --bin pnp_cli` to rebuild it."
+                .to_string(),
+        ),
+        Some(_) => None,
+    }
+}
+
+fn newest_source_mtime(root: &Path) -> SystemTime {
+    fn visit(path: &Path, extension: Option<&str>, newest: &mut SystemTime) {
+        let entries = match std::fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit(&path, extension, newest);
+            } else if path.is_file() {
+                let matches_extension = match extension {
+                    Some(wanted) => path.extension().and_then(|s| s.to_str()) == Some(wanted),
+                    None => true,
+                };
+                if !matches_extension {
+                    continue;
+                }
+                if let Ok(mtime) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
+                {
+                    *newest = (*newest).max(mtime);
+                }
+            }
+        }
+    }
+
+    let mut newest = UNIX_EPOCH;
+    let crates_root = root.join("crates");
+    if let Ok(entries) = std::fs::read_dir(&crates_root) {
+        for entry in entries.flatten() {
+            let crate_root = entry.path();
+            if !crate_root.is_dir() {
+                continue;
+            }
+            visit(&crate_root.join("src"), None, &mut newest);
+            let manifest = crate_root.join("Cargo.toml");
+            if let Ok(mtime) = std::fs::metadata(manifest).and_then(|metadata| metadata.modified())
+            {
+                newest = newest.max(mtime);
+            }
+        }
+    }
+    visit(
+        &root.join("crates/slicer-schema/wit"),
+        Some("wit"),
+        &mut newest,
+    );
+    if let Ok(mtime) =
+        std::fs::metadata(root.join("Cargo.toml")).and_then(|metadata| metadata.modified())
+    {
+        newest = newest.max(mtime);
+    }
+    newest
+}
+
 /// Path to the compiled `pnp_cli` binary for integration tests.
-///
-/// Checks the standard `target/debug/` directory relative to the workspace
-/// root. Tests must be run via `cargo test` (which builds binaries first) or
-/// after `cargo build --workspace`.
 pub fn pnp_cli_bin() -> PathBuf {
     let exe_name = if cfg!(windows) {
         "pnp_cli.exe"
@@ -122,26 +192,23 @@ pub fn pnp_cli_bin() -> PathBuf {
     // sibling `pnp_cli{.exe}` is the right-profile binary.
     if let Ok(test_exe) = std::env::current_exe() {
         if let Some(profile_dir) = test_exe.parent().and_then(|p| p.parent()) {
-            let candidate = profile_dir.join(exe_name);
-            if candidate.exists() {
-                return candidate;
+            let bin = profile_dir.join(exe_name);
+            let root = repo_root();
+            let newest_src_mtime = newest_source_mtime(&root);
+            if let Some(reason) = staleness_reason(
+                std::fs::metadata(&bin)
+                    .ok()
+                    .and_then(|metadata| metadata.modified().ok()),
+                newest_src_mtime,
+            ) {
+                panic!("{reason} Resolved path: {}.", bin.display());
             }
-        }
-    }
-
-    // Fallback when profile inference failed (unusual): prefer release over
-    // debug — if both are present the user almost certainly wants the fast one.
-    let root = repo_root();
-    for profile in ["release", "debug"] {
-        let p = root.join("target").join(profile).join(exe_name);
-        if p.exists() {
-            return p;
+            return bin;
         }
     }
     panic!(
-        "pnp_cli binary not found under {}/target/{{debug,release}}/{exe_name}. \
-         Run `cargo build --workspace` (or `--release`) first.",
-        root.display(),
+        "could not resolve the pnp_cli path from the integration-test executable; \
+         run `cargo build --bin pnp_cli` first."
     );
 }
 

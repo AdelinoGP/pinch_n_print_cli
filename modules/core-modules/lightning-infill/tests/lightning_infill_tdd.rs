@@ -1,8 +1,8 @@
 //! TDD tests for the lightning-infill module.
 //!
 // Step 3 (packet 140) - classification:
-// KEEP:   on_print_start_defaults - default config values are stable.
-// KEEP:   on_print_start_custom - configured module values are read.
+// KEEP:   from_config_defaults - default config values are stable.
+// KEEP:   from_config_custom - configured module values are read.
 // KEEP:   paths_have_sparse_infill_role - emitted paths retain SparseInfill role tagging.
 // KEEP:   empty_regions_no_output - an empty region emits no paths.
 // KEEP:   paths_at_correct_z - emitted points retain the region's layer height.
@@ -73,18 +73,18 @@ fn sample_segments() -> Vec<[Point2; 2]> {
 
 /// Test 1: Default config values when no fields provided.
 #[test]
-fn on_print_start_defaults() {
+fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
     assert!((module.line_width() - 0.4).abs() < 0.001);
 }
 
 /// Test 2: Custom config values are read correctly.
 #[test]
-fn on_print_start_custom() {
+fn from_config_custom() {
     let config = make_config(0.3, 80.0, 0.5);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     assert!((module.density() - 0.3).abs() < 0.001);
     assert!((module.line_width() - 0.5).abs() < 0.001);
 }
@@ -93,7 +93,7 @@ fn on_print_start_custom() {
 #[test]
 fn square_region_produces_paths() {
     let config = make_config(0.2, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
@@ -114,7 +114,7 @@ fn square_region_produces_paths() {
 #[test]
 fn paths_have_sparse_infill_role() {
     let config = make_config(0.2, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
@@ -136,7 +136,7 @@ fn paths_have_sparse_infill_role() {
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(0.2, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj1".to_string());
@@ -159,7 +159,7 @@ fn empty_regions_no_output() {
 #[test]
 fn paths_at_correct_z() {
     let config = make_config(0.2, 50.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let z = 1.5;
     let region = make_square_region(10.0, z);
     let mut output = InfillOutputBuilder::new();
@@ -185,7 +185,7 @@ fn paths_at_correct_z() {
 fn width_matches_config() {
     let line_width = 0.6;
     let config = make_config(0.2, 50.0, line_width);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let mut output = InfillOutputBuilder::new();
 
@@ -209,7 +209,7 @@ fn width_matches_config() {
 #[test]
 fn samples_tree_ir_raw_emit() {
     let config = make_config(0.2, 80.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let expected = vec![
         [Point2::from_mm(1.0, 2.0), Point2::from_mm(3.0, 4.0)],
@@ -241,7 +241,7 @@ fn samples_tree_ir_raw_emit() {
 #[test]
 fn empty_trees_emit_nothing() {
     let config = make_config(0.2, 80.0, 0.4);
-    let module = LightningInfill::on_print_start(&config).unwrap();
+    let module = LightningInfill::from_config(&config).unwrap();
     let region = make_square_region(10.0, 0.3);
     let paint = paint_view_with_segments(Vec::new());
     let mut output = InfillOutputBuilder::new();

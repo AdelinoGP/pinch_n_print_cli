@@ -16,7 +16,7 @@ use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 // `#[slicer_module]` and `slicer-cli::cmd_new` stay in lock-step and
 // drift between the macro-emitted binding and generated manifests is
 // structurally impossible (docs/03, docs/05).
-use slicer_schema::{StageSpec, STAGES, WORLD_LIFECYCLE_EXPORTS as WORLD_LIFECYCLE};
+use slicer_schema::{StageSpec, STAGES};
 
 /// The `#[slicer_module]` attribute macro.
 ///
@@ -143,37 +143,18 @@ fn generate_slicer_module_impl(
 
     let trait_name_literal = trait_ident.unwrap_or("");
 
-    // Build the WIT-export list for this module: lifecycle for its world,
-    // plus the detected stage export (if any).
-    let lifecycle_exports: &[&str] = WORLD_LIFECYCLE
-        .iter()
-        .find(|(w, _)| *w == effective_world)
-        .map(|(_, exports)| *exports)
-        .unwrap_or(&[]);
-    let mut wit_exports: Vec<&str> = lifecycle_exports.to_vec();
-    if !stage_export_literal.is_empty() {
-        wit_exports.push(stage_export_literal);
-    }
+    let wit_exports: Vec<&str> = if stage_export_literal.is_empty() {
+        Vec::new()
+    } else {
+        vec![stage_export_literal]
+    };
     let wit_exports_tokens = wit_exports.iter().map(|e| quote! { #e });
 
-    // Typed structured export bindings. Every lifecycle export carries
-    // `Lifecycle`; the detected stage export (if any) carries `Stage`.
-    // Ordering is: lifecycle exports in source order (on-print-start,
-    // on-print-end), then the stage export.
-    let lifecycle_count = lifecycle_exports.len();
-    let lifecycle_binding_tokens = lifecycle_exports.iter().map(|e| {
-        quote! {
-            ::slicer_schema::ExportBinding {
-                name: #e,
-                kind: ::slicer_schema::ExportKind::Lifecycle,
-            }
-        }
-    });
     let stage_binding_tokens: TokenStream2 = if stage_export_literal.is_empty() {
         quote! {}
     } else {
         quote! {
-            , ::slicer_schema::ExportBinding {
+            ::slicer_schema::ExportBinding {
                 name: #stage_export_literal,
                 kind: ::slicer_schema::ExportKind::Stage,
             }
@@ -247,7 +228,7 @@ fn generate_slicer_module_impl(
             pub fn __slicer_stage_method_name() -> &'static str { #stage_method_literal }
 
             /// The full list of WIT export names this module provides:
-            /// the world's lifecycle exports plus the detected stage.
+            /// the detected stage export, if any.
             #[doc(hidden)]
             pub fn __slicer_wit_exports() -> &'static [&'static str] {
                 &[ #( #wit_exports_tokens ),* ]
@@ -275,7 +256,6 @@ fn generate_slicer_module_impl(
                     stage_method: #stage_method_literal,
                     stage_export: #stage_export_literal,
                     exports: &[
-                        #( #lifecycle_binding_tokens ),*
                         #stage_binding_tokens
                     ],
                 };
@@ -289,27 +269,21 @@ fn generate_slicer_module_impl(
                 &Self::SLICER_MODULE_SCHEMA
             }
 
-            /// Reports the lifecycle-export count for this module's
-            /// world; tests and host tooling use this to verify that
-            /// every world's mandatory lifecycle exports (`on-print-start`,
-            /// `on-print-end`) are present in the emitted binding surface.
-            #[doc(hidden)]
-            pub const __SLICER_LIFECYCLE_EXPORT_COUNT: usize = #lifecycle_count;
         }
     };
 
     // ── wasm32-only real export glue ────────────────────────────────
     //
     // On `target_arch = "wasm32"` the macro emits one `extern "C"` shim
-    // per WIT export (lifecycle + detected stage) with `#[export_name]`
-    // set to the documented kebab-case WIT export name. These shims
+    // for a detected stage export with `#[export_name]` set to the
+    // documented kebab-case WIT export name. These shims
     // register genuine export entries in the final .wasm artifact so
     // host-side introspection (and the documented authoring contract in
     // docs/05 §Module Entry Point) sees the declared surface rather
     // than an empty export table.
     //
-    // Shim bodies are intentionally minimal: lifecycle returns 0 (OK)
-    // and the stage shim returns 0 (OK). Full typed data transfer
+    // Shim bodies are intentionally minimal: the stage shim returns 0
+    // (OK). Full typed data transfer
     // through the component model is handled elsewhere (the host's
     // `wasmtime::component` dispatcher + host-side wit-bindgen
     // bindings); this step closes the export-surface gap without
@@ -333,35 +307,19 @@ fn generate_slicer_module_impl(
         proc_macro2::Span::call_site(),
     );
 
-    let lifecycle_shim_tokens: Vec<TokenStream2> = lifecycle_exports
-        .iter()
-        .map(|export| {
-            let shim_name = syn::Ident::new(
-                &format!("__slicer_export_{}", export.replace('-', "_")),
-                proc_macro2::Span::call_site(),
-            );
-            quote! {
-                #[cfg(target_arch = "wasm32")]
-                #[export_name = #export]
-                pub extern "C" fn #shim_name() -> i32 { 0 }
-            }
-        })
-        .collect();
-
     // ── Real typed export glue per supported world (TASK-109) ───────
     //
     // For every world the macro now emits real, typed
     // `wit_bindgen::generate!`-backed component export glue that
     // marshals arguments through the documented WIT world into the
     // implemented SDK trait method. The placeholder `extern "C" fn ...
-    // -> i32 { 0 }` stage/lifecycle shims are suppressed for these
+    // -> i32 { 0 }` stage shims are suppressed for these
     // worlds so they do not collide with or contaminate the real
     // component exports (docs/05 §Module Entry Point; docs/03
     // wit/world-*.wit).
     //
     // Worlds covered: postpass (gcode + text), finalization, prepass
-    // (mesh-analysis + layer-planning), layer (all 8 stage exports +
-    // 2 lifecycle exports).
+    // (mesh-analysis + layer-planning), layer (all 8 stage exports).
     let real_glue_world = resolve_world_glue(stage_id_literal, trait_ident);
 
     let stage_shim_tokens: TokenStream2 =
@@ -379,18 +337,6 @@ fn generate_slicer_module_impl(
             }
         };
 
-    // For worlds that emit real glue, skip the lifecycle fake shims —
-    // the wit-bindgen expansion handles lifecycle exports (layer world)
-    // or the world declares none (postpass/prepass/finalization). Raw
-    // `#[export_name]` lifecycle symbols would either collide with the
-    // real exports or leak non-component symbols into the final .wasm.
-    let skip_lifecycle_shims = real_glue_world.is_some();
-    let active_lifecycle_shims: Vec<TokenStream2> = if skip_lifecycle_shims {
-        Vec::new()
-    } else {
-        lifecycle_shim_tokens
-    };
-
     let world_glue: TokenStream2 = match real_glue_world {
         Some(WorldGlueKind::Postpass) => build_postpass_world_glue(self_ty, stage_id_literal),
         Some(WorldGlueKind::Finalization) => build_finalization_world_glue(self_ty),
@@ -403,7 +349,6 @@ fn generate_slicer_module_impl(
         #[cfg(target_arch = "wasm32")]
         #[allow(dead_code)]
         mod #shim_mod_ident {
-            #( #active_lifecycle_shims )*
             #stage_shim_tokens
         }
         #world_glue
@@ -434,7 +379,7 @@ enum WorldGlueKind {
 /// Decide which WIT world gets real `wit_bindgen`-backed macro-generated
 /// glue for this `#[slicer_module]` invocation. Glue is emitted when:
 /// - the stage id belongs to a supported world, OR
-/// - the impl declares a known SDK trait (lifecycle-only impls).
+/// - the impl declares a known SDK trait.
 ///
 /// Unresolvable combinations return `None`, in which case the legacy
 /// placeholder shim path is emitted (inert — currently no legitimate
@@ -654,7 +599,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
         "PostPass::GCodePostProcess" => (
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -678,7 +623,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
             quote! { Ok(()) },
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -1073,7 +1018,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 ) -> Result<(), ModuleError> {
                     #profile_install
                     let ir_config = __slicer_adapt_config(&config);
-                    let module = match <#self_ty as ::slicer_sdk::traits::FinalizationModule>::on_print_start(&ir_config) {
+                    let module = match <#self_ty as ::slicer_sdk::traits::FinalizationModule>::from_config(&ir_config) {
                         Ok(m) => m,
                         Err(e) => return Err(__slicer_error_out(e)),
                     };
@@ -1440,7 +1385,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
         "PrePass::MeshAnalysis" => (
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -1517,7 +1462,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // mesh_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -1578,7 +1523,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // layer_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -1680,7 +1625,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // seam_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
@@ -1868,8 +1813,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 }
 
 /// Emit the `wit_bindgen`-backed component export glue for the layer
-/// world (all 8 stage exports + `on-print-start` / `on-print-end`
-/// lifecycle). The detected stage routes into the user's trait method
+/// world (all 8 stage exports). The detected stage routes into the user's trait method
 /// with real resource-level deep copy: typed wit-bindgen resources
 /// are read through their generated accessors and rebuilt as SDK
 /// `SliceRegionView` / `PerimeterRegionView` / `PaintRegionLayerView`
@@ -1912,7 +1856,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -1933,7 +1877,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -1954,7 +1898,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -1974,7 +1918,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -1995,7 +1939,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -2028,7 +1972,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -2090,7 +2034,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -2110,7 +2054,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         quote! {
             let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
-            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
+            let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
                 Ok(m) => m,
                 Err(e) => return Err(__slicer_error_out(e)),
             };
@@ -3030,16 +2974,6 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             struct __SlicerLayerComponent;
 
             impl Guest for __SlicerLayerComponent {
-                fn on_print_start(config: ConfigView) -> Result<(), ModuleError> {
-                    #profile_install
-                    let ir_config = __slicer_adapt_config(&config);
-                    match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
-                        Ok(_m) => Ok(()),
-                        Err(e) => Err(__slicer_error_out(e)),
-                    }
-                }
-                fn on_print_end() -> Result<(), ModuleError> { Ok(()) }
-
                 fn run_slice_postprocess(
                     layer_index: i32,
                     regions: Vec<SliceRegionView>,

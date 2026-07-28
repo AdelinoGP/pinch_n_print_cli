@@ -94,7 +94,7 @@ fn with_rectilinear_claims(mut region: SliceRegionView) -> SliceRegionView {
 // ---------------------------------------------------------------------------
 #[test]
 fn top_surface_region_emits_top_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_test_region(true, false, false);
     let mut output = InfillOutputBuilder::new();
 
@@ -127,7 +127,7 @@ fn top_surface_region_emits_top_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_surface_region_emits_bottom_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_test_region(false, true, false);
     let mut output = InfillOutputBuilder::new();
 
@@ -160,7 +160,7 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bridge_surface_region_emits_bridge_infill_role() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     // rev1 contract: is_bridge requires non-empty bridge_areas to emit BridgeInfill.
     let region = with_rectilinear_claims(
         SliceRegionViewBuilder::new()
@@ -218,7 +218,7 @@ fn bridge_surface_region_emits_bridge_infill_role() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_wins_over_top_on_overlap() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     // Post-host-partition state for a layer-0 region (both shell zones touch
     // it): bottom polygon is populated, top has been subtracted to empty.
     let s = square_polygon(5.0, 5.0, 10.0);
@@ -302,7 +302,7 @@ fn make_shell_region(top_index: Option<u8>, bottom_index: Option<u8>) -> SliceRe
 
 #[test]
 fn deep_top_shell_emits_internal_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_shell_region(Some(1), None);
     let mut output = InfillOutputBuilder::new();
 
@@ -337,7 +337,7 @@ fn deep_top_shell_emits_internal_solid_infill() {
 
 #[test]
 fn deep_bottom_shell_emits_internal_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_shell_region(None, Some(2));
     let mut output = InfillOutputBuilder::new();
 
@@ -375,7 +375,7 @@ fn deep_bottom_shell_emits_internal_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn sparse_only_region_does_not_fabricate_surface_fill_roles() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let module = RectilinearInfill::from_config(&ConfigView::new()).unwrap();
     let region = make_test_region(false, false, false);
     let mut output = InfillOutputBuilder::new();
 

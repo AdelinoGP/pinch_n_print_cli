@@ -167,7 +167,7 @@ fn point_in_rect(pt: &Point3WithWidth, x0: f32, y0: f32, x1: f32, y1: f32) -> bo
 #[test]
 fn square_10mm_density_20_emits_n_raw_segments() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
     let sq = square_polygon(5.0, 5.0, 10.0);
     let region = make_sparse_region(sq, 0.3);
     let mut output = InfillOutputBuilder::new();
@@ -259,7 +259,7 @@ fn point_on_square_boundary(
 #[test]
 fn polygon_with_hole_segments_split_around_hole() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     // 10mm × 10mm outer (centered at 5,5) with a 4mm × 4mm central
     // hole from (3,3) to (7,7). spacing=2mm. The hole is large enough
@@ -346,7 +346,7 @@ fn polygon_with_hole_segments_split_around_hole() {
 #[test]
 fn two_disjoint_expolygons_independent_scan_conversion() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     // Two disjoint 5mm × 5mm squares, well separated.
     let poly_a = square_polygon(2.0, 2.0, 5.0);
@@ -422,7 +422,7 @@ fn angle_45_rotated_output_matches_unrotated_after_inverse() {
 
     // Run with angle=0.
     let config0 = make_config(0.2, 0.0, 50.0, 0.4);
-    let module0 = RectilinearInfill::on_print_start(&config0).unwrap();
+    let module0 = RectilinearInfill::from_config(&config0).unwrap();
     let region0 = make_sparse_region(sq.clone(), 0.3);
     let mut output0 = InfillOutputBuilder::new();
     module0
@@ -431,7 +431,7 @@ fn angle_45_rotated_output_matches_unrotated_after_inverse() {
 
     // Run with angle=45.
     let config45 = make_config(0.2, 45.0, 50.0, 0.4);
-    let module45 = RectilinearInfill::on_print_start(&config45).unwrap();
+    let module45 = RectilinearInfill::from_config(&config45).unwrap();
     let region45 = make_sparse_region(sq, 0.3);
     let mut output45 = InfillOutputBuilder::new();
     module45
@@ -527,7 +527,7 @@ fn solid_spacing_adjusted_for_solid_role() {
     // scan lines at y = 0, 2.5, 5.0, 7.5, 10.0 (the top is a
     // horizontal-contour post-pass edge, separate from the scan loop).
     let config = make_config(0.18, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let sq = square_polygon(5.0, 5.0, 10.0);
     let mut region = SliceRegionViewBuilder::new()
@@ -606,7 +606,7 @@ fn solid_spacing_adjusted_for_solid_role() {
 #[test]
 fn pattern_shift_interleaves_layers() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     let sq = square_polygon(5.0, 5.0, 10.0);
 
@@ -704,7 +704,7 @@ fn pattern_shift_interleaves_layers() {
     // x by exactly the shift amount.
     let shift_mm = 1.0_f64;
     let config_shift = make_config_with_shift(0.2, 0.0, 50.0, 0.4, shift_mm);
-    let module_shift = RectilinearInfill::on_print_start(&config_shift).unwrap();
+    let module_shift = RectilinearInfill::from_config(&config_shift).unwrap();
     let region_shift = make_sparse_region(square_polygon(5.0, 5.0, 10.0), 0.3);
     let mut output_shift = InfillOutputBuilder::new();
     module_shift
@@ -723,7 +723,7 @@ fn pattern_shift_interleaves_layers() {
     );
 
     let config_no_shift = make_config(0.2, 0.0, 50.0, 0.4);
-    let module_no_shift = RectilinearInfill::on_print_start(&config_no_shift).unwrap();
+    let module_no_shift = RectilinearInfill::from_config(&config_no_shift).unwrap();
     let region_no_shift = make_sparse_region(square_polygon(5.0, 5.0, 10.0), 0.3);
     let mut output_no_shift = InfillOutputBuilder::new();
     module_no_shift
@@ -778,7 +778,7 @@ fn pattern_shift_interleaves_layers() {
 #[test]
 fn half_open_vertex_test_no_double_count() {
     let config = make_config(0.2, 0.0, 50.0, 0.4);
-    let module = RectilinearInfill::on_print_start(&config).unwrap();
+    let module = RectilinearInfill::from_config(&config).unwrap();
 
     // Right-triangle: (0,0), (10mm,10mm), (0,20mm). The apex
     // (10,10) lies on a scan line that also crosses both legs, so the

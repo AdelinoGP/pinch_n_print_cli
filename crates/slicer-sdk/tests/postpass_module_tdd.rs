@@ -16,27 +16,20 @@ struct TestPostpassModule {
 }
 
 impl PostpassModule for TestPostpassModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         // Verify ConfigView is accessible
         let _ = config.len();
         Ok(Self { initialized: true })
     }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
 }
 
 #[test]
-fn test_01_postpass_module_trait_exists_with_lifecycle() {
-    // Test that PostpassModule trait can be implemented with on_print_start/on_print_end
+fn test_01_postpass_module_trait_exists_with_from_config() {
+    // Test that PostpassModule trait can be implemented with from_config
     let config = ConfigView::from_map(HashMap::new());
 
-    let module =
-        TestPostpassModule::on_print_start(&config).expect("on_print_start should succeed");
+    let module = TestPostpassModule::from_config(&config).expect("from_config should succeed");
     assert!(module.initialized, "module should be initialized");
-
-    module.on_print_end().expect("on_print_end should succeed");
 }
 
 // =============================================================================
@@ -285,7 +278,7 @@ fn test_11b_gcode_output_builder_push_z_hop() {
 struct GcodePostprocessTestModule;
 
 impl PostpassModule for GcodePostprocessTestModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -306,7 +299,7 @@ impl PostpassModule for GcodePostprocessTestModule {
 #[test]
 fn test_12_run_gcode_postprocess_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = GcodePostprocessTestModule::on_print_start(&config).unwrap();
+    let module = GcodePostprocessTestModule::from_config(&config).unwrap();
     let commands = vec![
         GcodeCommand::Move {
             x: Some(10.0),
@@ -333,7 +326,7 @@ fn test_12_run_gcode_postprocess_signature_matches_wit() {
 struct TextPostprocessTestModule;
 
 impl PostpassModule for TextPostprocessTestModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -351,7 +344,7 @@ impl PostpassModule for TextPostprocessTestModule {
 #[test]
 fn test_13_run_text_postprocess_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = TextPostprocessTestModule::on_print_start(&config).unwrap();
+    let module = TextPostprocessTestModule::from_config(&config).unwrap();
     let input = "G28\nG1 X10 Y20\n";
 
     let result = module.run_text_postprocess(input, &config);
@@ -368,7 +361,7 @@ fn test_13_run_text_postprocess_signature_matches_wit() {
 struct MinimalPostpassModule;
 
 impl PostpassModule for MinimalPostpassModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
     // Both run_gcode_postprocess and run_text_postprocess have default implementations
@@ -377,7 +370,7 @@ impl PostpassModule for MinimalPostpassModule {
 #[test]
 fn test_14_default_implementations_exist() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = MinimalPostpassModule::on_print_start(&config).unwrap();
+    let module = MinimalPostpassModule::from_config(&config).unwrap();
     let commands = vec![GcodeCommand::Raw {
         text: "G28".to_string(),
     }];

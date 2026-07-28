@@ -12,7 +12,8 @@
 //! 2. The supplied fallback value.
 //!
 //! The helper does **not** fall back to a module-global `ConfigView` — that
-//! is the module's job (it knows its own `on_print_start` default). Keeping
+//! is the module's job (it knows its own defaults from the `from_config`
+//! constructor). Keeping
 //! the resolution here at the per-region level is what makes the per-region
 //! partition contract (packet 131) testable in isolation.
 
@@ -23,8 +24,8 @@ use slicer_ir::ConfigValue;
 ///
 /// Returns the value at `key` from the region's per-region `ConfigView` if
 /// present and a `Float`/`FloatOrPercent(literal)`, otherwise the supplied
-/// `fallback`. The fallback is what a module passes from its module-global
-/// `on_print_start`-derived default.
+/// `fallback`. The fallback is supplied by the module's `from_config`
+/// constructor.
 #[must_use]
 pub fn resolve_float(region: &SliceRegionView, key: &str, fallback: f32) -> f32 {
     let Some(view) = region.config() else {

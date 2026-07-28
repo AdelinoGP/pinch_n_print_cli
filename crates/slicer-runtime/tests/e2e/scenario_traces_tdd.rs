@@ -398,7 +398,7 @@ fn seam_aligned_default_e2e() {
         slicer_ir::ConfigKey::from("seam_mode"),
         slicer_ir::ConfigValue::String("aligned".to_string()),
     )]));
-    let placer = seam_placer::SeamPlacer::on_print_start(&config).expect("start seam placer");
+    let placer = seam_placer::SeamPlacer::from_config(&config).expect("start seam placer");
     let point = |x: f32, y: f32| slicer_ir::Point3WithWidth {
         x,
         y,

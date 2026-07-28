@@ -15,25 +15,18 @@ struct TestFinalizationModule {
 }
 
 impl FinalizationModule for TestFinalizationModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let _ = config.len();
         Ok(Self { initialized: true })
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 }
 
 #[test]
-fn test_01_finalization_module_trait_exists_with_lifecycle() {
+fn test_01_finalization_module_trait_exists_with_from_config() {
     let config = ConfigView::from_map(HashMap::new());
 
-    let module =
-        TestFinalizationModule::on_print_start(&config).expect("on_print_start should succeed");
+    let module = TestFinalizationModule::from_config(&config).expect("from_config should succeed");
     assert!(module.initialized);
-
-    module.on_print_end().expect("on_print_end should succeed");
 }
 
 // =============================================================================
@@ -43,7 +36,7 @@ fn test_01_finalization_module_trait_exists_with_lifecycle() {
 struct FinalizationTestModule;
 
 impl FinalizationModule for FinalizationTestModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
@@ -63,7 +56,7 @@ impl FinalizationModule for FinalizationTestModule {
 #[test]
 fn test_02_run_finalization_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = FinalizationTestModule::on_print_start(&config).unwrap();
+    let module = FinalizationTestModule::from_config(&config).unwrap();
     let layers: Vec<LayerCollectionView> = vec![];
     let mut output = FinalizationOutputBuilder::new();
 
@@ -142,7 +135,7 @@ fn test_05_finalization_output_builder_insert_synthetic() {
 struct MinimalFinalizationModule;
 
 impl FinalizationModule for MinimalFinalizationModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 }
@@ -150,7 +143,7 @@ impl FinalizationModule for MinimalFinalizationModule {
 #[test]
 fn test_06_default_run_finalization_does_not_panic() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = MinimalFinalizationModule::on_print_start(&config).unwrap();
+    let module = MinimalFinalizationModule::from_config(&config).unwrap();
     let layers: Vec<LayerCollectionView> = vec![];
     let mut output = FinalizationOutputBuilder::new();
 

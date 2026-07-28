@@ -74,7 +74,7 @@ fn emitted_widths_for(w_mm: f32) -> Vec<f32> {
         .float("nozzle_diameter", NOZZLE_MM as f64)
         .build();
 
-    let module = ArachnePerimeters::on_print_start(&config).expect("on_print_start");
+    let module = ArachnePerimeters::from_config(&config).expect("from_config");
     let regions = vec![make_region(LAYER_HEIGHT_MM)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

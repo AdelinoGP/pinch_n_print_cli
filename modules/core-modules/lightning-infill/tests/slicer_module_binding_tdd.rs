@@ -15,7 +15,5 @@ fn binding_surface_matches_manifest() {
     assert_eq!(LightningInfill::__slicer_stage_name(), "Layer::Infill");
     assert_eq!(LightningInfill::__slicer_stage_export_name(), "run-infill");
     let exports = LightningInfill::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-infill"));
 }

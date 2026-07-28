@@ -119,7 +119,7 @@ fn assert_wall_eq(actual: &WallLoop, expected: &WallLoop) {
 #[test]
 fn siblings_survive_rotation() {
     let config = config_with_mode("nearest");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall_0 = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]);
     let wall_1 = ir_wall(0.2, &[(2.0, 0.0), (3.0, 0.0), (3.0, 1.0), (2.0, 1.0)]);
     let wall_2 = ir_wall(0.2, &[(4.0, 0.0), (5.0, 0.0), (5.0, 1.0), (4.0, 1.0)]);
@@ -158,7 +158,7 @@ fn siblings_survive_rotation() {
 #[test]
 fn multi_region_wall_counts_preserved() {
     let config = config_with_mode("nearest");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let region_a = vec![
         ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]),
         ir_wall(0.2, &[(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]),
@@ -228,7 +228,7 @@ fn multi_region_wall_counts_preserved() {
 #[test]
 fn aligned_snap_preserves_siblings() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall_0 = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]);
     let wall_1 = ir_wall(0.2, &[(2.0, 0.0), (3.0, 0.0), (3.0, 1.0), (2.0, 1.0)]);
     let wall_2 = ir_wall(0.2, &[(4.0, 0.0), (5.0, 0.0), (5.0, 1.0), (4.0, 1.0)]);
@@ -268,7 +268,7 @@ fn aligned_snap_preserves_siblings() {
 #[test]
 fn tolerance_miss_emits_all_walls_pristine() {
     let config = config_with_mode("nearest");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let walls = vec![
         ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]),
         ir_wall(0.2, &[(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]),

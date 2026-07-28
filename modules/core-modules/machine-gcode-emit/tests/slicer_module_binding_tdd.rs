@@ -21,7 +21,5 @@ fn binding_surface_matches_gcode_postprocess_stage() {
         "run-gcode-postprocess"
     );
     let exports = MachineGcodeEmit::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-gcode-postprocess"));
 }

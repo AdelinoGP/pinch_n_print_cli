@@ -24,7 +24,5 @@ fn binding_surface_matches_manifest() {
         "run-path-optimization"
     );
     let exports = PathOptimizationDefault::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-path-optimization"));
 }

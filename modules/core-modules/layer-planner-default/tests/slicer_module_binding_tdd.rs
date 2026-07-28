@@ -20,7 +20,5 @@ fn binding_surface_matches_prepass_layer_planning_stage() {
         "run-layer-planning"
     );
     let exports = DefaultLayerPlanner::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-layer-planning"));
 }

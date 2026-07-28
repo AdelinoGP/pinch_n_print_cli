@@ -1,6 +1,6 @@
 //! TDD tests for aligned seam modes (TASK-274, packet 168).
 //!
-//! AC-1: `"aligned"` and `"aligned_back"` parse in `on_print_start` and
+//! AC-1: `"aligned"` and `"aligned_back"` parse in `from_config` and
 //! round-trip through `seam_mode()`.
 //! AC-N1: explicitly-unknown strings are still rejected with the exact
 //! `unknown seam_mode: <value>` message.
@@ -30,17 +30,17 @@ fn config_with_mode(mode: &str) -> ConfigView {
 #[test]
 fn aligned_mode_parses() {
     let module =
-        SeamPlacer::on_print_start(&config_with_mode("aligned")).expect("\"aligned\" must parse");
+        SeamPlacer::from_config(&config_with_mode("aligned")).expect("\"aligned\" must parse");
     assert_eq!(module.seam_mode(), "aligned");
 
-    let module = SeamPlacer::on_print_start(&config_with_mode("aligned_back"))
+    let module = SeamPlacer::from_config(&config_with_mode("aligned_back"))
         .expect("\"aligned_back\" must parse");
     assert_eq!(module.seam_mode(), "aligned_back");
 }
 
 #[test]
 fn unknown_mode_still_rejected() {
-    let err = match SeamPlacer::on_print_start(&config_with_mode("diagonal")) {
+    let err = match SeamPlacer::from_config(&config_with_mode("diagonal")) {
         Ok(_) => panic!("unknown seam_mode must be rejected"),
         Err(err) => err,
     };
@@ -125,7 +125,7 @@ fn aligned_region(
 /// distance — not use the raw injected point, and not score candidates.
 fn assert_aligned_snaps(mode: &str) {
     let config = config_with_mode(mode);
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
     // Injected point 0.3 mm off the (2.0, 0.0) vertex. Candidate at (0,0)
     // has a *better* score, proving the snap ignores scoring.
@@ -177,7 +177,7 @@ fn aligned_back_snaps_to_nearest_candidate() {
 #[test]
 fn aligned_empty_candidates_projects_onto_segment_interior() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
     let regions = vec![aligned_region(
         vec![wall],
@@ -233,7 +233,7 @@ fn aligned_empty_candidates_projects_onto_segment_interior() {
 #[test]
 fn aligned_without_resolved_seam_degrades_to_local_candidate() {
     let config = config_with_mode("aligned");
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
+    let module = SeamPlacer::from_config(&config).expect("module init must succeed");
     let wall_points = [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)];
     let wall = ir_wall(0.2, &wall_points);
     let regions = vec![aligned_region(

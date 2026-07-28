@@ -86,7 +86,7 @@ fn run(
     views: &[slicer_sdk::views::PerimeterRegionView],
 ) -> InfillOutputBuilder {
     let module_config = config(0.4, 0.2);
-    let module = InfillLinker::on_print_start(&module_config).unwrap();
+    let module = InfillLinker::from_config(&module_config).unwrap();
     let mut output = InfillOutputBuilder::new();
     module
         .run_infill_postprocess(0, views, prior, &mut output, &module_config)

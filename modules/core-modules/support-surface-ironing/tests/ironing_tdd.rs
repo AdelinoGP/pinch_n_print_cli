@@ -88,9 +88,9 @@ fn region_with_square_at_z(z: f32) -> PerimeterRegionView {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn on_print_start_defaults() {
+fn from_config_defaults() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.ironing_speed() - 15.0).abs() < 0.001);
     assert!((module.ironing_flow_rate() - 0.1).abs() < 0.001);
@@ -98,7 +98,7 @@ fn on_print_start_defaults() {
 }
 
 #[test]
-fn on_print_start_custom() {
+fn from_config_custom() {
     let config = config_with(vec![
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
@@ -106,7 +106,7 @@ fn on_print_start_custom() {
         ("ironing_spacing", ConfigValue::Float(0.15)),
         ("line_width", ConfigValue::Float(0.5)),
     ]);
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     assert!(module.enabled());
     assert!((module.ironing_speed() - 20.0).abs() < 0.001);
     assert!((module.ironing_flow_rate() - 0.2).abs() < 0.001);
@@ -117,7 +117,7 @@ fn on_print_start_custom() {
 #[test]
 fn disabled_no_paths() {
     let config = ConfigView::from_map(HashMap::new());
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
@@ -129,7 +129,7 @@ fn disabled_no_paths() {
 #[test]
 fn square_region_produces_paths() {
     let config = enabled_config();
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
@@ -144,7 +144,7 @@ fn square_region_produces_paths() {
 #[test]
 fn paths_have_ironing_role() {
     let config = enabled_config();
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
@@ -162,7 +162,7 @@ fn paths_have_ironing_role() {
 #[test]
 fn empty_regions_no_output() {
     let config = enabled_config();
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let mut output = InfillOutputBuilder::new();
     module
         .run_infill_postprocess(0, &[], &[], &mut output, &config)
@@ -174,7 +174,7 @@ fn empty_regions_no_output() {
 fn paths_at_correct_z() {
     let z = 1.5_f32;
     let config = enabled_config();
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(z);
     let mut output = InfillOutputBuilder::new();
     module
@@ -194,7 +194,7 @@ fn flow_rate_applied() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_flow_rate", ConfigValue::Float(0.15)),
     ]);
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
@@ -219,7 +219,7 @@ fn spacing_affects_density() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_spacing", ConfigValue::Float(0.1)),
     ]);
-    let module_narrow = SupportSurfaceIroning::on_print_start(&config_narrow).unwrap();
+    let module_narrow = SupportSurfaceIroning::from_config(&config_narrow).unwrap();
     let region_narrow = region_with_square_at_z(1.0);
     let mut output_narrow = InfillOutputBuilder::new();
     module_narrow
@@ -231,7 +231,7 @@ fn spacing_affects_density() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_spacing", ConfigValue::Float(0.4)),
     ]);
-    let module_wide = SupportSurfaceIroning::on_print_start(&config_wide).unwrap();
+    let module_wide = SupportSurfaceIroning::from_config(&config_wide).unwrap();
     let region_wide = region_with_square_at_z(1.0);
     let mut output_wide = InfillOutputBuilder::new();
     module_wide
@@ -252,7 +252,7 @@ fn width_matches_config() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("line_width", ConfigValue::Float(0.4)),
     ]);
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module
@@ -280,7 +280,7 @@ fn rectilinear_pattern() {
         ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_spacing", ConfigValue::Float(0.5)),
     ]);
-    let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
+    let module = SupportSurfaceIroning::from_config(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();
     module

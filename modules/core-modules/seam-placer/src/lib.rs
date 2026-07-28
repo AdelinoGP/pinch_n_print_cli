@@ -411,7 +411,7 @@ fn rotate_wall_loop(
 
 #[slicer_module]
 impl LayerModule for SeamPlacer {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let mode = match config.get("seam_mode") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "nearest" => SeamMode::Nearest,

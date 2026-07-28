@@ -1445,7 +1445,6 @@ startup
   │    └─ warnings     → print, continue
   ├─ topological sort each stage DAG
   ├─ instantiate WASM modules + build instance pools
-  ├─ call on-print-start on all modules
   └─ freeze ExecutionPlan
 
 slice command

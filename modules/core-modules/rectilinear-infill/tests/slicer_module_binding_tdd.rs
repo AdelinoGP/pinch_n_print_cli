@@ -17,8 +17,6 @@ fn binding_surface_matches_documented_layer_infill_stage() {
         "run-infill"
     );
     let exports = RectilinearInfill::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-infill"));
 }
 

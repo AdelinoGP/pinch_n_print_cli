@@ -34,7 +34,7 @@ fn make_square_region(side_mm: f32) -> SliceRegionView {
 
 #[test]
 fn outer_wall_path_carries_explicit_closing_repeat() {
-    let module = ClassicPerimeters::on_print_start(&config_one_outer_wall()).unwrap();
+    let module = ClassicPerimeters::from_config(&config_one_outer_wall()).unwrap();
     let region = make_square_region(10.0);
     let mut output = PerimeterOutputBuilder::new();
     let paint = PaintRegionLayerView::new(0);
@@ -75,7 +75,7 @@ fn outer_wall_path_carries_explicit_closing_repeat() {
 
 #[test]
 fn outer_wall_parallel_arrays_match_points_length() {
-    let module = ClassicPerimeters::on_print_start(&config_one_outer_wall()).unwrap();
+    let module = ClassicPerimeters::from_config(&config_one_outer_wall()).unwrap();
     let region = make_square_region(10.0);
     let mut output = PerimeterOutputBuilder::new();
     let paint = PaintRegionLayerView::new(0);
@@ -108,7 +108,7 @@ fn closing_repeat_feature_flag_mirrors_first_vertex() {
     // The closing-repeat vertex is geometrically identical to the first
     // vertex and must carry the same paint/feature flag so segment-iterating
     // post-processors (fuzzy-skin, seam-placer) see consistent flags.
-    let module = ClassicPerimeters::on_print_start(&config_one_outer_wall()).unwrap();
+    let module = ClassicPerimeters::from_config(&config_one_outer_wall()).unwrap();
     let region = make_square_region(10.0);
     let mut output = PerimeterOutputBuilder::new();
     let paint = PaintRegionLayerView::new(0);

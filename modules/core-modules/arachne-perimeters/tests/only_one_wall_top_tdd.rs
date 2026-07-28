@@ -51,7 +51,7 @@ fn make_region(z: f32, top_shell_index: Option<u8>) -> SliceRegionView {
 }
 
 fn wall_loop_count(config: &ConfigView, top_shell_index: Option<u8>) -> usize {
-    let module = ArachnePerimeters::on_print_start(config).unwrap();
+    let module = ArachnePerimeters::from_config(config).unwrap();
     // A non-zero layer so is_initial_layer is false and the only_one_wall_top
     // topmost gate (region metadata) is the only thing that could collapse.
     let regions = vec![make_region(1.0, top_shell_index)];
@@ -181,7 +181,7 @@ fn only_one_wall_top_second_pass() {
 }
 
 fn run_and_collect(config: &ConfigView, regions: &[SliceRegionView]) -> Vec<WallLoop> {
-    let module = ArachnePerimeters::on_print_start(config).unwrap();
+    let module = ArachnePerimeters::from_config(config).unwrap();
     let paint = PaintRegionLayerView::new(5);
     let mut output = PerimeterOutputBuilder::new();
     module

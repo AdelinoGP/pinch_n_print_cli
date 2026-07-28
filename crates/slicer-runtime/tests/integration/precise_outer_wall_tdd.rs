@@ -30,7 +30,7 @@ fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
 
 /// Run perimeters with the given config and return emitted wall loops.
 fn run_with_config(config: slicer_ir::ConfigView, _wall_count: i64) -> Vec<slicer_ir::WallLoop> {
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

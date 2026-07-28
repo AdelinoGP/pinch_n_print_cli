@@ -310,7 +310,7 @@ fn arachne_parity_stale_doc_manifest_description_not_stale() {
 #[test]
 fn arachne_parity_arachne_path_overhang_quartile_set_per_vertex() {
     let config = native_wall_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_overhang_region(10.0, 4.0, 3, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -372,7 +372,7 @@ fn arachne_parity_pipeline_bridge_flow_factor_on_overhang() {
         .float("bridge_flow", 0.7)
         .bool("thick_bridges", false)
         .build();
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_bridge_region(10.0, 4.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -487,7 +487,7 @@ fn arachne_parity_pipeline_overhang_reverse_config_keys() {
 #[test]
 fn arachne_parity_arachne_path_thin_wall_loop_type_emitted() {
     let config = native_thin_wall_config(true);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_thin_strip_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -556,7 +556,7 @@ fn arachne_parity_arachne_path_precise_outer_wall_registered() {
             .build()
     };
     let run_and_get_outer_wall = |config: &ConfigView| -> slicer_ir::WallLoop {
-        let module = ArachnePerimeters::on_print_start(config).unwrap();
+        let module = ArachnePerimeters::from_config(config).unwrap();
         let regions = vec![native_square_region(10.0, 0.2)];
         let paint = PaintRegionLayerView::new(0);
         let mut output = PerimeterOutputBuilder::new();
@@ -665,7 +665,7 @@ fn arachne_parity_pipeline_alternate_extra_wall_not_registered() {
 #[test]
 fn arachne_parity_arachne_path_outer_wall_boundary_type_exterior_surface() {
     let config = native_wall_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_square_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -706,7 +706,7 @@ fn arachne_parity_arachne_path_outer_wall_boundary_type_exterior_surface() {
 #[test]
 fn arachne_parity_arachne_path_is_bridge_flag_set_per_vertex() {
     let config = native_wall_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_bridge_region(10.0, 4.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -784,7 +784,7 @@ fn arachne_parity_arachne_path_is_bridge_flag_set_per_vertex() {
 #[test]
 fn arachne_parity_arachne_path_is_thin_wall_flag_set_on_thin_wall_loops() {
     let config = native_thin_wall_config(true);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_thin_strip_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -859,7 +859,7 @@ fn arachne_parity_arachne_path_is_thin_wall_flag_set_on_thin_wall_loops() {
 #[test]
 fn arachne_parity_arachne_path_seam_candidate_producer_present() {
     let config = native_wall_config(2, 0.4_f32);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![native_square_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

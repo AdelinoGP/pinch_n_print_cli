@@ -46,7 +46,7 @@ fn make_thin_strip_region(z: f32) -> SliceRegionView {
 #[test]
 fn is_thin_wall_flag_set_only_on_thin_wall_loops() {
     let config = make_config(true);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_thin_strip_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

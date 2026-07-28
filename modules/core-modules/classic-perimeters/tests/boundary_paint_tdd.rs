@@ -36,7 +36,7 @@ fn unpainted_region_produces_default_flags() {
     // A region with no segment_annotations should produce default feature flags
     // (tool_index=None, fuzzy_skin=false) on all points.
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -72,7 +72,7 @@ fn material_paint_sets_tool_index_on_outer_wall() {
     // When segment_annotations has Material semantic with ToolIndex values,
     // outer wall feature_flags.tool_index should be set accordingly.
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -121,7 +121,7 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
     // When segment_annotations has FuzzySkin semantic with Flag(true) values,
     // outer wall feature_flags.fuzzy_skin should be true.
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -166,7 +166,7 @@ fn inner_walls_get_paint_propagation() {
     // paint-propagation logic as outer walls. `segment_annotations` from the
     // original region polygons are propagated to inner walls via build_wall_flags.
     let config = config_2_walls();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -212,7 +212,7 @@ fn adjacent_material_change_sets_material_boundary() {
     // When adjacent outer wall points have different Material tool_index values,
     // the wall's boundary_type should be MaterialBoundary.
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -261,7 +261,7 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
     // When some points are painted and some are None, the None points
     // should produce default feature flags (tool_index=None).
     let config = config_1_wall();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -335,7 +335,7 @@ fn count_outer(output: &PerimeterOutputBuilder) -> usize {
 #[test]
 fn regions_without_external_contour_emit_outer_wall_each() {
     let config = config_2_walls();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

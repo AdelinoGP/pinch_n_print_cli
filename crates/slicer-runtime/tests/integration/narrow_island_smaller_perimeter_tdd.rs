@@ -31,7 +31,7 @@ fn make_rect_region(region_id: u64, width_mm: f32, height_mm: f32, z: f32) -> Sl
 /// Run perimeters with the given config for a single fixture region and
 /// return the per-vertex widths of its Outer wall loop(s).
 fn outer_wall_widths_for(config: &slicer_ir::ConfigView, region: &SliceRegionView) -> Vec<f32> {
-    let module = ClassicPerimeters::on_print_start(config).unwrap();
+    let module = ClassicPerimeters::from_config(config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
     module

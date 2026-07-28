@@ -20,7 +20,7 @@ use slicer_sdk::traits::PostpassModule;
 
 fn run(config_pairs: &[(&str, ConfigValue)], commands: &[GCodeCommand]) -> GcodeOutputBuilder {
     let cfg = config_with(config_pairs);
-    let module = MachineGcodeEmit::on_print_start(&cfg).expect("on_print_start must succeed");
+    let module = MachineGcodeEmit::from_config(&cfg).expect("from_config must succeed");
     let mut output = GcodeOutputBuilder::new();
     module
         .run_gcode_postprocess(commands, &mut output, &cfg)

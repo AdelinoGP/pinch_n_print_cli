@@ -63,7 +63,7 @@ fn make_region(side_mm: f32, bridge_side_mm: f32, z: f32) -> SliceRegionView {
 #[test]
 fn bridge_vertices_get_bridge_flow_ratio_when_thin() {
     let config = make_config(0.7, false);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 4.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
@@ -138,7 +138,7 @@ fn bridge_vertices_get_round_section_factor_when_thick_bridges_on() {
     const LAYER_HEIGHT_MM: f32 = 0.2;
 
     let config = make_config(0.7, true);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 4.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

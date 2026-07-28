@@ -19,7 +19,5 @@ fn binding_surface_matches_manifest() {
         "run-wall-postprocess"
     );
     let exports = SeamPlacer::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-wall-postprocess"));
 }

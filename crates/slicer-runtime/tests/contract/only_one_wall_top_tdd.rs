@@ -85,7 +85,7 @@ fn make_sub_top_region() -> SliceRegionView {
 #[test]
 fn top_layer_one_wall_when_flag_enabled() {
     let config = config_4_walls(true);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -119,7 +119,7 @@ fn top_layer_one_wall_when_flag_enabled() {
 #[test]
 fn top_layer_respects_wall_count_when_flag_disabled() {
     let config = config_4_walls(false);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -142,7 +142,7 @@ fn top_layer_respects_wall_count_when_flag_disabled() {
 #[test]
 fn non_top_layer_case() {
     let config = config_4_walls(true);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -171,7 +171,7 @@ fn non_top_layer_case() {
 #[test]
 fn sub_top_layer_carve_case() {
     let config = config_4_walls(true);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -206,7 +206,7 @@ fn sub_top_layer_carve_case() {
 #[test]
 fn sub_top_layer_noop_when_flag_disabled() {
     let config = config_4_walls(false);
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

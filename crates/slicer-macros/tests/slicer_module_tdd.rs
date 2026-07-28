@@ -181,11 +181,7 @@ pub struct MockWallLoop {
 /// The LayerModule trait that modules implement and the macro transforms.
 /// This mirrors the SDK's LayerModule trait with all stage method defaults.
 pub trait LayerModule: Sized {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
-    }
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError>;
 
     fn run_infill(
         &self,
@@ -280,19 +276,15 @@ pub struct TestModule1;
 
 #[slicer_module]
 impl LayerModule for TestModule1 {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(TestModule1)
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 }
 
 #[test]
 fn test_01_macro_applies_to_layer_module_impl() {
     let config = ConfigView::new();
-    let result = TestModule1::on_print_start(&config);
+    let result = TestModule1::from_config(&config);
     assert!(result.is_ok());
 }
 
@@ -306,13 +298,9 @@ pub struct TestModule2 {
 
 #[slicer_module]
 impl LayerModule for TestModule2 {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let density = config.get_float("density").unwrap_or(0.15);
         Ok(TestModule2 { density })
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 }
 
@@ -325,7 +313,7 @@ impl TestModule2 {
 #[test]
 fn test_02_macro_preserves_impl_methods() {
     let config = ConfigView::new().with_float("density", 0.25);
-    let module = TestModule2::on_print_start(&config).unwrap();
+    let module = TestModule2::from_config(&config).unwrap();
     assert!((module.get_density() - 0.25).abs() < 0.001);
 }
 
@@ -337,7 +325,7 @@ pub struct TestModule3;
 
 #[slicer_module]
 impl LayerModule for TestModule3 {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(TestModule3)
     }
 }
@@ -356,7 +344,7 @@ pub struct InfillModule;
 
 #[slicer_module]
 impl LayerModule for InfillModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(InfillModule)
     }
 
@@ -387,7 +375,7 @@ pub struct PerimeterModule;
 
 #[slicer_module]
 impl LayerModule for PerimeterModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(PerimeterModule)
     }
 
@@ -416,7 +404,7 @@ pub struct LifecycleOnlyModule;
 
 #[slicer_module]
 impl LayerModule for LifecycleOnlyModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(LifecycleOnlyModule)
     }
 }
@@ -437,21 +425,16 @@ pub struct ValidModule {
 
 #[slicer_module]
 impl LayerModule for ValidModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(ValidModule { value: 42 })
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 }
 
 #[test]
 fn test_07_valid_impl_compiles_and_runs() {
     let config = ConfigView::new();
-    let module = ValidModule::on_print_start(&config).unwrap();
+    let module = ValidModule::from_config(&config).unwrap();
     assert_eq!(module.value, 42);
-    assert!(module.on_print_end().is_ok());
 }
 
 // ============================================================================
@@ -462,30 +445,23 @@ pub struct SignatureModule;
 
 #[slicer_module]
 impl LayerModule for SignatureModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let _ = config.get_float("test");
         Ok(SignatureModule)
     }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        let _ref = self;
-        Ok(())
-    }
 }
-
 #[test]
 fn test_08_method_signatures_preserved() {
     let config = ConfigView::new().with_float("test", 1.0);
-    let module = SignatureModule::on_print_start(&config).unwrap();
+    let module = SignatureModule::from_config(&config).unwrap();
 
-    let start_result: Result<SignatureModule, ModuleError> =
-        SignatureModule::on_print_start(&config);
-    let end_result: Result<(), ModuleError> = module.on_print_end();
+    let start_result: Result<SignatureModule, ModuleError> = SignatureModule::from_config(&config);
 
     assert!(start_result.is_ok());
-    assert!(end_result.is_ok());
+    assert_eq!(SignatureModule::__slicer_type_name(), "SignatureModule");
+    assert_eq!(SignatureModule::__slicer_trait_name(), "LayerModule");
+    let _ = module;
 }
-
 // ============================================================================
 // Test 9: Generated code handles Result return types correctly
 // ============================================================================
@@ -495,26 +471,22 @@ pub struct ErrorHandlingModule;
 
 #[slicer_module]
 impl LayerModule for ErrorHandlingModule {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         if config.get_float("fail").is_some() {
             return Err(ModuleError::fatal(1, "Configured to fail"));
         }
         Ok(ErrorHandlingModule)
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        Ok(())
     }
 }
 
 #[test]
 fn test_09_result_types_handled_correctly() {
     let config_ok = ConfigView::new();
-    let result_ok = ErrorHandlingModule::on_print_start(&config_ok);
+    let result_ok = ErrorHandlingModule::from_config(&config_ok);
     assert!(result_ok.is_ok());
 
     let config_fail = ConfigView::new().with_float("fail", 1.0);
-    let result_fail = ErrorHandlingModule::on_print_start(&config_fail);
+    let result_fail = ErrorHandlingModule::from_config(&config_fail);
     assert!(result_fail.is_err());
 
     let err = result_fail.unwrap_err();
@@ -530,7 +502,7 @@ pub struct NamedModule;
 
 #[slicer_module]
 impl LayerModule for NamedModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(NamedModule)
     }
 }
@@ -548,7 +520,7 @@ pub struct WitExportModule;
 
 #[slicer_module]
 impl LayerModule for WitExportModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(WitExportModule)
     }
 }
@@ -567,7 +539,7 @@ pub struct PerimetersPostProcessModule;
 
 #[slicer_module]
 impl LayerModule for PerimetersPostProcessModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(PerimetersPostProcessModule)
     }
 
@@ -599,7 +571,7 @@ pub struct SupportModule;
 
 #[slicer_module]
 impl LayerModule for SupportModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(SupportModule)
     }
 
@@ -631,7 +603,7 @@ pub struct StatefulModule {
 
 #[slicer_module]
 impl LayerModule for StatefulModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(StatefulModule {
             counter: std::cell::Cell::new(0),
         })
@@ -651,7 +623,7 @@ impl StatefulModule {
 #[test]
 fn test_14_module_state_initialized() {
     let config = ConfigView::new();
-    let module = StatefulModule::on_print_start(&config).unwrap();
+    let module = StatefulModule::from_config(&config).unwrap();
 
     assert_eq!(module.count(), 0);
     module.increment();
@@ -666,7 +638,7 @@ pub struct SupportPostprocessModule;
 
 #[slicer_module]
 impl LayerModule for SupportPostprocessModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(SupportPostprocessModule)
     }
 
@@ -698,7 +670,7 @@ pub struct PathOptModule;
 
 #[slicer_module]
 impl LayerModule for PathOptModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(PathOptModule)
     }
 
@@ -731,7 +703,7 @@ pub struct SlicePostprocessModule;
 
 #[slicer_module]
 impl LayerModule for SlicePostprocessModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(SlicePostprocessModule)
     }
 
@@ -764,7 +736,7 @@ pub struct InfillPostprocessModule;
 
 #[slicer_module]
 impl LayerModule for InfillPostprocessModule {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(InfillPostprocessModule)
     }
 
@@ -795,7 +767,7 @@ fn test_18_detects_infill_postprocess_stage() {
 #[test]
 fn test_19_stage_method_callable() {
     let config = ConfigView::new();
-    let module = InfillModule::on_print_start(&config).unwrap();
+    let module = InfillModule::from_config(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let paint = PaintRegionLayerView;
     let mut output = InfillOutputBuilder::new();

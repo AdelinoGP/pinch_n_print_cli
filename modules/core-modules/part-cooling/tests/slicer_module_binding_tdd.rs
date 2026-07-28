@@ -21,7 +21,5 @@ fn binding_surface_matches_finalization_stage() {
         "run-finalization"
     );
     let exports = PartCooling::__slicer_wit_exports();
-    assert!(exports.contains(&"on-print-start"));
-    assert!(exports.contains(&"on-print-end"));
     assert!(exports.contains(&"run-finalization"));
 }

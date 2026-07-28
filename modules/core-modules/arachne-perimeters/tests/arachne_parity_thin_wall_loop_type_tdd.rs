@@ -48,7 +48,7 @@ fn make_thin_strip_region(z: f32) -> SliceRegionView {
 #[test]
 fn thin_strip_with_detection_on_emits_thin_wall_loop_type() {
     let config = make_config(true);
-    let module = ArachnePerimeters::on_print_start(&config).unwrap();
+    let module = ArachnePerimeters::from_config(&config).unwrap();
     let regions = vec![make_thin_strip_region(0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

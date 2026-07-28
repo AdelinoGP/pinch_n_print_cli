@@ -235,7 +235,7 @@ fn generate_zigzag_strokes_for_polygon(
 
 #[slicer_module]
 impl LayerModule for TopSurfaceIroning {
-    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+    fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
         let enabled = match config.get("ironing_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
             // Default OFF to match OrcaSlicer (`ironing_type = no ironing`).

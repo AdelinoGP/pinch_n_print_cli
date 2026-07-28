@@ -12,7 +12,7 @@ use slicer_macros::{module_test, slicer_module};
 
 /// Mock LayerModule trait for smoke tests.
 pub trait LayerModule: Sized {
-    fn on_print_start() -> Result<Self, ()>;
+    fn from_config() -> Result<Self, ()>;
 }
 
 /// Simple module struct for smoke testing.
@@ -22,13 +22,13 @@ pub struct SmokeModule {
 
 #[slicer_module]
 impl LayerModule for SmokeModule {
-    fn on_print_start() -> Result<Self, ()> {
+    fn from_config() -> Result<Self, ()> {
         Ok(SmokeModule { value: 7 })
     }
 }
 
 #[module_test]
 fn smoke_uses_placeholder_macros() {
-    let module = SmokeModule::on_print_start().unwrap();
+    let module = SmokeModule::from_config().unwrap();
     assert_eq!(module.value, 7);
 }

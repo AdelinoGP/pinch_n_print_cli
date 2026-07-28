@@ -83,7 +83,7 @@ fn region(candidates: Vec<SeamCandidate>) -> PerimeterRegionView {
 #[test]
 fn sharp_preferred_over_aligned_at_same_score() {
     let cfg = ConfigView::from_map(HashMap::new()); // defaults to "nearest"
-    let module = SeamPlacer::on_print_start(&cfg).unwrap();
+    let module = SeamPlacer::from_config(&cfg).unwrap();
 
     // Equal raw score; Sharp carries a negative reason bonus, Aligned does not,
     // so the Sharp candidate (x=1.0) must win on effective score.

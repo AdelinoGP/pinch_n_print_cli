@@ -1425,7 +1425,7 @@ fn wedge_default_does_not_emit_firmware_retraction_opcodes() {
 /// The override flows: JSON `--config` â†’ `parse_cli_config_source` â†’
 /// `bind_module_config_view` filters per-module by declared schema â†’
 /// path-optimization-default reads `retract_mode` from its bound
-/// ConfigView in `on_print_start` and threads `RetractMode::Firmware`
+/// ConfigView in `from_config` and threads `RetractMode::Firmware`
 /// into every emitted Retract/Unretract IR command.
 #[test]
 fn wedge_gcode_firmware_retraction_emits_balanced_g10_g11() {

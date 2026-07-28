@@ -33,7 +33,7 @@ fn outer_inner_width_and_spacing() {
         .float("inner_wall_line_width", inner_w as f64)
         .build();
 
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

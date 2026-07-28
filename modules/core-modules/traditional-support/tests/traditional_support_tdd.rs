@@ -31,7 +31,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 #[test]
 fn support_disabled_no_output() {
     let config = make_config(false, 0.2, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -52,7 +52,7 @@ fn support_disabled_no_output() {
 #[test]
 fn single_region_generates_support() {
     let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -75,7 +75,7 @@ fn single_region_generates_support() {
 #[test]
 fn extrusion_role_is_support_material() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -99,7 +99,7 @@ fn extrusion_role_is_support_material() {
 #[test]
 fn speed_factor_from_config() {
     let config = make_config(true, 0.2, 0.0, 80.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);
@@ -125,8 +125,8 @@ fn density_affects_line_count() {
     let config_low = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
 
-    let module_low = TraditionalSupport::on_print_start(&config_low).unwrap();
-    let module_high = TraditionalSupport::on_print_start(&config_high).unwrap();
+    let module_low = TraditionalSupport::from_config(&config_low).unwrap();
+    let module_high = TraditionalSupport::from_config(&config_high).unwrap();
 
     let region_low = make_square_region(10.0, 0.3);
     let region_high = make_square_region(10.0, 0.3);
@@ -157,7 +157,7 @@ fn density_affects_line_count() {
 #[test]
 fn alternating_angle() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region0 = make_square_region(10.0, 0.3);
     let region1 = make_square_region(10.0, 0.5);
@@ -209,7 +209,7 @@ fn alternating_angle() {
 #[test]
 fn empty_regions_no_output() {
     let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     // Region with empty polygons
     let mut region = SliceRegionView::default();
@@ -241,7 +241,7 @@ fn empty_regions_no_output() {
 #[test]
 fn zero_density_no_output() {
     let config = make_config(true, 0.0, 0.0, 50.0, 0.4);
-    let module = TraditionalSupport::on_print_start(&config).unwrap();
+    let module = TraditionalSupport::from_config(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
     let paint = PaintRegionLayerView::new(0);

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 162_wit-lifecycle-export-removal
 task_ids:
   - TASK-146a

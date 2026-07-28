@@ -60,7 +60,7 @@ fn three_tool_polygon_fragments_into_three_regions() {
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     // Three adjacent 3 mm-wide vertical strips whose union is a convex 9×9 mm
     // square; region_id encodes the per-color fragment (Model A key).
@@ -135,7 +135,7 @@ fn inner_wall_respects_material_boundary() {
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     // `square_polygon` emits corners CCW: BL, BR, TR, TL.
     // Material paint: BL(x<0)=tool0, BR(x>0)=tool1, TR(x>0)=tool1, TL(x<0)=tool0.
@@ -235,7 +235,7 @@ fn degenerate_polygon_no_panic() {
         .float("outer_wall_line_width", 0.4)
         .float("inner_wall_line_width", 0.4)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     let empty_poly = ExPolygon {
         contour: Polygon { points: Vec::new() },
@@ -309,7 +309,7 @@ fn hole_with_thin_wall_emits_thin_wall() {
         .float("nozzle_diameter", 0.4)
         .bool("detect_thin_wall", true)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
 
     // Outer 10 mm square (CCW, corners at ±5 mm). Hole (CW): x ∈ [-4.0, 4.78],
     // y ∈ [-4.0, 4.0] — so the RIGHT gap is 5.0 - 4.78 = 0.22 mm (thin), while
@@ -429,7 +429,7 @@ fn gap_fill_in_overhang_region() {
 
     // Overhang bonus ENABLED.
     let cfg_on = make_config(true);
-    let module_on = ClassicPerimeters::on_print_start(&cfg_on).unwrap();
+    let module_on = ClassicPerimeters::from_config(&cfg_on).unwrap();
     let region_on = make_region();
     let mut out_on = PerimeterOutputBuilder::new();
     module_on
@@ -444,7 +444,7 @@ fn gap_fill_in_overhang_region() {
 
     // Overhang bonus DISABLED (contrast).
     let cfg_off = make_config(false);
-    let module_off = ClassicPerimeters::on_print_start(&cfg_off).unwrap();
+    let module_off = ClassicPerimeters::from_config(&cfg_off).unwrap();
     let region_off = make_region();
     let mut out_off = PerimeterOutputBuilder::new();
     module_off
@@ -517,7 +517,7 @@ fn top_flagged_region_propagates_flag() {
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_top", true)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
 
     let top_region = SliceRegionViewBuilder::new()
@@ -584,7 +584,7 @@ fn first_layer_override_applies() {
         .float("inner_wall_line_width", 0.4)
         .bool("only_one_wall_first_layer", true)
         .build();
-    let module = ClassicPerimeters::on_print_start(&config).unwrap();
+    let module = ClassicPerimeters::from_config(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
 
     let make_region = |z: f32| {
