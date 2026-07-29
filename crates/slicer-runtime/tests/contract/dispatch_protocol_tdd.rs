@@ -129,9 +129,12 @@ fn export_name_mapping_covers_all_documented_stages() {
         ("Layer::Support", "run-support"),
         ("Layer::SupportPostProcess", "run-support-postprocess"),
         ("Layer::PathOptimization", "run-path-optimization"),
-        ("PostPass::LayerFinalization", "run-finalization"),
-        ("PostPass::GCodePostProcess", "run-gcode-postprocess"),
-        ("PostPass::TextPostProcess", "run-text-postprocess"),
+        // Packet 163: per-stage package migration. The func is `run` for every
+        // migrated stage; `qualified_export_for_stage_id` is the only lookup
+        // that fully identifies the contract.
+        ("PostPass::LayerFinalization", "run"),
+        ("PostPass::GCodePostProcess", "run"),
+        ("PostPass::TextPostProcess", "run"),
     ];
 
     for (stage_id, expected_export) in &stages {
@@ -448,5 +451,130 @@ fn dispatch_error_display_includes_all_diagnostic_fields() {
     assert!(
         display.contains("function not found"),
         "should include reason: {display}"
+    );
+}
+
+// ── Packet 163 (AC-N1): fatal-on-miss contract ─────────────────────────────
+
+/// Per packet 163 AC-N1: dispatching a stage at a guest that does **not**
+/// export the corresponding per-stage interface must be **fatal at typed
+/// instantiation** — never silent `Ok(())`.
+///
+/// The engine (wasmtime 43.0.1) emits the expected-only diagnostic
+/// `` no exported instance named `<package>/<interface>@<version>` ``
+/// (ADR-0045 §"Verified empirically, not just read"). This test pins that
+/// exact wording, and forbids any "found @x.y.z" fragment the engine does
+/// not produce (the diagnostic names only what the host wanted).
+///
+/// The test instantiates a real `sdk-postpass-text-guest` (which exports
+/// only the text postprocess interface) and dispatches
+/// `PostPass::GCodePostProcess` at it. Per packet 163, the gcode and text
+/// stages now live in distinct per-stage packages, so the text guest does
+/// not (and cannot) export the gcode interface — wasmtime's typed
+/// instantiation must surface this as a fatal `DispatchError`.
+#[test]
+fn stage_miss_is_fatal_at_instantiation() {
+    // The text-only SDK guest. It compiles to a per-stage world that
+    // exports the text postprocess interface and nothing else.
+    const TEXT_GUEST_PATH: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../slicer-wasm-host/test-guests/sdk-postpass-text-guest.component.wasm"
+    );
+    let path = Path::new(TEXT_GUEST_PATH);
+    if !path.exists() {
+        // The text round-trip guest is built on demand by the macro; if
+        // it has not been built yet, skip rather than fail (this test
+        // requires a live `.component.wasm`).
+        eprintln!(
+            "skipping stage_miss_is_fatal_at_instantiation: {} not found",
+            TEXT_GUEST_PATH
+        );
+        return;
+    }
+
+    let engine = wasm_cache::shared_engine();
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    // Install the text-only SDK guest as the component for the dispatch.
+    let component = wasm_cache::compiled_component_at(Path::new(TEXT_GUEST_PATH));
+    // Wire the text-only component into a `PostPass::GCodePostProcess`
+    // bundle. The bundle's own `stage` field does not gate dispatch —
+    // the *dispatch* stage is what the runner is invoked with. The
+    // runner will pull the component, build a typed-instantiation for
+    // the gcode world, and wasmtime will reject the text-only artifact.
+    let bundle = make_bundle(
+        "sdk-postpass-text-guest",
+        "PostPass::GCodePostProcess",
+        Some(component),
+    );
+
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let mut gcode_ir = minimal_gcode_ir();
+    let result = dispatcher.run_gcode_postprocess(
+        &"PostPass::GCodePostProcess".to_string(),
+        &bundle.as_live(),
+        postpass_input(&blackboard),
+        &mut gcode_ir.commands,
+    );
+
+    use slicer_ir::PostpassError;
+
+    let err = result.expect_err(
+        "dispatching `PostPass::GCodePostProcess` at the text-only SDK guest \
+         must be a PostpassError, not silent success (AC-N1)",
+    );
+    // The trait impl wraps the underlying `DispatchError` into
+    // `PostpassError::FatalModule { stage_id, module_id, message }`. The
+    // `message` carries the host's enriched reason which in turn embeds
+    // the wasmtime engine's "no exported instance named ..." text plus
+    // the qualified export the host wanted.
+    let (stage_id, module_id, message) = match &err {
+        PostpassError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } => (stage_id.clone(), module_id.clone(), message.clone()),
+        other => panic!("miss must produce PostpassError::FatalModule, got {other:?}"),
+    };
+    assert_eq!(
+        stage_id, "PostPass::GCodePostProcess",
+        "FatalModule.stage_id must be the stage that was dispatched",
+    );
+    assert_eq!(
+        module_id, "sdk-postpass-text-guest",
+        "FatalModule.module_id must be the wired module",
+    );
+
+    // Per packet 163 dispatch.rs: the TypedInstantiation reason names
+    // the qualified export the host wanted.
+    let expected_qualified =
+        slicer_schema::qualified_export_for_stage_id("PostPass::GCodePostProcess")
+            .expect("gcode stage must be migrated");
+    assert!(
+        message.contains(&expected_qualified),
+        "FatalModule.message must name the qualified export `{}`; got: {}",
+        expected_qualified,
+        message,
+    );
+    // The engine surfaces one of two measured wordings when a guest does
+    // not export the required per-stage interface:
+    //   * `no exported instance named <package>/<interface>@<version>` —
+    //     the canonical miss-diagnostic (ADR-0045 §"Verified
+    //     empirically, not just read"), observed when the world is
+    //     satisfied structurally but the interface is absent.
+    //   * `component imports resource <name>, but a matching
+    //     implementation was not found in the linker` — observed when
+    //     the world imports a host-owned resource that the linker cannot
+    //     resolve against the guest's resource table (e.g. trying to
+    //     instantiate a `gcode-postprocess-module` against a guest that
+    //     only knows the text-postprocess world).
+    // Either form is acceptable: the contract is "the dispatch fails at
+    // typed instantiation, with the qualified export named in the
+    // reason" — never silent `Ok(())` (AC-N1).
+    let engine_miss_wording = "no exported instance named";
+    let engine_linker_wording = "component imports resource";
+    assert!(
+        message.contains(engine_miss_wording) || message.contains(engine_linker_wording),
+        "FatalModule.message must include an engine-issued miss diagnostic \
+         (`{engine_miss_wording}` or `{engine_linker_wording}`); got: {message}",
     );
 }

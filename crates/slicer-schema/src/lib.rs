@@ -50,12 +50,30 @@ pub struct StageSpec {
     pub method: &'static str,
     /// Canonical scheduler stage id, e.g. `"Layer::Infill"`.
     pub stage_id: &'static str,
-    /// Kebab-case WIT export name, e.g. `"run-infill"`.
+    /// Kebab-case WIT export name, e.g. `"run-infill"`. For stages migrated
+    /// to a per-stage versioned package (packet 163 pilot), this is `"run"`.
     pub wit_export: &'static str,
-    /// Canonical WIT world package id the export belongs to.
+    /// Canonical WIT world package id the export belongs to. This is the
+    /// **WIT tier** world id (e.g. [`WORLD_POSTPASS`]) and stays unchanged
+    /// while the per-stage package is being introduced.
     pub world_id: &'static str,
     /// SDK trait carrying this method.
     pub trait_name: &'static str,
+    /// Directory under `crates/slicer-schema/wit/deps/` that holds this
+    /// stage's WIT package. For the three pilot stages (packet 163) this
+    /// is the per-stage package directory; for the 13 unmigrated stages
+    /// it is the tier world directory (`"world-layer"` or `"world-prepass"`).
+    pub wit_dir: &'static str,
+    /// Per-stage WIT package identifier, e.g.
+    /// `"slicer:postpass-gcode-postprocess@1.0.0"`. `""` for stages that
+    /// have not been migrated to a per-stage package yet.
+    pub wit_package: &'static str,
+    /// Per-stage WIT exported-interface name, e.g. `"gcode-postprocess"`.
+    /// `""` for unmigrated stages.
+    pub wit_interface: &'static str,
+    /// Per-stage WIT world name, e.g. `"gcode-postprocess-module"`.
+    /// `""` for unmigrated stages.
+    pub wit_world: &'static str,
 }
 
 /// Every supported stage, in canonical STAGE_ORDER-compatible order
@@ -68,6 +86,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-slice-postprocess",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_perimeters",
@@ -75,6 +97,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-perimeters",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_wall_postprocess",
@@ -82,6 +108,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-wall-postprocess",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_infill",
@@ -89,6 +119,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-infill",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_infill_postprocess",
@@ -96,6 +130,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-infill-postprocess",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_support",
@@ -103,6 +141,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-support",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_support_postprocess",
@@ -110,6 +152,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-support-postprocess",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_path_optimization",
@@ -117,6 +163,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-path-optimization",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
+        wit_dir: "world-layer",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     // ── Prepass world (WORLD_PREPASS) ──────────────────────────────────
     StageSpec {
@@ -125,6 +175,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-mesh-analysis",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
+        wit_dir: "world-prepass",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_layer_planning",
@@ -132,6 +186,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-layer-planning",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
+        wit_dir: "world-prepass",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_paint_segmentation",
@@ -139,6 +197,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-paint-segmentation",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
+        wit_dir: "world-prepass",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_seam_planning",
@@ -146,6 +208,10 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-seam-planning",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
+        wit_dir: "world-prepass",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     StageSpec {
         method: "run_support_geometry",
@@ -153,29 +219,45 @@ pub const STAGES: &[StageSpec] = &[
         wit_export: "run-support-geometry",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
+        wit_dir: "world-prepass",
+        wit_package: "",
+        wit_interface: "",
+        wit_world: "",
     },
     // ── Finalization world (WORLD_FINALIZATION) ────────────────────────
     StageSpec {
         method: "run_finalization",
         stage_id: "PostPass::LayerFinalization",
-        wit_export: "run-finalization",
+        wit_export: "run",
         world_id: WORLD_FINALIZATION,
         trait_name: "FinalizationModule",
+        wit_dir: "finalization-layer-finalization",
+        wit_package: "slicer:finalization-layer-finalization@1.0.0",
+        wit_interface: "layer-finalization",
+        wit_world: "layer-finalization-module",
     },
     // ── Postpass world (WORLD_POSTPASS) ────────────────────────────────
     StageSpec {
         method: "run_gcode_postprocess",
         stage_id: "PostPass::GCodePostProcess",
-        wit_export: "run-gcode-postprocess",
+        wit_export: "run",
         world_id: WORLD_POSTPASS,
         trait_name: "PostpassModule",
+        wit_dir: "postpass-gcode-postprocess",
+        wit_package: "slicer:postpass-gcode-postprocess@1.0.0",
+        wit_interface: "gcode-postprocess",
+        wit_world: "gcode-postprocess-module",
     },
     StageSpec {
         method: "run_text_postprocess",
         stage_id: "PostPass::TextPostProcess",
-        wit_export: "run-text-postprocess",
+        wit_export: "run",
         world_id: WORLD_POSTPASS,
         trait_name: "PostpassModule",
+        wit_dir: "postpass-text-postprocess",
+        wit_package: "slicer:postpass-text-postprocess@1.0.0",
+        wit_interface: "text-postprocess",
+        wit_world: "text-postprocess-module",
     },
 ];
 
@@ -297,6 +379,87 @@ pub fn export_for_stage_id(stage_id: &str) -> Option<&'static str> {
         .map(|s| s.wit_export)
 }
 
+/// Look up the per-stage WIT package directory (under
+/// `crates/slicer-schema/wit/deps/`) for a stage id. Total over every known
+/// stage: an unmigrated stage returns its tier world directory
+/// (`"world-layer"` or `"world-prepass"`); a migrated stage returns its
+/// per-stage package directory. Returns `None` for unknown stage ids.
+///
+/// Packet 163 pilot: `PostPass::GCodePostProcess` → `"postpass-gcode-postprocess"`,
+/// `PostPass::TextPostProcess` → `"postpass-text-postprocess"`,
+/// `PostPass::LayerFinalization` → `"finalization-layer-finalization"`.
+#[must_use]
+pub fn wit_dir_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|s| s.stage_id == stage_id)
+        .map(|s| s.wit_dir)
+}
+
+/// Look up the per-stage WIT package identifier (e.g.
+/// `"slicer:postpass-gcode-postprocess@1.0.0"`) for a stage id. Returns
+/// `None` for unknown stage ids and for stages that have not yet been
+/// migrated to a per-stage package.
+///
+/// Packet 163 pilot: only the three pilot stages return `Some`; the 13
+/// unmigrated layer/prepass stages return `None`.
+#[must_use]
+pub fn package_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|s| s.stage_id == stage_id)
+        .map(|s| s.wit_package)
+        .filter(|s| !s.is_empty())
+}
+
+/// Look up the per-stage WIT exported-interface name (e.g.
+/// `"gcode-postprocess"`) for a stage id. Returns `None` for unknown or
+/// unmigrated stages.
+#[must_use]
+pub fn interface_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|s| s.stage_id == stage_id)
+        .map(|s| s.wit_interface)
+        .filter(|s| !s.is_empty())
+}
+
+/// Look up the per-stage WIT world name (e.g. `"gcode-postprocess-module"`)
+/// for a stage id. Returns `None` for unknown or unmigrated stages.
+#[must_use]
+pub fn wit_world_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|s| s.stage_id == stage_id)
+        .map(|s| s.wit_world)
+        .filter(|s| !s.is_empty())
+}
+
+/// Return the fully-qualified component-model export identity for a stage
+/// id, e.g. `"slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"`.
+/// This is the **only** lookup that fully identifies a migrated stage's
+/// contract — `export_for_stage_id` no longer does, because the func name is
+/// `"run"` for every migrated stage and is not unique on its own.
+///
+/// Returns `None` for unknown **and** unmigrated stage ids.
+#[must_use]
+pub fn qualified_export_for_stage_id(stage_id: &str) -> Option<String> {
+    let s = STAGES.iter().find(|s| s.stage_id == stage_id)?;
+    if s.wit_package.is_empty() {
+        return None;
+    }
+    // `s.wit_package` is `<ns>:<name>@<version>` (e.g.
+    // `"slicer:postpass-gcode-postprocess@1.0.0"`). The qualified export
+    // form is `<ns>:<name>/<interface>@<version>#<func>`, so split the
+    // version off and re-attach after the interface.
+    let (pkg_no_ver, ver) = s.wit_package.split_once('@')?;
+    Some(format!(
+        "{pkg_no_ver}/{iface}@{ver}#{export}",
+        iface = s.wit_interface,
+        export = s.wit_export,
+    ))
+}
+
 // ── Validator constants ────────────────────────────────────────────────────
 //
 // Single source of truth for the sets consumed by manifest validation
@@ -398,6 +561,120 @@ mod tests {
             assert_eq!(stage_by_method(s.method).unwrap(), s);
             assert_eq!(world_for_stage_id(s.stage_id), Some(s.world_id));
             assert_eq!(world_for_trait(s.trait_name), Some(s.world_id));
+            // Every row must declare a non-empty wit_dir (the package dir
+            // for a migrated stage, the tier world dir for an unmigrated one).
+            assert!(!s.wit_dir.is_empty(), "wit_dir is empty for {}", s.stage_id);
+            // A non-empty wit_package implies non-empty wit_interface and
+            // wit_world, and vice versa: per-stage package migration is
+            // all-or-nothing per row.
+            assert_eq!(
+                !s.wit_package.is_empty(),
+                !s.wit_interface.is_empty(),
+                "wit_package / wit_interface mismatch for {}",
+                s.stage_id
+            );
+            assert_eq!(
+                !s.wit_package.is_empty(),
+                !s.wit_world.is_empty(),
+                "wit_package / wit_world mismatch for {}",
+                s.stage_id
+            );
+            // wit_export on a migrated stage is "run" by design (ADR-0045).
+            if !s.wit_package.is_empty() {
+                assert_eq!(
+                    s.wit_export, "run",
+                    "migrated stage {} should have wit_export = \"run\"",
+                    s.stage_id
+                );
+            }
         }
+    }
+
+    #[test]
+    fn package_lookups_match_per_stage_table() {
+        // Migrated stages: every per-stage lookup returns the column value.
+        let gcode = "PostPass::GCodePostProcess";
+        assert_eq!(
+            package_for_stage_id(gcode),
+            Some("slicer:postpass-gcode-postprocess@1.0.0")
+        );
+        assert_eq!(interface_for_stage_id(gcode), Some("gcode-postprocess"));
+        assert_eq!(
+            wit_world_for_stage_id(gcode),
+            Some("gcode-postprocess-module")
+        );
+        assert_eq!(
+            wit_dir_for_stage_id(gcode),
+            Some("postpass-gcode-postprocess")
+        );
+        assert_eq!(export_for_stage_id(gcode), Some("run"));
+        assert_eq!(
+            qualified_export_for_stage_id(gcode).as_deref(),
+            Some("slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"),
+        );
+
+        let text = "PostPass::TextPostProcess";
+        assert_eq!(
+            package_for_stage_id(text),
+            Some("slicer:postpass-text-postprocess@1.0.0")
+        );
+        assert_eq!(interface_for_stage_id(text), Some("text-postprocess"));
+        assert_eq!(
+            wit_world_for_stage_id(text),
+            Some("text-postprocess-module")
+        );
+        assert_eq!(
+            wit_dir_for_stage_id(text),
+            Some("postpass-text-postprocess")
+        );
+        assert_eq!(export_for_stage_id(text), Some("run"));
+        assert_eq!(
+            qualified_export_for_stage_id(text).as_deref(),
+            Some("slicer:postpass-text-postprocess/text-postprocess@1.0.0#run"),
+        );
+
+        let finalization = "PostPass::LayerFinalization";
+        assert_eq!(
+            package_for_stage_id(finalization),
+            Some("slicer:finalization-layer-finalization@1.0.0")
+        );
+        assert_eq!(
+            interface_for_stage_id(finalization),
+            Some("layer-finalization")
+        );
+        assert_eq!(
+            wit_world_for_stage_id(finalization),
+            Some("layer-finalization-module")
+        );
+        assert_eq!(
+            wit_dir_for_stage_id(finalization),
+            Some("finalization-layer-finalization")
+        );
+        assert_eq!(export_for_stage_id(finalization), Some("run"));
+        assert_eq!(
+            qualified_export_for_stage_id(finalization).as_deref(),
+            Some("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"),
+        );
+
+        // Unmigrated stages: package / interface / world return None, but
+        // wit_dir and export_for_stage_id still work.
+        let perimeters = "Layer::Perimeters";
+        assert_eq!(package_for_stage_id(perimeters), None);
+        assert_eq!(interface_for_stage_id(perimeters), None);
+        assert_eq!(wit_world_for_stage_id(perimeters), None);
+        assert_eq!(wit_dir_for_stage_id(perimeters), Some("world-layer"));
+        assert_eq!(export_for_stage_id(perimeters), Some("run-perimeters"));
+        assert_eq!(qualified_export_for_stage_id(perimeters), None);
+
+        // Unknown stage: every lookup returns None.
+        for fn_name in [
+            package_for_stage_id,
+            interface_for_stage_id,
+            wit_world_for_stage_id,
+        ] {
+            assert_eq!(fn_name("NotAStage"), None);
+        }
+        assert_eq!(wit_dir_for_stage_id("NotAStage"), None);
+        assert_eq!(qualified_export_for_stage_id("NotAStage"), None);
     }
 }

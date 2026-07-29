@@ -310,10 +310,7 @@ fn finalization_module_reports_finalization_world_and_export() {
         FinalizationFixture::__slicer_stage_name(),
         "PostPass::LayerFinalization"
     );
-    assert_eq!(
-        FinalizationFixture::__slicer_stage_export_name(),
-        "run-finalization"
-    );
+    assert_eq!(FinalizationFixture::__slicer_stage_export_name(), "run");
 }
 
 #[test]
@@ -322,10 +319,7 @@ fn postpass_gcode_module_reports_postpass_world() {
         PostpassGcodeFixture::__slicer_world_id(),
         slicer_schema::WORLD_POSTPASS
     );
-    assert_eq!(
-        PostpassGcodeFixture::__slicer_stage_export_name(),
-        "run-gcode-postprocess"
-    );
+    assert_eq!(PostpassGcodeFixture::__slicer_stage_export_name(), "run");
 }
 
 #[test]
@@ -334,10 +328,7 @@ fn postpass_text_module_reports_postpass_world() {
         PostpassTextFixture::__slicer_world_id(),
         slicer_schema::WORLD_POSTPASS
     );
-    assert_eq!(
-        PostpassTextFixture::__slicer_stage_export_name(),
-        "run-text-postprocess"
-    );
+    assert_eq!(PostpassTextFixture::__slicer_stage_export_name(), "run");
     assert_eq!(
         PostpassTextFixture::__slicer_stage_name(),
         "PostPass::TextPostProcess"
@@ -467,15 +458,15 @@ fn typed_schema_covers_every_world() {
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().stage_export,
-        "run-finalization"
+        "run"
     );
     assert_eq!(
         PostpassGcodeFixture::__slicer_module_schema().stage_export,
-        "run-gcode-postprocess"
+        "run"
     );
     assert_eq!(
         PostpassTextFixture::__slicer_module_schema().stage_export,
-        "run-text-postprocess"
+        "run"
     );
 }
 

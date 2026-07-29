@@ -1,19 +1,25 @@
-package slicer:world-finalization@1.0.0;
+package slicer:finalization-layer-finalization@1.0.0;
 
-world finalization-module {
-    import slicer:common/host-services;
-    import slicer:common/profiling;
-    import slicer:config/config-types;
-
-    use slicer:config/config-types.{config-view};
+interface layer-finalization-types {
     use slicer:types/geometry.{extrusion-path3d, extrusion-role};
-    use slicer:common/module-errors.{module-error};
 
+    // The finalization world uses its own `layer-idx` and `region-key`
+    // types rather than importing them from `ir-handles`. The
+    // `ir-handles` package's `region-key` carries a `variant-chain`
+    // field that the finalization world does not consume; the
+    // `with:` alias across the new per-stage bindgen! mods would then
+    // demand byte-identical `region-key` definitions, which the
+    // `ir-handles` package's `s32 layer-idx` and the finalization
+    // world's `u32 layer-idx` would fail to satisfy. Keeping the
+    // `region-key` local preserves the byte-identity contract.
     type layer-idx = u32;
     type object-id = string;
     type region-id = string;
-
-    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
+    record region-key {
+        layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+    }
 
     record tool-change-view {
         after-entity-index: u32,
@@ -110,10 +116,25 @@ world finalization-module {
             layer-index: layer-idx,
         ) -> list<print-entity-view>;
     }
+}
 
-    export run-finalization: func(
+interface layer-finalization {
+    use layer-finalization-types.{layer-collection-view, finalization-output-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
         layers: list<layer-collection-view>,
         output: finalization-output-builder,
         config: config-view,
     ) -> result<_, module-error>;
+}
+
+world layer-finalization-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+
+    import layer-finalization-types;
+    export layer-finalization;
 }

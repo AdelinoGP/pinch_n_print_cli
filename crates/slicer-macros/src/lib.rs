@@ -320,7 +320,7 @@ fn generate_slicer_module_impl(
     //
     // Worlds covered: postpass (gcode + text), finalization, prepass
     // (mesh-analysis + layer-planning), layer (all 8 stage exports).
-    let real_glue_world = resolve_world_glue(stage_id_literal, trait_ident);
+    let real_glue_world = resolve_stage_glue(stage_id_literal, trait_ident);
 
     let stage_shim_tokens: TokenStream2 =
         if stage_export_literal.is_empty() || real_glue_world.is_some() {
@@ -338,10 +338,18 @@ fn generate_slicer_module_impl(
         };
 
     let world_glue: TokenStream2 = match real_glue_world {
-        Some(WorldGlueKind::Postpass) => build_postpass_world_glue(self_ty, stage_id_literal),
-        Some(WorldGlueKind::Finalization) => build_finalization_world_glue(self_ty),
-        Some(WorldGlueKind::Prepass) => build_prepass_world_glue(self_ty, stage_id_literal),
-        Some(WorldGlueKind::Layer) => build_layer_world_glue(self_ty, stage_id_literal),
+        Some(StageGlueKind::Postpass) => {
+            // Per-stage postpass split (packet 163): the dispatcher has
+            // already picked gcode vs text, so route by detected stage.
+            if stage_id_literal == "PostPass::TextPostProcess" {
+                build_postpass_text_glue(self_ty)
+            } else {
+                build_postpass_gcode_glue(self_ty)
+            }
+        }
+        Some(StageGlueKind::Finalization) => build_finalization_world_glue(self_ty),
+        Some(StageGlueKind::Prepass) => build_prepass_world_glue(self_ty, stage_id_literal),
+        Some(StageGlueKind::Layer) => build_layer_world_glue(self_ty, stage_id_literal),
         None => quote! {},
     };
 
@@ -362,13 +370,15 @@ fn generate_slicer_module_impl(
 }
 
 /// Selector for which WIT world to emit real macro-generated export
-/// glue for. Returned by [`resolve_world_glue`] based on the detected
+/// glue for. Returned by [`resolve_stage_glue`] based on the detected
 /// stage and declared SDK trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WorldGlueKind {
-    /// `slicer:world-postpass` — gcode + text postprocess.
+enum StageGlueKind {
+    /// Per-stage postpass (packet 163): gcode and text are split into
+    /// `build_postpass_gcode_glue` / `build_postpass_text_glue`; the
+    /// post-dispatch routing inside `emit_glue` picks between them.
     Postpass,
-    /// `slicer:world-finalization` — layer finalization.
+    /// `slicer:finalization-layer-finalization` — layer finalization.
     Finalization,
     /// `slicer:world-prepass` — mesh analysis + layer planning.
     Prepass,
@@ -384,14 +394,14 @@ enum WorldGlueKind {
 /// Unresolvable combinations return `None`, in which case the legacy
 /// placeholder shim path is emitted (inert — currently no legitimate
 /// authoring path hits that branch).
-fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<WorldGlueKind> {
+fn resolve_stage_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<StageGlueKind> {
     match stage_id {
-        "PostPass::TextPostProcess" | "PostPass::GCodePostProcess" => Some(WorldGlueKind::Postpass),
-        "PostPass::LayerFinalization" => Some(WorldGlueKind::Finalization),
+        "PostPass::TextPostProcess" | "PostPass::GCodePostProcess" => Some(StageGlueKind::Postpass),
+        "PostPass::LayerFinalization" => Some(StageGlueKind::Finalization),
         "PrePass::MeshAnalysis"
         | "PrePass::LayerPlanning"
         | "PrePass::SeamPlanning"
-        | "PrePass::SupportGeometry" => Some(WorldGlueKind::Prepass),
+        | "PrePass::SupportGeometry" => Some(StageGlueKind::Prepass),
         "Layer::Slice"
         | "Layer::SlicePostProcess"
         | "Layer::Perimeters"
@@ -400,12 +410,14 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
         | "Layer::InfillPostProcess"
         | "Layer::Support"
         | "Layer::SupportPostProcess"
-        | "Layer::PathOptimization" => Some(WorldGlueKind::Layer),
+        | "Layer::PathOptimization" => Some(StageGlueKind::Layer),
         _ => match trait_ident {
-            Some("PostpassModule") => Some(WorldGlueKind::Postpass),
-            Some("FinalizationModule") => Some(WorldGlueKind::Finalization),
-            Some("PrepassModule") => Some(WorldGlueKind::Prepass),
-            Some("LayerModule") => Some(WorldGlueKind::Layer),
+            // Packet 163: postpass + finalization are now per-stage
+            // packages — a stageless `impl PostpassModule` /
+            // `impl FinalizationModule` gets no glue. Prepass + layer
+            // still fall back because they remain on tier worlds.
+            Some("PrepassModule") => Some(StageGlueKind::Prepass),
+            Some("LayerModule") => Some(StageGlueKind::Layer),
             _ => None,
         },
     }
@@ -586,67 +598,66 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
 /// Emit the `wit_bindgen`-backed component export glue for the postpass
 /// world (`PostPass::TextPostProcess` + `PostPass::GCodePostProcess`).
 /// Only compiled on `wasm32`.
-fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
-    let wit_inline = include_str!("../../slicer-schema/wit/deps/world-postpass/world-postpass.wit");
+///
+/// Per packet 163, the postpass tier is split into two per-stage packages
+/// (`slicer:postpass-gcode-postprocess@1.0.0` and
+/// `slicer:postpass-text-postprocess@1.0.0`), each with its own world. The
+/// `PostPass::GCodePostProcess` glue: binds the
+/// `slicer:postpass-gcode-postprocess/gcode-postprocess-module` world and
+/// routes into the user's `PostpassModule::run_gcode_postprocess`.
+fn build_postpass_gcode_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit"
+    );
 
-    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline);
+    let preamble = emit_world_preamble("gcode-postprocess-module", "gcode_postprocess", wit_inline);
     let profile_install = profile_install_stmt();
 
-    // Decide which stage method routes into the user's trait: the
-    // detected stage for this impl. The other arm returns a benign
-    // `Ok` so the component remains WIT-conformant.
-    let (gcode_arm, text_arm) = match detected_stage {
-        "PostPass::GCodePostProcess" => (
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_commands: ::std::vec::Vec<::slicer_sdk::postpass_types::GcodeCommand> =
-                    commands.iter().map(__slicer_adapt_postpass_command).collect();
-                let mut sdk_builder = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_gcode_postprocess(
-                    &module, &sdk_commands, &mut sdk_builder, &ir_config,
-                );
-                match out {
-                    Ok(()) => {
-                        __slicer_drain_postpass_gcode(&sdk_builder, &output);
-                        Ok(())
-                    }
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(gcode_text) },
-        ),
-        _ => (
-            quote! { Ok(()) },
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_text_postprocess(
-                    &module, &gcode_text, &ir_config,
-                );
-                match out {
-                    Ok(s) => Ok(s),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-        ),
+    let gcode_arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_commands: ::std::vec::Vec<::slicer_sdk::postpass_types::GcodeCommand> =
+            commands.iter().map(__slicer_adapt_postpass_command).collect();
+        let mut sdk_builder = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_gcode_postprocess(
+            &module, &sdk_commands, &mut sdk_builder, &ir_config,
+        );
+        match out {
+            Ok(()) => {
+                __slicer_drain_postpass_gcode(&sdk_builder, &output);
+                Ok(())
+            }
+            Err(e) => Err(__slicer_error_out(e)),
+        }
     };
 
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
-        mod __slicer_postpass_world_export {
-            // Intentionally do NOT `use super::*;` — the user's module
-            // may have imported types (e.g. `slicer_ir::Point3WithWidth`)
-            // that would collide with the wit-bindgen-generated names.
-            // Bring in only the user's module type.
+        mod __slicer_postpass_gcode_world_export {
             use super::#self_ty;
+            // Per packet 163: the postpass tier is now a per-stage package
+            // (`slicer:postpass-gcode-postprocess@1.0.0`). The bindgen
+            // output namespacing puts `GcodeCommand` / `GcodeMoveCmd` /
+            // `GcodeOutputBuilder` / `RetractMode` under
+            // `slicer::postpass_gcode_postprocess::gcode_postprocess_types`
+            // rather than at the world root. Re-export the short names
+            // here so the body below (which is a verbatim port of the
+            // pre-163 monomorphic `world-postpass` glue) still resolves.
+            use slicer::postpass_gcode_postprocess::gcode_postprocess_types::{
+                GcodeCommand, GcodeFanSpeedCmd, GcodeMoveCmd, GcodeOutputBuilder,
+                GcodeRetractCmd, GcodeTemperatureCmd, GcodeToolChangeCmd, RetractMode,
+            };
+            use slicer::types::geometry::ExtrusionRole;
+            // Per packet 163: the `Guest` trait moved from the world root
+            // to `exports::slicer::postpass_gcode_postprocess::gcode_postprocess::Guest`
+            // (interface-grouped exports). Use the fully-qualified path on
+            // the `impl` line below; AC-6 asserts on the literal text.
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
 
             #preamble
 
@@ -831,10 +842,10 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 }
             }
 
-            struct __SlicerPostpassComponent;
+            struct __SlicerPostpassGcodeComponent;
 
-            impl Guest for __SlicerPostpassComponent {
-                fn run_gcode_postprocess(
+            impl exports::slicer::postpass_gcode_postprocess::gcode_postprocess::Guest for __SlicerPostpassGcodeComponent {
+                fn run(
                     commands: Vec<GcodeCommand>,
                     output: GcodeOutputBuilder,
                     config: ConfigView,
@@ -842,8 +853,58 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     #profile_install
                     #gcode_arm
                 }
+            }
 
-                fn run_text_postprocess(
+            export!(__SlicerPostpassGcodeComponent);
+        }
+    }
+}
+
+/// `PostPass::TextPostProcess` glue: binds the
+/// `slicer:postpass-text-postprocess/text-postprocess-module` world and
+/// routes into the user's `PostpassModule::run_text_postprocess`.
+fn build_postpass_text_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit"
+    );
+
+    let preamble = emit_world_preamble("text-postprocess-module", "text_postprocess", wit_inline);
+    let profile_install = profile_install_stmt();
+
+    let text_arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PostpassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_text_postprocess(
+            &module, &gcode_text, &ir_config,
+        );
+        match out {
+            Ok(s) => Ok(s),
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_postpass_text_world_export {
+            use super::#self_ty;
+            // Per packet 163: the postpass tier is now a per-stage package.
+            // The bindgen output namespacing puts `ConfigView` /
+            // `ModuleError` under the imported dep interfaces rather than
+            // at the world root. Re-import the short names so the body
+            // below resolves.
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+
+            #preamble
+
+            struct __SlicerPostpassTextComponent;
+
+            impl exports::slicer::postpass_text_postprocess::text_postprocess::Guest for __SlicerPostpassTextComponent {
+                fn run(
                     gcode_text: String,
                     config: ConfigView,
                 ) -> Result<String, ModuleError> {
@@ -852,7 +913,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 }
             }
 
-            export!(__SlicerPostpassComponent);
+            export!(__SlicerPostpassTextComponent);
         }
     }
 }
@@ -865,16 +926,42 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
 /// follow-on polish; the SDK trait sees well-typed (possibly empty)
 /// SDK values and its `Result<(), ModuleError>` return round-trips.
 fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
-    let wit_inline =
-        include_str!("../../slicer-schema/wit/deps/world-finalization/world-finalization.wit");
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit"
+    );
 
-    let preamble = emit_world_preamble("finalization-module", "world_finalization", wit_inline);
+    let preamble = emit_world_preamble(
+        "layer-finalization-module",
+        "layer_finalization",
+        wit_inline,
+    );
     let profile_install = profile_install_stmt();
 
     quote! {
         #[cfg(target_arch = "wasm32")]
         #[doc(hidden)]
         mod __slicer_finalization_world_export {
+            // Per packet 163: the finalization tier is now a per-stage
+            // package (`slicer:finalization-layer-finalization@1.0.0`).
+            // The bindgen output namespacing puts the resource and
+            // record types under
+            // `slicer::finalization_layer_finalization::layer_finalization_types`
+            // rather than at the world root. Re-export the short names
+            // here so the body below (a verbatim port of the pre-163
+            // monomorphic `world-finalization` glue) still resolves.
+            use slicer::finalization_layer_finalization::layer_finalization_types::{
+                EntityMutation, FinalizationOutputBuilder, LayerCollectionView,
+                PrintEntityView, RegionKey, SortKey, SyntheticLayerData, ToolChangeView,
+                ZHopView,
+            };
+            // Per packet 163: the `Guest` trait moved from the world root
+            // to `exports::slicer::finalization_layer_finalization::layer_finalization::Guest`
+            // (interface-grouped exports). Re-import the short name here
+            // so the `impl Guest for __SlicerFinalizationComponent` body
+            // below still resolves.
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            use slicer::types::geometry::{ExtrusionPath3d, ExtrusionRole};
             // Intentionally do NOT `use super::*;` — the user's module
             // may have imported types (e.g. `slicer_ir::Point3WithWidth`)
             // that would collide with the wit-bindgen-generated names.
@@ -1010,8 +1097,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 Ok(parsed)
             }
 
-            impl Guest for __SlicerFinalizationComponent {
-                fn run_finalization(
+            impl exports::slicer::finalization_layer_finalization::layer_finalization::Guest for __SlicerFinalizationComponent {
+                fn run(
                     layers: Vec<LayerCollectionView>,
                     output: FinalizationOutputBuilder,
                     config: ConfigView,

@@ -206,9 +206,28 @@ pub fn canonical_type_blocks(ws_root: &Path, world: Option<&str>) -> BTreeMap<St
         // World-specific declarations win over the shared ones.
         Some(world) => {
             let short = world.rsplit(':').next().unwrap_or(world);
-            let path = wit_root.join(format!("deps/{short}/{short}.wit"));
-            if let Ok(text) = std::fs::read_to_string(path) {
-                all.extend(extract_type_blocks(&text));
+            // Packet 163 deleted deps/world-finalization/ and deps/world-postpass/,
+            // replacing them with per-stage packages. Map the legacy world names
+            // to the new package files so canonical_type_blocks still resolves
+            // the correct region-key (and other world-shadowed types).
+            let wit_files: Vec<String> = match short {
+                "world-postpass" => vec![
+                    "postpass-gcode-postprocess/postpass-gcode-postprocess.wit".into(),
+                    "postpass-text-postprocess/postpass-text-postprocess.wit".into(),
+                ],
+                "world-finalization" => {
+                    vec![
+                        "finalization-layer-finalization/finalization-layer-finalization.wit"
+                            .into(),
+                    ]
+                }
+                _ => vec![format!("{short}/{short}.wit")],
+            };
+            for rel in &wit_files {
+                let path = wit_root.join("deps").join(rel);
+                if let Ok(text) = std::fs::read_to_string(path) {
+                    all.extend(extract_type_blocks(&text));
+                }
             }
         }
         // Without a world we cannot resolve which package's spelling applies,

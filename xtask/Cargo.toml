@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 walkdir = "2"
 toml = "0.8"
+slicer-schema = { path = "../crates/slicer-schema" }

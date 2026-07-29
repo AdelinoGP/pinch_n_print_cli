@@ -10,26 +10,32 @@ are no flattened copies, no inline literals elsewhere.
 wit/
   root.wit                      # package slicer:root@1.0.0 (umbrella anchor)
   deps/
-    types.wit                   # package slicer:types       — interface geometry
-    config.wit                  # package slicer:config      — interface config-types
-    ir-types.wit                # package slicer:ir-handles  — interface ir-handles
-    common.wit                  # package slicer:common      — interface module-errors
+    types.wit                   # package slicer:types       — interface geometry (unversioned)
+    config.wit                  # package slicer:config      — interface config-types (unversioned)
+    ir-types.wit                # package slicer:ir-handles  — interface ir-handles (unversioned)
+    common.wit                  # package slicer:common      — interfaces module-errors, host-services, profiling (unversioned)
     world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
-    world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
-    world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
+    # Per packet 163: postpass + finalization are now per-stage packages.
+    postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
+    postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
+    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
 ```
 
 Dep packages (`slicer:types`, `slicer:config`, etc.) are **unversioned** — required for
-cross-package resolution with `wit_parser`. World packages carry `@1.0.0`.
+cross-package resolution with `wit_parser`. Each **stage** package carries `@1.0.0`
+(the version is load-bearing for wasmtime's `alternate_lookup_key`; a `0.x` stage
+would disable the major-track compatibility claim — see ADR-0045
+§"Verified empirically, not just read" and the contract test
+`every_stage_package_major_is_at_least_one`).
 
 ## How each consumer reads these files
 
-**Host** (`crates/slicer-runtime/src/wit_host.rs`):
+**Host** (`crates/slicer-wasm-host/src/host.rs`):
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module",
+    world: "slicer:world-layer/layer-module",  // or one of the per-stage packages
     // with: { "slicer:config/config-types.config-view" => ..., ... }
 }
 ```

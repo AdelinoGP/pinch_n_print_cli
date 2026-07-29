@@ -16,7 +16,7 @@ fn binding_surface_matches_manifest() {
         WipeTower::__slicer_stage_name(),
         "PostPass::LayerFinalization"
     );
-    assert_eq!(WipeTower::__slicer_stage_export_name(), "run-finalization");
+    assert_eq!(WipeTower::__slicer_stage_export_name(), "run");
     let exports = WipeTower::__slicer_wit_exports();
-    assert!(exports.contains(&"run-finalization"));
+    assert!(exports.contains(&"run"));
 }

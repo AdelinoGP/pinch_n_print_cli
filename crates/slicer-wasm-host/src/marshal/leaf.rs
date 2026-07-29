@@ -15,7 +15,11 @@ use crate::host::{
 };
 
 // postpass type alias used by convert_postpass_retract_mode.
-use crate::host::postpass as ppm;
+// Per packet 163 the per-stage `gcode-postprocess-module` world
+// imports `gcode-postprocess-types` from package
+// `slicer:postpass-gcode-postprocess`, so the WIT `RetractMode` enum
+// lives at this deeper sub-path rather than at the world root.
+use crate::host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types as ppm;
 
 // ── WIT ↔ slicer-ir polygon conversion ────────────────────────────────
 

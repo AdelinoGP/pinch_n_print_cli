@@ -130,15 +130,22 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
 
 /// Convert host-side `slicer_ir::RetractMode` to the WIT enum used by the
 /// postpass-module bindings (host→guest direction).
-fn retract_mode_to_postpass_wit(mode: RetractMode) -> host::postpass::RetractMode {
-    use host::postpass::RetractMode as PostpassRetractMode;
+fn retract_mode_to_postpass_wit(
+    mode: RetractMode,
+) -> host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::RetractMode
+{
+    use host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::RetractMode as PostpassRetractMode;
     match mode {
         RetractMode::Gcode => PostpassRetractMode::Gcode,
         RetractMode::Firmware => PostpassRetractMode::Firmware,
     }
 }
 
-fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpass::GcodeCommand {
+fn convert_gcode_command_to_postpass_wit(
+    command: &GCodeCommand,
+) -> host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::GcodeCommand
+{
+    use host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types as ppt;
     match command {
         GCodeCommand::Move {
             x,
@@ -147,7 +154,7 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
             e,
             f,
             role,
-        } => host::postpass::GcodeCommand::Move(host::postpass::GcodeMoveCmd {
+        } => ppt::GcodeCommand::Move(ppt::GcodeMoveCmd {
             x: *x,
             y: *y,
             z: *z,
@@ -159,7 +166,7 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
             length,
             speed,
             mode,
-        } => host::postpass::GcodeCommand::Retract(host::postpass::GcodeRetractCmd {
+        } => ppt::GcodeCommand::Retract(ppt::GcodeRetractCmd {
             length: *length,
             speed: *speed,
             mode: retract_mode_to_postpass_wit(*mode),
@@ -168,21 +175,19 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
             length,
             speed,
             mode,
-        } => host::postpass::GcodeCommand::Unretract(host::postpass::GcodeRetractCmd {
+        } => ppt::GcodeCommand::Unretract(ppt::GcodeRetractCmd {
             length: *length,
             speed: *speed,
             mode: retract_mode_to_postpass_wit(*mode),
         }),
         GCodeCommand::FanSpeed { value } => {
-            host::postpass::GcodeCommand::FanSpeed(host::postpass::GcodeFanSpeedCmd {
-                value: *value,
-            })
+            ppt::GcodeCommand::FanSpeed(ppt::GcodeFanSpeedCmd { value: *value })
         }
         GCodeCommand::Temperature {
             tool,
             celsius,
             wait,
-        } => host::postpass::GcodeCommand::Temperature(host::postpass::GcodeTemperatureCmd {
+        } => ppt::GcodeCommand::Temperature(ppt::GcodeTemperatureCmd {
             tool: *tool,
             celsius: *celsius,
             wait: *wait,
@@ -191,22 +196,20 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> host::postpa
             after_entity_index,
             from,
             to,
-        } => host::postpass::GcodeCommand::ToolChange(host::postpass::GcodeToolChangeCmd {
+        } => ppt::GcodeCommand::ToolChange(ppt::GcodeToolChangeCmd {
             after_entity_index: *after_entity_index,
             from_tool: *from,
             to_tool: *to,
         }),
-        GCodeCommand::Comment { text } => host::postpass::GcodeCommand::Comment(text.clone()),
-        GCodeCommand::Raw { text } => host::postpass::GcodeCommand::Raw(text.clone()),
+        GCodeCommand::Comment { text } => ppt::GcodeCommand::Comment(text.clone()),
+        GCodeCommand::Raw { text } => ppt::GcodeCommand::Raw(text.clone()),
         // ExtrusionMode is not yet a WIT variant; pass through as Raw so postpass
         // modules see the correct M82/M83 line.
-        GCodeCommand::ExtrusionMode { absolute } => {
-            host::postpass::GcodeCommand::Raw(if *absolute {
-                "M82".to_string()
-            } else {
-                "M83".to_string()
-            })
-        }
+        GCodeCommand::ExtrusionMode { absolute } => ppt::GcodeCommand::Raw(if *absolute {
+            "M82".to_string()
+        } else {
+            "M83".to_string()
+        }),
     }
 }
 
@@ -1036,7 +1039,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        host::FinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        host::LayerFinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
             &mut linker,
             |ctx| ctx,
         )
@@ -1090,7 +1093,7 @@ impl WasmRuntimeDispatcher {
             layer_handles.push(own(h));
         }
 
-        let bindings = host::FinalizationModule::instantiate(
+        let bindings = host::LayerFinalizationModule::instantiate(
             &mut store,
             component.wasmtime_component(),
             &linker,
@@ -1100,11 +1103,15 @@ impl WasmRuntimeDispatcher {
             stage_id: stage_id.clone(),
             export_name: export_name.to_string(),
             phase: DispatchPhase::TypedInstantiation,
-            reason: e.to_string(),
+            reason: format!(
+                "{e}; module does not export the interface required by stage {stage_id}: {}",
+                slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+            ),
         })?;
 
         let call_result = bindings
-            .call_run_finalization(
+            .slicer_finalization_layer_finalization_layer_finalization()
+            .call_run(
                 &mut store,
                 &layer_handles,
                 own(output_handle),
@@ -1178,10 +1185,11 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-            &mut linker,
-            |ctx| ctx,
-        ) {
+        if let Err(e) = host::GcodePostprocessModule::add_to_linker::<
+            _,
+            wasmtime::component::HasSelf<_>,
+        >(&mut linker, |ctx| ctx)
+        {
             return (
                 Err(DispatchError {
                     module_id: module_id.to_string(),
@@ -1233,7 +1241,7 @@ impl WasmRuntimeDispatcher {
             }
         };
 
-        let bindings = match host::PostpassModule::instantiate(
+        let bindings = match host::GcodePostprocessModule::instantiate(
             &mut store,
             component.wasmtime_component(),
             &linker,
@@ -1246,7 +1254,10 @@ impl WasmRuntimeDispatcher {
                         stage_id: stage_id.clone(),
                         export_name: export_name.to_string(),
                         phase: DispatchPhase::TypedInstantiation,
-                        reason: e.to_string(),
+                        reason: format!(
+                            "{e}; module does not export the interface required by stage {stage_id}: {}",
+                            slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+                        ),
                     }),
                     Vec::new(),
                 )
@@ -1258,12 +1269,14 @@ impl WasmRuntimeDispatcher {
             .map(convert_gcode_command_to_postpass_wit)
             .collect();
 
-        let call_result = bindings.call_run_gcode_postprocess(
-            &mut store,
-            &postpass_commands,
-            own(output_handle),
-            own(config_handle),
-        );
+        let call_result = bindings
+            .slicer_postpass_gcode_postprocess_gcode_postprocess()
+            .call_run(
+                &mut store,
+                &postpass_commands,
+                own(output_handle),
+                own(config_handle),
+            );
         let runtime_reads = store.data().runtime_reads.clone();
         self.stash_postpass_batch_calls(store.data_mut());
         self.stash_postpass_profile(&mut store);
@@ -1353,10 +1366,11 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-            &mut linker,
-            |ctx| ctx,
-        ) {
+        if let Err(e) = host::TextPostprocessModule::add_to_linker::<
+            _,
+            wasmtime::component::HasSelf<_>,
+        >(&mut linker, |ctx| ctx)
+        {
             return (
                 Err(DispatchError {
                     module_id: module_id.to_string(),
@@ -1393,7 +1407,7 @@ impl WasmRuntimeDispatcher {
             }
         };
 
-        let bindings = match host::PostpassModule::instantiate(
+        let bindings = match host::TextPostprocessModule::instantiate(
             &mut store,
             component.wasmtime_component(),
             &linker,
@@ -1406,14 +1420,19 @@ impl WasmRuntimeDispatcher {
                         stage_id: stage_id.clone(),
                         export_name: export_name.to_string(),
                         phase: DispatchPhase::TypedInstantiation,
-                        reason: e.to_string(),
+                        reason: format!(
+                            "{e}; module does not export the interface required by stage {stage_id}: {}",
+                            slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+                        ),
                     }),
                     Vec::new(),
                 )
             }
         };
 
-        let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
+        let call_result = bindings
+            .slicer_postpass_text_postprocess_text_postprocess()
+            .call_run(&mut store, text, own(config_handle));
         let runtime_reads = store.data().runtime_reads.clone();
         self.stash_postpass_batch_calls(store.data_mut());
         self.stash_postpass_profile(&mut store);

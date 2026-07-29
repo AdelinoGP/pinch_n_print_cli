@@ -44,8 +44,10 @@ crates/slicer-schema/wit/
     common.wit         # package slicer:common      — interface module-errors
     world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
     world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
-    world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
-    world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
+    # Per packet 163: postpass + finalization are now per-stage packages.
+    postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
+    postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
+    finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
 ```
 
 **Host** consumption (`crates/slicer-wasm-host/src/host.rs`, which holds all
@@ -546,78 +548,89 @@ Field and variant notes (match the on-disk file in
 
 ---
 
-## `world-postpass.wit`
+## Per-stage postpass + finalization packages (packet 163 pilot)
 
-**Source of truth:** `crates/slicer-schema/wit/deps/world-postpass/world-postpass.wit`
-(package `slicer:world-postpass@1.0.0`). The `postpass-module` world defines the
-`gcode-command` variant (move / retract / unretract / fan-speed / temperature /
-tool-change / comment / raw) and its command records locally, imports
-`config-view` and `gcode-output-builder`, and uses the shared `module-error`
-from `slicer:common/module-errors`.
+The previous `world-postpass` and `world-finalization` tier worlds have been
+replaced by three per-stage packages. Each pairs an **imported** `<iface>-types`
+interface (which holds the resources and plain data types so the host keeps
+ownership of them — a resource declared in an *exported* interface would be
+guest-owned and would invert `host.rs::postpass_impls` / `finalization_impls`)
+with the **exported** interface holding the single `run` func.
 
-Two exports:
+The func is named `run`, not `<stage>` — the stage name already lives in the
+package and interface, so `slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run`
+is the idiomatic component-model spelling (cf. `wasi:cli/run@0.2.0#run`).
 
-- `run-gcode-postprocess(commands, output, config)` — processes the
-  `gcode-command` stream.
-- `run-text-postprocess(gcode-text, config) -> string` — last-resort text
-  mutation, single-threaded; use only when `GCodeIR` is insufficient.
+### `postpass-gcode-postprocess/postpass-gcode-postprocess.wit`
 
-The retract command carries a `retract-mode` (G1 E vs G10/G11); read the
-on-disk file for the exact record fields.
+**Source of truth:** `crates/slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit`
+(package `slicer:postpass-gcode-postprocess@1.0.0`).
 
----
+- `interface gcode-postprocess-types` (imported): `gcode-move-cmd`, `retract-mode`
+  (`gcode`/`firmware`), `gcode-retract-cmd`, `gcode-fan-speed-cmd`,
+  `gcode-temperature-cmd`, `gcode-tool-change-cmd`, `resource gcode-output-builder`
+  (with `push-move`/`push-retract`/`push-unretract`/`push-fan-speed`/`push-temperature`/
+  `push-tool-change`/`push-comment`/`push-raw`/`push-z-hop`), `variant gcode-command`
+  (move / retract / unretract / fan-speed / temperature / tool-change / comment / raw).
+- `interface gcode-postprocess` (exported): `run: func(commands: list<gcode-command>,
+  output: gcode-output-builder, config: config-view) -> result<_, module-error>`.
+- `world gcode-postprocess-module`: imports `slicer:common/host-services`,
+  `slicer:common/profiling`, `slicer:config/config-types`, and the local
+  `gcode-postprocess-types`; exports `gcode-postprocess`.
 
-## `world-finalization.wit`
+### `postpass-text-postprocess/postpass-text-postprocess.wit`
 
-**Source of truth:** `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`. The shape below summarises
-the world; for exact field order, parameter names, and return types, read the
-on-disk file.
+**Source of truth:** `crates/slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit`
+(package `slicer:postpass-text-postprocess@1.0.0`).
 
-The `finalization-module` world exposes a single export
-`run-finalization(layers, output, config) -> result<_, module-error>`. It
-imports `slicer:common/host-services` and `slicer:config/config-types`, uses
-`slicer:config/config-types.{config-view}`,
-`slicer:types/geometry.{extrusion-path3d, extrusion-role}`, and
-`slicer:common/module-errors.{module-error}`. It declares `layer-idx`,
-`object-id`, `region-id`, and `region-key` as local types (`layer-idx = u32`).
+- `interface text-postprocess` (exported): `run: func(gcode-text: string,
+  config: config-view) -> result<string, module-error>`.
+- `world text-postprocess-module`: imports `slicer:common/host-services`,
+  `slicer:common/profiling`, `slicer:config/config-types`; exports
+  `text-postprocess`. No `<iface>-types` companion — text postprocess takes
+  no host-owned resource.
 
-Resources, records, and enums (current at time of writing — confirm against
-`crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`):
+### `finalization-layer-finalization/finalization-layer-finalization.wit`
 
-- `layer-collection-view` — read-only view of one completed layer:
-  `layer-index() -> layer-idx`, `z() -> f32`, `entity-count() -> u32`,
-  `ordered-entities() -> list<print-entity-view>`,
-  `tool-changes() -> list<tool-change-view>`,
-  `z-hops() -> list<z-hop-view>`.
-- `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path3d`,
-  `role: extrusion-role`, `tool-index: u32`, `region-key: region-key`,
-  `topo-order: u32`. The `entity-id` is the stable per-layer ID from packet 39
-  (see `docs/02_ir_schemas.md` IR 10). `tool-index` is the first-class tool
-  selector from the region_id↔tool split — the finalization input deep-copy
-  reconstructs `PrintEntity` from this view, so the view must carry it.
-- `tool-change-view` (record): `after-entity-index: u32`, `from-tool: u32`,
-  `to-tool: u32`.
-- `z-hop-view` (record): `after-entity-index: u32`, `hop-height: f32`.
-- `finalization-output-builder` (resource) — the mutation API:
-  - `push-entity-to-layer(layer-index, path, tool-index, region-key) -> result<_, string>`
-  - `push-entity-with-priority(layer-index, path, tool-index, region-key, priority) -> result<_, string>`
-    — note `extrusion-path3d` already carries the role; there is no separate `role` parameter.
-    The `tool-index: u32` parameter is the explicit tool selector for the pushed
-    entity (region_id↔tool split): finalization guests pass it directly because
-    `push-entity-*` carries only a region-key (a pure identity, no tool channel),
-    and the host sets `PrintEntity.tool_index` from it at reconstruction.
-  - `modify-entity(layer-index, entity-id, mutation) -> result<_, string>`
-  - `sort-layer-by(layer-index, key) -> result<_, string>`
-  - `insert-synthetic-layer(z, paths) -> result<_, string>` and
-    `insert-synthetic-layer-after(idx, layer-data) -> result<_, string>`
-- `entity-mutation` (variant) — packet 41 enum-serialisable mutations.
-  Confirm the current variant set against `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`; at the
-  time of writing it is a narrow set rather than the speculative six-variant
-  enum some older drafts of this doc described.
-- `sort-key` (enum, not variant) — sort discriminators consumed by
-  `sort-layer-by`. Names follow the form `by-<…>`; read the on-disk file for
-  the current set.
-- `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path3d>`.
+**Source of truth:** `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`
+(package `slicer:finalization-layer-finalization@1.0.0`).
+
+The shape below summarises the package; for exact field order, parameter
+names, and return types, read the on-disk file.
+
+- `interface layer-finalization-types` (imported) — local types
+  (`layer-idx = u32`, `object-id = string`, `region-id = string`,
+  `region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id, variant-chain: list<tuple<string,paint-value>> }`,
+  `paint-value = string`), records, and resources. Resources, records, and enums
+  (current at time of writing — confirm against
+  `crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`):
+  - `layer-collection-view` — read-only view of one completed layer:
+    `layer-index() -> layer-idx`, `z() -> f32`, `entity-count() -> u32`,
+    `ordered-entities() -> list<print-entity-view>`,
+    `tool-changes() -> list<tool-change-view>`,
+    `z-hops() -> list<z-hop-view>`.
+  - `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path3d`,
+    `role: extrusion-role`, `tool-index: u32`, `region-key: region-key`,
+    `topo-order: u32`. The `entity-id` is the stable per-layer ID from packet 39
+    (see `docs/02_ir_schemas.md` IR 10). `tool-index` is the first-class tool
+    selector from the region_id↔tool split — the finalization input deep-copy
+    reconstructs `PrintEntity` from this view, so the view must carry it.
+  - `tool-change-view` (record): `after-entity-index: u32`, `from-tool: u32`,
+    `to-tool: u32`.
+  - `z-hop-view` (record): `after-entity-index: u32`, `hop-height: f32`.
+  - `finalization-output-builder` (resource) — the mutation API:
+    `push-entity-to-layer` / `push-entity-with-priority` /
+    `modify-entity` / `sort-layer-by` / `insert-synthetic-layer` /
+    `insert-synthetic-layer-after` / `insert-entity-at` / `set-entity-order` /
+    `get-ordered-entities`.
+  - `entity-mutation` (variant) — packet 41 enum-serialisable mutations.
+  - `sort-key` (enum) — sort discriminators consumed by `sort-layer-by`.
+  - `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path3d>`.
+- `interface layer-finalization` (exported): `run: func(layers: list<layer-collection-view>,
+  output: finalization-output-builder, config: config-view) -> result<_, module-error>`.
+- `world layer-finalization-module`: imports `slicer:common/host-services`,
+  `slicer:common/profiling`, `slicer:config/config-types`, and the local
+  `layer-finalization-types`; exports `layer-finalization`.
 
 Host validation: the host validates that `entity-id` in `modify-entity`
 resolves to a real entity within `layer`; unknown IDs are rejected with

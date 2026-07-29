@@ -586,10 +586,10 @@ pub struct FinalizationOutputBuilderData {
 }
 
 #[allow(missing_docs)]
-pub mod finalization {
+pub mod finalization_layer {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-finalization/finalization-module",
+        world: "slicer:finalization-layer-finalization/layer-finalization-module",
         imports: {
             default: trappable,
         },
@@ -608,7 +608,47 @@ pub mod finalization {
     });
 }
 
-pub use finalization::FinalizationModule;
+pub use finalization_layer::LayerFinalizationModule;
+
+// Per-stage world (packet 163): `layer-finalization-types` is now an
+// *imported* interface in the new world, so its types live under the
+// bindgen-generated `slicer::finalization_layer_finalization::layer_finalization_types`
+// sub-path rather than at the world root. Re-export them under the
+// `finalization_types` sub-module so the host impls can keep using the
+// flat `fm::Type` form they had under the old monolithic
+// `world-finalization.wit`. This is a *new* sub-module rather than
+// re-exports at `host::*` because the layer world already re-exports
+// `RegionKey` of its own at `host::RegionKey`, and bare re-exports
+// would trigger `E0252` — keeping them inside `finalization_types` keeps
+// the two `RegionKey`s in disjoint namespaces.
+/// Re-exports of the per-stage finalization world's local types
+/// interface (`slicer:finalization-layer-finalization/layer-finalization-types`).
+///
+/// Per packet 163, the per-stage finalization world
+/// (`slicer:finalization-layer-finalization/layer-finalization-module`)
+/// puts its `layer-finalization-types` interface under a deep
+/// bindgen-generated sub-path rather than at the world root. This
+/// sub-module re-exports those types at a stable `host::finalization_types::*`
+/// path so the host impls and `dispatch.rs` can keep using the flat
+/// `fm::Type` form they had under the old monolithic
+/// `world-finalization.wit`. This is a *new* sub-module rather than
+/// re-exports at `host::*` because the layer world already re-exports
+/// `RegionKey` of its own at `host::RegionKey`, and bare re-exports
+/// would trigger `E0252` — keeping them inside `finalization_types`
+/// keeps the two `RegionKey`s in disjoint namespaces.
+pub mod finalization_types {
+    pub use super::finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types::{
+        EntityMutation, FinalizationOutputBuilder, HostFinalizationOutputBuilder,
+        HostLayerCollectionView, LayerCollectionView, PrintEntityView, RegionKey, SortKey,
+        SyntheticLayerData, ToolChangeView, ZHopView,
+    };
+    // The world-imports `Host` trait is generated inside the imported
+    // `layer-finalization-types` interface (per packet 163, the world
+    // now imports the local `-types` interface rather than declaring
+    // its resources at the world root, so bindgen produces the trait
+    // there).
+    pub use super::finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types::Host;
+}
 
 // ── Bindgen: Postpass module world ────────────────────────────────────
 
@@ -616,10 +656,10 @@ pub use finalization::FinalizationModule;
 pub struct PostpassGcodeOutputBuilderData;
 
 #[allow(missing_docs)]
-pub mod postpass {
+pub mod postpass_gcode {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-postpass/postpass-module",
+        world: "slicer:postpass-gcode-postprocess/gcode-postprocess-module",
         imports: {
             default: trappable,
         },
@@ -638,7 +678,72 @@ pub mod postpass {
     });
 }
 
-pub use postpass::PostpassModule;
+pub use postpass_gcode::GcodePostprocessModule;
+
+// Per-stage world (packet 163): `gcode-postprocess-types` is now an
+// *imported* interface in the new world, so its types live under the
+// bindgen-generated
+// `slicer::postpass_gcode_postprocess::gcode_postprocess_types` sub-path
+// rather than at the world root. Re-export them under the
+// `postpass_types` sub-module so the host impls can keep using the
+// flat `ppm::Type` form they had under the old monolithic
+// `world-postpass.wit`. The layer world already re-exports
+// `GcodeMoveCmd` and `GcodeRetractCmd` of its own at `host::*` from
+// `slicer:ir-handles/ir-handles`, so bare re-exports here would
+// trigger `E0252` — keeping them inside `postpass_types` keeps the
+// two sets in disjoint namespaces.
+/// Re-exports of the per-stage postpass (gcode) world's local types
+/// interface (`slicer:postpass-gcode-postprocess/gcode-postprocess-types`).
+///
+/// Per packet 163, the per-stage postpass world
+/// (`slicer:postpass-gcode-postprocess/gcode-postprocess-module`)
+/// puts its `gcode-postprocess-types` interface under a deep
+/// bindgen-generated sub-path rather than at the world root. This
+/// sub-module re-exports those types at a stable
+/// `host::postpass_types::*` path so the host impls and
+/// `dispatch.rs` can keep using the flat `ppm::Type` form they had
+/// under the old monolithic `world-postpass.wit`. The layer world
+/// already re-exports `GcodeMoveCmd` and `GcodeRetractCmd` of its
+/// own at `host::*` from `slicer:ir-handles/ir-handles`, so bare
+/// re-exports here would trigger `E0252` — keeping them inside
+/// `postpass_types` keeps the two sets in disjoint namespaces.
+pub mod postpass_types {
+    pub use super::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::{
+        GcodeCommand, GcodeFanSpeedCmd, GcodeMoveCmd, GcodeOutputBuilder, GcodeRetractCmd,
+        GcodeTemperatureCmd, GcodeToolChangeCmd, HostGcodeOutputBuilder, RetractMode,
+    };
+    // The world-imports `Host` trait is generated inside the imported
+    // `gcode-postprocess-types` interface (per packet 163, the world
+    // now imports the local `-types` interface rather than declaring
+    // its resources at the world root, so bindgen produces the trait
+    // there).
+    pub use super::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::Host;
+}
+
+#[allow(missing_docs)]
+pub mod postpass_text {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:postpass-text-postprocess/text-postprocess-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
+            "slicer:types/geometry": super::layer::slicer::types::geometry,
+            "slicer:config/config-types": super::layer::slicer::config::config_types,
+            "slicer:common/host-services": super::layer::slicer::common::host_services,
+            "slicer:common/profiling": super::layer::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            // See the identical note in the `prepass` bindgen! block above:
+            // `host-services#generate-arachne-walls` (packet 112, Step 9A)
+            // transitively pulls in `slicer:ir-handles/ir-handles`.
+            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
+        },
+    });
+}
+
+pub use postpass_text::TextPostprocessModule;
 
 pub use crate::marshal::accumulators::{
     GcodeCommandCollected, GcodeOutputCollected, InfillOutputCollected, PerimeterOutputCollected,
@@ -1467,7 +1572,7 @@ impl HostExecutionContext {
     /// Push a finalization-output-builder resource (finalization world).
     pub fn push_finalization_output_builder(
         &mut self,
-    ) -> wasmtime::Result<Resource<finalization::FinalizationOutputBuilder>> {
+    ) -> wasmtime::Result<Resource<finalization_types::FinalizationOutputBuilder>> {
         let rep = self.table.push(FinalizationOutputBuilderData::default())?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -1483,7 +1588,7 @@ impl HostExecutionContext {
     pub fn push_finalization_layer_view(
         &mut self,
         ir: &slicer_ir::LayerCollectionIR,
-    ) -> wasmtime::Result<Resource<finalization::LayerCollectionView>> {
+    ) -> wasmtime::Result<Resource<finalization_types::LayerCollectionView>> {
         self.finalization_layer_snapshot.push(ir.clone());
         let rep = self.table.push(LayerCollectionViewData::from_ir(ir))?;
         Ok(Resource::new_own(rep.rep()))
@@ -1504,7 +1609,7 @@ impl HostExecutionContext {
     /// Push a gcode-output-builder resource (postpass world).
     pub fn push_postpass_gcode_output_builder(
         &mut self,
-    ) -> wasmtime::Result<Resource<postpass::GcodeOutputBuilder>> {
+    ) -> wasmtime::Result<Resource<postpass_types::GcodeOutputBuilder>> {
         let rep = self.table.push(PostpassGcodeOutputBuilderData)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -3763,13 +3868,17 @@ mod prepass_impls {
 // ── Finalization world host trait impls ────────────────────────────────
 
 mod finalization_impls {
-    use super::finalization as fm;
+    // Per packet 163, the per-stage finalization world
+    // (`slicer:finalization-layer-finalization/layer-finalization-module`)
+    // puts its `layer-finalization-types` interface under a deep
+    // bindgen-generated sub-path. The host crate re-exports those
+    // types under `host::finalization_types::*` (above). `fm` aliases
+    // that re-export namespace so the host trait impls below keep
+    // using the `fm::Type` form they had under the old monolithic
+    // `world-finalization.wit`.
+    use super::finalization_types as fm;
     use super::*;
-    use finalization::slicer::types::geometry as fgeo;
-
-    // `fgeo` now aliases the layer world's geometry module (Phase 3 remap); its
-    // `Host` impl and IR↔WIT geometry converters are the layer world's — reused
-    // here via `use super::*` instead of regenerated copies.
+    use finalization_layer::slicer::finalization_layer_finalization::layer_finalization_types as fgeo;
     // `host-services` and `module-errors` are also remapped onto the layer
     // world's types via `with:` in the bindgen! block (packet 114).
 
@@ -4222,7 +4331,7 @@ mod finalization_impls {
         }
     }
 
-    impl fm::FinalizationModuleImports for HostExecutionContext {}
+    impl fm::Host for HostExecutionContext {}
 
     #[cfg(test)]
     mod tests {
@@ -4284,7 +4393,15 @@ mod finalization_impls {
 // ── Postpass world host trait impls ───────────────────────────────────
 
 mod postpass_impls {
-    use super::postpass as ppm;
+    // Per packet 163, the per-stage postpass world
+    // (`slicer:postpass-gcode-postprocess/gcode-postprocess-module`)
+    // puts its `gcode-postprocess-types` interface under a deep
+    // bindgen-generated sub-path. The host crate re-exports those
+    // types under `host::postpass_types::*` (above). `ppm` aliases
+    // that re-export namespace so the host trait impls below keep
+    // using the `ppm::Type` form they had under the old monolithic
+    // `world-postpass.wit`.
+    use super::postpass_types as ppm;
     use super::*;
 
     // Geometry, host-services, and module-errors types are all remapped onto
@@ -4427,7 +4544,7 @@ mod postpass_impls {
         }
     }
 
-    impl ppm::PostpassModuleImports for HostExecutionContext {}
+    impl ppm::Host for HostExecutionContext {}
 
     // convert_postpass_retract_mode moved to marshal/leaf.rs (packet 113, AC-1b).
     // convert_postpass_role removed (packet 115); call site now uses convert_extrusion_role.

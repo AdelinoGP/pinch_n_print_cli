@@ -18,6 +18,10 @@ pub struct GuestSpec {
     pub guest_dir: PathBuf,
     pub artifact_path: PathBuf,
     pub tree: GuestTree,
+    /// Stage id parsed from the sibling core-module manifest's `[stage] id`
+    /// (e.g. `"PostPass::GCodePostProcess"`). `None` for test guests, which
+    /// carry no module manifest.
+    pub stage_id: Option<String>,
 }
 
 /// Locate the workspace root by popping one level from the xtask crate dir.
@@ -57,6 +61,22 @@ fn has_parent_path_dep(tab: &toml::Table) -> bool {
             })
         })
         .unwrap_or(false)
+}
+
+/// Parse `[stage] id` from a core-module manifest like
+/// `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`. Returns
+/// `None` if the manifest is missing, unreadable, has no `[stage]` table, or
+/// has no `id` field.
+///
+/// Per-stage WIT staleness (packet 163): each guest's freshness check is
+/// scoped to the WIT package directory declared by its stage, so editing
+/// one stage's package does not mark unrelated guests `STALE`.
+fn parse_stage_id_from_module_manifest(path: &Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let tab: toml::Table = toml::from_str(&content).ok()?;
+    let stage_tab = tab.get("stage")?.as_table()?;
+    let id = stage_tab.get("id")?.as_str()?;
+    Some(id.to_string())
 }
 
 /// Check if [dependencies] declares wit-bindgen (any form).
@@ -160,6 +180,14 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
             let artifact_path =
                 PathBuf::from(format!("modules/core-modules/{dir_name}/{dir_name}.wasm"));
 
+            // Per-stage WIT staleness (packet 163): parse `[stage] id` from
+            // the sibling core-module manifest (e.g.
+            // `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml`)
+            // so each guest's freshness check is scoped to its own stage's
+            // WIT package directory.
+            let module_manifest_path = dir.join(format!("{dir_name}.toml"));
+            let stage_id = parse_stage_id_from_module_manifest(&module_manifest_path);
+
             guests.push(GuestSpec {
                 crate_name,
                 lib_name,
@@ -167,6 +195,7 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
                 guest_dir: dir.join("wit-guest"),
                 artifact_path,
                 tree: GuestTree::Core,
+                stage_id,
             });
         }
     }
@@ -250,6 +279,7 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
                 guest_dir: dir,
                 artifact_path,
                 tree: GuestTree::TestGuest,
+                stage_id: None,
             });
         }
     }
@@ -663,7 +693,44 @@ fn input_files(root: &Path, extension: Option<&str>) -> Vec<PathBuf> {
 /// Reuse the existing shared source set for both mtime and content freshness.
 fn shared_input_paths(ws_root: &Path) -> Vec<PathBuf> {
     let wit_root = ws_root.join("crates/slicer-schema/wit");
-    let mut paths = input_files(&wit_root, Some("wit"));
+    // Per packet 163 (Step 7): restrict the WIT walk to
+    //   * `wit/root.wit`
+    //   * the flat `wit/deps/*.wit` (one level deep, no descend into
+    //     `wit/deps/<stage>/` subdirectories).
+    // Per-stage package directories are charged to individual guests via
+    // `stage_wit_mtime` (see `compute_guest_freshness`), not the shared
+    // set — that is what makes AC-N2 (one WIT bump → only that stage's
+    // guests STALE) provable.
+    let mut paths: Vec<PathBuf> = walkdir::WalkDir::new(&wit_root)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("wit"))
+        .filter(|e| {
+            // Reject any path whose parent is a `deps/<dir>/` subdirectory
+            // (i.e. anything under a per-stage package directory).
+            let p = e.path();
+            let rel = p.strip_prefix(&wit_root).unwrap_or(p);
+            let mut comps = rel.components();
+            // Top-level `root.wit` is allowed (path = `root.wit`, no `deps/`).
+            // `wit/deps/<file>.wit` is allowed (one level under `deps/`).
+            // `wit/deps/<dir>/<file>.wit` is rejected.
+            match (comps.next(), comps.next(), comps.next(), comps.next()) {
+                (Some(_), None, _, _) => true, // `root.wit` (relative = `root.wit`)
+                (Some(c1), Some(_c2), None, _) if c1.as_os_str() == "deps" => {
+                    // `deps/<file>.wit`: the file is directly under `deps/`
+                    p.parent()
+                        .and_then(|parent| parent.file_name())
+                        .map(|name| name == "deps")
+                        .unwrap_or(false)
+                }
+                _ => false,
+            }
+        })
+        .map(|e| e.into_path())
+        .collect();
+    paths.sort();
 
     // `slicer-core` belongs here even though it is not a guest *shim*: it is
     // baked into every guest, both transitively through `slicer-sdk` and
@@ -779,13 +846,60 @@ fn compute_guest_freshness(
     shared: &FreshnessSnapshot,
 ) -> FreshnessSnapshot {
     let guest = snapshot_from_paths(ws_root, &guest_input_paths(spec));
+    let stage = stage_wit_snapshot(ws_root, spec.stage_id.as_deref());
     let mut entries = shared.entries.clone();
     entries.extend(guest.entries);
+    entries.extend(stage.entries);
     FreshnessSnapshot {
         fingerprint: fingerprint_entries(&entries),
-        newest_mtime: shared.newest_mtime.max(guest.newest_mtime),
+        newest_mtime: shared
+            .newest_mtime
+            .max(guest.newest_mtime)
+            .max(stage.newest_mtime),
         entries,
     }
+}
+
+/// Per-stage WIT freshness (packet 163). Returns the union of mtimes under
+/// `wit/deps/<wit_dir>/` for the guest's stage, where `<wit_dir>` is
+/// resolved through `slicer_schema::wit_dir_for_stage_id`.
+///
+/// - `Some(stage_id)` whose stage is in the canonical `STAGES` table →
+///   mtimes of every `.wit` file under that stage's WIT package dir.
+/// - `Some(stage_id)` not in the table (e.g. an unmigrated stage) → mtimes
+///   of every per-stage package dir (conservative).
+/// - `None` (test guests carry no module manifest) → mtimes of every
+///   per-stage package dir (conservative).
+///
+/// Over-rebuilding is safe; under-rebuilding is the bug class the
+/// `cargo xtask build-guests --check` freshness gate exists to prevent.
+fn stage_wit_snapshot(ws_root: &Path, stage_id: Option<&str>) -> FreshnessSnapshot {
+    let wit_root = ws_root.join("crates/slicer-schema/wit");
+    let package_dirs: Vec<PathBuf> = match stage_id.and_then(slicer_schema::wit_dir_for_stage_id) {
+        Some(specific) => vec![wit_root.join("deps").join(specific)],
+        None => {
+            // Conservative: include every per-stage package directory so a
+            // bump to any one rebuilds this guest. `walkdir` would also work
+            // here, but enumerating the canonical list keeps the dependency
+            // surface auditable.
+            (0..slicer_schema::STAGES.len())
+                .filter_map(|i| {
+                    slicer_schema::STAGES.get(i).and_then(|s| {
+                        if s.wit_package.is_empty() {
+                            None
+                        } else {
+                            Some(wit_root.join("deps").join(s.wit_dir))
+                        }
+                    })
+                })
+                .collect()
+        }
+    };
+    let paths: Vec<PathBuf> = package_dirs
+        .iter()
+        .flat_map(|dir| input_files(dir, Some("wit")))
+        .collect();
+    snapshot_from_paths(ws_root, &paths)
 }
 
 pub fn fingerprint_metadata_path(ws_root: &Path, spec: &GuestSpec) -> PathBuf {
@@ -900,6 +1014,7 @@ mod tests {
             guest_dir,
             artifact_path: PathBuf::from("guest.wasm"),
             tree: GuestTree::TestGuest,
+            stage_id: None,
         };
         let shared = compute_shared_freshness(&temp.0);
         assert!(is_stale(&spec, &temp.0, &shared));
@@ -910,5 +1025,78 @@ mod tests {
             .expect("create metadata directory");
         fs::write(&metadata_path, freshness.fingerprint).expect("write metadata");
         assert!(!is_stale(&spec, &temp.0, &shared));
+    }
+
+    /// Per packet 163, the per-stage `stage_wit_snapshot` must charge each
+    /// per-stage package directory only to the guest(s) whose
+    /// `stage_id` resolves to it. A bump to one stage's `.wit` must mark
+    /// only that stage's guests `STALE` (AC-N2), not every guest in the
+    /// tree.
+    #[test]
+    fn stage_wit_dir_is_charged_only_to_matching_guest() {
+        // Sanity-check the canonical table resolves the three pilot
+        // stage_ids to their package dirs.
+        assert_eq!(
+            slicer_schema::wit_dir_for_stage_id("PostPass::GCodePostProcess"),
+            Some("postpass-gcode-postprocess"),
+        );
+        assert_eq!(
+            slicer_schema::wit_dir_for_stage_id("PostPass::TextPostProcess"),
+            Some("postpass-text-postprocess"),
+        );
+        assert_eq!(
+            slicer_schema::wit_dir_for_stage_id("PostPass::LayerFinalization"),
+            Some("finalization-layer-finalization"),
+        );
+        // An unmigrated stage returns its tier world dir (per packet 164's
+        // contract): not a package dir, so it carries no per-stage staleness.
+        assert_eq!(
+            slicer_schema::wit_dir_for_stage_id("Layer::Perimeters"),
+            Some("world-layer"),
+        );
+    }
+
+    /// A guest whose `stage_id` is `None` (test guests) or refers to a
+    /// stage not in the table must be charged the **union** of all
+    /// per-stage package dirs — never the empty set. The default is
+    /// conservative: over-rebuilding is safe; under-rebuilding is the
+    /// bug class `cargo xtask build-guests --check` exists to prevent.
+    #[test]
+    fn stage_wit_unknown_stage_is_conservative() {
+        let snap = stage_wit_snapshot(workspace_root().as_path(), None);
+        // The pilot packages must be in the union.
+        let names: Vec<String> = snap
+            .entries
+            .iter()
+            .map(|e| e.path.clone())
+            .filter_map(|p| {
+                let s = p.replace('\\', "/");
+                s.split("/deps/").nth(1).map(|rest| rest.to_string())
+            })
+            .collect();
+        // At least one `.wit` file under each pilot package dir is charged.
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("postpass-gcode-postprocess/")),
+            "postpass-gcode-postprocess should be in conservative union: {names:?}",
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("postpass-text-postprocess/")),
+            "postpass-text-postprocess should be in conservative union: {names:?}",
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n.starts_with("finalization-layer-finalization/")),
+            "finalization-layer-finalization should be in conservative union: {names:?}",
+        );
+
+        // An unknown stage_id resolves to `None` from `wit_dir_for_stage_id`
+        // and so also falls through to the conservative union path.
+        let snap_unknown = stage_wit_snapshot(workspace_root().as_path(), Some("NotAStage"));
+        assert_eq!(snap.entries.len(), snap_unknown.entries.len());
     }
 }

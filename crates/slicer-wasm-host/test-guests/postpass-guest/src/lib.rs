@@ -1,8 +1,15 @@
 wit_bindgen::generate!({
     path: "../../../slicer-schema/wit",
-    world: "slicer:world-postpass/postpass-module",
+    world: "slicer:postpass-gcode-postprocess/gcode-postprocess-module",
     generate_all,
 });
+
+use exports::slicer::postpass_gcode_postprocess::gcode_postprocess::Guest;
+use slicer::common::module_errors::ModuleError;
+use slicer::config::config_types::ConfigView;
+use slicer::postpass_gcode_postprocess::gcode_postprocess_types::{
+    ExtrusionRole, GcodeCommand, GcodeMoveCmd, GcodeOutputBuilder, RetractMode,
+};
 
 struct Component;
 
@@ -27,14 +34,14 @@ fn echo_command(command: &GcodeCommand, output: &GcodeOutputBuilder) -> Result<(
 }
 
 impl Guest for Component {
-    fn run_gcode_postprocess(
+    fn run(
         commands: Vec<GcodeCommand>,
         output: GcodeOutputBuilder,
         config: ConfigView,
     ) -> Result<(), ModuleError> {
         slicer::common::host_services::log(
             slicer::common::host_services::LogLevel::Info,
-            "run-gcode-postprocess: ok",
+            "run: ok",
         );
 
         match config.get_string("postpass_mode") {
@@ -117,12 +124,6 @@ impl Guest for Component {
         }
 
         Ok(())
-    }
-    fn run_text_postprocess(
-        gcode_text: String,
-        _config: ConfigView,
-    ) -> Result<String, ModuleError> {
-        Ok(gcode_text)
     }
 }
 

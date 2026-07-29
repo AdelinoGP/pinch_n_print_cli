@@ -96,10 +96,27 @@ fn macro_other_world_package_names_are_canonical() {
     // drift. (It did — this test pinned `@2.0.0` against a `@3.0.0` file.)
     // Assert instead that each world declares the canonical name with *some*
     // well-formed version.
+    //
+    // Packet 163: postpass + finalization are now per-stage packages
+    // (`slicer:postpass-gcode-postprocess@1.0.0`,
+    //  `slicer:postpass-text-postprocess@1.0.0`,
+    //  `slicer:finalization-layer-finalization@1.0.0`),
+    // not the old `slicer:world-{postpass,finalization}@1.0.0` tier worlds.
+    // layer + prepass remain on their tier worlds.
     let canonical_worlds = [
         ("world-prepass", slicer_schema::WORLD_PREPASS),
-        ("world-postpass", slicer_schema::WORLD_POSTPASS),
-        ("world-finalization", slicer_schema::WORLD_FINALIZATION),
+        (
+            "postpass-gcode-postprocess",
+            "slicer:postpass-gcode-postprocess",
+        ),
+        (
+            "postpass-text-postprocess",
+            "slicer:postpass-text-postprocess",
+        ),
+        (
+            "finalization-layer-finalization",
+            "slicer:finalization-layer-finalization",
+        ),
     ];
     for (slug, pkg) in canonical_worlds {
         let path = root.join(format!("crates/slicer-schema/wit/deps/{slug}/{slug}.wit"));
@@ -131,12 +148,16 @@ fn macro_other_world_package_names_are_canonical() {
         "slicer:finalization-world@",
     ];
     for wrong in disallowed {
-        for (slug, _) in [
-            ("world-prepass", ""),
-            ("world-postpass", ""),
-            ("world-finalization", ""),
+        for slug in [
+            "world-prepass",
+            "postpass-gcode-postprocess",
+            "postpass-text-postprocess",
+            "finalization-layer-finalization",
         ] {
             let path = root.join(format!("crates/slicer-schema/wit/deps/{slug}/{slug}.wit"));
+            if !path.exists() {
+                continue;
+            }
             let content = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {slug}.wit"));
             assert!(
                 !content.contains(&format!("package {wrong}")),
@@ -147,10 +168,19 @@ fn macro_other_world_package_names_are_canonical() {
 
     // Drift guard: confirm macro sources each world from the canonical single-source file.
     let lib_rs = macro_lib_rs_content();
-    for slug in ["world-prepass", "world-postpass", "world-finalization"] {
+    for slug in [
+        "world-prepass",
+        "postpass-gcode-postprocess",
+        "postpass-text-postprocess",
+        "finalization-layer-finalization",
+    ] {
+        // `include_str!` may be written multi-line in the macro source —
+        // collapse whitespace before matching.
+        let normalized: String = lib_rs.chars().filter(|c| !c.is_whitespace()).collect();
         let expected = format!(r#"include_str!("../../slicer-schema/wit/deps/{slug}/{slug}.wit")"#);
+        let expected_normalized: String = expected.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
-            lib_rs.contains(&expected),
+            normalized.contains(&expected_normalized),
             "macro must source {slug} WIT from canonical single-source via include_str!"
         );
     }
@@ -185,8 +215,9 @@ fn host_inline_wit_uses_canonical_world_package_names() {
     let canonical_world_refs = [
         r#"world: "slicer:world-layer/layer-module""#,
         r#"world: "slicer:world-prepass/prepass-module""#,
-        r#"world: "slicer:world-postpass/postpass-module""#,
-        r#"world: "slicer:world-finalization/finalization-module""#,
+        r#"world: "slicer:postpass-gcode-postprocess/gcode-postprocess-module""#,
+        r#"world: "slicer:postpass-text-postprocess/text-postprocess-module""#,
+        r#"world: "slicer:finalization-layer-finalization/layer-finalization-module""#,
     ];
     for canonical in canonical_world_refs {
         assert!(
@@ -256,8 +287,9 @@ fn canonical_world_files_exist_on_disk() {
     for world_slug in [
         "world-layer",
         "world-prepass",
-        "world-postpass",
-        "world-finalization",
+        "postpass-gcode-postprocess",
+        "postpass-text-postprocess",
+        "finalization-layer-finalization",
     ] {
         let path = root.join(format!(
             "crates/slicer-schema/wit/deps/{world_slug}/{world_slug}.wit"
@@ -327,39 +359,44 @@ fn canonical_ir_types_has_push_unretract() {
 
 /// Verifies that the canonical postpass world widened to payload-bearing
 /// command input with explicit unretract support.
-/// Redirected to single-source path: wit/deps/world-postpass/world-postpass.wit.
-// Guards against canonical-file edits (single-source, post-packet-72); producer divergence is architecturally impossible.
+/// Per packet 163: the postpass tier is now a per-stage package at
+/// `wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit`.
+/// Guards against canonical-file edits (single-source, post-packet-72); producer divergence is architecturally impossible.
 #[test]
 fn canonical_world_postpass_has_payload_command_input() {
-    let path =
-        workspace_root().join("crates/slicer-schema/wit/deps/world-postpass/world-postpass.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-postpass.wit");
+    let path = workspace_root().join(
+        "crates/slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit",
+    );
+    let content = fs::read_to_string(&path).expect("read canonical postpass-gcode-postprocess.wit");
     assert!(
         content.contains("variant gcode-command"),
-        "canonical world-postpass.wit must define payload-bearing 'variant gcode-command'"
+        "canonical postpass-gcode-postprocess.wit must define payload-bearing 'variant gcode-command'"
     );
     assert!(
         content.contains("unretract"),
-        "canonical world-postpass.wit must carry an 'unretract' command case"
+        "canonical postpass-gcode-postprocess.wit must carry an 'unretract' command case"
     );
 }
 
 /// Verifies that the canonical finalization world widened layer-collection-view
 /// with ordered-entity and z-hop reads.
-/// Redirected to single-source path: wit/deps/world-finalization/world-finalization.wit.
-// Guards against canonical-file edits (single-source, post-packet-72); producer divergence is architecturally impossible.
+/// Per packet 163: the finalization tier is now a per-stage package at
+/// `wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit`.
+/// Guards against canonical-file edits (single-source, post-packet-72); producer divergence is architecturally impossible.
 #[test]
 fn canonical_world_finalization_has_entity_and_zhop_reads() {
-    let path = workspace_root()
-        .join("crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-finalization.wit");
+    let path = workspace_root().join(
+        "crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit",
+    );
+    let content =
+        fs::read_to_string(&path).expect("read canonical finalization-layer-finalization.wit");
     assert!(
         content.contains("ordered-entities"),
-        "canonical world-finalization.wit must expose 'ordered-entities'"
+        "canonical finalization-layer-finalization.wit must expose 'ordered-entities'"
     );
     assert!(
         content.contains("z-hops"),
-        "canonical world-finalization.wit must expose 'z-hops'"
+        "canonical finalization-layer-finalization.wit must expose 'z-hops'"
     );
 }
 
@@ -367,48 +404,59 @@ fn canonical_world_finalization_has_entity_and_zhop_reads() {
 /// surfaces, and that the macro's include_str! calls reference those canonical files.
 /// Under single-source, "macro embedded WIT" means: the macro reads from canonical
 /// disk files via include_str!, so drift is caught by checking the canonical files.
+/// Per packet 163: postpass + finalization live in their own per-stage package dirs.
 #[test]
 fn macro_embedded_wit_tracks_boundary_widening() {
     let root = workspace_root();
     // Widened postpass surface — must be in the canonical postpass world.
-    let postpass = fs::read_to_string(
-        root.join("crates/slicer-schema/wit/deps/world-postpass/world-postpass.wit"),
-    )
-    .expect("read canonical world-postpass.wit");
+    let postpass = fs::read_to_string(root.join(
+        "crates/slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit",
+    ))
+    .expect("read canonical postpass-gcode-postprocess.wit");
     assert!(
         postpass.contains("push-unretract"),
-        "canonical world-postpass.wit must contain 'push-unretract' after postpass widening"
+        "canonical postpass-gcode-postprocess.wit must contain 'push-unretract' after postpass widening"
     );
     assert!(
         postpass.contains("variant gcode-command"),
-        "canonical world-postpass.wit must define payload-bearing 'variant gcode-command'"
+        "canonical postpass-gcode-postprocess.wit must define payload-bearing 'variant gcode-command'"
     );
 
     // Widened finalization surface — must be in the canonical finalization world.
     let finalization = fs::read_to_string(
-        root.join("crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit"),
+        root.join("crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit"),
     )
-    .expect("read canonical world-finalization.wit");
+    .expect("read canonical finalization-layer-finalization.wit");
     assert!(
         finalization.contains("ordered-entities"),
-        "canonical world-finalization.wit must expose 'ordered-entities'"
+        "canonical finalization-layer-finalization.wit must expose 'ordered-entities'"
     );
     assert!(
         finalization.contains("z-hops"),
-        "canonical world-finalization.wit must expose 'z-hops'"
+        "canonical finalization-layer-finalization.wit must expose 'z-hops'"
     );
 
     // Drift guard: confirm the macro sources its postpass/finalization WIT from the
     // canonical single-source files (not inline strings that could silently diverge).
     let lib_rs = macro_lib_rs_content();
+    // `include_str!` may be written multi-line — collapse whitespace before
+    // matching, otherwise the macro's prettier-formatted multi-line calls
+    // silently fail this guard.
+    let normalized: String = lib_rs.chars().filter(|c| !c.is_whitespace()).collect();
+    let expect_postpass_gcode: String = r#"include_str!("../../slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit")"#
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let expect_finalization: String = r#"include_str!("../../slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit")"#
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     assert!(
-        lib_rs.contains(
-            r#"include_str!("../../slicer-schema/wit/deps/world-postpass/world-postpass.wit")"#
-        ),
-        "macro must source postpass WIT from canonical single-source via include_str!"
+        normalized.contains(&expect_postpass_gcode),
+        "macro must source postpass gcode WIT from canonical single-source via include_str!"
     );
     assert!(
-        lib_rs.contains(r#"include_str!("../../slicer-schema/wit/deps/world-finalization/world-finalization.wit")"#),
+        normalized.contains(&expect_finalization),
         "macro must source finalization WIT from canonical single-source via include_str!"
     );
 }
@@ -421,30 +469,31 @@ fn macro_embedded_wit_tracks_boundary_widening() {
 fn host_embedded_wit_tracks_boundary_widening() {
     let root = workspace_root();
     // The widened surfaces must be present in the canonical world files.
-    let postpass = fs::read_to_string(
-        root.join("crates/slicer-schema/wit/deps/world-postpass/world-postpass.wit"),
-    )
-    .expect("read canonical world-postpass.wit");
+    // Per packet 163: postpass + finalization live in per-stage package dirs.
+    let postpass = fs::read_to_string(root.join(
+        "crates/slicer-schema/wit/deps/postpass-gcode-postprocess/postpass-gcode-postprocess.wit",
+    ))
+    .expect("read canonical postpass-gcode-postprocess.wit");
     assert!(
         postpass.contains("push-unretract"),
-        "canonical world-postpass.wit must contain 'push-unretract' after postpass widening"
+        "canonical postpass-gcode-postprocess.wit must contain 'push-unretract' after postpass widening"
     );
     assert!(
         postpass.contains("variant gcode-command"),
-        "canonical world-postpass.wit must define payload-bearing 'variant gcode-command'"
+        "canonical postpass-gcode-postprocess.wit must define payload-bearing 'variant gcode-command'"
     );
 
     let finalization = fs::read_to_string(
-        root.join("crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit"),
+        root.join("crates/slicer-schema/wit/deps/finalization-layer-finalization/finalization-layer-finalization.wit"),
     )
-    .expect("read canonical world-finalization.wit");
+    .expect("read canonical finalization-layer-finalization.wit");
     assert!(
         finalization.contains("ordered-entities"),
-        "canonical world-finalization.wit must expose 'ordered-entities'"
+        "canonical finalization-layer-finalization.wit must expose 'ordered-entities'"
     );
     assert!(
         finalization.contains("z-hops"),
-        "canonical world-finalization.wit must expose 'z-hops'"
+        "canonical finalization-layer-finalization.wit must expose 'z-hops'"
     );
 
     // Drift guard: the host must reference the canonical dir so wasmtime bindgen
@@ -887,5 +936,85 @@ fn world_layer_package_version_bumped_for_lightning_view() {
     assert!(
         content.contains("package slicer:world-layer@2.3.0;"),
         "world-layer must be at package version 2.3.0 (packet 140 run-infill paint-view bump)"
+    );
+}
+
+/// Per packet 163 (AC-1b): the `@1.0.0` package version is **load-bearing**
+/// for the per-stage `bindgen!` mechanism — wasmtime's
+/// `alternate_lookup_key` only produces a major-track key for `major >= 1`
+/// (a `0.x` package yields a minor-track `@0.1` key, so every minor bump
+/// would break compatibility). A future contributor "tidying" a stage
+/// package to `0.x` would silently disable every compatibility claim.
+///
+/// This guard mirrors `canonical_world_files_exist_on_disk`: walk
+/// `crates/slicer-schema/wit/deps/*/` (every package directory), parse
+/// the `package slicer:<name>@<major>.<minor>.<patch>;` header, and
+/// assert `major >= 1` for every per-stage package.
+#[test]
+fn every_stage_package_major_is_at_least_one() {
+    let root = workspace_root();
+    let deps_dir = root.join("crates/slicer-schema/wit/deps");
+    let entries = fs::read_dir(&deps_dir).expect("read wit/deps directory");
+    let mut offenders: Vec<String> = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        // We only inspect the per-stage package directories (the ones
+        // whose name matches the `wit_dir` of a migrated stage). The flat
+        // shared dep files (`common.wit`, `config.wit`, etc.) are
+        // unversioned on purpose (packet 163 §"The unit is the package,
+        // not the interface"); skipping them is by design.
+        let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
+        if !path.is_dir() {
+            continue;
+        }
+        let wit_path = path.join(format!("{dir_name}.wit"));
+        if !wit_path.is_file() {
+            continue;
+        }
+        // Only check the **versioned** per-stage packages. A tier-world
+        // dir like `world-layer` is also versioned (`@2.3.0`); per-stage
+        // packages are at `@1.0.0` by design. The unversioned dep
+        // packages (`common.wit`, etc.) live one level up at
+        // `wit/deps/<file>.wit`, not in their own dir — this loop
+        // already skips them by requiring `<dir>/<dir>.wit`.
+        let content = match fs::read_to_string(&wit_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let mut lines = content.lines();
+        let package_line = match lines.find(|l| l.trim_start().starts_with("package ")) {
+            Some(l) => l,
+            None => continue,
+        };
+        // Parse `package slicer:<name>@<major>.<minor>.<patch>;`
+        let version_str = match package_line.split('@').nth(1) {
+            Some(v) => v.trim_end_matches(';').trim(),
+            None => {
+                offenders.push(format!("{dir_name}: no @ in package line"));
+                continue;
+            }
+        };
+        let major: u32 = match version_str.split('.').next().and_then(|s| s.parse().ok()) {
+            Some(n) => n,
+            None => {
+                offenders.push(format!("{dir_name}: non-numeric major in '{version_str}'"));
+                continue;
+            }
+        };
+        if major < 1 {
+            offenders.push(format!("{dir_name}@{}", version_str));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "every per-stage WIT package must declare major >= 1 (load-bearing for \
+         wasmtime's alternate_lookup_key). Offenders: {offenders:?}",
     );
 }

@@ -16,7 +16,7 @@ fn binding_surface_matches_manifest() {
         SkirtBrim::__slicer_stage_name(),
         "PostPass::LayerFinalization"
     );
-    assert_eq!(SkirtBrim::__slicer_stage_export_name(), "run-finalization");
+    assert_eq!(SkirtBrim::__slicer_stage_export_name(), "run");
     let exports = SkirtBrim::__slicer_wit_exports();
-    assert!(exports.contains(&"run-finalization"));
+    assert!(exports.contains(&"run"));
 }

@@ -14,15 +14,15 @@
 
 #![allow(missing_docs)]
 
-use slicer_wasm_host::host::finalization::slicer::types::geometry as fgeo;
+use slicer_wasm_host::host::finalization_types as fm;
 use slicer_wasm_host::host::{
-    finalization, FinalizationBuilderPush, HostExecutionContextBuilder,
-    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
+    ExtrusionPath3d, ExtrusionRole, FinalizationBuilderPush, HostExecutionContextBuilder,
+    Point3WithWidth, BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 
-fn make_finalization_path(role_tag: &str) -> fgeo::ExtrusionPath3d {
-    fgeo::ExtrusionPath3d {
-        points: vec![fgeo::Point3WithWidth {
+fn make_finalization_path(role_tag: &str) -> ExtrusionPath3d {
+    ExtrusionPath3d {
+        points: vec![Point3WithWidth {
             x: 0.0,
             y: 0.0,
             z: 0.2,
@@ -31,7 +31,7 @@ fn make_finalization_path(role_tag: &str) -> fgeo::ExtrusionPath3d {
             overhang_quartile: None,
             dist_to_top_mm: 0.0,
         }],
-        role: fgeo::ExtrusionRole::Custom(role_tag.to_string()),
+        role: ExtrusionRole::Custom(role_tag.to_string()),
         speed_factor: 1.0,
     }
 }
@@ -69,13 +69,13 @@ fn finalization_role_round_trip() {
         // Call the real host impl — routes through finalization_path_wit_to_ir
         // → finalization_role_wit_to_ir (the lossy converter, packet-115).
         let push_result = <slicer_wasm_host::host::HostExecutionContext
-            as finalization::HostFinalizationOutputBuilder>::push_entity_to_layer(
+            as fm::HostFinalizationOutputBuilder>::push_entity_to_layer(
             &mut ctx,
             builder_handle,
             0,
             make_finalization_path(tag),
             1,
-            finalization::RegionKey {
+            fm::RegionKey {
                 layer_index: 0,
                 object_id: "obj-1".to_string(),
                 // Canonical region-id: decimal integer string.
@@ -94,11 +94,8 @@ fn finalization_role_round_trip() {
         // ctx.finalization_pushes — mimicking the drop that wasmtime issues
         // when the guest releases its handle at the end of run-finalization.
         let drop_handle =
-            wasmtime::component::Resource::<finalization::FinalizationOutputBuilder>::new_own(
-                builder_rep,
-            );
-        <slicer_wasm_host::host::HostExecutionContext
-            as finalization::HostFinalizationOutputBuilder>::drop(
+            wasmtime::component::Resource::<fm::FinalizationOutputBuilder>::new_own(builder_rep);
+        <slicer_wasm_host::host::HostExecutionContext as fm::HostFinalizationOutputBuilder>::drop(
             &mut ctx,
             drop_handle,
         )

@@ -9,8 +9,9 @@ use crate::common::{
     sloped_triangle_object,
 };
 use slicer_wasm_host::host::{
-    finalization::slicer::common::host_services as fhs,
-    layer::slicer::common::host_services as lhs, postpass::slicer::common::host_services as pphs,
+    finalization_layer::slicer::common::host_services as fhs,
+    layer::slicer::common::host_services as lhs,
+    postpass_gcode::slicer::common::host_services as pphs,
     prepass::slicer::common::host_services as phs,
 };
 

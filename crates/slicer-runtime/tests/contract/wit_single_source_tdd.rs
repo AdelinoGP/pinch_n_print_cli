@@ -54,8 +54,9 @@ fn canonical_wit_resolves() {
     let required = [
         "layer-module",
         "prepass-module",
-        "postpass-module",
-        "finalization-module",
+        "gcode-postprocess-module",
+        "text-postprocess-module",
+        "layer-finalization-module",
     ];
 
     for name in &required {
@@ -70,8 +71,9 @@ fn canonical_wit_resolves() {
     let qualified = [
         "slicer:world-layer/layer-module",
         "slicer:world-prepass/prepass-module",
-        "slicer:world-postpass/postpass-module",
-        "slicer:world-finalization/finalization-module",
+        "slicer:postpass-gcode-postprocess/gcode-postprocess-module",
+        "slicer:postpass-text-postprocess/text-postprocess-module",
+        "slicer:finalization-layer-finalization/layer-finalization-module",
     ];
     for q in &qualified {
         resolve
@@ -148,8 +150,9 @@ fn worlds_are_not_self_contained() {
     let world_dirs = [
         "world-layer",
         "world-prepass",
-        "world-postpass",
-        "world-finalization",
+        "postpass-gcode-postprocess",
+        "postpass-text-postprocess",
+        "finalization-layer-finalization",
     ];
     let deps_dir = schema_wit_dir().join("deps");
 
@@ -281,8 +284,8 @@ fn host_bindgen_paths_target_shared_root() {
 
     assert_eq!(
         paths.len(),
-        4,
-        "Expected exactly 4 `path:` literals in host.rs bindgen! invocations (one per world), \
+        5,
+        "Expected exactly 5 `path:` literals in host.rs bindgen! invocations (one per world), \
          found {}: {paths:?}",
         paths.len()
     );

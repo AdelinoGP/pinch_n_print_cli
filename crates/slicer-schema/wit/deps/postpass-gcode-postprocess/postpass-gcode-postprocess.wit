@@ -1,13 +1,7 @@
-package slicer:world-postpass@1.0.0;
+package slicer:postpass-gcode-postprocess@1.0.0;
 
-world postpass-module {
-    import slicer:common/host-services;
-    import slicer:common/profiling;
-    import slicer:config/config-types;
-
-    use slicer:config/config-types.{config-view};
+interface gcode-postprocess-types {
     use slicer:types/geometry.{extrusion-role};
-    use slicer:common/module-errors.{module-error};
 
     record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
     variant retract-mode { gcode, firmware }
@@ -38,15 +32,25 @@ world postpass-module {
         comment(string),
         raw(string),
     }
+}
 
-    export run-gcode-postprocess: func(
+interface gcode-postprocess {
+    use gcode-postprocess-types.{gcode-command, gcode-output-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
         commands: list<gcode-command>,
         output: gcode-output-builder,
         config: config-view,
     ) -> result<_, module-error>;
+}
 
-    export run-text-postprocess: func(
-        gcode-text: string,
-        config: config-view,
-    ) -> result<string, module-error>;
+world gcode-postprocess-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+
+    import gcode-postprocess-types;
+    export gcode-postprocess;
 }

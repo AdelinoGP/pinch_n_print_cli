@@ -6,8 +6,9 @@
 
 use crate::common::{ctx_with_mesh, flat_plate_object, identity_transform, mesh_fixture};
 use slicer_wasm_host::host::{
-    finalization::slicer::common::host_services as fhs,
-    layer::slicer::common::host_services as lhs, postpass::slicer::common::host_services as pphs,
+    finalization_layer::slicer::common::host_services as fhs,
+    layer::slicer::common::host_services as lhs,
+    postpass_gcode::slicer::common::host_services as pphs,
     prepass::slicer::common::host_services as phs,
 };
 

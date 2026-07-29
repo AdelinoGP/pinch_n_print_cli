@@ -25,5 +25,5 @@ fn binding_surface_matches_manifest() {
         "run-finalization"
     );
     let exports = OverhangClassifierDefault::__slicer_wit_exports();
-    assert!(exports.contains(&"run-finalization"));
+    assert!(exports.contains(&"run"));
 }
