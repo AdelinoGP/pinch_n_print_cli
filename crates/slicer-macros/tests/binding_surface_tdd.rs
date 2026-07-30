@@ -1,6 +1,6 @@
 //! TDD coverage for the TASK-109 real binding/export surface emitted by
 //! `#[slicer_module]`. Verifies the macro now emits schema helpers that
-//! align with the documented WIT worlds in `wit/world-*.wit`
+//! align with the per-stage WIT packages in `wit/deps/<pkg>/`
 //! (docs/03_wit_and_manifest.md, docs/05_module_sdk.md).
 
 #![allow(missing_docs)]
@@ -237,8 +237,8 @@ impl PostpassModule for PostpassTextFixture {
 #[test]
 fn layer_stage_module_reports_layer_world_and_stage_export() {
     assert_eq!(
-        LayerInfillFixture::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        LayerInfillFixture::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(LayerInfillFixture::__slicer_trait_name(), "LayerModule");
     assert_eq!(LayerInfillFixture::__slicer_stage_name(), "Layer::Infill");
@@ -259,8 +259,8 @@ fn layer_module_wit_exports_only_detected_stage() {
 #[test]
 fn layer_stageless_module_lists_no_exports() {
     assert_eq!(
-        LayerLifecycleOnly::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        LayerLifecycleOnly::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(LayerLifecycleOnly::__slicer_stage_export_name(), "");
     let exports = LayerLifecycleOnly::__slicer_wit_exports();
@@ -270,8 +270,8 @@ fn layer_stageless_module_lists_no_exports() {
 #[test]
 fn prepass_mesh_analysis_reports_prepass_world() {
     assert_eq!(
-        PrepassMeshAnalysisFixture::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        PrepassMeshAnalysisFixture::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(
         PrepassMeshAnalysisFixture::__slicer_stage_name(),
@@ -288,8 +288,8 @@ fn prepass_mesh_analysis_reports_prepass_world() {
 #[test]
 fn prepass_layer_planning_reports_prepass_world() {
     assert_eq!(
-        PrepassLayerPlanningFixture::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        PrepassLayerPlanningFixture::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_stage_export_name(),
@@ -300,8 +300,8 @@ fn prepass_layer_planning_reports_prepass_world() {
 #[test]
 fn finalization_module_reports_finalization_world_and_export() {
     assert_eq!(
-        FinalizationFixture::__slicer_world_id(),
-        slicer_schema::WORLD_FINALIZATION
+        FinalizationFixture::__slicer_tier_id(),
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(
         FinalizationFixture::__slicer_stage_name(),
@@ -313,8 +313,8 @@ fn finalization_module_reports_finalization_world_and_export() {
 #[test]
 fn postpass_gcode_module_reports_postpass_world() {
     assert_eq!(
-        PostpassGcodeFixture::__slicer_world_id(),
-        slicer_schema::WORLD_POSTPASS
+        PostpassGcodeFixture::__slicer_tier_id(),
+        slicer_schema::TIER_POSTPASS
     );
     assert_eq!(PostpassGcodeFixture::__slicer_stage_export_name(), "run");
 }
@@ -322,8 +322,8 @@ fn postpass_gcode_module_reports_postpass_world() {
 #[test]
 fn postpass_text_module_reports_postpass_world() {
     assert_eq!(
-        PostpassTextFixture::__slicer_world_id(),
-        slicer_schema::WORLD_POSTPASS
+        PostpassTextFixture::__slicer_tier_id(),
+        slicer_schema::TIER_POSTPASS
     );
     assert_eq!(PostpassTextFixture::__slicer_stage_export_name(), "run");
     assert_eq!(
@@ -336,7 +336,7 @@ fn postpass_text_module_reports_postpass_world() {
 fn binding_schema_json_captures_full_export_surface() {
     let json = LayerInfillFixture::__slicer_binding_schema_json();
     assert!(json.contains(r#""trait":"LayerModule""#));
-    assert!(json.contains(&format!(r#""world":"{}""#, slicer_schema::WORLD_LAYER)));
+    assert!(json.contains(&format!(r#""tier":"{}""#, slicer_schema::TIER_LAYER)));
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""stage_method":"run_infill""#));
     assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@1.0.0#run""#));
@@ -382,8 +382,8 @@ fn prepass_world_trait_passes_guardrail_when_stage_matches() {
     // Regression guard: the world/stage agreement check must not reject
     // a correctly-paired (trait, stage).
     assert_eq!(
-        ValidCrossWorldPrepass::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        ValidCrossWorldPrepass::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(
         ValidCrossWorldPrepass::__slicer_stage_name(),
@@ -400,7 +400,7 @@ fn typed_schema_const_mirrors_string_accessors_for_layer_infill() {
     let s: &'static SlicerModuleSchema = LayerInfillFixture::__slicer_module_schema();
     assert_eq!(s.type_name, "LayerInfillFixture");
     assert_eq!(s.trait_name, "LayerModule");
-    assert_eq!(s.world_id, slicer_schema::WORLD_LAYER);
+    assert_eq!(s.tier_id, slicer_schema::TIER_LAYER);
     assert_eq!(s.stage_id, "Layer::Infill");
     assert_eq!(s.stage_method, "run_infill");
     assert_eq!(s.stage_export, "slicer:layer-infill/infill@1.0.0#run");
@@ -442,16 +442,16 @@ fn typed_schema_covers_every_world() {
     // One assertion per world ensures the macro wires lifecycle/stage
     // correctly across all four WIT worlds documented under docs/03.
     assert_eq!(
-        PrepassMeshAnalysisFixture::__slicer_module_schema().world_id,
-        slicer_schema::WORLD_PREPASS
+        PrepassMeshAnalysisFixture::__slicer_module_schema().tier_id,
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_module_schema().stage_export,
         "slicer:prepass-layer-planning/layer-planning@1.0.0#run"
     );
     assert_eq!(
-        FinalizationFixture::__slicer_module_schema().world_id,
-        slicer_schema::WORLD_FINALIZATION
+        FinalizationFixture::__slicer_module_schema().tier_id,
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().stage_export,

@@ -8,8 +8,8 @@ use wipe_tower::WipeTower;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        WipeTower::__slicer_world_id(),
-        slicer_schema::WORLD_FINALIZATION
+        WipeTower::__slicer_tier_id(),
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(WipeTower::__slicer_trait_name(), "FinalizationModule");
     assert_eq!(

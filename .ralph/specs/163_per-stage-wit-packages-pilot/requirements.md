@@ -85,21 +85,21 @@ Authoritative full matrix. `packet.spec.md` carries only the 3 gate commands.
 | `cargo check --workspace --all-targets` | Whole-tree type check incl. test/bench targets | FACT pass/fail; first error SNIPPET ≤20 lines |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lint gate | FACT pass/fail; first warning SNIPPET ≤20 lines |
 | `cargo test -p slicer-schema` | `STAGES` columns + lookups (unfiltered; prints `0 filtered out`) | FACT pass/fail |
-| `(cargo test -p slicer-schema --test export_for_stage_id_tdd 2>&1 \| rg '^test result') \| rg -v '0 passed'` | ADR-0006 lookup totality over the extended table | FACT pass/fail |
+| `(cargo test -p slicer-schema --test export_for_stage_id_tdd 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | ADR-0006 lookup totality over the extended table | FACT pass/fail |
 | `cargo test -p xtask` | Per-stage WIT staleness unit tests (unfiltered) | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- wit_single_source 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Canonical WIT resolves to the five delivered worlds | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Package-name / bindgen-key drift guards | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 \| rg '^test result') \| rg -v '0 passed'` | AC-N1 — fatal-on-miss, not silent `Ok` | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- postpass_gcode 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Postpass gcode boundary/preservation/empty-list suites survive the split | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- macro_postpass_text 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Macro-authored text round-trip through the new package | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test executor -- finalization 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Finalization deep-copy / mutation / live suites | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test executor -- postpass 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Postpass executor suite | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- wit_single_source 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Canonical WIT resolves to the five delivered worlds | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Package-name / bindgen-key drift guards | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | AC-N1 — fatal-on-miss, not silent `Ok` | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- postpass_gcode 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Postpass gcode boundary/preservation/empty-list suites survive the split | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- macro_postpass_text 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Macro-authored text round-trip through the new package | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test executor -- finalization 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Finalization deep-copy / mutation / live suites | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test executor -- postpass 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Postpass executor suite | FACT pass/fail |
 | `cargo test -p slicer-macros --test binding_surface_tdd` | Emitted binding surface (unfiltered) | FACT pass/fail |
 | `cargo test -p slicer-macros --test all_worlds_glue_tdd` | Per-stage glue emission across every tier (unfiltered) | FACT pass/fail |
-| `(cargo test -p machine-gcode-emit --test slicer_module_binding_tdd 2>&1 \| rg '^test result') \| rg -v '0 passed'` | Pilot core module's binding surface | FACT pass/fail |
-| `(cargo test -p slicer-scheduler --test integration -- manifest_ingestion 2>&1 \| rg '^test result') \| rg -v '0 passed'` | AC-10 — `wit-world` validation still live and green | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| rg '^test result') \| rg -v '0 passed'` | AC-N3 behavior neutrality (baseline `12 passed; 0 failed; 11 ignored`) | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| rg '^test result') \| rg -v '0 passed'` | AC-N3 behavior neutrality (baseline `1 passed; 0 failed`) | FACT pass/fail |
+| `(cargo test -p machine-gcode-emit --test slicer_module_binding_tdd 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | Pilot core module's binding surface | FACT pass/fail |
+| `(cargo test -p slicer-scheduler --test scheduler_integration -- manifest_ingestion 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | AC-10 — `wit-world` validation still live and green | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | AC-N3 behavior neutrality (baseline `3 passed; 0 failed; 0 ignored`) | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| rg '^test result: ok\. [1-9][0-9]* passed')` | AC-N3 behavior neutrality (baseline `1 passed; 0 failed`) | FACT pass/fail |
 
 Packet close (per `CLAUDE.md` §"Test Discipline", dispatch to a sub-agent with a `FACT pass/fail` return, only after every command above has passed): `cargo xtask test --summary --workspace`.
 

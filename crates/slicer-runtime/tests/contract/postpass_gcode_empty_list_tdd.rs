@@ -49,7 +49,7 @@ fn make_loaded_module(id: &str) -> LoadedModule {
         id,
         semver(1, 0, 0),
         "PostPass::GCodePostProcess",
-        slicer_schema::WORLD_POSTPASS,
+        slicer_schema::TIER_POSTPASS,
         PathBuf::from("/dev/null"),
     )
     .min_host_version(semver(0, 1, 0))

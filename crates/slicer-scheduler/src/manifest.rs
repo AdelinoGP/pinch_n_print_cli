@@ -1513,7 +1513,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::SlicePostProcess",
-            slicer_schema::WORLD_LAYER,
+            slicer_schema::TIER_LAYER,
             PathBuf::from("fixtures/test.wasm"),
         )
         .build();
@@ -1541,7 +1541,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::Perimeters",
-            slicer_schema::WORLD_LAYER,
+            slicer_schema::TIER_LAYER,
             PathBuf::from("fixtures/full.wasm"),
         )
         .ir_reads(vec!["SliceIR".to_string()])
@@ -1568,7 +1568,7 @@ mod tests {
                 patch: 0,
             },
             "Layer::Infill",
-            slicer_schema::WORLD_LAYER,
+            slicer_schema::TIER_LAYER,
             PathBuf::from("fixtures/synth.wasm"),
         )
         .config_schema(schema)

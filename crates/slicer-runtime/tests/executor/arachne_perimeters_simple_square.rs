@@ -77,7 +77,7 @@ fn arachne_perimeters_simple_square_produces_walls() {
             patch: 0,
         },
         "Layer::Perimeters",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])

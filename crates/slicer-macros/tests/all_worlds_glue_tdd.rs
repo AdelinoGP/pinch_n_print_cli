@@ -232,11 +232,13 @@ fn macro_emits_world_builder_for_each_supported_world() {
         .nth(1)
         .and_then(|tail| tail.split("let wasm_export_shims").next())
         .expect("active stage glue selection is present");
+    // `retired_layer_glue` / `retired_prepass_glue` were 1,847 lines of
+    // `#[cfg(any())]` code that never compiled and could not be re-enabled
+    // (one `include_str!`d a deleted .wit, the other named an undefined
+    // const). Deleted in packet 164; git holds the history.
     for retired in [
         "build_layer_world_glue",
         "build_prepass_world_glue",
-        "retired_layer_glue",
-        "retired_prepass_glue",
         "world_layer",
         "world_prepass",
     ] {
@@ -322,31 +324,52 @@ fn macro_no_longer_emits_placeholder_shim_for_supported_worlds() {
     );
 }
 
+/// Each of the eight layer stages must delegate to its own `LayerModule`
+/// trait method from its own per-stage glue builder.
+///
+/// This previously asserted `fn run_slice_postprocess` etc. appeared in the
+/// macro source — the signatures of the single tier-world `Guest` impl. Since
+/// packet 164 each stage has its own `Guest` impl whose method is `fn run`, so
+/// those strings survived only inside 1,847 lines of `#[cfg(any())]` dead code
+/// and the assertions passed for the wrong reason. Pin the delegation instead,
+/// which is what the glue actually has to get right.
 #[test]
-fn macro_layer_world_covers_all_eight_stage_exports() {
+fn macro_layer_stages_each_delegate_to_their_sdk_trait_method() {
     let src = macro_src();
-    for export_arm in [
-        "fn run_slice_postprocess",
-        "fn run_perimeters",
-        "fn run_wall_postprocess",
-        "fn run_infill",
-        "fn run_infill_postprocess",
-        "fn run_support",
-        "fn run_support_postprocess",
-        "fn run_path_optimization",
+    for method in [
+        "run_slice_postprocess",
+        "run_perimeters",
+        "run_wall_postprocess",
+        "run_infill",
+        "run_infill_postprocess",
+        "run_support",
+        "run_support_postprocess",
+        "run_path_optimization",
     ] {
+        let delegation = format!("<#self_ty as ::slicer_sdk::traits::LayerModule>::{method}(");
         assert!(
-            src.contains(export_arm),
-            "macro Guest impl for layer-module must implement {export_arm}"
+            src.contains(&delegation),
+            "per-stage layer glue must delegate to LayerModule::{method}"
         );
     }
 }
 
+/// Same correction as the layer case above, for the four prepass stages.
 #[test]
-fn macro_prepass_covers_mesh_analysis_and_layer_planning() {
+fn macro_prepass_stages_each_delegate_to_their_sdk_trait_method() {
     let src = macro_src();
-    assert!(src.contains("fn run_mesh_analysis"));
-    assert!(src.contains("fn run_layer_planning"));
+    for method in [
+        "run_mesh_analysis",
+        "run_layer_planning",
+        "run_seam_planning",
+        "run_support_geometry",
+    ] {
+        let delegation = format!("<#self_ty as ::slicer_sdk::traits::PrepassModule>::{method}(");
+        assert!(
+            src.contains(&delegation),
+            "per-stage prepass glue must delegate to PrepassModule::{method}"
+        );
+    }
 }
 
 #[test]

@@ -8,8 +8,8 @@ use part_cooling::PartCooling;
 #[test]
 fn binding_surface_matches_finalization_stage() {
     assert_eq!(
-        PartCooling::__slicer_world_id(),
-        slicer_schema::WORLD_FINALIZATION
+        PartCooling::__slicer_tier_id(),
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(PartCooling::__slicer_trait_name(), "FinalizationModule");
     assert_eq!(

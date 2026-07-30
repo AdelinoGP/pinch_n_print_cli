@@ -41,7 +41,7 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
         id,
         sem(),
         "PrePass::MeshAnalysis",
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         PathBuf::from("fixtures/mod.wasm"),
     )
     .min_host_version(SemVer {

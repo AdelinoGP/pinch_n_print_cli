@@ -13,14 +13,14 @@ use slicer_ir::{
 };
 use slicer_schema::STAGES;
 
-const LAYER_WORLD: &str = slicer_schema::WORLD_LAYER;
+const LAYER_WORLD: &str = slicer_schema::TIER_LAYER;
 
 #[test]
 fn production_variants_match_world_layer_stages_exactly() {
     // The canonical truth: every `world-layer` stage id in STAGES.
     let expected: BTreeSet<&'static str> = STAGES
         .iter()
-        .filter(|s| s.world_id == LAYER_WORLD)
+        .filter(|s| s.tier_id == LAYER_WORLD)
         .map(|s| s.stage_id)
         .collect();
 

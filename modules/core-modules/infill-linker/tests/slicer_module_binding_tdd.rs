@@ -4,10 +4,7 @@ use infill_linker::InfillLinker;
 
 #[test]
 fn binding_surface_matches_manifest() {
-    assert_eq!(
-        InfillLinker::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
-    );
+    assert_eq!(InfillLinker::__slicer_tier_id(), slicer_schema::TIER_LAYER);
     assert_eq!(InfillLinker::__slicer_trait_name(), "LayerModule");
     assert_eq!(
         InfillLinker::__slicer_stage_name(),

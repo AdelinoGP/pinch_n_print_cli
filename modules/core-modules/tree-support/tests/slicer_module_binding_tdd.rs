@@ -7,7 +7,7 @@ use tree_support::TreeSupport;
 
 #[test]
 fn binding_surface_matches_manifest() {
-    assert_eq!(TreeSupport::__slicer_world_id(), slicer_schema::WORLD_LAYER);
+    assert_eq!(TreeSupport::__slicer_tier_id(), slicer_schema::TIER_LAYER);
     assert_eq!(TreeSupport::__slicer_trait_name(), "LayerModule");
     assert_eq!(TreeSupport::__slicer_stage_name(), "Layer::Support");
     assert_eq!(TreeSupport::__slicer_stage_export_name(), "run");

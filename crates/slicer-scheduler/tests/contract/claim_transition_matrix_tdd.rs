@@ -46,7 +46,7 @@ fn loaded_module(id: &str, stage: &str, claim: &str) -> LoadedModule {
         id,
         semver(0, 1, 0),
         stage,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("/tmp/placeholder.wasm"),
     )
     .claims(vec![claim.to_string()])

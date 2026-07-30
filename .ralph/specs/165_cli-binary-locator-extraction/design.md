@@ -95,7 +95,7 @@ Eight files, above the target of 3. Justification: the packet is a 1→N fan-in 
 
 - IR/manifest contracts: none touched. No config key, no module manifest, no IR type.
 - WIT boundary: none. The new crate must never appear in any guest dependency closure; AC-1's zero-`[dependencies]` check plus dev-dep-only placement enforce it structurally.
-- Determinism/scheduler constraints: none — test plumbing only. G-code output must be byte-identical; the green baseline (`perimeter_parity` 12 passed, `legacy_zero_matches_golden` 1 passed) is the check.
+- Determinism/scheduler constraints: none — test plumbing only. G-code output must be byte-identical; the green baseline (`perimeter_parity` 3 passed, `legacy_zero_matches_golden` 1 passed) is the check.
 
 ## Locked Assumptions and Invariants
 
@@ -107,7 +107,7 @@ Eight files, above the target of 3. Justification: the packet is a 1→N fan-in 
 
 - **Scan-scope over-approximation grows by one crate.** `newest_source_mtime` scans `crates/*/src/**`; the new crate's own `src/` now matches, yet it does not link into `pnp_cli` — so editing the locator itself makes `pnp_cli` look stale until the next `cargo build`. Accepted: rare, one-file, and fails loud-and-safe (a spurious "stale" panic) rather than silent-and-wrong; narrowing the scan to `pnp_cli`'s real dep closure is redesign, out of scope.
 - **Feature unification is the trap the ADR must document, not just avoid.** If a future contributor "simplifies" by folding the helper into `pnp-cli`'s lib, the `report` unification churn returns silently. The ADR's alternative (a) analysis is the guard.
-- **`0 passed` false-pass on every name-filtered gate.** All four name-filtered test commands carry `| rg -v '0 passed'`; the unfiltered whole-crate runs (`cargo check/clippy --all-targets`) do not need it.
+- **`0 passed` false-pass on every name-filtered gate.** All four name-filtered test commands match `^test result: ok\. [1-9][0-9]* passed`, which fails on both `0 passed` and a FAILED run; the unfiltered whole-crate runs (`cargo check/clippy --all-targets`) do not need it.
 - **162 not landed when this packet activates.** The precondition check fails closed (`BLOCKED`); the packet must not proceed against the pre-162 tree, whose sites have different shapes (fallback loops still present, no `staleness_reason`).
 
 ## Context Cost Estimate

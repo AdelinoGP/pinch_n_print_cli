@@ -9,8 +9,8 @@ use overhang_classifier_default::OverhangClassifierDefault;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        OverhangClassifierDefault::__slicer_world_id(),
-        slicer_schema::WORLD_FINALIZATION
+        OverhangClassifierDefault::__slicer_tier_id(),
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(
         OverhangClassifierDefault::__slicer_trait_name(),

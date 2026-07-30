@@ -336,7 +336,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
         id,
         semver(1, 0, 0),
         stage,
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(ir_reads)

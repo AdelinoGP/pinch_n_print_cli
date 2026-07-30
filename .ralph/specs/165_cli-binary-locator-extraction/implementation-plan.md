@@ -84,7 +84,7 @@
 - OrcaSlicer refs: none — no parity content.
 - Verification:
   - `cargo check -p slicer-runtime --all-targets` - FACT pass/fail
-  - `cd F:/slicerProject/pinch_n_print_cli && cargo bench -p slicer-runtime --bench gate_evidence --no-run 2>&1 | tail -3` - FACT pass/fail (compile-only; never run the bench)
+  - `cargo bench -p slicer-runtime --bench gate_evidence --no-run 2>&1 | tail -3` - FACT pass/fail (compile-only; never run the bench)
 - Exit condition: both commands pass AND `rg -c 'fn (pnp_cli_bin|staleness_reason|newest_source_mtime)\(' crates/slicer-runtime/` finds no match. A green check with a surviving local fn body means the site still shadows the crate — step not done.
 
 ### Step 3b: Point the slicer-scheduler site at the crate
@@ -135,7 +135,7 @@
 - OrcaSlicer refs: none — no parity content.
 - Verification:
   - every pipe-suffixed AC command in `packet.spec.md` - FACT PASS/FAIL each
-  - baseline: `perimeter_parity` reports `12 passed; 0 failed` and `legacy_zero_matches_golden` reports `1 passed; 0 failed` (both name-filtered; `0 passed` = FAIL)
+  - baseline: `perimeter_parity` reports `3 passed; 0 failed` and `legacy_zero_matches_golden` reports `1 passed; 0 failed` (both name-filtered; `0 passed` = FAIL)
 - Exit condition: all ACs PASS, clippy clean, baseline green, `rg -q 'TASK-146d' docs/07_implementation_status.md` succeeds. Any red returns to the owning step; do not patch forward from here.
 
 ## Per-Step Budget Roll-Up

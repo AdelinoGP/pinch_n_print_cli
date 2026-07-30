@@ -373,7 +373,7 @@ mod tests {
                 patch: 0,
             },
             stage,
-            slicer_schema::WORLD_LAYER,
+            slicer_schema::TIER_LAYER,
             PathBuf::from(format!("fixtures/{id}.wasm")),
         )
         .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())

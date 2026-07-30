@@ -210,7 +210,7 @@ fn live_module(
         id,
         semver(),
         stage,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         wasm_path,
     )
     .min_host_version(SemVer {

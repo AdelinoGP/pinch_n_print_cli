@@ -8,8 +8,8 @@ use classic_perimeters::ClassicPerimeters;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        ClassicPerimeters::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        ClassicPerimeters::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(ClassicPerimeters::__slicer_trait_name(), "LayerModule");
     assert_eq!(

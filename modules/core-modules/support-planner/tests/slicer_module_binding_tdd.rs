@@ -8,8 +8,8 @@ use support_planner::SupportPlanner;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        SupportPlanner::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        SupportPlanner::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(SupportPlanner::__slicer_trait_name(), "PrepassModule");
     assert_eq!(

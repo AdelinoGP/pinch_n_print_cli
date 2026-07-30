@@ -8,8 +8,8 @@ use lightning_infill::LightningInfill;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        LightningInfill::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        LightningInfill::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(LightningInfill::__slicer_trait_name(), "LayerModule");
     assert_eq!(LightningInfill::__slicer_stage_name(), "Layer::Infill");

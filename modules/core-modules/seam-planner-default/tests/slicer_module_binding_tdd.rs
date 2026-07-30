@@ -8,8 +8,8 @@ use seam_planner_default::SeamPlannerDefault;
 #[test]
 fn binding_surface_matches_seam_planning_stage() {
     assert_eq!(
-        SeamPlannerDefault::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        SeamPlannerDefault::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(SeamPlannerDefault::__slicer_trait_name(), "PrepassModule");
     assert_eq!(

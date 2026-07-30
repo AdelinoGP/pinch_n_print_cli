@@ -7,8 +7,8 @@ use layer_planner_default::DefaultLayerPlanner;
 #[test]
 fn binding_surface_matches_prepass_layer_planning_stage() {
     assert_eq!(
-        DefaultLayerPlanner::__slicer_world_id(),
-        slicer_schema::WORLD_PREPASS
+        DefaultLayerPlanner::__slicer_tier_id(),
+        slicer_schema::TIER_PREPASS
     );
     assert_eq!(DefaultLayerPlanner::__slicer_trait_name(), "PrepassModule");
     assert_eq!(

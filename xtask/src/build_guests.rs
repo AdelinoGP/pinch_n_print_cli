@@ -451,13 +451,13 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     let artifact = ws_root.join(&spec.artifact_path);
     // The guest's own world shadows shared declarations — a name can denote
     // different types in different packages (see `wit_verify`).
-    let world = spec.guest_dir.parent().and_then(|module_dir| {
+    let wit_dir = spec.guest_dir.parent().and_then(|module_dir| {
         module_dir
             .file_name()
             .and_then(|n| n.to_str())
-            .and_then(|name| crate::wit_verify::module_world(module_dir, name))
+            .and_then(|name| crate::wit_verify::module_stage_wit_dir(module_dir, name))
     });
-    let canonical = crate::wit_verify::canonical_type_blocks(ws_root, world.as_deref());
+    let canonical = crate::wit_verify::canonical_type_blocks(ws_root, wit_dir);
     if canonical.is_empty() {
         // No canonical types readable — nothing to verify against.
         return Ok(());

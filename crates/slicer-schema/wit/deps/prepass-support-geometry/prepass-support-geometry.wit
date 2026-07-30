@@ -20,14 +20,6 @@ interface support-geometry-types {
         interface-raft-layers: u32,
     }
 
-    record layer-plan-view-entry {
-        global-layer-index: u32,
-        z: f32,
-        effective-layer-height: f32,
-    }
-    record layer-plan-view {
-        layers: list<layer-plan-view-entry>,
-    }
     record region-segmentation-view-entry {
         object-id: object-id,
         layer-index: u32,
@@ -70,9 +62,8 @@ interface support-geometry-types {
 }
 
 interface support-geometry {
-    use slicer:prepass-types/prepass-types.{mesh-object-view};
-    use support-geometry-types.{layer-plan-view, layer-plan-view-entry,
-        region-segmentation-view, region-segmentation-view-entry,
+    use slicer:prepass-types/prepass-types.{mesh-object-view, layer-plan-view};
+    use support-geometry-types.{region-segmentation-view, region-segmentation-view-entry,
         support-geometry-view, support-geometry-view-entry,
         support-geometry-output};
     use slicer:config/config-types.{config-view};

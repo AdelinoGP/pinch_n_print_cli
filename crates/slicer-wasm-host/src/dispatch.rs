@@ -1221,29 +1221,13 @@ impl WasmRuntimeDispatcher {
                     .iter()
                     .map(host::object_mesh_to_wit_mesh_object_view)
                     .collect();
+                // `layer-plan-view` is declared once in the shared
+                // `slicer:prepass-types` package, so the projector already
+                // yields the exact type this world expects — no re-marshal.
                 let layer_plan_view = layer_plan
                     .as_deref()
-                    .map(|lp| {
-                        let projected = host::project_layer_plan_view(lp);
-                        host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanView {
-                            layers: projected
-                                .layers
-                                .into_iter()
-                                .map(|entry| {
-                                    host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanViewEntry {
-                                        global_layer_index: entry.global_layer_index,
-                                        z: entry.z,
-                                        effective_layer_height: entry.effective_layer_height,
-                                    }
-                                })
-                                .collect(),
-                        }
-                    })
-                    .unwrap_or_else(|| {
-                        host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanView {
-                            layers: Vec::new(),
-                        }
-                    });
+                    .map(host::project_layer_plan_view)
+                    .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
                 let region_input = crate::marshal::in_::project_seam_planning_view(
                     slice_ir.as_deref().map_or(&[], Vec::as_slice),
                     layer_plan.as_deref(),

@@ -48,7 +48,7 @@
 ### Step 2: slicer-schema columns + guards
 
 - Task IDs: `TASK-146c`
-- Objective: fill the 12 rows' `wit_dir`/`wit_package`/`wit_interface`/`wit_world` + `wit_export: "run"`; set the `PrePass::PaintSegmentation` row's five WIT columns to `""` with the host-built-in comment; relax `stage_and_world_lookups_are_consistent` to the "all rows except the documented host-built-in row" shape (TDD: adjust the test first, watch it fail against the old table); correct `WORLD_*` doc comments to tier-vocabulary wording. Do **not** delete `SUPPORTED_WIT_WORLDS` here (Step 8 owns retirement, keeping migration and retirement failures separable).
+- Objective: fill the 12 rows' `wit_dir`/`wit_package`/`wit_interface`/`wit_world` + `wit_export: "run"`; set the `PrePass::PaintSegmentation` row's five WIT columns to `""` with the host-built-in comment; relax `stage_and_world_lookups_are_consistent` to the "all rows except the documented host-built-in row" shape (TDD: adjust the test first, watch it fail against the old table); rename the `WORLD_*` consts to `TIER_*` with bare tier values and `world_id` to `tier_id` (see `design.md` §Design corrections). Do **not** delete `SUPPORTED_WIT_WORLDS` here (Step 8 owns retirement, keeping migration and retirement failures separable).
 - Precondition: Step 1 done.
 - Postcondition: `cargo test -p slicer-schema` passes (schema is a leaf crate; it compiles even while the workspace is red).
 - Files allowed to read:
@@ -168,7 +168,7 @@
 - Expected sub-agent dispatches: AC-N2's script as a FACT dispatch (it rebuilds guests twice; bounded output).
 - Context cost: `M`
 - Authoritative docs: none new.
-- Verification: AC-2; AC-9; AC-N2; `(cargo test -p xtask -- stage_wit 2>&1 | tee target/test-output.log | rg '^test result') | rg -v '0 passed' || echo FAIL`; `(cargo test -p arachne-perimeters --test slicer_module_binding_tdd 2>&1 | tee target/test-output.log | rg '^test result') | rg -v '0 passed' || echo 'FAIL: new arachne binding test absent or 0 ran'` — FACT each.
+- Verification: AC-2; AC-9; AC-N2; `(cargo test -p xtask -- stage_wit 2>&1 | tee target/test-output.log | rg '^test result: ok\. [1-9][0-9]* passed') || echo FAIL`; `(cargo test -p arachne-perimeters --test slicer_module_binding_tdd 2>&1 | tee target/test-output.log | rg '^test result: ok\. [1-9][0-9]* passed') || echo 'FAIL: new arachne binding test absent or 0 ran'` — FACT each.
 - Exit condition: all PASS.
 
 ### Step 10: Docs, deviation closure, backlog
@@ -217,6 +217,7 @@ Aggregate `M`. No step is L; Steps 4-5 are the ones to watch — if either excee
 
 - Re-dispatch every pipe-suffixed AC and gate command.
 - `cargo xtask test --summary --workspace` dispatched to a sub-agent, `FACT` pass/fail + failing names only (CLAUDE.md §Test Discipline; the guest-freshness gate must run — `xtask test`, not bare `cargo test`).
+  **Result (2026-07-30): `VERDICT: FAIL`, blocked by a pre-existing defect, not by this packet.** 245 binaries green; the run aborts fail-fast in `slicer-runtime`'s `executor` binary when `cube_4color_gcode_output_tdd::mmu_no_oversized_alloc_repeat` trips `OomGuard` on a 1.625 GiB allocation. Root cause is `boostvoronoi/console_debug`, a `slicer-core` dev-dependency feature added by packet 183 (`b903620c`) that Cargo unifies across the whole workspace — see **DEV-098**. `crates/slicer-core/Cargo.toml` is untouched by this packet, and the `executor` binary passes 194/194 standalone under the identical ceremony flags. All 14 of this packet's ACs and all 4 gates are green.
 - Record remaining packet-local risk (expected: none beyond preserving packet 181's closed fatal-on-miss invariant; DEV-087 is not reopened or re-implemented).
 - Confirm context stayed at or below 150k standard, or at/below 300k only with a logged swarm ESCALATION; otherwise record a packet-authoring lesson.
 

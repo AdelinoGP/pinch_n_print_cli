@@ -42,7 +42,7 @@ fn loaded_module_for_compat(id: &str, min_ir: SemVer, max_ir: SemVer) -> LoadedM
         id,
         semver(1, 0, 0),
         "Layer::Support",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_writes(vec!["SharedIR.placeholder".to_string()])

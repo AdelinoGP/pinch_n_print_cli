@@ -431,7 +431,7 @@ mod tests {
             id,
             semver(1, 0, 0),
             stage,
-            slicer_schema::WORLD_LAYER,
+            slicer_schema::TIER_LAYER,
             PathBuf::from(format!("fixtures/{id}.wasm")),
         )
         .ir_reads(strings(ir_reads))

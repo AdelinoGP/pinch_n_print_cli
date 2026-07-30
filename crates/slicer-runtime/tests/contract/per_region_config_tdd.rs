@@ -27,7 +27,7 @@ fn echo_bundle(config: ConfigView) -> TestModuleBundle {
             patch: 0,
         },
         "Layer::InfillPostProcess",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {

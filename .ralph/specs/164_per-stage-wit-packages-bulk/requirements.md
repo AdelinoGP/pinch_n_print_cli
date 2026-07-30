@@ -4,7 +4,7 @@
 
 - Grouped task IDs: `TASK-146c`
 - Backlog source: `docs/07_implementation_status.md` (TASK-146 reopened by ADR-0044/0045; sub-lettered per `docs/specs/adr-0045-per-stage-wit-packages-plan.md` §"Task mapping")
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 - Behavioral prerequisite: packet `181-dispatch-missing-component-handling` (TASK-297) is implemented; its five-stage fatal-on-missing-component behavior is consumed and preserved here.
 
@@ -16,7 +16,7 @@ Packet 163 proved the per-stage versioned-package mechanism on the three cheapes
 
 ## In Scope
 
-- 12 new per-stage WIT packages at `@1.0.0` under `crates/slicer-schema/wit/deps/<pkg>/<pkg>.wit`, named by 163's rule (tier from `StageSpec.world_id`, stage name from the `stage_id` local part, kebab-case): `layer-slice-postprocess`, `layer-perimeters`, `layer-perimeters-postprocess`, `layer-infill`, `layer-infill-postprocess`, `layer-support`, `layer-support-postprocess`, `layer-path-optimization`, `prepass-mesh-analysis`, `prepass-layer-planning`, `prepass-seam-planning`, `prepass-support-geometry`. Note `Layer::PerimetersPostProcess` packages as `layer-perimeters-postprocess` even though its legacy export is `run-wall-postprocess` — the rule keys on `stage_id`, never on `wit_export` (163's ledger is explicit).
+- 12 new per-stage WIT packages at `@1.0.0` under `crates/slicer-schema/wit/deps/<pkg>/<pkg>.wit`, named by 163's rule (tier from `StageSpec.tier_id`, stage name from the `stage_id` local part, kebab-case): `layer-slice-postprocess`, `layer-perimeters`, `layer-perimeters-postprocess`, `layer-infill`, `layer-infill-postprocess`, `layer-support`, `layer-support-postprocess`, `layer-path-optimization`, `prepass-mesh-analysis`, `prepass-layer-planning`, `prepass-seam-planning`, `prepass-support-geometry`. Note `Layer::PerimetersPostProcess` packages as `layer-perimeters-postprocess` even though its legacy export is `run-wall-postprocess` — the rule keys on `stage_id`, never on `wit_export` (163's ledger is explicit).
 - One new **unversioned** flat dep package `crates/slicer-schema/wit/deps/prepass-types.wit` (`package slicer:prepass-types;`) holding the view records shared by seam-planning and support-geometry (`mesh-object-view`, `paint-value-view`, `paint-stroke-view`, `paint-layer-view`).
 - Deletion of `crates/slicer-schema/wit/deps/world-layer/` and `deps/world-prepass/`.
 - `crates/slicer-schema/src/lib.rs`: the 12 rows' `wit_dir`/`wit_package`/`wit_interface`/`wit_world` filled, `wit_export` → `"run"`; the `PrePass::PaintSegmentation` row's five WIT columns set to `""` with a host-built-in comment; the 163 totality guard relaxed accordingly; `SUPPORTED_WIT_WORLDS` deleted.
@@ -32,7 +32,7 @@ Packet 163 proved the per-stage versioned-package mechanism on the three cheapes
 ## Out of Scope
 
 - The three pilot stages' packages, glue, bindgen mods, dispatch fns — 163's, consumed as-is.
-- `WORLD_LAYER` / `WORLD_PREPASS` / `WORLD_POSTPASS` / `WORLD_FINALIZATION` consts and `StageSpec.world_id` — **retained** as tier vocabulary (their doc comments are corrected to say "tier id; not a loadable WIT package since packet 164"). 163's design listed them among things "#3 retires", but that overreached the plan's queue row: 30+ files consume them as tier identity (scheduler DAG, instrumentation, macro metadata, dozens of tests), the naming rule itself reads the tier from `world_id`, and deleting them buys no honesty a doc comment doesn't. Recorded as an explicit divergence from 163's expectation in `design.md` §Open Questions.
+- The **tier concept** is retained (30+ files consume it as tier identity and the naming rule reads the tier from it), but its spelling is corrected: `WORLD_*` → `TIER_*` with bare values (`"layer"`, `"prepass"`, `"postpass"`, `"finalization"`), `StageSpec.world_id` → `tier_id`, `SlicerModuleSchema.world_id` → `tier_id`, `__slicer_world_id()` → `__slicer_tier_id()`, metadata JSON key `"world"` → `"tier"`. Retaining `WORLD_LAYER = "slicer:world-layer"` would have left a constant naming a WIT package that no longer exists. Not renamed: `wit_world` / `wit_world_for_stage_id`, which name the per-stage world (e.g. `perimeters-module`). See `design.md` §Design corrections.
 - `ExportKind` / `ExportBinding` structural collapse beyond the metadata qualification above.
 - Per-stage staleness granularity for **test** guests (`[package.metadata.slicer] stage_id` in 12 `Cargo.toml`s) — conservative over-rebuild is safe and correct; deferred again with rationale in `design.md`.
 - The `pnp_cli` binary-locator extraction (packet 165), DEV-085 (custom G-code injection points), and DEV-026 (advisory DAG).
@@ -55,7 +55,7 @@ Reference, never copy, criteria from `packet.spec.md`.
 
 - Positive: `AC-1` (WIT shape ×12 + prepass-types + tier dirs gone), `AC-2` (STAGES totality incl. the host-built-in exception), `AC-3` (15 `bindgen!` mods, `with:` discipline), `AC-4` (dispatch rewiring + executor suite), `AC-5` (macro glue split, fallbacks dead), `AC-6` (decoded guest exports), `AC-7` (`wit-world` retirement end-to-end), `AC-8` (deviation closure), `AC-9` (contract-guard suites on the 15-package surface).
 - Negative: `AC-N1` (fatal-on-miss, layer case, engine's expected-only wording), `AC-N2` (isolation: touch one stage's `.wit`, unrelated core guests stay FRESH and byte-identical — the ADR's headline claim, now on the motivating tier), `AC-N3` (manifest loads without `wit-world`; legacy key tolerated-ignored), `AC-N4` (behavior-neutrality baseline), `AC-N5` (packet 181's existing five-stage fatal-on-missing-component test remains green after dispatch restructuring).
-- Cross-packet impact: consumes 163's exports ledger wholesale; closes the deviation row 163 files; leaves nothing for a successor — after this packet exactly one contract mechanism exists. Diverges from 163's expectation on `WORLD_*`/`world_id` retirement (kept as vocabulary; see Out of Scope).
+- Cross-packet impact: consumes 163's exports ledger wholesale; closes the deviation row 163 files; leaves nothing for a successor — after this packet exactly one contract mechanism exists. Diverges from 163's expectation on `WORLD_*`/`world_id` retirement: the concept is kept but renamed to `TIER_*`/`tier_id` (see Out of Scope and `design.md` §Design corrections).
 
 ## Verification Commands
 
@@ -66,14 +66,14 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 | `cargo xtask build-guests --check` (rebuild without `--check` if STALE) | guest freshness before believing any failure | FACT clean/STALE list |
 | `cargo check --workspace --all-targets` | tree compiles incl. test targets | FACT pass/fail; SNIPPETS ≤20 lines on failure |
 | `cargo test -p slicer-schema 2>&1 \| tee target/test-output.log` (unfiltered) | STAGES columns, lookups, relaxed totality guard | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- wit_single_source 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | canonical WIT resolves, 15 worlds | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | package pins, `major >= 1` across all 15 | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | fatal-on-miss incl. new layer case | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- wit_single_source 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | canonical WIT resolves, 15 worlds | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- wit_drift_detection 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | package pins, `major >= 1` across all 15 | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test contract -- stage_miss_is_fatal_at_instantiation 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | fatal-on-miss incl. new layer case | FACT pass/fail |
 | `cargo test -p slicer-runtime --test executor 2>&1 \| tee target/test-output.log` (unfiltered) | layer/prepass/postpass/finalization dispatch round-trips | FACT pass/fail + failing names |
-| `(cargo test -p slicer-scheduler --test integration -- manifest_ingestion 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | manifest parses without `wit-world`; legacy key ignored | FACT pass/fail |
-| `(cargo test -p xtask -- stage_wit 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | per-stage staleness charging still holds with 12 more dirs | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | behavior-neutrality (12 passed expected) | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed' \|\| echo FAIL` | golden G-code unchanged | FACT pass/fail |
+| `(cargo test -p slicer-scheduler --test scheduler_integration -- manifest_ingestion 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | manifest parses without `wit-world`; legacy key ignored | FACT pass/fail |
+| `(cargo test -p xtask -- stage_wit 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | per-stage staleness charging still holds with 12 more dirs | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | behavior-neutrality (3 passed expected) | FACT pass/fail |
+| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed') \|\| echo FAIL` | golden G-code unchanged | FACT pass/fail |
 | `cargo clippy --workspace --all-targets -- -D warnings` | lint gate | FACT pass/fail |
 | `cargo xtask test --summary --workspace` | packet-close acceptance ceremony ONLY, after all narrower gates pass | dispatch to sub-agent; FACT pass/fail + failing names only |
 

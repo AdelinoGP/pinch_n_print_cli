@@ -39,6 +39,13 @@ const TEXT_POSTPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../slicer-wasm-host/test-guests/sdk-postpass-text-guest.component.wasm"
 );
+/// Exports `slicer:layer-infill/infill@1.0.0` and nothing else. Used by
+/// `stage_miss_is_fatal_at_instantiation`'s layer case as a guest that
+/// provably cannot satisfy `Layer::Perimeters`.
+const LAYER_INFILL_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../slicer-wasm-host/test-guests/layer-infill-guest.component.wasm"
+);
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
     Arc::new(MeshIR::default())
@@ -62,7 +69,7 @@ fn make_bundle(
             patch: 0,
         },
         stage,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {
@@ -468,12 +475,18 @@ fn dispatch_error_display_includes_all_diagnostic_fields() {
 /// exact wording, and forbids any "found @x.y.z" fragment the engine does
 /// not produce (the diagnostic names only what the host wanted).
 ///
-/// The test instantiates a real `sdk-postpass-text-guest` (which exports
-/// only the text postprocess interface) and dispatches
-/// `PostPass::GCodePostProcess` at it. Per packet 163, the gcode and text
-/// stages now live in distinct per-stage packages, so the text guest does
-/// not (and cannot) export the gcode interface — wasmtime's typed
-/// instantiation must surface this as a fatal `DispatchError`.
+/// Two cases, one test (163's exports ledger: "add cases, not a second
+/// test"):
+///
+///  1. **Postpass** — a real `sdk-postpass-text-guest` (text interface only)
+///     dispatched at `PostPass::GCodePostProcess`. Per packet 163 the gcode
+///     and text stages live in distinct per-stage packages, so the text
+///     guest cannot export the gcode interface.
+///  2. **Layer** (packet 164 AC-N1) — `layer-infill-guest` (infill interface
+///     only) dispatched at `Layer::Perimeters`, on the tier that motivated
+///     ADR-0045. This case pins the engine's expected-only wording exactly.
+///
+/// Both must surface as a fatal error at typed instantiation, never `Ok`.
 #[test]
 fn stage_miss_is_fatal_at_instantiation() {
     // The text-only SDK guest. It compiles to a per-stage world that
@@ -482,17 +495,18 @@ fn stage_miss_is_fatal_at_instantiation() {
         env!("CARGO_MANIFEST_DIR"),
         "/../slicer-wasm-host/test-guests/sdk-postpass-text-guest.component.wasm"
     );
-    let path = Path::new(TEXT_GUEST_PATH);
-    if !path.exists() {
-        // The text round-trip guest is built on demand by the macro; if
-        // it has not been built yet, skip rather than fail (this test
-        // requires a live `.component.wasm`).
-        eprintln!(
-            "skipping stage_miss_is_fatal_at_instantiation: {} not found",
-            TEXT_GUEST_PATH
-        );
-        return;
-    }
+    // A missing guest is a build error, never a reason to skip. Skipping
+    // here reported `1 passed` while asserting nothing, which is exactly
+    // the false-green the AC's `rg` guard cannot detect. Guests are built
+    // by `cargo xtask build-guests` (CLAUDE.md §"Guest WASM Staleness").
+    assert!(
+        Path::new(TEXT_GUEST_PATH).exists(),
+        "{TEXT_GUEST_PATH} not found — run `cargo xtask build-guests` before this suite",
+    );
+    assert!(
+        Path::new(LAYER_INFILL_GUEST_PATH).exists(),
+        "{LAYER_INFILL_GUEST_PATH} not found — run `cargo xtask build-guests` before this suite",
+    );
 
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -578,5 +592,86 @@ fn stage_miss_is_fatal_at_instantiation() {
         message.contains(engine_miss_wording) || message.contains(engine_linker_wording),
         "FatalModule.message must include an engine-issued miss diagnostic \
          (`{engine_miss_wording}` or `{engine_linker_wording}`); got: {message}",
+    );
+
+    // ── Layer case (packet 164 AC-N1) ─────────────────────────────────────
+    //
+    // The tier that motivated ADR-0045. `layer-infill-guest` exports
+    // `slicer:layer-infill/infill@1.0.0` and nothing else, so dispatching
+    // `Layer::Perimeters` at it must fail at typed instantiation naming the
+    // perimeters package. Unlike the postpass case above this pins the
+    // engine's expected-only wording exactly: both worlds import the same
+    // `slicer:ir-handles` resources, so the linker resolves and the failure
+    // is a genuine missing-export, not a resource-linking miss.
+    let layer_component = wasm_cache::compiled_component_at(Path::new(LAYER_INFILL_GUEST_PATH));
+    let layer_bundle = make_bundle(
+        "layer-infill-guest",
+        "Layer::Perimeters",
+        Some(layer_component),
+    );
+    let layer_blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let layer_arena = LayerArena::new();
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    let layer_live = layer_bundle.as_live();
+    let layer_result = LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::Perimeters".to_string(),
+        &layer,
+        &layer_live,
+        layer_input(&layer_blackboard, &layer_arena),
+    );
+
+    use slicer_ir::LayerStageError;
+
+    let layer_err = layer_result.expect_err(
+        "dispatching `Layer::Perimeters` at the infill-only guest must be a \
+         LayerStageError, not silent success (AC-N1)",
+    );
+    let (layer_stage_id, layer_module_id, layer_message) = match &layer_err {
+        LayerStageError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } => (stage_id.clone(), module_id.clone(), message.clone()),
+        other => panic!("layer miss must produce LayerStageError::FatalModule, got {other:?}"),
+    };
+    assert_eq!(
+        layer_stage_id, "Layer::Perimeters",
+        "FatalModule.stage_id must be the stage that was dispatched",
+    );
+    assert_eq!(
+        layer_module_id, "layer-infill-guest",
+        "FatalModule.module_id must be the wired module",
+    );
+
+    let layer_qualified = slicer_schema::qualified_export_for_stage_id("Layer::Perimeters")
+        .expect("Layer::Perimeters must be migrated to a per-stage package");
+    assert_eq!(
+        layer_qualified, "slicer:layer-perimeters/perimeters@1.0.0#run",
+        "the qualified export spelling is the packet's public contract",
+    );
+    assert!(
+        layer_message.contains(&layer_qualified),
+        "FatalModule.message must name the qualified export `{layer_qualified}`; \
+         got: {layer_message}",
+    );
+    // Exact engine wording — no disjunction. ADR-0045 §"Verified
+    // empirically, not just read": wasmtime names only what the host
+    // wanted, so a "found @x.y.z" fragment would be fabricated.
+    assert!(
+        layer_message
+            .contains("no exported instance named `slicer:layer-perimeters/perimeters@1.0.0`"),
+        "FatalModule.message must carry the engine's expected-only miss \
+         diagnostic naming the perimeters interface; got: {layer_message}",
+    );
+    assert!(
+        !layer_message.contains("found @"),
+        "wasmtime does not emit a `found @x.y.z` fragment; got: {layer_message}",
     );
 }

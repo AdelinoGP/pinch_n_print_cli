@@ -737,7 +737,7 @@ fn bundle_with_component(
             patch: 0,
         },
         stage,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {

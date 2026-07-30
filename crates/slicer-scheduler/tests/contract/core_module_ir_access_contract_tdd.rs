@@ -377,7 +377,7 @@ fn seam_placer_narrow_manifest_write_validates() {
         "com.core.seam-placer",
         semver(0, 1, 0),
         "Layer::PerimetersPostProcess",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
     )
     .ir_reads(vec!["PerimeterIR".into()])
@@ -445,7 +445,7 @@ fn coarse_write_rejected_against_narrow_manifest() {
         "com.core.perimeter-gen",
         semver(0, 1, 0),
         "Layer::Perimeters",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
     )
     .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])
@@ -503,7 +503,7 @@ fn perimeter_narrow_write_audit() {
         "com.core.perimeter-gen",
         semver(0, 1, 0),
         "Layer::Perimeters",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
     )
     .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])
@@ -575,7 +575,7 @@ fn reads_match_at_root_granularity_writes_do_not() {
         "com.test.granularity",
         semver(0, 1, 0),
         "Layer::PerimetersPostProcess",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
     )
     .ir_reads(vec!["PerimeterIR".into()])
@@ -638,7 +638,7 @@ fn read_of_an_undeclared_root_is_still_flagged() {
         "com.test.foreign-root",
         semver(0, 1, 0),
         "Layer::PerimetersPostProcess",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
     )
     .ir_reads(vec!["PerimeterIR".into()])

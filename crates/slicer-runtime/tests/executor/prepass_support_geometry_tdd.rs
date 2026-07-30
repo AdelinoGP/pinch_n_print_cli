@@ -199,7 +199,7 @@ fn loaded_support_planner_module(id: &str, wasm_path: PathBuf) -> LoadedModule {
         id,
         semver(0, 1, 0),
         "PrePass::SupportGeometry",
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         wasm_path,
     )
     .ir_reads(vec![
@@ -671,7 +671,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         module_id,
         semver(0, 1, 0),
         stage_id,
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .claims(vec!["support-planner".to_string()])

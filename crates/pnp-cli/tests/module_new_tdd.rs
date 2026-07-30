@@ -121,7 +121,7 @@ fn stage_mesh_analysis() {
     let lib = fs::read_to_string(tmp.path().join("mesh-tool/src/lib.rs")).unwrap();
     assert!(lib.contains("run_mesh_analysis"));
     let manifest = fs::read_to_string(tmp.path().join("mesh-tool/mesh-tool.toml")).unwrap();
-    assert!(manifest.contains(slicer_schema::WORLD_PREPASS));
+    assert!(manifest.contains("slicer:prepass-mesh-analysis/mesh-analysis@1.0.0#run"));
 }
 
 #[test]
@@ -136,8 +136,10 @@ fn stage_paint_segmentation_is_scaffoldable_per_architecture() {
     let tmp = run_new("paint-seg", "PrePass::PaintSegmentation").unwrap();
     let lib = fs::read_to_string(tmp.path().join("paint-seg/src/lib.rs")).unwrap();
     assert!(lib.contains("run_paint_segmentation"));
+    // Host-built-in since packet 97: no WIT package, so the scaffold must say
+    // so rather than advertise an export that exists nowhere.
     let manifest = fs::read_to_string(tmp.path().join("paint-seg/paint-seg.toml")).unwrap();
-    assert!(manifest.contains(slicer_schema::WORLD_PREPASS));
+    assert!(manifest.contains("host-built-in"));
 }
 
 #[test]
@@ -162,10 +164,10 @@ fn stage_path_optimization_is_scaffoldable_per_architecture() {
 }
 
 #[test]
-fn stage_layer_infill_scaffolds_layer_world_v1_0_0_for_backcompat() {
+fn stage_layer_infill_scaffolds_its_per_stage_package() {
     let tmp = run_new("plain-infill", "Layer::Infill").unwrap();
     let manifest = fs::read_to_string(tmp.path().join("plain-infill/plain-infill.toml")).unwrap();
-    assert!(manifest.contains(slicer_schema::WORLD_LAYER));
+    assert!(manifest.contains("slicer:layer-infill/infill@1.0.0#run"));
 }
 
 #[test]
@@ -174,7 +176,7 @@ fn stage_gcode_postprocess() {
     let lib = fs::read_to_string(tmp.path().join("gcode-fix/src/lib.rs")).unwrap();
     assert!(lib.contains("run_gcode_postprocess"));
     let manifest = fs::read_to_string(tmp.path().join("gcode-fix/gcode-fix.toml")).unwrap();
-    assert!(manifest.contains(slicer_schema::WORLD_POSTPASS));
+    assert!(manifest.contains("slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"));
 }
 
 #[test]
@@ -185,11 +187,13 @@ fn stage_text_postprocess() {
 }
 
 #[test]
-fn stage_layer_finalization_uses_finalization_world() {
+fn stage_layer_finalization_uses_its_per_stage_package() {
     let tmp = run_new("layer-finalizer", "PostPass::LayerFinalization").unwrap();
     let manifest =
         fs::read_to_string(tmp.path().join("layer-finalizer/layer-finalizer.toml")).unwrap();
-    assert!(manifest.contains(slicer_schema::WORLD_FINALIZATION));
+    assert!(
+        manifest.contains("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run")
+    );
     let lib = fs::read_to_string(tmp.path().join("layer-finalizer/src/lib.rs")).unwrap();
     assert!(lib.contains("run_finalization"));
 }

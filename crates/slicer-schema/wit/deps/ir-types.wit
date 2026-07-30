@@ -39,7 +39,8 @@ interface ir-handles {
     type surface-group-id = u64;
 
     /// Read-side surface group record (populated from `SurfaceClassificationIR`).
-    /// Distinct from `surface-group-proposal` in `world-prepass.wit`, which is the
+    /// Distinct from `surface-group-proposal` in
+    /// `prepass-mesh-analysis/prepass-mesh-analysis.wit`, which is the
     /// smaller PrePass write type.
     record surface-group {
         id: surface-group-id,

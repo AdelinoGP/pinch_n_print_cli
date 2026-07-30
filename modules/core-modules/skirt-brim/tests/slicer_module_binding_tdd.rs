@@ -8,8 +8,8 @@ use skirt_brim::SkirtBrim;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        SkirtBrim::__slicer_world_id(),
-        slicer_schema::WORLD_FINALIZATION
+        SkirtBrim::__slicer_tier_id(),
+        slicer_schema::TIER_FINALIZATION
     );
     assert_eq!(SkirtBrim::__slicer_trait_name(), "FinalizationModule");
     assert_eq!(

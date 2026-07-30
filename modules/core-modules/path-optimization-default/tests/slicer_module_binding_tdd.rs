@@ -8,8 +8,8 @@ use path_optimization_default::PathOptimizationDefault;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        PathOptimizationDefault::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        PathOptimizationDefault::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(
         PathOptimizationDefault::__slicer_trait_name(),

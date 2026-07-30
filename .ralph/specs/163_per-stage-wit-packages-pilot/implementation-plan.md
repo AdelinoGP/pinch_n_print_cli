@@ -240,7 +240,7 @@
 - Task IDs: `TASK-146b`
 - Objective: run the packet's two load-bearing proofs — AC-12 (real typed instantiation + real host↔guest resource round-trip through each pilot stage, the falsifier for `with:`-mapped resource identity across 4→5 `bindgen!` calls) and AC-8 (rebuilt artifacts decode to versioned interface exports; `arachne-perimeters` decodes none) — then AC-N3 (behavior neutrality) and AC-10 (#3's surface untouched). Fix only what these falsify.
 - Precondition: Step 8 complete; `cargo xtask build-guests --check` reports 0 stale.
-- Postcondition: AC-8, AC-10, AC-12 and AC-N3 green. `perimeter_parity` still `12 passed; 0 failed; 11 ignored` and `legacy_zero_matches_golden` still `1 passed; 0 failed` against the committed `ff21378e` baseline.
+- Postcondition: AC-8, AC-10, AC-12 and AC-N3 green. `perimeter_parity` still `3 passed; 0 failed; 0 ignored` and `legacy_zero_matches_golden` still `1 passed; 0 failed` against the committed `ff21378e` baseline.
 - Files allowed to read, with ranges when over 300 lines:
   - none by default — this is a verification step. Open a failing test's assertion (±40 lines) only when a command fails.
 - Files allowed to edit (at most 3):

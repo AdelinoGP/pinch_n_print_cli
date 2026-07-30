@@ -18,7 +18,7 @@ Verified against the tree at authoring time (`spec(163)` HEAD) — re-derive aft
 
 ## Architecture Constraints
 
-- **Consume 163's decisions; do not re-derive them.** The naming rule (`slicer:<tier>-<stage-local-kebab>@1.0.0`, tier from `StageSpec.world_id`, never from splitting `stage_id`, never from `wit_export`), `wit_export == "run"`, the imported-`-types`/exported-`run` shape, fatal-on-miss with the engine's expected-only diagnostic, `@1.0.0` as mechanically load-bearing (`alternate_lookup_key` major-track requires major ≥ 1), and conservative `stage_wit_mtime` all come from `.ralph/specs/163_per-stage-wit-packages-pilot/design.md` §"Exports handed to packet #3".
+- **Consume 163's decisions; do not re-derive them.** The naming rule (`slicer:<tier>-<stage-local-kebab>@1.0.0`, tier from `StageSpec.tier_id` (named `world_id` when 163 wrote this), never from splitting `stage_id`, never from `wit_export`), `wit_export == "run"`, the imported-`-types`/exported-`run` shape, fatal-on-miss with the engine's expected-only diagnostic, `@1.0.0` as mechanically load-bearing (`alternate_lookup_key` major-track requires major ≥ 1), and conservative `stage_wit_mtime` all come from `.ralph/specs/163_per-stage-wit-packages-pilot/design.md` §"Exports handed to packet #3".
 - **A resource in an exported interface is guest-owned** (ADR-0045 §"The naive shape inverts resource ownership"). The four prepass resources are host-implemented today (`crates/slicer-wasm-host/src/host.rs` prepass resource impls), so each moves to that stage's **imported** `<iface>-types` interface. The 8 layer packages need **no** `-types` companion — `world-layer.wit` takes every type from the imported `slicer:ir-handles/ir-handles` / `slicer:config/config-types` / `slicer:common/module-errors`, exactly the shape 163 predicted ("most layer packages will need no `-types` companion at all" — confirmed: all 8).
 - **One Rust type set across worlds (ADR-0002).** Every new `bindgen!` mod repeats the five-key `with:` block verbatim from 163's pilot mods. The new shared `slicer:prepass-types/prepass-types` interface follows the same discipline: one mod defines its bindings; every other mod importing it aliases via `with:`. Records need this as much as resources do — without the alias, `MeshObjectView` becomes two distinct Rust types and every host converter forks.
 - **ADR-0006:** all new columns/lookups read `STAGES`; no parallel table anywhere (including `xtask`, which already goes through `wit_dir_for_stage_id`).
@@ -85,7 +85,7 @@ The other seven repeat this with their own `use` lists and signatures, copied fr
 - `prepass-mesh-analysis` / `mesh-analysis-types`: `facet-class`, `facet-annotation`, `surface-group-proposal`, `resource mesh-analysis-output`, plus a local `type object-id = string`.
 - `prepass-layer-planning` / `layer-planning-types`: `region-layer-proposal`, `layer-proposal`, `resource layer-plan-output`, local `object-id`/`region-id` aliases.
 - `prepass-seam-planning` / `seam-planning-types`: `seam-reason`, `scored-seam-candidate`, `seam-plan-entry`, `resource seam-planning-output`; `use slicer:prepass-types/prepass-types.{mesh-object-view}` in the exported interface's `run` signature.
-- `prepass-support-geometry` / `support-geometry-types`: `support-plan-entry`, `layer-plan-view-entry`, `layer-plan-view`, `region-segmentation-view-entry`, `region-segmentation-view`, `support-geometry-view-entry`, `support-geometry-view`, `resource support-geometry-output`; uses `mesh-object-view` from `slicer:prepass-types`.
+- `prepass-support-geometry` / `support-geometry-types`: `support-plan-entry`, `region-segmentation-view-entry`, `region-segmentation-view`, `support-geometry-view-entry`, `support-geometry-view`, `resource support-geometry-output`; uses `mesh-object-view` **and `layer-plan-view`** from `slicer:prepass-types`. `layer-plan-view`/`layer-plan-view-entry` are declared **once**, in `prepass-types`, because seam-planning and support-geometry marshal the same record — declaring it in both packages produced two Rust types and a per-dispatch re-marshal loop (ADR-0002).
 - The trivial `type` aliases (`object-id`, `region-id`, `layer-idx`) are duplicated locally where needed — they alias `string`/`s32` and carry no cross-package identity; duplicating them avoids a dependency for nothing. `layer-idx` is declared in `world-prepass.wit` today but appears in **no prepass signature or record** — the implementer verifies and drops it where unused rather than porting it ritually.
 
 **`deps/prepass-types.wit`** (new, flat, **unversioned** — the same cross-package-resolution rule that keeps `slicer:common` unversioned, documented in `crates/slicer-schema/wit/README.md`):
@@ -111,7 +111,7 @@ Being flat under `deps/`, it is charged to **every** guest by 163's narrowed `co
 - 12 rows: `wit_dir`/`wit_package`/`wit_interface`/`wit_world` per the name table, `wit_export: "run"`.
 - `PrePass::PaintSegmentation` row: all five WIT columns `""`, comment `// Host-built-in since packet 97 (crates/slicer-runtime/src/prepass.rs); no WIT contract.` `export_for_stage_id` consequently returns `Some("")` for it — acceptable because no dispatcher reaches it (the host-builtin path in `prepass.rs` never consults the export table); `qualified_export_for_stage_id` and the three package lookups already return `None` on empty per 163's implementation. Guard: extend `stage_and_world_lookups_are_consistent` to assert exactly one row has empty WIT columns and it is `PrePass::PaintSegmentation`.
 - Delete `SUPPORTED_WIT_WORLDS` (its rustdoc link to `WORLD_LIFECYCLE_EXPORTS` was already re-pointed by 162; deleting the const kills the last `wit-world` anchor).
-- `WORLD_*` consts and `world_id` column: **kept**, doc comments corrected to "tier id (vocabulary); not a loadable WIT package since packet 164". See Open Questions for the recorded divergence from 163's expectation.
+- `WORLD_*` consts and the `world_id` column: **kept as a concept, renamed to say what they are** — `TIER_LAYER`/`TIER_PREPASS`/`TIER_POSTPASS`/`TIER_FINALIZATION` carrying bare values (`"layer"`, `"prepass"`, …), `StageSpec.tier_id`, `SlicerModuleSchema.tier_id`, `__slicer_tier_id()`, and the guest metadata JSON key `"tier"`. See §Design corrections.
 - Metadata qualification (163 `[FWD]` consumed): `SlicerModuleSchema.stage_export` doc + macro emission change to the qualified spelling `slicer:<pkg>/<iface>@1.0.0#run`; `ExportBinding.name` follows. One move, all 15 WASM stages, no half-qualified surface.
 
 ### slicer-wasm-host
@@ -134,6 +134,7 @@ Being flat under `deps/`, it is charged to **every** guest by 163's narrowed `co
 
 ### Test guests
 
+- **Seven new per-stage dispatch guests** (§Design corrections): `dispatch-layer-{perimeters, perimeters-postprocess, slice-postprocess, infill-postprocess, support-postprocess, path-optimization}-guest` and `prepass-layer-planning-guest`. With padding arms gone a guest exports exactly one stage, so per-stage dispatch tests need per-stage guests.
 - Hand-written retargets (same recipe as 163's `postpass-guest`): `prepass-guest` (today targets `slicer:world-prepass/prepass-module`; keep only the stage(s) its consumers exercise — delegate a consumer survey first, and if it pads multiple prepass stages, split or narrow exactly as 163 narrowed `postpass-guest` to gcode-only), `layer-infill-guest` → `slicer:layer-infill/infill-module`, `infill-postprocess-echo-guest` → `slicer:layer-infill-postprocess/infill-postprocess-module`, `path-optimization-multi-read` → `slicer:layer-path-optimization/path-optimization-module`. Each: `generate!` `world:` retarget + `impl exports::slicer::<pkg>::<iface>::Guest` + `fn run`.
 - Macro-authored guests (`sdk-layer-infill-guest`, `sdk-layer-pathopt-guest`, `sdk-prepass-guest`, plus all 15 core modules): regenerated by the macro, no source edits.
 - Core-module `slicer_module_binding_tdd.rs` sweep — derive the file set at point of use (`ls modules/core-modules/*/tests/slicer_module_binding_tdd.rs`; 14 layer/prepass files at authoring time): expectation updates for `__slicer_stage_export_name() == "run"` and the qualified `stage_export` (exact new strings per the name table). **Plus one new file**: `modules/core-modules/arachne-perimeters/tests/slicer_module_binding_tdd.rs` — arachne-perimeters is the module ADR-0045 and AC-N2 use as the headline isolation example, yet it is the only layer/prepass module with no binding-surface guard; copy `classic-perimeters`' test shape (same stage, same expected strings). In scope because it is one small file, closes the sweep's only hole, and directly guards the surface this packet changes.
@@ -150,7 +151,8 @@ More than three primaries, unavoidably — the same six-layer simultaneous move 
 - `crates/slicer-scheduler/src/manifest.rs` — `wit_world` surface deleted.
 - `crates/pnp-cli/src/module_new.rs` — scaffold cleanup.
 - `modules/core-modules/*/*.toml` (20) — one-line mechanical edits; `modules/core-modules/*/tests/slicer_module_binding_tdd.rs` (derive set via `ls`; 14 exist) — expectation updates; plus one new `modules/core-modules/arachne-perimeters/tests/slicer_module_binding_tdd.rs`.
-- `crates/slicer-wasm-host/test-guests/{prepass-guest,layer-infill-guest,infill-postprocess-echo-guest,path-optimization-multi-read}/src/lib.rs` — retargets.
+- `crates/slicer-wasm-host/test-guests/{prepass-guest,layer-infill-guest,infill-postprocess-echo-guest,path-optimization-multi-read}/src/lib.rs` — retargets; plus seven new per-stage dispatch guest crates (§Design corrections).
+- `xtask/src/build_guests.rs` — the `stage_wit_dir_is_charged_only_to_matching_guest` test only (§Design corrections).
 - `crates/slicer-runtime/tests/contract/{wit_single_source_tdd.rs,wit_drift_detection_tdd.rs,dispatch_protocol_tdd.rs}`, `crates/slicer-scheduler/tests/integration/manifest_ingestion_tdd.rs` (+ the manifest-fixture helpers `rg` finds), `crates/slicer-macros/tests/*` — guard updates.
 - `crates/slicer-schema/wit/README.md`, `docs/03_wit_and_manifest.md`, `CONTEXT.md`, `docs/07_implementation_status.md`, `docs/DEVIATION_LOG.md` — per Doc Impact.
 
@@ -172,7 +174,7 @@ Line hints below were verified pre-162/163 and **will shift**; re-verify each ag
 
 - `OrcaSlicerDocumented/` — not applicable; a step tempted here is wrong.
 - `target/`, `crates/slicer-wasm-host/test-guests/target/`, `Cargo.lock`, any `.wasm` — never load; inspect artifacts only via `wasm-tools component wit <path> | grep`.
-- 163's deliverables as *edit* targets: `deps/{postpass-gcode-postprocess,postpass-text-postprocess,finalization-layer-finalization}/`, the three pilot glue builders, the three pilot dispatch runners, `stage_wit_mtime`/`compute_shared_mtime` in `xtask` — consumed, not modified (**exception:** the pilot mods' `with:` value strings in `host.rs` re-point when the canonical definer moves off `layer` — that one edit is in scope; nothing else in the pilot surface is).
+- 163's deliverables as *edit* targets: `deps/{postpass-gcode-postprocess,postpass-text-postprocess,finalization-layer-finalization}/`, the three pilot glue builders, the three pilot dispatch runners, `stage_wit_mtime`/`compute_shared_mtime` in `xtask` — consumed, not modified. **Two exceptions, both in scope:** the pilot mods' `with:` value strings in `host.rs` re-point when the canonical definer moves off `layer`; and `xtask/src/build_guests.rs`'s `stage_wit_dir_is_charged_only_to_matching_guest` test, whose old assertion pinned the now-false `Layer::Perimeters` → `world-layer` fallback (§Design corrections).
 - `crates/slicer-runtime/src/prepass.rs` (the PaintSegmentation host-builtin) — read-only evidence; no edits.
 - `crates/slicer-runtime/src/run.rs` DAG-advisory surface (DEV-026) — do not touch. The five `MissingComponent` arms in `dispatch.rs` are a behavior-preserving refactor surface: packet 164 may relocate them with their stage routers, but may not weaken their fatal-on-miss result; packet 181 owns the behavior and its existing five-stage gate.
 - `docs/specs/adr-0045-per-stage-wit-packages-plan.md` — ranged reads of three sections only.
@@ -210,7 +212,7 @@ Line hints below were verified pre-162/163 and **will shift**; re-verify each ag
 - **The `with:` canonical-definer move is the highest-risk edit** (15 mods × 5-6 alias strings, all must agree). Mitigation: do it in the same step that creates the mods, gate with `cargo check -p slicer-wasm-host`, and treat any `imported interface ... has the wrong type` linker error as a path mismatch before suspecting the design.
 - **Tree is red from the WIT step until dispatch lands** (six layers move together, as in 163). The step order pins this; no compile exit before the gate step.
 - **`dispatch_layer_call` restructuring moves ~8 marshalling arms.** The arms' bodies are copy-moves, but the surrounding pool-lease/store/config-handle scaffolding is per-call and must be replicated per arm or hoisted; the step contract requires the executor suite (unfiltered), AC-N4, and packet 181's existing `missing_component_is_fatal_for_all_five_stages` gate as falsifiers. The five fatal `MissingComponent` arms may move with the routers, but their behavior must not change.
-- **`prepass-guest` may pad multiple prepass stages today.** Its consumer survey decides narrow-vs-split; wrong narrowing surfaces as a `0 passed` guard trip in the affected suite, which is why every name-filtered gate carries `rg -v '0 passed'`.
+- **`prepass-guest` may pad multiple prepass stages today.** Its consumer survey decides narrow-vs-split; wrong narrowing surfaces as a `0 passed` guard trip in the affected suite, which is why every name-filtered gate matches `^test result: ok\. [1-9][0-9]* passed` (a pattern that also fails on a FAILED run).
 - **Manifest-fixture fallout is wide but shallow**: every test helper that writes `wit-world` or asserts `.wit_world()` breaks at compile time — enumerable via `rg`, mechanical to fix, but easy to under-count; the step allocates a dispatch for the inventory.
 - **20 + 15 mechanical file edits** strain the ≤3-edits-per-step rule; the plan groups them into explicit sweep steps with per-file one-line contracts rather than pretending they fit.
 
@@ -220,9 +222,61 @@ Line hints below were verified pre-162/163 and **will shift**; re-verify each ag
 - Largest step: `M` (dispatch rewiring; `dispatch.rs` ~2500 lines, ranged reads only)
 - Highest-risk dispatch and required return format: `cargo xtask test --summary --workspace` at the ceremony — `FACT` pass/fail + failing names only.
 
+## Design corrections
+
+Three statements above were authored before implementation and are false
+against the delivered tree. They are corrected in place; this section records
+what changed and why, so the packet is not silently rewritten to match
+whatever got built.
+
+1. **`xtask/src/build_guests.rs` is in scope, not out of bounds.**
+   `implementation-plan.md` Step 9 said it "must pass unchanged". That was
+   wrong when written: its `stage_wit_dir_is_charged_only_to_matching_guest`
+   test asserted `wit_dir_for_stage_id("Layer::Perimeters") == Some("world-layer")`,
+   which this packet makes false by construction — and 163's own comment on
+   that assertion already read "per packet 164's contract". The edit is
+   test-only.
+
+2. **The test-guest surface is seven crates wider than listed.** §Test guests
+   named four hand-written retargets. Once the padding arms die a guest can
+   export exactly one stage, so the per-stage dispatch tests structurally
+   require per-stage guests: `dispatch-layer-{perimeters, perimeters-postprocess,
+   slice-postprocess, infill-postprocess, support-postprocess, path-optimization}-guest`
+   and `prepass-layer-planning-guest`. Coverage is deliberately not uniform —
+   guests exist where a test needs one.
+
+3. **Tier vocabulary was renamed, not merely re-commented.** Both this file and
+   `requirements.md` §Out of Scope said the `WORLD_*` consts and `world_id`
+   field would be retained with corrected doc comments. Retaining
+   `WORLD_LAYER = "slicer:world-layer"` would have left a constant naming a
+   package that no longer exists, so the spelling was retired with the concept
+   kept: `TIER_*` consts with bare values, `tier_id` fields, `__slicer_tier_id()`,
+   metadata key `"tier"`. `wit_world` / `wit_world_for_stage_id` are a
+   different concept (the per-stage world name, e.g. `perimeters-module`) and
+   are untouched.
+
+
+4. **The retired tier-world glue was deleted, not retained.** The first
+   implementation kept `build_layer_world_glue` / `build_prepass_world_glue`
+   renamed to `retired_layer_glue` / `retired_prepass_glue` under
+   `#[cfg(any())]` — 1,847 lines, 35% of `crates/slicer-macros/src/lib.rs`,
+   never compiled. The comment called it "source history", but it could not
+   be re-enabled: `retired_prepass_glue` `include_str!`s the deleted
+   `world-prepass.wit`, and `retired_layer_glue` names `LAYER_WORLD_WIT`, a
+   constant defined nowhere. Both are deleted; git holds the history. This
+   also closes an AC-5 blind spot — it passed on the *rename*, since it only
+   greps for the old function names.
+
+   Two tests in `crates/slicer-macros/tests/all_worlds_glue_tdd.rs` were
+   passing on strings that existed only inside that dead code
+   (`fn run_perimeters` etc. — signatures of the old single tier-world `Guest`
+   impl). They now assert the real invariant: each stage's glue delegates to
+   its own `LayerModule`/`PrepassModule` trait method.
+
+
 ## Open Questions
 
-- `[FWD]` **Divergence from 163's hand-off recorded:** 163 listed `WORLD_*` consts and `StageSpec.world_id` among things "still live for #3 to retire". This packet keeps them as tier vocabulary (doc comments corrected) because 30+ files consume them as tier identity, the naming rule reads the tier from `world_id`, and the plan's queue row for this packet never asked for their retirement. If a reviewer disagrees, that is a scope discussion for a follow-up packet, not silent widening here.
+- `[FWD]` **Resolved (see §Design corrections).** 163 listed `WORLD_*` consts and `StageSpec.world_id` among things "still live for #3 to retire". This packet keeps the *concept* — 30+ files consume it as tier identity and the naming rule reads the tier from it — but retires the misleading spelling: the consts became `TIER_*` with bare values and the field became `tier_id`. Keeping `WORLD_LAYER = "slicer:world-layer"` would have left a constant naming a WIT package that no longer exists on disk.
 - `[FWD]` **`prepass-guest` narrowing** is decided by the consumer survey (dispatch listed above): keep only exercised stages, mirroring 163's `postpass-guest` precedent. If consumers exercise ≥2 prepass stages, prefer splitting into per-stage guests over re-adding padding.
 - `[FWD]` **Test-guest per-stage staleness** (`[package.metadata.slicer] stage_id`, 12 `Cargo.toml`s) is deferred a second time: conservative over-rebuild is safe, this packet does not otherwise touch those 12 manifests, and the edit buys build time only. If an implementer finds the rebuild cost material during this packet, it is 12 mechanical edits plus a small `xtask` metadata read — do it in a trailing step, not mid-migration.
 - `[FWD]` **`export_for_stage_id` returning `Some("")` for PaintSegmentation** is slightly ugly but honest to the table shape; if the implementer prefers `.filter(|e| !e.is_empty())` inside the lookup so it returns `None`, that is compatible with every consumer (dispatchers never dispatch a host-builtin stage) — verify the ADR-0006 guard test's expectation either way.

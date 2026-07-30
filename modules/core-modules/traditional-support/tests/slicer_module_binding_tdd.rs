@@ -8,8 +8,8 @@ use traditional_support::TraditionalSupport;
 #[test]
 fn binding_surface_matches_manifest() {
     assert_eq!(
-        TraditionalSupport::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        TraditionalSupport::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(TraditionalSupport::__slicer_trait_name(), "LayerModule");
     assert_eq!(TraditionalSupport::__slicer_stage_name(), "Layer::Support");

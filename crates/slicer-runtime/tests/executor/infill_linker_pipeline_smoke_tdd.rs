@@ -140,7 +140,7 @@ fn linker_bundle() -> TestModuleBundle {
         "com.core.infill-linker",
         semver(0, 1, 0),
         "Layer::InfillPostProcess",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         wasm_path.clone(),
     )
     .ir_reads(vec!["SliceIR".to_string(), "InfillIR".to_string()])

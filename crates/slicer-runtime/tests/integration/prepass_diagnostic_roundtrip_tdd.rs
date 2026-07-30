@@ -165,7 +165,7 @@ fn compile_diagnostic_guest(
         "com.test.diagnostic-guest",
         semver(0, 1, 0),
         "PrePass::SupportGeometry",
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         wasm_path,
     )
     .ir_reads(Vec::<String>::new())

@@ -702,7 +702,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
         id,
         semver(1, 0, 0),
         stage,
-        slicer_schema::WORLD_POSTPASS,
+        slicer_schema::TIER_POSTPASS,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .min_host_version(semver(0, 1, 0))

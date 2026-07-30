@@ -176,18 +176,22 @@ fn normalize(body: &str) -> String {
     tightened.trim_end_matches(',').trim().to_string()
 }
 
-/// Read the canonical WIT type declarations relevant to one guest world.
+/// Read the canonical WIT type declarations relevant to one guest's stage.
 ///
-/// Types are compared by bare name, so the world's *own* declarations must
-/// shadow the shared ones: a name can legitimately denote different types in
-/// different packages. `region-key`, for example, is a 4-field record in
+/// Types are compared by bare name, so the stage package's *own* declarations
+/// must shadow the shared ones: a name can legitimately denote different types
+/// in different packages. `region-key`, for example, is a 4-field record in
 /// `slicer:ir-handles` (carrying `variant-chain`) and a deliberately distinct
-/// 3-field record in `slicer:world-finalization`. Comparing a finalization
-/// guest against the `ir-handles` spelling reports drift that does not exist.
+/// 3-field record in `slicer:finalization-layer-finalization`. Comparing a
+/// finalization guest against the `ir-handles` spelling reports drift that
+/// does not exist.
 ///
-/// `world` is the manifest's `wit-world` value (e.g. `slicer:world-finalization`);
-/// when `None`, only the shared `deps/*.wit` types are returned.
-pub fn canonical_type_blocks(ws_root: &Path, world: Option<&str>) -> BTreeMap<String, String> {
+/// `wit_dir` is the stage's per-stage package directory (e.g.
+/// `finalization-layer-finalization`), resolved from the manifest's
+/// `[stage] id` by [`module_stage_wit_dir`]. When `None` — a test guest with
+/// no manifest, or a host-built-in stage — the shared `deps/*.wit` types are
+/// returned minus every package-ambiguous name.
+pub fn canonical_type_blocks(ws_root: &Path, wit_dir: Option<&str>) -> BTreeMap<String, String> {
     let wit_root = ws_root.join("crates/slicer-schema/wit");
     let mut all = BTreeMap::new();
 
@@ -202,32 +206,12 @@ pub fn canonical_type_blocks(ws_root: &Path, world: Option<&str>) -> BTreeMap<St
         }
     }
 
-    match world {
-        // World-specific declarations win over the shared ones.
-        Some(world) => {
-            let short = world.rsplit(':').next().unwrap_or(world);
-            // Packet 163 deleted deps/world-finalization/ and deps/world-postpass/,
-            // replacing them with per-stage packages. Map the legacy world names
-            // to the new package files so canonical_type_blocks still resolves
-            // the correct region-key (and other world-shadowed types).
-            let wit_files: Vec<String> = match short {
-                "world-postpass" => vec![
-                    "postpass-gcode-postprocess/postpass-gcode-postprocess.wit".into(),
-                    "postpass-text-postprocess/postpass-text-postprocess.wit".into(),
-                ],
-                "world-finalization" => {
-                    vec![
-                        "finalization-layer-finalization/finalization-layer-finalization.wit"
-                            .into(),
-                    ]
-                }
-                _ => vec![format!("{short}/{short}.wit")],
-            };
-            for rel in &wit_files {
-                let path = wit_root.join("deps").join(rel);
-                if let Ok(text) = std::fs::read_to_string(path) {
-                    all.extend(extract_type_blocks(&text));
-                }
+    match wit_dir {
+        // The stage package's own declarations win over the shared ones.
+        Some(dir) => {
+            let path = wit_root.join("deps").join(dir).join(format!("{dir}.wit"));
+            if let Ok(text) = std::fs::read_to_string(path) {
+                all.extend(extract_type_blocks(&text));
             }
         }
         // Without a world we cannot resolve which package's spelling applies,
@@ -281,20 +265,38 @@ fn ambiguous_type_names(wit_root: &Path) -> Vec<String> {
     ambiguous
 }
 
-/// Read a core module's declared `wit-world` from its manifest TOML, e.g.
-/// `slicer:world-layer`. Returns `None` when the manifest is absent or has no
-/// `wit-world` key.
-pub fn module_world(module_dir: &Path, module_name: &str) -> Option<String> {
+/// Resolve a core module's per-stage WIT package directory (e.g.
+/// `layer-perimeters`) from its manifest's `[stage] id`, via the canonical
+/// `slicer_schema` table (ADR-0006: the stage table is the sole lookup).
+///
+/// Packet 164 retired the `wit-world` manifest key. This used to read that
+/// key; once it was deleted from every manifest the read returned `None`
+/// for all 20 core modules, which silently dropped every package-ambiguous
+/// type (notably `region-key`) from drift verification. Reading `[stage] id`
+/// restores the check at better precision — per stage, not per tier.
+///
+/// Returns `None` when the manifest is absent, declares no stage, or names a
+/// stage with no WIT package (`PrePass::PaintSegmentation` is host-built-in).
+pub fn module_stage_wit_dir(module_dir: &Path, module_name: &str) -> Option<&'static str> {
     let text = std::fs::read_to_string(module_dir.join(format!("{module_name}.toml"))).ok()?;
+    let mut in_stage_section = false;
     for line in text.lines() {
         let line = line.trim();
-        let Some(rest) = line.strip_prefix("wit-world") else {
+        if line.starts_with('[') {
+            in_stage_section = line == "[stage]";
+            continue;
+        }
+        if !in_stage_section {
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("id") else {
             continue;
         };
         let Some((_, value)) = rest.split_once('=') else {
             continue;
         };
-        return Some(value.trim().trim_matches('"').to_string());
+        let stage_id = value.trim().trim_matches('"');
+        return slicer_schema::wit_dir_for_stage_id(stage_id);
     }
     None
 }
@@ -429,17 +431,17 @@ mod tests {
         );
     }
 
-    /// A world's own declaration must shadow a same-named shared one, or
-    /// finalization guests report phantom drift on `region-key`.
+    /// A stage package's own declaration must shadow a same-named shared one,
+    /// or finalization guests report phantom drift on `region-key`.
     #[test]
-    fn world_declarations_shadow_shared_ones() {
+    fn stage_package_declarations_shadow_shared_ones() {
         let root = ws_root();
-        // world-layer does not redeclare `region-key`, so the shared
-        // `ir-handles` spelling survives there; world-finalization does.
-        let layer = canonical_type_blocks(&root, Some("slicer:world-layer"));
-        let finalization = canonical_type_blocks(&root, Some("slicer:world-finalization"));
+        // layer-perimeters does not redeclare `region-key`, so the shared
+        // `ir-handles` spelling survives there; finalization does redeclare it.
+        let perimeters = canonical_type_blocks(&root, Some("layer-perimeters"));
+        let finalization = canonical_type_blocks(&root, Some("finalization-layer-finalization"));
 
-        let shared_key = layer.get("region-key").expect("ir-handles region-key");
+        let shared_key = perimeters.get("region-key").expect("ir-handles region-key");
         let final_key = finalization
             .get("region-key")
             .expect("finalization region-key");
@@ -450,19 +452,45 @@ mod tests {
         );
         assert!(
             !final_key.contains("variant-chain"),
-            "world-finalization region-key must shadow it: {final_key}"
+            "finalization region-key must shadow it: {final_key}"
         );
+    }
+
+    /// Packet 164 regression guard. Retiring the `wit-world` manifest key left
+    /// the lookup returning `None` for every core module, which silently
+    /// dropped `region-key` from drift verification for the whole tree. A real
+    /// core module must resolve to its per-stage package directory.
+    #[test]
+    fn core_modules_resolve_their_stage_wit_dir() {
+        let root = ws_root();
+        for (module, expected) in [
+            ("classic-perimeters", "layer-perimeters"),
+            ("wipe-tower", "finalization-layer-finalization"),
+            ("gyroid-infill", "layer-infill"),
+            ("support-planner", "prepass-support-geometry"),
+        ] {
+            let dir = root.join("modules/core-modules").join(module);
+            if !dir.join(format!("{module}.toml")).exists() {
+                continue;
+            }
+            assert_eq!(
+                module_stage_wit_dir(&dir, module),
+                Some(expected),
+                "{module} must resolve its per-stage WIT dir from `[stage] id`; \
+                 None here means the drift check is silently dormant",
+            );
+        }
     }
 
     /// With no world to disambiguate (test-guests), a name spelled differently
     /// in two packages must be dropped rather than compared against an
     /// arbitrary spelling — while unambiguous names stay covered.
     #[test]
-    fn unknown_world_drops_ambiguous_names_but_keeps_the_rest() {
+    fn unknown_stage_drops_ambiguous_names_but_keeps_the_rest() {
         let shared = canonical_type_blocks(&ws_root(), None);
         assert!(
             !shared.contains_key("region-key"),
-            "region-key is package-ambiguous and must be skipped without a world"
+            "region-key is package-ambiguous and must be skipped without a stage package"
         );
         assert!(
             shared.contains_key("extrusion-role"),
@@ -488,7 +516,7 @@ mod tests {
         }
 
         let mut canonical =
-            canonical_type_blocks(&root, module_world(&dir, "classic-perimeters").as_deref());
+            canonical_type_blocks(&root, module_stage_wit_dir(&dir, "classic-perimeters"));
         let role = canonical
             .get("extrusion-role")
             .cloned()
@@ -544,8 +572,8 @@ mod tests {
                 continue;
             }
 
-            let world = module_world(&dir, name);
-            let canonical = canonical_type_blocks(&root, world.as_deref());
+            let wit_dir = module_stage_wit_dir(&dir, name);
+            let canonical = canonical_type_blocks(&root, wit_dir);
 
             match verify_embedded_world(&artifact, &canonical) {
                 Ok(mismatches) => {

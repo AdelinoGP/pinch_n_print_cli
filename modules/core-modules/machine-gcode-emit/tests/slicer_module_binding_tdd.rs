@@ -8,8 +8,8 @@ use machine_gcode_emit::MachineGcodeEmit;
 #[test]
 fn binding_surface_matches_gcode_postprocess_stage() {
     assert_eq!(
-        MachineGcodeEmit::__slicer_world_id(),
-        slicer_schema::WORLD_POSTPASS
+        MachineGcodeEmit::__slicer_tier_id(),
+        slicer_schema::TIER_POSTPASS
     );
     assert_eq!(MachineGcodeEmit::__slicer_trait_name(), "PostpassModule");
     assert_eq!(

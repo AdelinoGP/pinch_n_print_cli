@@ -181,7 +181,7 @@ fn compile_support_planner_with_config(
         "com.core.support-planner",
         semver(0, 1, 0),
         "PrePass::SupportGeometry",
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         wasm_path,
     )
     .ir_reads(vec![

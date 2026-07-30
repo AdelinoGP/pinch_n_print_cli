@@ -223,7 +223,7 @@ fn make_default_bundle(
             patch: 0,
         },
         stage_id,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {
@@ -287,7 +287,7 @@ fn make_wat_bundle(
             patch: 0,
         },
         stage_id,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {
@@ -344,7 +344,7 @@ fn make_no_wasm_bundle(stage_id: &str, config: ConfigView) -> TestModuleBundle {
             patch: 0,
         },
         stage_id,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(SemVer {

@@ -32,31 +32,37 @@
 // Compatibility is enforced structurally by wasmtime at typed
 // instantiation, plus `cargo xtask build-guests --check`.
 
-/// WIT world package name for layer-tier modules.
-pub const WORLD_LAYER: &str = "slicer:world-layer";
-/// WIT world package name for prepass-tier modules.
-pub const WORLD_PREPASS: &str = "slicer:world-prepass";
-/// WIT world package name for finalization-tier modules.
-pub const WORLD_FINALIZATION: &str = "slicer:world-finalization";
-/// WIT world package name for postpass-tier modules.
-pub const WORLD_POSTPASS: &str = "slicer:world-postpass";
+// Tier ids. A tier is **vocabulary**: a package-name prefix and an SDK trait
+// grouping. It is NOT a loadable WIT package — since packet 164 every stage
+// owns its own versioned package (`slicer:<tier>-<stage>@<ver>`), and no
+// `slicer:world-*` package exists on disk. These ids name the grouping only.
 
-/// One supported (Rust trait, stage id, WIT export, WIT world) row,
-/// matching the documented stage set in docs/04 STAGE_ORDER and the
-/// export lists in `wit/world-*.wit`.
+/// Tier id for layer-tier modules (vocabulary, not a WIT package).
+pub const TIER_LAYER: &str = "layer";
+/// Tier id for prepass-tier modules (vocabulary, not a WIT package).
+pub const TIER_PREPASS: &str = "prepass";
+/// Tier id for finalization-tier modules (vocabulary, not a WIT package).
+pub const TIER_FINALIZATION: &str = "finalization";
+/// Tier id for postpass-tier modules (vocabulary, not a WIT package).
+pub const TIER_POSTPASS: &str = "postpass";
+
+/// One supported (Rust trait, stage id, WIT export, tier) row, matching the
+/// documented stage set in docs/04 STAGE_ORDER and the per-stage packages
+/// under `crates/slicer-schema/wit/deps/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StageSpec {
     /// Rust trait method name, e.g. `"run_infill"`.
     pub method: &'static str,
     /// Canonical scheduler stage id, e.g. `"Layer::Infill"`.
     pub stage_id: &'static str,
-    /// Kebab-case WIT export name, e.g. `"run-infill"`. For stages migrated
-    /// to a per-stage versioned package (packet 163 pilot), this is `"run"`.
+    /// WIT export name. `"run"` for every stage on a per-stage versioned
+    /// package (all 15 since packet 164); `""` for host-built-in stages.
+    /// Not unique on its own — use [`qualified_export_for_stage_id`].
     pub wit_export: &'static str,
-    /// Canonical WIT world package id the export belongs to. This is the
-    /// **WIT tier** world id (e.g. [`WORLD_POSTPASS`]) and stays unchanged
-    /// while the per-stage package is being introduced.
-    pub world_id: &'static str,
+    /// Tier this stage belongs to (e.g. [`TIER_POSTPASS`]). Vocabulary: a
+    /// package-name prefix and SDK trait grouping, **not** a loadable WIT
+    /// package (packet 164).
+    pub tier_id: &'static str,
     /// SDK trait carrying this method.
     pub trait_name: &'static str,
     /// Per-stage package directory under `crates/slicer-schema/wit/deps/`.
@@ -76,14 +82,14 @@ pub struct StageSpec {
 }
 
 /// Every supported stage, in canonical STAGE_ORDER-compatible order
-/// (docs/04). One row per documented export in `wit/world-*.wit`.
+/// (docs/04). One row per stage; 15 carry a per-stage WIT package.
 pub const STAGES: &[StageSpec] = &[
-    // ── Layer world (WORLD_LAYER) ──────────────────────────────────────
+    // ── Layer tier (TIER_LAYER) ───────────────────────────────────────
     StageSpec {
         method: "run_slice_postprocess",
         stage_id: "Layer::SlicePostProcess",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-slice-postprocess",
         wit_package: "slicer:layer-slice-postprocess@1.0.0",
@@ -94,7 +100,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_perimeters",
         stage_id: "Layer::Perimeters",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-perimeters",
         wit_package: "slicer:layer-perimeters@1.0.0",
@@ -105,7 +111,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_wall_postprocess",
         stage_id: "Layer::PerimetersPostProcess",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-perimeters-postprocess",
         wit_package: "slicer:layer-perimeters-postprocess@1.0.0",
@@ -116,7 +122,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_infill",
         stage_id: "Layer::Infill",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-infill",
         wit_package: "slicer:layer-infill@1.0.0",
@@ -127,7 +133,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_infill_postprocess",
         stage_id: "Layer::InfillPostProcess",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-infill-postprocess",
         wit_package: "slicer:layer-infill-postprocess@1.0.0",
@@ -138,7 +144,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_support",
         stage_id: "Layer::Support",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-support",
         wit_package: "slicer:layer-support@1.0.0",
@@ -149,7 +155,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_support_postprocess",
         stage_id: "Layer::SupportPostProcess",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-support-postprocess",
         wit_package: "slicer:layer-support-postprocess@1.0.0",
@@ -160,19 +166,19 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_path_optimization",
         stage_id: "Layer::PathOptimization",
         wit_export: "run",
-        world_id: WORLD_LAYER,
+        tier_id: TIER_LAYER,
         trait_name: "LayerModule",
         wit_dir: "layer-path-optimization",
         wit_package: "slicer:layer-path-optimization@1.0.0",
         wit_interface: "path-optimization",
         wit_world: "path-optimization-module",
     },
-    // ── Prepass world (WORLD_PREPASS) ──────────────────────────────────
+    // ── Prepass world (TIER_PREPASS) ──────────────────────────────────
     StageSpec {
         method: "run_mesh_analysis",
         stage_id: "PrePass::MeshAnalysis",
         wit_export: "run",
-        world_id: WORLD_PREPASS,
+        tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-mesh-analysis",
         wit_package: "slicer:prepass-mesh-analysis@1.0.0",
@@ -183,7 +189,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_layer_planning",
         stage_id: "PrePass::LayerPlanning",
         wit_export: "run",
-        world_id: WORLD_PREPASS,
+        tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-layer-planning",
         wit_package: "slicer:prepass-layer-planning@1.0.0",
@@ -195,7 +201,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_paint_segmentation",
         stage_id: "PrePass::PaintSegmentation",
         wit_export: "",
-        world_id: WORLD_PREPASS,
+        tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "",
         wit_package: "",
@@ -206,7 +212,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_seam_planning",
         stage_id: "PrePass::SeamPlanning",
         wit_export: "run",
-        world_id: WORLD_PREPASS,
+        tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-seam-planning",
         wit_package: "slicer:prepass-seam-planning@1.0.0",
@@ -217,31 +223,31 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_support_geometry",
         stage_id: "PrePass::SupportGeometry",
         wit_export: "run",
-        world_id: WORLD_PREPASS,
+        tier_id: TIER_PREPASS,
         trait_name: "PrepassModule",
         wit_dir: "prepass-support-geometry",
         wit_package: "slicer:prepass-support-geometry@1.0.0",
         wit_interface: "support-geometry",
         wit_world: "support-geometry-module",
     },
-    // ── Finalization world (WORLD_FINALIZATION) ────────────────────────
+    // ── Finalization world (TIER_FINALIZATION) ────────────────────────
     StageSpec {
         method: "run_finalization",
         stage_id: "PostPass::LayerFinalization",
         wit_export: "run",
-        world_id: WORLD_FINALIZATION,
+        tier_id: TIER_FINALIZATION,
         trait_name: "FinalizationModule",
         wit_dir: "finalization-layer-finalization",
         wit_package: "slicer:finalization-layer-finalization@1.0.0",
         wit_interface: "layer-finalization",
         wit_world: "layer-finalization-module",
     },
-    // ── Postpass world (WORLD_POSTPASS) ────────────────────────────────
+    // ── Postpass world (TIER_POSTPASS) ────────────────────────────────
     StageSpec {
         method: "run_gcode_postprocess",
         stage_id: "PostPass::GCodePostProcess",
         wit_export: "run",
-        world_id: WORLD_POSTPASS,
+        tier_id: TIER_POSTPASS,
         trait_name: "PostpassModule",
         wit_dir: "postpass-gcode-postprocess",
         wit_package: "slicer:postpass-gcode-postprocess@1.0.0",
@@ -252,7 +258,7 @@ pub const STAGES: &[StageSpec] = &[
         method: "run_text_postprocess",
         stage_id: "PostPass::TextPostProcess",
         wit_export: "run",
-        world_id: WORLD_POSTPASS,
+        tier_id: TIER_POSTPASS,
         trait_name: "PostpassModule",
         wit_dir: "postpass-text-postprocess",
         wit_package: "slicer:postpass-text-postprocess@1.0.0",
@@ -288,9 +294,9 @@ pub struct SlicerModuleSchema {
     pub type_name: &'static str,
     /// SDK trait name this impl targets, or `""` if inherent.
     pub trait_name: &'static str,
-    /// Canonical WIT world package name (e.g. [`WORLD_LAYER`])
-    /// or `""` if the impl targets no known trait or stage.
-    pub world_id: &'static str,
+    /// Tier this impl belongs to (e.g. [`TIER_LAYER`]) — vocabulary, not a
+    /// WIT package — or `""` if the impl targets no known trait or stage.
+    pub tier_id: &'static str,
     /// Canonical scheduler stage id (e.g. `"Layer::Infill"`) or `""` if no
     /// stage method was detected.
     pub stage_id: &'static str,
@@ -338,8 +344,8 @@ pub fn stage_by_method(method: &str) -> Option<&'static StageSpec> {
 
 /// Return the WIT world id for a stage id.
 #[must_use]
-pub fn world_for_stage_id(stage_id: &str) -> Option<&'static str> {
-    stage_by_id(stage_id).map(|s| s.world_id)
+pub fn tier_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    stage_by_id(stage_id).map(|s| s.tier_id)
 }
 
 /// Return the SDK trait that carries `stage_id`.
@@ -351,12 +357,12 @@ pub fn trait_for_stage_id(stage_id: &str) -> Option<&'static str> {
 /// Map an SDK trait name (e.g. `"LayerModule"`) to its WIT world id, if
 /// the trait is one of the known four.
 #[must_use]
-pub fn world_for_trait(trait_name: &str) -> Option<&'static str> {
+pub fn tier_for_trait(trait_name: &str) -> Option<&'static str> {
     match trait_name {
-        "LayerModule" => Some(WORLD_LAYER),
-        "PrepassModule" => Some(WORLD_PREPASS),
-        "FinalizationModule" => Some(WORLD_FINALIZATION),
-        "PostpassModule" => Some(WORLD_POSTPASS),
+        "LayerModule" => Some(TIER_LAYER),
+        "PrepassModule" => Some(TIER_PREPASS),
+        "FinalizationModule" => Some(TIER_FINALIZATION),
+        "PostpassModule" => Some(TIER_POSTPASS),
         _ => None,
     }
 }
@@ -563,8 +569,8 @@ mod tests {
             }
             assert_eq!(stage_by_id(s.stage_id).unwrap(), s);
             assert_eq!(stage_by_method(s.method).unwrap(), s);
-            assert_eq!(world_for_stage_id(s.stage_id), Some(s.world_id));
-            assert_eq!(world_for_trait(s.trait_name), Some(s.world_id));
+            assert_eq!(tier_for_stage_id(s.stage_id), Some(s.tier_id));
+            assert_eq!(tier_for_trait(s.trait_name), Some(s.tier_id));
             // Every non-built-in row must declare a non-empty per-stage package dir.
             assert!(!s.wit_dir.is_empty(), "wit_dir is empty for {}", s.stage_id);
             // A non-empty wit_package implies non-empty wit_interface and

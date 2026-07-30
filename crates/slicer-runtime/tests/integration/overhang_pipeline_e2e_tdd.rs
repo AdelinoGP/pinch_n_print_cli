@@ -208,7 +208,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         module_id,
         semver(0, 1, 0),
         stage_id,
-        slicer_schema::WORLD_PREPASS,
+        slicer_schema::TIER_PREPASS,
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
     .claims(vec!["layer-planner".to_string()])

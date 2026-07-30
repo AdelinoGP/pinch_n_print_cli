@@ -55,11 +55,11 @@ This is the authoritative full matrix; `packet.spec.md` lists only the gate comm
 | AC-1 command (`cargo check -p slicer-test-support` + python fn/dep audit) | new crate shape | FACT PASS/FAIL line |
 | AC-2 command (rg single-definition counts) | triplication actually gone | FACT PASS/FAIL line |
 | AC-3 command (site-consumption python audit) | three sites consume the crate | FACT PASS/FAIL line |
-| `(cargo test -p slicer-scheduler --test scheduler_integration -- dag_ 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed'` | site 3 exercised end-to-end (name filter matching the `dag_*` test fns in `dag_cli_integration.rs`, 7 today; 0 passed = FAIL) | FACT pass/fail + result line |
-| `(cargo test -p slicer-runtime --test integration pnp_cli_freshness 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed'` | staleness_reason contract survives the move (name filter; 0 passed = FAIL) | FACT pass/fail + result line |
+| `(cargo test -p slicer-scheduler --test scheduler_integration -- dag_ 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed')` | site 3 exercised end-to-end (name filter matching the `dag_*` test fns in `dag_cli_integration.rs`; 10 today — the filter matches the module path, so `diagnose_*` fns count too) | FACT pass/fail + result line |
+| `(cargo test -p slicer-runtime --test integration pnp_cli_freshness 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed')` | staleness_reason contract survives the move (name filter; 0 passed = FAIL) | FACT pass/fail + result line |
 | `cargo bench -p slicer-runtime --bench gate_evidence --no-run` | site 2 compiles against dev-deps (compile-only; never run the bench in this packet) | FACT pass/fail |
-| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed'` | baseline stays green — expect `12 passed; 0 failed; 11 ignored` (name filter; 0 passed = FAIL) | FACT pass/fail + result line |
-| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| tee target/test-output.log \| rg '^test result') \| rg -v '0 passed'` | baseline e2e that spawns via `slicer_cache` — expect `1 passed; 0 failed` (site 1 exercised) | FACT pass/fail + result line |
+| `(cargo test -p slicer-runtime --test integration -- perimeter_parity 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed')` | baseline stays green — expect `3 passed; 0 failed; 0 ignored` (name filter; 0 passed = FAIL) | FACT pass/fail + result line |
+| `(cargo test -p slicer-runtime --test e2e -- legacy_zero_matches_golden 2>&1 \| tee target/test-output.log \| rg '^test result: ok\. [1-9][0-9]* passed')` | baseline e2e that spawns via `slicer_cache` — expect `1 passed; 0 failed` (site 1 exercised) | FACT pass/fail + result line |
 | AC-7 command (ADR existence + content audit) | the home decision is recorded | FACT PASS/FAIL line |
 | AC-N1 command (fallback-resurrection audit) | 162's trap stays closed | FACT PASS/FAIL line |
 

@@ -38,7 +38,7 @@ fn perimeter_module(id: &str) -> LoadedModule {
         id,
         semver(0, 1, 0),
         PERIMETER_STAGE,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("/tmp/placeholder.wasm"),
     )
     .claims(vec![PERIMETER_GENERATOR_CLAIM.to_string()])
@@ -79,7 +79,7 @@ fn infill_link_module(id: &str) -> LoadedModule {
         id,
         semver(0, 1, 0),
         INFILL_POSTPROCESS_STAGE,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from("/tmp/placeholder.wasm"),
     )
     .claims(vec![INFILL_LINK_CLAIM.to_string()])

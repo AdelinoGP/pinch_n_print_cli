@@ -7,8 +7,8 @@ use rectilinear_infill::RectilinearInfill;
 #[test]
 fn binding_surface_matches_documented_layer_infill_stage() {
     assert_eq!(
-        RectilinearInfill::__slicer_world_id(),
-        slicer_schema::WORLD_LAYER
+        RectilinearInfill::__slicer_tier_id(),
+        slicer_schema::TIER_LAYER
     );
     assert_eq!(RectilinearInfill::__slicer_trait_name(), "LayerModule");
     assert_eq!(RectilinearInfill::__slicer_stage_name(), "Layer::Infill");
@@ -22,9 +22,9 @@ fn binding_surface_matches_documented_layer_infill_stage() {
 }
 
 #[test]
-fn binding_schema_json_includes_stage_and_world() {
+fn binding_schema_json_includes_stage_and_tier() {
     let json = RectilinearInfill::__slicer_binding_schema_json();
-    assert!(json.contains(&format!(r#""world":"{}""#, slicer_schema::WORLD_LAYER)));
+    assert!(json.contains(&format!(r#""tier":"{}""#, slicer_schema::TIER_LAYER)));
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""trait":"LayerModule""#));
     assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@1.0.0#run""#));

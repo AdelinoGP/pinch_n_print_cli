@@ -37,7 +37,7 @@ fn loaded_module(id: &str, stage: &str, reads: &[&str], writes: &[&str]) -> Load
         id,
         semver(1, 0, 0),
         stage,
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(reads.iter().map(|s| s.to_string()).collect())
@@ -222,7 +222,7 @@ fn serialized_pool_only_ever_returns_slot_zero_under_repeated_acquisition() {
         "com.test.serial",
         semver(1, 0, 0),
         "Layer::Support",
-        slicer_schema::WORLD_LAYER,
+        slicer_schema::TIER_LAYER,
         std::path::PathBuf::from("fixtures/com.test.serial.wasm"),
     )
     .ir_writes(vec!["A".to_string()])

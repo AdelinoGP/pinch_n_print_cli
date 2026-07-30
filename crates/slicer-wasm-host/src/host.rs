@@ -594,9 +594,9 @@ pub mod prepass_support_geometry {
         },
     });
     pub use self::slicer::prepass_support_geometry::support_geometry_types::{
-        Diagnostic, HostSupportGeometryOutput, LayerPlanView, LayerPlanViewEntry, RaftPlan,
-        RegionSegmentationView, RegionSegmentationViewEntry, SeverityLevel, SupportGeometryOutput,
-        SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry,
+        Diagnostic, HostSupportGeometryOutput, RaftPlan, RegionSegmentationView,
+        RegionSegmentationViewEntry, SeverityLevel, SupportGeometryOutput, SupportGeometryView,
+        SupportGeometryViewEntry, SupportPlanEntry,
     };
     pub use self::SupportGeometryModule as PrepassModule;
 }
@@ -672,8 +672,14 @@ pub mod prepass {
         HostSupportGeometryOutput, SupportGeometryModule, SupportGeometryOutput, SupportPlanEntry,
     };
     pub use super::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::{
-        LayerPlanView, LayerPlanViewEntry, RaftPlan, RegionSegmentationView,
-        RegionSegmentationViewEntry, SupportGeometryView, SupportGeometryViewEntry,
+        RaftPlan, RegionSegmentationView, RegionSegmentationViewEntry, SupportGeometryView,
+        SupportGeometryViewEntry,
+    };
+    // `layer-plan-view` lives once, in the shared unversioned
+    // `slicer:prepass-types` package (ADR-0002: one Rust type set). Both
+    // seam-planning and support-geometry marshal the same record.
+    pub use super::prepass_seam_planning::slicer::prepass_types::prepass_types::{
+        LayerPlanView, LayerPlanViewEntry,
     };
 
     /// Nested re-export tree mirroring the bindgen-generated mod path so
