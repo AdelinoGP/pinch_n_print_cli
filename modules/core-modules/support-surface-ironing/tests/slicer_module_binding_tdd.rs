@@ -14,12 +14,13 @@ fn binding_surface_matches_manifest() {
     assert_eq!(SupportSurfaceIroning::__slicer_trait_name(), "LayerModule");
     assert_eq!(
         SupportSurfaceIroning::__slicer_stage_name(),
-        "Layer::InfillPostProcess"
+        "Layer::SupportPostProcess"
     );
+    assert_eq!(SupportSurfaceIroning::__slicer_stage_export_name(), "run");
     assert_eq!(
-        SupportSurfaceIroning::__slicer_stage_export_name(),
-        "run-infill-postprocess"
+        SupportSurfaceIroning::__slicer_module_schema().stage_export,
+        "slicer:layer-support-postprocess/support-postprocess@1.0.0#run"
     );
     let exports = SupportSurfaceIroning::__slicer_wit_exports();
-    assert!(exports.contains(&"run-infill-postprocess"));
+    assert!(exports.contains(&"slicer:layer-support-postprocess/support-postprocess@1.0.0#run"));
 }

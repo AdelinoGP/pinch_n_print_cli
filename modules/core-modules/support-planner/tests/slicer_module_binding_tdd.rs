@@ -16,10 +16,11 @@ fn binding_surface_matches_manifest() {
         SupportPlanner::__slicer_stage_name(),
         "PrePass::SupportGeometry"
     );
+    assert_eq!(SupportPlanner::__slicer_stage_export_name(), "run");
     assert_eq!(
-        SupportPlanner::__slicer_stage_export_name(),
-        "run-support-geometry"
+        SupportPlanner::__slicer_module_schema().stage_export,
+        "slicer:prepass-support-geometry/support-geometry@1.0.0#run"
     );
     let exports = SupportPlanner::__slicer_wit_exports();
-    assert!(exports.contains(&"run-support-geometry"));
+    assert!(exports.contains(&"slicer:prepass-support-geometry/support-geometry@1.0.0#run"));
 }

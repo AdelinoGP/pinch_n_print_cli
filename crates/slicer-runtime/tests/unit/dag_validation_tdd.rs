@@ -150,7 +150,7 @@ fn module_requiring_newer_host_than_running_produces_host_version_incompatible_e
         "com.example.future",
         semver(1, 0, 0),
         stage,
-        slicer_schema::WORLD_LAYER,
+        String::new(),
         PathBuf::from("fixtures/com.example.future.wasm"),
     )
     .ir_writes(vec![String::from("SharedIR.placeholder")])
@@ -359,7 +359,6 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     fn collect_dispatch_audit(
         module_id: &str,
         stage: &str,
-        wit_world: &str,
         _declared_reads: &[String],
         _declared_writes: &[String],
     ) -> ModuleAccessAudit {
@@ -382,7 +381,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
                 module_id.to_string(),
                 semver(1, 0, 0),
                 stage.to_string(),
-                wit_world.to_string(),
+                String::new(),
                 PathBuf::from("dummy.wasm"),
             )
             .min_host_version(semver(0, 1, 0))
@@ -442,7 +441,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
         // ability to verify UndeclaredAccess error detection without real WASM guests.
         if runtime_reads.is_empty()
             && stage == "Layer::SlicePostProcess"
-            && wit_world == slicer_schema::WORLD_LAYER
+            && stage == "Layer::SlicePostProcess"
         {
             runtime_reads.push(String::from("MeshIR"));
             runtime_reads.push(String::from("SliceIR.regions.polygons"));
@@ -493,7 +492,6 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let earlier_live_audit = collect_dispatch_audit(
         &earlier.id,
         "Layer::SlicePostProcess",
-        slicer_schema::WORLD_LAYER,
         &["MeshIR".to_string(), "SliceIR.regions.polygons".to_string()],
         &["SliceIR".to_string()],
     );
@@ -606,7 +604,6 @@ fn stage_dag(stage: &str, modules: &[LoadedModuleBuilder]) -> StageDag {
 struct LoadedModuleBuilder {
     id: String,
     stage: String,
-    wit_world: String,
     ir_reads: Vec<String>,
     ir_writes: Vec<String>,
     claims: Vec<String>,
@@ -654,7 +651,7 @@ impl LoadedModuleBuilder {
             id.clone(),
             semver(1, 0, 0),
             self.stage,
-            self.wit_world,
+            String::new(),
             PathBuf::from(format!("fixtures/{id}.wasm")),
         )
         .ir_reads(self.ir_reads)
@@ -674,7 +671,6 @@ fn loaded_module(id: &str, stage: &str) -> LoadedModuleBuilder {
     LoadedModuleBuilder {
         id: String::from(id),
         stage: String::from(stage),
-        wit_world: String::from(slicer_schema::WORLD_LAYER),
         ir_reads: Vec::new(),
         ir_writes: vec![String::from("SharedIR.placeholder")],
         claims: Vec::new(),
@@ -765,10 +761,6 @@ fn all_core_module_manifests_accept_current_host_ir_schema() {
             .expect("module.id")
             .to_string();
         let stage = toml["stage"]["id"].as_str().expect("stage.id").to_string();
-        let wit_world = toml["module"]["wit-world"]
-            .as_str()
-            .expect("module.wit-world")
-            .to_string();
         let min_ir = parse_semver_from_toml(
             toml["compatibility"]["min-ir-schema"]
                 .as_str()
@@ -785,7 +777,7 @@ fn all_core_module_manifests_accept_current_host_ir_schema() {
                 module_id.clone(),
                 semver(1, 0, 0),
                 stage,
-                wit_world,
+                String::new(),
                 PathBuf::from(format!("fixtures/{module_id}.wasm")),
             )
             .ir_writes(vec![String::from("SharedIR.placeholder")])

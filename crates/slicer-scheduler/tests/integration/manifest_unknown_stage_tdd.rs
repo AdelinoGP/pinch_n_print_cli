@@ -27,7 +27,7 @@ use tempfile::TempDir;
 // obsolete stage id this negative test must submit and assert is rejected.
 const OBSOLETE_STAGE_ID: &str = concat!("PrePass::Support", "Generation");
 
-fn write_manifest_with_stage(dir: &TempDir, stage: &str, wit_world: &str) -> PathBuf {
+fn write_manifest_with_stage(dir: &TempDir, stage: &str) -> PathBuf {
     let manifest = format!(
         r#"
 [module]
@@ -38,8 +38,6 @@ description = "fixture â€” obsolete stage id"
 author = "test"
 license = "MIT"
 homepage = "https://example.invalid"
-wit-world = "{wit_world}"
-
 [stage]
 id = "{stage}"
 
@@ -95,8 +93,7 @@ fn pre_pass_support_generation_manifest_rejected() {
         .tempdir()
         .expect("create temp dir");
 
-    let manifest_path =
-        write_manifest_with_stage(&dir, OBSOLETE_STAGE_ID, slicer_schema::WORLD_PREPASS);
+    let manifest_path = write_manifest_with_stage(&dir, OBSOLETE_STAGE_ID);
     let wasm_path = manifest_path.with_extension("wasm");
 
     let error = load_module_from_paths(&manifest_path, &wasm_path).expect_err(

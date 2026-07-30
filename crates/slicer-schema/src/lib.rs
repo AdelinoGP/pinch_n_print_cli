@@ -59,10 +59,9 @@ pub struct StageSpec {
     pub world_id: &'static str,
     /// SDK trait carrying this method.
     pub trait_name: &'static str,
-    /// Directory under `crates/slicer-schema/wit/deps/` that holds this
-    /// stage's WIT package. For the three pilot stages (packet 163) this
-    /// is the per-stage package directory; for the 13 unmigrated stages
-    /// it is the tier world directory (`"world-layer"` or `"world-prepass"`).
+    /// Per-stage package directory under `crates/slicer-schema/wit/deps/`.
+    /// For host-built-in stages (currently `PrePass::PaintSegmentation` only)
+    /// this is `""`.
     pub wit_dir: &'static str,
     /// Per-stage WIT package identifier, e.g.
     /// `"slicer:postpass-gcode-postprocess@1.0.0"`. `""` for stages that
@@ -83,121 +82,122 @@ pub const STAGES: &[StageSpec] = &[
     StageSpec {
         method: "run_slice_postprocess",
         stage_id: "Layer::SlicePostProcess",
-        wit_export: "run-slice-postprocess",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-slice-postprocess",
+        wit_package: "slicer:layer-slice-postprocess@1.0.0",
+        wit_interface: "slice-postprocess",
+        wit_world: "slice-postprocess-module",
     },
     StageSpec {
         method: "run_perimeters",
         stage_id: "Layer::Perimeters",
-        wit_export: "run-perimeters",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-perimeters",
+        wit_package: "slicer:layer-perimeters@1.0.0",
+        wit_interface: "perimeters",
+        wit_world: "perimeters-module",
     },
     StageSpec {
         method: "run_wall_postprocess",
         stage_id: "Layer::PerimetersPostProcess",
-        wit_export: "run-wall-postprocess",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-perimeters-postprocess",
+        wit_package: "slicer:layer-perimeters-postprocess@1.0.0",
+        wit_interface: "perimeters-postprocess",
+        wit_world: "perimeters-postprocess-module",
     },
     StageSpec {
         method: "run_infill",
         stage_id: "Layer::Infill",
-        wit_export: "run-infill",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-infill",
+        wit_package: "slicer:layer-infill@1.0.0",
+        wit_interface: "infill",
+        wit_world: "infill-module",
     },
     StageSpec {
         method: "run_infill_postprocess",
         stage_id: "Layer::InfillPostProcess",
-        wit_export: "run-infill-postprocess",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-infill-postprocess",
+        wit_package: "slicer:layer-infill-postprocess@1.0.0",
+        wit_interface: "infill-postprocess",
+        wit_world: "infill-postprocess-module",
     },
     StageSpec {
         method: "run_support",
         stage_id: "Layer::Support",
-        wit_export: "run-support",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-support",
+        wit_package: "slicer:layer-support@1.0.0",
+        wit_interface: "support",
+        wit_world: "support-module",
     },
     StageSpec {
         method: "run_support_postprocess",
         stage_id: "Layer::SupportPostProcess",
-        wit_export: "run-support-postprocess",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-support-postprocess",
+        wit_package: "slicer:layer-support-postprocess@1.0.0",
+        wit_interface: "support-postprocess",
+        wit_world: "support-postprocess-module",
     },
     StageSpec {
         method: "run_path_optimization",
         stage_id: "Layer::PathOptimization",
-        wit_export: "run-path-optimization",
+        wit_export: "run",
         world_id: WORLD_LAYER,
         trait_name: "LayerModule",
-        wit_dir: "world-layer",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "layer-path-optimization",
+        wit_package: "slicer:layer-path-optimization@1.0.0",
+        wit_interface: "path-optimization",
+        wit_world: "path-optimization-module",
     },
     // ── Prepass world (WORLD_PREPASS) ──────────────────────────────────
     StageSpec {
         method: "run_mesh_analysis",
         stage_id: "PrePass::MeshAnalysis",
-        wit_export: "run-mesh-analysis",
+        wit_export: "run",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
-        wit_dir: "world-prepass",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "prepass-mesh-analysis",
+        wit_package: "slicer:prepass-mesh-analysis@1.0.0",
+        wit_interface: "mesh-analysis",
+        wit_world: "mesh-analysis-module",
     },
     StageSpec {
         method: "run_layer_planning",
         stage_id: "PrePass::LayerPlanning",
-        wit_export: "run-layer-planning",
+        wit_export: "run",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
-        wit_dir: "world-prepass",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "prepass-layer-planning",
+        wit_package: "slicer:prepass-layer-planning@1.0.0",
+        wit_interface: "layer-planning",
+        wit_world: "layer-planning-module",
     },
+    // Host-built-in since packet 97 (crates/slicer-runtime/src/prepass.rs); no WIT contract.
     StageSpec {
         method: "run_paint_segmentation",
         stage_id: "PrePass::PaintSegmentation",
-        wit_export: "run-paint-segmentation",
+        wit_export: "",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
-        wit_dir: "world-prepass",
+        wit_dir: "",
         wit_package: "",
         wit_interface: "",
         wit_world: "",
@@ -205,24 +205,24 @@ pub const STAGES: &[StageSpec] = &[
     StageSpec {
         method: "run_seam_planning",
         stage_id: "PrePass::SeamPlanning",
-        wit_export: "run-seam-planning",
+        wit_export: "run",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
-        wit_dir: "world-prepass",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "prepass-seam-planning",
+        wit_package: "slicer:prepass-seam-planning@1.0.0",
+        wit_interface: "seam-planning",
+        wit_world: "seam-planning-module",
     },
     StageSpec {
         method: "run_support_geometry",
         stage_id: "PrePass::SupportGeometry",
-        wit_export: "run-support-geometry",
+        wit_export: "run",
         world_id: WORLD_PREPASS,
         trait_name: "PrepassModule",
-        wit_dir: "world-prepass",
-        wit_package: "",
-        wit_interface: "",
-        wit_world: "",
+        wit_dir: "prepass-support-geometry",
+        wit_package: "slicer:prepass-support-geometry@1.0.0",
+        wit_interface: "support-geometry",
+        wit_world: "support-geometry-module",
     },
     // ── Finalization world (WORLD_FINALIZATION) ────────────────────────
     StageSpec {
@@ -369,7 +369,8 @@ pub fn all_stage_ids() -> Vec<&'static str> {
 
 /// Look up the WIT export name for a stage id from the single source of truth in [`STAGES`].
 ///
-/// Returns `None` for unknown stage ids. Dispatcher impls MUST use this lookup; they MUST NOT
+/// Returns `None` for unknown stage ids and the host-built-in
+/// `PrePass::PaintSegmentation`. Dispatcher impls MUST use this lookup; they MUST NOT
 /// hardcode their own stage-id → wit-export table (see ADR-0005, planned at P83 close).
 #[must_use]
 pub fn export_for_stage_id(stage_id: &str) -> Option<&'static str> {
@@ -377,13 +378,14 @@ pub fn export_for_stage_id(stage_id: &str) -> Option<&'static str> {
         .iter()
         .find(|s| s.stage_id == stage_id)
         .map(|s| s.wit_export)
+        .filter(|export| !export.is_empty())
 }
 
 /// Look up the per-stage WIT package directory (under
-/// `crates/slicer-schema/wit/deps/`) for a stage id. Total over every known
-/// stage: an unmigrated stage returns its tier world directory
-/// (`"world-layer"` or `"world-prepass"`); a migrated stage returns its
-/// per-stage package directory. Returns `None` for unknown stage ids.
+/// `crates/slicer-schema/wit/deps/`) for a stage id.
+///
+/// Returns `None` for unknown stage ids and the host-built-in
+/// `PrePass::PaintSegmentation`.
 ///
 /// Packet 163 pilot: `PostPass::GCodePostProcess` → `"postpass-gcode-postprocess"`,
 /// `PostPass::TextPostProcess` → `"postpass-text-postprocess"`,
@@ -394,6 +396,7 @@ pub fn wit_dir_for_stage_id(stage_id: &str) -> Option<&'static str> {
         .iter()
         .find(|s| s.stage_id == stage_id)
         .map(|s| s.wit_dir)
+        .filter(|dir| !dir.is_empty())
 }
 
 /// Look up the per-stage WIT package identifier (e.g.
@@ -489,17 +492,6 @@ pub const VALID_STAGES: &[&str] = &[
     "PostPass::TextPostProcess",
 ];
 
-/// All WIT world package strings supported by the current SDK.
-///
-/// Worlds supported by this schema; see `world-layer.wit`,
-/// `world-prepass.wit`, etc. See docs/03 §host-boundary enforcement.
-pub const SUPPORTED_WIT_WORLDS: &[&str] = &[
-    WORLD_LAYER,
-    WORLD_PREPASS,
-    WORLD_FINALIZATION,
-    WORLD_POSTPASS,
-];
-
 /// Valid config field type strings for `[config.schema.<key>].type`.
 ///
 /// See docs/03 §deps/config-types.
@@ -557,12 +549,23 @@ mod tests {
     #[test]
     fn stage_and_world_lookups_are_consistent() {
         for s in STAGES {
+            // `PrePass::PaintSegmentation` is the sole host-built-in stage
+            // (packet 97; crates/slicer-runtime/src/prepass.rs); its five WIT
+            // columns are intentionally empty. The other 15 stages all declare
+            // per-stage packages.
+            if s.stage_id == "PrePass::PaintSegmentation" {
+                assert!(s.wit_dir.is_empty());
+                assert!(s.wit_package.is_empty());
+                assert!(s.wit_interface.is_empty());
+                assert!(s.wit_world.is_empty());
+                assert!(s.wit_export.is_empty());
+                continue;
+            }
             assert_eq!(stage_by_id(s.stage_id).unwrap(), s);
             assert_eq!(stage_by_method(s.method).unwrap(), s);
             assert_eq!(world_for_stage_id(s.stage_id), Some(s.world_id));
             assert_eq!(world_for_trait(s.trait_name), Some(s.world_id));
-            // Every row must declare a non-empty wit_dir (the package dir
-            // for a migrated stage, the tier world dir for an unmigrated one).
+            // Every non-built-in row must declare a non-empty per-stage package dir.
             assert!(!s.wit_dir.is_empty(), "wit_dir is empty for {}", s.stage_id);
             // A non-empty wit_package implies non-empty wit_interface and
             // wit_world, and vice versa: per-stage package migration is
@@ -656,15 +659,36 @@ mod tests {
             Some("slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"),
         );
 
-        // Unmigrated stages: package / interface / world return None, but
-        // wit_dir and export_for_stage_id still work.
         let perimeters = "Layer::Perimeters";
-        assert_eq!(package_for_stage_id(perimeters), None);
-        assert_eq!(interface_for_stage_id(perimeters), None);
-        assert_eq!(wit_world_for_stage_id(perimeters), None);
-        assert_eq!(wit_dir_for_stage_id(perimeters), Some("world-layer"));
-        assert_eq!(export_for_stage_id(perimeters), Some("run-perimeters"));
-        assert_eq!(qualified_export_for_stage_id(perimeters), None);
+        assert_eq!(
+            package_for_stage_id(perimeters),
+            Some("slicer:layer-perimeters@1.0.0")
+        );
+        assert_eq!(interface_for_stage_id(perimeters), Some("perimeters"));
+        assert_eq!(
+            wit_world_for_stage_id(perimeters),
+            Some("perimeters-module")
+        );
+        assert_eq!(wit_dir_for_stage_id(perimeters), Some("layer-perimeters"));
+        assert_eq!(export_for_stage_id(perimeters), Some("run"));
+        assert_eq!(
+            qualified_export_for_stage_id(perimeters).as_deref(),
+            Some("slicer:layer-perimeters/perimeters@1.0.0#run"),
+        );
+
+        // PrePass::PaintSegmentation is the sole host-built-in stage:
+        // every WIT lookup returns None.
+        let paint_seg = "PrePass::PaintSegmentation";
+        for fn_name in [
+            package_for_stage_id,
+            interface_for_stage_id,
+            wit_world_for_stage_id,
+            export_for_stage_id,
+        ] {
+            assert_eq!(fn_name(paint_seg), None, "{fn_name:?}({paint_seg})");
+        }
+        assert_eq!(wit_dir_for_stage_id(paint_seg), None);
+        assert_eq!(qualified_export_for_stage_id(paint_seg), None);
 
         // Unknown stage: every lookup returns None.
         for fn_name in [

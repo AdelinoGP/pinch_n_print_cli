@@ -128,12 +128,25 @@ fn generate_slicer_module_impl(
 
     let has_stage = !detected.is_empty();
 
-    let (stage_id_literal, stage_method_literal, stage_export_literal, stage_world_literal) =
-        if let Some(s) = detected.first() {
-            (s.stage_id, s.method, s.wit_export, s.world_id)
-        } else {
-            ("", "", "", "")
-        };
+    let (
+        stage_id_literal,
+        stage_method_literal,
+        stage_export_name_literal,
+        stage_export_literal,
+        stage_world_literal,
+    ) = if let Some(s) = detected.first() {
+        let qualified_export = slicer_schema::qualified_export_for_stage_id(s.stage_id)
+            .unwrap_or_else(|| s.wit_export.to_string());
+        (
+            s.stage_id,
+            s.method,
+            s.wit_export,
+            qualified_export,
+            s.world_id,
+        )
+    } else {
+        ("", "", "", String::new(), "")
+    };
 
     // Choose effective WIT world: prefer the trait's world if the trait
     // is known, else the detected stage's world, else empty.
@@ -143,10 +156,10 @@ fn generate_slicer_module_impl(
 
     let trait_name_literal = trait_ident.unwrap_or("");
 
-    let wit_exports: Vec<&str> = if stage_export_literal.is_empty() {
+    let wit_exports = if stage_export_literal.is_empty() {
         Vec::new()
     } else {
-        vec![stage_export_literal]
+        vec![stage_export_literal.clone()]
     };
     let wit_exports_tokens = wit_exports.iter().map(|e| quote! { #e });
 
@@ -217,10 +230,10 @@ fn generate_slicer_module_impl(
             #[doc(hidden)]
             pub fn __slicer_trait_name() -> &'static str { #trait_name_literal }
 
-            /// Kebab-case WIT export name for the detected stage, e.g.
-            /// `"run-infill"`, or "" if no stage method was detected.
+            /// Local WIT export name for the detected stage, e.g. `"run"`,
+            /// or "" if no stage method was detected.
             #[doc(hidden)]
-            pub fn __slicer_stage_export_name() -> &'static str { #stage_export_literal }
+            pub fn __slicer_stage_export_name() -> &'static str { #stage_export_name_literal }
 
             /// Rust-cased name of the detected stage method, e.g.
             /// `"run_infill"`, or "" if no stage method was detected.
@@ -323,16 +336,19 @@ fn generate_slicer_module_impl(
     let real_glue_world = resolve_stage_glue(stage_id_literal, trait_ident);
 
     let stage_shim_tokens: TokenStream2 =
-        if stage_export_literal.is_empty() || real_glue_world.is_some() {
+        if stage_export_name_literal.is_empty() || real_glue_world.is_some() {
             quote! {}
         } else {
             let shim_name = syn::Ident::new(
-                &format!("__slicer_export_{}", stage_export_literal.replace('-', "_")),
+                &format!(
+                    "__slicer_export_{}",
+                    stage_export_name_literal.replace('-', "_")
+                ),
                 proc_macro2::Span::call_site(),
             );
             quote! {
                 #[cfg(target_arch = "wasm32")]
-                #[export_name = #stage_export_literal]
+                #[export_name = #stage_export_name_literal]
                 pub extern "C" fn #shim_name() -> i32 { 0 }
             }
         };
@@ -348,8 +364,22 @@ fn generate_slicer_module_impl(
             }
         }
         Some(StageGlueKind::Finalization) => build_finalization_world_glue(self_ty),
-        Some(StageGlueKind::Prepass) => build_prepass_world_glue(self_ty, stage_id_literal),
-        Some(StageGlueKind::Layer) => build_layer_world_glue(self_ty, stage_id_literal),
+        Some(StageGlueKind::LayerSlicePostprocess) => build_layer_slice_postprocess_glue(self_ty),
+        Some(StageGlueKind::LayerPerimeters) => build_layer_perimeters_glue(self_ty),
+        Some(StageGlueKind::LayerPerimetersPostprocess) => {
+            build_layer_perimeters_postprocess_glue(self_ty)
+        }
+        Some(StageGlueKind::LayerInfill) => build_layer_infill_glue(self_ty),
+        Some(StageGlueKind::LayerInfillPostprocess) => build_layer_infill_postprocess_glue(self_ty),
+        Some(StageGlueKind::LayerSupport) => build_layer_support_glue(self_ty),
+        Some(StageGlueKind::LayerSupportPostprocess) => {
+            build_layer_support_postprocess_glue(self_ty)
+        }
+        Some(StageGlueKind::LayerPathOptimization) => build_layer_path_optimization_glue(self_ty),
+        Some(StageGlueKind::PrepassMeshAnalysis) => build_prepass_mesh_analysis_glue(self_ty),
+        Some(StageGlueKind::PrepassLayerPlanning) => build_prepass_layer_planning_glue(self_ty),
+        Some(StageGlueKind::PrepassSeamPlanning) => build_prepass_seam_planning_glue(self_ty),
+        Some(StageGlueKind::PrepassSupportGeometry) => build_prepass_support_geometry_glue(self_ty),
         None => quote! {},
     };
 
@@ -369,9 +399,10 @@ fn generate_slicer_module_impl(
     }
 }
 
-/// Selector for which WIT world to emit real macro-generated export
-/// glue for. Returned by [`resolve_stage_glue`] based on the detected
-/// stage and declared SDK trait.
+/// Selector for which per-stage WIT package to emit real macro-generated
+/// export glue for. Postpass remains a two-stage selector because its two
+/// builders predate this tier split; layer and prepass now have one variant
+/// per stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StageGlueKind {
     /// Per-stage postpass (packet 163): gcode and text are split into
@@ -380,46 +411,46 @@ enum StageGlueKind {
     Postpass,
     /// `slicer:finalization-layer-finalization` — layer finalization.
     Finalization,
-    /// `slicer:world-prepass` — mesh analysis + layer planning.
-    Prepass,
-    /// `slicer:world-layer` — all 8 per-layer stage exports.
-    Layer,
+    LayerSlicePostprocess,
+    LayerPerimeters,
+    LayerPerimetersPostprocess,
+    LayerInfill,
+    LayerInfillPostprocess,
+    LayerSupport,
+    LayerSupportPostprocess,
+    LayerPathOptimization,
+    PrepassMeshAnalysis,
+    PrepassLayerPlanning,
+    PrepassSeamPlanning,
+    PrepassSupportGeometry,
 }
 
 /// Decide which WIT world gets real `wit_bindgen`-backed macro-generated
 /// glue for this `#[slicer_module]` invocation. Glue is emitted when:
-/// - the stage id belongs to a supported world, OR
-/// - the impl declares a known SDK trait.
+/// - the stage id belongs to a supported per-stage package.
 ///
-/// Unresolvable combinations return `None`, in which case the legacy
-/// placeholder shim path is emitted (inert — currently no legitimate
-/// authoring path hits that branch).
+/// A stageless trait impl is intentionally not enough to select a package:
+/// the legacy placeholder shim path is emitted for that case.
 fn resolve_stage_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<StageGlueKind> {
     match stage_id {
         "PostPass::TextPostProcess" | "PostPass::GCodePostProcess" => Some(StageGlueKind::Postpass),
         "PostPass::LayerFinalization" => Some(StageGlueKind::Finalization),
-        "PrePass::MeshAnalysis"
-        | "PrePass::LayerPlanning"
-        | "PrePass::SeamPlanning"
-        | "PrePass::SupportGeometry" => Some(StageGlueKind::Prepass),
-        "Layer::Slice"
-        | "Layer::SlicePostProcess"
-        | "Layer::Perimeters"
-        | "Layer::PerimetersPostProcess"
-        | "Layer::Infill"
-        | "Layer::InfillPostProcess"
-        | "Layer::Support"
-        | "Layer::SupportPostProcess"
-        | "Layer::PathOptimization" => Some(StageGlueKind::Layer),
-        _ => match trait_ident {
-            // Packet 163: postpass + finalization are now per-stage
-            // packages — a stageless `impl PostpassModule` /
-            // `impl FinalizationModule` gets no glue. Prepass + layer
-            // still fall back because they remain on tier worlds.
-            Some("PrepassModule") => Some(StageGlueKind::Prepass),
-            Some("LayerModule") => Some(StageGlueKind::Layer),
-            _ => None,
-        },
+        "Layer::SlicePostProcess" => Some(StageGlueKind::LayerSlicePostprocess),
+        "Layer::Perimeters" => Some(StageGlueKind::LayerPerimeters),
+        "Layer::PerimetersPostProcess" => Some(StageGlueKind::LayerPerimetersPostprocess),
+        "Layer::Infill" => Some(StageGlueKind::LayerInfill),
+        "Layer::InfillPostProcess" => Some(StageGlueKind::LayerInfillPostprocess),
+        "Layer::Support" => Some(StageGlueKind::LayerSupport),
+        "Layer::SupportPostProcess" => Some(StageGlueKind::LayerSupportPostprocess),
+        "Layer::PathOptimization" => Some(StageGlueKind::LayerPathOptimization),
+        "PrePass::MeshAnalysis" => Some(StageGlueKind::PrepassMeshAnalysis),
+        "PrePass::LayerPlanning" => Some(StageGlueKind::PrepassLayerPlanning),
+        "PrePass::SeamPlanning" => Some(StageGlueKind::PrepassSeamPlanning),
+        "PrePass::SupportGeometry" => Some(StageGlueKind::PrepassSupportGeometry),
+        _ => {
+            let _ = trait_ident;
+            None
+        }
     }
 }
 
@@ -464,6 +495,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     const CONFIG_WIT: &str = include_str!("../../slicer-schema/wit/deps/config.wit");
     const IR_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/ir-types.wit");
     const COMMON_WIT: &str = include_str!("../../slicer-schema/wit/deps/common.wit");
+    const PREPASS_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/prepass-types.wit");
 
     // Strip the statement-form `package <X>;` header from a dep WIT file,
     // returning the body for brace-wrapping into a nested package block.
@@ -529,18 +561,36 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
     let ir_block = format!("\n\n{}", nest_dep(IR_TYPES_WIT));
 
     let expanded_inline_wit = format!(
-        "{}\n\n{}\n\n{}{}\n\n{}",
+        "{}\n\n{}\n\n{}{}\n\n{}\n\n{}",
         inline_wit,
         nest_dep(TYPES_WIT),
         nest_dep(CONFIG_WIT),
         ir_block,
         nest_dep(COMMON_WIT),
+        nest_dep(PREPASS_TYPES_WIT),
     );
 
     // With Option A, ConfigValue lives in the slicer:config package, not the world package.
     // Path: self::slicer::config::config_types::ConfigValue
     let ns_path: syn::Path = syn::parse_str("self::slicer::config::config_types::ConfigValue")
         .expect("parse ConfigValue path");
+
+    // The support-geometry world intentionally owns its layer-plan records.
+    // The shared prepass-types package also contains a layer-plan view whose
+    // entry type is emitted in the support-geometry namespace when these
+    // packages are generated together. Point that shadow view at the local
+    // generated record so wit-bindgen resolves the name in one namespace
+    // without replacing the support-geometry WIT records with SDK types.
+    let support_geometry_type_wiring = if world_name == "support-geometry-module" {
+        quote! {
+            with: {
+                "slicer:prepass-types/prepass-types/layer-plan-view":
+                    crate::__slicer_prepass_support_geometry_world_export::slicer::prepass_support_geometry::support_geometry_types::LayerPlanView,
+            },
+        }
+    } else {
+        quote! {}
+    };
 
     // With Option A (nested packages), wit-bindgen requires `with` entries for
     // every imported external interface — even non-resource ones — otherwise it
@@ -550,6 +600,7 @@ fn emit_world_preamble(world_name: &str, _world_namespace: &str, inline_wit: &st
         ::wit_bindgen::generate!({
             inline: #expanded_inline_wit,
             world: #world_name,
+            #support_geometry_type_wiring
             generate_all,
         });
 
@@ -1270,9 +1321,616 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
     }
 }
 
-/// Emit the `wit_bindgen`-backed component export glue for the prepass
-/// world for all documented prepass stages.
-fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
+fn prepass_mesh_helpers() -> TokenStream2 {
+    quote! {
+        fn __slicer_paint_value_from_wit(
+            value: PaintValueView,
+        ) -> ::slicer_sdk::prepass_types::PaintValueView {
+            match value {
+                PaintValueView::Flag(flag) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("flag"),
+                    flag: Some(flag),
+                    scalar: None,
+                    tool_index: None,
+                },
+                PaintValueView::Scalar(scalar) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("scalar"),
+                    flag: None,
+                    scalar: Some(scalar),
+                    tool_index: None,
+                },
+                PaintValueView::ToolIndex(tool_index) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("tool_index"),
+                    flag: None,
+                    scalar: None,
+                    tool_index: Some(tool_index),
+                },
+            }
+        }
+
+        fn __slicer_paint_stroke_from_wit(
+            stroke: PaintStrokeView,
+        ) -> ::slicer_sdk::prepass_types::PaintStrokeView {
+            let triangle_points: ::std::vec::Vec<[f32; 3]> = stroke
+                .triangles
+                .into_iter()
+                .map(|point| [point.x, point.y, point.z])
+                .collect();
+            let mut triangle_chunks = triangle_points.chunks_exact(3);
+            debug_assert!(
+                triangle_chunks.remainder().is_empty(),
+                "PaintStrokeView.triangles must contain complete triangle triplets"
+            );
+            ::slicer_sdk::prepass_types::PaintStrokeView {
+                triangles: triangle_chunks
+                    .by_ref()
+                    .map(|triangle| [triangle[0], triangle[1], triangle[2]])
+                    .collect(),
+                semantic: stroke.semantic,
+                value: __slicer_paint_value_from_wit(stroke.value),
+            }
+        }
+
+        fn __slicer_paint_layer_from_wit(
+            layer: PaintLayerView,
+        ) -> ::slicer_sdk::prepass_types::PaintLayerView {
+            ::slicer_sdk::prepass_types::PaintLayerView {
+                semantic: layer.semantic,
+                facet_values: layer
+                    .facet_values
+                    .into_iter()
+                    .map(|value| value.map(__slicer_paint_value_from_wit))
+                    .collect(),
+                strokes: layer
+                    .strokes
+                    .into_iter()
+                    .map(__slicer_paint_stroke_from_wit)
+                    .collect(),
+            }
+        }
+
+        fn __slicer_mesh_object_from_wit(
+            object: MeshObjectView,
+        ) -> ::slicer_sdk::prepass_types::MeshObjectView {
+            ::slicer_sdk::prepass_types::MeshObjectView {
+                object_id: object.object_id,
+                vertices: object
+                    .vertices
+                    .into_iter()
+                    .map(|point| [point.x, point.y, point.z])
+                    .collect(),
+                triangles: object
+                    .triangles
+                    .into_iter()
+                    .map(|(a, b, c)| [a, b, c])
+                    .collect(),
+                paint_layers: object
+                    .paint_layers
+                    .into_iter()
+                    .map(__slicer_paint_layer_from_wit)
+                    .collect(),
+            }
+        }
+    }
+}
+
+fn prepass_geometry_helpers() -> TokenStream2 {
+    quote! {
+        fn __slicer_expolygon_from_wit(
+            ep: ExPolygon,
+        ) -> ::slicer_ir::ExPolygon {
+            ::slicer_ir::ExPolygon {
+                contour: ::slicer_ir::Polygon {
+                    points: ep.contour.points.iter().map(|p| ::slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
+                },
+                holes: ep.holes.into_iter().map(|h| ::slicer_ir::Polygon {
+                    points: h.points.iter().map(|p| ::slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
+                }).collect(),
+            }
+        }
+    }
+}
+
+fn prepass_seam_helpers() -> TokenStream2 {
+    let mesh_helpers = prepass_mesh_helpers();
+    let geometry_helpers = prepass_geometry_helpers();
+    quote! {
+        #mesh_helpers
+        #geometry_helpers
+
+        fn __slicer_paint_semantic_from_wit(
+            semantic: PaintSemantic,
+        ) -> ::slicer_ir::PaintSemantic {
+            match semantic {
+                PaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
+                PaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
+                PaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
+                PaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
+                PaintSemantic::Custom(value) => ::slicer_ir::PaintSemantic::Custom(value),
+            }
+        }
+
+        fn __slicer_paint_value_from_ir_wit(
+            value: PaintValue,
+        ) -> ::slicer_ir::PaintValue {
+            match value {
+                PaintValue::Flag(value) => ::slicer_ir::PaintValue::Flag(value),
+                PaintValue::Scalar(value) => ::slicer_ir::PaintValue::Scalar(value),
+                PaintValue::ToolIndex(value) => ::slicer_ir::PaintValue::ToolIndex(value),
+            }
+        }
+
+        fn __slicer_seam_planning_region_from_wit(
+            region: SeamPlanningRegionInput,
+        ) -> ::slicer_sdk::prepass_types::SeamPlanningRegionInput {
+            ::slicer_sdk::prepass_types::SeamPlanningRegionInput {
+                global_layer_index: region.global_layer_index,
+                object_id: region.object_id,
+                region_id: region.region_id,
+                variant_chain: region
+                    .variant_chain
+                    .into_iter()
+                    .map(|(semantic, value)| {
+                        (semantic, __slicer_paint_value_from_ir_wit(value))
+                    })
+                    .collect(),
+                z: region.z,
+                height: region.height,
+                ex_polygons: region
+                    .ex_polygons
+                    .into_iter()
+                    .map(__slicer_expolygon_from_wit)
+                    .collect(),
+                segment_annotations: region
+                    .segment_annotations
+                    .into_iter()
+                    .map(|entry| {
+                        (
+                            __slicer_paint_semantic_from_wit(entry.semantic),
+                            entry
+                                .polygons
+                                .into_iter()
+                                .map(|polygon| {
+                                    polygon
+                                        .values
+                                        .into_iter()
+                                        .map(|value| value.map(__slicer_paint_value_from_ir_wit))
+                                        .collect()
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+                scoring_width: region.scoring_width,
+            }
+        }
+    }
+}
+
+fn build_prepass_mesh_analysis_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/prepass-mesh-analysis/prepass-mesh-analysis.wit"
+    );
+    let preamble = emit_world_preamble("mesh-analysis-module", "mesh_analysis", wit_inline);
+    let profile_install = profile_install_stmt();
+    let arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+        let mut sdk_output = ::slicer_sdk::prepass_builders::MeshAnalysisOutput::new();
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_analysis(
+            &module, &sdk_objects, &mut sdk_output, &ir_config,
+        );
+        for (__slicer_obj, __slicer_ann) in sdk_output.facet_annotations() {
+            let __slicer_wit_ann = FacetAnnotation {
+                facet_index: __slicer_ann.facet_index,
+                slope_angle_deg: __slicer_ann.slope_angle_deg,
+                classification: match __slicer_ann.classification {
+                    ::slicer_sdk::prepass_types::FacetClass::Normal => FacetClass::Normal,
+                    ::slicer_sdk::prepass_types::FacetClass::NearHorizontal => FacetClass::NearHorizontal,
+                    ::slicer_sdk::prepass_types::FacetClass::Overhang => FacetClass::Overhang,
+                    ::slicer_sdk::prepass_types::FacetClass::Bridge => FacetClass::Bridge,
+                    ::slicer_sdk::prepass_types::FacetClass::TopSurface => FacetClass::TopSurface,
+                    ::slicer_sdk::prepass_types::FacetClass::BottomSurface => FacetClass::BottomSurface,
+                },
+            };
+            if let Err(e) = output.push_facet_annotation(__slicer_obj, __slicer_wit_ann) {
+                return Err(ModuleError { code: 6, message: e, fatal: true });
+            }
+        }
+        for (__slicer_obj, __slicer_grp) in sdk_output.surface_groups() {
+            let __slicer_wit_grp = SurfaceGroupProposal {
+                facet_indices: __slicer_grp.facet_indices.clone(),
+                z_min: __slicer_grp.z_min,
+                z_max: __slicer_grp.z_max,
+                shell_count: __slicer_grp.shell_count,
+            };
+            if let Err(e) = output.push_surface_group(__slicer_obj, &__slicer_wit_grp) {
+                return Err(ModuleError { code: 7, message: e, fatal: true });
+            }
+        }
+        match out {
+            Ok(()) => Ok(()),
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_prepass_mesh_analysis_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            use slicer::prepass_mesh_analysis::mesh_analysis_types::{
+                FacetAnnotation, FacetClass, MeshAnalysisOutput, SurfaceGroupProposal,
+            };
+            #preamble
+            struct __SlicerPrepassMeshAnalysisComponent;
+            impl exports::slicer::prepass_mesh_analysis::mesh_analysis::Guest for __SlicerPrepassMeshAnalysisComponent {
+                fn run(
+                    _objects: Vec<String>,
+                    output: MeshAnalysisOutput,
+                    config: ConfigView,
+                ) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerPrepassMeshAnalysisComponent);
+        }
+    }
+}
+
+fn build_prepass_layer_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/prepass-layer-planning/prepass-layer-planning.wit"
+    );
+    let preamble = emit_world_preamble("layer-planning-module", "layer_planning", wit_inline);
+    let profile_install = profile_install_stmt();
+    let arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+        let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(
+            &module, &sdk_objects, &mut sdk_output, &ir_config,
+        );
+        for __slicer_layer in sdk_output.layers() {
+            let __slicer_wit_regions: ::std::vec::Vec<RegionLayerProposal> = __slicer_layer
+                .active_regions
+                .iter()
+                .map(|r| RegionLayerProposal {
+                    object_id: r.object_id.clone(),
+                    region_id: r.region_id.clone(),
+                    effective_layer_height: r.effective_layer_height,
+                    is_catchup: r.is_catchup,
+                    catchup_z_bottom: r.catchup_z_bottom,
+                })
+                .collect();
+            if let Err(e) = output.push_layer(&LayerProposal {
+                z: __slicer_layer.z,
+                active_regions: __slicer_wit_regions,
+            }) {
+                return Err(ModuleError { code: 5, message: e, fatal: true });
+            }
+        }
+        match out {
+            Ok(()) => Ok(()),
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_prepass_layer_planning_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            use slicer::prepass_layer_planning::layer_planning_types::{
+                LayerPlanOutput, LayerProposal, RegionLayerProposal,
+            };
+            #preamble
+            struct __SlicerPrepassLayerPlanningComponent;
+            impl exports::slicer::prepass_layer_planning::layer_planning::Guest for __SlicerPrepassLayerPlanningComponent {
+                fn run(
+                    _objects: Vec<String>,
+                    output: LayerPlanOutput,
+                    config: ConfigView,
+                ) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerPrepassLayerPlanningComponent);
+        }
+    }
+}
+
+fn build_prepass_seam_planning_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/prepass-seam-planning/prepass-seam-planning.wit"
+    );
+    let preamble = emit_world_preamble("seam-planning-module", "seam_planning", wit_inline);
+    let profile_install = profile_install_stmt();
+    let helpers = prepass_seam_helpers();
+    let arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = objects
+            .into_iter()
+            .map(__slicer_mesh_object_from_wit)
+            .collect();
+        let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
+            layers: layer_plan.layers.iter().map(|e| ::slicer_sdk::prepass_types::LayerPlanViewEntry {
+                global_layer_index: e.global_layer_index,
+                z: e.z,
+                effective_layer_height: e.effective_layer_height,
+            }).collect(),
+        };
+        let sdk_region_input = ::slicer_sdk::prepass_types::SeamPlanningView {
+            regions: region_input
+                .regions()
+                .into_iter()
+                .map(__slicer_seam_planning_region_from_wit)
+                .collect(),
+        };
+        let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
+            &module, &sdk_objects, &sdk_layer_plan, &mut sdk_output, &ir_config,
+            &sdk_region_input,
+        );
+        for __slicer_entry in sdk_output.entries() {
+            let __slicer_wit_candidates: ::std::vec::Vec<ScoredSeamCandidate> = __slicer_entry
+                .scored_candidates
+                .iter()
+                .map(|sc| ScoredSeamCandidate {
+                    position: SeamPoint3WithWidth {
+                        x: sc.position.x,
+                        y: sc.position.y,
+                        z: sc.position.z,
+                        width: sc.position.width,
+                        flow_factor: sc.position.flow_factor,
+                        overhang_quartile: sc.position.overhang_quartile,
+                    },
+                    score: sc.score,
+                    reason: SeamReason { tag: sc.reason.tag.clone() },
+                })
+                .collect();
+            let __slicer_variant_chain = match __slicer_entry.variant_chain.iter().map(|(semantic, value)| {
+                let value = match value {
+                    ::slicer_ir::PaintValue::Flag(v) => PaintValue::Flag(*v),
+                    ::slicer_ir::PaintValue::Scalar(v) => PaintValue::Scalar(*v),
+                    ::slicer_ir::PaintValue::ToolIndex(v) => PaintValue::ToolIndex(*v),
+                    ::slicer_ir::PaintValue::Custom(_) => {
+                        return Err(::std::string::String::from(
+                            "custom paint values cannot cross the WIT boundary as variant-chain identity",
+                        ));
+                    }
+                };
+                Ok((semantic.clone(), value))
+            }).collect::<::std::result::Result<::std::vec::Vec<_>, ::std::string::String>>() {
+                Ok(chain) => chain,
+                Err(message) => return Err(ModuleError { code: 12, message, fatal: true }),
+            };
+            let __slicer_wit_entry = SeamPlanEntry {
+                global_layer_index: __slicer_entry.global_layer_index,
+                object_id: __slicer_entry.object_id.clone(),
+                region_id: __slicer_entry.region_id.clone(),
+                variant_chain: __slicer_variant_chain,
+                chosen_position: SeamPoint3WithWidth {
+                    x: __slicer_entry.chosen_position.x,
+                    y: __slicer_entry.chosen_position.y,
+                    z: __slicer_entry.chosen_position.z,
+                    width: __slicer_entry.chosen_position.width,
+                    flow_factor: __slicer_entry.chosen_position.flow_factor,
+                    overhang_quartile: __slicer_entry.chosen_position.overhang_quartile,
+                },
+                chosen_wall_index: __slicer_entry.chosen_wall_index,
+                scored_candidates: __slicer_wit_candidates,
+            };
+            if let Err(e) = output.push_seam_plan(&__slicer_wit_entry) {
+                return Err(ModuleError { code: 11, message: e, fatal: true });
+            }
+        }
+        match out {
+            Ok(()) => Ok(()),
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_prepass_seam_planning_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            use slicer::ir_handles::ir_handles::{PaintSemantic, PaintValue};
+            use slicer::prepass_types::prepass_types::{
+                LayerPlanView, MeshObjectView, PaintLayerView, PaintStrokeView, PaintValueView,
+            };
+            use slicer::prepass_seam_planning::seam_planning_types::{
+                ScoredSeamCandidate, SeamPlanEntry, SeamPlanningOutput,
+                SeamPlanningRegionInput, SeamPlanningView, SeamReason,
+            };
+            use slicer::types::geometry::{SeamPoint3WithWidth, ExPolygon};
+            #preamble
+            #helpers
+            struct __SlicerPrepassSeamPlanningComponent;
+            impl exports::slicer::prepass_seam_planning::seam_planning::Guest for __SlicerPrepassSeamPlanningComponent {
+                fn run(
+                    objects: Vec<MeshObjectView>,
+                    layer_plan: LayerPlanView,
+                    output: SeamPlanningOutput,
+                    config: ConfigView,
+                    region_input: SeamPlanningView,
+                ) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerPrepassSeamPlanningComponent);
+        }
+    }
+}
+
+fn build_prepass_support_geometry_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit"
+    );
+    let preamble = emit_world_preamble("support-geometry-module", "support_geometry", &wit_inline);
+    let profile_install = profile_install_stmt();
+    let helpers = {
+        let mesh = prepass_mesh_helpers();
+        let geometry = prepass_geometry_helpers();
+        quote! { #mesh #geometry }
+    };
+    let arm = quote! {
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::from_config(&ir_config) {
+            Ok(m) => m,
+            Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = objects
+            .into_iter()
+            .map(__slicer_mesh_object_from_wit)
+            .collect();
+        let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
+            layers: layer_plan.layers.iter().map(|e| ::slicer_sdk::prepass_types::LayerPlanViewEntry {
+                global_layer_index: e.global_layer_index,
+                z: e.z,
+                effective_layer_height: e.effective_layer_height,
+            }).collect(),
+        };
+        let sdk_region_segmentation = ::slicer_sdk::prepass_types::RegionSegmentationView {
+            entries: region_segmentation.entries.iter().map(|e| ::slicer_sdk::prepass_types::RegionSegmentationViewEntry {
+                object_id: e.object_id.clone(),
+                layer_index: e.layer_index,
+                region_ids: e.region_ids.clone(),
+            }).collect(),
+        };
+        let sdk_support_geometry = ::slicer_sdk::prepass_types::SupportGeometryView {
+            entries: support_geometry.entries.iter().map(|e| ::slicer_sdk::prepass_types::SupportGeometryViewEntry {
+                global_support_layer_index: e.global_support_layer_index,
+                object_id: e.object_id.clone(),
+                region_id: e.region_id.clone(),
+                outlines: e.outlines.iter().map(|ep| __slicer_expolygon_from_wit(ep.clone())).collect(),
+            }).collect(),
+        };
+        let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGeometryOutput::new();
+        let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(
+            &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_geometry, &mut sdk_output, &ir_config,
+        );
+        for __slicer_entry in sdk_output.entries() {
+            let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
+                .branch_segments
+                .iter()
+                .map(|seg| seg.iter().map(|pt| Point3WithWidth {
+                    x: pt.x,
+                    y: pt.y,
+                    z: pt.z,
+                    width: pt.width,
+                    flow_factor: pt.flow_factor,
+                    overhang_quartile: pt.overhang_quartile,
+                    dist_to_top_mm: pt.dist_to_top_mm,
+                }).collect())
+                .collect();
+            let __slicer_wit_entry = SupportPlanEntry {
+                global_layer_index: __slicer_entry.global_layer_index,
+                object_id: __slicer_entry.object_id.clone(),
+                region_id: __slicer_entry.region_id.clone(),
+                branch_segments: __slicer_wit_segments,
+            };
+            if let Err(e) = output.push_support_plan_entry(&__slicer_wit_entry) {
+                return Err(ModuleError { code: 11, message: e, fatal: true });
+            }
+        }
+        if let Some(__slicer_raft_plan) = sdk_output.raft_plan() {
+            let __slicer_wit_raft_plan = RaftPlan {
+                raft_layers: __slicer_raft_plan.raft_layers,
+                raft_first_layer_density: __slicer_raft_plan.raft_first_layer_density,
+                base_raft_layers: __slicer_raft_plan.base_raft_layers,
+                interface_raft_layers: __slicer_raft_plan.interface_raft_layers,
+            };
+            if let Err(e) = output.push_raft_plan(__slicer_wit_raft_plan) {
+                return Err(ModuleError { code: 13, message: e, fatal: true });
+            }
+        }
+        for __slicer_diag in sdk_output.diagnostics() {
+            let __slicer_wit_severity = match __slicer_diag.severity {
+                ::slicer_sdk::prepass_types::DiagnosticSeverity::Trace => SeverityLevel::Trace,
+                ::slicer_sdk::prepass_types::DiagnosticSeverity::Debug => SeverityLevel::Debug,
+                ::slicer_sdk::prepass_types::DiagnosticSeverity::Info => SeverityLevel::Info,
+                ::slicer_sdk::prepass_types::DiagnosticSeverity::Warn => SeverityLevel::Warn,
+                ::slicer_sdk::prepass_types::DiagnosticSeverity::Error => SeverityLevel::Error,
+            };
+            let __slicer_wit_diag = Diagnostic {
+                severity: __slicer_wit_severity,
+                code: __slicer_diag.code,
+                layer: __slicer_diag.layer,
+                object_id: __slicer_diag.object_id.clone(),
+                message: __slicer_diag.message.clone(),
+            };
+            if let Err(e) = output.push_diagnostic(&__slicer_wit_diag) {
+                return Err(ModuleError { code: 12, message: e, fatal: true });
+            }
+        }
+        match out {
+            Ok(()) => Ok(()),
+            Err(e) => Err(__slicer_error_out(e)),
+        }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_prepass_support_geometry_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            use slicer::prepass_types::prepass_types::{
+                MeshObjectView, PaintLayerView, PaintStrokeView, PaintValueView,
+            };
+            use slicer::prepass_support_geometry::support_geometry_types::{
+                Diagnostic, LayerPlanView, ObjectId, RaftPlan,
+                RegionId, RegionSegmentationView, RegionSegmentationViewEntry,
+                SeverityLevel, SupportGeometryOutput, SupportGeometryView,
+                SupportGeometryViewEntry, SupportPlanEntry,
+            };
+            use slicer::types::geometry::{ExPolygon, Point3WithWidth};
+            use self::slicer::prepass_support_geometry::support_geometry_types::LayerPlanViewEntry;
+            #preamble
+            #helpers
+            struct __SlicerPrepassSupportGeometryComponent;
+            impl exports::slicer::prepass_support_geometry::support_geometry::Guest for __SlicerPrepassSupportGeometryComponent {
+                fn run(
+                    objects: Vec<MeshObjectView>,
+                    layer_plan: LayerPlanView,
+                    region_segmentation: RegionSegmentationView,
+                    support_geometry: SupportGeometryView,
+                    output: SupportGeometryOutput,
+                    config: ConfigView,
+                ) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerPrepassSupportGeometryComponent);
+        }
+    }
+}
+
+/// Retained only as source history while the stage-specific builders above
+/// replace the former tier-world implementation.
+#[cfg(any())]
+fn retired_prepass_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = include_str!("../../slicer-schema/wit/deps/world-prepass/world-prepass.wit");
 
     let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
@@ -1899,17 +2557,1379 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
     }
 }
 
-/// Emit the `wit_bindgen`-backed component export glue for the layer
-/// world (all 8 stage exports). The detected stage routes into the user's trait method
-/// with real resource-level deep copy: typed wit-bindgen resources
-/// are read through their generated accessors and rebuilt as SDK
-/// `SliceRegionView` / `PerimeterRegionView` / `PaintRegionLayerView`
-/// values before the trait body runs, and the SDK builder contents
-/// the trait body fills are drained back through the corresponding
-/// wit-bindgen builder resource methods after it returns. Mirrors
-/// the finalization-world deep-copy template at
-/// `build_finalization_world_glue`.
-fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
+/// Per-stage WIT alias sets. Each per-stage `bindgen!` mod generates only
+/// the types its WIT file references, so each macro-emitted `mod
+/// __slicer_<stage>_world_export` must `use` only the types that the
+/// per-stage WIT actually imports. The old `layer_wit_aliases()` helper
+/// (carried over from the 163-era tier-world shape) referenced every
+/// ir-handles type — that worked when one `world-layer.wit` imported
+/// every interface, but the per-stage WITs each import only 4 ir-handles
+/// types, so a single aliases block that references `PriorInfillRegion`
+/// (only in `layer-infill-postprocess`) breaks the other 7 layer mods
+/// at `PriorInfillRegion not found in ir_handles::ir_handles`. The shared
+/// slice-input records used by the light adapters are imported only in the
+/// light-stage fallback below; stage-specific records remain local to their
+/// matching stage helpers.
+///
+/// Only the perimeters-postprocess, infill-postprocess, and
+/// path-optimization bodies use `layer_glue_helpers()` (the helpers
+/// carry WIT↔IR conversion code for the richer record types those
+/// stages handle). The other 5 layer bodies use the lighter
+/// `__slicer_adapt_*` helpers inline. So the per-stage aliases below
+/// only bring in the rich type set for those 3 stages.
+fn layer_per_stage_aliases(stage: &str) -> TokenStream2 {
+    let ir_handles = match stage {
+        "layer_perimeters_postprocess" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                GcodeMoveCmd as WitGcodeMoveCmd, GcodeOutputBuilder,
+                LayerCollectionBuilder, LayerIdx,
+                MaterialBoundarySegment as WitMaterialBoundarySegment,
+                OrderedEntityView as WitOrderedEntityView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand, RetractMode as WitRetractMode,
+                SeamCandidate as WitSeamCandidate, SeamPosition as WitSeamPosition,
+                WallBoundaryType as WitWallBoundaryType,
+                WallFeatureFlag as WitWallFeatureFlag,
+                WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, ExtrusionPath3d as WitExtrusionPath3d,
+                ExtrusionRole as WitExtrusionRole, Point2 as WitPoint2, Point3 as WitPoint3,
+                Point3WithWidth as WitPoint3WithWidth, Polygon as WitPolygon,
+            };
+        },
+        "layer_infill_postprocess" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                GcodeMoveCmd as WitGcodeMoveCmd,
+                InfillOutputBuilder, LayerIdx, MaterialBoundarySegment as WitMaterialBoundarySegment,
+                PerimeterRegionView, PriorInfillRegion,
+                PaintValue as WitPaintValue, QuartileBand as WitQuartileBand,
+                SeamCandidate as WitSeamCandidate, SeamPosition as WitSeamPosition,
+                WallBoundaryType as WitWallBoundaryType, WallFeatureFlag as WitWallFeatureFlag,
+                WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, ExtrusionPath3d as WitExtrusionPath3d,
+                ExtrusionRole as WitExtrusionRole, Point2 as WitPoint2, Point3 as WitPoint3,
+                Point3WithWidth as WitPoint3WithWidth, Polygon as WitPolygon,
+            };
+        },
+        "layer_path_optimization" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                GcodeMoveCmd as WitGcodeMoveCmd, GcodeOutputBuilder,
+                LayerCollectionBuilder, LayerIdx,
+                MaterialBoundarySegment as WitMaterialBoundarySegment,
+                OrderedEntityView as WitOrderedEntityView, PerimeterRegionView,
+                PaintValue as WitPaintValue,
+                QuartileBand as WitQuartileBand, RetractMode as WitRetractMode,
+                SeamCandidate as WitSeamCandidate, SeamPosition as WitSeamPosition,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SurfaceGroup as WitSurfaceGroup, WallBoundaryType as WitWallBoundaryType,
+                WallFeatureFlag as WitWallFeatureFlag, WallLoopType as WitWallLoopType,
+                WallLoopView as WitWallLoopView,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, ExtrusionPath3d as WitExtrusionPath3d,
+                ExtrusionRole as WitExtrusionRole, Point2 as WitPoint2, Point3 as WitPoint3,
+                Point3WithWidth as WitPoint3WithWidth, Polygon as WitPolygon,
+            };
+        },
+        // 5 lighter mods (slice_postprocess, perimeters, infill, support,
+        // support_postprocess) use only the WIT types their own WIT
+        // references. The full ir-handles set is NOT imported here because
+        // those types are not in this mod's per-stage WIT.
+        _ => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                InfillOutputBuilder, LayerIdx, PaintRegionLayerView,
+                PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+                PerimeterOutputBuilder, PerimeterRegionView,
+                QuartileBand as WitQuartileBand,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
+                SlicePostprocessBuilder, SliceRegionView,
+                SurfaceGroup as WitSurfaceGroup, SupportOutputBuilder,
+            };
+            use self::slicer::types::geometry::{
+                ExPolygon as WitExPolygon, Point2 as WitPoint2, Point3, Polygon as WitPolygon,
+            };
+        },
+    };
+    quote! { #ir_handles }
+}
+
+/// Light helpers for the 5 lighter layer mods (slice_postprocess,
+/// perimeters, infill, support, support_postprocess). The 3 heavy
+/// mods (perimeters_postprocess, infill_postprocess,
+/// path_optimization) use `layer_glue_helpers()` instead, which
+/// includes the rich WIT↔IR conversion code for perimeter records and
+/// post-processing inputs. The light helpers keep their conversion surface
+/// limited to the shared slice and paint records exposed by those stages.
+///
+/// The light helpers provide only the adapters used by the five lighter layer
+/// body sites. Stage-specific drain bodies and their WIT conversion helpers
+/// are emitted by `layer_stage_helpers`.
+fn layer_light_helpers() -> TokenStream2 {
+    quote! {
+        fn __slicer_wit_point2_to_ir(p: &WitPoint2) -> ::slicer_ir::Point2 {
+            ::slicer_ir::Point2 { x: p.x, y: p.y }
+        }
+
+        fn __slicer_wit_polygon_to_ir(p: &WitPolygon) -> ::slicer_ir::Polygon {
+            ::slicer_ir::Polygon {
+                points: p.points.iter().map(__slicer_wit_point2_to_ir).collect(),
+            }
+        }
+
+        fn __slicer_wit_expolygon_to_ir(ep: &WitExPolygon) -> ::slicer_ir::ExPolygon {
+            ::slicer_ir::ExPolygon {
+                contour: __slicer_wit_polygon_to_ir(&ep.contour),
+                holes: ep.holes.iter().map(__slicer_wit_polygon_to_ir).collect(),
+            }
+        }
+
+        fn __slicer_wit_quartileband_to_ir(
+            qb: &WitQuartileBand,
+        ) -> ::slicer_ir::slice_ir::QuartileBand {
+            ::slicer_ir::slice_ir::QuartileBand {
+                quartile: qb.quartile,
+                polygons: qb.polygons.iter().map(__slicer_wit_expolygon_to_ir).collect(),
+            }
+        }
+
+        fn __slicer_wit_surfacegroup_to_ir(sg: &WitSurfaceGroup) -> ::slicer_ir::SurfaceGroup {
+            ::slicer_ir::SurfaceGroup {
+                id: sg.id,
+                facet_indices: sg.facet_indices.clone(),
+                z_min: sg.z_min,
+                z_max: sg.z_max,
+                area_mm2: sg.area_mm2,
+                printable: sg.printable,
+                shell_count: sg.shell_count,
+            }
+        }
+
+        fn __slicer_wit_semantic_to_ir(s: &WitPaintSemantic) -> ::slicer_ir::PaintSemantic {
+            match s {
+                WitPaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
+                WitPaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
+                WitPaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
+                WitPaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
+                WitPaintSemantic::Custom(s) => ::slicer_ir::PaintSemantic::Custom(s.clone()),
+            }
+        }
+
+        fn __slicer_wit_paintvalue_to_ir(v: &WitPaintValue) -> ::slicer_ir::PaintValue {
+            match v {
+                WitPaintValue::Flag(b) => ::slicer_ir::PaintValue::Flag(*b),
+                WitPaintValue::Scalar(f) => ::slicer_ir::PaintValue::Scalar(*f),
+                WitPaintValue::ToolIndex(i) => ::slicer_ir::PaintValue::ToolIndex(*i),
+            }
+        }
+
+        fn __slicer_segment_annotations_to_ir(
+            entries: &[WitSegmentAnnotationsEntry],
+        ) -> ::std::collections::HashMap<
+            ::slicer_ir::PaintSemantic,
+            ::std::vec::Vec<::std::vec::Vec<::core::option::Option<::slicer_ir::PaintValue>>>,
+        > {
+            let mut map = ::std::collections::HashMap::new();
+            for entry in entries {
+                let semantic = __slicer_wit_semantic_to_ir(&entry.semantic);
+                let polygons: ::std::vec::Vec<_> = entry
+                    .polygons
+                    .iter()
+                    .map(|polygon: &WitSegmentAnnotationsPolygon| {
+                        polygon
+                            .values
+                            .iter()
+                            .map(|value| value.as_ref().map(__slicer_wit_paintvalue_to_ir))
+                            .collect()
+                    })
+                    .collect();
+                map.insert(semantic, polygons);
+            }
+            map
+        }
+
+        fn __slicer_adapt_slice_regions(
+            regions: &[SliceRegionView],
+        ) -> ::std::vec::Vec<::slicer_sdk::views::SliceRegionView> {
+            let mut out = ::std::vec::Vec::with_capacity(regions.len());
+            for r in regions.iter() {
+                let polys: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .polygons()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let infill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .infill_areas()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let segment_annotations =
+                    __slicer_segment_annotations_to_ir(&r.segment_annotations());
+                let region_id: ::slicer_ir::RegionId = r.region_id().parse().unwrap_or(0);
+                let mut sdk_view = ::slicer_sdk::views::SliceRegionView::default();
+                sdk_view.set_object_id(r.object_id());
+                sdk_view.set_region_id(region_id);
+                sdk_view.set_polygons(polys);
+                sdk_view.set_infill_areas(infill);
+                sdk_view.set_effective_layer_height(r.effective_layer_height());
+                sdk_view.set_z(r.z());
+                sdk_view.set_has_nonplanar(r.has_nonplanar());
+                sdk_view.set_segment_annotations(segment_annotations);
+                let variant_chain: ::std::vec::Vec<(
+                    ::std::string::String,
+                    ::slicer_ir::PaintValue,
+                )> = r
+                    .variant_chain()
+                    .iter()
+                    .map(|(name, value)| {
+                        (name.clone(), __slicer_wit_paintvalue_to_ir(value))
+                    })
+                    .collect();
+                sdk_view.set_variant_chain(variant_chain);
+                sdk_view.set_top_shell_index(r.top_shell_index());
+                sdk_view.set_bottom_shell_index(r.bottom_shell_index());
+                let top_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .top_solid_fill()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let bottom_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .bottom_solid_fill()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let bridge_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .bridge_areas()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let sparse_infill_area: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .sparse_infill_area()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                sdk_view.set_top_solid_fill(
+                    top_fill,
+                );
+                sdk_view.set_bottom_solid_fill(
+                    bottom_fill,
+                );
+                sdk_view.set_is_bridge(r.is_bridge());
+                sdk_view.set_bridge_areas(bridge_areas);
+                sdk_view.set_bridge_orientation_deg(r.bridge_orientation_deg());
+                sdk_view.set_sparse_infill_area(sparse_infill_area);
+                sdk_view.set_held_claims(r.held_claims());
+                let overhang_areas: ::std::vec::Vec<::slicer_ir::ExPolygon> = r
+                    .overhang_areas()
+                    .iter()
+                    .map(__slicer_wit_expolygon_to_ir)
+                    .collect();
+                let overhang_quartile_polygons: ::std::vec::Vec<
+                    ::slicer_ir::slice_ir::QuartileBand,
+                > = r
+                    .overhang_quartile_polygons()
+                    .iter()
+                    .map(__slicer_wit_quartileband_to_ir)
+                    .collect();
+                sdk_view.set_overhang_areas(
+                    overhang_areas,
+                );
+                sdk_view.set_overhang_quartile_polygons(overhang_quartile_polygons);
+                sdk_view.set_surface_group(
+                    r.surface_group()
+                        .as_ref()
+                        .map(__slicer_wit_surfacegroup_to_ir),
+                );
+                out.push(sdk_view);
+            }
+            out
+        }
+
+        fn __slicer_adapt_paint_layer(
+            paint: &PaintRegionLayerView,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
+        ) -> ::slicer_sdk::traits::PaintRegionLayerView {
+            let layer_idx = paint.layer_index() as u32;
+            let sdk_paint = ::slicer_sdk::traits::PaintRegionLayerView::new(layer_idx);
+            match __slicer_lightning_tree_from_view(paint, layer_idx, keys) {
+                Some(ir) => sdk_paint.with_lightning_tree_ir(ir),
+                None => sdk_paint,
+            }
+        }
+
+        fn __slicer_lightning_tree_from_view(
+            wit_paint: &PaintRegionLayerView,
+            layer_idx: u32,
+            keys: &[(::std::string::String, ::slicer_ir::RegionId)],
+        ) -> ::std::option::Option<::std::sync::Arc<::slicer_ir::LightningTreeIR>> {
+            let mut entries = ::std::vec::Vec::new();
+            for (object_id, region_id) in keys.iter() {
+                let region_id_str = region_id.to_string();
+                let segments = wit_paint.lightning_tree_segments(object_id, &region_id_str);
+                let tree_edge_segments: ::std::vec::Vec<[::slicer_ir::Point2; 2]> = segments
+                    .into_iter()
+                    .filter_map(|segment| {
+                        let start = segment.first()?;
+                        let end = segment.get(1)?;
+                        Some([
+                            ::slicer_ir::Point2 {
+                                x: ::slicer_ir::mm_to_units(start.x),
+                                y: ::slicer_ir::mm_to_units(start.y),
+                            },
+                            ::slicer_ir::Point2 {
+                                x: ::slicer_ir::mm_to_units(end.x),
+                                y: ::slicer_ir::mm_to_units(end.y),
+                            },
+                        ])
+                    })
+                    .collect();
+                if tree_edge_segments.is_empty() {
+                    continue;
+                }
+                entries.push(::slicer_ir::LightningTreeEntry {
+                    object_id: object_id.clone(),
+                    global_layer_index: layer_idx as i32,
+                    region_id: *region_id,
+                    tree_edge_segments,
+                });
+            }
+            if entries.is_empty() {
+                None
+            } else {
+                Some(::std::sync::Arc::new(::slicer_ir::LightningTreeIR {
+                    entries,
+                    ..::core::default::Default::default()
+                }))
+            }
+        }
+
+        fn __slicer_support_plan_from_view(
+            wit_paint: &PaintRegionLayerView,
+            layer_idx: u32,
+            keys: &::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)>,
+        ) -> ::std::sync::Arc<::slicer_ir::SupportPlanIR> {
+            let mut entries = ::std::vec::Vec::new();
+            for (object_id, region_id) in keys {
+                let segments = wit_paint.support_plan_segments(object_id, &region_id.to_string());
+                if segments.is_empty() {
+                    continue;
+                }
+                let branch_segments = segments
+                    .into_iter()
+                    .map(|segment| ::slicer_ir::ExtrusionPath3D {
+                        points: segment
+                            .into_iter()
+                            .map(|point| ::slicer_ir::Point3WithWidth {
+                                x: point.x,
+                                y: point.y,
+                                z: point.z,
+                                width: point.width,
+                                flow_factor: point.flow_factor,
+                                overhang_quartile: point.overhang_quartile,
+                                dist_to_top_mm: point.dist_to_top_mm,
+                            })
+                            .collect(),
+                        role: ::slicer_ir::ExtrusionRole::SupportMaterial,
+                        speed_factor: 1.0,
+                    })
+                    .collect();
+                entries.push(::slicer_ir::SupportPlanEntry {
+                    global_layer_index: layer_idx as i32,
+                    object_id: object_id.clone(),
+                    region_id: *region_id,
+                    branch_segments,
+                });
+            }
+            ::std::sync::Arc::new(::slicer_ir::SupportPlanIR {
+                schema_version: ::slicer_ir::CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+                entries,
+                raft_plan: None,
+            })
+        }
+
+    }
+}
+
+fn layer_glue_helpers() -> TokenStream2 {
+    quote! {
+        fn __slicer_wit_point2_to_ir(p: &WitPoint2) -> ::slicer_ir::Point2 {
+            ::slicer_ir::Point2 { x: p.x, y: p.y }
+        }
+        fn __slicer_wit_polygon_to_ir(p: &WitPolygon) -> ::slicer_ir::Polygon {
+            ::slicer_ir::Polygon {
+                points: p.points.iter().map(__slicer_wit_point2_to_ir).collect(),
+            }
+        }
+        fn __slicer_wit_expolygon_to_ir(ep: &WitExPolygon) -> ::slicer_ir::ExPolygon {
+            ::slicer_ir::ExPolygon {
+                contour: __slicer_wit_polygon_to_ir(&ep.contour),
+                holes: ep.holes.iter().map(__slicer_wit_polygon_to_ir).collect(),
+            }
+        }
+        fn __slicer_wit_role_to_ir(r: &WitExtrusionRole) -> ::slicer_ir::ExtrusionRole {
+            match r {
+                WitExtrusionRole::OuterWall => ::slicer_ir::ExtrusionRole::OuterWall,
+                WitExtrusionRole::InnerWall => ::slicer_ir::ExtrusionRole::InnerWall,
+                WitExtrusionRole::ThinWall => ::slicer_ir::ExtrusionRole::ThinWall,
+                WitExtrusionRole::TopSolidInfill => ::slicer_ir::ExtrusionRole::TopSolidInfill,
+                WitExtrusionRole::BottomSolidInfill => ::slicer_ir::ExtrusionRole::BottomSolidInfill,
+                WitExtrusionRole::SparseInfill => ::slicer_ir::ExtrusionRole::SparseInfill,
+                WitExtrusionRole::SupportMaterial => ::slicer_ir::ExtrusionRole::SupportMaterial,
+                WitExtrusionRole::SupportInterface => ::slicer_ir::ExtrusionRole::SupportInterface,
+                WitExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
+                WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
+                WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
+                WitExtrusionRole::Custom(s) if s == "slicer.builtin/internal-solid-infill@1" => {
+                    ::slicer_ir::ExtrusionRole::InternalSolidInfill
+                }
+                WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s.clone()),
+                WitExtrusionRole::GapFill => ::slicer_ir::ExtrusionRole::GapFill,
+                WitExtrusionRole::RaftInfill => ::slicer_ir::ExtrusionRole::RaftInfill,
+            }
+        }
+        fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
+            ::slicer_ir::Point3WithWidth {
+                x: p.x, y: p.y, z: p.z, width: p.width, flow_factor: p.flow_factor,
+                overhang_quartile: p.overhang_quartile, dist_to_top_mm: 0.0,
+            }
+        }
+        fn __slicer_wit_path_to_ir(p: &WitExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
+            ::slicer_ir::ExtrusionPath3D {
+                points: p.points.iter().map(__slicer_wit_point3w_to_ir).collect(),
+                role: __slicer_wit_role_to_ir(&p.role), speed_factor: p.speed_factor,
+            }
+        }
+        fn __slicer_wit_looptype_to_ir(lt: WitWallLoopType) -> ::slicer_ir::LoopType {
+            match lt {
+                WitWallLoopType::Outer => ::slicer_ir::LoopType::Outer,
+                WitWallLoopType::Inner => ::slicer_ir::LoopType::Inner,
+                WitWallLoopType::ThinWall => ::slicer_ir::LoopType::ThinWall,
+                WitWallLoopType::NonplanarShell => ::slicer_ir::LoopType::NonPlanarShell,
+                WitWallLoopType::GapFill => ::slicer_ir::LoopType::GapFill,
+            }
+        }
+        fn __slicer_wit_paintvalue_to_ir(v: &WitPaintValue) -> ::slicer_ir::PaintValue {
+            match v {
+                WitPaintValue::Flag(b) => ::slicer_ir::PaintValue::Flag(*b),
+                WitPaintValue::Scalar(f) => ::slicer_ir::PaintValue::Scalar(*f),
+                WitPaintValue::ToolIndex(i) => ::slicer_ir::PaintValue::ToolIndex(*i),
+            }
+        }
+        fn __slicer_wit_feature_to_ir(f: &WitWallFeatureFlag) -> ::slicer_ir::WallFeatureFlags {
+            let custom = f.custom.iter()
+                .map(|(k, v)| (k.clone(), __slicer_wit_paintvalue_to_ir(v)))
+                .collect();
+            ::slicer_ir::WallFeatureFlags {
+                tool_index: f.tool_index, fuzzy_skin: f.fuzzy_skin,
+                is_bridge: f.is_bridge, is_thin_wall: f.is_thin_wall,
+                skip_ironing: f.skip_ironing, custom,
+            }
+        }
+        fn __slicer_wit_material_boundary_segment_to_ir(
+            seg: &WitMaterialBoundarySegment,
+        ) -> ::slicer_ir::MaterialBoundarySegment {
+            ::slicer_ir::MaterialBoundarySegment {
+                point_range: seg.point_range_start..seg.point_range_end,
+                near_tool: seg.near_tool, far_tool: seg.far_tool,
+            }
+        }
+        fn __slicer_wit_boundarytype_to_ir(bt: &WitWallBoundaryType) -> ::slicer_ir::WallBoundaryType {
+            match bt {
+                WitWallBoundaryType::ExteriorSurface => ::slicer_ir::WallBoundaryType::ExteriorSurface,
+                WitWallBoundaryType::Interior => ::slicer_ir::WallBoundaryType::Interior,
+                WitWallBoundaryType::MaterialBoundary(segments) => {
+                    ::slicer_ir::WallBoundaryType::MaterialBoundary {
+                        segments: segments.iter().map(__slicer_wit_material_boundary_segment_to_ir).collect(),
+                    }
+                }
+            }
+        }
+        fn __slicer_wit_wallloop_to_ir(w: &WitWallLoopView) -> ::slicer_ir::WallLoop {
+            let ir_path = __slicer_wit_path_to_ir(&w.path);
+            let n_pts = ir_path.points.len();
+            ::slicer_ir::WallLoop {
+                perimeter_index: w.perimeter_index,
+                loop_type: __slicer_wit_looptype_to_ir(w.loop_type),
+                path: ir_path,
+                width_profile: ::slicer_ir::WidthProfile {
+                    widths: (0..n_pts).map(|_| 0.4_f32).collect(),
+                },
+                feature_flags: w.feature_flags.iter().map(__slicer_wit_feature_to_ir).collect(),
+                boundary_type: __slicer_wit_boundarytype_to_ir(&w.boundary_type),
+            }
+        }
+        fn __slicer_adapt_seam_position(sp: WitSeamPosition) -> ::slicer_ir::SeamPosition {
+            ::slicer_ir::SeamPosition {
+                point: __slicer_wit_point3w_to_ir(&sp.point), wall_index: sp.wall_index,
+            }
+        }
+        fn __slicer_adapt_seam_candidate(sc: &WitSeamCandidate) -> ::slicer_ir::SeamCandidate {
+            ::slicer_ir::SeamCandidate {
+                position: ::slicer_ir::Point3WithWidth {
+                    x: sc.position.x, y: sc.position.y, z: sc.position.z,
+                    width: 0.0, flow_factor: 1.0, overhang_quartile: None,
+                    dist_to_top_mm: 0.0,
+                },
+                score: sc.score, reason: ::slicer_ir::SeamReason::Aligned,
+            }
+        }
+        fn __slicer_adapt_perimeter_regions(
+            regions: &[PerimeterRegionView],
+        ) -> ::std::vec::Vec<::slicer_sdk::views::PerimeterRegionView> {
+            let mut out = ::std::vec::Vec::with_capacity(regions.len());
+            for r in regions.iter() {
+                let walls = r.wall_loops().iter().map(__slicer_wit_wallloop_to_ir).collect();
+                let infill = r.infill_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                let region_id: ::slicer_ir::RegionId = r.region_id().parse().unwrap_or(0);
+                let resolved_seam = r.resolved_seam().map(__slicer_adapt_seam_position);
+                let seam_candidates = r.seam_candidates().iter().map(__slicer_adapt_seam_candidate).collect();
+                let mut perimeter_view = ::slicer_sdk::views::PerimeterRegionView::default();
+                perimeter_view.set_object_id(r.object_id());
+                perimeter_view.set_region_id(region_id);
+                perimeter_view.set_wall_loops(walls);
+                perimeter_view.set_infill_areas(infill);
+                perimeter_view.set_seam_candidates(seam_candidates);
+                perimeter_view.set_resolved_seam(resolved_seam);
+                perimeter_view.set_sparse_infill_area(r.sparse_infill_area().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_top_solid_fill(r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_bottom_solid_fill(r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_bridge_areas(r.bridge_areas().iter().map(__slicer_wit_expolygon_to_ir).collect());
+                perimeter_view.set_tool_index(r.tool_index());
+                perimeter_view.set_wall_source_region_id(r.wall_source_region_id().map(|s| s.parse().unwrap_or(0)));
+                out.push(perimeter_view);
+            }
+            out
+        }
+    }
+}
+
+/// Stage-specific drain bodies and the WIT conversion helpers they require.
+/// Keeping them out of the general helpers prevents unrelated per-stage
+/// bindgen modules from needing these types in scope.
+fn layer_stage_helpers(stage: &str) -> TokenStream2 {
+    let ir_role_and_path_helpers = quote! {
+        fn __slicer_ir_role_to_wit(r: &::slicer_ir::ExtrusionRole) -> WitExtrusionRole {
+            match r {
+                ::slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
+                ::slicer_ir::ExtrusionRole::InnerWall => WitExtrusionRole::InnerWall,
+                ::slicer_ir::ExtrusionRole::ThinWall => WitExtrusionRole::ThinWall,
+                ::slicer_ir::ExtrusionRole::TopSolidInfill => WitExtrusionRole::TopSolidInfill,
+                ::slicer_ir::ExtrusionRole::BottomSolidInfill => WitExtrusionRole::BottomSolidInfill,
+                ::slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
+                ::slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
+                ::slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
+                ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
+                ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
+                ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
+                ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
+                ::slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1")),
+                ::slicer_ir::ExtrusionRole::Brim => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1")),
+                ::slicer_ir::ExtrusionRole::InternalSolidInfill => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/internal-solid-infill@1")),
+                ::slicer_ir::ExtrusionRole::GapFill => WitExtrusionRole::GapFill,
+                ::slicer_ir::ExtrusionRole::RaftInfill => WitExtrusionRole::RaftInfill,
+                _ => WitExtrusionRole::OuterWall,
+            }
+        }
+
+        fn __slicer_ir_path_to_wit(p: &::slicer_ir::ExtrusionPath3D) -> WitExtrusionPath3d {
+            WitExtrusionPath3d {
+                points: p.points.iter().map(|pt| WitPoint3WithWidth {
+                    x: pt.x, y: pt.y, z: pt.z, width: pt.width, flow_factor: pt.flow_factor,
+                    overhang_quartile: pt.overhang_quartile,
+                    dist_to_top_mm: 0.0,
+                }).collect(),
+                role: __slicer_ir_role_to_wit(&p.role),
+                speed_factor: p.speed_factor,
+            }
+        }
+    };
+
+    let ir_expolygon_helpers = quote! {
+        fn __slicer_ir_point2_to_wit(p: &::slicer_ir::Point2) -> WitPoint2 {
+            WitPoint2 { x: p.x, y: p.y }
+        }
+
+        fn __slicer_ir_polygon_to_wit(p: &::slicer_ir::Polygon) -> WitPolygon {
+            WitPolygon { points: p.points.iter().map(__slicer_ir_point2_to_wit).collect() }
+        }
+
+        fn __slicer_ir_expolygon_to_wit(ep: &::slicer_ir::ExPolygon) -> WitExPolygon {
+            WitExPolygon {
+                contour: __slicer_ir_polygon_to_wit(&ep.contour),
+                holes: ep.holes.iter().map(__slicer_ir_polygon_to_wit).collect(),
+            }
+        }
+    };
+
+    let slice_postprocess_helpers = quote! {
+        #ir_expolygon_helpers
+
+        fn __slicer_ir_region_key_to_wit(k: &::slicer_ir::RegionKey) -> Option<WitRegionKey> {
+            let variant_chain = k.variant_chain.iter().map(|(semantic, value)| {
+                let value = match value {
+                    ::slicer_ir::PaintValue::Flag(v) => WitPaintValue::Flag(*v),
+                    ::slicer_ir::PaintValue::Scalar(v) => WitPaintValue::Scalar(*v),
+                    ::slicer_ir::PaintValue::ToolIndex(v) => WitPaintValue::ToolIndex(*v),
+                    ::slicer_ir::PaintValue::Custom(_) => return None,
+                };
+                Some((semantic.clone(), value))
+            }).collect::<Option<Vec<_>>>()?;
+            Some(WitRegionKey {
+                variant_chain,
+                layer_index: k.global_layer_index as i32,
+                object_id: k.object_id.clone(),
+                region_id: k.region_id.to_string(),
+            })
+        }
+    };
+
+    let perimeter_helpers = quote! {
+        #ir_role_and_path_helpers
+        #ir_expolygon_helpers
+
+        fn __slicer_ir_looptype_to_wit(lt: &::slicer_ir::LoopType) -> WitWallLoopType {
+            match lt {
+                ::slicer_ir::LoopType::Outer => WitWallLoopType::Outer,
+                ::slicer_ir::LoopType::Inner => WitWallLoopType::Inner,
+                ::slicer_ir::LoopType::ThinWall => WitWallLoopType::ThinWall,
+                ::slicer_ir::LoopType::NonPlanarShell => WitWallLoopType::NonplanarShell,
+                ::slicer_ir::LoopType::GapFill => WitWallLoopType::GapFill,
+                _ => WitWallLoopType::Outer,
+            }
+        }
+
+        fn __slicer_ir_paintvalue_to_wit(v: &::slicer_ir::PaintValue) -> WitPaintValue {
+            match v {
+                ::slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
+                ::slicer_ir::PaintValue::Scalar(f) => WitPaintValue::Scalar(*f),
+                ::slicer_ir::PaintValue::ToolIndex(i) => WitPaintValue::ToolIndex(*i),
+                ::slicer_ir::PaintValue::Custom(_) => unreachable!("PaintValue::Custom rides on the paint-region transport (paint-value-input variant); it cannot appear in the boundary-paint read path"),
+            }
+        }
+
+        fn __slicer_ir_feature_to_wit(f: &::slicer_ir::WallFeatureFlags) -> WitWallFeatureFlag {
+            let mut custom_entries: ::std::vec::Vec<_> = f
+                .custom
+                .iter()
+                .map(|(k, v)| (k.clone(), __slicer_ir_paintvalue_to_wit(v)))
+                .collect();
+            custom_entries.sort_by(|a, b| a.0.cmp(&b.0));
+            WitWallFeatureFlag {
+                tool_index: f.tool_index,
+                fuzzy_skin: f.fuzzy_skin,
+                is_bridge: f.is_bridge,
+                is_thin_wall: f.is_thin_wall,
+                skip_ironing: f.skip_ironing,
+                custom: custom_entries,
+            }
+        }
+
+        fn __slicer_ir_material_boundary_segment_to_wit(
+            seg: &::slicer_ir::MaterialBoundarySegment,
+        ) -> WitMaterialBoundarySegment {
+            WitMaterialBoundarySegment {
+                point_range_start: seg.point_range.start,
+                point_range_end: seg.point_range.end,
+                near_tool: seg.near_tool,
+                far_tool: seg.far_tool,
+            }
+        }
+
+        fn __slicer_ir_boundarytype_to_wit(bt: &::slicer_ir::WallBoundaryType) -> WitWallBoundaryType {
+            match bt {
+                ::slicer_ir::WallBoundaryType::ExteriorSurface => WitWallBoundaryType::ExteriorSurface,
+                ::slicer_ir::WallBoundaryType::Interior => WitWallBoundaryType::Interior,
+                ::slicer_ir::WallBoundaryType::MaterialBoundary { segments } => {
+                    WitWallBoundaryType::MaterialBoundary(
+                        segments.iter().map(__slicer_ir_material_boundary_segment_to_wit).collect(),
+                    )
+                }
+            }
+        }
+
+        fn __slicer_ir_wallloop_to_wit(w: &::slicer_ir::WallLoop) -> WitWallLoopView {
+            WitWallLoopView {
+                perimeter_index: w.perimeter_index,
+                loop_type: __slicer_ir_looptype_to_wit(&w.loop_type),
+                path: __slicer_ir_path_to_wit(&w.path),
+                feature_flags: w.feature_flags.iter().map(__slicer_ir_feature_to_wit).collect(),
+                boundary_type: __slicer_ir_boundarytype_to_wit(&w.boundary_type),
+            }
+        }
+    };
+
+    let drain_slice_postprocess = quote! {
+        fn __slicer_drain_slice_postprocess(
+            sdk: &::slicer_sdk::builders::SlicePostprocessBuilder,
+            wit: &SlicePostprocessBuilder,
+        ) {
+            for (key, polys) in sdk.polygon_updates() {
+                let wit_polys: ::std::vec::Vec<WitExPolygon> =
+                    polys.iter().map(__slicer_ir_expolygon_to_wit).collect();
+                if let Some(wit_key) = __slicer_ir_region_key_to_wit(key) {
+                    let _ = wit.set_polygons(&wit_key, &wit_polys);
+                }
+            }
+            for (key, path_idx, vertex_idx, z) in sdk.path_z_updates() {
+                if let Some(wit_key) = __slicer_ir_region_key_to_wit(key) {
+                    let _ = wit.set_path_z(&wit_key, *path_idx, *vertex_idx, *z);
+                }
+            }
+        }
+    };
+
+    let drain_perimeter = quote! {
+        fn __slicer_drain_perimeter(
+            sdk: &::slicer_sdk::builders::PerimeterOutputBuilder,
+            wit: &PerimeterOutputBuilder,
+        ) {
+            let wall_loops = sdk.wall_loops();
+            let wall_loop_origins = sdk.wall_loop_origins();
+            for (i, w) in wall_loops.iter().enumerate() {
+                if let Some((obj, reg)) = &wall_loop_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                let _ = wit.push_wall_loop(&__slicer_ir_wallloop_to_wit(w));
+            }
+            // Preserve each SDK set-infill-areas call's origin while draining.
+            let infill_areas = sdk.infill_areas();
+            let infill_areas_origins = sdk.infill_areas_origins();
+            for (i, call_areas) in infill_areas.iter().enumerate() {
+                let areas: ::std::vec::Vec<WitExPolygon> =
+                    call_areas.iter().map(__slicer_ir_expolygon_to_wit).collect();
+                if !areas.is_empty() {
+                    if let Some((obj, reg)) = &infill_areas_origins[i] {
+                        let _ = wit.set_current_origin(obj, &reg.to_string());
+                    }
+                    let _ = wit.set_infill_areas(&areas);
+                }
+            }
+            let seam_candidates = sdk.seam_candidates();
+            let seam_candidate_origins = sdk.seam_candidate_origins();
+            for (i, (pos, score)) in seam_candidates.iter().enumerate() {
+                if let Some((obj, reg)) = &seam_candidate_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                if wit
+                    .push_seam_candidate(
+                        WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: pos.z as f32 },
+                        *score,
+                    )
+                    .is_err()
+                {
+                    ::slicer_sdk::host::log_warn(&::std::format!(
+                        "seam candidate at ({}, {}, {}) rejected by host and dropped",
+                        pos.x, pos.y, pos.z
+                    ));
+                }
+            }
+            let rotated_wall_loops = sdk.rotated_wall_loops();
+            let rotated_wall_loop_origins = sdk.rotated_wall_loop_origins();
+            for (i, (pos, wall_index, loop_)) in rotated_wall_loops.iter().enumerate() {
+                if let Some((obj, reg)) = &rotated_wall_loop_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                let _ = wit.push_reordered_wall_loop(
+                    WitPoint3WithWidth {
+                        x: pos.x,
+                        y: pos.y,
+                        z: pos.z,
+                        width: pos.width,
+                        flow_factor: pos.flow_factor,
+                        overhang_quartile: pos.overhang_quartile,
+                        dist_to_top_mm: 0.0,
+                    },
+                    *wall_index,
+                    &__slicer_ir_wallloop_to_wit(loop_),
+                );
+            }
+        }
+    };
+
+    let drain_infill = quote! {
+        fn __slicer_drain_infill(
+            sdk: &::slicer_sdk::builders::InfillOutputBuilder,
+            wit: &InfillOutputBuilder,
+        ) {
+            let sparse = sdk.sparse_paths();
+            let sparse_origins = sdk.sparse_path_origins();
+            for (i, p) in sparse.iter().enumerate() {
+                if let Some((obj, reg)) = &sparse_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                let _ = wit.push_sparse_path(&__slicer_ir_path_to_wit(p));
+            }
+            let solid = sdk.solid_paths();
+            let solid_origins = sdk.solid_path_origins();
+            for (i, p) in solid.iter().enumerate() {
+                if let Some((obj, reg)) = &solid_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                let _ = wit.push_solid_path(&__slicer_ir_path_to_wit(p));
+            }
+            let ironing = sdk.ironing_paths();
+            let ironing_origins = sdk.ironing_path_origins();
+            for (i, p) in ironing.iter().enumerate() {
+                if let Some((obj, reg)) = &ironing_origins[i] {
+                    let _ = wit.set_current_origin(obj, &reg.to_string());
+                }
+                let _ = wit.push_ironing_path(&__slicer_ir_path_to_wit(p));
+            }
+        }
+    };
+
+    let drain_support = quote! {
+        fn __slicer_drain_support(
+            sdk: &::slicer_sdk::builders::SupportOutputBuilder,
+            wit: &SupportOutputBuilder,
+        ) {
+            for p in sdk.support_paths() {
+                let _ = wit.push_support_path(&__slicer_ir_path_to_wit(p));
+            }
+            for (p, top) in sdk.interface_paths() {
+                let _ = wit.push_interface_path(&__slicer_ir_path_to_wit(p), *top);
+            }
+            for p in sdk.raft_paths() {
+                let _ = wit.push_raft_path(&__slicer_ir_path_to_wit(p));
+            }
+        }
+    };
+
+    match stage {
+        "layer_slice_postprocess" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                RegionKey as WitRegionKey,
+            };
+            #slice_postprocess_helpers
+            #drain_slice_postprocess
+        },
+        "layer_perimeters" => quote! {
+            use self::slicer::ir_handles::ir_handles::{
+                MaterialBoundarySegment as WitMaterialBoundarySegment,
+                WallBoundaryType as WitWallBoundaryType,
+                WallFeatureFlag as WitWallFeatureFlag, WallLoopType as WitWallLoopType,
+                WallLoopView as WitWallLoopView,
+            };
+            use self::slicer::types::geometry::{
+                ExtrusionPath3d as WitExtrusionPath3d,
+                ExtrusionRole as WitExtrusionRole, Point3 as WitPoint3,
+                Point3WithWidth as WitPoint3WithWidth,
+            };
+            #perimeter_helpers
+            #drain_perimeter
+        },
+        "layer_perimeters_postprocess" => quote! {
+            #perimeter_helpers
+            #drain_perimeter
+        },
+        "layer_infill" => quote! {
+            use self::slicer::types::geometry::{
+                ExtrusionPath3d as WitExtrusionPath3d, ExtrusionRole as WitExtrusionRole,
+                Point3WithWidth as WitPoint3WithWidth,
+            };
+            #ir_role_and_path_helpers
+            #drain_infill
+        },
+        "layer_infill_postprocess" => quote! {
+            #ir_role_and_path_helpers
+            #drain_infill
+        },
+        "layer_support" | "layer_support_postprocess" => quote! {
+            use self::slicer::types::geometry::{
+                ExtrusionPath3d as WitExtrusionPath3d, ExtrusionRole as WitExtrusionRole,
+                Point3WithWidth as WitPoint3WithWidth,
+            };
+            #ir_role_and_path_helpers
+            #drain_support
+        },
+        "layer_path_optimization" => quote! {
+            fn __slicer_ir_role_to_wit(r: &::slicer_ir::ExtrusionRole) -> WitExtrusionRole {
+                match r {
+                    ::slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
+                    ::slicer_ir::ExtrusionRole::InnerWall => WitExtrusionRole::InnerWall,
+                    ::slicer_ir::ExtrusionRole::ThinWall => WitExtrusionRole::ThinWall,
+                    ::slicer_ir::ExtrusionRole::TopSolidInfill => WitExtrusionRole::TopSolidInfill,
+                    ::slicer_ir::ExtrusionRole::BottomSolidInfill => WitExtrusionRole::BottomSolidInfill,
+                    ::slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
+                    ::slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
+                    ::slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
+                    ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
+                    ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+                    ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
+                    ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
+                    ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1")),
+                    ::slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1")),
+                    ::slicer_ir::ExtrusionRole::Brim => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/brim@1")),
+                    ::slicer_ir::ExtrusionRole::InternalSolidInfill => WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/internal-solid-infill@1")),
+                    ::slicer_ir::ExtrusionRole::GapFill => WitExtrusionRole::GapFill,
+                    ::slicer_ir::ExtrusionRole::RaftInfill => WitExtrusionRole::RaftInfill,
+                    _ => WitExtrusionRole::OuterWall,
+                }
+            }
+            fn __slicer_retract_mode_ir_to_wit_layer(mode: &::slicer_ir::RetractMode) -> WitRetractMode {
+                match mode {
+                    ::slicer_ir::RetractMode::Gcode => WitRetractMode::Gcode,
+                    ::slicer_ir::RetractMode::Firmware => WitRetractMode::Firmware,
+                }
+            }
+            fn __slicer_drain_gcode(
+                sdk: &::slicer_sdk::postpass_builders::GcodeOutputBuilder,
+                wit: &GcodeOutputBuilder,
+            ) {
+                for cmd in sdk.commands() {
+                    match cmd {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Move { x, y, z, e, f, role }) => {
+                            let _ = wit.push_move(&WitGcodeMoveCmd { x: *x, y: *y, z: *z, e: *e, f: *f, role: __slicer_ir_role_to_wit(role) });
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed, mode }) => {
+                            let _ = wit.push_retract(*length, *speed, __slicer_retract_mode_ir_to_wit_layer(mode));
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed, mode }) => {
+                            let _ = wit.push_unretract(*length, *speed, __slicer_retract_mode_ir_to_wit_layer(mode));
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::FanSpeed { value }) => { let _ = wit.push_fan_speed(*value); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Temperature { tool, celsius, wait }) => { let _ = wit.push_temperature(*tool, *celsius, *wait); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::ToolChange { after_entity_index, from, to }) => { let _ = wit.push_tool_change(*after_entity_index, *from, *to); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Comment { text }) => { let _ = wit.push_comment(text); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::Raw { text }) => { let _ = wit.push_raw(text); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(::slicer_sdk::postpass_types::GcodeCommand::ExtrusionMode { absolute }) => { let _ = wit.push_raw(&if *absolute { "M82\n".to_string() } else { "M83\n".to_string() }); }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::ZHop { after_entity_index, hop_height } => { let _ = wit.push_z_hop(*after_entity_index, *hop_height); }
+                    }
+                }
+            }
+            fn __slicer_drain_layer_collection(
+                sdk: &::slicer_sdk::LayerCollectionBuilder,
+                wit: &LayerCollectionBuilder,
+            ) {
+                if let Some(items) = sdk.proposal() { let _ = wit.set_entity_order(items); }
+            }
+            fn __slicer_populate_layer_collection(
+                wit: &LayerCollectionBuilder,
+                sdk: &mut ::slicer_sdk::LayerCollectionBuilder,
+            ) {
+                let wit_entities: ::std::vec::Vec<WitOrderedEntityView> = wit.get_ordered_entities();
+                let sdk_entities = wit_entities.into_iter().map(|e| ::slicer_sdk::OrderedEntityView {
+                    original_index: e.original_index, tool_index: e.tool_index,
+                    region_key: ::slicer_ir::RegionKey {
+                        global_layer_index: e.region_key.layer_index as u32,
+                        object_id: e.region_key.object_id,
+                        region_id: e.region_key.region_id.parse().unwrap_or(0),
+                        variant_chain: Vec::new(),
+                    },
+                    role: __slicer_wit_role_to_ir(&e.role),
+                    start_point: __slicer_wit_point3w_to_ir(&e.start_point),
+                    end_point: __slicer_wit_point3w_to_ir(&e.end_point),
+                    point_count: e.point_count,
+                }).collect();
+                sdk.set_ordered_entities(sdk_entities);
+            }
+        },
+        _ => quote! {},
+    }
+}
+
+fn build_layer_slice_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/layer-slice-postprocess/layer-slice-postprocess.wit"
+    );
+    let preamble = emit_world_preamble("slice-postprocess-module", "slice_postprocess", wit_inline);
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_slice_postprocess");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_slice_postprocess");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+            .iter()
+            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .collect();
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let mut sdk_output = ::slicer_sdk::builders::SlicePostprocessBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_slice_postprocess(
+            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_slice_postprocess(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_slice_postprocess_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble
+            #aliases
+            #helpers #stage_helpers
+            struct __SlicerLayerSlicePostprocessComponent;
+            impl exports::slicer::layer_slice_postprocess::slice_postprocess::Guest for __SlicerLayerSlicePostprocessComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SlicePostprocessBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerSlicePostprocessComponent);
+        }
+    }
+}
+
+fn build_layer_perimeters_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline =
+        include_str!("../../slicer-schema/wit/deps/layer-perimeters/layer-perimeters.wit");
+    let preamble = emit_world_preamble("perimeters-module", "perimeters", wit_inline);
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_perimeters");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_perimeters");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+            .iter()
+            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .collect();
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let mut sdk_output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_perimeters(
+            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_perimeter(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_perimeters_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerPerimetersComponent;
+            impl exports::slicer::layer_perimeters::perimeters::Guest for __SlicerLayerPerimetersComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: PerimeterOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerPerimetersComponent);
+        }
+    }
+}
+
+fn build_layer_perimeters_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit");
+    let preamble = emit_world_preamble(
+        "perimeters-postprocess-module",
+        "perimeters_postprocess",
+        wit_inline,
+    );
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_perimeters_postprocess");
+    let helpers = layer_glue_helpers();
+    let stage_helpers = layer_stage_helpers("layer_perimeters_postprocess");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_perimeter_regions(&regions);
+        let mut sdk_output = ::slicer_sdk::builders::PerimeterOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_wall_postprocess(
+            &module, layer_index, &sdk_regions, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_perimeter(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_perimeters_postprocess_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerPerimetersPostprocessComponent;
+            impl exports::slicer::layer_perimeters_postprocess::perimeters_postprocess::Guest for __SlicerLayerPerimetersPostprocessComponent {
+                fn run(layer_index: i32, regions: Vec<PerimeterRegionView>, output: PerimeterOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerPerimetersPostprocessComponent);
+        }
+    }
+}
+
+fn build_layer_infill_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-infill/layer-infill.wit");
+    let preamble = emit_world_preamble("infill-module", "infill", wit_inline);
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_infill");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_infill");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+            .iter()
+            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .collect();
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill(
+            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_infill(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_infill_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerInfillComponent;
+            impl exports::slicer::layer_infill::infill::Guest for __SlicerLayerInfillComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerInfillComponent);
+        }
+    }
+}
+
+fn build_layer_infill_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit"
+    );
+    let preamble = emit_world_preamble(
+        "infill-postprocess-module",
+        "infill_postprocess",
+        wit_inline,
+    );
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_infill_postprocess");
+    let helpers = layer_glue_helpers();
+    let stage_helpers = layer_stage_helpers("layer_infill_postprocess");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_perimeter_regions(&regions);
+        let sdk_prior_infill: ::std::vec::Vec<::slicer_ir::InfillRegion> = prior_infill.iter().map(|r| ::slicer_ir::InfillRegion {
+            object_id: r.object_id.clone(), region_id: r.region_id.parse().unwrap_or(0),
+            sparse_infill: r.sparse_infill.iter().map(__slicer_wit_path_to_ir).collect(),
+            solid_infill: r.solid_infill.iter().map(__slicer_wit_path_to_ir).collect(),
+            ironing: r.ironing.iter().map(__slicer_wit_path_to_ir).collect(),
+        }).collect();
+        let mut sdk_output = ::slicer_sdk::builders::InfillOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_infill_postprocess(
+            &module, layer_index, &sdk_regions, &sdk_prior_infill, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_infill(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_infill_postprocess_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerInfillPostprocessComponent;
+            impl exports::slicer::layer_infill_postprocess::infill_postprocess::Guest for __SlicerLayerInfillPostprocessComponent {
+                fn run(layer_index: i32, regions: Vec<PerimeterRegionView>, prior_infill: Vec<PriorInfillRegion>, output: InfillOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerInfillPostprocessComponent);
+        }
+    }
+}
+
+fn build_layer_support_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!("../../slicer-schema/wit/deps/layer-support/layer-support.wit");
+    let preamble = emit_world_preamble("support-module", "support", wit_inline);
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_support");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_support");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let keys: ::std::vec::Vec<(::std::string::String, ::slicer_ir::RegionId)> = sdk_regions
+            .iter()
+            .map(|r| (r.object_id().clone(), *r.region_id()))
+            .collect();
+        let sdk_paint = __slicer_adapt_paint_layer(&paint, &keys);
+        let sdk_paint = sdk_paint.with_slice_ir(::std::sync::Arc::new(::slicer_ir::SliceIR {
+            schema_version: ::slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: layer_index,
+            z: sdk_regions.first().map(|r| r.z()).unwrap_or(0.0),
+            regions: sdk_regions.iter().map(|r| ::slicer_ir::SlicedRegion {
+                object_id: r.object_id().clone(), region_id: *r.region_id(),
+                polygons: r.polygons().to_vec(), segment_annotations: r.segment_annotations().clone(),
+                ..::core::default::Default::default()
+            }).collect(),
+        }));
+        let support_keys = sdk_regions.iter().map(|r| (r.object_id().clone(), *r.region_id())).collect();
+        let sdk_paint = sdk_paint.with_support_plan(__slicer_support_plan_from_view(&paint, layer_index, &support_keys));
+        let mut sdk_output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support(
+            &module, layer_index, &sdk_regions, &sdk_paint, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_support(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_support_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerSupportComponent;
+            impl exports::slicer::layer_support::support::Guest for __SlicerLayerSupportComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerSupportComponent);
+        }
+    }
+}
+
+fn build_layer_support_postprocess_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/layer-support-postprocess/layer-support-postprocess.wit"
+    );
+    let preamble = emit_world_preamble(
+        "support-postprocess-module",
+        "support_postprocess",
+        wit_inline,
+    );
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_support_postprocess");
+    let helpers = layer_light_helpers();
+    let stage_helpers = layer_stage_helpers("layer_support_postprocess");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_slice_regions(&regions);
+        let mut sdk_output = ::slicer_sdk::builders::SupportOutputBuilder::new();
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_support_postprocess(
+            &module, layer_index, &sdk_regions, &mut sdk_output, &ir_config,
+        );
+        __slicer_drain_support(&sdk_output, &output);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_support_postprocess_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerSupportPostprocessComponent;
+            impl exports::slicer::layer_support_postprocess::support_postprocess::Guest for __SlicerLayerSupportPostprocessComponent {
+                fn run(layer_index: i32, regions: Vec<SliceRegionView>, output: SupportOutputBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerSupportPostprocessComponent);
+        }
+    }
+}
+
+fn build_layer_path_optimization_glue(self_ty: &syn::Type) -> TokenStream2 {
+    let wit_inline = include_str!(
+        "../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit"
+    );
+    let preamble = emit_world_preamble("path-optimization-module", "path_optimization", wit_inline);
+    let profile_install = profile_install_stmt();
+    let aliases = layer_per_stage_aliases("layer_path_optimization");
+    let helpers = layer_glue_helpers();
+    let stage_helpers = layer_stage_helpers("layer_path_optimization");
+    let arm = quote! {
+        let layer_index = layer_index as u32;
+        let ir_config = __slicer_adapt_config(&config);
+        let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::from_config(&ir_config) {
+            Ok(m) => m, Err(e) => return Err(__slicer_error_out(e)),
+        };
+        let sdk_regions = __slicer_adapt_perimeter_regions(&regions);
+        let mut sdk_output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+        let mut sdk_collection = ::slicer_sdk::LayerCollectionBuilder::new();
+        __slicer_populate_layer_collection(&collection, &mut sdk_collection);
+        let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
+            &module, layer_index, &sdk_regions, &mut sdk_output, &mut sdk_collection, &ir_config,
+        );
+        __slicer_drain_gcode(&sdk_output, &output);
+        __slicer_drain_layer_collection(&sdk_collection, &collection);
+        match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
+    };
+    quote! {
+        #[cfg(target_arch = "wasm32")]
+        #[doc(hidden)]
+        mod __slicer_layer_path_optimization_world_export {
+            use super::#self_ty;
+            use slicer::common::module_errors::ModuleError;
+            use slicer::config::config_types::ConfigView;
+            #preamble #aliases #helpers #stage_helpers
+            struct __SlicerLayerPathOptimizationComponent;
+            impl exports::slicer::layer_path_optimization::path_optimization::Guest for __SlicerLayerPathOptimizationComponent {
+                fn run(layer_index: i32, regions: Vec<PerimeterRegionView>, output: GcodeOutputBuilder, collection: LayerCollectionBuilder, config: ConfigView) -> Result<(), ModuleError> {
+                    #profile_install
+                    #arm
+                }
+            }
+            export!(__SlicerLayerPathOptimizationComponent);
+        }
+    }
+}
+
+/// Source-history copy of the former layer implementation. It is disabled so
+/// only the stage-specific builders above can generate component exports.
+#[cfg(any())]
+fn retired_layer_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = LAYER_WORLD_WIT;
     let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline);
     let profile_install = profile_install_stmt();
@@ -3128,13 +5148,6 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
         }
     }
 }
-
-/// Layer-module world WIT — sourced from the canonical slicer-schema tree.
-/// Mirrors `crates/slicer-runtime/src/wit_host.rs::layer::bindgen!` so
-/// the macro-emitted guest binds against the same resource shapes the host
-/// dispatcher expects.
-const LAYER_WORLD_WIT: &str =
-    include_str!("../../slicer-schema/wit/deps/world-layer/world-layer.wit");
 
 /// The `#[module_test]` attribute macro.
 ///

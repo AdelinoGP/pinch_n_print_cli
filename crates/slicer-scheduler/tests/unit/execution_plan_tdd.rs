@@ -43,7 +43,6 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
             &["MeshIR.objects"],
             &["SurfaceClassificationIR.per_object"],
             true,
-            slicer_schema::WORLD_PREPASS,
         ),
         config_view(&[("feature.prepass", ConfigValue::Bool(true))]),
         4,
@@ -55,7 +54,6 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
             &["SliceIR.regions"],
             &["PerimeterIR.regions.walls"],
             true,
-            slicer_schema::WORLD_LAYER,
         ),
         config_view(&[("walls", ConfigValue::Int(3))]),
         4,
@@ -67,7 +65,6 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
             &["LayerCollectionIR.layers"],
             &["LayerCollectionIR.finalized"],
             false,
-            slicer_schema::WORLD_FINALIZATION,
         ),
         config_view(&[("emit-checkpoints", ConfigValue::Bool(false))]),
         4,
@@ -79,7 +76,6 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
             &["GCodeIR.text"],
             &["GCodeIR.text"],
             false,
-            slicer_schema::WORLD_POSTPASS,
         ),
         config_view(&[("footer", ConfigValue::String(String::from("done")))]),
         4,
@@ -196,7 +192,7 @@ fn bound_module(
         module.id(),
         module.version(),
         module.stage(),
-        module.wit_world(),
+        String::new(),
         module.wasm_path().to_path_buf(),
     )
     .ir_reads(module.ir_reads().to_vec())
@@ -234,13 +230,12 @@ fn loaded_module(
     ir_reads: &[&str],
     ir_writes: &[&str],
     layer_parallel_safe: bool,
-    wit_world: &str,
 ) -> slicer_scheduler::LoadedModule {
     LoadedModuleBuilder::new(
         id,
         semver(1, 0, 0),
         stage,
-        wit_world,
+        String::new(),
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(strings(ir_reads))
@@ -450,14 +445,7 @@ fn error_display_includes_region_map_remediation() {
 fn plan_construction_is_deterministic_across_repeated_calls() {
     let mk_request = || {
         let module = bound_module(
-            loaded_module(
-                "com.test.infill",
-                "Layer::Infill",
-                &[],
-                &[],
-                true,
-                slicer_schema::WORLD_LAYER,
-            ),
+            loaded_module("com.test.infill", "Layer::Infill", &[], &[], true),
             ConfigView::from_map(HashMap::new()),
             4,
         );
@@ -659,14 +647,7 @@ fn duplicate_module_binding_rejected_with_stable_diagnostic() {
 
     let mk_binding = || {
         bound_module(
-            loaded_module(
-                "com.test.dup",
-                "Layer::Infill",
-                &[],
-                &[],
-                true,
-                slicer_schema::WORLD_LAYER,
-            ),
+            loaded_module("com.test.dup", "Layer::Infill", &[], &[], true),
             ConfigView::from_map(HashMap::new()),
             2,
         )
@@ -756,26 +737,12 @@ fn resolve_active_regions_uses_precomputed_index() {
     ]));
 
     let mod_a = bound_module(
-        loaded_module(
-            "mod.a",
-            "Layer::Perimeters",
-            &[],
-            &[],
-            true,
-            slicer_schema::WORLD_LAYER,
-        ),
+        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true),
         ConfigView::from_map(HashMap::new()),
         4,
     );
     let mod_b = bound_module(
-        loaded_module(
-            "mod.b",
-            "Layer::Infill",
-            &[],
-            &[],
-            true,
-            slicer_schema::WORLD_LAYER,
-        ),
+        loaded_module("mod.b", "Layer::Infill", &[], &[], true),
         ConfigView::from_map(HashMap::new()),
         4,
     );
@@ -839,14 +806,7 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
     let region_plans = Arc::new(HashMap::new()); // no region plans
 
     let mod_a = bound_module(
-        loaded_module(
-            "mod.a",
-            "Layer::Perimeters",
-            &[],
-            &[],
-            true,
-            slicer_schema::WORLD_LAYER,
-        ),
+        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true),
         ConfigView::from_map(HashMap::new()),
         4,
     );

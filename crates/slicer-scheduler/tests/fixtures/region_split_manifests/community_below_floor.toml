@@ -5,7 +5,6 @@ display-name = "Region Split Community Below Floor"
 description  = "Fixture: community semantic with priority below COMMUNITY_PRIORITY_FLOOR"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

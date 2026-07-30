@@ -5,7 +5,6 @@ display-name = "Default Path Optimization"
 description  = "Core default path-optimization module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::PathOptimization"

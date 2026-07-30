@@ -1027,33 +1027,46 @@ mod tests {
         assert!(!is_stale(&spec, &temp.0, &shared));
     }
 
-    /// Per packet 163, the per-stage `stage_wit_snapshot` must charge each
+    /// Per packet 164, the per-stage `stage_wit_snapshot` must charge each
     /// per-stage package directory only to the guest(s) whose
     /// `stage_id` resolves to it. A bump to one stage's `.wit` must mark
     /// only that stage's guests `STALE` (AC-N2), not every guest in the
     /// tree.
     #[test]
     fn stage_wit_dir_is_charged_only_to_matching_guest() {
-        // Sanity-check the canonical table resolves the three pilot
-        // stage_ids to their package dirs.
-        assert_eq!(
-            slicer_schema::wit_dir_for_stage_id("PostPass::GCodePostProcess"),
-            Some("postpass-gcode-postprocess"),
-        );
-        assert_eq!(
-            slicer_schema::wit_dir_for_stage_id("PostPass::TextPostProcess"),
-            Some("postpass-text-postprocess"),
-        );
-        assert_eq!(
-            slicer_schema::wit_dir_for_stage_id("PostPass::LayerFinalization"),
-            Some("finalization-layer-finalization"),
-        );
-        // An unmigrated stage returns its tier world dir (per packet 164's
-        // contract): not a package dir, so it carries no per-stage staleness.
-        assert_eq!(
-            slicer_schema::wit_dir_for_stage_id("Layer::Perimeters"),
-            Some("world-layer"),
-        );
+        // Every delivered module stage resolves to its own per-stage package
+        // directory, preserving freshness isolation between matching guests.
+        let expected_dirs = [
+            ("Layer::SlicePostProcess", "layer-slice-postprocess"),
+            ("Layer::Perimeters", "layer-perimeters"),
+            (
+                "Layer::PerimetersPostProcess",
+                "layer-perimeters-postprocess",
+            ),
+            ("Layer::Infill", "layer-infill"),
+            ("Layer::InfillPostProcess", "layer-infill-postprocess"),
+            ("Layer::Support", "layer-support"),
+            ("Layer::SupportPostProcess", "layer-support-postprocess"),
+            ("Layer::PathOptimization", "layer-path-optimization"),
+            ("PrePass::MeshAnalysis", "prepass-mesh-analysis"),
+            ("PrePass::LayerPlanning", "prepass-layer-planning"),
+            ("PrePass::SeamPlanning", "prepass-seam-planning"),
+            ("PrePass::SupportGeometry", "prepass-support-geometry"),
+            (
+                "PostPass::LayerFinalization",
+                "finalization-layer-finalization",
+            ),
+            ("PostPass::GCodePostProcess", "postpass-gcode-postprocess"),
+            ("PostPass::TextPostProcess", "postpass-text-postprocess"),
+        ];
+        assert_eq!(expected_dirs.len(), 15);
+        for (stage_id, wit_dir) in expected_dirs {
+            assert_eq!(
+                slicer_schema::wit_dir_for_stage_id(stage_id),
+                Some(wit_dir),
+                "stage {stage_id} must resolve to its matching per-stage WIT directory",
+            );
+        }
     }
 
     /// A guest whose `stage_id` is `None` (test guests) or refers to a
@@ -1064,7 +1077,7 @@ mod tests {
     #[test]
     fn stage_wit_unknown_stage_is_conservative() {
         let snap = stage_wit_snapshot(workspace_root().as_path(), None);
-        // The pilot packages must be in the union.
+        // Representative per-stage packages must be in the union.
         let names: Vec<String> = snap
             .entries
             .iter()
@@ -1074,7 +1087,7 @@ mod tests {
                 s.split("/deps/").nth(1).map(|rest| rest.to_string())
             })
             .collect();
-        // At least one `.wit` file under each pilot package dir is charged.
+        // At least one `.wit` file under each representative package dir is charged.
         assert!(
             names
                 .iter()

@@ -16,10 +16,13 @@ fn binding_surface_matches_finalization_stage() {
         PartCooling::__slicer_stage_name(),
         "PostPass::LayerFinalization"
     );
+    assert_eq!(PartCooling::__slicer_stage_export_name(), "run");
     assert_eq!(
-        PartCooling::__slicer_stage_export_name(),
-        "run-finalization"
+        PartCooling::__slicer_module_schema().stage_export,
+        "slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"
     );
     let exports = PartCooling::__slicer_wit_exports();
-    assert!(exports.contains(&"run"));
+    assert!(
+        exports.contains(&"slicer:finalization-layer-finalization/layer-finalization@1.0.0#run")
+    );
 }

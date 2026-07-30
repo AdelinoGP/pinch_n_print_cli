@@ -18,12 +18,7 @@ use slicer_scheduler::{
     validate_startup_dag, DagValidationPass, DagValidationRequest, SchedulerError,
 };
 
-fn module(
-    id: &str,
-    stage: &str,
-    wit_world: &str,
-    writes: &[&str],
-) -> slicer_scheduler::LoadedModule {
+fn module(id: &str, stage: &str, writes: &[&str]) -> slicer_scheduler::LoadedModule {
     slicer_scheduler::manifest::LoadedModuleBuilder::new(
         id.to_string(),
         SemVer {
@@ -32,7 +27,7 @@ fn module(
             patch: 0,
         },
         stage.to_string(),
-        wit_world.to_string(),
+        String::new(),
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_writes(writes.iter().map(|s| s.to_string()).collect())
@@ -71,7 +66,6 @@ fn prepass_seam_planning_module_is_not_unknown_stage() {
     let m = module(
         "com.example.seam-planner",
         "PrePass::SeamPlanning",
-        slicer_schema::WORLD_PREPASS,
         &["SeamPlanIR.entries"],
     );
     let request = DagValidationRequest {
@@ -103,7 +97,6 @@ fn prepass_support_geometry_module_is_not_unknown_stage() {
     let m = module(
         "com.example.support-planner",
         "PrePass::SupportGeometry",
-        slicer_schema::WORLD_PREPASS,
         &["SupportGeometryIR.regions"],
     );
     let request = DagValidationRequest {
@@ -135,7 +128,6 @@ fn layer_paint_region_annotation_module_is_not_unknown_stage() {
     let m = module(
         "com.example.paint-region-annotator",
         "Layer::PaintRegionAnnotation",
-        slicer_schema::WORLD_LAYER,
         &["PaintRegionIR.per_layer"],
     );
     let request = DagValidationRequest {
@@ -167,7 +159,6 @@ fn genuinely_unknown_stage_is_still_rejected() {
     let m = module(
         "com.example.bogus",
         "PrePass::NotARealStage",
-        slicer_schema::WORLD_PREPASS,
         &["SomeIR.field"],
     );
     let request = DagValidationRequest {

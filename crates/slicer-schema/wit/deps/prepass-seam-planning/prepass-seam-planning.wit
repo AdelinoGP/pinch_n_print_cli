@@ -1,0 +1,70 @@
+package slicer:prepass-seam-planning@1.0.0;
+
+interface seam-planning-types {
+    use slicer:ir-handles/ir-handles.{paint-value, segment-annotations-entry};
+    use slicer:types/geometry.{ex-polygon, seam-point3-with-width};
+
+    type object-id = string;
+    type region-id = string;
+
+    record seam-reason { tag: string }
+    record scored-seam-candidate {
+        position: seam-point3-with-width,
+        score: f32,
+        reason: seam-reason,
+    }
+    record seam-plan-entry {
+        global-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
+        chosen-position: seam-point3-with-width,
+        chosen-wall-index: u32,
+        scored-candidates: list<scored-seam-candidate>,
+    }
+
+    resource seam-planning-output {
+        push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+    }
+
+    record seam-planning-region-input {
+        global-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        variant-chain: list<tuple<string, paint-value>>,
+        z: f32,
+        height: f32,
+        ex-polygons: list<ex-polygon>,
+        segment-annotations: list<segment-annotations-entry>,
+        scoring-width: f32,
+    }
+
+    resource seam-planning-view {
+        regions: func() -> list<seam-planning-region-input>;
+    }
+}
+
+interface seam-planning {
+    use slicer:prepass-types/prepass-types.{mesh-object-view, layer-plan-view};
+    use seam-planning-types.{seam-planning-output, seam-planning-view};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
+        objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
+        output: seam-planning-output,
+        config: config-view,
+        region-input: seam-planning-view,
+    ) -> result<_, module-error>;
+}
+
+world seam-planning-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    import slicer:prepass-types/prepass-types;
+    import seam-planning-types;
+    export seam-planning;
+}

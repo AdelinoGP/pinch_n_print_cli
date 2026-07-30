@@ -21,9 +21,7 @@ use crate::binding::{
     CompiledModuleLive, FinalizationStageInput, LayerStageInput, PostpassStageInput,
     PrepassStageInput,
 };
-use crate::host::{
-    self, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder, PaintRegionLayerData,
-};
+use crate::host::{self, HostExecutionContext, HostExecutionContextBuilder, PaintRegionLayerData};
 use crate::instance::WasmEngine;
 use crate::traits::{
     FinalizationStageRunner, LayerStageRunner, PostpassStageRunner, PrepassStageRunner,
@@ -128,6 +126,33 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
     Resource::new_own(r.rep())
 }
 
+// Per-stage prepass mod `Host` trait impls (ADR-0002 / packet 163). The
+// per-stage bindgen mods each generate a `Host` trait at the world-mod's
+// nested `slicer::<pkg>::<iface>` path. The trait extends the per-stage
+// `HostXxxOutput` trait implemented in `host.rs` (where the resource
+// callbacks live), so an empty body suffices here. The chain is satisfied
+// through `HasSelf<HostExecutionContext>` in the per-stage `add_to_linker`
+// calls in the dispatch arms above.
+impl host::prepass_mesh_analysis::slicer::prepass_mesh_analysis::mesh_analysis_types::Host
+    for HostExecutionContext
+{
+}
+impl host::prepass_layer_planning::slicer::prepass_layer_planning::layer_planning_types::Host
+    for HostExecutionContext
+{
+}
+impl host::prepass_seam_planning::slicer::prepass_seam_planning::seam_planning_types::Host
+    for HostExecutionContext
+{
+}
+impl host::prepass_seam_planning::slicer::prepass_types::prepass_types::Host
+    for HostExecutionContext
+{
+}
+impl host::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::Host
+    for HostExecutionContext
+{
+}
 /// Convert host-side `slicer_ir::RetractMode` to the WIT enum used by the
 /// postpass-module bindings (host→guest direction).
 fn retract_mode_to_postpass_wit(
@@ -215,34 +240,6 @@ fn convert_gcode_command_to_postpass_wit(
 
 // collect_postpass_output moved to crate::marshal::out (packet 113, ADR-0021).
 // Used below via crate::marshal::collect_postpass_output.
-
-/// Bundled static configuration for a layer dispatch call.
-struct CallConfig<'a> {
-    bindings: &'a host::LayerModule,
-    store: &'a mut wasmtime::Store<HostExecutionContext>,
-    stage_id: &'a str,
-    module_id: &'a str,
-    export_name: &'a str,
-    config_handle: Resource<ConfigViewData>,
-}
-
-/// Bundled layer-specific parameters for a `call_layer_export` invocation.
-///
-/// Holds IR-typed refs — no `&LayerArena`. `slice_ir`, `perimeter_ir`, and
-/// `layer_collection` are passed separately to `call_layer_export` rather than
-/// stored here because they are only needed by specific stage branches.
-struct LayerParams<'a> {
-    layer_index: u32,
-    layer_z: f32,
-    /// Reserved: paint annotations now live in SliceIR segment_annotations (AC-16).
-    paint_ir: Option<&'a ()>,
-    seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
-    support_plan_ir: Option<&'a slicer_ir::SupportPlanIR>,
-    /// Packet 137: `PrePass::LightningTreeGen` IR for the live dispatch path.
-    /// `None` when no region's `sparse_fill_holder` is `lightning-infill`.
-    lightning_tree_ir: Option<&'a slicer_ir::LightningTreeIR>,
-    _arena_placeholder: std::marker::PhantomData<&'a ()>,
-}
 
 /// Runtime dispatcher that invokes WASM module exports through the component model.
 ///
@@ -372,117 +369,642 @@ impl WasmRuntimeDispatcher {
         #[allow(dead_code)] lightning_tree_ir: Option<&slicer_ir::LightningTreeIR>,
     ) -> Result<HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
-        let export_name = export_for_stage_id(stage_id).ok_or_else(|| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: String::new(),
-            phase: DispatchPhase::UnknownStage,
-            reason: format!("no export mapping for stage '{stage_id}'"),
-        })?;
-
-        let component = wasm_component.ok_or_else(|| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
+        let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
 
         // Acquire pool slot for concurrency control (RAII — released on drop).
         let _lease = instance_pool.acquire();
 
         let engine = self.engine.wasmtime_engine();
 
-        // Wire typed host imports into a fresh linker.
-        let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        host::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-            &mut linker,
-            |ctx| ctx,
-        )
-        .map_err(|e| DispatchError {
+        let mk_linker_err = |e: wasmtime::Error| DispatchError {
             module_id: module_id.to_string(),
             stage_id: stage_id.clone(),
             export_name: export_name.to_string(),
             phase: DispatchPhase::LinkerSetup,
             reason: e.to_string(),
-        })?;
+        };
+        let mk_ctx_err = |e: wasmtime::Error| DispatchError {
+            module_id: module_id.to_string(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::ContextCreation,
+            reason: e.to_string(),
+        };
+        let mk_call_err = |e: wasmtime::Error| DispatchError {
+            module_id: module_id.to_string(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedExportCall,
+            reason: e.to_string(),
+        };
+        let mk_inst_err = |e: wasmtime::Error| DispatchError {
+            module_id: module_id.to_string(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedInstantiation,
+            reason: format!(
+                "{e}; module does not export the interface required by stage {stage_id}: {}",
+                slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+            ),
+        };
 
-        // Create per-call execution context and store.
-        let ctx = HostExecutionContextBuilder::new(
-            module_id.to_string(),
-            envelope_floor,
-            envelope_height,
-        )
-        .mesh_ir(Some(mesh_ir))
-        .build();
-        let mut store = self.new_call_store(ctx);
-
-        store.data_mut().set_held_claims_per_region(held_claims_map);
-
-        // Per-region effective config (packet 131, Step 3): stash the
-        // pre-derived per-region config-field maps and the object-level
-        // fallback so the region-view `config()` WIT accessor resolves the
-        // correct per-region overrides (falling back to the object-level
-        // config for regions without a pool entry — AC-N1/AC-N2).
-        let default_config_fields = host::config_view_to_data(&effective_config_view).fields;
-        store
-            .data_mut()
-            .set_config_fields_per_region(config_fields_per_region);
-        store
-            .data_mut()
-            .set_default_config_fields(default_config_fields);
-
-        let config_handle = store
-            .data_mut()
-            .push_config_view(host::config_view_to_data(&effective_config_view))
-            .map_err(|e| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push config resource: {e}"),
-            })?;
-
-        // Instantiate component through typed bindings.
-        let bindings =
-            host::LayerModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-                .map_err(|e| DispatchError {
+        let (call_result, mut store, mem_initial_bytes) = match stage_id.as_str() {
+            "Layer::Infill" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
                     module_id: module_id.to_string(),
                     stage_id: stage_id.clone(),
                     export_name: export_name.to_string(),
-                    phase: DispatchPhase::TypedInstantiation,
-                    reason: e.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
                 })?;
-
-        // Snapshot the post-instantiation memory size.
-        let mem_initial_bytes = store.data().mem_tracker.current_bytes;
-
-        // Call the stage-appropriate typed export.
-        let call_result = self.call_layer_export(
-            CallConfig {
-                bindings: &bindings,
-                store: &mut store,
-                stage_id,
-                module_id,
-                export_name,
-                config_handle,
-            },
-            LayerParams {
-                layer_index,
-                layer_z,
-                paint_ir: None,
-                seam_plan_ir,
-                support_plan_ir,
-                lightning_tree_ir,
-                _arena_placeholder: std::marker::PhantomData,
-            },
-            slice_ir,
-            perimeter_ir,
-            layer_collection,
-            surface_classification,
-            region_map,
-            infill_ir,
-        )?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_infill::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_infill::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
+                        .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data_with_plan(
+                    None,
+                    layer_index,
+                    support_plan_ir,
+                    lightning_tree_ir,
+                );
+                let paint = store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_infill_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_infill_infill()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(paint),
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::InfillPostProcess" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_infill_postprocess::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_infill_postprocess::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles = push_infill_postprocess_regions(
+                    &mut store,
+                    slice_ir,
+                    perimeter_ir,
+                    region_map,
+                    layer_index,
+                )
+                .map_err(mk_ctx_err)?;
+                let prior_infill = infill_ir
+                    .map(crate::marshal::infill_ir_to_prior_regions)
+                    .unwrap_or_default();
+                let output = store
+                    .data_mut()
+                    .push_infill_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_infill_postprocess_infill_postprocess()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        &prior_infill,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::SlicePostProcess" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_slice_postprocess::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_slice_postprocess::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
+                        .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data(None, layer_index);
+                let paint = store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_slice_postprocess_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_slice_postprocess_slice_postprocess()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(paint),
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::Perimeters" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_perimeters::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_perimeters::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
+                        .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data(None, layer_index);
+                let paint = store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_perimeter_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_perimeters_perimeters()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(paint),
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::PerimetersPostProcess" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_perimeters_postprocess::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_perimeters_postprocess::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_perimeter_regions(&mut store, perimeter_ir, seam_plan_ir, layer_index)
+                        .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_perimeter_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_perimeters_postprocess_perimeters_postprocess()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::Support" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_support::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_support::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
+                        .map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data_with_plan(
+                    None,
+                    layer_index,
+                    support_plan_ir,
+                    lightning_tree_ir,
+                );
+                let paint = store
+                    .data_mut()
+                    .push_paint_region_layer_view(paint_data)
+                    .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_support_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_support_support()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(paint),
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::SupportPostProcess" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_support_postprocess::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_support_postprocess::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_slice_regions(&mut store, slice_ir, layer_z, surface_classification)
+                        .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_support_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_support_postprocess_support_postprocess()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            "Layer::PathOptimization" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::layer_path_optimization::LayerModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = HostExecutionContextBuilder::new(
+                    module_id.to_string(),
+                    envelope_floor,
+                    envelope_height,
+                )
+                .mesh_ir(Some(mesh_ir))
+                .build();
+                let mut store = self.new_call_store(ctx);
+                store.data_mut().set_held_claims_per_region(held_claims_map);
+                let default_config_fields =
+                    host::config_view_to_data(&effective_config_view).fields;
+                store
+                    .data_mut()
+                    .set_config_fields_per_region(config_fields_per_region);
+                store
+                    .data_mut()
+                    .set_default_config_fields(default_config_fields);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(&effective_config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::layer_path_optimization::LayerModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
+                let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+                let region_handles =
+                    push_perimeter_regions(&mut store, perimeter_ir, None, layer_index)
+                        .map_err(mk_ctx_err)?;
+                let output = store
+                    .data_mut()
+                    .push_gcode_output_builder()
+                    .map_err(mk_ctx_err)?;
+                let snapshot = project_ordered_entities_from(layer_collection);
+                let collection = store
+                    .data_mut()
+                    .push_layer_collection_builder(snapshot)
+                    .map_err(mk_ctx_err)?;
+                let call_result = bindings
+                    .slicer_layer_path_optimization_path_optimization()
+                    .call_run(
+                        &mut store,
+                        layer_index as i32,
+                        &region_handles,
+                        own(output),
+                        own(collection),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store, mem_initial_bytes))
+            }
+            _ => Err(DispatchError {
+                module_id: module_id.to_string(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::UnknownStage,
+                reason: format!(
+                    "no typed layer export for stage '{stage_id}': {}",
+                    slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default()
+                ),
+            }),
+        }?;
 
         // Handle module-returned error (inner Result).
         call_result.map_err(|module_err| DispatchError {
@@ -503,286 +1025,6 @@ impl WasmRuntimeDispatcher {
         stash_profile(&mut store);
 
         Ok(store.into_data())
-    }
-
-    /// Route to the correct typed export based on stage ID.
-    #[allow(clippy::too_many_arguments)]
-    fn call_layer_export(
-        &self,
-        config: CallConfig<'_>,
-        params: LayerParams<'_>,
-        slice_ir: Option<&slicer_ir::SliceIR>,
-        perimeter_ir: Option<&slicer_ir::PerimeterIR>,
-        layer_collection: Option<&slicer_ir::LayerCollectionIR>,
-        surface_classification: Option<&slicer_ir::SurfaceClassificationIR>,
-        region_map: Option<&slicer_ir::RegionMapIR>,
-        infill_ir: Option<&slicer_ir::InfillIR>,
-    ) -> Result<Result<(), host::ModuleError>, DispatchError> {
-        let mk_call_err = |e: wasmtime::Error| DispatchError {
-            module_id: config.module_id.to_string(),
-            stage_id: config.stage_id.to_string(),
-            export_name: config.export_name.to_string(),
-            phase: DispatchPhase::TypedExportCall,
-            reason: e.to_string(),
-        };
-        let mk_ctx_err = |e: wasmtime::Error| DispatchError {
-            module_id: config.module_id.to_string(),
-            stage_id: config.stage_id.to_string(),
-            export_name: config.export_name.to_string(),
-            phase: DispatchPhase::ContextCreation,
-            reason: e.to_string(),
-        };
-
-        match config.stage_id {
-            "Layer::Infill" => {
-                let region_handles = push_slice_regions(
-                    config.store,
-                    slice_ir,
-                    params.layer_z,
-                    surface_classification,
-                )
-                .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data_with_plan(
-                    params.paint_ir,
-                    params.layer_index,
-                    params.support_plan_ir,
-                    params.lightning_tree_ir,
-                );
-                let paint = config
-                    .store
-                    .data_mut()
-                    .push_paint_region_layer_view(paint_data)
-                    .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_infill_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_infill(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(paint),
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::InfillPostProcess" => {
-                let region_handles = push_infill_postprocess_regions(
-                    config.store,
-                    slice_ir,
-                    perimeter_ir,
-                    region_map,
-                    params.layer_index,
-                )
-                .map_err(mk_ctx_err)?;
-                // ADR-0028 Option 1b: prior-infill is a read-only snapshot of
-                // the committed InfillIR's region buckets; the output builder
-                // stays write-only.
-                let prior_infill = infill_ir
-                    .map(crate::marshal::infill_ir_to_prior_regions)
-                    .unwrap_or_default();
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_infill_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_infill_postprocess(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        &prior_infill,
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::SlicePostProcess" => {
-                let region_handles = push_slice_regions(
-                    config.store,
-                    slice_ir,
-                    params.layer_z,
-                    surface_classification,
-                )
-                .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
-                let paint = config
-                    .store
-                    .data_mut()
-                    .push_paint_region_layer_view(paint_data)
-                    .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_slice_postprocess_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_slice_postprocess(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(paint),
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::Perimeters" => {
-                let region_handles = push_slice_regions(
-                    config.store,
-                    slice_ir,
-                    params.layer_z,
-                    surface_classification,
-                )
-                .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
-                let paint = config
-                    .store
-                    .data_mut()
-                    .push_paint_region_layer_view(paint_data)
-                    .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_perimeter_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_perimeters(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(paint),
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::PerimetersPostProcess" => {
-                let region_handles = push_perimeter_regions(
-                    config.store,
-                    perimeter_ir,
-                    params.seam_plan_ir,
-                    params.layer_index,
-                )
-                .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_perimeter_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_wall_postprocess(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::Support" => {
-                let region_handles = push_slice_regions(
-                    config.store,
-                    slice_ir,
-                    params.layer_z,
-                    surface_classification,
-                )
-                .map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data_with_plan(
-                    params.paint_ir,
-                    params.layer_index,
-                    params.support_plan_ir,
-                    params.lightning_tree_ir,
-                );
-                let paint = config
-                    .store
-                    .data_mut()
-                    .push_paint_region_layer_view(paint_data)
-                    .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_support_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_support(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(paint),
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::SupportPostProcess" => {
-                let region_handles = push_slice_regions(
-                    config.store,
-                    slice_ir,
-                    params.layer_z,
-                    surface_classification,
-                )
-                .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_support_output_builder()
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_support_postprocess(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(output),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            "Layer::PathOptimization" => {
-                let region_handles =
-                    push_perimeter_regions(config.store, perimeter_ir, None, params.layer_index)
-                        .map_err(mk_ctx_err)?;
-                let output = config
-                    .store
-                    .data_mut()
-                    .push_gcode_output_builder()
-                    .map_err(mk_ctx_err)?;
-                let snapshot = project_ordered_entities_from(layer_collection);
-                let collection = config
-                    .store
-                    .data_mut()
-                    .push_layer_collection_builder(snapshot)
-                    .map_err(mk_ctx_err)?;
-                config
-                    .bindings
-                    .call_run_path_optimization(
-                        config.store,
-                        params.layer_index as i32,
-                        &region_handles,
-                        own(output),
-                        own(collection),
-                        own(config.config_handle),
-                    )
-                    .map_err(mk_call_err)
-            }
-            _ => Err(DispatchError {
-                module_id: config.module_id.to_string(),
-                stage_id: config.stage_id.to_string(),
-                export_name: config.export_name.to_string(),
-                phase: DispatchPhase::UnknownStage,
-                reason: format!("no typed layer export for stage '{}'", config.stage_id),
-            }),
-        }
     }
 
     // ── Typed prepass-world dispatch ──────────────────────────────────
@@ -806,56 +1048,17 @@ impl WasmRuntimeDispatcher {
     ) -> Result<host::HostExecutionContext, DispatchError> {
         use slicer_schema::export_for_stage_id;
         let export_name = export_for_stage_id(stage_id).unwrap_or("unknown");
-        let component = wasm_component.ok_or_else(|| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
 
         let _lease = instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
-        let mut linker = wasmtime::component::Linker::<host::HostExecutionContext>::new(engine);
-        host::PrepassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
-            &mut linker,
-            |ctx| ctx,
-        )
-        .map_err(|e| DispatchError {
+        let mk_linker_err = |e: wasmtime::Error| DispatchError {
             module_id: module_id.to_string(),
             stage_id: stage_id.clone(),
             export_name: export_name.to_string(),
             phase: DispatchPhase::LinkerSetup,
             reason: e.to_string(),
-        })?;
-
-        let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
-            .mesh_ir(Some(mesh_ir.clone()))
-            .build();
-        let mut store = self.new_call_store(ctx);
-
-        let config_handle = store
-            .data_mut()
-            .push_config_view(host::config_view_to_data(config_view))
-            .map_err(|e| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push config resource: {e}"),
-            })?;
-
-        let bindings =
-            host::PrepassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-                .map_err(|e| DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::TypedInstantiation,
-                reason: e.to_string(),
-            })?;
-
+        };
         let mk_call_err = |e: wasmtime::Error| DispatchError {
             module_id: module_id.to_string(),
             stage_id: stage_id.clone(),
@@ -870,41 +1073,149 @@ impl WasmRuntimeDispatcher {
             phase: DispatchPhase::ContextCreation,
             reason: e.to_string(),
         };
+        let mk_inst_err = |e: wasmtime::Error| DispatchError {
+            module_id: module_id.to_string(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedInstantiation,
+            reason: format!(
+                "{e}; module does not export the interface required by stage {stage_id}: {}",
+                slicer_schema::qualified_export_for_stage_id(stage_id).unwrap_or_default(),
+            ),
+        };
 
-        let call_result = match stage_id.as_str() {
+        let (call_result, mut store) = match stage_id.as_str() {
             "PrePass::MeshAnalysis" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::prepass_mesh_analysis::PrepassModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+                    .mesh_ir(Some(mesh_ir.clone()))
+                    .build();
+                let mut store = self.new_call_store(ctx);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::prepass_mesh_analysis::PrepassModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
                 let object_ids: Vec<String> =
                     mesh_ir.objects.iter().map(|o| o.id.clone()).collect();
                 let output = store
                     .data_mut()
                     .push_mesh_analysis_output()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_mesh_analysis(
-                        &mut store,
-                        &object_ids,
-                        own(output),
-                        own(config_handle),
-                    )
-                    .map_err(mk_call_err)
+                let call_result = bindings
+                    .slicer_prepass_mesh_analysis_mesh_analysis()
+                    .call_run(&mut store, &object_ids, own(output), own(config_handle))
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store))
             }
             "PrePass::LayerPlanning" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::prepass_layer_planning::PrepassModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                host::prepass_mesh_analysis::slicer::prepass_mesh_analysis::mesh_analysis_types::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+                    .mesh_ir(Some(mesh_ir.clone()))
+                    .build();
+                let mut store = self.new_call_store(ctx);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::prepass_layer_planning::PrepassModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
                 let object_ids: Vec<String> =
                     mesh_ir.objects.iter().map(|o| o.id.clone()).collect();
                 let output = store
                     .data_mut()
                     .push_layer_plan_output()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_layer_planning(
-                        &mut store,
-                        &object_ids,
-                        own(output),
-                        own(config_handle),
-                    )
-                    .map_err(mk_call_err)
+                let call_result = bindings
+                    .slicer_prepass_layer_planning_layer_planning()
+                    .call_run(&mut store, &object_ids, own(output), own(config_handle))
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store))
             }
             "PrePass::SeamPlanning" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::prepass_seam_planning::PrepassModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+                    .mesh_ir(Some(mesh_ir.clone()))
+                    .build();
+                let mut store = self.new_call_store(ctx);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::prepass_seam_planning::PrepassModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
                 let mesh_object_views: Vec<_> = mesh_ir
                     .objects
                     .iter()
@@ -912,8 +1223,27 @@ impl WasmRuntimeDispatcher {
                     .collect();
                 let layer_plan_view = layer_plan
                     .as_deref()
-                    .map(|lp| host::project_layer_plan_view(lp))
-                    .unwrap_or_else(|| host::prepass::LayerPlanView { layers: Vec::new() });
+                    .map(|lp| {
+                        let projected = host::project_layer_plan_view(lp);
+                        host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanView {
+                            layers: projected
+                                .layers
+                                .into_iter()
+                                .map(|entry| {
+                                    host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanViewEntry {
+                                        global_layer_index: entry.global_layer_index,
+                                        z: entry.z,
+                                        effective_layer_height: entry.effective_layer_height,
+                                    }
+                                })
+                                .collect(),
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        host::prepass_seam_planning::slicer::prepass_types::prepass_types::LayerPlanView {
+                            layers: Vec::new(),
+                        }
+                    });
                 let region_input = crate::marshal::in_::project_seam_planning_view(
                     slice_ir.as_deref().map_or(&[], Vec::as_slice),
                     layer_plan.as_deref(),
@@ -928,8 +1258,9 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_seam_planning_output()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_seam_planning(
+                let call_result = bindings
+                    .slicer_prepass_seam_planning_seam_planning()
+                    .call_run(
                         &mut store,
                         &mesh_object_views,
                         &layer_plan_view,
@@ -937,9 +1268,43 @@ impl WasmRuntimeDispatcher {
                         own(config_handle),
                         own(region_input),
                     )
-                    .map_err(mk_call_err)
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store))
             }
             "PrePass::SupportGeometry" => {
+                let component = wasm_component.ok_or_else(|| DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                })?;
+                let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+                host::prepass_support_geometry::PrepassModule::add_to_linker::<
+                    _,
+                    wasmtime::component::HasSelf<_>,
+                >(&mut linker, |ctx| ctx)
+                .map_err(mk_linker_err)?;
+                let ctx = host::HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+                    .mesh_ir(Some(mesh_ir.clone()))
+                    .build();
+                let mut store = self.new_call_store(ctx);
+                let config_handle = store
+                    .data_mut()
+                    .push_config_view(host::config_view_to_data(config_view))
+                    .map_err(|e| DispatchError {
+                        module_id: module_id.to_string(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    })?;
+                let bindings = host::prepass_support_geometry::PrepassModule::instantiate(
+                    &mut store,
+                    component.wasmtime_component(),
+                    &linker,
+                )
+                .map_err(mk_inst_err)?;
                 let mesh_object_views: Vec<_> = mesh_ir
                     .objects
                     .iter()
@@ -965,8 +1330,9 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_support_geometry_output()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_support_geometry(
+                let call_result = bindings
+                    .slicer_prepass_support_geometry_support_geometry()
+                    .call_run(
                         &mut store,
                         &mesh_object_views,
                         &layer_plan_view,
@@ -975,7 +1341,8 @@ impl WasmRuntimeDispatcher {
                         own(output),
                         own(config_handle),
                     )
-                    .map_err(mk_call_err)
+                    .map_err(mk_call_err)?;
+                Ok((call_result, store))
             }
             _ => Err(DispatchError {
                 module_id: module_id.to_string(),
@@ -1367,6 +1734,22 @@ impl WasmRuntimeDispatcher {
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
         if let Err(e) = host::TextPostprocessModule::add_to_linker::<
+            _,
+            wasmtime::component::HasSelf<_>,
+        >(&mut linker, |ctx| ctx)
+        {
+            return (
+                Err(DispatchError {
+                    module_id: module_id.to_string(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::LinkerSetup,
+                    reason: e.to_string(),
+                }),
+                Vec::new(),
+            );
+        }
+        if let Err(e) = host::postpass_gcode::slicer::postpass_gcode_postprocess::gcode_postprocess_types::add_to_linker::<
             _,
             wasmtime::component::HasSelf<_>,
         >(&mut linker, |ctx| ctx)

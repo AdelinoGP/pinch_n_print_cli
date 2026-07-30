@@ -16,10 +16,11 @@ fn binding_surface_matches_seam_planning_stage() {
         SeamPlannerDefault::__slicer_stage_name(),
         "PrePass::SeamPlanning"
     );
+    assert_eq!(SeamPlannerDefault::__slicer_stage_export_name(), "run");
     assert_eq!(
-        SeamPlannerDefault::__slicer_stage_export_name(),
-        "run-seam-planning"
+        SeamPlannerDefault::__slicer_module_schema().stage_export,
+        "slicer:prepass-seam-planning/seam-planning@1.0.0#run"
     );
     let exports = SeamPlannerDefault::__slicer_wit_exports();
-    assert!(exports.contains(&"run-seam-planning"));
+    assert!(exports.contains(&"slicer:prepass-seam-planning/seam-planning@1.0.0#run"));
 }

@@ -194,14 +194,29 @@ fn make_default_bundle(
     use slicer_ir::SemVer;
     use slicer_runtime::manifest::LoadedModuleBuilder;
 
-    let guest_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../slicer-wasm-host/test-guests/layer-infill-guest.component.wasm"
-    );
-    let component = wasm_cache::compiled_component_at(std::path::Path::new(guest_path));
+    let module_id = if stage_id == "Layer::PathOptimization" {
+        "com.test.fixture.pathopt"
+    } else {
+        "com.test.fixture"
+    };
+    let guest_name = match stage_id {
+        "PrePass::MeshAnalysis" => "prepass-guest",
+        "PrePass::LayerPlanning" => "prepass-layer-planning-guest",
+        "Layer::SlicePostProcess" => "dispatch-layer-slice-postprocess-guest",
+        "Layer::Perimeters" => "dispatch-layer-perimeters-guest",
+        "Layer::PerimetersPostProcess" => "dispatch-layer-perimeters-postprocess-guest",
+        "Layer::InfillPostProcess" => "dispatch-layer-infill-postprocess-guest",
+        "Layer::SupportPostProcess" => "dispatch-layer-support-postprocess-guest",
+        "Layer::PathOptimization" => "dispatch-layer-path-optimization-guest",
+        _ => "layer-infill-guest",
+    };
+    let guest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../slicer-wasm-host/test-guests")
+        .join(format!("{guest_name}.component.wasm"));
+    let component = wasm_cache::compiled_component_at(&guest_path);
 
     let loaded = LoadedModuleBuilder::new(
-        "com.test.fixture",
+        module_id,
         SemVer {
             major: 1,
             minor: 0,
@@ -242,7 +257,7 @@ fn make_default_bundle(
         .unwrap(),
     );
 
-    let module = CompiledModuleBuilder::new("com.test.fixture")
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
         .build();
 

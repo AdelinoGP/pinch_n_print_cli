@@ -53,135 +53,57 @@ fn macro_uses_canonical_dep_includes() {
     );
 }
 
-/// Verifies that the macro's layer-world WIT source has the canonical package name.
-/// Under single-source, the package name lives in the canonical world-layer.wit file
-/// which the macro includes via include_str!; we assert both the disk file and the
-/// include_str! reference point to the same canonical path.
+/// Verifies that every stage package has the canonical package declaration and
+/// that the macro sources that exact file from the canonical tree.
 #[test]
-fn macro_layer_world_package_name_is_canonical() {
+fn macro_stage_package_names_are_canonical() {
     let root = workspace_root();
-    // The canonical world-layer.wit must declare the correct package.
-    let world_layer =
-        fs::read_to_string(root.join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit"))
-            .expect("read canonical world-layer.wit");
-    assert!(
-        world_layer.contains(r#"package slicer:world-layer@2.3.0;"#),
-        "canonical world-layer.wit must use 'slicer:world-layer@2.3.0' (packet 140 run-infill paint-view bump), not 'slicer:layer-world@1.0.0'"
-    );
-    assert!(
-        !world_layer.contains(r#"package slicer:layer-world@1.0.0"#),
-        "canonical world-layer.wit must not contain pre-consolidation 'slicer:layer-world@1.0.0'"
-    );
-    // Drift guard: the macro must source its layer-world WIT from this canonical file.
-    let lib_rs = macro_lib_rs_content();
-    assert!(
-        lib_rs.contains(
-            r#"include_str!("../../slicer-schema/wit/deps/world-layer/world-layer.wit")"#
-        ),
-        "macro LAYER_WORLD_WIT must be sourced from canonical single-source via include_str!"
-    );
-}
-
-/// Verifies that the macro's prepass/postpass/finalization WIT sources use
-/// canonical package names. Under single-source the canonical package declarations
-/// live in the disk world files; we verify both the disk files and the macro's
-/// include_str! references pointing to those files.
-#[test]
-fn macro_other_world_package_names_are_canonical() {
-    let root = workspace_root();
-    // The contract is the package *name*, not its version. `slicer-schema`'s
-    // `WORLD_*` constants are themselves version-free, so a version literal here
-    // would be a second, unowned source of truth: it pins a number nothing else
-    // in the tree agrees to, and a legitimate world bump silently reads as
-    // drift. (It did — this test pinned `@2.0.0` against a `@3.0.0` file.)
-    // Assert instead that each world declares the canonical name with *some*
-    // well-formed version.
-    //
-    // Packet 163: postpass + finalization are now per-stage packages
-    // (`slicer:postpass-gcode-postprocess@1.0.0`,
-    //  `slicer:postpass-text-postprocess@1.0.0`,
-    //  `slicer:finalization-layer-finalization@1.0.0`),
-    // not the old `slicer:world-{postpass,finalization}@1.0.0` tier worlds.
-    // layer + prepass remain on their tier worlds.
-    let canonical_worlds = [
-        ("world-prepass", slicer_schema::WORLD_PREPASS),
-        (
-            "postpass-gcode-postprocess",
-            "slicer:postpass-gcode-postprocess",
-        ),
-        (
-            "postpass-text-postprocess",
-            "slicer:postpass-text-postprocess",
-        ),
-        (
-            "finalization-layer-finalization",
-            "slicer:finalization-layer-finalization",
-        ),
+    let canonical_packages = [
+        "layer-slice-postprocess",
+        "layer-perimeters",
+        "layer-perimeters-postprocess",
+        "layer-infill",
+        "layer-infill-postprocess",
+        "layer-support",
+        "layer-support-postprocess",
+        "layer-path-optimization",
+        "prepass-mesh-analysis",
+        "prepass-layer-planning",
+        "prepass-seam-planning",
+        "prepass-support-geometry",
+        "finalization-layer-finalization",
+        "postpass-gcode-postprocess",
+        "postpass-text-postprocess",
     ];
-    for (slug, pkg) in canonical_worlds {
+    let lib_rs = macro_lib_rs_content();
+    let normalized: String = lib_rs.chars().filter(|c| !c.is_whitespace()).collect();
+    for slug in canonical_packages {
         let path = root.join(format!("crates/slicer-schema/wit/deps/{slug}/{slug}.wit"));
-        let content =
-            fs::read_to_string(&path).unwrap_or_else(|_| panic!("read canonical {slug}.wit"));
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("read canonical stage package {slug}.wit"));
         let declaration = content
             .lines()
             .find_map(|line| line.trim().strip_prefix("package "))
             .and_then(|rest| rest.trim().strip_suffix(';'))
-            .unwrap_or_else(|| panic!("canonical {slug}.wit must declare a package"));
+            .unwrap_or_else(|| panic!("canonical stage package {slug}.wit must declare a package"));
         let (name, version) = declaration.split_once('@').unwrap_or_else(|| {
-            panic!("canonical {slug}.wit package must be versioned: {declaration}")
+            panic!("canonical stage package {slug}.wit must be versioned: {declaration}")
         });
         assert_eq!(
-            name, pkg,
-            "canonical {slug}.wit must declare package name '{pkg}' (found '{name}')"
+            name,
+            format!("slicer:{slug}"),
+            "canonical {slug}.wit must declare its stage package name"
         );
         let parts: Vec<&str> = version.split('.').collect();
         assert!(
             parts.len() == 3 && parts.iter().all(|p| p.parse::<u32>().is_ok()),
-            "canonical {slug}.wit package version must be a three-part semver (found '{version}')"
+            "canonical {slug}.wit package version must be three-part semver (found '{version}')"
         );
-    }
-
-    // Pre-consolidation names must not appear in the canonical world files.
-    let disallowed = [
-        "slicer:prepass-world@",
-        "slicer:postpass-world@",
-        "slicer:finalization-world@",
-    ];
-    for wrong in disallowed {
-        for slug in [
-            "world-prepass",
-            "postpass-gcode-postprocess",
-            "postpass-text-postprocess",
-            "finalization-layer-finalization",
-        ] {
-            let path = root.join(format!("crates/slicer-schema/wit/deps/{slug}/{slug}.wit"));
-            if !path.exists() {
-                continue;
-            }
-            let content = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {slug}.wit"));
-            assert!(
-                !content.contains(&format!("package {wrong}")),
-                "{slug}.wit must not contain pre-consolidation package prefix '{wrong}'"
-            );
-        }
-    }
-
-    // Drift guard: confirm macro sources each world from the canonical single-source file.
-    let lib_rs = macro_lib_rs_content();
-    for slug in [
-        "world-prepass",
-        "postpass-gcode-postprocess",
-        "postpass-text-postprocess",
-        "finalization-layer-finalization",
-    ] {
-        // `include_str!` may be written multi-line in the macro source —
-        // collapse whitespace before matching.
-        let normalized: String = lib_rs.chars().filter(|c| !c.is_whitespace()).collect();
         let expected = format!(r#"include_str!("../../slicer-schema/wit/deps/{slug}/{slug}.wit")"#);
         let expected_normalized: String = expected.chars().filter(|c| !c.is_whitespace()).collect();
         assert!(
             normalized.contains(&expected_normalized),
-            "macro must source {slug} WIT from canonical single-source via include_str!"
+            "macro must source stage package {slug} from canonical single-source via include_str!"
         );
     }
 }
@@ -190,12 +112,10 @@ fn macro_other_world_package_names_are_canonical() {
 // Host WIT source verification
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Verifies that the host's bindgen! blocks reference canonical world paths.
-/// Under single-source, the host uses `path: "../slicer-schema/wit"` (not inline WIT),
-/// so the canonical package names appear in the `world:` key string, not as literal
-/// `package …;` declarations. This redirected assertion checks those `world:` references.
+/// Verifies that the host's bindgen! blocks reference all 15 canonical stage
+/// worlds through the shared WIT path.
 #[test]
-fn host_inline_wit_uses_canonical_world_package_names() {
+fn host_bindgen_uses_canonical_stage_package_names() {
     let wit_host_rs = host_wit_host_rs_content();
 
     // Single-source: host reads canonical dir via `path:`, not inline WIT.
@@ -205,65 +125,64 @@ fn host_inline_wit_uses_canonical_world_package_names() {
         "host bindgen! must use canonical path '../slicer-schema/wit'"
     );
 
-    // Each world is addressed by the canonical package-qualified `world:` key.
-    //
-    // The keys are deliberately unversioned. `bindgen!` resolves them against
-    // the canonical WIT dir, which declares exactly one version of each world
-    // package, so the version cannot disambiguate anything here — it only
-    // forces this file (and ~80 others) to be edited on every bump. The
-    // `no_versioned_world_keys` test below pins that.
-    let canonical_world_refs = [
-        r#"world: "slicer:world-layer/layer-module""#,
-        r#"world: "slicer:world-prepass/prepass-module""#,
+    let canonical_stage_refs = [
+        r#"world: "slicer:layer-slice-postprocess/slice-postprocess-module""#,
+        r#"world: "slicer:layer-perimeters/perimeters-module""#,
+        r#"world: "slicer:layer-perimeters-postprocess/perimeters-postprocess-module""#,
+        r#"world: "slicer:layer-infill/infill-module""#,
+        r#"world: "slicer:layer-infill-postprocess/infill-postprocess-module""#,
+        r#"world: "slicer:layer-support/support-module""#,
+        r#"world: "slicer:layer-support-postprocess/support-postprocess-module""#,
+        r#"world: "slicer:layer-path-optimization/path-optimization-module""#,
+        r#"world: "slicer:prepass-mesh-analysis/mesh-analysis-module""#,
+        r#"world: "slicer:prepass-layer-planning/layer-planning-module""#,
+        r#"world: "slicer:prepass-seam-planning/seam-planning-module""#,
+        r#"world: "slicer:prepass-support-geometry/support-geometry-module""#,
+        r#"world: "slicer:finalization-layer-finalization/layer-finalization-module""#,
         r#"world: "slicer:postpass-gcode-postprocess/gcode-postprocess-module""#,
         r#"world: "slicer:postpass-text-postprocess/text-postprocess-module""#,
-        r#"world: "slicer:finalization-layer-finalization/layer-finalization-module""#,
     ];
-    for canonical in canonical_world_refs {
+    assert_eq!(
+        canonical_stage_refs.len(),
+        15,
+        "the host guard must enumerate all 15 stage worlds"
+    );
+    for canonical in canonical_stage_refs {
         assert!(
             wit_host_rs.contains(canonical),
-            "host bindgen! must reference canonical world '{canonical}'"
+            "host bindgen! must reference canonical stage world '{canonical}'"
         );
     }
 
-    // Verify the pre-consolidation (wrong) world keys do NOT appear.
-    let disallowed = [
-        "slicer:layer-world",
-        "slicer:prepass-world",
-        "slicer:postpass-world",
-        "slicer:finalization-world",
-    ];
-    for wrong in disallowed {
-        assert!(
-            !wit_host_rs.contains(wrong),
-            "host bindgen! must not contain pre-consolidation world ref '{wrong}'"
-        );
-    }
+    // A tier-world package reference would bypass the per-stage contract.
+    let wrong = "slicer:world-";
+    assert!(
+        !wit_host_rs.contains(wrong),
+        "host bindgen! must not contain an unqualified tier package prefix '{wrong}'"
+    );
 }
 
 /// Verifies that the `with:` block keys in host `wit_host.rs` use the canonical
-/// interface paths now that resources live in shared dep packages (single-source).
-/// Under single-source the host maps `"slicer:config/config-types.config-view"` (shared
-/// dep package) rather than the old per-world-versioned form.
+/// interface paths now that resources live in shared dep packages.
+/// The host maps `"slicer:config/config-types.config-view"` (shared dep
+/// package) rather than a tier-world-versioned form.
 #[test]
-fn host_bindgen_with_keys_use_canonical_world_names() {
+fn host_bindgen_with_keys_use_canonical_stage_names() {
     let wit_host_rs = host_wit_host_rs_content();
 
     // Single-source: config-view is now a shared dep, so the with: key is the dep
     // package form, not a world-versioned form. Assert the canonical key is present
-    // in each bindgen! block (one occurrence per world is sufficient).
+    // in each bindgen! block (one occurrence per stage is sufficient).
     let canonical_key = r#""slicer:config/config-types.config-view""#;
     assert!(
         wit_host_rs.contains(canonical_key),
         "host bindgen with: block should contain canonical shared-dep key '{canonical_key}'"
     );
 
-    // The old (wrong) per-world-versioned key forms must not appear.
+    // The old (wrong) tier-world-versioned key form must not appear.
     let disallowed_keys = [
-        r#""slicer:layer-world/config-types/config-view""#,
-        r#""slicer:prepass-world/config-types/config-view""#,
-        r#""slicer:world-layer/config-types@1.0.0.config-view""#,
-        r#""slicer:world-prepass/config-types@1.0.0.config-view""#,
+        r#""slicer:world-/config-types/config-view""#,
+        r#""slicer:world-/config-types@1.0.0.config-view""#,
     ];
     for wrong in disallowed_keys {
         assert!(
@@ -277,26 +196,36 @@ fn host_bindgen_with_keys_use_canonical_world_names() {
 // Disk canonical file existence verification
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Verifies that all four canonical world WIT files exist on disk.
-/// Under the single-source layout (packet 72) worlds moved from the flat
-/// `wit/world-X.wit` to `wit/deps/world-X/world-X.wit`.
+/// Verifies that all 15 canonical stage-package WIT files exist on disk.
 // Guards against canonical-file edits (single-source, post-packet-72); producer divergence is architecturally impossible.
 #[test]
-fn canonical_world_files_exist_on_disk() {
+fn canonical_stage_package_files_exist_on_disk() {
     let root = workspace_root();
-    for world_slug in [
-        "world-layer",
-        "world-prepass",
+    let stage_slugs = [
+        "layer-slice-postprocess",
+        "layer-perimeters",
+        "layer-perimeters-postprocess",
+        "layer-infill",
+        "layer-infill-postprocess",
+        "layer-support",
+        "layer-support-postprocess",
+        "layer-path-optimization",
+        "prepass-mesh-analysis",
+        "prepass-layer-planning",
+        "prepass-seam-planning",
+        "prepass-support-geometry",
+        "finalization-layer-finalization",
         "postpass-gcode-postprocess",
         "postpass-text-postprocess",
-        "finalization-layer-finalization",
-    ] {
+    ];
+    assert_eq!(stage_slugs.len(), 15);
+    for stage_slug in stage_slugs {
         let path = root.join(format!(
-            "crates/slicer-schema/wit/deps/{world_slug}/{world_slug}.wit"
+            "crates/slicer-schema/wit/deps/{stage_slug}/{stage_slug}.wit"
         ));
         assert!(
             path.exists(),
-            "canonical WIT file '{world_slug}/{world_slug}.wit' must exist on disk at {:?}",
+            "canonical stage WIT file '{stage_slug}/{stage_slug}.wit' must exist on disk at {:?}",
             path
         );
     }
@@ -512,23 +441,25 @@ fn host_embedded_wit_tracks_boundary_widening() {
 /// signature (packet 32 — TASK-152g).
 ///
 /// Under single-source (packet 72), the macro sources its layer-world WIT via
-/// include_str! from the canonical world-layer.wit — drift is caught by checking the
+/// include_str! from the canonical stage package — drift is caught by checking the
 /// canonical files directly and confirming the macro's include_str! path is correct.
 #[test]
 fn macro_embeds_layer_collection_builder_resource() {
     let root = workspace_root();
 
-    // The canonical layer-world WIT must expose layer-collection-builder.
-    let world_layer =
-        fs::read_to_string(root.join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit"))
-            .expect("read canonical world-layer.wit");
+    // The canonical path-optimization package must expose layer-collection-builder.
+    let path_optimization =
+        fs::read_to_string(root.join(
+            "crates/slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit",
+        ))
+        .expect("read canonical layer-path-optimization.wit");
     assert!(
-        world_layer.contains("layer-collection-builder,"),
-        "canonical world-layer.wit must import 'layer-collection-builder' in the world's `use ir-handles.{{...}}` block"
+        path_optimization.contains("layer-collection-builder"),
+        "canonical layer-path-optimization.wit must import 'layer-collection-builder'"
     );
     assert!(
-        world_layer.contains("collection: layer-collection-builder"),
-        "canonical world-layer.wit must wire 'collection: layer-collection-builder' into run-path-optimization"
+        path_optimization.contains("collection: layer-collection-builder"),
+        "canonical layer-path-optimization.wit must wire 'collection: layer-collection-builder' into run"
     );
 
     // The actual resource declaration lives in the canonical ir-types.wit.
@@ -558,13 +489,16 @@ fn macro_embeds_layer_collection_builder_resource() {
         "canonical wit/deps/ir-types.wit ordered-entity-view must carry 'original-index: u32'"
     );
 
-    // Drift guard: macro must source its layer-world WIT from canonical single-source.
+    // Drift guard: macro must source the stage package from canonical single-source.
     let lib_rs = macro_lib_rs_content();
+    let normalized: String = lib_rs.chars().filter(|c| !c.is_whitespace()).collect();
+    let expected: String = r#"include_str!("../../slicer-schema/wit/deps/layer-path-optimization/layer-path-optimization.wit")"#
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     assert!(
-        lib_rs.contains(
-            r#"include_str!("../../slicer-schema/wit/deps/world-layer/world-layer.wit")"#
-        ),
-        "macro must source layer-world WIT from canonical single-source via include_str!"
+        normalized.contains(&expected),
+        "macro must source layer-path-optimization WIT from canonical single-source via include_str!"
     );
 }
 
@@ -604,7 +538,7 @@ fn perimeter_output_builder_has_seam_write_methods() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Verifies that the canonical ir-types.wit declares the `prior-infill-region`
-/// record with all five members (world-layer 2.0.0, packet 130).
+/// record with all five members (packet 130).
 #[test]
 fn canonical_ir_types_has_prior_infill_region_record() {
     let path = workspace_root().join("crates/slicer-schema/wit/deps/ir-types.wit");
@@ -658,49 +592,47 @@ fn perimeter_region_view_has_infill_postprocess_enrichment_members() {
     }
 }
 
-/// Verifies that the canonical world-layer.wit (2.0.0) threads the
+/// Verifies that the canonical infill-postprocess package threads the
 /// prior-infill parameter through run-infill-postprocess and imports the
 /// prior-infill-region record.
 #[test]
-fn canonical_world_layer_run_infill_postprocess_takes_prior_infill() {
-    let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
+fn canonical_infill_postprocess_takes_prior_infill() {
+    let path = workspace_root().join(
+        "crates/slicer-schema/wit/deps/layer-infill-postprocess/layer-infill-postprocess.wit",
+    );
+    let content = fs::read_to_string(&path).expect("read canonical layer-infill-postprocess.wit");
     assert!(
-        content.contains("package slicer:world-layer@2.3.0;"),
-        "world-layer must be at package version 2.3.0 (bumped for packet 140 run-infill paint view)"
+        content.contains("package slicer:layer-infill-postprocess@1.0.0;"),
+        "layer-infill-postprocess must use the canonical package version"
     );
     assert!(
         content.contains("prior-infill-region,"),
-        "world-layer must import prior-infill-region from ir-handles"
+        "layer-infill-postprocess must import prior-infill-region from ir-handles"
     );
     assert!(
-        content.contains(
-            "export run-infill-postprocess: func(layer-index: layer-idx, \
-             regions: list<perimeter-region-view>, \
-             prior-infill: list<prior-infill-region>, \
-             output: infill-output-builder, config: config-view) -> result<_, module-error>;"
-        ),
+        content
+            .split_whitespace()
+            .collect::<String>()
+            .contains("run:func(layer-index:layer-idx,regions:list<perimeter-region-view>,prior-infill:list<prior-infill-region>,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
         "run-infill-postprocess must take the prior-infill parameter with the canonical signature"
     );
 }
 
-/// Verifies that `Layer::Infill` receives the same paint view shape as the
+/// Verifies that the infill package receives the same paint view shape as the
 /// other paint-aware layer stages.
 #[test]
-fn canonical_world_layer_run_infill_takes_paint_view() {
-    let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
+fn canonical_infill_takes_paint_view() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit");
+    let content = fs::read_to_string(&path).expect("read canonical layer-infill.wit");
     assert!(
-        content.contains("package slicer:world-layer@2.3.0;"),
-        "world-layer must be at package version 2.3.0 for the run-infill paint-view extension"
+        content.contains("package slicer:layer-infill@1.0.0;"),
+        "layer-infill must use the canonical package version"
     );
     assert!(
-        content.contains(
-            "export run-infill: func(layer-index: layer-idx, \
-             regions: list<slice-region-view>, \
-             paint: paint-region-layer-view, \
-             output: infill-output-builder, config: config-view) -> result<_, module-error>;"
-        ),
+        content
+            .split_whitespace()
+            .collect::<String>()
+            .contains("run:func(layer-index:layer-idx,regions:list<slice-region-view>,paint:paint-region-layer-view,output:infill-output-builder,config:config-view)->result<_,module-error>;"),
         "run-infill must take the canonical paint-region-layer-view parameter"
     );
 }
@@ -737,16 +669,13 @@ fn collect_files(dir: &std::path::Path, exts: &[&str], out: &mut Vec<PathBuf>) {
     }
 }
 
-/// A versioned world identifier (`slicer:world-x@1.2.3`) must not appear in any
-/// `.rs` or `.toml` file in the workspace. The version belongs solely to the
-/// `package` line of `crates/slicer-schema/wit/deps/world-*/*.wit`.
+/// A versioned tier-world identifier (`slicer:world-x@1.2.3`) must not appear
+/// in any `.rs` or `.toml` file in the workspace. Stage-package qualification
+/// is intentionally checked by the binding tests instead.
 ///
-/// This is the regression guard for the packet-130 churn: bumping
-/// `slicer:world-layer` 1.0.0 → 1.1.0 forced edits to **77 files** whose only
-/// change was re-spelling that string — 40 tests, 23 manifests/fixtures, 9 src
-/// files, a bench and a doc. The packet's own ~30-file estimate for its real
-/// change was accurate; the other 77 were a tax levied by duplicating a version
-/// that has no mechanical effect.
+/// This is the regression guard for the pre-package contract churn: versions
+/// must not be copied into host-side identifiers that do not select a WIT
+/// package.
 ///
 /// It has no effect because it cannot: our worlds export bare freestanding
 /// funcs, and a bare extern name carries no semver suffix (component-model
@@ -754,8 +683,8 @@ fn collect_files(dir: &std::path::Path, exts: &[&str], out: &mut Vec<PathBuf>) {
 /// is erased from every guest binary at compile time, so nothing can ever check
 /// a declared version against the artifact it claims to describe.
 ///
-/// If this test fails, do not update the expected string — remove the version
-/// from the offending file and refer to `slicer_schema::WORLD_*` instead.
+/// If this test fails, remove the version from the offending tier-world
+/// identifier rather than updating this guard.
 #[test]
 fn no_versioned_world_identifiers_outside_canonical_wit() {
     let root = workspace_root();
@@ -797,7 +726,7 @@ fn no_versioned_world_identifiers_outside_canonical_wit() {
 
     assert!(
         offenders.is_empty(),
-        "the world version must live only in crates/slicer-schema/wit/deps/world-*/*.wit; \
+        "tier-world versions must not escape the canonical WIT package declarations; \
          found {} versioned reference(s):\n{}",
         offenders.len(),
         offenders.join("\n")
@@ -849,10 +778,9 @@ fn no_lifecycle_exports_anywhere() {
     );
 }
 
-/// True if `line` contains a versioned world reference in either shape:
-///   - `slicer:world-layer@2.0.0` — bare package form.
-///   - `slicer:world-layer/layer-module@1.1.0` — package-qualified path form,
-///     as used in `bindgen!` / `generate!` `world:` keys.
+/// True if `line` contains a versioned tier-world reference in either shape:
+///   - `slicer:world-x@2.0.0` — bare package form.
+///   - `slicer:world-x/interface@1.1.0` — package-qualified path form.
 ///
 /// The second shape matters: it is how the host and every test-guest name their
 /// world, and an earlier version of this predicate stopped at the `/` and missed
@@ -927,15 +855,15 @@ fn paint_region_layer_view_has_lightning_tree_segments_method() {
     );
 }
 
-/// Verifies the world-layer package version was bumped to 2.2.0 for the
-/// packet 137 additive read-view method.
+/// Verifies the layer-infill stage package retains the load-bearing major
+/// version used by the per-stage bindgen contract.
 #[test]
-fn world_layer_package_version_bumped_for_lightning_view() {
-    let path = workspace_root().join("crates/slicer-schema/wit/deps/world-layer/world-layer.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-layer.wit");
+fn layer_infill_package_version_is_load_bearing() {
+    let path = workspace_root().join("crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit");
+    let content = fs::read_to_string(&path).expect("read canonical layer-infill.wit");
     assert!(
-        content.contains("package slicer:world-layer@2.3.0;"),
-        "world-layer must be at package version 2.3.0 (packet 140 run-infill paint-view bump)"
+        content.contains("package slicer:layer-infill@1.0.0;"),
+        "layer-infill must remain at package version 1.0.0"
     );
 }
 
@@ -978,9 +906,7 @@ fn every_stage_package_major_is_at_least_one() {
         if !wit_path.is_file() {
             continue;
         }
-        // Only check the **versioned** per-stage packages. A tier-world
-        // dir like `world-layer` is also versioned (`@2.3.0`); per-stage
-        // packages are at `@1.0.0` by design. The unversioned dep
+        // Only check the **versioned** per-stage packages. The unversioned dep
         // packages (`common.wit`, etc.) live one level up at
         // `wit/deps/<file>.wit`, not in their own dir — this loop
         // already skips them by requiring `<dir>/<dir>.wit`.

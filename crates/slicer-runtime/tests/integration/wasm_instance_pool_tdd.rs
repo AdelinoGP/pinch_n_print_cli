@@ -13,12 +13,7 @@ use slicer_runtime::{
 
 #[test]
 fn parallel_safe_modules_use_requested_host_parallelism_as_pool_size() {
-    let module = loaded_module(
-        "com.example.parallel",
-        "Layer::Perimeters",
-        true,
-        slicer_schema::WORLD_LAYER,
-    );
+    let module = loaded_module("com.example.parallel", "Layer::Perimeters", true);
 
     let pool = build_wasm_instance_pool(
         module.id(),
@@ -35,12 +30,7 @@ fn parallel_safe_modules_use_requested_host_parallelism_as_pool_size() {
 
 #[test]
 fn non_parallel_safe_modules_are_forced_to_a_single_serialized_slot() {
-    let module = loaded_module(
-        "com.example.serial",
-        "Layer::Infill",
-        false,
-        slicer_schema::WORLD_LAYER,
-    );
+    let module = loaded_module("com.example.serial", "Layer::Infill", false);
 
     let pool = build_wasm_instance_pool(
         module.id(),
@@ -57,12 +47,7 @@ fn non_parallel_safe_modules_are_forced_to_a_single_serialized_slot() {
 
 #[test]
 fn finalization_stage_is_always_serialized_even_when_manifest_claims_parallel_safety() {
-    let module = loaded_module(
-        "com.example.finalizer",
-        "PostPass::LayerFinalization",
-        true,
-        slicer_schema::WORLD_FINALIZATION,
-    );
+    let module = loaded_module("com.example.finalizer", "PostPass::LayerFinalization", true);
 
     let pool = build_wasm_instance_pool(
         module.id(),
@@ -79,12 +64,7 @@ fn finalization_stage_is_always_serialized_even_when_manifest_claims_parallel_sa
 
 #[test]
 fn shared_memory_artifacts_are_rejected_when_parallel_safety_is_declared() {
-    let module = loaded_module(
-        "com.example.shared-memory",
-        "Layer::Support",
-        true,
-        slicer_schema::WORLD_LAYER,
-    );
+    let module = loaded_module("com.example.shared-memory", "Layer::Support", true);
 
     let error = build_wasm_instance_pool(
         module.id(),
@@ -110,7 +90,6 @@ fn parallel_pools_hand_out_distinct_slots_until_exhausted_then_reuse_released_sl
         "com.example.parallel-leases",
         "Layer::SlicePostProcess",
         true,
-        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -139,7 +118,6 @@ fn serialized_pools_only_ever_hand_out_slot_zero() {
         "com.example.serial-leases",
         "Layer::PerimetersPostProcess",
         false,
-        slicer_schema::WORLD_LAYER,
     );
 
     let pool = build_wasm_instance_pool(
@@ -166,7 +144,6 @@ fn serialized_pools_block_other_leasers_until_release() {
         "com.example.serial-contention",
         "Layer::PerimetersPostProcess",
         false,
-        slicer_schema::WORLD_LAYER,
     );
 
     let pool = Arc::new(
@@ -210,17 +187,12 @@ fn artifact(uses_shared_memory: bool) -> WasmArtifactMetadata {
     WasmArtifactMetadata { uses_shared_memory }
 }
 
-fn loaded_module(
-    id: &str,
-    stage: &str,
-    layer_parallel_safe: bool,
-    wit_world: &str,
-) -> LoadedModule {
+fn loaded_module(id: &str, stage: &str, layer_parallel_safe: bool) -> LoadedModule {
     LoadedModuleBuilder::new(
         id,
         semver(1, 0, 0),
         stage,
-        wit_world,
+        String::new(),
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .min_host_version(semver(0, 1, 0))

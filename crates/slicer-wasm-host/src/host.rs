@@ -154,9 +154,9 @@ pub struct SliceRegionData {
     /// Region ID.
     pub region_id: String,
     /// Slice polygons (bindgen ExPolygon type).
-    pub polygons: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub polygons: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Infill areas.
-    pub infill_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Layer height at this Z.
     pub effective_layer_height: f32,
     /// Z height.
@@ -164,11 +164,15 @@ pub struct SliceRegionData {
     /// Whether this region has non-planar surfaces.
     pub has_nonplanar: bool,
     /// Boundary paint data.
-    pub segment_annotations: Vec<layer::slicer::ir_handles::ir_handles::SegmentAnnotationsEntry>,
+    pub segment_annotations:
+        Vec<layer_perimeters::slicer::ir_handles::ir_handles::SegmentAnnotationsEntry>,
     /// Ordered (paint-semantic-name, value) pairs identifying this region's
     /// paint variant. Carries the painted FuzzySkin signal to the guest's
     /// `variant-chain()` accessor (D14: keeps FuzzySkin off segment_annotations).
-    pub variant_chain: Vec<(String, layer::slicer::ir_handles::ir_handles::PaintValue)>,
+    pub variant_chain: Vec<(
+        String,
+        layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+    )>,
     /// True when this region is support-eligible (from SurfaceClassificationIR).
     pub needs_support: bool,
     /// Minimum top-shell depth (0 = exposed) from PrePass::ShellClassification.
@@ -176,30 +180,31 @@ pub struct SliceRegionData {
     /// Minimum bottom-shell depth (0 = exposed) from PrePass::ShellClassification.
     pub bottom_shell_index: Option<u8>,
     /// Polygon-precise top solid fill from shrinking-shadow projection.
-    pub top_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Polygon-precise bottom solid fill from shrinking-shadow projection.
-    pub bottom_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
-    pub bridge_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Sparse-only infill polygon after host-side fill partition.
     /// Populated by `sync_perimeter_infill_areas_into_slice` at `Layer::Perimeters`
     /// commit; empty before that hook runs.
-    pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub sparse_infill_area: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Fill-role claim IDs held by the module that produced this region.
     pub held_claims: Vec<String>,
     /// Overhang area polygons. Populated from `SurfaceClassificationIR.overhang_quartile_polygons`
     /// at this region's global layer index, pre-filtered to overlap the region (packet 107).
-    pub overhang_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub overhang_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Quartile-banded overhang polygons for this region's layer, pre-filtered to
     /// overlap the region (packet 107). Mirrors `overhang_areas` but preserves the
     /// per-quartile grouping for callers that need severity-aware handling.
-    pub overhang_quartile_polygons: Vec<layer::slicer::ir_handles::ir_handles::QuartileBand>,
+    pub overhang_quartile_polygons:
+        Vec<layer_perimeters::slicer::ir_handles::ir_handles::QuartileBand>,
     /// Surface group resolved from SurfaceClassificationIR. None when no group applies.
-    pub surface_group: Option<layer::slicer::ir_handles::ir_handles::SurfaceGroup>,
+    pub surface_group: Option<layer_perimeters::slicer::ir_handles::ir_handles::SurfaceGroup>,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -209,9 +214,9 @@ pub struct PerimeterRegionData {
     /// Region ID.
     pub region_id: String,
     /// Wall loops.
-    pub wall_loops: Vec<layer::slicer::ir_handles::ir_handles::WallLoopView>,
+    pub wall_loops: Vec<layer_perimeters::slicer::ir_handles::ir_handles::WallLoopView>,
     /// Infill areas after perimeter inset.
-    pub infill_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Resolved seam position (populated from PerimeterIR after seam-placer runs).
     pub resolved_seam: Option<(Point3, u32)>,
     /// Seam candidates pushed by the `Layer::Perimeters` guest for this region
@@ -223,13 +228,13 @@ pub struct PerimeterRegionData {
     /// region at dispatch time (ADR-0028 Change 2). Empty for stages that do
     /// not populate the partitioned view (only `Layer::InfillPostProcess`
     /// does today).
-    pub sparse_infill_area: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub sparse_infill_area: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned top-solid fill polygons (see `sparse_infill_area`).
-    pub top_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub top_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bottom-solid fill polygons (see `sparse_infill_area`).
-    pub bottom_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub bottom_solid_fill: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Partitioned bridge polygons (see `sparse_infill_area`).
-    pub bridge_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
+    pub bridge_areas: Vec<layer_perimeters::slicer::types::geometry::ExPolygon>,
     /// Host-computed tool index (ADR-0028 §Amendment): variant-chain material
     /// tool → `RegionMapIR` `extensions["extruder"]` → 0. Pinned in
     /// `crate::dispatch::resolve_region_tool_index`.
@@ -293,34 +298,73 @@ pub struct PaintRegionLayerData {
     pub layer_index: u32,
     /// Regions by semantic key string.
     pub regions_by_semantic:
-        HashMap<String, Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>>,
+        HashMap<String, Vec<layer_perimeters::slicer::ir_handles::ir_handles::SemanticRegion>>,
     /// Custom regions by module ID.
-    pub custom_regions: HashMap<String, Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>>,
+    pub custom_regions:
+        HashMap<String, Vec<layer_perimeters::slicer::ir_handles::ir_handles::SemanticRegion>>,
     /// Pre-planned support-branch segments indexed by `(object_id, region_id)`,
     /// projected from `SupportPlanIR.entries` filtered to this layer index.
     /// Empty when no `SupportPlanIR` is committed on the blackboard.
-    pub support_plan_segments:
-        HashMap<(String, String), Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>>,
+    pub support_plan_segments: HashMap<
+        (String, String),
+        Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+    >,
     /// Pre-planned lightning tree-edge segments indexed by
     /// `(object_id, region_id)`, projected from `LightningTreeIR.entries`
     /// filtered to this layer index. Empty when no `LightningTreeIR` is
     /// committed on the blackboard (skip-when-no-lightning-holder per
     /// ADR-0029). The 137 contract returns empty segments for the
     /// empty-but-valid IR; 138/139 populate the real entries.
-    pub lightning_tree_segments:
-        HashMap<(String, String), Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>>,
+    pub lightning_tree_segments: HashMap<
+        (String, String),
+        Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>,
+    >,
 }
 
-// ── Bindgen: Layer module world ─────────────────────────────────────────
+// ── Bindgen: Per-stage worlds ──────────────────────────────────────────
 
 #[allow(missing_docs)]
-pub mod layer {
+pub mod layer_slice_postprocess {
     wasmtime::component::bindgen!({
         path: "../slicer-schema/wit",
-        world: "slicer:world-layer/layer-module",
+        world: "slicer:layer-slice-postprocess/slice-postprocess-module",
         imports: {
             default: trappable,
         },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::SlicePostprocessModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_perimeters {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-perimeters/perimeters-module",
+        imports: {
+            default: trappable,
+        },
+        // Canonical definer: this mod is the type-identity root for the
+        // shared dep interfaces AND the concrete resource backing structs
+        // (ADR-0002 / packet 75). The five dep-interface aliases cannot
+        // be expressed inside this mod (bindgen rejects self-references)
+        // — every other stage world aliases this mod's generated types
+        // via its own `with:` block. All 10 concrete resource
+        // backing-struct bindings are listed here so the host's
+        // `impl HostX for HostExecutionContext` block matches the
+        // bindgen-generated trait signatures. The `interfaces not
+        // referenced in target world` notice bindgen emits for the
+        // resource keys this world does not consume is expected —
+        // the resource types are still generated and aliased into the
+        // other stage worlds via the shared `slicer:ir-handles/ir-handles`
+        // and `slicer:config/config-types` interfaces.
         with: {
             "slicer:config/config-types.config-view": super::ConfigViewData,
             "slicer:ir-handles/ir-handles.slice-region-view": super::SliceRegionData,
@@ -334,33 +378,331 @@ pub mod layer {
             "slicer:ir-handles/ir-handles.paint-region-layer-view": super::PaintRegionLayerData,
         },
     });
+    pub use self::PerimetersModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_perimeters_postprocess {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-perimeters-postprocess/perimeters-postprocess-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::PerimetersPostprocessModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_infill {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-infill/infill-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::InfillModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_infill_postprocess {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-infill-postprocess/infill-postprocess-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::InfillPostprocessModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_support {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-support/support-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::SupportModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_support_postprocess {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-support-postprocess/support-postprocess-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::SupportPostprocessModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod layer_path_optimization {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:layer-path-optimization/path-optimization-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::PathOptimizationModule as LayerModule;
+}
+
+#[allow(missing_docs)]
+pub mod prepass_mesh_analysis {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:prepass-mesh-analysis/mesh-analysis-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::slicer::prepass_mesh_analysis::mesh_analysis_types::{
+        FacetAnnotation, FacetClass, HostMeshAnalysisOutput, MeshAnalysisOutput,
+        SurfaceGroupProposal,
+    };
+    pub use self::MeshAnalysisModule as PrepassModule;
+}
+
+#[allow(missing_docs)]
+pub mod prepass_layer_planning {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:prepass-layer-planning/layer-planning-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::slicer::prepass_layer_planning::layer_planning_types::{
+        HostLayerPlanOutput, LayerPlanOutput, LayerProposal,
+    };
+    pub use self::LayerPlanningModule as PrepassModule;
+}
+
+#[allow(missing_docs)]
+pub mod prepass_seam_planning {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:prepass-seam-planning/seam-planning-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+        },
+    });
+    pub use self::slicer::prepass_seam_planning::seam_planning_types::{
+        HostSeamPlanningOutput, HostSeamPlanningView, SeamPlanEntry, SeamPlanningOutput,
+        SeamPlanningRegionInput, SeamPlanningView,
+    };
+    pub use self::slicer::prepass_types::prepass_types::{
+        MeshObjectView, PaintLayerView, PaintStrokeView, PaintValueView,
+    };
+    pub use self::SeamPlanningModule as PrepassModule;
+}
+
+#[allow(missing_docs)]
+pub mod prepass_support_geometry {
+    wasmtime::component::bindgen!({
+        path: "../slicer-schema/wit",
+        world: "slicer:prepass-support-geometry/support-geometry-module",
+        imports: {
+            default: trappable,
+        },
+        with: {
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
+            "slicer:prepass-types/prepass-types": super::prepass_seam_planning::slicer::prepass_types::prepass_types,
+        },
+    });
+    pub use self::slicer::prepass_support_geometry::support_geometry_types::{
+        Diagnostic, HostSupportGeometryOutput, LayerPlanView, LayerPlanViewEntry, RaftPlan,
+        RegionSegmentationView, RegionSegmentationViewEntry, SeverityLevel, SupportGeometryOutput,
+        SupportGeometryView, SupportGeometryViewEntry, SupportPlanEntry,
+    };
+    pub use self::SupportGeometryModule as PrepassModule;
 }
 
 // Re-export commonly used generated types for convenience.
-pub use layer::slicer::config::config_types::ConfigValue;
-pub use layer::slicer::config::config_types::FloatOrPercent;
+pub use layer_infill::LayerModule as LayerInfillModule;
+pub use layer_infill_postprocess::LayerModule as LayerInfillPostprocessModule;
+pub use layer_path_optimization::LayerModule as LayerPathOptimizationModule;
+pub use layer_perimeters::exports::slicer::layer_perimeters::perimeters::ModuleError;
+pub use layer_perimeters::slicer::config::config_types::ConfigValue;
+pub use layer_perimeters::slicer::config::config_types::FloatOrPercent;
 /// Re-exports of the layer-module WIT `wall-boundary-type` variant and its
 /// `material-boundary-segment` payload record, aliased to avoid colliding with
 /// `slicer_ir::WallBoundaryType` / `slicer_ir::MaterialBoundarySegment`.
-pub use layer::slicer::ir_handles::ir_handles::MaterialBoundarySegment as WitMaterialBoundarySegment;
+pub use layer_perimeters::slicer::ir_handles::ir_handles::MaterialBoundarySegment as WitMaterialBoundarySegment;
 /// Re-export of the layer-module WIT `retract-mode` variant. Used by host-side
 /// `gcode-output-builder` handlers and `dispatch.rs` converters to forward the
 /// `RetractMode` end-to-end across the guest→host boundary.
-pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
-pub use layer::slicer::ir_handles::ir_handles::WallBoundaryType as WitWallBoundaryType;
-pub use layer::slicer::ir_handles::ir_handles::{
+pub use layer_perimeters::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
+pub use layer_perimeters::slicer::ir_handles::ir_handles::WallBoundaryType as WitWallBoundaryType;
+pub use layer_perimeters::slicer::ir_handles::ir_handles::{
     GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, PriorInfillRegion,
     RegionKey, SeamCandidate, SeamPosition, SegmentAnnotationsEntry, SegmentAnnotationsPolygon,
     SemanticRegion, WallFeatureFlag, WallLoopType, WallLoopView,
 };
-pub use layer::slicer::types::geometry::{
+pub use layer_perimeters::slicer::types::geometry::{
     BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
     Polygon,
 };
-pub use layer::LayerModule;
-pub use layer::ModuleError;
+pub use layer_perimeters::LayerModule;
+pub use layer_perimeters::LayerModule as LayerPerimetersModule;
+pub use layer_perimeters_postprocess::LayerModule as LayerPerimetersPostprocessModule;
+pub use layer_slice_postprocess::LayerModule as LayerSlicePostprocessModule;
+pub use layer_support::LayerModule as LayerSupportModule;
+pub use layer_support_postprocess::LayerModule as LayerSupportPostprocessModule;
+pub use prepass_layer_planning::PrepassModule as PrepassLayerPlanningModule;
+pub use prepass_mesh_analysis::PrepassModule as PrepassMeshAnalysisModule;
+pub use prepass_seam_planning::PrepassModule as PrepassSeamPlanningModule;
+pub use prepass_support_geometry::PrepassModule as PrepassSupportGeometryModule;
 
-// ── Bindgen: Prepass module world ─────────────────────────────────────
+// Keep the shared converter paths available until the per-stage dispatch
+// callers move to their stage-specific generated modules.
+pub use layer_perimeters as layer;
+/// Compatibility facade re-exporting the prepass stage types under the old
+/// monolithic `host::prepass::*` paths so `marshal/in_.rs` / `marshal/leaf.rs`
+/// and the prepass test suites continue to resolve after the per-stage
+/// bindgen migration (packet 164). The nested `slicer::types::geometry`,
+/// `slicer::ir_handles::ir_handles`, and `slicer::prepass_types::prepass_types`
+/// sub-trees mirror the bindgen-generated mod path so legacy qualified imports
+/// like `prepass::slicer::types::geometry::SeamPoint3WithWidth` keep working.
+#[allow(missing_docs)]
+pub mod prepass {
+    pub use super::layer_perimeters::slicer::ir_handles::ir_handles::PaintValue;
+    pub use super::layer_perimeters::slicer::types::geometry::Point3;
+    pub use super::prepass_layer_planning::{
+        HostLayerPlanOutput, LayerPlanOutput, LayerPlanningModule, LayerProposal,
+    };
+    pub use super::layer_perimeters::slicer::types::geometry::SeamPoint3WithWidth;
+    pub use super::prepass_layer_planning::slicer::prepass_layer_planning::layer_planning_types::RegionLayerProposal;
+    pub use super::prepass_mesh_analysis::{
+        FacetAnnotation, FacetClass, HostMeshAnalysisOutput, MeshAnalysisModule, MeshAnalysisOutput,
+        SurfaceGroupProposal,
+    };
+    pub use super::prepass_seam_planning::{
+        HostSeamPlanningOutput, HostSeamPlanningView, MeshObjectView, PaintLayerView,
+        PaintStrokeView, PaintValueView, SeamPlanEntry, SeamPlanningModule, SeamPlanningOutput,
+        SeamPlanningRegionInput, SeamPlanningView,
+    };
+    pub use super::prepass_seam_planning::slicer::prepass_seam_planning::seam_planning_types::{
+        ScoredSeamCandidate, SeamReason,
+    };
+    pub use super::prepass_support_geometry::{
+        HostSupportGeometryOutput, SupportGeometryModule, SupportGeometryOutput, SupportPlanEntry,
+    };
+    pub use super::prepass_support_geometry::slicer::prepass_support_geometry::support_geometry_types::{
+        LayerPlanView, LayerPlanViewEntry, RaftPlan, RegionSegmentationView,
+        RegionSegmentationViewEntry, SupportGeometryView, SupportGeometryViewEntry,
+    };
+
+    /// Nested re-export tree mirroring the bindgen-generated mod path so
+    /// `prepass::slicer::types::geometry::SeamPoint3WithWidth` and
+    /// `prepass::slicer::common::host_services` resolve for legacy test
+    /// qualified imports.
+    pub mod slicer {
+        pub mod types {
+            pub mod geometry {
+                pub use super::super::super::super::layer_perimeters::slicer::types::geometry::SeamPoint3WithWidth;
+            }
+        }
+        pub mod common {
+            pub use super::super::super::layer_perimeters::slicer::common::{
+                host_services, module_errors, profiling,
+            };
+        }
+        pub mod ir_handles {
+            pub use super::super::super::layer_perimeters::slicer::ir_handles::ir_handles::{
+                PaintSemantic, SeamCandidate, SeamPosition,
+            };
+        }
+        pub mod prepass_types {
+            pub use super::super::super::prepass_seam_planning::slicer::prepass_types::prepass_types::*;
+        }
+    }
+}
+
+// ── Prepass resource backing data ──────────────────────────────────────
 
 /// Backing data for prepass `mesh-analysis-output` resource.
 pub struct MeshAnalysisOutputData;
@@ -381,7 +723,7 @@ pub struct SeamPlanningOutputData;
 /// Backing data for the prepass `seam-planning-view` resource.
 pub struct SeamPlanningViewData {
     /// Active region inputs projected from the committed SliceIR.
-    pub regions: Vec<prepass::SeamPlanningRegionInput>,
+    pub regions: Vec<prepass_seam_planning::SeamPlanningRegionInput>,
 }
 /// Table-entry tag for the `support-geometry-output` builder resource.
 ///
@@ -389,37 +731,6 @@ pub struct SeamPlanningViewData {
 /// resource handle to the guest (mirroring `SeamPlanningOutput`); guest calls
 /// to `push-support-plan-entry` append to `HostExecutionContext::support_plan_entries`.
 pub struct SupportGeometryOutputData;
-
-#[allow(missing_docs)]
-pub mod prepass {
-    wasmtime::component::bindgen!({
-        path: "../slicer-schema/wit",
-        world: "slicer:world-prepass/prepass-module",
-        imports: {
-            default: trappable,
-        },
-        with: {
-            // Reuse the layer world's generated geometry + config types so the
-            // four worlds share one set of Rust types (packet 75, Phase 3 / ADR-0002).
-            "slicer:types/geometry": super::layer::slicer::types::geometry,
-            "slicer:config/config-types": super::layer::slicer::config::config_types,
-            "slicer:common/host-services": super::layer::slicer::common::host_services,
-            "slicer:common/profiling": super::layer::slicer::common::profiling,
-            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
-            // `host-services#generate-arachne-walls` (packet 112, Step 9A) now
-            // `use`s `extrusion-line` from `slicer:ir-handles/ir-handles`,
-            // which transitively pulls that whole interface into every world
-            // that imports `host-services`. Alias it to the layer world's
-            // already-`impl`'d `ir_handles` module (the trivial empty
-            // `impl ir::Host for HostExecutionContext {}` at
-            // `crates/slicer-wasm-host/src/host.rs`) rather than requiring a
-            // second, separate `Host` impl for this world's own bindgen copy.
-            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
-        },
-    });
-}
-
-pub use prepass::PrepassModule;
 
 // ── Bindgen: Finalization module world ────────────────────────────────
 
@@ -595,15 +906,15 @@ pub mod finalization_layer {
         },
         with: {
             // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
-            "slicer:types/geometry": super::layer::slicer::types::geometry,
-            "slicer:config/config-types": super::layer::slicer::config::config_types,
-            "slicer:common/host-services": super::layer::slicer::common::host_services,
-            "slicer:common/profiling": super::layer::slicer::common::profiling,
-            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -665,15 +976,15 @@ pub mod postpass_gcode {
         },
         with: {
             // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
-            "slicer:types/geometry": super::layer::slicer::types::geometry,
-            "slicer:config/config-types": super::layer::slicer::config::config_types,
-            "slicer:common/host-services": super::layer::slicer::common::host_services,
-            "slicer:common/profiling": super::layer::slicer::common::profiling,
-            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -730,15 +1041,15 @@ pub mod postpass_text {
         },
         with: {
             // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
-            "slicer:types/geometry": super::layer::slicer::types::geometry,
-            "slicer:config/config-types": super::layer::slicer::config::config_types,
-            "slicer:common/host-services": super::layer::slicer::common::host_services,
-            "slicer:common/profiling": super::layer::slicer::common::profiling,
-            "slicer:common/module-errors": super::layer::slicer::common::module_errors,
+            "slicer:types/geometry": super::layer_perimeters::slicer::types::geometry,
+            "slicer:config/config-types": super::layer_perimeters::slicer::config::config_types,
+            "slicer:common/host-services": super::layer_perimeters::slicer::common::host_services,
+            "slicer:common/profiling": super::layer_perimeters::slicer::common::profiling,
+            "slicer:common/module-errors": super::layer_perimeters::slicer::common::module_errors,
             // See the identical note in the `prepass` bindgen! block above:
             // `host-services#generate-arachne-walls` (packet 112, Step 9A)
             // transitively pulls in `slicer:ir-handles/ir-handles`.
-            "slicer:ir-handles/ir-handles": super::layer::slicer::ir_handles::ir_handles,
+            "slicer:ir-handles/ir-handles": super::layer_perimeters::slicer::ir_handles::ir_handles,
         },
     });
 }
@@ -851,7 +1162,7 @@ pub struct HostExecutionContext {
     /// Layer proposals collected from `push_layer` calls during a prepass
     /// `run-layer-planning` invocation.  Empty for all non-prepass stages.
     /// Drained by the prepass dispatch path after the WIT call returns.
-    pub(crate) layer_plan_proposals: Vec<prepass::LayerProposal>,
+    pub(crate) layer_plan_proposals: Vec<prepass_layer_planning::LayerProposal>,
 
     /// Per-object facet annotations collected from `push-facet-annotation`
     /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
@@ -861,31 +1172,32 @@ pub struct HostExecutionContext {
     /// annotations (e.g. the current production path where
     /// `SurfaceClassificationIR` is still produced by the host built-in;
     /// see `mesh_analysis::execute_mesh_analysis`).
-    pub(crate) mesh_analysis_annotations: Vec<(String, prepass::FacetAnnotation)>,
+    pub(crate) mesh_analysis_annotations: Vec<(String, prepass_mesh_analysis::FacetAnnotation)>,
 
     /// Per-object surface groups collected from `push-surface-group`
     /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
     /// `(object_id, SurfaceGroupProposal)`; insertion order preserved.
     /// Empty for all non-MeshAnalysis stages.
-    pub(crate) mesh_analysis_surface_groups: Vec<(String, prepass::SurfaceGroupProposal)>,
+    pub(crate) mesh_analysis_surface_groups:
+        Vec<(String, prepass_mesh_analysis::SurfaceGroupProposal)>,
 
     /// Seam-plan entries collected during a prepass `run-seam-planning`
-    /// invocation. Stored as raw `prepass::SeamPlanEntry` records so the
+    /// invocation. Stored as raw `prepass_seam_planning::SeamPlanEntry` records so the
     /// harvest helper can convert them to `SeamPlanIR` without losing any field.
     /// Empty for all non-prepass stages.
-    pub(crate) seam_plan_entries: Vec<prepass::SeamPlanEntry>,
+    pub(crate) seam_plan_entries: Vec<prepass_seam_planning::SeamPlanEntry>,
 
     /// Support-plan entries collected during a prepass
     /// `run-support-geometry` invocation. Stored as raw
-    /// `prepass::SupportPlanEntry` records so the harvest helper can convert
+    /// `prepass_support_geometry::SupportPlanEntry` records so the harvest helper can convert
     /// them to `SupportPlanIR` without losing any field. Empty for all
     /// non-prepass stages.
-    pub(crate) support_plan_entries: Vec<prepass::SupportPlanEntry>,
+    pub(crate) support_plan_entries: Vec<prepass_support_geometry::SupportPlanEntry>,
 
     /// Optional raft plan collected during a prepass
     /// `run-support-geometry` invocation. At most one plan may be emitted per
     /// call.
-    pub(crate) raft_plan: Option<prepass::RaftPlan>,
+    pub(crate) raft_plan: Option<prepass_support_geometry::RaftPlan>,
 
     /// Diagnostics emitted by the guest via `support-geometry-output.push-diagnostic`.
     /// Stored as `slicer_ir::Diagnostic` after WIT-to-IR conversion. Drained by the
@@ -1217,37 +1529,39 @@ impl HostExecutionContext {
     }
 
     /// Layer proposals collected during a prepass `run-layer-planning` call.
-    pub fn layer_plan_proposals(&self) -> &[prepass::LayerProposal] {
+    pub fn layer_plan_proposals(&self) -> &[prepass_layer_planning::LayerProposal] {
         &self.layer_plan_proposals
     }
 
     /// Mutable access to the layer proposals collector.
-    pub fn layer_plan_proposals_mut(&mut self) -> &mut Vec<prepass::LayerProposal> {
+    pub fn layer_plan_proposals_mut(&mut self) -> &mut Vec<prepass_layer_planning::LayerProposal> {
         &mut self.layer_plan_proposals
     }
 
     /// Per-object facet annotations collected during `run-mesh-analysis`.
-    pub fn mesh_analysis_annotations(&self) -> &[(String, prepass::FacetAnnotation)] {
+    pub fn mesh_analysis_annotations(&self) -> &[(String, prepass_mesh_analysis::FacetAnnotation)] {
         &self.mesh_analysis_annotations
     }
 
     /// Per-object surface groups collected during `run-mesh-analysis`.
-    pub fn mesh_analysis_surface_groups(&self) -> &[(String, prepass::SurfaceGroupProposal)] {
+    pub fn mesh_analysis_surface_groups(
+        &self,
+    ) -> &[(String, prepass_mesh_analysis::SurfaceGroupProposal)] {
         &self.mesh_analysis_surface_groups
     }
 
     /// Seam-plan entries collected during `run-seam-planning`.
-    pub fn seam_plan_entries(&self) -> &[prepass::SeamPlanEntry] {
+    pub fn seam_plan_entries(&self) -> &[prepass_seam_planning::SeamPlanEntry] {
         &self.seam_plan_entries
     }
 
     /// Support-plan entries collected during `run-support-geometry`.
-    pub fn support_plan_entries(&self) -> &[prepass::SupportPlanEntry] {
+    pub fn support_plan_entries(&self) -> &[prepass_support_geometry::SupportPlanEntry] {
         &self.support_plan_entries
     }
 
     /// Optional raft plan collected during `run-support-geometry`.
-    pub fn raft_plan(&self) -> Option<&prepass::RaftPlan> {
+    pub fn raft_plan(&self) -> Option<&prepass_support_geometry::RaftPlan> {
         self.raft_plan.as_ref()
     }
 
@@ -1519,7 +1833,7 @@ impl HostExecutionContext {
     /// Push a mesh-analysis-output resource (prepass world).
     pub fn push_mesh_analysis_output(
         &mut self,
-    ) -> wasmtime::Result<Resource<prepass::MeshAnalysisOutput>> {
+    ) -> wasmtime::Result<Resource<prepass_mesh_analysis::MeshAnalysisOutput>> {
         let rep = self.table.push(MeshAnalysisOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -1527,7 +1841,7 @@ impl HostExecutionContext {
     /// Push a layer-plan-output resource (prepass world).
     pub fn push_layer_plan_output(
         &mut self,
-    ) -> wasmtime::Result<Resource<prepass::LayerPlanOutput>> {
+    ) -> wasmtime::Result<Resource<prepass_layer_planning::LayerPlanOutput>> {
         let rep = self.table.push(LayerPlanOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -1539,7 +1853,7 @@ impl HostExecutionContext {
     /// which appends entries to `seam_plan_entries`.
     pub fn push_seam_planning_output(
         &mut self,
-    ) -> wasmtime::Result<Resource<prepass::SeamPlanningOutput>> {
+    ) -> wasmtime::Result<Resource<prepass_seam_planning::SeamPlanningOutput>> {
         let rep = self.table.push(SeamPlanningOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -1549,7 +1863,7 @@ impl HostExecutionContext {
     pub fn push_seam_planning_view(
         &mut self,
         data: SeamPlanningViewData,
-    ) -> wasmtime::Result<Resource<prepass::SeamPlanningView>> {
+    ) -> wasmtime::Result<Resource<prepass_seam_planning::SeamPlanningView>> {
         let rep = self.table.push(data)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -1562,7 +1876,7 @@ impl HostExecutionContext {
     /// which appends entries to `support_plan_entries`.
     pub fn push_support_geometry_output(
         &mut self,
-    ) -> wasmtime::Result<Resource<prepass::SupportGeometryOutput>> {
+    ) -> wasmtime::Result<Resource<prepass_support_geometry::SupportGeometryOutput>> {
         let rep = self.table.push(SupportGeometryOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -2003,13 +2317,13 @@ fn object_bounds_mesh_query(
 
 // ── Host trait implementations ──────────────────────────────────────────
 
-use layer::slicer::common::host_services as hs;
+use layer_perimeters::slicer::common::host_services as hs;
 // Aliased to `prof` so it cannot be confused with `crate::profiling`, which is
 // the host-side data model rather than the generated WIT bindings.
-use layer::slicer::common::profiling as prof;
-use layer::slicer::config::config_types as ct;
-use layer::slicer::ir_handles::ir_handles as ir;
-use layer::slicer::types::geometry as geo;
+use layer_perimeters::slicer::common::profiling as prof;
+use layer_perimeters::slicer::config::config_types as ct;
+use layer_perimeters::slicer::ir_handles::ir_handles as ir;
+use layer_perimeters::slicer::types::geometry as geo;
 
 /// Test-only observation point for the decoded WIT input to the Arachne host
 /// service. The capture happens before `ArachneParams` is constructed, so it
@@ -2021,7 +2335,7 @@ pub static HOST_ARACHNE_WALL_SEQUENCE_CAPTURE: std::sync::Mutex<Vec<hs::WallSequ
 // `module-errors` only contains a record (no functions/resources),
 // so the generated Host trait is empty and requires a trivial impl.
 // Now sourced from canonical slicer:common/module-errors package.
-impl layer::slicer::common::module_errors::Host for HostExecutionContext {}
+impl layer_perimeters::slicer::common::module_errors::Host for HostExecutionContext {}
 
 impl geo::Host for HostExecutionContext {}
 
@@ -2798,7 +3112,12 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn variant_chain(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<(String, layer::slicer::ir_handles::ir_handles::PaintValue)>> {
+    ) -> wasmtime::Result<
+        Vec<(
+            String,
+            layer_perimeters::slicer::ir_handles::ir_handles::PaintValue,
+        )>,
+    > {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.variant_chain.clone())
     }
@@ -2823,14 +3142,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn top_solid_fill(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::types::geometry::ExPolygon>> {
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::types::geometry::ExPolygon>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.top_solid_fill.clone())
     }
     fn bottom_solid_fill(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::types::geometry::ExPolygon>> {
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::types::geometry::ExPolygon>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
     }
@@ -2876,7 +3195,7 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn overhang_quartile_polygons(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::ir_handles::ir_handles::QuartileBand>> {
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::ir_handles::ir_handles::QuartileBand>> {
         self.runtime_reads.push(String::from(
             "SurfaceClassificationIR.overhang-quartile-polygons",
         ));
@@ -2885,7 +3204,8 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn surface_group(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Option<layer::slicer::ir_handles::ir_handles::SurfaceGroup>> {
+    ) -> wasmtime::Result<Option<layer_perimeters::slicer::ir_handles::ir_handles::SurfaceGroup>>
+    {
         self.runtime_reads
             .push(String::from("SurfaceClassificationIR.surface-group"));
         Ok(self.table.get(&self_)?.surface_group.clone())
@@ -2969,15 +3289,16 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
     fn resolved_seam(
         &mut self,
         self_: Resource<PerimeterRegionData>,
-    ) -> wasmtime::Result<Option<layer::slicer::ir_handles::ir_handles::SeamPosition>> {
+    ) -> wasmtime::Result<Option<layer_perimeters::slicer::ir_handles::ir_handles::SeamPosition>>
+    {
         self.touch_perimeter_region(&self_)?;
         self.runtime_reads
             .push(String::from("PerimeterIR.resolved-seam"));
         let resolved = self.table.get(&self_)?.resolved_seam;
         match resolved {
             None => Ok(None),
-            Some((pos, wall_index)) => {
-                Ok(Some(layer::slicer::ir_handles::ir_handles::SeamPosition {
+            Some((pos, wall_index)) => Ok(Some(
+                layer_perimeters::slicer::ir_handles::ir_handles::SeamPosition {
                     point: Point3WithWidth {
                         x: pos.x,
                         y: pos.y,
@@ -2988,14 +3309,15 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                         dist_to_top_mm: 0.0,
                     },
                     wall_index,
-                }))
-            }
+                },
+            )),
         }
     }
     fn seam_candidates(
         &mut self,
         self_: Resource<PerimeterRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::ir_handles::ir_handles::SeamCandidate>> {
+    ) -> wasmtime::Result<Vec<layer_perimeters::slicer::ir_handles::ir_handles::SeamCandidate>>
+    {
         self.touch_perimeter_region(&self_)?;
         self.runtime_reads
             .push(String::from("PerimeterIR.seam-candidates"));
@@ -3005,7 +3327,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
             .seam_candidates
             .iter()
             .map(
-                |(pos, score)| layer::slicer::ir_handles::ir_handles::SeamCandidate {
+                |(pos, score)| layer_perimeters::slicer::ir_handles::ir_handles::SeamCandidate {
                     position: Point3 {
                         x: pos.x,
                         y: pos.y,
@@ -3607,7 +3929,8 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         object_id: String,
         region_id: String,
-    ) -> wasmtime::Result<Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>> {
+    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
+    {
         self.runtime_reads.push(String::from("SupportPlanIR"));
         let data = self.table.get(&self_)?;
         Ok(data
@@ -3621,7 +3944,8 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         object_id: String,
         region_id: String,
-    ) -> wasmtime::Result<Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>> {
+    ) -> wasmtime::Result<Vec<Vec<layer_perimeters::slicer::types::geometry::Point3WithWidth>>>
+    {
         self.runtime_reads.push(String::from("LightningTreeIR"));
         let data = self.table.get(&self_)?;
         Ok(data
@@ -3656,15 +3980,18 @@ mod prepass_impls {
     // `pct` config-types `Host`/`HostConfigView` impls are the layer
     // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
 
-    // Prepass world resources
-    use super::prepass as pm;
+    // Prepass stage resources
+    use super::prepass_layer_planning as plp;
+    use super::prepass_mesh_analysis as pma;
+    use super::prepass_seam_planning as psp;
+    use super::prepass_support_geometry as psg;
 
-    impl pm::HostMeshAnalysisOutput for HostExecutionContext {
+    impl pma::HostMeshAnalysisOutput for HostExecutionContext {
         fn push_facet_annotation(
             &mut self,
-            _handle: Resource<pm::MeshAnalysisOutput>,
+            _handle: Resource<pma::MeshAnalysisOutput>,
             object_id: String,
-            annotation: pm::FacetAnnotation,
+            annotation: pma::FacetAnnotation,
         ) -> wasmtime::Result<Result<(), String>> {
             if object_id.is_empty() {
                 return Ok(Err(String::from(
@@ -3682,9 +4009,9 @@ mod prepass_impls {
         }
         fn push_surface_group(
             &mut self,
-            _handle: Resource<pm::MeshAnalysisOutput>,
+            _handle: Resource<pma::MeshAnalysisOutput>,
             object_id: String,
-            group: pm::SurfaceGroupProposal,
+            group: pma::SurfaceGroupProposal,
         ) -> wasmtime::Result<Result<(), String>> {
             if object_id.is_empty() {
                 return Ok(Err(String::from(
@@ -3706,18 +4033,18 @@ mod prepass_impls {
             self.mesh_analysis_surface_groups.push((object_id, group));
             Ok(Ok(()))
         }
-        fn drop(&mut self, rep: Resource<pm::MeshAnalysisOutput>) -> wasmtime::Result<()> {
+        fn drop(&mut self, rep: Resource<pma::MeshAnalysisOutput>) -> wasmtime::Result<()> {
             let typed: Resource<MeshAnalysisOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
     }
 
-    impl pm::HostLayerPlanOutput for HostExecutionContext {
+    impl plp::HostLayerPlanOutput for HostExecutionContext {
         fn push_layer(
             &mut self,
-            _handle: Resource<pm::LayerPlanOutput>,
-            proposal: pm::LayerProposal,
+            _handle: Resource<plp::LayerPlanOutput>,
+            proposal: plp::LayerProposal,
         ) -> wasmtime::Result<Result<(), String>> {
             // Validate the proposal before collecting it.
             if !proposal.z.is_finite() || proposal.z < 0.0 {
@@ -3738,18 +4065,18 @@ mod prepass_impls {
             self.layer_plan_proposals.push(proposal);
             Ok(Ok(()))
         }
-        fn drop(&mut self, rep: Resource<pm::LayerPlanOutput>) -> wasmtime::Result<()> {
+        fn drop(&mut self, rep: Resource<plp::LayerPlanOutput>) -> wasmtime::Result<()> {
             let typed: Resource<LayerPlanOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
     }
 
-    impl pm::HostSeamPlanningOutput for HostExecutionContext {
+    impl psp::HostSeamPlanningOutput for HostExecutionContext {
         fn push_seam_plan(
             &mut self,
-            _handle: Resource<pm::SeamPlanningOutput>,
-            entry: pm::SeamPlanEntry,
+            _handle: Resource<psp::SeamPlanningOutput>,
+            entry: psp::SeamPlanEntry,
         ) -> wasmtime::Result<Result<(), String>> {
             // Validate before collecting. Empty object-id would corrupt
             // the RegionKey construction in the harvest helper.
@@ -3774,35 +4101,35 @@ mod prepass_impls {
             self.seam_plan_entries.push(entry);
             Ok(Ok(()))
         }
-        fn drop(&mut self, rep: Resource<pm::SeamPlanningOutput>) -> wasmtime::Result<()> {
+        fn drop(&mut self, rep: Resource<psp::SeamPlanningOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SeamPlanningOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
     }
 
-    impl pm::HostSeamPlanningView for HostExecutionContext {
+    impl psp::HostSeamPlanningView for HostExecutionContext {
         fn regions(
             &mut self,
-            self_: Resource<pm::SeamPlanningView>,
-        ) -> wasmtime::Result<Vec<pm::SeamPlanningRegionInput>> {
+            self_: Resource<psp::SeamPlanningView>,
+        ) -> wasmtime::Result<Vec<psp::SeamPlanningRegionInput>> {
             self.runtime_reads.push(String::from("SliceIR"));
             let typed: Resource<SeamPlanningViewData> = Resource::new_own(self_.rep());
             Ok(self.table.get(&typed)?.regions.clone())
         }
 
-        fn drop(&mut self, rep: Resource<pm::SeamPlanningView>) -> wasmtime::Result<()> {
+        fn drop(&mut self, rep: Resource<psp::SeamPlanningView>) -> wasmtime::Result<()> {
             let typed: Resource<SeamPlanningViewData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
     }
 
-    impl pm::HostSupportGeometryOutput for HostExecutionContext {
+    impl psg::HostSupportGeometryOutput for HostExecutionContext {
         fn push_support_plan_entry(
             &mut self,
-            _handle: Resource<pm::SupportGeometryOutput>,
-            entry: pm::SupportPlanEntry,
+            _handle: Resource<psg::SupportGeometryOutput>,
+            entry: psg::SupportPlanEntry,
         ) -> wasmtime::Result<Result<(), String>> {
             // Validate before collecting: an empty object-id/region-id would
             // corrupt the RegionKey construction in harvest_support_plan_ir.
@@ -3823,8 +4150,8 @@ mod prepass_impls {
         }
         fn push_raft_plan(
             &mut self,
-            _handle: Resource<pm::SupportGeometryOutput>,
-            plan: pm::RaftPlan,
+            _handle: Resource<psg::SupportGeometryOutput>,
+            plan: psg::RaftPlan,
         ) -> wasmtime::Result<Result<(), String>> {
             if self.raft_plan.is_some() {
                 return Ok(Err(String::from(
@@ -3836,15 +4163,15 @@ mod prepass_impls {
         }
         fn push_diagnostic(
             &mut self,
-            _handle: Resource<pm::SupportGeometryOutput>,
-            d: pm::Diagnostic,
+            _handle: Resource<psg::SupportGeometryOutput>,
+            d: psg::Diagnostic,
         ) -> wasmtime::Result<Result<(), String>> {
             let severity = match d.severity {
-                pm::SeverityLevel::Trace => slicer_ir::DiagnosticSeverity::Trace,
-                pm::SeverityLevel::Debug => slicer_ir::DiagnosticSeverity::Debug,
-                pm::SeverityLevel::Info => slicer_ir::DiagnosticSeverity::Info,
-                pm::SeverityLevel::Warn => slicer_ir::DiagnosticSeverity::Warn,
-                pm::SeverityLevel::Error => slicer_ir::DiagnosticSeverity::Error,
+                psg::SeverityLevel::Trace => slicer_ir::DiagnosticSeverity::Trace,
+                psg::SeverityLevel::Debug => slicer_ir::DiagnosticSeverity::Debug,
+                psg::SeverityLevel::Info => slicer_ir::DiagnosticSeverity::Info,
+                psg::SeverityLevel::Warn => slicer_ir::DiagnosticSeverity::Warn,
+                psg::SeverityLevel::Error => slicer_ir::DiagnosticSeverity::Error,
             };
             self.diagnostics.push(slicer_ir::Diagnostic {
                 severity,
@@ -3855,14 +4182,18 @@ mod prepass_impls {
             });
             Ok(Ok(()))
         }
-        fn drop(&mut self, rep: Resource<pm::SupportGeometryOutput>) -> wasmtime::Result<()> {
+        fn drop(&mut self, rep: Resource<psg::SupportGeometryOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SupportGeometryOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
     }
 
-    impl pm::PrepassModuleImports for HostExecutionContext {}
+    // The per-stage prepass `Host` trait impls for mesh-analysis / layer-planning
+    // / seam-planning / seam-planning's prepass-types / support-geometry
+    // / support-geometry's prepass-types import live in dispatch.rs (packet
+    // 164 dispatch rewiring) — empty body, no methods, just the marker for
+    // `add_to_linker` constraint.
 }
 
 // ── Finalization world host trait impls ────────────────────────────────

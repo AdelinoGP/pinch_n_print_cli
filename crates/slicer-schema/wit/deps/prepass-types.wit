@@ -1,0 +1,22 @@
+package slicer:prepass-types;
+
+interface prepass-types {
+    use slicer:types/geometry.{point3};
+
+    type object-id = string;
+
+    variant paint-value-view { flag(bool), scalar(f32), tool-index(u32) }
+    record paint-stroke-view { triangles: list<point3>, semantic: string, value: paint-value-view }
+    record paint-layer-view { semantic: string, facet-values: list<option<paint-value-view>>, strokes: list<paint-stroke-view> }
+    record mesh-object-view { object-id: object-id, vertices: list<point3>,
+        triangles: list<tuple<u32, u32, u32>>, paint-layers: list<paint-layer-view> }
+
+    record layer-plan-view-entry {
+        global-layer-index: u32,
+        z: f32,
+        effective-layer-height: f32,
+    }
+    record layer-plan-view {
+        layers: list<layer-plan-view-entry>,
+    }
+}

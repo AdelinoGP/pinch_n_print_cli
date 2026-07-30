@@ -5,7 +5,6 @@ display-name = "Region Split Basic"
 description  = "Fixture: one valid region_split entry"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

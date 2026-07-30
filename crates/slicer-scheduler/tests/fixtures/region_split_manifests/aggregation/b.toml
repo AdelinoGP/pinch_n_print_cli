@@ -5,7 +5,6 @@ display-name = "Agg Module B"
 description  = "Aggregation fixture B: fuzzy_skin@200"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

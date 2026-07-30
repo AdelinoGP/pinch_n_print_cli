@@ -19,10 +19,11 @@ fn binding_surface_matches_manifest() {
         PathOptimizationDefault::__slicer_stage_name(),
         "Layer::PathOptimization"
     );
+    assert_eq!(PathOptimizationDefault::__slicer_stage_export_name(), "run");
     assert_eq!(
-        PathOptimizationDefault::__slicer_stage_export_name(),
-        "run-path-optimization"
+        PathOptimizationDefault::__slicer_module_schema().stage_export,
+        "slicer:layer-path-optimization/path-optimization@1.0.0#run"
     );
     let exports = PathOptimizationDefault::__slicer_wit_exports();
-    assert!(exports.contains(&"run-path-optimization"));
+    assert!(exports.contains(&"slicer:layer-path-optimization/path-optimization@1.0.0#run"));
 }

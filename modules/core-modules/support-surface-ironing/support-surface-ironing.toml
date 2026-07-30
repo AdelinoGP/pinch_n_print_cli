@@ -5,7 +5,6 @@ display-name = "Support Surface Ironing"
 description  = "Core support surface ironing module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::SupportPostProcess"

@@ -5,7 +5,6 @@ display-name = "Overhang Classifier Default"
 description  = "Core overhang classification module — applies speed-factor mutations to wall entities on overhangs"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-finalization"
 
 [stage]
 id = "PostPass::LayerFinalization"

@@ -5,7 +5,6 @@ display-name = "Infill Linker"
 description  = "Links raw infill segments into polylines per (region, role) with OrcaSlicer overlap semantics, with optional cross-region linking for wall-less sub-regions (ADR-0025/0026)."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::InfillPostProcess"

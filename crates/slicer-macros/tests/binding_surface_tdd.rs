@@ -242,10 +242,7 @@ fn layer_stage_module_reports_layer_world_and_stage_export() {
     );
     assert_eq!(LayerInfillFixture::__slicer_trait_name(), "LayerModule");
     assert_eq!(LayerInfillFixture::__slicer_stage_name(), "Layer::Infill");
-    assert_eq!(
-        LayerInfillFixture::__slicer_stage_export_name(),
-        "run-infill"
-    );
+    assert_eq!(LayerInfillFixture::__slicer_stage_export_name(), "run");
     assert_eq!(
         LayerInfillFixture::__slicer_stage_method_name(),
         "run_infill"
@@ -255,7 +252,7 @@ fn layer_stage_module_reports_layer_world_and_stage_export() {
 #[test]
 fn layer_module_wit_exports_only_detected_stage() {
     let exports = LayerInfillFixture::__slicer_wit_exports();
-    assert_eq!(exports, &["run-infill"]);
+    assert_eq!(exports, &["slicer:layer-infill/infill@1.0.0#run"]);
     assert_eq!(exports.len(), 1);
 }
 
@@ -282,10 +279,10 @@ fn prepass_mesh_analysis_reports_prepass_world() {
     );
     assert_eq!(
         PrepassMeshAnalysisFixture::__slicer_stage_export_name(),
-        "run-mesh-analysis"
+        "run"
     );
     let exports = PrepassMeshAnalysisFixture::__slicer_wit_exports();
-    assert!(exports.contains(&"run-mesh-analysis"));
+    assert!(exports.contains(&"slicer:prepass-mesh-analysis/mesh-analysis@1.0.0#run"));
 }
 
 #[test]
@@ -296,7 +293,7 @@ fn prepass_layer_planning_reports_prepass_world() {
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_stage_export_name(),
-        "run-layer-planning"
+        "run"
     );
 }
 
@@ -342,8 +339,8 @@ fn binding_schema_json_captures_full_export_surface() {
     assert!(json.contains(&format!(r#""world":"{}""#, slicer_schema::WORLD_LAYER)));
     assert!(json.contains(r#""stage_id":"Layer::Infill""#));
     assert!(json.contains(r#""stage_method":"run_infill""#));
-    assert!(json.contains(r#""stage_export":"run-infill""#));
-    assert!(json.contains(r#""run-infill""#));
+    assert!(json.contains(r#""stage_export":"slicer:layer-infill/infill@1.0.0#run""#));
+    assert!(json.contains(r#""slicer:layer-infill/infill@1.0.0#run""#));
 }
 
 #[test]
@@ -406,13 +403,13 @@ fn typed_schema_const_mirrors_string_accessors_for_layer_infill() {
     assert_eq!(s.world_id, slicer_schema::WORLD_LAYER);
     assert_eq!(s.stage_id, "Layer::Infill");
     assert_eq!(s.stage_method, "run_infill");
-    assert_eq!(s.stage_export, "run-infill");
+    assert_eq!(s.stage_export, "slicer:layer-infill/infill@1.0.0#run");
 
     assert_eq!(s.exports.len(), 1);
     assert_eq!(
         s.exports[0],
         ExportBinding {
-            name: "run-infill",
+            name: "slicer:layer-infill/infill@1.0.0#run",
             kind: ExportKind::Stage
         }
     );
@@ -450,7 +447,7 @@ fn typed_schema_covers_every_world() {
     );
     assert_eq!(
         PrepassLayerPlanningFixture::__slicer_module_schema().stage_export,
-        "run-layer-planning"
+        "slicer:prepass-layer-planning/layer-planning@1.0.0#run"
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().world_id,
@@ -458,15 +455,15 @@ fn typed_schema_covers_every_world() {
     );
     assert_eq!(
         FinalizationFixture::__slicer_module_schema().stage_export,
-        "run"
+        "slicer:finalization-layer-finalization/layer-finalization@1.0.0#run"
     );
     assert_eq!(
         PostpassGcodeFixture::__slicer_module_schema().stage_export,
-        "run"
+        "slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"
     );
     assert_eq!(
         PostpassTextFixture::__slicer_module_schema().stage_export,
-        "run"
+        "slicer:postpass-text-postprocess/text-postprocess@1.0.0#run"
     );
 }
 
@@ -480,5 +477,5 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
     let names_a: Vec<&str> = a.exports.iter().map(|e| e.name).collect();
     let names_b: Vec<&str> = b.exports.iter().map(|e| e.name).collect();
     assert_eq!(names_a, names_b);
-    assert_eq!(names_a, vec!["run-infill"]);
+    assert_eq!(names_a, vec!["slicer:layer-infill/infill@1.0.0#run"]);
 }

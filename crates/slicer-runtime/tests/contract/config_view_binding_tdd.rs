@@ -59,12 +59,7 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
     .build()
 }
 
-fn module_with_config_keys_stage_world(
-    id: &str,
-    keys: &[&str],
-    stage: &str,
-    wit_world: &str,
-) -> LoadedModule {
+fn module_with_config_keys_stage_world(id: &str, keys: &[&str], stage: &str) -> LoadedModule {
     let mut entries = BTreeMap::new();
     for k in keys {
         entries.insert(
@@ -79,7 +74,7 @@ fn module_with_config_keys_stage_world(
         id,
         sem(),
         stage,
-        wit_world,
+        String::new(),
         PathBuf::from("fixtures/mod.wasm"),
     )
     .min_host_version(SemVer {
@@ -427,12 +422,8 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
     // Raw source carries many keys; each module in the plan must see only
     // the subset it declared.
     let m1 = module_with_config_keys("com.example.a", &["density"]);
-    let m2 = module_with_config_keys_stage_world(
-        "com.example.b",
-        &["fuzzy"],
-        "PrePass::LayerPlanning",
-        slicer_schema::WORLD_PREPASS,
-    );
+    let m2 =
+        module_with_config_keys_stage_world("com.example.b", &["fuzzy"], "PrePass::LayerPlanning");
 
     let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
     let plan = build_live_execution_plan(

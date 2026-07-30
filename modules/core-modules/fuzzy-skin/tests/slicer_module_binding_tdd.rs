@@ -16,10 +16,13 @@ fn binding_surface_matches_manifest() {
         FuzzySkinModule::__slicer_stage_name(),
         "Layer::PerimetersPostProcess"
     );
+    assert_eq!(FuzzySkinModule::__slicer_stage_export_name(), "run");
     assert_eq!(
-        FuzzySkinModule::__slicer_stage_export_name(),
-        "run-wall-postprocess"
+        FuzzySkinModule::__slicer_module_schema().stage_export,
+        "slicer:layer-perimeters-postprocess/perimeters-postprocess@1.0.0#run"
     );
     let exports = FuzzySkinModule::__slicer_wit_exports();
-    assert!(exports.contains(&"run-wall-postprocess"));
+    assert!(
+        exports.contains(&"slicer:layer-perimeters-postprocess/perimeters-postprocess@1.0.0#run")
+    );
 }

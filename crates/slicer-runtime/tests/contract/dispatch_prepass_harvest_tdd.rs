@@ -9,11 +9,11 @@ use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// Helper to load specific guests
-fn load_prepass_guest() -> Arc<slicer_runtime::WasmComponent> {
+// Helper to load the layer-planning stage guest.
+fn load_layer_planning_guest() -> Arc<slicer_runtime::WasmComponent> {
     wasm_cache::compiled_component_at(std::path::Path::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../slicer-wasm-host/test-guests/prepass-guest.component.wasm"
+        "/../slicer-wasm-host/test-guests/prepass-layer-planning-guest.component.wasm"
     )))
 }
 
@@ -101,7 +101,7 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
     use slicer_runtime::PrepassStageOutput;
 
     let mut fixture = dispatch_fixture::for_stage("PrePass::LayerPlanning").build();
-    let component = load_prepass_guest();
+    let component = load_layer_planning_guest();
     fixture.bundle.component = Some(component);
 
     let result = fixture.run_prepass();
@@ -130,7 +130,7 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
 fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     use slicer_runtime::execute_prepass;
 
-    let component = load_prepass_guest();
+    let component = load_layer_planning_guest();
     let module = CompiledModuleBuilder::new("com.test.lp-commit").build();
     let (module, wasm_handles) = TestModuleBundle {
         module,
@@ -171,7 +171,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
 fn layer_plan_harvest_deterministic_across_repeated_calls() {
     use slicer_runtime::PrepassStageOutput;
 
-    let component = load_prepass_guest();
+    let component = load_layer_planning_guest();
     let blackboard = Blackboard::new(Arc::new(MeshIR::default()), 0);
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&wasm_cache::shared_engine()));
 

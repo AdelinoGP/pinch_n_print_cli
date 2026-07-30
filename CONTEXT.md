@@ -88,18 +88,15 @@ and host-side code.
 
 ### Module tier
 The coarse grouping of **stages** by pipeline phase — prepass, layer, postpass,
-finalization. Each tier has exactly one WIT *world*, and a module belongs to
-exactly one tier. This is what "world" means when someone says "which world does
-this module target": the tier, not the stage.
+finalization. A tier is vocabulary: a package-name prefix and an SDK trait grouping.
+It groups stages but does not define a shared WIT world; each stage has its own
+independently versioned package, and a module belongs to exactly one stage and tier.
 
 ### Stage contract
-The set of exports a module must satisfy to be loadable. Today this is the whole
-**module tier**'s world — a layer module must provide all ten layer exports, even
-though it implements one **stage**, so a change to any one stage's signature
-invalidates every module in the tier. The unit of *contract* is therefore the
-tier, while the unit of *work* is the stage; the two are not the same thing, and
-conflating them under the single word "world" is why a one-stage change bills the
-whole tier.
+The set of exports a module must satisfy to be loadable. The unit of contract is
+the stage's independently versioned WIT package, and a module satisfies exactly one
+stage package. A change to one stage's package therefore does not invalidate modules
+for the other stages in its tier.
 
 ### Stage interface
 The unit that collapses that gap: one independently versioned WIT **package** per
@@ -108,8 +105,7 @@ contract it actually implements and a change to one stage cannot invalidate the
 others. The package — not the interface — is the unit, because a version attaches
 to a package and an interface cannot carry one; interfaces sharing a package share
 its version and so bump together. Distinct from **module tier** — a tier groups
-stage interfaces rather than fusing them. Decided in ADR-0045; not yet
-implemented, and named here because the distinction is the point.
+stage interfaces rather than fusing them. Decided in ADR-0045.
 
 ### Per-region output origin
 The explicit identity tag a guest attaches to perimeter and infill output pushes

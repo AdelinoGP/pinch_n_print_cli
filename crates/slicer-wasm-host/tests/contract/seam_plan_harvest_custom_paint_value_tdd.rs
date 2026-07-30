@@ -15,8 +15,10 @@
 
 #![allow(missing_docs)]
 
-use slicer_wasm_host::host::prepass::slicer::types::geometry::SeamPoint3WithWidth;
-use slicer_wasm_host::host::prepass::{PaintValue, ScoredSeamCandidate, SeamPlanEntry, SeamReason};
+use slicer_wasm_host::host::layer_perimeters::slicer::types::geometry::SeamPoint3WithWidth;
+use slicer_wasm_host::host::prepass_seam_planning::SeamPlanEntry;
+use slicer_wasm_host::host::prepass_seam_planning::slicer::prepass_seam_planning::seam_planning_types::{ScoredSeamCandidate, SeamReason};
+use slicer_wasm_host::host::layer_perimeters::slicer::ir_handles::ir_handles::PaintValue;
 use slicer_wasm_host::marshal::harvest_seam_plan_ir_from;
 
 fn make_point(x: f32, y: f32, z: f32) -> SeamPoint3WithWidth {

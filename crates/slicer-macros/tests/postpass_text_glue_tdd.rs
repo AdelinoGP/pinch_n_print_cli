@@ -1,10 +1,10 @@
 //! TASK-109: `#[slicer_module]` must emit real typed export glue for
 //! `PostPass::TextPostProcess`, not the placeholder `#[export_name] ->
-//! i32 { 0 }` shim (docs/03 wit/world-postpass.wit; docs/05 §Module
-//! Entry Point).
+//! i32 { 0 }` shim (the `slicer:postpass-text-postprocess` package;
+//! docs/05 §Module Entry Point).
 //!
 //! Source-level witness: the macro's own `src/lib.rs` must contain the
-//! wit_bindgen::generate! invocation for the postpass-module world and
+//! wit_bindgen::generate! invocation for the text-postprocess-module world and
 //! must gate the placeholder stage shim out when the detected stage is
 //! `PostPass::TextPostProcess`. If either regresses, this test fails
 //! in CI — protecting the macro-level contract without requiring a
@@ -29,31 +29,32 @@ fn macro_emits_wit_bindgen_generate_for_postpass_text_world() {
     let src = macro_src();
     assert!(
         src.contains("::wit_bindgen::generate!"),
-        "macro must emit `wit_bindgen::generate!` so PostPass::TextPostProcess \
-         modules get a real component-model export, not a placeholder i32 shim"
+        "macro must emit `wit_bindgen::generate!` for the typed postpass-text export"
     );
     assert!(
-        src.contains(r#""postpass-module""#),
-        "macro's wit_bindgen invocation must target the `postpass-module` world"
+        src.contains(
+            r#"../../slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit"#
+        ),
+        "macro must load the canonical postpass-text WIT package"
     );
-    // Single-source WIT (packet 72/74): the macro no longer inlines the WIT as a
-    // literal — it `include_str!`s the canonical `world-postpass.wit` and feeds it
-    // to `wit_bindgen::generate!`. Verify (a) the macro includes that canonical
-    // WIT, and (b) the canonical WIT declares the documented export. Asserting the
-    // literal in the macro source would re-introduce the inline duplication packet
-    // 72 deleted.
     assert!(
-        src.contains("world-postpass/world-postpass.wit"),
-        "macro must include_str! the canonical world-postpass WIT (single source, packet 72)"
+        src.contains(
+            r#"emit_world_preamble("text-postprocess-module", "text_postprocess", wit_inline)"#
+        ),
+        "macro must feed the text-postprocess-module world into the shared bindgen preamble"
     );
-    let postpass_wit = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../slicer-schema/wit/deps/world-postpass/world-postpass.wit"),
-    )
-    .expect("read canonical world-postpass.wit");
+    let postpass_wit =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../slicer-schema/wit/deps/postpass-text-postprocess/postpass-text-postprocess.wit",
+        ))
+        .expect("read canonical postpass-text-postprocess.wit");
     assert!(
-        postpass_wit.contains("run-text-postprocess"),
-        "canonical world-postpass WIT must declare the documented `run-text-postprocess` export"
+        postpass_wit.contains("package slicer:postpass-text-postprocess@1.0.0;")
+            && postpass_wit.contains("interface text-postprocess")
+            && postpass_wit.contains("world text-postprocess-module")
+            && postpass_wit.contains("export text-postprocess"),
+        "canonical WIT must declare the qualified \
+         `slicer:postpass-text-postprocess/text-postprocess@1.0.0` contract"
     );
 }
 
@@ -63,48 +64,60 @@ fn macro_wires_user_trait_into_run_text_postprocess_export() {
     // trait — anything else would be a marker-only export.
     let src = macro_src();
     assert!(
-        src.contains("impl Guest for __SlicerPostpassComponent"),
-        "macro must emit `impl Guest for ...` to wire the component export"
+        src.contains(
+            "impl exports::slicer::postpass_text_postprocess::text_postprocess::Guest for \
+             __SlicerPostpassTextComponent"
+        ),
+        "macro must implement the qualified postpass-text Guest interface"
     );
     assert!(
-        src.contains("::slicer_sdk::traits::PostpassModule"),
-        "macro must route through the `PostpassModule` trait for typed dispatch"
+        src.contains(
+            "let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_text_postprocess("
+        ) && src.contains("&module, &gcode_text, &ir_config"),
+        "macro's Guest::run must route text and config through PostpassModule::run_text_postprocess"
     );
     assert!(
-        src.contains("export!(__SlicerPostpassComponent)"),
-        "macro must register the component with `export!` so the .wasm artifact \
-         actually exposes the postpass-module world"
+        src.contains("export!(__SlicerPostpassTextComponent)"),
+        "macro must register the postpass-text component with `export!`"
     );
 }
 
 #[test]
 fn macro_skips_placeholder_shim_for_postpass_text_stage() {
-    // Postpass stages use the real wit_bindgen export glue. The macro's
-    // generic stage-shim path remains available for unsupported worlds,
-    // but no fake lifecycle exports belong to the postpass world.
+    // Postpass stages use the real wit_bindgen export glue. The generic
+    // stage-shim path remains available for unsupported worlds, but must be
+    // suppressed when a real per-stage world is selected.
     let src = macro_src();
     assert!(
         src.contains("PostPass::TextPostProcess"),
         "macro source must reference the PostPass::TextPostProcess stage gate"
     );
     assert!(
-        src.contains("real_glue_world"),
-        "macro must carry the world-dispatch gate that routes \
-         supported worlds through the real glue"
+        src.contains("if stage_export_name_literal.is_empty() || real_glue_world.is_some()"),
+        "macro must suppress the placeholder shim whenever real world glue is selected"
     );
     assert!(
-        src.contains("stage_shim_tokens") && src.contains("#[export_name = #stage_export_literal]"),
-        "macro must retain the stage export shim path for non-real-glue worlds"
+        src.contains(
+            r#"if stage_id_literal == "PostPass::TextPostProcess" {
+                build_postpass_text_glue(self_ty)"#
+        ),
+        "macro must route the text stage through its per-stage builder"
     );
-    let lifecycle_start = ["on", "print", "start"].join("-");
     assert!(
-        !src.contains(lifecycle_start.as_str()),
-        "postpass glue must not emit a fake lifecycle start export"
+        src.contains("#[export_name = #stage_export_name_literal]")
+            && src.contains(r#"pub extern "C" fn #shim_name() -> i32 { 0 }"#),
+        "macro must retain the placeholder shim only as the unsupported-world fallback"
     );
-    let lifecycle_end = ["on", "print", "end"].join("-");
+    let text_glue = src
+        .split("fn build_postpass_text_glue")
+        .nth(1)
+        .and_then(|tail| tail.split("fn build_finalization_world_glue").next())
+        .expect("postpass-text builder body is present");
     assert!(
-        !src.contains(lifecycle_end.as_str()),
-        "postpass glue must not emit a fake lifecycle end export"
+        !text_glue.contains("#[export_name")
+            && !text_glue.contains("extern \"C\"")
+            && !text_glue.contains("-> i32 { 0 }"),
+        "postpass-text builder must not contain an obsolete placeholder export shim"
     );
 }
 

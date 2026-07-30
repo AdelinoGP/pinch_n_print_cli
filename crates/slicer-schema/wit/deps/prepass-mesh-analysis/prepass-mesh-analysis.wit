@@ -1,0 +1,36 @@
+package slicer:prepass-mesh-analysis@1.0.0;
+
+interface mesh-analysis-types {
+    type object-id = string;
+
+    enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
+    record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
+    record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
+
+    resource mesh-analysis-output {
+        push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
+        push-surface-group: func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
+    }
+}
+
+interface mesh-analysis {
+    type object-id = string;
+    use mesh-analysis-types.{mesh-analysis-output};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
+        objects: list<object-id>,
+        output: mesh-analysis-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+}
+
+world mesh-analysis-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    import mesh-analysis-types;
+    export mesh-analysis;
+}

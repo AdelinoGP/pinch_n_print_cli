@@ -53,7 +53,7 @@ pub enum RegionSplitValueType {
 /// Runtime module record produced by manifest ingestion.
 ///
 /// Construction goes through [`LoadedModuleBuilder`] (call
-/// [`LoadedModuleBuilder::new`] with the five manifest-derived identity
+/// [`LoadedModuleBuilder::new`] with the four manifest-derived identity
 /// fields, set the optional ones via chained setters, then call
 /// [`LoadedModuleBuilder::build`]). Field reads from outside the crate
 /// go through the `pub fn` accessor methods declared below.
@@ -65,8 +65,6 @@ pub struct LoadedModule {
     pub(crate) version: SemVer,
     /// Canonical scheduler stage identifier.
     pub(crate) stage: StageId,
-    /// WIT world exported by the module.
-    pub(crate) wit_world: String,
     /// Declared IR access paths for reads.
     pub(crate) ir_reads: Vec<String>,
     /// Declared IR access paths for writes.
@@ -124,11 +122,6 @@ impl LoadedModule {
     /// Canonical scheduler stage identifier.
     pub fn stage(&self) -> &str {
         &self.stage
-    }
-
-    /// WIT world exported by the module.
-    pub fn wit_world(&self) -> &str {
-        &self.wit_world
     }
 
     /// Declared IR access paths for reads.
@@ -225,9 +218,11 @@ impl LoadedModule {
 }
 
 /// Builder for [`LoadedModule`]. Required identity fields
-/// (`id`, `version`, `stage`, `wit_world`, `wasm_path`) are positional
-/// arguments to [`LoadedModuleBuilder::new`]; every other field has a
-/// safe empty/zero default and is set via a chained `with_*`-style setter.
+/// (`id`, `version`, `stage`, `wasm_path`) are positional arguments to
+/// [`LoadedModuleBuilder::new`]. Its fourth positional argument is an
+/// ignored legacy slot retained for existing in-tree constructors. Every
+/// other field has a safe empty/zero default and is set via a chained
+/// `with_*`-style setter.
 ///
 /// All setters consume `self` and return `Self`. Call [`Self::build`] to
 /// produce the finished [`LoadedModule`].
@@ -237,7 +232,6 @@ pub struct LoadedModuleBuilder {
     id: ModuleId,
     version: SemVer,
     stage: StageId,
-    wit_world: String,
     wasm_path: PathBuf,
     ir_reads: Vec<String>,
     ir_writes: Vec<String>,
@@ -258,19 +252,18 @@ pub struct LoadedModuleBuilder {
 }
 
 impl LoadedModuleBuilder {
-    /// Start a new builder from the five manifest-derived identity fields.
+    /// Start a new builder from the identity fields and an ignored legacy slot.
     pub fn new(
         id: impl Into<ModuleId>,
         version: SemVer,
         stage: impl Into<StageId>,
-        wit_world: impl Into<String>,
+        _legacy_world: impl Into<String>,
         wasm_path: impl Into<PathBuf>,
     ) -> Self {
         Self {
             id: id.into(),
             version,
             stage: stage.into(),
-            wit_world: wit_world.into(),
             wasm_path: wasm_path.into(),
             ir_reads: Vec::new(),
             ir_writes: Vec::new(),
@@ -392,7 +385,6 @@ impl LoadedModuleBuilder {
             id: self.id,
             version: self.version,
             stage: self.stage,
-            wit_world: self.wit_world,
             ir_reads: self.ir_reads,
             ir_writes: self.ir_writes,
             claims: self.claims,
@@ -663,8 +655,6 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
 
     let module_id = required_string(&root, manifest_path, "module.id")?;
     let version = required_semver(&root, manifest_path, "module.version")?;
-    let wit_world = required_string(&root, manifest_path, "module.wit-world")?;
-    validate_wit_world(&wit_world, manifest_path)?;
     let stage = required_stage(&root, manifest_path, "stage.id")?;
     let mut diagnostics = Vec::new();
     let layer_parallel_safe = effective_parallel_safety(
@@ -698,7 +688,7 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
         module_id,
         version,
         stage,
-        wit_world,
+        String::new(),
         wasm_path.to_path_buf(),
     )
     .ir_reads(required_string_array(
@@ -1377,54 +1367,6 @@ fn type_error(manifest_path: &Path, field: &'static str, expected: &str) -> Load
     }
 }
 
-/// Validates that `wit_world` from the manifest names a world the host knows.
-///
-/// This is a fatal startup check — modules that declare an unknown
-/// `wit_world` cannot be loaded and the host aborts with a diagnostic.
-///
-/// The accepted names come from [`slicer_schema::SUPPORTED_WIT_WORLDS`], which
-/// is the sole source. This function used to compare against a hand-copied
-/// duplicate of that list which spelled out `@x.y.z` versions, so bumping a
-/// world's version fatally rejected every module until all 23 manifests were
-/// rewritten in lockstep.
-///
-/// The version is deliberately not compared, because it does not exist to
-/// compare against: our worlds export bare funcs, so the version is erased
-/// from the guest binary at compile time (see `slicer_schema`'s world-name
-/// constants). A declared version would be an unfalsifiable claim. Structural
-/// compatibility is enforced by wasmtime at typed instantiation.
-fn validate_wit_world(wit_world: &str, manifest_path: &Path) -> Result<(), LoadError> {
-    if slicer_schema::SUPPORTED_WIT_WORLDS.contains(&wit_world) {
-        return Ok(());
-    }
-
-    let err = |message: String| LoadError {
-        path: manifest_path.to_path_buf(),
-        field: Some(String::from("module.wit-world")),
-        kind: LoadErrorKind::Validation,
-        message,
-    };
-
-    // A versioned name is the most likely mistake: manifests used to spell
-    // `slicer:world-layer@1.0.0`. Point at the fix instead of reporting a
-    // bare "unknown world", which reads as "you named the wrong world".
-    if let Some((name, version)) = wit_world.split_once('@') {
-        if slicer_schema::SUPPORTED_WIT_WORLDS.contains(&name) {
-            return Err(err(format!(
-                "wit_world '{wit_world}' must not carry a version — use '{name}'. \
-                 The world version (@{version}) is not part of module identity: it is \
-                 erased from the guest binary at compile time and cannot be verified \
-                 against it. Compatibility is enforced structurally at instantiation."
-            )));
-        }
-    }
-
-    Err(err(format!(
-        "Unknown wit_world '{wit_world}' — expected one of: {}",
-        slicer_schema::SUPPORTED_WIT_WORLDS.join(", ")
-    )))
-}
-
 fn known_stage_ids() -> &'static [&'static str] {
     crate::stage_order::known_stage_ids()
 }
@@ -1579,7 +1521,6 @@ mod tests {
         assert_eq!(module.id, "com.test.module");
         assert_eq!(module.version.major, 1);
         assert_eq!(module.stage, "Layer::SlicePostProcess");
-        assert_eq!(module.wit_world, slicer_schema::WORLD_LAYER);
         assert_eq!(module.wasm_path, PathBuf::from("fixtures/test.wasm"));
         assert!(module.ir_reads.is_empty());
         assert!(module.ir_writes.is_empty());

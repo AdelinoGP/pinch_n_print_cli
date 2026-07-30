@@ -1,0 +1,20 @@
+package slicer:layer-path-optimization@1.0.0;
+
+interface path-optimization {
+    use slicer:ir-handles/ir-handles.{layer-idx, perimeter-region-view,
+        gcode-output-builder, layer-collection-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(layer-index: layer-idx, regions: list<perimeter-region-view>,
+        output: gcode-output-builder, collection: layer-collection-builder,
+        config: config-view) -> result<_, module-error>;
+}
+
+world path-optimization-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    export path-optimization;
+}

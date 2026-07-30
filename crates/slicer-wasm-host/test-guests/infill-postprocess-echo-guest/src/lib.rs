@@ -1,143 +1,138 @@
-//! Packet 130 (TASK: infill-postprocess-contract) echo witness for the
-//! `Layer::InfillPostProcess` stage of the `world-layer` world.
-//!
-//! Echo semantics (AC-1): re-emits its `prior_infill` input verbatim through
-//! `InfillOutputBuilder`, calling `begin_region` per prior region so the
-//! host's origin-tagged drain reconstructs the SAME per-region buckets in the
-//! committed replacement `InfillIR`. A per-region keyed comparison of the
-//! committed IR against the pre-postprocess IR therefore proves the
-//! `prior-infill` WIT parameter round-trips region identity and all three
-//! bucket cardinalities.
-//!
-//! View witness (AC-2/3/4, gated by config int `emit_view_witness == 1`):
-//! for each incoming `PerimeterRegionView`, emits solid-bucket witness paths
-//! encoding the six ADR-0028 enrichment fields so contract tests can decode
-//! the exact content the guest observed:
-//!
-//! - header path (single point, `width == HEADER_MARKER`):
-//!   `x = tool_index`, `y = wall_source_region_id` (`-1.0` when `None`).
-//! - one path per polygon per field (`width == FIELD_MARKER` on point 0):
-//!   point 0 carries `x = field_id` (0 = sparse-infill-area, 1 =
-//!   top-solid-fill, 2 = bottom-solid-fill, 3 = bridge-areas),
-//!   `y = polygon index`, `flow_factor = hole count`; the remaining points
-//!   are the polygon's contour vertices (scaled integer units cast to f32),
-//!   followed by each hole's vertices in order.
-//!
-//! All witness points use `z = 0.0`; drive this guest at a layer whose Z
-//! floor is `0.0` so the host's Z-envelope guard admits the paths.
+wit_bindgen::generate!({
+    path: "../../../slicer-schema/wit",
+    world: "slicer:layer-infill-postprocess/infill-postprocess-module",
+    generate_all,
+});
 
-use slicer_ir::{ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
-use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::error::ModuleError;
-use slicer_sdk::slicer_module;
-use slicer_sdk::traits::LayerModule;
-use slicer_sdk::views::PerimeterRegionView;
+use exports::slicer::layer_infill_postprocess::infill_postprocess::Guest;
+use slicer::common::module_errors::ModuleError;
+use slicer::config::config_types::ConfigView;
+use slicer::ir_handles::ir_handles::{
+    InfillOutputBuilder, LayerIdx, PerimeterRegionView, PriorInfillRegion,
+};
 
-/// First-point width marker for the per-view header witness path.
-const HEADER_MARKER: f32 = 777.0;
-/// First-point width marker for per-polygon field witness paths.
-const FIELD_MARKER: f32 = 888.0;
+struct Component;
 
-fn pt(x: f32, y: f32, width: f32, flow_factor: f32) -> Point3WithWidth {
-    Point3WithWidth {
-        x,
-        y,
-        z: 0.0,
-        width,
-        flow_factor,
-        overhang_quartile: None,
-        dist_to_top_mm: 0.0,
+fn builder_error(code: u32, message: String) -> ModuleError {
+    ModuleError {
+        code,
+        message,
+        fatal: true,
     }
 }
 
-pub struct InfillPostprocessEchoModule;
-
-#[slicer_module]
-impl LayerModule for InfillPostprocessEchoModule {
-    fn from_config(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(Self)
-    }
-
-    fn run_infill_postprocess(
-        &self,
-        _layer_index: u32,
-        regions: &[PerimeterRegionView],
-        prior_infill: &[slicer_ir::InfillRegion],
-        output: &mut InfillOutputBuilder,
-        config: &ConfigView,
+impl Guest for Component {
+    fn run(
+        _layer_index: LayerIdx,
+        regions: Vec<PerimeterRegionView>,
+        prior_infill: Vec<PriorInfillRegion>,
+        output: InfillOutputBuilder,
+        config: ConfigView,
     ) -> Result<(), ModuleError> {
-        // ── Echo: re-emit the prior InfillIR buckets per region (AC-1) ──
-        for r in prior_infill {
-            output.begin_region(&r.object_id, r.region_id);
-            for p in &r.sparse_infill {
+        for region in &prior_infill {
+            output
+                .set_current_origin(&region.object_id, &region.region_id)
+                .map_err(|message| builder_error(1, message))?;
+            for path in &region.sparse_infill {
                 output
-                    .push_sparse_path(p.clone())
-                    .map_err(|e| ModuleError::fatal(1, e))?;
+                    .push_sparse_path(path)
+                    .map_err(|message| builder_error(2, message))?;
             }
-            for p in &r.solid_infill {
+            for path in &region.solid_infill {
                 output
-                    .push_solid_path(p.clone())
-                    .map_err(|e| ModuleError::fatal(2, e))?;
+                    .push_solid_path(path)
+                    .map_err(|message| builder_error(3, message))?;
             }
-            for p in &r.ironing {
+            for path in &region.ironing {
                 output
-                    .push_ironing_path(p.clone())
-                    .map_err(|e| ModuleError::fatal(3, e))?;
+                    .push_ironing_path(path)
+                    .map_err(|message| builder_error(4, message))?;
             }
         }
 
-        // ── Optional per-view field witness (AC-2/3/4) ──
         if config.get_int("emit_view_witness") == Some(1) {
-            for v in regions {
-                output.begin_region(v.object_id(), *v.region_id());
+            for region in &regions {
+                let object_id = region.object_id();
+                let region_id = region.region_id();
+                output
+                    .set_current_origin(&object_id, &region_id)
+                    .map_err(|message| builder_error(5, message))?;
 
-                let wall_source = v
+                let wall_source = region
                     .wall_source_region_id()
-                    .map(|id| *id as f32)
+                    .and_then(|id| id.parse::<f32>().ok())
                     .unwrap_or(-1.0);
-                let header = ExtrusionPath3D {
-                    points: vec![pt(v.tool_index() as f32, wall_source, HEADER_MARKER, 1.0)],
-                    role: ExtrusionRole::TopSolidInfill,
+                let header = slicer::types::geometry::ExtrusionPath3d {
+                    points: vec![slicer::types::geometry::Point3WithWidth {
+                        x: region.tool_index() as f32,
+                        y: wall_source,
+                        z: 0.0,
+                        width: 777.0,
+                        flow_factor: 1.0,
+                        overhang_quartile: None,
+                        dist_to_top_mm: 0.0,
+                    }],
+                    role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                     speed_factor: 1.0,
                 };
                 output
-                    .push_solid_path(header)
-                    .map_err(|e| ModuleError::fatal(4, e))?;
+                    .push_solid_path(&header)
+                    .map_err(|message| builder_error(6, message))?;
 
-                let fields: [&[slicer_ir::ExPolygon]; 4] = [
-                    v.sparse_infill_area(),
-                    v.top_solid_fill(),
-                    v.bottom_solid_fill(),
-                    v.bridge_areas(),
+                let fields = [
+                    region.sparse_infill_area(),
+                    region.top_solid_fill(),
+                    region.bottom_solid_fill(),
+                    region.bridge_areas(),
                 ];
-                for (field_id, polys) in fields.iter().enumerate() {
-                    for (poly_idx, poly) in polys.iter().enumerate() {
-                        let mut points = vec![pt(
-                            field_id as f32,
-                            poly_idx as f32,
-                            FIELD_MARKER,
-                            poly.holes.len() as f32,
-                        )];
-                        for p2 in &poly.contour.points {
-                            points.push(pt(p2.x as f32, p2.y as f32, 0.4, 1.0));
+                for (field_id, polygons) in fields.iter().enumerate() {
+                    for (polygon_index, polygon) in polygons.iter().enumerate() {
+                        let mut points = vec![slicer::types::geometry::Point3WithWidth {
+                            x: field_id as f32,
+                            y: polygon_index as f32,
+                            z: 0.0,
+                            width: 888.0,
+                            flow_factor: polygon.holes.len() as f32,
+                            overhang_quartile: None,
+                            dist_to_top_mm: 0.0,
+                        }];
+                        for point in &polygon.contour.points {
+                            points.push(slicer::types::geometry::Point3WithWidth {
+                                x: point.x as f32,
+                                y: point.y as f32,
+                                z: 0.0,
+                                width: 0.4,
+                                flow_factor: 1.0,
+                                overhang_quartile: None,
+                                dist_to_top_mm: 0.0,
+                            });
                         }
-                        for hole in &poly.holes {
-                            for p2 in &hole.points {
-                                points.push(pt(p2.x as f32, p2.y as f32, 0.4, 1.0));
+                        for hole in &polygon.holes {
+                            for point in &hole.points {
+                                points.push(slicer::types::geometry::Point3WithWidth {
+                                    x: point.x as f32,
+                                    y: point.y as f32,
+                                    z: 0.0,
+                                    width: 0.4,
+                                    flow_factor: 1.0,
+                                    overhang_quartile: None,
+                                    dist_to_top_mm: 0.0,
+                                });
                             }
                         }
                         output
-                            .push_solid_path(ExtrusionPath3D {
+                            .push_solid_path(&slicer::types::geometry::ExtrusionPath3d {
                                 points,
-                                role: ExtrusionRole::TopSolidInfill,
+                                role: slicer::types::geometry::ExtrusionRole::TopSolidInfill,
                                 speed_factor: 1.0,
                             })
-                            .map_err(|e| ModuleError::fatal(5, e))?;
+                            .map_err(|message| builder_error(7, message))?;
                     }
                 }
             }
         }
-
         Ok(())
     }
 }
+
+export!(Component);

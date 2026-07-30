@@ -14,10 +14,13 @@ fn binding_surface_matches_manifest() {
         SeamPlacer::__slicer_stage_name(),
         "Layer::PerimetersPostProcess"
     );
+    assert_eq!(SeamPlacer::__slicer_stage_export_name(), "run");
     assert_eq!(
-        SeamPlacer::__slicer_stage_export_name(),
-        "run-wall-postprocess"
+        SeamPlacer::__slicer_module_schema().stage_export,
+        "slicer:layer-perimeters-postprocess/perimeters-postprocess@1.0.0#run"
     );
     let exports = SeamPlacer::__slicer_wit_exports();
-    assert!(exports.contains(&"run-wall-postprocess"));
+    assert!(
+        exports.contains(&"slicer:layer-perimeters-postprocess/perimeters-postprocess@1.0.0#run")
+    );
 }

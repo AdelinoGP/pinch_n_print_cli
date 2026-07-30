@@ -16,10 +16,11 @@ fn binding_surface_matches_manifest() {
         ClassicPerimeters::__slicer_stage_name(),
         "Layer::Perimeters"
     );
+    assert_eq!(ClassicPerimeters::__slicer_stage_export_name(), "run");
     assert_eq!(
-        ClassicPerimeters::__slicer_stage_export_name(),
-        "run-perimeters"
+        ClassicPerimeters::__slicer_module_schema().stage_export,
+        "slicer:layer-perimeters/perimeters@1.0.0#run"
     );
     let exports = ClassicPerimeters::__slicer_wit_exports();
-    assert!(exports.contains(&"run-perimeters"));
+    assert!(exports.contains(&"slicer:layer-perimeters/perimeters@1.0.0#run"));
 }

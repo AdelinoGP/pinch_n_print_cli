@@ -5,7 +5,6 @@ display-name = "Agg Module C"
 description  = "Aggregation fixture C: com.example.expansion@1500"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

@@ -1,0 +1,20 @@
+package slicer:layer-perimeters@1.0.0;
+
+interface perimeters {
+    use slicer:ir-handles/ir-handles.{layer-idx, slice-region-view,
+        paint-region-layer-view, perimeter-output-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(layer-index: layer-idx, regions: list<slice-region-view>,
+        paint: paint-region-layer-view, output: perimeter-output-builder,
+        config: config-view) -> result<_, module-error>;
+}
+
+world perimeters-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    export perimeters;
+}

@@ -11,6 +11,7 @@ fn main() {
     let guests = [
         "layer-infill-guest",
         "prepass-guest",
+        "prepass-layer-planning-guest",
         "finalization-guest",
         "postpass-guest",
     ];

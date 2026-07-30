@@ -5,7 +5,6 @@ display-name = "Agg Tied Alpha"
 description  = "Aggregation fixture: com.example.alpha@1500 (tied priority)"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

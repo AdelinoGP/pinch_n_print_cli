@@ -31,8 +31,11 @@ to describe what a module imports and exports.
 ## WIT File Organization
 
 The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
-`root.wit` is the anchor package and `deps/` holds all shared dep packages plus the four
-world packages (each in its own subdirectory so `wasmtime` can load them via `push_path`):
+`root.wit` is the anchor package and `deps/` holds the shared dependency packages plus one
+directory for each versioned stage package. The delivered surface has 15 versioned stage
+packages: 8 layer, 4 prepass, 2 postpass, and 1 finalization. `PrePass::PaintSegmentation`
+is host-built-in and has no WIT package. The shared prepass view records live in the flat,
+unversioned `slicer:prepass-types` dependency:
 
 ```text
 crates/slicer-schema/wit/
@@ -42,24 +45,36 @@ crates/slicer-schema/wit/
     config.wit         # package slicer:config      — interface config-types
     ir-types.wit       # package slicer:ir-handles  — interface ir-handles
     common.wit         # package slicer:common      — interface module-errors
-    world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
-    world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
-    # Per packet 163: postpass + finalization are now per-stage packages.
+    prepass-types.wit                     # package slicer:prepass-types (unversioned)
+    layer-slice-postprocess/layer-slice-postprocess.wit                    # package slicer:layer-slice-postprocess@1.0.0
+    layer-perimeters/layer-perimeters.wit                                  # package slicer:layer-perimeters@1.0.0
+    layer-perimeters-postprocess/layer-perimeters-postprocess.wit           # package slicer:layer-perimeters-postprocess@1.0.0
+    layer-infill/layer-infill.wit                                            # package slicer:layer-infill@1.0.0
+    layer-infill-postprocess/layer-infill-postprocess.wit                    # package slicer:layer-infill-postprocess@1.0.0
+    layer-support/layer-support.wit                                          # package slicer:layer-support@1.0.0
+    layer-support-postprocess/layer-support-postprocess.wit                  # package slicer:layer-support-postprocess@1.0.0
+    layer-path-optimization/layer-path-optimization.wit                      # package slicer:layer-path-optimization@1.0.0
+    prepass-mesh-analysis/prepass-mesh-analysis.wit                          # package slicer:prepass-mesh-analysis@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                        # package slicer:prepass-layer-planning@1.0.0
+    prepass-seam-planning/prepass-seam-planning.wit                          # package slicer:prepass-seam-planning@1.0.0
+    prepass-support-geometry/prepass-support-geometry.wit                    # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
     finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
 ```
 
-**Host** consumption (`crates/slicer-wasm-host/src/host.rs`, which holds all
-four `bindgen!` invocations so they share Rust type identity — see ADR-0002):
+**Host** consumption (`crates/slicer-wasm-host/src/host.rs`, which holds one
+`bindgen!` invocation per versioned stage package so they share Rust type identity — see
+ADR-0002):
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module",
+    world: "slicer:layer-perimeters/perimeters-module",
     with: { "slicer:config/config-types.config-view" => crate::… }
 }
 ```
-One call per world; no inline WIT.
+One call per stage package; no inline WIT. `PrePass::PaintSegmentation` is executed by the
+host and therefore has no bindgen module.
 
 **Guest** consumption (`crates/slicer-macros/src/lib.rs`): the `#[slicer_module]` proc-macro
 reads dep files via `include_str!`, wraps each `package x;` in nested-package braces, concatenates
@@ -68,9 +83,11 @@ parse the same bytes from `deps/*.wit` — identity agreement is structural, not
 
 ### Nested-package directory layout (Normative — Packet 72)
 
-Each world package is in its own subdirectory under `deps/`
-(`deps/world-X/world-X.wit`) because `wasmtime`'s `push_path` /
+Each versioned stage package is in its own subdirectory under `deps/`
+(`deps/<stage-package>/<stage-package>.wit`) because `wasmtime`'s `push_path` /
 `push_dir` resolution requires **one main package per directory**.
+The unversioned `prepass-types.wit` file is intentionally flat alongside the other shared
+dependency files.
 The umbrella structure (`root.wit` at top + `deps/`) lets host
 `bindgen!{ path: ... }` and guest `include_str!` resolve cross-package
 `use` statements natively without inline copies.
@@ -78,8 +95,7 @@ The umbrella structure (`root.wit` at top + `deps/`) lets host
 Dead-code retirement (Packet 72): the unused `gcode-output-interface`
 was deleted during the single-source unification. It does NOT appear
 in the canonical `crates/slicer-schema/wit/` and must not be
-re-introduced — emit `gcode-output-builder` operations through the
-`world-layer`/`world-postpass` resources instead.
+re-introduced — emit `gcode-output-builder` operations through the stage packages instead.
 
 Three rules govern all WIT design decisions:
 
@@ -131,45 +147,37 @@ Host validation requirements:
 - For `PostPass::LayerFinalization`, effective parallel safety is always treated as `false` regardless of manifest hint.
 - Host emits startup diagnostics showing final pool mode (`parallel` or `serialized`) per module.
 
-## WIT ↔ IR Compatibility Matrix (Normative)
+## WIT Package ↔ IR Compatibility Matrix (Normative)
 
-WIT world identity and IR schema versions are independent. Module load is allowed
-only when both checks below pass.
+WIT stage-package identity and IR schema versions are independent. Module load is allowed
+only when the canonical stage lookup and the IR compatibility check both pass.
 
-| Host WIT world       | Module `wit-world`         | Host IR schema | Module IR range   | Load result                              |
-|----------------------|----------------------------|----------------|-------------------|------------------------------------------|
-| `slicer:world-layer` | `slicer:world-layer`       | `1.4.0`        | `>=1.2.0, <2.0.0` | Allowed                                  |
-| `slicer:world-layer` | `slicer:world-layer@1.0.0` | any            | any               | Rejected (`wit-world` must carry no version) |
-| `slicer:world-layer` | `slicer:layer-world`       | any            | any               | Rejected (unknown world)                 |
-| `slicer:world-layer` | `slicer:world-layer`       | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (IR major out of range)         |
+| Canonical stage package | Module declaration | Host IR schema | Module IR range | Load result |
+|-------------------------|--------------------|----------------|-----------------|-------------|
+| `slicer:layer-perimeters@1.0.0` | `[stage] id = "Layer::Perimeters"` | `1.4.0` | `>=1.2.0, <2.0.0` | Typed package instantiation, then allowed |
+| `slicer:prepass-mesh-analysis@1.0.0` | `[stage] id = "PrePass::MeshAnalysis"` | `1.4.0` | `>=1.2.0, <2.0.0` | Typed package instantiation, then allowed |
 
 Startup checks:
 
-1. Validate `wit-world` names a known world. The name is **unversioned**; a
-   declared version is rejected with a diagnostic naming the corrected value.
-2. Validate host IR schema is within module-declared IR range.
-3. Emit explicit diagnostics with expected/actual versions and blocking symbol
-   names when incompatible.
+1. Resolve `[stage].id` through the canonical stage table to its qualified package export.
+2. Let wasmtime typed instantiation validate the package, interface, version, export, and
+   signatures; a missing or incompatible stage export is fatal.
+3. Validate host IR schema is within the module-declared IR range and emit explicit
+   diagnostics with expected/actual versions and blocking symbol names when incompatible.
 
-### Why `wit-world` carries no version
+### Why `wit-world` is now legacy
 
-Earlier revisions of this section specified matching on "package name and major
-version". **No such comparison ever existed**, and it could not have worked:
+The manifest `wit-world` key is no longer a compatibility input. The parser tolerates the
+key in legacy manifests and ignores it; new manifests do not need it. The canonical stage
+ID selects the package, and typed instantiation checks the package identity against the
+guest component.
 
-- The check was `ALLOWLIST.contains(&wit_world)` — exact string equality. Bumping
-  a world therefore rejected *every* module until all 23 manifests were rewritten
-  in lockstep, which is the opposite of the additive compatibility this section
-  claimed.
-- More fundamentally, **the world version is erased from the guest binary at
-  compile time.** Our worlds export bare freestanding funcs, and a bare extern
-  name carries no semver suffix (component-model `WIT.md`: `<semversuffix>` is a
-  production of `<interfacename>`, not of a plain name). `wasm-tools component wit
-  <guest>.wasm` finds no `world-layer` and no `@x.y.z` anywhere in it.
-
-So a versioned `wit-world` was an **unfalsifiable claim**: there is no fact in the
-system to check it against, which is precisely what rule 1 above ("the host never
-trusts module declarations") forbids. It was removed rather than left as ceremony
-that cost ~79 files per bump and enforced nothing.
+The old key could not enforce the version it appeared to describe. It was an exact-string
+allowlist claim, while the package version was not mechanically checked against a guest
+component. The per-stage shape fixes that: a declaration such as
+`package slicer:layer-perimeters@1.0.0;` gives the stage package a versioned identity, and
+the resulting qualified export carries `slicer:layer-perimeters/perimeters@1.0.0#run` for
+wasmtime to check. The version now lives in the package identity, not in manifest metadata.
 
 What actually enforces compatibility today:
 
@@ -179,13 +187,8 @@ What actually enforces compatibility today:
 | `cargo xtask build-guests --check` | Stale in-tree guest (mtime-based) |
 | `[compatibility]` min/max-ir-schema (`crates/slicer-scheduler/src/validation.rs`) | IR range, fatal at startup |
 
-The world version now lives solely in the `package` line of
-`crates/slicer-schema/wit/deps/world-*/*.wit`, where it selects which package
-`bindgen!`/`generate!` resolve at build time. It is a changelog annotation, not an
-identity token. Giving it real, mechanical enforcement requires restructuring each
-stage into its own **versioned interface** (`slicer:world-layer/infill-postprocess@2.0.0`),
-so the version lands in the component's export names where wasmtime's semver
-matching can act on it. That reasoning is recorded in
+The package version is therefore load-bearing for `bindgen!`/`generate!` resolution and
+component export matching. That reasoning is recorded in
 `adr/0044-wit-world-version-is-not-an-identity-token.md`, and the decision to
 restructure is `adr/0045-per-stage-versioned-interfaces-over-monolithic-tier-worlds.md`.
 
@@ -345,29 +348,27 @@ from region top/bottom metadata**:
 
 ---
 
-## `world-layer.wit`
+## Per-stage layer WIT packages
 
-**Source of truth:** `crates/slicer-schema/wit/deps/world-layer/world-layer.wit`
-(package `slicer:world-layer@2.3.0` — packet 140 bump for the
-`lightning-tree-segments` read-view). The `layer-module` world imports
-`slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
-the views/builders it needs from `slicer:ir-handles/ir-handles`, and imports the
-shared `module-error` from `slicer:common/module-errors`.
+The eight layer stages each have one versioned package, one world, and one exported
+`run` function. A module implements only the package selected by its `[stage] id`:
 
-It has eight stage exports — a module implements exactly the one matching its declared
-manifest stage, and the host rejects a module whose export set mismatches its
-stage:
+| Stage | Source package | Package identity |
+|-------|----------------|------------------|
+| `Layer::SlicePostProcess` | `deps/layer-slice-postprocess/layer-slice-postprocess.wit` | `slicer:layer-slice-postprocess@1.0.0` |
+| `Layer::Perimeters` | `deps/layer-perimeters/layer-perimeters.wit` | `slicer:layer-perimeters@1.0.0` |
+| `Layer::PerimetersPostProcess` | `deps/layer-perimeters-postprocess/layer-perimeters-postprocess.wit` | `slicer:layer-perimeters-postprocess@1.0.0` |
+| `Layer::Infill` | `deps/layer-infill/layer-infill.wit` | `slicer:layer-infill@1.0.0` |
+| `Layer::InfillPostProcess` | `deps/layer-infill-postprocess/layer-infill-postprocess.wit` | `slicer:layer-infill-postprocess@1.0.0` |
+| `Layer::Support` | `deps/layer-support/layer-support.wit` | `slicer:layer-support@1.0.0` |
+| `Layer::SupportPostProcess` | `deps/layer-support-postprocess/layer-support-postprocess.wit` | `slicer:layer-support-postprocess@1.0.0` |
+| `Layer::PathOptimization` | `deps/layer-path-optimization/layer-path-optimization.wit` | `slicer:layer-path-optimization@1.0.0` |
 
-- `run-slice-postprocess`, `run-perimeters`, `run-wall-postprocess`,
-  `run-infill`, `run-infill-postprocess`, `run-support`,
-  `run-support-postprocess`, `run-path-optimization`.
-- `run-infill` receives `paint: paint-region-layer-view`, allowing an infill
-  guest to read committed lightning tree segments for its object and region.
-
-Read the on-disk file for each export's exact parameter list and return type.
-Notable 2.0.0 (packet 130) change: `run-infill-postprocess` gains a read-only
-`prior-infill` view of the committed `InfillIR`, and its commit is REPLACE — the
-module must re-emit every path it wants kept.
+Read the on-disk package for each stage's exact parameter list and return type. The
+`layer-infill` package includes the paint view required for committed lightning tree
+segments. The `layer-infill-postprocess` package retains the read-only `prior-infill`
+view of the committed `InfillIR`, and its commit is REPLACE — the module must re-emit
+every path it wants kept.
 
 ### `layer-collection-builder` resource (packet 32)
 
@@ -414,8 +415,8 @@ read-view.
 
 **Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit` (the
 `paint-region-layer-view` resource method) and
-`crates/slicer-schema/wit/deps/world-layer/world-layer.wit` (package
-`slicer:world-layer@2.3.0`). Packet 140 extends `run-infill` with the paint
+`crates/slicer-schema/wit/deps/layer-infill/layer-infill.wit` (package
+`slicer:layer-infill@1.0.0`). Packet 140 extends `run` with the paint
 view required by the lightning module; read the WIT source for the exact
 signature.
 any change to the signature in 138/139 is a WIT version bump, not a
@@ -445,30 +446,30 @@ in `crates/slicer-sdk/src/traits.rs` returns the same
 
 ---
 
-## `world-prepass.wit`
+## Per-stage prepass WIT packages
 
-**Source of truth:** `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`
-(package `slicer:world-prepass@3.0.0`). The `prepass-module` world imports
-`slicer:common/host-services`, `slicer:config/config-types.{config-view}`, and
-the shared `module-error` from `slicer:common/module-errors`.
+The four module-implementable prepass stages each have one versioned package. Their
+output resources live in imported `<iface>-types` interfaces, while the exported
+interface contains the single `run` function:
 
-It has exactly **four** stage exports:
+| Stage | Source package | Package identity |
+|-------|----------------|------------------|
+| `PrePass::MeshAnalysis` | `deps/prepass-mesh-analysis/prepass-mesh-analysis.wit` | `slicer:prepass-mesh-analysis@1.0.0` |
+| `PrePass::LayerPlanning` | `deps/prepass-layer-planning/prepass-layer-planning.wit` | `slicer:prepass-layer-planning@1.0.0` |
+| `PrePass::SeamPlanning` | `deps/prepass-seam-planning/prepass-seam-planning.wit` | `slicer:prepass-seam-planning@1.0.0` |
+| `PrePass::SupportGeometry` | `deps/prepass-support-geometry/prepass-support-geometry.wit` | `slicer:prepass-support-geometry@1.0.0` |
 
-- `run-mesh-analysis` — facet classification and surface-group proposals.
-- `run-layer-planning` — per-layer Z and active-region proposals.
- - `run-seam-planning` 2014 scored seam candidates per `(layer, object, region, variant_chain)` (WIT field `variant-chain`). Receives `SeamPlanningView` with per-region `SliceIR` polygons.
-- `run-support-geometry` — multi-layer organic tree-support branch geometry,
-  consumed by `Layer::Support` modules that declare `SupportPlanIR` as a read.
+The shared view records (`mesh-object-view`, `paint-value-view`, `paint-stroke-view`, and
+`paint-layer-view`) are defined once in the unversioned flat package
+`deps/prepass-types.wit` (`slicer:prepass-types`). Read each stage package for its exact
+parameters, view records, and imported output resource.
 
-There is **no `run-paint-segmentation` export.** Paint segmentation runs as the
-`host:paint_segmentation` built-in (see `PrePass::PaintSegmentation` in
-`01_system_architecture.md`), not as a module-implementable WIT stage. Read the
-on-disk file for each export's parameters, the view records they consume, and
-the output-builder resources they write through.
+`PrePass::PaintSegmentation` is host-built-in (packet 97; see
+`01_system_architecture.md`) and has no module package or WIT export.
 
 ### Support-plan output seam (Normative — Packet 119)
 
-The support-geometry world carries branch entries and one optional
+The support-geometry stage package carries branch entries and one optional
 configuration-only raft plan through the same output resource:
 
 ```wit
@@ -530,7 +531,7 @@ enum severity-level {
 ```
 
 Field and variant notes (match the on-disk file in
-`crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`):
+`crates/slicer-schema/wit/deps/prepass-support-geometry/prepass-support-geometry.wit`):
 
 - Field names are kebab-case in WIT (`object-id`), converted to snake_case
   (`object_id`) in the Rust SDK and IR.
@@ -651,12 +652,16 @@ The index-remap invariants are owned by the SDK's `apply_to` (`crates/slicer-sdk
 
 ## Module Manifest Schema (TOML)
 
+The manifest's `[stage].id` selects the canonical versioned stage package. Legacy manifests
+may still carry a `wit-world` key; the parser tolerates and ignores it. It is not part of
+the current schema or compatibility check.
+
 Full annotated example for a TPMS infill module:
 
 ```toml
 # ── Identity ────────────────────────────────────────────────────────────────
-# The host parser (`crates/slicer-scheduler/src/manifest.rs`) currently reads only
-# `id`, `version`, and `wit-world` from this section. `display-name`,
+# The host parser (`crates/slicer-scheduler/src/manifest.rs`) reads `id` and `version`.
+# Stage selection is read from `[stage].id`. `display-name`,
 # `description`, `author`, `license`, and `homepage` are accepted in TOML but
 # not stored on the LoadedModule — they are informational metadata for
 # humans / future tooling.
@@ -668,8 +673,6 @@ description  = "Schwartz-D and Fischer-Koch-S triply periodic minimal surface in
 author       = "community"                   # informational
 license      = "MIT"                         # informational
 homepage     = "https://github.com/example/tpms-infill"  # informational
-wit-world    = "slicer:world-layer"          # parsed; unversioned; must name an installed WIT world
-
 # ── Stage declaration ────────────────────────────────────────────────────────
 # Exactly one stage per module. Two stages = two .wasm files.
 [stage]

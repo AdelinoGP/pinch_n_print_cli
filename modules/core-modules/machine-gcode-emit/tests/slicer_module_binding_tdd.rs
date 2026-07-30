@@ -16,10 +16,11 @@ fn binding_surface_matches_gcode_postprocess_stage() {
         MachineGcodeEmit::__slicer_stage_name(),
         "PostPass::GCodePostProcess"
     );
-    // Packet 163: per-stage package migration. The func is now `run` for
-    // every migrated stage; `qualified_export_for_stage_id` is the only
-    // lookup that fully identifies the contract.
     assert_eq!(MachineGcodeEmit::__slicer_stage_export_name(), "run");
+    assert_eq!(
+        MachineGcodeEmit::__slicer_module_schema().stage_export,
+        "slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"
+    );
     let exports = MachineGcodeEmit::__slicer_wit_exports();
-    assert!(exports.contains(&"run"));
+    assert!(exports.contains(&"slicer:postpass-gcode-postprocess/gcode-postprocess@1.0.0#run"));
 }

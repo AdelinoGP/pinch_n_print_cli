@@ -82,12 +82,15 @@ if worlds!=want: bad.append(f'world diff extra={sorted(worlds-want)} missing={so
 if set(re.findall(r'path:\s*\"([^\"]+)\"',s))!={'../slicer-schema/wit'}: bad.append('non-canonical path:')
 if len(re.findall(r'\"slicer:prepass-types/prepass-types\"',s))<1: bad.append('prepass-types never with:-aliased')
 ALIAS=['slicer:types/geometry','slicer:config/config-types','slicer:common/host-services','slicer:common/module-errors','slicer:ir-handles/ir-handles']
-mods=['layer_slice_postprocess','layer_perimeters','layer_perimeters_postprocess','layer_infill','layer_infill_postprocess','layer_support','layer_support_postprocess','layer_path_optimization','prepass_mesh_analysis','prepass_layer_planning','prepass_seam_planning','prepass_support_geometry']
+mods=['layer_slice_postprocess','layer_perimeters_postprocess','layer_infill','layer_infill_postprocess','layer_support','layer_support_postprocess','layer_path_optimization','prepass_mesh_analysis','prepass_layer_planning','prepass_seam_planning','prepass_support_geometry']
 for m in mods:
     b=re.search(r'(?m)^pub mod '+m+r' \{(.*?)^\}',s,re.S)
     if not b: bad.append(f'no pub mod {m}'); continue
     missing=[k for k in ALIAS if f'\"{k}\"' not in b.group(1)]
     if missing: bad.append(f'{m}: missing with: aliases {missing}')
+b=re.search(r'(?m)^pub mod layer_perimeters \{(.*?)^\}',s,re.S)
+if not b: bad.append('no pub mod layer_perimeters')
+elif any(f'\"{k}\"' in b.group(1) for k in ALIAS): bad.append('layer_perimeters: canonical definer must not alias shared types')
 print('PASS' if not bad else 'FAIL '+'; '.join(bad))"`
 
 - **AC-4. Given** `dispatch.rs::dispatch_layer_call` instantiates `host::LayerModule` once and routes via `call_layer_export`'s stage match, and `dispatch_prepass_call` does the same with `host::PrepassModule`, **when** both are rewired to per-stage typed instantiation (linker setup, `instantiate`, and the single `run` call selected by `stage_id` — 163's dispatch pattern), **then** `crates/slicer-wasm-host/src/dispatch.rs` contains zero occurrences of `host::LayerModule` and `host::PrepassModule`, every `DispatchPhase::TypedInstantiation` arm's `reason` includes `slicer_schema::qualified_export_for_stage_id(stage_id)`, and the full (unfiltered) executor suite plus the dispatch contract tests pass. | `cd F:/slicerProject/pinch_n_print_cli && mkdir -p target && python3 -c "import re; s=open('crates/slicer-wasm-host/src/dispatch.rs',encoding='utf-8').read(); n=len(re.findall(r'host::(LayerModule|PrepassModule)',s)); print('PASS' if n==0 else f'FAIL tier_bindings={n}')" && cargo xtask build-guests --check && (cargo test -p slicer-runtime --test executor 2>&1 | tee target/test-output.log | rg '^test result') && ((cargo test -p slicer-runtime --test contract -- dispatch 2>&1 | tee -a target/test-output.log | rg '^test result') | rg -v '0 passed' || echo 'FAIL: 0 dispatch contract tests ran')`

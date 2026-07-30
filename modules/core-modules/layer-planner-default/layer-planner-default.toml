@@ -5,7 +5,6 @@ display-name = "Default Layer Planner"
 description  = "Core default layer planner module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-prepass"
 
 [stage]
 id = "PrePass::LayerPlanning"

@@ -1,41 +1,20 @@
 wit_bindgen::generate!({
     path: "../../../slicer-schema/wit",
-    world: "slicer:world-prepass/prepass-module",
+    world: "slicer:prepass-mesh-analysis/mesh-analysis-module",
     generate_all,
 });
+
+use exports::slicer::prepass_mesh_analysis::mesh_analysis::Guest;
+use slicer::common::module_errors::ModuleError;
+use slicer::config::config_types::ConfigView;
+use slicer::prepass_mesh_analysis::mesh_analysis_types::{MeshAnalysisOutput, ObjectId};
 
 struct Component;
 
 impl Guest for Component {
-    fn run_mesh_analysis(
+    fn run(
         _objects: Vec<ObjectId>,
         _output: MeshAnalysisOutput,
-        _config: ConfigView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
-    }
-    fn run_layer_planning(
-        _objects: Vec<ObjectId>,
-        _output: LayerPlanOutput,
-        _config: ConfigView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
-    }
-    fn run_seam_planning(
-        _objects: Vec<MeshObjectView>,
-        _layer_plan: LayerPlanView,
-        _output: SeamPlanningOutput,
-        _config: ConfigView,
-        _region_input: SeamPlanningView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
-    }
-    fn run_support_geometry(
-        _objects: Vec<MeshObjectView>,
-        _layer_plan: LayerPlanView,
-        _region_segmentation: RegionSegmentationView,
-        _support_geometry: SupportGeometryView,
-        _output: SupportGeometryOutput,
         _config: ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

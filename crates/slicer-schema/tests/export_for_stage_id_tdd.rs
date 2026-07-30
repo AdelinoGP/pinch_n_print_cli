@@ -7,8 +7,19 @@
 
 #[test]
 fn export_for_stage_id_is_total_over_stages_and_rejects_unknown() {
-    // AC-N2 part 1: must return Some(wit_export) for every entry in STAGES.
+    // AC-N2 part 1: must return Some(wit_export) for every WIT-backed entry in STAGES.
     for stage in slicer_schema::STAGES {
+        // The sole host-built-in stage (packet 97) has no WIT export;
+        // every lookup returns None for it. Skip it.
+        if stage.stage_id == "PrePass::PaintSegmentation" {
+            assert_eq!(
+                slicer_schema::export_for_stage_id(stage.stage_id),
+                None,
+                "host-built-in stage {} should map to None",
+                stage.stage_id,
+            );
+            continue;
+        }
         assert_eq!(
             slicer_schema::export_for_stage_id(stage.stage_id),
             Some(stage.wit_export),

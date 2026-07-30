@@ -5,7 +5,6 @@ display-name = "Region Split Priority Type Mismatch"
 description  = "Fixture: region_split with priority as string (not u32)"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"

@@ -1,0 +1,99 @@
+package slicer:prepass-support-geometry@1.0.0;
+
+interface support-geometry-types {
+    use slicer:types/geometry.{ex-polygon, point3-with-width};
+
+    type object-id = string;
+    type region-id = string;
+
+    record support-plan-entry {
+        global-layer-index: s32,
+        object-id: object-id,
+        region-id: region-id,
+        branch-segments: list<list<point3-with-width>>,
+    }
+
+    record raft-plan {
+        raft-layers: u32,
+        raft-first-layer-density: f32,
+        base-raft-layers: u32,
+        interface-raft-layers: u32,
+    }
+
+    record layer-plan-view-entry {
+        global-layer-index: u32,
+        z: f32,
+        effective-layer-height: f32,
+    }
+    record layer-plan-view {
+        layers: list<layer-plan-view-entry>,
+    }
+    record region-segmentation-view-entry {
+        object-id: object-id,
+        layer-index: u32,
+        region-ids: list<region-id>,
+    }
+    record region-segmentation-view {
+        entries: list<region-segmentation-view-entry>,
+    }
+
+    record support-geometry-view-entry {
+        global-support-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        outlines: list<ex-polygon>,
+    }
+    record support-geometry-view {
+        entries: list<support-geometry-view-entry>,
+    }
+
+    enum severity-level {
+        trace,
+        debug,
+        info,
+        warn,
+        error,
+    }
+    record diagnostic {
+        severity: severity-level,
+        code: u32,
+        layer: option<s32>,
+        object-id: option<string>,
+        message: string,
+    }
+
+    resource support-geometry-output {
+        push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+        push-raft-plan: func(plan: raft-plan) -> result<_, string>;
+        push-diagnostic: func(d: diagnostic) -> result<_, string>;
+    }
+}
+
+interface support-geometry {
+    use slicer:prepass-types/prepass-types.{mesh-object-view};
+    use support-geometry-types.{layer-plan-view, layer-plan-view-entry,
+        region-segmentation-view, region-segmentation-view-entry,
+        support-geometry-view, support-geometry-view-entry,
+        support-geometry-output};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
+        objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
+        region-segmentation: region-segmentation-view,
+        support-geometry: support-geometry-view,
+        output: support-geometry-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+}
+
+world support-geometry-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    import slicer:prepass-types/prepass-types;
+    import support-geometry-types;
+    export support-geometry;
+}

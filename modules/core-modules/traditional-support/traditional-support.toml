@@ -5,7 +5,6 @@ display-name = "Traditional Support"
 description  = "Core traditional support module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Support"

@@ -35,6 +35,10 @@ const POSTPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../slicer-wasm-host/test-guests/postpass-guest.component.wasm"
 );
+const TEXT_POSTPASS_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../slicer-wasm-host/test-guests/sdk-postpass-text-guest.component.wasm"
+);
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
     Arc::new(MeshIR::default())
@@ -118,33 +122,31 @@ fn minimal_gcode_ir() -> GCodeIR {
 #[test]
 fn export_name_mapping_covers_all_documented_stages() {
     let stages = [
-        ("PrePass::MeshAnalysis", "run-mesh-analysis"),
-        ("PrePass::LayerPlanning", "run-layer-planning"),
-        ("PrePass::PaintSegmentation", "run-paint-segmentation"),
-        ("Layer::SlicePostProcess", "run-slice-postprocess"),
-        ("Layer::Perimeters", "run-perimeters"),
-        ("Layer::PerimetersPostProcess", "run-wall-postprocess"),
-        ("Layer::Infill", "run-infill"),
-        ("Layer::InfillPostProcess", "run-infill-postprocess"),
-        ("Layer::Support", "run-support"),
-        ("Layer::SupportPostProcess", "run-support-postprocess"),
-        ("Layer::PathOptimization", "run-path-optimization"),
+        ("PrePass::MeshAnalysis", Some("run")),
+        ("PrePass::LayerPlanning", Some("run")),
+        ("PrePass::PaintSegmentation", None),
+        ("Layer::SlicePostProcess", Some("run")),
+        ("Layer::Perimeters", Some("run")),
+        ("Layer::PerimetersPostProcess", Some("run")),
+        ("Layer::Infill", Some("run")),
+        ("Layer::InfillPostProcess", Some("run")),
+        ("Layer::Support", Some("run")),
+        ("Layer::SupportPostProcess", Some("run")),
+        ("Layer::PathOptimization", Some("run")),
         // Packet 163: per-stage package migration. The func is `run` for every
         // migrated stage; `qualified_export_for_stage_id` is the only lookup
         // that fully identifies the contract.
-        ("PostPass::LayerFinalization", "run"),
-        ("PostPass::GCodePostProcess", "run"),
-        ("PostPass::TextPostProcess", "run"),
+        ("PostPass::LayerFinalization", Some("run")),
+        ("PostPass::GCodePostProcess", Some("run")),
+        ("PostPass::TextPostProcess", Some("run")),
     ];
 
     for (stage_id, expected_export) in &stages {
         let result = export_for_stage_id(stage_id);
         assert_eq!(
-            result,
-            Some(*expected_export),
-            "stage '{}' should map to '{}'",
-            stage_id,
-            expected_export
+            result, *expected_export,
+            "stage '{}' should map to '{:?}'",
+            stage_id, expected_export
         );
     }
 }
@@ -256,7 +258,7 @@ fn postpass_gcode_runner_invokes_wasm_export() {
 fn postpass_text_runner_invokes_wasm_export() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = wasm_cache::compiled_component_at(Path::new(POSTPASS_GUEST_PATH));
+    let component = wasm_cache::compiled_component_at(Path::new(TEXT_POSTPASS_GUEST_PATH));
     let bundle = make_bundle(
         "com.test.tpost",
         "PostPass::TextPostProcess",

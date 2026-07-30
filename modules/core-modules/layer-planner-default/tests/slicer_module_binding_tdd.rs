@@ -15,10 +15,11 @@ fn binding_surface_matches_prepass_layer_planning_stage() {
         DefaultLayerPlanner::__slicer_stage_name(),
         "PrePass::LayerPlanning"
     );
+    assert_eq!(DefaultLayerPlanner::__slicer_stage_export_name(), "run");
     assert_eq!(
-        DefaultLayerPlanner::__slicer_stage_export_name(),
-        "run-layer-planning"
+        DefaultLayerPlanner::__slicer_module_schema().stage_export,
+        "slicer:prepass-layer-planning/layer-planning@1.0.0#run"
     );
     let exports = DefaultLayerPlanner::__slicer_wit_exports();
-    assert!(exports.contains(&"run-layer-planning"));
+    assert!(exports.contains(&"slicer:prepass-layer-planning/layer-planning@1.0.0#run"));
 }

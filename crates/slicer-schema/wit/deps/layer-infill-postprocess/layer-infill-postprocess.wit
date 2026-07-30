@@ -1,0 +1,20 @@
+package slicer:layer-infill-postprocess@1.0.0;
+
+interface infill-postprocess {
+    use slicer:ir-handles/ir-handles.{layer-idx, perimeter-region-view,
+        prior-infill-region, infill-output-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(layer-index: layer-idx, regions: list<perimeter-region-view>,
+        prior-infill: list<prior-infill-region>, output: infill-output-builder,
+        config: config-view) -> result<_, module-error>;
+}
+
+world infill-postprocess-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    export infill-postprocess;
+}

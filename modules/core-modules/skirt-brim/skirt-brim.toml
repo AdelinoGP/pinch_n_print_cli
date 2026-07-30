@@ -5,7 +5,6 @@ display-name = "Skirt Brim"
 description  = "Core skirt brim module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-finalization"
 
 [stage]
 id = "PostPass::LayerFinalization"

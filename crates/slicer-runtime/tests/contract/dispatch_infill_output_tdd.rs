@@ -37,12 +37,20 @@ impl GCodeSerializer for MinimalSerializer {
 }
 
 fn make_prepass_bundle(stage_id: &str) -> TestModuleBundle {
-    let component = wasm_cache::compiled_component_at(std::path::Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../slicer-wasm-host/test-guests/prepass-guest.component.wasm"
-    )));
+    let module_id = match stage_id {
+        "PrePass::LayerPlanning" => "com.test.prepass.layer-planning",
+        _ => "com.test.prepass.mesh-analysis",
+    };
+    let guest_name = match stage_id {
+        "PrePass::LayerPlanning" => "prepass-layer-planning-guest",
+        _ => "prepass-guest",
+    };
+    let guest_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../slicer-wasm-host/test-guests")
+        .join(format!("{guest_name}.component.wasm"));
+    let component = wasm_cache::compiled_component_at(&guest_path);
     let loaded = LoadedModuleBuilder::new(
-        "com.test.prepass",
+        module_id,
         SemVer {
             major: 1,
             minor: 0,
@@ -81,7 +89,7 @@ fn make_prepass_bundle(stage_id: &str) -> TestModuleBundle {
         )
         .unwrap(),
     );
-    let module = CompiledModuleBuilder::new("com.test.prepass")
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(HashMap::new())))
         .build();
     TestModuleBundle {

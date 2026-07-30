@@ -1,12 +1,13 @@
-//! Conformance tests for packet 72: WIT single-source unification.
+//! Conformance tests for packet 164: the 15 per-stage WIT packages resolve
+//! from the canonical single-source tree.
 //!
-//! AC-9  — canonical WIT dir resolves all four worlds via wit_parser.
+//! AC-9  — canonical WIT dir resolves all 15 package worlds via wit_parser.
 //! AC-N1 — illegal label `extrusion-path-3d` (segment begins with digit) is
 //!          rejected by wit_parser, proving the canonical source is genuinely
 //!          validated.
 //! Anti-regression:
 //!   no_flat_copies              — no *-flat* files exist in the canonical dir.
-//!   worlds_are_not_self_contained — world files cross-reference slicer: deps.
+//!   stage_packages_are_not_self_contained — stage files cross-reference deps.
 //!   shared_interface_defined_once — shared interfaces appear exactly once.
 //!   host_has_no_inline_bindgen  — wit_host.rs has no `inline: r#` block.
 
@@ -29,7 +30,7 @@ fn runtime_src_dir() -> PathBuf {
 // AC-9
 // ---------------------------------------------------------------------------
 
-/// Canonical WIT dir resolves successfully and exposes all four worlds.
+/// Canonical WIT dir resolves successfully and exposes all 15 stage worlds.
 #[test]
 fn canonical_wit_resolves() {
     let dir = schema_wit_dir();
@@ -47,38 +48,87 @@ fn canonical_wit_resolves() {
         .push_dir(&dir)
         .unwrap_or_else(|e| panic!("wit_parser failed to resolve {}: {e}", dir.display()));
 
-    // Collect all world names across every resolved package.
-    let mut world_names: Vec<String> = resolve.worlds.iter().map(|(_, w)| w.name.clone()).collect();
-    world_names.sort();
-
     let required = [
-        "layer-module",
-        "prepass-module",
-        "gcode-postprocess-module",
-        "text-postprocess-module",
-        "layer-finalization-module",
+        ("slicer:layer-slice-postprocess", "slice-postprocess-module"),
+        ("slicer:layer-perimeters", "perimeters-module"),
+        (
+            "slicer:layer-perimeters-postprocess",
+            "perimeters-postprocess-module",
+        ),
+        ("slicer:layer-infill", "infill-module"),
+        (
+            "slicer:layer-infill-postprocess",
+            "infill-postprocess-module",
+        ),
+        ("slicer:layer-support", "support-module"),
+        (
+            "slicer:layer-support-postprocess",
+            "support-postprocess-module",
+        ),
+        ("slicer:layer-path-optimization", "path-optimization-module"),
+        ("slicer:prepass-mesh-analysis", "mesh-analysis-module"),
+        ("slicer:prepass-layer-planning", "layer-planning-module"),
+        ("slicer:prepass-seam-planning", "seam-planning-module"),
+        ("slicer:prepass-support-geometry", "support-geometry-module"),
+        (
+            "slicer:finalization-layer-finalization",
+            "layer-finalization-module",
+        ),
+        (
+            "slicer:postpass-gcode-postprocess",
+            "gcode-postprocess-module",
+        ),
+        (
+            "slicer:postpass-text-postprocess",
+            "text-postprocess-module",
+        ),
     ];
 
-    for name in &required {
-        assert!(
-            world_names.iter().any(|w| w == name),
-            "world `{name}` not found; worlds present: {world_names:?}"
-        );
-    }
+    // Count only worlds owned by the 15 delivered per-stage packages. The
+    // resolver also contains dependency packages, so counting every world in
+    // `resolve.worlds` would include retired tier worlds and mask the contract.
+    let mut resolved_stage_worlds: Vec<String> = resolve
+        .packages
+        .iter()
+        .filter_map(|(_, package)| {
+            let package_name = format!("{}:{}", package.name.namespace, package.name.name);
+            required
+                .iter()
+                .any(|(expected, _)| *expected == package_name)
+                .then(|| {
+                    package
+                        .worlds
+                        .keys()
+                        .map(|world| format!("{package_name}/{world}"))
+                        .collect::<Vec<_>>()
+                })
+        })
+        .flatten()
+        .collect();
+    resolved_stage_worlds.sort();
 
-    // Also confirm select_world succeeds for each qualified name.
+    let mut expected_stage_worlds: Vec<String> = required
+        .iter()
+        .map(|(package, world)| format!("{package}/{world}"))
+        .collect();
+    expected_stage_worlds.sort();
+    assert_eq!(
+        resolved_stage_worlds.len(),
+        15,
+        "resolved per-stage world surface: {resolved_stage_worlds:?}"
+    );
+    assert_eq!(
+        resolved_stage_worlds, expected_stage_worlds,
+        "resolved per-stage packages/worlds must match the delivered surface"
+    );
+
+    // Also confirm select_world succeeds for each package-qualified name.
     // wit-parser 0.247: select_world(&[PackageId], world_str_or_none)
-    let qualified = [
-        "slicer:world-layer/layer-module",
-        "slicer:world-prepass/prepass-module",
-        "slicer:postpass-gcode-postprocess/gcode-postprocess-module",
-        "slicer:postpass-text-postprocess/text-postprocess-module",
-        "slicer:finalization-layer-finalization/layer-finalization-module",
-    ];
-    for q in &qualified {
+    for (package, world) in &required {
+        let qualified = format!("{package}/{world}");
         resolve
-            .select_world(&[root_pkg_id], Some(q))
-            .unwrap_or_else(|e| panic!("select_world({q}) failed: {e}"));
+            .select_world(&[root_pkg_id], Some(&qualified))
+            .unwrap_or_else(|e| panic!("select_world({qualified}) failed: {e}"));
     }
 }
 
@@ -142,22 +192,32 @@ fn no_flat_copies() {
 // Anti-regression: worlds reference shared deps (not self-contained)
 // ---------------------------------------------------------------------------
 
-/// Each world .wit file must contain at least one `use slicer:` cross-package
+/// Each stage .wit file must contain at least one `use slicer:` cross-package
 /// reference — ensuring they depend on the shared dep packages rather than
 /// re-inlining everything.
 #[test]
-fn worlds_are_not_self_contained() {
-    let world_dirs = [
-        "world-layer",
-        "world-prepass",
+fn stage_packages_are_not_self_contained() {
+    let stage_dirs = [
+        "layer-slice-postprocess",
+        "layer-perimeters",
+        "layer-perimeters-postprocess",
+        "layer-infill",
+        "layer-infill-postprocess",
+        "layer-support",
+        "layer-support-postprocess",
+        "layer-path-optimization",
+        "prepass-mesh-analysis",
+        "prepass-layer-planning",
+        "prepass-seam-planning",
+        "prepass-support-geometry",
+        "finalization-layer-finalization",
         "postpass-gcode-postprocess",
         "postpass-text-postprocess",
-        "finalization-layer-finalization",
     ];
     let deps_dir = schema_wit_dir().join("deps");
 
-    for world_dir in &world_dirs {
-        let wit_file = deps_dir.join(world_dir).join(format!("{world_dir}.wit"));
+    for stage_dir in &stage_dirs {
+        let wit_file = deps_dir.join(stage_dir).join(format!("{stage_dir}.wit"));
         assert!(
             wit_file.exists(),
             "world file missing: {}",
@@ -284,8 +344,8 @@ fn host_bindgen_paths_target_shared_root() {
 
     assert_eq!(
         paths.len(),
-        5,
-        "Expected exactly 5 `path:` literals in host.rs bindgen! invocations (one per world), \
+        15,
+        "Expected exactly 15 `path:` literals in host.rs bindgen! invocations (one per stage), \
          found {}: {paths:?}",
         paths.len()
     );

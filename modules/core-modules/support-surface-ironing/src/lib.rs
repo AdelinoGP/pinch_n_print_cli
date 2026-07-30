@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 //! Surface ironing module.
 //!
-//! Implements `LayerModule::run_infill_postprocess` for the `Layer::InfillPostProcess` stage.
+//! Implements `LayerModule::run_support_postprocess` for the `Layer::SupportPostProcess` stage.
 //! Generates low-flow rectilinear passes over top surfaces to smooth them.
 
 #![warn(missing_docs)]
@@ -19,11 +19,11 @@
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
-use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
-use slicer_sdk::views::PerimeterRegionView;
+use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
@@ -192,12 +192,11 @@ impl LayerModule for SupportSurfaceIroning {
         })
     }
 
-    fn run_infill_postprocess(
+    fn run_support_postprocess(
         &self,
         _layer_index: u32,
-        regions: &[PerimeterRegionView],
-        _prior_infill: &[slicer_ir::InfillRegion],
-        output: &mut InfillOutputBuilder,
+        regions: &[SliceRegionView],
+        output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if !self.enabled {
@@ -207,24 +206,17 @@ impl LayerModule for SupportSurfaceIroning {
         let speed_factor = self.ironing_speed / BASE_SPEED;
 
         for region in regions {
-            // Extract z from first point of first wall loop
-            let z = match region.wall_loops().first() {
-                Some(wall) => match wall.path.points.first() {
-                    Some(pt) => pt.z,
-                    None => continue,
-                },
-                None => continue,
-            };
+            let z = region.z();
 
-            let infill_areas = region.infill_areas();
-            if infill_areas.is_empty() {
+            let polygons = region.polygons();
+            if polygons.is_empty() {
                 continue;
             }
 
-            for expoly in infill_areas {
+            for expoly in polygons {
                 let paths = self.fill_expolygon(expoly, z, speed_factor);
                 for path in paths {
-                    let _ = output.push_ironing_path(path);
+                    let _ = output.push_support_path(path);
                 }
             }
         }

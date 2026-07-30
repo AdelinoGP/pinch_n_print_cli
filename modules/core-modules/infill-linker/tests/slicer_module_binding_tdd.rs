@@ -13,10 +13,11 @@ fn binding_surface_matches_manifest() {
         InfillLinker::__slicer_stage_name(),
         "Layer::InfillPostProcess"
     );
+    assert_eq!(InfillLinker::__slicer_stage_export_name(), "run");
     assert_eq!(
-        InfillLinker::__slicer_stage_export_name(),
-        "run-infill-postprocess"
+        InfillLinker::__slicer_module_schema().stage_export,
+        "slicer:layer-infill-postprocess/infill-postprocess@1.0.0#run"
     );
     let exports = InfillLinker::__slicer_wit_exports();
-    assert!(exports.contains(&"run-infill-postprocess"));
+    assert!(exports.contains(&"slicer:layer-infill-postprocess/infill-postprocess@1.0.0#run"));
 }

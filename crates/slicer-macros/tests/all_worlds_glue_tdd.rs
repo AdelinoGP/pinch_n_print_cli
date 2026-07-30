@@ -14,33 +14,235 @@ fn macro_src() -> String {
     fs::read_to_string(path).expect("read slicer-macros src/lib.rs")
 }
 
+struct DeliveredWorld {
+    stage_id: &'static str,
+    glue_kind: &'static str,
+    builder: &'static str,
+    package: &'static str,
+    interface: &'static str,
+    world: &'static str,
+    component: &'static str,
+}
+
+const DELIVERED_WORLDS: &[DeliveredWorld] = &[
+    DeliveredWorld {
+        stage_id: "PostPass::GCodePostProcess",
+        glue_kind: "Postpass",
+        builder: "build_postpass_gcode_glue",
+        package: "postpass-gcode-postprocess",
+        interface: "gcode-postprocess",
+        world: "gcode-postprocess-module",
+        component: "__SlicerPostpassGcodeComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PostPass::TextPostProcess",
+        glue_kind: "Postpass",
+        builder: "build_postpass_text_glue",
+        package: "postpass-text-postprocess",
+        interface: "text-postprocess",
+        world: "text-postprocess-module",
+        component: "__SlicerPostpassTextComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PostPass::LayerFinalization",
+        glue_kind: "Finalization",
+        builder: "build_finalization_world_glue",
+        package: "finalization-layer-finalization",
+        interface: "layer-finalization",
+        world: "layer-finalization-module",
+        component: "__SlicerFinalizationComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::SlicePostProcess",
+        glue_kind: "LayerSlicePostprocess",
+        builder: "build_layer_slice_postprocess_glue",
+        package: "layer-slice-postprocess",
+        interface: "slice-postprocess",
+        world: "slice-postprocess-module",
+        component: "__SlicerLayerSlicePostprocessComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::Perimeters",
+        glue_kind: "LayerPerimeters",
+        builder: "build_layer_perimeters_glue",
+        package: "layer-perimeters",
+        interface: "perimeters",
+        world: "perimeters-module",
+        component: "__SlicerLayerPerimetersComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::PerimetersPostProcess",
+        glue_kind: "LayerPerimetersPostprocess",
+        builder: "build_layer_perimeters_postprocess_glue",
+        package: "layer-perimeters-postprocess",
+        interface: "perimeters-postprocess",
+        world: "perimeters-postprocess-module",
+        component: "__SlicerLayerPerimetersPostprocessComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::Infill",
+        glue_kind: "LayerInfill",
+        builder: "build_layer_infill_glue",
+        package: "layer-infill",
+        interface: "infill",
+        world: "infill-module",
+        component: "__SlicerLayerInfillComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::InfillPostProcess",
+        glue_kind: "LayerInfillPostprocess",
+        builder: "build_layer_infill_postprocess_glue",
+        package: "layer-infill-postprocess",
+        interface: "infill-postprocess",
+        world: "infill-postprocess-module",
+        component: "__SlicerLayerInfillPostprocessComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::Support",
+        glue_kind: "LayerSupport",
+        builder: "build_layer_support_glue",
+        package: "layer-support",
+        interface: "support",
+        world: "support-module",
+        component: "__SlicerLayerSupportComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::SupportPostProcess",
+        glue_kind: "LayerSupportPostprocess",
+        builder: "build_layer_support_postprocess_glue",
+        package: "layer-support-postprocess",
+        interface: "support-postprocess",
+        world: "support-postprocess-module",
+        component: "__SlicerLayerSupportPostprocessComponent",
+    },
+    DeliveredWorld {
+        stage_id: "Layer::PathOptimization",
+        glue_kind: "LayerPathOptimization",
+        builder: "build_layer_path_optimization_glue",
+        package: "layer-path-optimization",
+        interface: "path-optimization",
+        world: "path-optimization-module",
+        component: "__SlicerLayerPathOptimizationComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PrePass::MeshAnalysis",
+        glue_kind: "PrepassMeshAnalysis",
+        builder: "build_prepass_mesh_analysis_glue",
+        package: "prepass-mesh-analysis",
+        interface: "mesh-analysis",
+        world: "mesh-analysis-module",
+        component: "__SlicerPrepassMeshAnalysisComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PrePass::LayerPlanning",
+        glue_kind: "PrepassLayerPlanning",
+        builder: "build_prepass_layer_planning_glue",
+        package: "prepass-layer-planning",
+        interface: "layer-planning",
+        world: "layer-planning-module",
+        component: "__SlicerPrepassLayerPlanningComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PrePass::SeamPlanning",
+        glue_kind: "PrepassSeamPlanning",
+        builder: "build_prepass_seam_planning_glue",
+        package: "prepass-seam-planning",
+        interface: "seam-planning",
+        world: "seam-planning-module",
+        component: "__SlicerPrepassSeamPlanningComponent",
+    },
+    DeliveredWorld {
+        stage_id: "PrePass::SupportGeometry",
+        glue_kind: "PrepassSupportGeometry",
+        builder: "build_prepass_support_geometry_glue",
+        package: "prepass-support-geometry",
+        interface: "support-geometry",
+        world: "support-geometry-module",
+        component: "__SlicerPrepassSupportGeometryComponent",
+    },
+];
+
+fn snake_case(value: &str) -> String {
+    value.replace('-', "_")
+}
+
+fn guest_impl<'a>(src: &'a str, world: &DeliveredWorld) -> &'a str {
+    let marker = format!(
+        "impl exports::slicer::{}::{}::Guest for {}",
+        snake_case(world.package),
+        snake_case(world.interface),
+        world.component
+    );
+    let start = src
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing qualified Guest impl: {marker}"));
+    let rest = &src[start..];
+    let end_marker = format!("export!({})", world.component);
+    let end = rest
+        .find(&end_marker)
+        .unwrap_or_else(|| panic!("missing export registration: {end_marker}"));
+    &rest[..end + end_marker.len()]
+}
+
 #[test]
-fn macro_has_world_dispatch_with_all_four_world_kinds() {
+fn macro_has_stage_dispatch_for_all_delivered_worlds() {
     let src = macro_src();
     assert!(
-        src.contains("enum WorldGlueKind"),
-        "world dispatch type is present"
+        src.contains("enum StageGlueKind"),
+        "stage dispatch type is present"
     );
-    for kind in ["Postpass", "Finalization", "Prepass", "Layer"] {
+    let resolver = src
+        .split("fn resolve_stage_glue")
+        .nth(1)
+        .and_then(|tail| tail.split("/// The statement every macro-generated").next())
+        .expect("resolve_stage_glue body is present");
+
+    for world in DELIVERED_WORLDS {
+        let matching_line = resolver
+            .lines()
+            .find(|line| line.contains(world.stage_id))
+            .unwrap_or_else(|| panic!("missing stage dispatch for {}", world.stage_id));
         assert!(
-            src.contains(&format!("WorldGlueKind::{kind}")),
-            "WorldGlueKind::{kind} variant must be routed by resolve_world_glue"
+            matching_line.contains(&format!("StageGlueKind::{}", world.glue_kind)),
+            "{} must dispatch to StageGlueKind::{}",
+            world.stage_id,
+            world.glue_kind
         );
     }
+    assert!(!resolver.contains("Some(\"LayerModule\")"));
+    assert!(!resolver.contains("Some(\"PrepassModule\")"));
 }
 
 #[test]
 fn macro_emits_world_builder_for_each_supported_world() {
     let src = macro_src();
-    for builder in [
-        "build_postpass_world_glue",
-        "build_finalization_world_glue",
-        "build_prepass_world_glue",
+    for world in DELIVERED_WORLDS {
+        assert!(
+            src.contains(&format!("fn {}(", world.builder)),
+            "missing per-stage glue builder: {}",
+            world.builder
+        );
+    }
+    assert!(!src.contains("fn build_layer_world_glue("));
+    assert!(!src.contains("fn build_prepass_world_glue("));
+    assert!(!src.contains("StageGlueKind::Layer)"));
+    assert!(!src.contains("StageGlueKind::Prepass)"));
+    let active_glue = src
+        .split("let world_glue: TokenStream2 = match real_glue_world")
+        .nth(1)
+        .and_then(|tail| tail.split("let wasm_export_shims").next())
+        .expect("active stage glue selection is present");
+    for retired in [
         "build_layer_world_glue",
+        "build_prepass_world_glue",
+        "retired_layer_glue",
+        "retired_prepass_glue",
+        "world_layer",
+        "world_prepass",
     ] {
         assert!(
-            src.contains(builder),
-            "missing per-world glue builder: {builder}"
+            !active_glue.contains(retired),
+            "active glue selection must not generate retired tier-world glue: {retired}"
         );
     }
 }
@@ -48,18 +250,28 @@ fn macro_emits_world_builder_for_each_supported_world() {
 #[test]
 fn macro_emits_wit_bindgen_generate_for_all_world_names() {
     let src = macro_src();
-    // Every world's glue builder must include a wit_bindgen::generate!
-    // invocation targeting the correct world string.
     assert!(src.contains("::wit_bindgen::generate!"));
-    for world in [
-        "postpass-module",
-        "finalization-module",
-        "prepass-module",
-        "layer-module",
-    ] {
+    for world in DELIVERED_WORLDS {
+        let package_path = format!("../../slicer-schema/wit/deps/{0}/{0}.wit", world.package);
+        let qualified_guest = format!(
+            "exports::slicer::{}::{}::Guest",
+            snake_case(world.package),
+            snake_case(world.interface)
+        );
         assert!(
-            src.contains(&format!("\"{world}\"")),
-            "macro must target world {world}"
+            src.contains(&format!("\"{}\"", world.world)),
+            "macro must target world {}",
+            world.world
+        );
+        assert!(
+            src.contains(&package_path),
+            "macro must load package {}",
+            package_path
+        );
+        assert!(
+            src.contains(&qualified_guest),
+            "macro must use qualified package/interface {}",
+            qualified_guest
         );
     }
 }
@@ -67,15 +279,18 @@ fn macro_emits_wit_bindgen_generate_for_all_world_names() {
 #[test]
 fn macro_emits_export_registration_for_every_world_component() {
     let src = macro_src();
-    for component in [
-        "__SlicerPostpassComponent",
-        "__SlicerFinalizationComponent",
-        "__SlicerPrepassComponent",
-        "__SlicerLayerComponent",
-    ] {
+    for world in DELIVERED_WORLDS {
+        let body = guest_impl(&src, world);
         assert!(
-            src.contains(&format!("export!({component})")),
-            "macro must register {component} via export!"
+            src.contains(&format!("export!({})", world.component)),
+            "macro must register {} via export!",
+            world.component
+        );
+        assert_eq!(
+            body.matches("fn run(").count(),
+            1,
+            "{} must expose exactly one run export",
+            world.component
         );
     }
 }
@@ -150,7 +365,13 @@ fn macro_groups_flat_paint_stroke_vertices_into_triangle_triplets() {
 #[test]
 fn macro_finalization_covers_run_finalization() {
     let src = macro_src();
-    assert!(src.contains("fn run_finalization"));
+    let finalization = DELIVERED_WORLDS
+        .iter()
+        .find(|world| world.stage_id == "PostPass::LayerFinalization")
+        .expect("finalization world is in the delivered-world table");
+    let body = guest_impl(&src, finalization);
+    assert!(body.contains(">::run_finalization("));
+    assert_eq!(body.matches("fn run(").count(), 1);
 }
 
 #[test]

@@ -37,7 +37,6 @@ fn write_module(root: &Path, stem: &str, manifest: &str) {
 fn manifest(
     id: &str,
     stage: &str,
-    wit_world: &str,
     config_keys: &[(&str, &str)],
     requires_modules: &[&str],
     ir_reads: &[&str],
@@ -74,8 +73,6 @@ description = "fixture"
 author = "test"
 license = "MIT"
 homepage = "https://example.invalid/{id}"
-wit-world = "{wit_world}"
-
 [stage]
 id = "{stage}"
 
@@ -113,7 +110,6 @@ fn infill_manifest(id: &str, requires: &[&str]) -> String {
     manifest(
         id,
         "Layer::Infill",
-        slicer_schema::WORLD_LAYER,
         &[("density", "float"), ("pattern", "enum")],
         requires,
         &["SliceIR.regions.infill_areas"],
@@ -125,7 +121,6 @@ fn prepass_manifest(id: &str) -> String {
     manifest(
         id,
         "PrePass::MeshAnalysis",
-        slicer_schema::WORLD_PREPASS,
         &[("threshold", "float")],
         &[],
         &[],

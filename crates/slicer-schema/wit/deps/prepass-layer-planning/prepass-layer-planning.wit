@@ -1,0 +1,39 @@
+package slicer:prepass-layer-planning@1.0.0;
+
+interface layer-planning-types {
+    type object-id = string;
+    type region-id = string;
+
+    record region-layer-proposal {
+        object-id: object-id, region-id: region-id,
+        effective-layer-height: f32,
+        is-catchup: bool, catchup-z-bottom: f32,
+    }
+    record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+    resource layer-plan-output {
+        push-layer: func(proposal: layer-proposal) -> result<_, string>;
+    }
+}
+
+interface layer-planning {
+    type object-id = string;
+    use layer-planning-types.{layer-plan-output};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(
+        objects: list<object-id>,
+        output: layer-plan-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+}
+
+world layer-planning-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    import layer-planning-types;
+    export layer-planning;
+}

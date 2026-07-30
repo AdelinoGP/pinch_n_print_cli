@@ -5,7 +5,6 @@ display-name = "Part Cooling"
 description  = "Core part cooling fan module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-finalization"
 
 [stage]
 id = "PostPass::LayerFinalization"

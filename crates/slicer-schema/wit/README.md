@@ -14,9 +14,19 @@ wit/
     config.wit                  # package slicer:config      — interface config-types (unversioned)
     ir-types.wit                # package slicer:ir-handles  — interface ir-handles (unversioned)
     common.wit                  # package slicer:common      — interfaces module-errors, host-services, profiling (unversioned)
-    world-layer/world-layer.wit           # package slicer:world-layer@2.1.0
-    world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
-    # Per packet 163: postpass + finalization are now per-stage packages.
+    prepass-types.wit                                                   # package slicer:prepass-types (unversioned)
+    layer-slice-postprocess/layer-slice-postprocess.wit                  # package slicer:layer-slice-postprocess@1.0.0
+    layer-perimeters/layer-perimeters.wit                                # package slicer:layer-perimeters@1.0.0
+    layer-perimeters-postprocess/layer-perimeters-postprocess.wit         # package slicer:layer-perimeters-postprocess@1.0.0
+    layer-infill/layer-infill.wit                                        # package slicer:layer-infill@1.0.0
+    layer-infill-postprocess/layer-infill-postprocess.wit                # package slicer:layer-infill-postprocess@1.0.0
+    layer-support/layer-support.wit                                      # package slicer:layer-support@1.0.0
+    layer-support-postprocess/layer-support-postprocess.wit              # package slicer:layer-support-postprocess@1.0.0
+    layer-path-optimization/layer-path-optimization.wit                  # package slicer:layer-path-optimization@1.0.0
+    prepass-mesh-analysis/prepass-mesh-analysis.wit                      # package slicer:prepass-mesh-analysis@1.0.0
+    prepass-layer-planning/prepass-layer-planning.wit                    # package slicer:prepass-layer-planning@1.0.0
+    prepass-seam-planning/prepass-seam-planning.wit                      # package slicer:prepass-seam-planning@1.0.0
+    prepass-support-geometry/prepass-support-geometry.wit                # package slicer:prepass-support-geometry@1.0.0
     postpass-gcode-postprocess/postpass-gcode-postprocess.wit          # package slicer:postpass-gcode-postprocess@1.0.0
     postpass-text-postprocess/postpass-text-postprocess.wit             # package slicer:postpass-text-postprocess@1.0.0
     finalization-layer-finalization/finalization-layer-finalization.wit  # package slicer:finalization-layer-finalization@1.0.0
@@ -31,15 +41,19 @@ would disable the major-track compatibility claim — see ADR-0045
 
 ## How each consumer reads these files
 
+There are 15 versioned stage packages: 8 layer, 4 prepass, 2 postpass, and 1 finalization.
+`PrePass::PaintSegmentation` is host-built-in and has no WIT package. The shared prepass
+view records are defined once in the unversioned flat `slicer:prepass-types` package.
+
 **Host** (`crates/slicer-wasm-host/src/host.rs`):
 ```rust
 wasmtime::component::bindgen!{
     path: "../slicer-schema/wit",
-    world: "slicer:world-layer/layer-module",  // or one of the per-stage packages
+    world: "slicer:layer-perimeters/perimeters-module",
     // with: { "slicer:config/config-types.config-view" => ..., ... }
 }
 ```
-One `bindgen!` call per world, all pointing at this directory. No inline WIT.
+One `bindgen!` call per stage package, all pointing at this directory. No inline WIT.
 
 **Guest proc-macro** (`crates/slicer-macros/src/lib.rs`):
 The `#[slicer_module]` macro reads the dep files via `include_str!`, wraps each

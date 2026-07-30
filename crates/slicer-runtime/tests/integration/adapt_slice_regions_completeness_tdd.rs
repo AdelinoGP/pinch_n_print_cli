@@ -135,12 +135,12 @@ fn build_fixture_slice_ir(layer_index: u32, region_z: f32) -> SliceIR {
     }
 }
 
-fn make_loaded_module(id: &str, stage: &str, wit_world: &str) -> LoadedModule {
+fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
     LoadedModuleBuilder::new(
         id,
         semver(1, 0, 0),
         stage,
-        wit_world,
+        String::new(),
         std::path::PathBuf::from("/dev/null"),
     )
     .min_host_version(semver(0, 1, 0))
@@ -153,12 +153,11 @@ fn make_loaded_module(id: &str, stage: &str, wit_world: &str) -> LoadedModule {
 fn make_module_bundle(
     module_id: &str,
     stage_id: &str,
-    wit_world: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
     claims: Vec<String>,
 ) -> TestModuleBundle {
-    let loaded = make_loaded_module(module_id, stage_id, wit_world);
+    let loaded = make_loaded_module(module_id, stage_id);
     let pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
@@ -214,7 +213,6 @@ fn macro_adapter_round_trips_every_slice_region_view_field() {
     let module = make_module_bundle(
         module_id,
         "Layer::Infill",
-        slicer_schema::WORLD_LAYER,
         component,
         emit_field_witness_config(),
         // The dispatcher filters `claims` by the FILL_CLAIM_IDS allow-list

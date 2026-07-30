@@ -5,7 +5,6 @@ display-name = "Tree Support"
 description  = "Core tree support module"
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Support"

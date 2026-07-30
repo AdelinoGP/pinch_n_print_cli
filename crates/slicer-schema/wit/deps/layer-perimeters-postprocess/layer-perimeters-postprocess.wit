@@ -1,0 +1,20 @@
+package slicer:layer-perimeters-postprocess@1.0.0;
+
+interface perimeters-postprocess {
+    use slicer:ir-handles/ir-handles.{layer-idx, perimeter-region-view,
+        perimeter-output-builder};
+    use slicer:config/config-types.{config-view};
+    use slicer:common/module-errors.{module-error};
+
+    run: func(layer-index: layer-idx, regions: list<perimeter-region-view>,
+        output: perimeter-output-builder, config: config-view)
+        -> result<_, module-error>;
+}
+
+world perimeters-postprocess-module {
+    import slicer:common/host-services;
+    import slicer:common/profiling;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+    export perimeters-postprocess;
+}

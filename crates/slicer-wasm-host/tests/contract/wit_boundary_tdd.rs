@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 
 use slicer_wasm_host::host::{
-    ConfigValueStorage, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder,
-    LayerModule, PaintRegionLayerData, SliceRegionData,
+    layer_infill, ConfigValueStorage, ConfigViewData, HostExecutionContext,
+    HostExecutionContextBuilder, PaintRegionLayerData, SliceRegionData,
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1};
 
@@ -48,8 +48,11 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .expect("add_to_linker");
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .expect("add_to_linker");
 
     let mut ctx = make_ctx("test-infill-module", 1.0);
 
@@ -97,10 +100,11 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker).expect("instantiate");
+    let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker)
+        .expect("instantiate");
 
     // Call run-infill
-    let result = bindings.call_run_infill(
+    let result = bindings.slicer_layer_infill_infill().call_run(
         &mut store,
         0, // layer_index
         &[resource_to_own(region_handle)],
@@ -157,8 +161,11 @@ fn guest_reads_region_z_from_ir_view() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .unwrap();
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .unwrap();
 
     let mut ctx = make_ctx("test-ir-read", 5.5);
 
@@ -205,10 +212,11 @@ fn guest_reads_region_z_from_ir_view() {
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings
-        .call_run_infill(
+        .slicer_layer_infill_infill()
+        .call_run(
             &mut store,
             42,
             &[resource_to_own(region_handle)],
@@ -244,8 +252,11 @@ fn guest_emits_output_via_infill_builder() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .unwrap();
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .unwrap();
 
     let mut ctx = make_ctx("test-output", 2.0);
     let config_handle = ctx
@@ -291,10 +302,11 @@ fn guest_emits_output_via_infill_builder() {
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings
-        .call_run_infill(
+        .slicer_layer_infill_infill()
+        .call_run(
             &mut store,
             0,
             &[resource_to_own(region_handle)],
@@ -338,8 +350,11 @@ fn guest_logs_via_host_services() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .unwrap();
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .unwrap();
 
     let mut ctx = make_ctx("test-log", 0.2);
     let config_handle = ctx
@@ -385,10 +400,11 @@ fn guest_logs_via_host_services() {
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings
-        .call_run_infill(
+        .slicer_layer_infill_infill()
+        .call_run(
             &mut store,
             7,
             &[resource_to_own(region_handle)],
@@ -427,8 +443,11 @@ fn repeated_calls_produce_independent_outputs() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .unwrap();
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .unwrap();
 
     for i in 0..3 {
         let z = (i + 1) as f32 * 10.0;
@@ -476,10 +495,12 @@ fn repeated_calls_produce_independent_outputs() {
             .unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
-        let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+        let bindings =
+            layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
         bindings
-            .call_run_infill(
+            .slicer_layer_infill_infill()
+            .call_run(
                 &mut store,
                 i as i32,
                 &[resource_to_own(region_handle)],
@@ -528,8 +549,11 @@ fn empty_region_list_handled_gracefully() {
     let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-        .unwrap();
+    layer_infill::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+        &mut linker,
+        |ctx| ctx,
+    )
+    .unwrap();
 
     let mut ctx = make_ctx("test-empty", 0.0);
     let config_handle = ctx
@@ -549,11 +573,12 @@ fn empty_region_list_handled_gracefully() {
         .unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = layer_infill::LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     // Call with empty regions list â€” guest returns Ok immediately, no paths pushed.
     bindings
-        .call_run_infill(
+        .slicer_layer_infill_infill()
+        .call_run(
             &mut store,
             0,
             &[], // no regions

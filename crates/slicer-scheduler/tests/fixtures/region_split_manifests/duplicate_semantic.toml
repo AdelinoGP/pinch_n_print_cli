@@ -5,7 +5,6 @@ display-name = "Region Split Duplicate Semantic"
 description  = "Fixture: two region_split entries with the same semantic"
 author       = "test"
 license      = "MIT"
-wit-world    = "slicer:world-layer"
 
 [stage]
 id = "Layer::Infill"
