@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 140_lightning-module-rewrite
 task_ids:
   - TASK-265
